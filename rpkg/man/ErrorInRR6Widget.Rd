@@ -24,7 +24,7 @@ ErrorInRR6Widget R6 Class
 \if{html}{\out{<a id="method-ErrorInRR6Widget-new"></a>}}
 \if{latex}{\out{\hypertarget{method-ErrorInRR6Widget-new}{}}}
 \subsection{Method \code{new()}}{
-Create a new widget.
+Create a new widget
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{ErrorInRR6Widget$new(name, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -32,6 +32,8 @@ Create a new widget.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
+\item{\code{name}}{Name for the widget.}
+
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
 \if{html}{\out{</div>}}

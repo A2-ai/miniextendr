@@ -12,5 +12,6 @@ check_result(result, context)
 \item{context}{Description of what was being done}
 }
 \description{
-Check command result and throw informative error if failed
+Internal helper used by workflow wrappers.
 }
+\keyword{internal}

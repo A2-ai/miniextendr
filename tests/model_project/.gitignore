@@ -5,9 +5,6 @@ config.status
 .cargo/config.toml
 src/Makevars
 src/*-wrappers.R
-src/rust/document.rs
-src/entrypoint.c
-src/mx_abi.c
 src/*-win.def
 src/*.o
 src/*.so

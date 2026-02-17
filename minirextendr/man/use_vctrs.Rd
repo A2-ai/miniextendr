@@ -4,7 +4,10 @@
 \alias{use_vctrs}
 \title{Enable vctrs support}
 \usage{
-use_vctrs()
+use_vctrs(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE

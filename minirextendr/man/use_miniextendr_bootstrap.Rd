@@ -4,7 +4,10 @@
 \alias{use_miniextendr_bootstrap}
 \title{Add bootstrap.R to package}
 \usage{
-use_miniextendr_bootstrap()
+use_miniextendr_bootstrap(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if file was created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if file was created
 Creates bootstrap.R which runs during package build when
 \code{Config/build/bootstrap: TRUE} is set in DESCRIPTION.
 }
+\keyword{internal}

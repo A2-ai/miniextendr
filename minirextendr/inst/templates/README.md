@@ -89,7 +89,7 @@ minirextendr::create_miniextendr_monorepo("path/to/project")
 minirextendr::create_miniextendr_monorepo(
   "path/to/project",
   crate_name = "my-lib",
-  rpkg_name = "r-bindings"  # Default: "rpkg"
+  rpkg_name = "r-bindings"  # Default: same as package name
 )
 
 # Add R package to existing Rust crate:

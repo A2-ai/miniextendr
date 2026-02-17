@@ -88,6 +88,14 @@ borsh = ["dep:borsh"]
 vctrs = ["miniextendr-macros/vctrs"]
 ## Enable macro expansion coverage module. Used for `cargo expand` auditing.
 macro-coverage = []
+## Project-wide defaults for #[miniextendr] options (forwarded to miniextendr-macros).
+default-strict = ["miniextendr-macros/default-strict"]
+default-coerce = ["miniextendr-macros/default-coerce"]
+default-error-in-r = ["miniextendr-macros/default-error-in-r"]
+default-r6 = ["miniextendr-macros/default-r6"]
+default-s7 = ["miniextendr-macros/default-s7"]
+default-worker = ["miniextendr-macros/default-worker"]
+default-main-thread = ["miniextendr-macros/default-main-thread"]
 ## Enable ALTREP materialization tracking. Logs when ALTREP vectors materialize
 ## (Dataptr called) and provides a counter for diagnostics. Zero-cost when disabled.
 materialization-tracking = []

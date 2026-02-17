@@ -4,7 +4,10 @@
 \alias{miniextendr_doctor}
 \title{Run comprehensive miniextendr project diagnostics}
 \usage{
-miniextendr_doctor()
+miniextendr_doctor(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns a list with \code{pass}, \code{warn}, and \code{fail} entries.

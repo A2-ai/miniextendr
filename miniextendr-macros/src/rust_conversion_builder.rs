@@ -248,7 +248,7 @@ impl RustConversionBuilder {
                             quote!(#ty)
                         );
                         quote_spanned! {span=>
-                            let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                            let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                 .expect(#error_msg);
                         }
                     }

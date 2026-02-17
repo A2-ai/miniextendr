@@ -21,6 +21,7 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         strict: false,
         internal: false,
         noexport: false,
+        blanket: false,
     }
 }
 

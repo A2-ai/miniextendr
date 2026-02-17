@@ -5,6 +5,7 @@
 \title{Generate feature detection code}
 \usage{
 use_feature_detection(
+  path = ".",
   package_name = NULL,
   features = NULL,
   rust_file = "src/rust/feature_detection.rs",
@@ -13,6 +14,8 @@ use_feature_detection(
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{package_name}{Package name (default: derived from DESCRIPTION)}
 
 \item{features}{Character vector of feature names to include. Default NULL

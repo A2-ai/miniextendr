@@ -4,7 +4,10 @@
 \alias{use_r6}
 \title{Enable R6 class system support}
 \usage{
-use_r6()
+use_r6(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE

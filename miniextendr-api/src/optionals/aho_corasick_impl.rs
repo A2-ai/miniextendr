@@ -96,6 +96,10 @@ impl TryFromSexp for AhoCorasick {
     }
 }
 
+// Note: IntoR is intentionally not implemented for AhoCorasick.
+// A compiled automaton cannot be meaningfully converted back to R.
+// If you need the patterns, keep the original character vector.
+
 // Use macros to implement Option/Vec conversions
 impl_option_try_from_sexp!(AhoCorasick);
 impl_vec_try_from_sexp_list!(AhoCorasick);

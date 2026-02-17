@@ -4,9 +4,11 @@
 \alias{cargo_fmt}
 \title{Format Rust sources}
 \usage{
-cargo_fmt(check = FALSE, all = TRUE, quiet = FALSE)
+cargo_fmt(path = ".", check = FALSE, all = TRUE, quiet = FALSE)
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{check}{Logical. If TRUE, check formatting without modifying files.}
 
 \item{all}{Logical. If TRUE, format all packages in the workspace.}

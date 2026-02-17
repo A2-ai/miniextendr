@@ -4,7 +4,10 @@
 \alias{use_miniextendr_cleanup}
 \title{Add cleanup scripts to package}
 \usage{
-use_miniextendr_cleanup()
+use_miniextendr_cleanup(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if files were created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if files were created
 Creates cleanup, cleanup.win, and cleanup.ucrt scripts that clean
 build artifacts after installation (used on CRAN).
 }
+\keyword{internal}

@@ -74,10 +74,78 @@ pub fn create_people_df() -> ToDataFrame<PersonDataFrame> {
     ToDataFrame(Person::to_dataframe(rows))
 }
 
+// ── Enum align examples ──────────────────────────────────────────────────────
+
+/// Enum with align: different event types become rows with NA fill.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum EventRow {
+    Click { id: i64, x: f64, y: f64 },
+    Impression { id: i64, slot: String },
+    Error { id: i64, code: i32, message: String },
+}
+
+/// Create a data frame from an aligned enum.
+///
+/// @export
+#[miniextendr]
+pub fn create_events_df() -> ToDataFrame<EventRowDataFrame> {
+    let rows = vec![
+        EventRow::Click {
+            id: 1,
+            x: 1.5,
+            y: 2.5,
+        },
+        EventRow::Impression {
+            id: 2,
+            slot: "top_banner".to_string(),
+        },
+        EventRow::Error {
+            id: 3,
+            code: 404,
+            message: "not found".to_string(),
+        },
+    ];
+    ToDataFrame(EventRow::to_dataframe(rows))
+}
+
+/// Enum align without tag column.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align)]
+pub enum ShapeRow {
+    Circle { radius: f64, area: f64 },
+    Rect { width: f64, height: f64, area: f64 },
+}
+
+/// Create a data frame from shapes (no tag column).
+///
+/// @export
+#[miniextendr]
+pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
+    let rows = vec![
+        ShapeRow::Circle {
+            radius: 5.0,
+            area: 78.54,
+        },
+        ShapeRow::Rect {
+            width: 3.0,
+            height: 4.0,
+            area: 12.0,
+        },
+        ShapeRow::Circle {
+            radius: 1.0,
+            area: std::f64::consts::PI,
+        },
+    ];
+    ToDataFrame(ShapeRow::to_dataframe(rows))
+}
+
 use miniextendr_api::miniextendr_module;
 
 miniextendr_module! {
     mod dataframe_examples;
     fn create_points_df;
     fn create_people_df;
+    fn create_events_df;
+    fn create_shapes_df;
 }

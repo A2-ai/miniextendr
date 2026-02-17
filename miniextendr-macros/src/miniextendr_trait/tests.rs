@@ -32,27 +32,25 @@ fn trait_accepts_private_trait() {
 }
 
 #[test]
-fn trait_rejects_generic_parameters() {
+fn trait_accepts_generic_parameters() {
+    // Generic type parameters on traits are allowed (e.g., RExtend<T>)
     let result = validate_trait_str(quote::quote! {
         pub trait Container<T> {
             fn get(&self) -> T;
         }
     });
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("cannot have generic parameters"));
+    assert!(result.is_ok());
 }
 
 #[test]
 fn trait_accepts_lifetime_bounds() {
-    // Lifetime bounds on trait are currently caught by "generic parameters"
-    // This documents the current behavior
+    // Lifetime bounds on traits are allowed
     let result = validate_trait_str(quote::quote! {
         pub trait Borrower<'a> {
             fn borrow(&self) -> &'a str;
         }
     });
-    // Currently rejected - lifetimes count as generic params
-    assert!(result.is_err());
+    assert!(result.is_ok());
 }
 
 // ==========================================================================

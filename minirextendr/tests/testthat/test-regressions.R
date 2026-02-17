@@ -125,10 +125,10 @@ test_that("miniextendr_status expects all 5 required vendored crates", {
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   create_miniextendr_monorepo(tmp, package = "testpkg",
-                               crate_name = "testpkg",
+                               crate_name = "testpkg-rs",
                                local_path = find_miniextendr_repo(), open = FALSE)
 
-  result <- suppressMessages(miniextendr_status(file.path(tmp, "rpkg")))
+  result <- suppressMessages(miniextendr_status(file.path(tmp, "testpkg")))
 
   # The expected vendored crates list should include miniextendr-engine
   all_expected <- unlist(result$present, use.names = FALSE)

@@ -4,9 +4,11 @@
 \alias{cargo_deps}
 \title{Show dependency tree}
 \usage{
-cargo_deps(depth = 1, duplicates = FALSE, invert = NULL)
+cargo_deps(path = ".", depth = 1, duplicates = FALSE, invert = NULL)
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{depth}{Maximum depth to display (default 1 for direct deps only).}
 
 \item{duplicates}{Logical. If TRUE, show only duplicate dependencies.}

@@ -4,7 +4,10 @@
 \alias{use_serde}
 \title{Enable serde serialization support}
 \usage{
-use_serde()
+use_serde(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE

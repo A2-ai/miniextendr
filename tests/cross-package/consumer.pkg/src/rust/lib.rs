@@ -21,7 +21,7 @@ pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterV
 /// @return The same ExternalPtr (pass-through)
 /// @export
 #[miniextendr]
-fn passthrough_ptr(ptr: SEXP) -> SEXP {
+pub fn passthrough_ptr(ptr: SEXP) -> SEXP {
     ptr
 }
 
@@ -30,7 +30,7 @@ fn passthrough_ptr(ptr: SEXP) -> SEXP {
 /// @return TRUE if it's an ExternalPtr
 /// @export
 #[miniextendr]
-fn is_external_ptr(sexp: SEXP) -> bool {
+pub fn is_external_ptr(sexp: SEXP) -> bool {
     use miniextendr_api::ffi::{SEXPTYPE, TYPEOF};
     unsafe { TYPEOF(sexp) == SEXPTYPE::EXTPTRSXP }
 }
@@ -40,7 +40,7 @@ fn is_external_ptr(sexp: SEXP) -> bool {
 /// @return Character vector of class names
 /// @export
 #[miniextendr]
-fn consumer_get_class(x: SEXP) -> SEXP {
+pub fn consumer_get_class(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_getAttrib(x, miniextendr_api::ffi::R_ClassSymbol) }
 }
 
@@ -50,7 +50,7 @@ fn consumer_get_class(x: SEXP) -> SEXP {
 /// @return TRUE if object has the specified class
 /// @export
 #[miniextendr]
-fn has_class(x: SEXP, class_name: String) -> bool {
+pub fn has_class(x: SEXP, class_name: String) -> bool {
     use miniextendr_api::ffi::{
         R_CHAR, R_ClassSymbol, Rf_getAttrib, Rf_xlength, SEXPTYPE, STRING_ELT, TYPEOF,
     };
@@ -116,7 +116,7 @@ impl Counter for DoubleCounter {
 /// @return An external pointer to the wrapped DoubleCounter
 /// @export
 #[miniextendr]
-fn new_double_counter(initial: i32) -> SEXP {
+pub fn new_double_counter(initial: i32) -> SEXP {
     let counter = DoubleCounter::create(initial);
     let erased = __mx_wrap_doublecounter(counter);
     unsafe { ccall::mx_wrap(erased) }
@@ -132,7 +132,7 @@ fn new_double_counter(initial: i32) -> SEXP {
 /// @return The counter's value after incrementing twice
 /// @export
 #[miniextendr]
-fn increment_twice(counter_sexp: SEXP) -> i32 {
+pub fn increment_twice(counter_sexp: SEXP) -> i32 {
     let mut counter = unsafe { CounterView::from_sexp(counter_sexp) };
     counter.increment();
     counter.increment();
@@ -145,7 +145,7 @@ fn increment_twice(counter_sexp: SEXP) -> i32 {
 /// @return The counter's value after adding n
 /// @export
 #[miniextendr]
-fn add_and_get(counter_sexp: SEXP, n: i32) -> i32 {
+pub fn add_and_get(counter_sexp: SEXP, n: i32) -> i32 {
     let mut counter = unsafe { CounterView::from_sexp(counter_sexp) };
     counter.add(n);
     counter.value()
@@ -156,7 +156,7 @@ fn add_and_get(counter_sexp: SEXP, n: i32) -> i32 {
 /// @return The counter's current value
 /// @export
 #[miniextendr]
-fn peek_value(counter_sexp: SEXP) -> i32 {
+pub fn peek_value(counter_sexp: SEXP) -> i32 {
     let counter = unsafe { CounterView::from_sexp(counter_sexp) };
     counter.value()
 }
@@ -166,7 +166,7 @@ fn peek_value(counter_sexp: SEXP) -> i32 {
 /// @return TRUE if the object implements Counter trait
 /// @export
 #[miniextendr]
-fn is_counter(sexp: SEXP) -> bool {
+pub fn is_counter(sexp: SEXP) -> bool {
     unsafe { CounterView::try_from_sexp(sexp).is_some() }
 }
 
@@ -179,7 +179,7 @@ fn is_counter(sexp: SEXP) -> bool {
 /// @return A greeting string
 /// @export
 #[miniextendr]
-fn consumer_greet(name: String) -> String {
+pub fn consumer_greet(name: String) -> String {
     format!("Hello {} from consumer.pkg!", name)
 }
 
@@ -187,14 +187,14 @@ fn consumer_greet(name: String) -> String {
 /// @return The number 42
 /// @export
 #[miniextendr]
-fn consumer_magic_number() -> i32 {
+pub fn consumer_magic_number() -> i32 {
     42
 }
 
 /// Debug: Get TAG_COUNTER as hex string
 /// @export
 #[miniextendr]
-fn debug_consumer_tag_counter() -> String {
+pub fn debug_consumer_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
 }
 

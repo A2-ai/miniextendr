@@ -4,7 +4,10 @@
 \alias{miniextendr_status}
 \title{Show miniextendr setup status}
 \usage{
-miniextendr_status()
+miniextendr_status(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns a list with present and missing files

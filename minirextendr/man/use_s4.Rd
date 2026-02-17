@@ -4,7 +4,10 @@
 \alias{use_s4}
 \title{Enable S4 class system support}
 \usage{
-use_s4()
+use_s4(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE

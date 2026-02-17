@@ -50,7 +50,7 @@ test_that("create_miniextendr_monorepo creates correct directory structure", {
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   # Create monorepo
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
   # Check root files
@@ -60,19 +60,19 @@ test_that("create_miniextendr_monorepo creates correct directory structure", {
   expect_true(dir.exists(file.path(tmp, ".git")))
 
   # Check main crate
-  expect_true(file.exists(file.path(tmp, "testpkg", "Cargo.toml")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "lib.rs")))
+  expect_true(file.exists(file.path(tmp, "testpkg-rs", "Cargo.toml")))
+  expect_true(file.exists(file.path(tmp, "testpkg-rs", "src", "lib.rs")))
 
   # Check rpkg structure
-  expect_true(file.exists(file.path(tmp, "rpkg", "DESCRIPTION")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "configure.ac")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "src", "Makevars.in")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "src", "entrypoint.c.in")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "lib.rs")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "Cargo.toml")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "build.rs")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "document.rs.in")))
-  expect_true(dir.exists(file.path(tmp, "rpkg", "vendor")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "DESCRIPTION")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "configure.ac")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "src", "Makevars.in")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "src", "entrypoint.c.in")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "lib.rs")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "Cargo.toml")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "build.rs")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "document.rs.in")))
+  expect_true(dir.exists(file.path(tmp, "testpkg", "vendor")))
 })
 
 test_that("create_miniextendr_monorepo performs correct template substitution", {
@@ -92,11 +92,11 @@ test_that("create_miniextendr_monorepo performs correct template substitution", 
   expect_true(any(grepl('name = "my-pkg"', crate_cargo)))
 
   # rpkg lib.rs should have package_rs (underscores)
-  rpkg_lib <- readLines(file.path(tmp, "rpkg", "src", "rust", "lib.rs"))
+  rpkg_lib <- readLines(file.path(tmp, "myPkg", "src", "rust", "lib.rs"))
   expect_true(any(grepl("mod myPkg;", rpkg_lib)))
 
   # rpkg DESCRIPTION should have package name
-  desc <- readLines(file.path(tmp, "rpkg", "DESCRIPTION"))
+  desc <- readLines(file.path(tmp, "myPkg", "DESCRIPTION"))
   expect_true(any(grepl("Package: myPkg", desc)))
 })
 
@@ -105,7 +105,7 @@ test_that("monorepo root Cargo.toml has valid workspace configuration", {
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
   cargo <- readLines(file.path(tmp, "Cargo.toml"))
@@ -114,8 +114,8 @@ test_that("monorepo root Cargo.toml has valid workspace configuration", {
   # Check workspace section exists
   expect_true(grepl("\\[workspace\\]", cargo_text))
   expect_true(grepl('resolver = "3"', cargo_text))
-  expect_true(grepl("testpkg", cargo_text))
-  expect_true(grepl('exclude = \\["rpkg/src/rust"', cargo_text))
+  expect_true(grepl("testpkg-rs", cargo_text))
+  expect_true(grepl('exclude = \\["testpkg/src/rust"', cargo_text))
 
   # Check workspace dependencies
   expect_true(grepl("miniextendr-api", cargo_text))
@@ -127,10 +127,10 @@ test_that("monorepo rpkg DESCRIPTION has correct miniextendr config", {
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
-  desc_path <- file.path(tmp, "rpkg", "DESCRIPTION")
+  desc_path <- file.path(tmp, "testpkg", "DESCRIPTION")
   desc <- desc::desc(desc_path)
 
   # Check Config fields
@@ -221,18 +221,18 @@ test_that("monorepo can run autoconf and configure", {
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
   # Run autoconf in rpkg/
-  result <- withr::with_dir(file.path(tmp, "rpkg"), {
+  result <- withr::with_dir(file.path(tmp, "testpkg"), {
     system2("autoconf", c("-v", "-i", "-f"), stdout = TRUE, stderr = TRUE)
   })
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0)
 
   # Configure script should now exist
-  expect_true(file.exists(file.path(tmp, "rpkg", "configure")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "configure")))
 })
 
 test_that("monorepo workspace can cargo check", {
@@ -242,13 +242,13 @@ test_that("monorepo workspace can cargo check", {
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
   # The main crate should be checkable (rpkg needs configure first)
   # suppressWarnings: cargo check may fail if miniextendr-api isn't on crates.io
   result <- suppressWarnings(
-    withr::with_dir(file.path(tmp, "testpkg"), {
+    withr::with_dir(file.path(tmp, "testpkg-rs"), {
       system2("cargo", c("check"), stdout = TRUE, stderr = TRUE)
     })
   )
@@ -287,13 +287,14 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   pkg_path <- file.path(tmp, "testpkg")
 
   # Create basic R package
-  suppressMessages({
+  # suppressWarnings: use_miniextendr() warns about git root != working dir in test context
+  suppressWarnings(suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
     use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
     usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
-  })
+  }))
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
@@ -374,13 +375,14 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   pkg_path <- file.path(tmp, "testpkg")
 
   # Create package and add miniextendr
-  suppressMessages({
+  # suppressWarnings: use_miniextendr() warns about git root != working dir in test context
+  suppressWarnings(suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
     use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
     usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
-  })
+  }))
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
@@ -521,11 +523,11 @@ test_that("monorepo handles dots in package names", {
   expect_true(any(grepl('name = "my-pkg"', crate_cargo)))
 
   # R package should keep dots
-  desc <- readLines(file.path(tmp, "rpkg", "DESCRIPTION"))
+  desc <- readLines(file.path(tmp, "my.pkg", "DESCRIPTION"))
   expect_true(any(grepl("Package: my.pkg", desc)))
 
   # rpkg lib.rs should use underscores (Rust module names)
-  rpkg_lib <- readLines(file.path(tmp, "rpkg", "src", "rust", "lib.rs"))
+  rpkg_lib <- readLines(file.path(tmp, "my.pkg", "src", "rust", "lib.rs"))
   expect_true(any(grepl("mod my_pkg;", rpkg_lib)))
 })
 
@@ -570,11 +572,11 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 
   # Create monorepo with valid package name (local_path vendors miniextendr crates)
   suppressMessages({
-    create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+    create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                                 local_path = miniextendr_path, open = FALSE)
   })
 
-  rpkg_path <- file.path(tmp, "rpkg")
+  rpkg_path <- file.path(tmp, "testpkg")
 
   suppressMessages({
     # Add package-level documentation for useDynLib

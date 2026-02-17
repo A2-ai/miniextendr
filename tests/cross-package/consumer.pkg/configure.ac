@@ -41,30 +41,32 @@ AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
 dnl
-dnl Users can enable optional features via MINIEXTENDR_FEATURES environment variable.
+dnl Users can enable optional features via CONSUMER_PKG_FEATURES environment variable.
 dnl By default, no extra features are enabled.
 dnl
 dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
-AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+AC_ARG_VAR([CONSUMER_PKG_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
 
 dnl Default: no extra features enabled
-dnl Users can set MINIEXTENDR_FEATURES to enable specific features
-if test -z "${MINIEXTENDR_FEATURES+x}"; then
-  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
-  MINIEXTENDR_FEATURES=""
+dnl Users can set CONSUMER_PKG_FEATURES to enable specific features
+if test -z "${CONSUMER_PKG_FEATURES+x}"; then
+  dnl CONSUMER_PKG_FEATURES not set - use empty (no extra features)
+  CONSUMER_PKG_FEATURES=""
 fi
 
-if test -n "$MINIEXTENDR_FEATURES"; then
-  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+if test -n "$CONSUMER_PKG_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$CONSUMER_PKG_FEATURES"
   # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
+  miniextendr_saved_IFS=$IFS
   IFS=','
-  for _feature in $MINIEXTENDR_FEATURES; do
+  for _feature in $CONSUMER_PKG_FEATURES; do
     _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
     CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
   done
-  unset IFS
+  IFS=$miniextendr_saved_IFS
+  unset miniextendr_saved_IFS
 else
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
@@ -172,10 +174,8 @@ else
   CARGO_PROFILE_DIR="$CARGO_PROFILE"
 fi
 
-dnl CARGO_STATICLIB_NAME will be extracted via cargo pkgid in AC_CONFIG_COMMANDS
-dnl Use placeholder for now - will be substituted after Cargo.toml is available
-CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
-AC_SUBST([CARGO_STATICLIB_NAME])
+dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
+dnl It equals the Rust crate name (hyphens/dots → underscores)
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
@@ -211,7 +211,6 @@ AC_MSG_NOTICE([R_HOME                = $R_HOME])
 AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
 AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
 AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
-AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
 AC_MSG_NOTICE([CARGO_LIBDIR          = $CARGO_LIBDIR])
 AS_IF([test -n "$RUST_TOOLCHAIN"],
@@ -219,8 +218,8 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
 AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
-AS_IF([test -n "$MINIEXTENDR_FEATURES"],
-      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
+AS_IF([test -n "$CONSUMER_PKG_FEATURES"],
+      [AC_MSG_NOTICE([CONSUMER_PKG_FEATURES  = $CONSUMER_PKG_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
@@ -229,6 +228,11 @@ pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
+
+dnl Staticlib name matches the Rust crate name (= pkg_rs)
+CARGO_STATICLIB_NAME="$pkg_rs"
+AC_SUBST([CARGO_STATICLIB_NAME])
+AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
 dnl Generate files from .in templates
 AC_CONFIG_FILES([src/rust/document.rs])
@@ -304,46 +308,5 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
   fi
 ],
 [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"])
-
-dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
-AC_CONFIG_COMMANDS([patch-staticlib-name],
-[
-  dnl Ensure Cargo.lock exists (cargo pkgid requires it)
-  if test ! -f "src/rust/Cargo.lock"; then
-    if test "$NOT_CRAN" = "true"; then
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
-    else
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
-    fi
-  fi
-
-  dnl Use cargo pkgid to extract the actual package name from Cargo.toml
-  dnl This handles hyphens correctly (converted to underscores for Rust lib name)
-  if test "$NOT_CRAN" = "true"; then
-    _pkgid_flags="--color=never"
-  else
-    _pkgid_flags="--offline --color=never"
-  fi
-  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
-  _pkgid_status=$?
-  if test $_pkgid_status -ne 0; then
-    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    exit 1
-  fi
-  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_')"
-  if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
-    exit 1
-  fi
-  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
-
-  dnl Patch generated files to replace placeholder
-  for f in src/Makevars src/rust/document.rs; do
-    if test -f "$f"; then
-      "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-    fi
-  done
-],
-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"])
 
 AC_OUTPUT

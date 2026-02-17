@@ -4,7 +4,10 @@
 \alias{miniextendr_autoconf}
 \title{Run autoconf to generate configure script}
 \usage{
-miniextendr_autoconf()
+miniextendr_autoconf(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{NULL} to use the active project.}
 }
 \value{
 Invisibly returns TRUE on success
