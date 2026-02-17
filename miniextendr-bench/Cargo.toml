@@ -137,5 +137,9 @@ name = "typed_list"
 harness = false
 
 [[bench]]
+name = "dataframe"
+harness = false
+
+[[bench]]
 name = "refcount_protect"
 harness = false
