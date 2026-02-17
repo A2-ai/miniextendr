@@ -1,0 +1,5 @@
+error: expected 0 or 1 argument in type spec
+ --> tests/ui/typed_list_too_many_args.rs:4:42
+  |
+4 |     let _ = typed_list!(alpha => numeric(1, 2));
+  |                                          ^
