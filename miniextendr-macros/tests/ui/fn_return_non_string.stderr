@@ -1,0 +1,5 @@
+error: expected identifier, found keyword `return`
+ --> tests/ui/fn_return_non_string.rs:5:15
+  |
+5 | #[miniextendr(return = 1)]
+  |               ^^^^^^

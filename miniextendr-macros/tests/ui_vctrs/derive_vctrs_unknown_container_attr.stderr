@@ -1,0 +1,5 @@
+error: unknown vctrs attribute; expected one of: class, base, abbr, inherit_base, coerce, ptype, proxy_equal, proxy_compare, proxy_order, arith, math
+ --> tests/ui_vctrs/derive_vctrs_unknown_container_attr.rs:6:29
+  |
+6 | #[vctrs(class = "my_class", bogus = true)]
+  |                             ^^^^^

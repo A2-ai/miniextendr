@@ -1,0 +1,5 @@
+error: #[export_name] is not supported with #[miniextendr] on regular functions; the macro generates its own C symbol names. For extern "C-unwind" functions, #[export_name] is allowed.
+ --> tests/ui/fn_export_name_regular.rs:6:1
+  |
+6 | #[export_name = "custom_name"]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

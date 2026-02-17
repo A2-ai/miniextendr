@@ -1,0 +1,5 @@
+error: `serialize` is not supported for AltrepList
+ --> tests/ui/derive_altrep_list_rejects_serialize.rs:6:10
+  |
+6 | #[altrep(serialize)]
+  |          ^^^^^^^^^

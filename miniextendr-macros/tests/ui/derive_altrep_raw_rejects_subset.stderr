@@ -1,0 +1,5 @@
+error: `subset` is not supported for impl_altraw_from_data; only `integer` and `complex` support it
+ --> tests/ui/derive_altrep_raw_rejects_subset.rs:6:10
+  |
+6 | #[altrep(subset)]
+  |          ^^^^^^

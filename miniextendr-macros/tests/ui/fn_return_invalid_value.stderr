@@ -1,0 +1,5 @@
+error: expected identifier, found keyword `return`
+ --> tests/ui/fn_return_invalid_value.rs:5:15
+  |
+5 | #[miniextendr(return = "bogus")]
+  |               ^^^^^^

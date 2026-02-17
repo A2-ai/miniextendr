@@ -1,0 +1,5 @@
+error: #[export_name] is not supported with #[miniextendr]; the macro generates its own C symbol names
+ --> tests/ui/impl_export_name_attr.rs:8:1
+  |
+8 | #[export_name = "custom"]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^

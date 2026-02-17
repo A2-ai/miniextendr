@@ -1,0 +1,5 @@
+error: dots expects `typed_list!(...)` macro
+ --> tests/ui/fn_dots_non_macro_expr.rs:5:22
+  |
+5 | #[miniextendr(dots = "x")]
+  |                      ^^^

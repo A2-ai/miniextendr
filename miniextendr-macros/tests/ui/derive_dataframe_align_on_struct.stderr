@@ -1,0 +1,5 @@
+error: `align` is only supported on enums, not structs
+ --> tests/ui/derive_dataframe_align_on_struct.rs:7:8
+  |
+7 | struct Point {
+  |        ^^^^^

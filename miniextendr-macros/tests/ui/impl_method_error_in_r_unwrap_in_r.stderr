@@ -1,0 +1,5 @@
+error: `error_in_r` and `unwrap_in_r` are mutually exclusive
+  --> tests/ui/impl_method_error_in_r_unwrap_in_r.rs:13:31
+   |
+13 |     #[miniextendr(error_in_r, unwrap_in_r)]
+   |                               ^^^^^^^^^^^
