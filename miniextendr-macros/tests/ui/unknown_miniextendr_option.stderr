@@ -1,4 +1,4 @@
-error: unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, error_in_r, strict, internal, noexport
+error: unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport
  --> tests/ui/unknown_miniextendr_option.rs:5:15
   |
 5 | #[miniextendr(unknown_option)]

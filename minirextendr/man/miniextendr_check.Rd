@@ -5,12 +5,15 @@
 \title{Run R CMD check on a miniextendr package}
 \usage{
 miniextendr_check(
+  path = ".",
   args = c("--as-cran", "--no-manual"),
   error_on = "warning",
   build_args = character()
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{args}{Character vector of extra arguments passed to \verb{R CMD check}.
 Defaults to \code{c("--as-cran", "--no-manual")}.}
 

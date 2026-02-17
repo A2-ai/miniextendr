@@ -7,7 +7,7 @@
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
-#' @export
+#' @keywords internal
 use_miniextendr_package_doc <- function(path = ".") {
   with_project(path)
   data <- template_data()
@@ -31,7 +31,7 @@ use_miniextendr_package_doc <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
-#' @export
+#' @keywords internal
 use_miniextendr_description <- function(path = ".") {
   with_project(path)
   desc_path <- usethis::proj_path("DESCRIPTION")
@@ -87,7 +87,7 @@ use_miniextendr_description <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
-#' @export
+#' @keywords internal
 use_miniextendr_rbuildignore <- function(path = ".") {
   with_project(path)
   # Read template content (already regex patterns, skip escaping)
@@ -110,7 +110,7 @@ use_miniextendr_rbuildignore <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
-#' @export
+#' @keywords internal
 use_miniextendr_gitignore <- function(path = ".") {
   with_project(path)
   # Read template content

@@ -4,7 +4,10 @@
 \alias{use_miniextendr_description}
 \title{Update DESCRIPTION with miniextendr fields}
 \usage{
-use_miniextendr_description()
+use_miniextendr_description(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE
@@ -20,3 +23,4 @@ Adds the required Config/* fields to DESCRIPTION for miniextendr:
 \details{
 Also adds SystemRequirements for Rust.
 }
+\keyword{internal}

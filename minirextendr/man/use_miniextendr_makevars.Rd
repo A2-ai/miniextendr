@@ -4,7 +4,10 @@
 \alias{use_miniextendr_makevars}
 \title{Add Makevars.in template}
 \usage{
-use_miniextendr_makevars()
+use_miniextendr_makevars(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if file was created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if file was created
 Creates src/Makevars.in which is processed by configure to generate
 the actual Makevars used during package build.
 }
+\keyword{internal}

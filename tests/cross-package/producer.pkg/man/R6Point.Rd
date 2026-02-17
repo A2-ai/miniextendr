@@ -37,6 +37,10 @@ Create a new point
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
+\item{\code{x}}{X coordinate.}
+
+\item{\code{y}}{Y coordinate.}
+
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
 \if{html}{\out{</div>}}
@@ -81,5 +85,14 @@ Add to coordinates
 \if{html}{\out{<div class="r">}}\preformatted{R6Point$add(dx, dy)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{dx}}{Amount to add to x.}
+
+\item{\code{dy}}{Amount to add to y.}
+}
+\if{html}{\out{</div>}}
+}
 }
 }

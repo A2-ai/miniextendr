@@ -1290,6 +1290,61 @@ pub trait RParallelExtend<T: Send> {
 
 // endregion
 
+// region: ColumnWriter for parallel DataFrame fill
+
+/// Minimum row count before DataFrameRow switches to parallel fill.
+pub const PARALLEL_FILL_THRESHOLD: usize = 4096;
+
+/// Send+Sync wrapper for scatter-writing into pre-allocated Vec columns.
+///
+/// Used by the `DataFrameRow` derive macro. Not intended for direct use.
+///
+/// # Safety contract
+///
+/// - Backing Vec must have `set_len(n)` called (elements uninitialized).
+/// - Every index in `0..n` must be written exactly once before the Vec is read.
+/// - No two threads may write to the same index.
+#[doc(hidden)]
+pub struct ColumnWriter<T> {
+    ptr: *mut T,
+    len: usize,
+}
+
+unsafe impl<T: Send> Send for ColumnWriter<T> {}
+unsafe impl<T: Send> Sync for ColumnWriter<T> {}
+
+impl<T> ColumnWriter<T> {
+    /// Create a new writer for a Vec that has had `set_len(n)` called.
+    ///
+    /// # Safety
+    /// Vec must have `len` already set. Caller must write all indices before reading.
+    #[inline]
+    pub unsafe fn new(vec: &mut Vec<T>) -> Self {
+        Self {
+            ptr: vec.as_mut_ptr(),
+            len: vec.len(),
+        }
+    }
+
+    /// Write a value at index. Each index must be written by exactly one thread.
+    ///
+    /// # Safety
+    /// - `index` must be in bounds (`< len`).
+    /// - No two threads may call this with the same `index`.
+    #[inline]
+    pub unsafe fn write(&self, index: usize, value: T) {
+        debug_assert!(
+            index < self.len,
+            "ColumnWriter: index {index} out of bounds"
+        );
+        unsafe {
+            self.ptr.add(index).write(value);
+        }
+    }
+}
+
+// endregion
+
 #[cfg(all(test, feature = "rayon"))]
 mod tests {
     use super::*;
@@ -1531,5 +1586,60 @@ mod tests {
         // Can't easily verify capacity, but at least it shouldn't panic
         buffer.par_extend(vec![1.0; 100]);
         assert_eq!(buffer.par_len(), 100);
+    }
+
+    #[test]
+    #[allow(clippy::uninit_vec)]
+    fn test_column_writer_parallel() {
+        let n = 10_000;
+        let mut col: Vec<i32> = Vec::with_capacity(n);
+        unsafe {
+            col.set_len(n);
+        }
+        {
+            let w = unsafe { ColumnWriter::new(&mut col) };
+            (0..n)
+                .into_par_iter()
+                .for_each(|i| unsafe { w.write(i, i as i32) });
+        }
+        for (i, &v) in col.iter().enumerate() {
+            assert_eq!(v, i as i32);
+        }
+    }
+
+    #[test]
+    #[allow(clippy::uninit_vec)]
+    fn test_column_writer_string() {
+        let n = 100;
+        let mut col: Vec<String> = Vec::with_capacity(n);
+        unsafe {
+            col.set_len(n);
+        }
+        {
+            let w = unsafe { ColumnWriter::new(&mut col) };
+            (0..n)
+                .into_par_iter()
+                .for_each(|i| unsafe { w.write(i, format!("s_{i}")) });
+        }
+        assert_eq!(col[0], "s_0");
+        assert_eq!(col[99], "s_99");
+    }
+
+    #[test]
+    #[allow(clippy::uninit_vec)]
+    fn test_column_writer_option() {
+        let n = 100;
+        let mut col: Vec<Option<f64>> = Vec::with_capacity(n);
+        unsafe {
+            col.set_len(n);
+        }
+        {
+            let w = unsafe { ColumnWriter::new(&mut col) };
+            (0..n).into_par_iter().for_each(|i| unsafe {
+                w.write(i, if i % 2 == 0 { Some(i as f64) } else { None });
+            });
+        }
+        assert_eq!(col[0], Some(0.0));
+        assert_eq!(col[1], None);
     }
 }

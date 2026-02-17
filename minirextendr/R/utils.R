@@ -306,6 +306,69 @@ to_rust_name <- function(name) {
   gsub("[.-]", "_", name)
 }
 
+#' Convert R package name to tarname
+#'
+#' Matches autoconf's PACKAGE_TARNAME derivation (lowercase, dots to hyphens).
+#'
+#' @param name R package name
+#' @return Tarname (lowercase, dots replaced with hyphens)
+#' @noRd
+to_tarname <- function(name) {
+  tolower(gsub("\\.", "-", name))
+}
+
+#' Generate document.rs from document.rs.in
+#'
+#' Performs the three substitutions that configure normally does, so that
+#' `cargo check` works without running `./configure` first.
+#'
+#' @param document_rs_in_path Path to document.rs.in
+#' @param document_rs_path Path to write document.rs
+#' @param package R package name
+#' @noRd
+generate_document_rs <- function(document_rs_in_path, document_rs_path, package) {
+  crate_name <- to_rust_name(package)
+  crate_upper <- toupper(crate_name)
+  tarname <- to_tarname(package)
+
+  content <- readLines(document_rs_in_path, warn = FALSE)
+  content <- gsub("@CARGO_STATICLIB_NAME@", crate_name, content, fixed = TRUE)
+  content <- gsub("@PACKAGE_TARNAME_RS_UPPERCASE@", crate_upper, content, fixed = TRUE)
+  content <- gsub("@PACKAGE_TARNAME@", tarname, content, fixed = TRUE)
+  writeLines(content, document_rs_path)
+}
+
+#' Generate entrypoint.c from entrypoint.c.in
+#'
+#' Performs the substitutions that configure normally does, so that
+#' the generated C file works without running `./configure` first.
+#'
+#' @param in_path Path to entrypoint.c.in
+#' @param out_path Path to write entrypoint.c
+#' @param package R package name
+#' @noRd
+generate_entrypoint_c <- function(in_path, out_path, package) {
+  content <- readLines(in_path, warn = FALSE)
+  content <- gsub("@PACKAGE_NAME@", package, content, fixed = TRUE)
+  content <- gsub("@PACKAGE_TARNAME_RS@", to_rust_name(package), content, fixed = TRUE)
+  writeLines(content, out_path)
+}
+
+#' Generate mx_abi.c from mx_abi.c.in
+#'
+#' Performs the substitutions that configure normally does, so that
+#' the generated C file works without running `./configure` first.
+#'
+#' @param in_path Path to mx_abi.c.in
+#' @param out_path Path to write mx_abi.c
+#' @param package R package name
+#' @noRd
+generate_mx_abi_c <- function(in_path, out_path, package) {
+  content <- readLines(in_path, warn = FALSE)
+  content <- gsub("@PACKAGE_NAME@", package, content, fixed = TRUE)
+  writeLines(content, out_path)
+}
+
 #' Get package name from Cargo.toml
 #'
 #' @param cargo_path Path to Cargo.toml file
@@ -346,10 +409,13 @@ template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
     pkg <- package
   }
 
+  pkg_rs <- to_rust_name(pkg)
+
   data <- list(
     package = pkg,
-    package_rs = to_rust_name(pkg),
+    package_rs = pkg_rs,
     Package = tools::toTitleCase(pkg),
+    features_var = paste0(toupper(pkg_rs), "_FEATURES"),
     year = format(Sys.Date(), "%Y")
   )
 
@@ -395,7 +461,7 @@ is_miniextendr_package <- function() {
   }
 
   contents <- readLines(configure_ac, warn = FALSE)
-  if (!any(grepl("MINIEXTENDR_FEATURES", contents, fixed = TRUE))) {
+  if (!any(grepl("_FEATURES", contents, fixed = TRUE))) {
     return(FALSE)
   }
 

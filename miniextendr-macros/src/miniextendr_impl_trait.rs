@@ -113,7 +113,7 @@ use syn::ItemImpl;
 use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 
 /// Parsed method from a trait impl block.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TraitMethod {
     /// Method identifier
     ident: syn::Ident,
@@ -143,9 +143,22 @@ struct TraitMethod {
     param_defaults: std::collections::HashMap<String, String>,
     /// Roxygen @param tags extracted from method doc comments
     param_tags: Vec<String>,
+    /// When true, this method is excluded from C wrappers, R wrappers, and vtable shims.
+    /// The method is still kept in the emitted impl block (it's a real trait method).
+    skip: bool,
+    /// Override the R-facing method name. When set, the R wrapper uses this name
+    /// instead of the Rust method name (e.g., `next` → `next_item` to avoid R reserved words).
+    r_name: Option<String>,
 }
 
 impl TraitMethod {
+    /// The R-facing method name (uses `r_name` if set, otherwise the Rust ident).
+    fn r_method_name(&self) -> String {
+        self.r_name
+            .clone()
+            .unwrap_or_else(|| self.ident.to_string())
+    }
+
     /// C wrapper identifier: `C_{Type}__{Trait}__{method}`
     fn c_wrapper_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
         format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
@@ -238,12 +251,30 @@ pub fn expand_miniextendr_impl_trait(
         Err(e) => return e.into_compile_error().into(),
     };
 
+    // TPIE: empty impl body → expand via macro_rules! helper from the trait definition
+    if impl_item.items.is_empty() && !impl_attrs.blanket {
+        let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+        let no_rd = crate::roxygen::has_roxygen_tag(&doc_tags, "noRd");
+        return generate_tpie_invocation(
+            &trait_path,
+            &concrete_type,
+            impl_attrs.class_system,
+            no_rd,
+            impl_attrs.internal,
+            impl_attrs.noexport,
+        )
+        .into();
+    }
+
     // Generate the vtable static and R wrappers
     let expanded = generate_vtable_static(
         &impl_item,
         &trait_path,
         &concrete_type,
         impl_attrs.class_system,
+        impl_attrs.blanket,
+        impl_attrs.internal,
+        impl_attrs.noexport,
     );
 
     expanded.into()
@@ -275,12 +306,40 @@ fn generate_vtable_static(
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
     class_system: ClassSystem,
+    blanket: bool,
+    internal: bool,
+    noexport: bool,
 ) -> TokenStream {
     // Extract trait name for naming
     let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
         return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
             .into_compile_error();
     };
+
+    // Extract type args from trait path's last segment
+    // e.g., for `RExtend<i32>`, extract `[i32]`; for `RMakeIter<i32, IterableVecIter>`, extract `[i32, IterableVecIter]`
+    let trait_type_args: Vec<syn::Type> = trait_path
+        .segments
+        .last()
+        .and_then(|seg| {
+            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                Some(
+                    args.args
+                        .iter()
+                        .filter_map(|arg| {
+                            if let syn::GenericArgument::Type(ty) = arg {
+                                Some(ty.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
 
     // Extract type identifier (for simple types)
     let type_ident = match concrete_type {
@@ -308,22 +367,30 @@ fn generate_vtable_static(
 
     // Build path to vtable builder function
     // If trait is `foo::Counter`, builder is `foo::__counter_build_vtable`
+    // Strip type args from the path (builder uses turbofish instead)
     let mut builder_path = trait_path.clone();
     if let Some(last) = builder_path.segments.last_mut() {
         last.ident = format_ident!("__{}_build_vtable", trait_name_lower);
+        last.arguments = syn::PathArguments::None;
     }
 
     // Build the vtable type path (same module as trait)
+    // Strip type args (vtable type is not generic)
     let mut vtable_type_path = trait_path.clone();
     if let Some(last) = vtable_type_path.segments.last_mut() {
         last.ident = vtable_type_name.clone();
+        last.arguments = syn::PathArguments::None;
     }
 
     // Parse methods and consts from the impl block
-    let methods = extract_methods(impl_item);
+    let all_methods = extract_methods(impl_item);
     let consts = extract_consts(impl_item);
 
-    // Generate C wrappers and call defs for each method
+    // Separate skipped methods: skipped methods are kept in the emitted impl block
+    // but excluded from C wrappers, R wrappers, call defs, and vtable shims.
+    let methods: Vec<&TraitMethod> = all_methods.iter().filter(|m| !m.skip).collect();
+
+    // Generate C wrappers and call defs for each non-skipped method
     let method_c_wrappers: Vec<TokenStream> = methods
         .iter()
         .map(|m| generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path))
@@ -341,12 +408,25 @@ fn generate_vtable_static(
         .chain(const_c_wrappers)
         .collect();
 
-    // Generate R wrapper code string based on class system
-    let r_wrapper_string =
-        match generate_trait_r_wrapper(&type_ident, trait_name, &methods, &consts, class_system) {
-            Ok(s) => s,
-            Err(e) => return e.into_compile_error(),
-        };
+    // Check if impl block has @noRd doc comment
+    let impl_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(&impl_doc_tags, "noRd");
+
+    // Generate R wrapper code string based on class system (only non-skipped methods)
+    let methods_owned: Vec<TraitMethod> = methods.iter().map(|m| (*m).clone()).collect();
+    let r_wrapper_string = match generate_trait_r_wrapper(
+        &type_ident,
+        trait_name,
+        &methods_owned,
+        &consts,
+        class_system,
+        class_has_no_rd,
+        internal,
+        noexport,
+    ) {
+        Ok(s) => s,
+        Err(e) => return e.into_compile_error(),
+    };
 
     // Generate constant names for module registration
     let call_defs_const = format_ident!(
@@ -360,7 +440,7 @@ fn generate_vtable_static(
         trait_name_upper
     );
 
-    // Collect call method def identifiers (methods + consts)
+    // Collect call method def identifiers (non-skipped methods + consts)
     let method_call_def_idents: Vec<syn::Ident> = methods
         .iter()
         .map(|m| m.call_method_def_ident(&type_ident, trait_name))
@@ -392,18 +472,67 @@ fn generate_vtable_static(
 
     // Strip #[miniextendr(...)] attrs from methods before emitting,
     // so they don't trigger another macro expansion.
-    let mut clean_impl = impl_item.clone();
-    for item in &mut clean_impl.items {
-        if let syn::ImplItem::Fn(method) = item {
-            method
-                .attrs
-                .retain(|attr| !attr.path().is_ident("miniextendr"));
+    //
+    // Skip emitting the impl block when:
+    // - Body is empty (no methods, no consts) — blanket impl provides it
+    // - `blanket` flag is set — a blanket impl exists, methods are only for
+    //   C wrapper signature extraction, not for actual trait implementation
+    let has_items = !all_methods.is_empty() || !consts.is_empty();
+    let clean_impl_tokens = if has_items && !blanket {
+        let mut clean_impl = impl_item.clone();
+        for item in &mut clean_impl.items {
+            if let syn::ImplItem::Fn(method) = item {
+                method
+                    .attrs
+                    .retain(|attr| !attr.path().is_ident("miniextendr"));
+            }
         }
-    }
+        quote::quote! { #clean_impl }
+    } else {
+        quote::quote! {}
+    };
+
+    // For generic traits (with type args like <i32>), generate concrete vtable shims
+    // and inline vtable construction. For non-generic traits, use the builder function.
+    let vtable_static_tokens = if trait_type_args.is_empty() {
+        // Non-generic: use the builder function generated at the trait definition site
+        quote::quote! {
+            static #vtable_static_name: #vtable_type_path =
+                #builder_path::<#concrete_type>();
+        }
+    } else {
+        // Generic: generate concrete vtable shims and inline construction
+        // Only non-skipped methods go into vtable shims
+        let methods_for_vtable: Vec<TraitMethod> = methods.iter().map(|m| (*m).clone()).collect();
+        let concrete_shims = generate_concrete_vtable_shims(
+            &methods_for_vtable,
+            &type_ident,
+            trait_name,
+            trait_path,
+            concrete_type,
+        );
+        let vtable_inits: Vec<TokenStream> = methods
+            .iter()
+            .filter(|m| m.has_self)
+            .map(|m| {
+                let name = &m.ident;
+                let shim_name =
+                    format_ident!("__vtshim_{}__{}__{}", type_ident, trait_name, m.ident);
+                quote::quote! { #name: #shim_name }
+            })
+            .collect();
+        quote::quote! {
+            #concrete_shims
+            static #vtable_static_name: #vtable_type_path = #vtable_type_path {
+                #(#vtable_inits),*
+            };
+        }
+    };
 
     quote::quote! {
         // Pass through the original impl block (with method attrs stripped)
-        #clean_impl
+        // — omitted when the body is empty (blanket impl covers it)
+        #clean_impl_tokens
 
         #[doc = concat!(
             "Vtable for `",
@@ -416,8 +545,7 @@ fn generate_vtable_static(
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
-        static #vtable_static_name: #vtable_type_path =
-            #builder_path::<#concrete_type>();
+        #vtable_static_tokens
 
         // C wrappers and call method defs for trait methods
         #(#c_wrappers)*
@@ -463,6 +591,154 @@ fn generate_vtable_static(
     }
 }
 
+/// Generate concrete vtable shims for a generic trait impl.
+///
+/// For generic traits (e.g., `RExtend<T>`), shims and builder can't be generated at the
+/// trait definition site because where clauses like `Vec<T>: TryFromSexp` cause recursive
+/// trait resolution overflow. Instead, we generate fully concrete shims at the impl site
+/// where `T` is known (e.g., `T = i32`).
+///
+/// Each instance method gets a concrete shim: `__vtshim_{Type}__{Trait}__{method}`.
+fn generate_concrete_vtable_shims(
+    methods: &[TraitMethod],
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    trait_path: &syn::Path,
+    concrete_type: &syn::Type,
+) -> TokenStream {
+    let mut shims = Vec::new();
+
+    for method in methods {
+        if !method.has_self {
+            continue; // Static methods not in vtable
+        }
+
+        let method_ident = &method.ident;
+        let shim_name = format_ident!("__vtshim_{}__{}__{}", type_ident, trait_name, method_ident);
+
+        // Count non-self parameters
+        let param_count = method
+            .sig
+            .inputs
+            .iter()
+            .filter(|a| !matches!(a, syn::FnArg::Receiver(_)))
+            .count();
+        let expected_argc = param_count as i32;
+
+        // Generate argument extraction (concrete types, no generics)
+        let arg_extractions: Vec<TokenStream> = method
+            .sig
+            .inputs
+            .iter()
+            .filter(|a| !matches!(a, syn::FnArg::Receiver(_)))
+            .enumerate()
+            .map(|(i, arg)| {
+                if let syn::FnArg::Typed(pt) = arg {
+                    let name = if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
+                        pat_ident.ident.clone()
+                    } else {
+                        format_ident!("arg{}", i)
+                    };
+                    let name_str = name.to_string();
+
+                    // Handle &Self params: extract ExternalPtr<ConcreteType>
+                    if is_self_ref_type(&pt.ty) {
+                        let extptr_name = format_ident!("__extptr_{}", name);
+                        quote::quote! {
+                            let #extptr_name: ::miniextendr_api::ExternalPtr<#concrete_type> = unsafe {
+                                ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                            };
+                            let #name = &*#extptr_name;
+                        }
+                    } else {
+                        let ty = &pt.ty;
+                        quote::quote! {
+                            let #name: #ty = unsafe {
+                                ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                            };
+                        }
+                    }
+                } else {
+                    quote::quote! {}
+                }
+            })
+            .collect();
+
+        // Collect param names for the method call
+        let param_names: Vec<syn::Ident> = method
+            .sig
+            .inputs
+            .iter()
+            .filter(|a| !matches!(a, syn::FnArg::Receiver(_)))
+            .enumerate()
+            .map(|(i, arg)| {
+                if let syn::FnArg::Typed(pt) = arg
+                    && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+                {
+                    return pat_ident.ident.clone();
+                }
+                format_ident!("arg{}", i)
+            })
+            .collect();
+
+        // Generate method call using fully-qualified syntax to avoid ambiguity
+        // with generic trait paths like `RExtend<i32>::method()` where `<` would
+        // be parsed as a comparison operator in expression position.
+        let method_call = if method.is_mut {
+            quote::quote! {
+                let self_ref = unsafe { &mut *(data as *mut #concrete_type) };
+                <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
+            }
+        } else {
+            quote::quote! {
+                let self_ref = unsafe { &*(data as *const #concrete_type) };
+                <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
+            }
+        };
+
+        // Generate result conversion
+        let has_return = match &method.sig.output {
+            syn::ReturnType::Default => false,
+            syn::ReturnType::Type(_, ty) => {
+                !matches!(ty.as_ref(), syn::Type::Tuple(t) if t.elems.is_empty())
+            }
+        };
+        let result_conversion = if has_return {
+            quote::quote! {
+                unsafe { ::miniextendr_api::trait_abi::to_sexp(result) }
+            }
+        } else {
+            quote::quote! {
+                let _ = result;
+                unsafe { ::miniextendr_api::trait_abi::nil() }
+            }
+        };
+
+        let method_name_str = format!("{}::{}", trait_name, method_ident);
+
+        shims.push(quote::quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn #shim_name(
+                data: *mut ::std::os::raw::c_void,
+                argc: i32,
+                argv: *const ::miniextendr_api::ffi::SEXP,
+            ) -> ::miniextendr_api::ffi::SEXP {
+                unsafe {
+                    ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
+                }
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(|| {
+                    #(#arg_extractions)*
+                    let result = { #method_call };
+                    #result_conversion
+                }, None)
+            }
+        });
+    }
+
+    quote::quote! { #(#shims)* }
+}
+
 /// Extract methods from a trait impl block.
 fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
     impl_item
@@ -501,6 +777,8 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     error_in_r: attrs.error_in_r,
                     param_defaults: attrs.defaults,
                     param_tags,
+                    skip: attrs.skip,
+                    r_name: attrs.r_name,
                 })
             } else {
                 None
@@ -518,7 +796,9 @@ struct TraitMethodAttrs {
     rng: bool,
     unwrap_in_r: bool,
     error_in_r: bool,
+    skip: bool,
     defaults: std::collections::HashMap<String, String>,
+    r_name: Option<String>,
 }
 
 /// Parse method attributes (worker, main_thread, coerce, defaults).
@@ -533,7 +813,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     let mut rng = false;
     let mut unwrap_in_r = false;
     let mut error_in_r = false;
+    let mut skip = false;
     let mut defaults = std::collections::HashMap::new();
+    let mut r_name: Option<String> = None;
 
     for attr in attrs {
         if !attr.path().is_ident("miniextendr") {
@@ -603,6 +885,11 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                     ));
                 }
                 error_in_r = true;
+            } else if meta.path.is_ident("skip") {
+                skip = true;
+            } else if meta.path.is_ident("r_name") {
+                let value: syn::LitStr = meta.value()?.parse()?;
+                r_name = Some(value.value());
             } else if meta.path.is_ident("defaults") {
                 // Parse defaults(param = "value", param2 = "value2", ...)
                 meta.parse_nested_meta(|inner| {
@@ -628,7 +915,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         rng,
         unwrap_in_r,
         error_in_r,
+        skip,
         defaults,
+        r_name,
     }
 }
 
@@ -648,6 +937,21 @@ fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
             }
         })
         .collect()
+}
+
+/// Check if a type is `&Self` or `&mut Self`.
+///
+/// Used to detect trait method parameters that take another instance of the same type
+/// (e.g., `ROrd::cmp(&self, other: &Self)`) so we can generate `ExternalPtr<T>` extraction
+/// and dereference in the C wrapper.
+fn is_self_ref_type(ty: &syn::Type) -> bool {
+    if let syn::Type::Reference(r) = ty
+        && let syn::Type::Path(tp) = r.elem.as_ref()
+        && tp.path.is_ident("Self")
+    {
+        return true;
+    }
+    false
 }
 
 /// Generate a C wrapper for a trait method.
@@ -673,7 +977,7 @@ fn generate_trait_method_c_wrapper(
         ThreadStrategy::WorkerThread
     };
 
-    // Build rust argument names from the signature (excluding self)
+    // Build rust argument names from the signature (excluding self receiver)
     let rust_args: Vec<syn::Ident> = method
         .sig
         .inputs
@@ -692,12 +996,40 @@ fn generate_trait_method_c_wrapper(
         .collect();
 
     // Filter inputs to exclude the receiver (builder handles self separately with has_self())
+    // Also handle &Self params: replace with ExternalPtr<ConcreteType> so the builder
+    // can auto-extract them, and track which params need dereferencing in the call.
+    let mut self_ref_params = std::collections::HashSet::new();
     let filtered_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = method
         .sig
         .inputs
         .iter()
         .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
-        .cloned()
+        .map(|arg| {
+            if let syn::FnArg::Typed(pt) = arg
+                && is_self_ref_type(&pt.ty)
+            {
+                // Track this param for dereferencing in the call expression
+                if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
+                    self_ref_params.insert(pat_ident.ident.to_string());
+                }
+                // Replace &Self with ExternalPtr<ConcreteType>
+                let pat = &pt.pat;
+                return syn::parse_quote!(#pat: ::miniextendr_api::ExternalPtr<#type_ident>);
+            }
+            arg.clone()
+        })
+        .collect();
+
+    // Build call args: &Self params use `&*param` (deref ExternalPtr), others use `param`
+    let call_args: Vec<proc_macro2::TokenStream> = rust_args
+        .iter()
+        .map(|arg| {
+            if self_ref_params.contains(&arg.to_string()) {
+                quote::quote! { &*#arg }
+            } else {
+                quote::quote! { #arg }
+            }
+        })
         .collect();
 
     // Determine return handling
@@ -756,9 +1088,11 @@ fn generate_trait_method_c_wrapper(
             }
         };
 
-        // Call expression with self_ref
+        // Call expression with self_ref and dereferenced &Self params
+        // Use fully-qualified syntax to avoid ambiguity with generic traits
+        // (e.g., `RExtend<i32>::method()` is ambiguous — `<` parsed as comparison)
         let call_expr = quote::quote! {
-            #trait_path::#method_ident(self_ref, #(#rust_args),*)
+            <#type_ident as #trait_path>::#method_ident(self_ref, #(#call_args),*)
         };
 
         builder = builder
@@ -768,7 +1102,7 @@ fn generate_trait_method_c_wrapper(
     } else {
         // Static method: call directly without self
         let call_expr = quote::quote! {
-            <#type_ident as #trait_path>::#method_ident(#(#rust_args),*)
+            <#type_ident as #trait_path>::#method_ident(#(#call_args),*)
         };
 
         builder = builder.call_expr(call_expr);
@@ -866,25 +1200,97 @@ fn generate_trait_r_wrapper(
     methods: &[TraitMethod],
     consts: &[TraitConst],
     class_system: ClassSystem,
+    class_has_no_rd: bool,
+    internal: bool,
+    noexport: bool,
 ) -> syn::Result<String> {
-    match class_system {
-        ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::S3 => Ok(generate_trait_s3_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
-        ClassSystem::S4 => Ok(generate_trait_s4_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
-        ClassSystem::S7 => Ok(generate_trait_s7_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
-        ClassSystem::R6 => Ok(generate_trait_r6_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
+    let result = match class_system {
+        ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts)?,
+        ClassSystem::S3 => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::S4 => generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::S7 => generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::R6 => generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts),
         // vctrs uses S3 under the hood, so use the S3 trait wrapper
-        ClassSystem::Vctrs => Ok(generate_trait_s3_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
+        ClassSystem::Vctrs => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
+    };
+
+    // When impl block has @noRd, suppress documentation generation.
+    // For S3/vctrs impls we still keep S3 method registration tags so roxygen
+    // can generate NAMESPACE entries without emitting missing-export warnings.
+    if class_has_no_rd {
+        if matches!(class_system, ClassSystem::S3 | ClassSystem::Vctrs) {
+            let mut filtered = Vec::new();
+            let mut roxygen_block: Vec<&str> = Vec::new();
+
+            let flush_block = |block: &mut Vec<&str>, out: &mut Vec<String>| {
+                if block.iter().any(|line| line.contains("@method ")) {
+                    out.push("#' @noRd".to_string());
+                    for &line in block.iter() {
+                        if line.contains("@method ")
+                            || line.contains("@param ")
+                            || line.contains("@export")
+                        {
+                            out.push(line.to_string());
+                        }
+                    }
+                }
+                block.clear();
+            };
+
+            for line in result.lines() {
+                if line.starts_with("#'") {
+                    roxygen_block.push(line);
+                    continue;
+                }
+
+                if !roxygen_block.is_empty() {
+                    flush_block(&mut roxygen_block, &mut filtered);
+                }
+                filtered.push(line.to_string());
+            }
+
+            if !roxygen_block.is_empty() {
+                flush_block(&mut roxygen_block, &mut filtered);
+            }
+
+            Ok(filtered.join("\n"))
+        } else {
+            Ok(result
+                .lines()
+                .filter(|line| !line.starts_with("#'"))
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
+    } else if !class_has_no_rd && (internal || noexport) {
+        // internal → add @keywords internal + suppress @export/@exportMethod
+        // noexport → suppress @export/@exportMethod only
+        let has_export = result.lines().any(|line| line.contains("@export"));
+        let mut processed: Vec<String> = result
+            .lines()
+            .flat_map(|line| {
+                if line.contains("@export") {
+                    // Replace @export/@exportMethod with @keywords internal (for internal)
+                    // or just remove (for noexport)
+                    if internal {
+                        vec!["#' @keywords internal".to_string()]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![line.to_string()]
+                }
+            })
+            .collect();
+        // For class systems without @export (e.g., Env), insert @keywords internal
+        // before the first roxygen tag if no @export line was found to replace.
+        if internal && !has_export {
+            if let Some(pos) = processed.iter().position(|l| l.starts_with("#'")) {
+                processed.insert(pos, "#' @keywords internal".to_string());
+            }
+        }
+        Ok(processed.join("\n"))
+    } else {
+        Ok(result)
     }
 }
 
@@ -921,7 +1327,7 @@ fn generate_trait_env_r_wrapper(
 
     for method in methods {
         let method_name = &method.ident;
-        let method_str = method_name.to_string();
+        let r_name = method.r_method_name();
 
         // Build R formals with defaults applied
         let formals =
@@ -933,7 +1339,7 @@ fn generate_trait_env_r_wrapper(
 
         // Build roxygen tags
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, method_str))
+            .name(format!("{}${}${}", type_str, trait_str, r_name))
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
@@ -954,13 +1360,9 @@ fn generate_trait_env_r_wrapper(
             }
         }
 
-        // Build .Call() invocation — instance methods use 'x' as first param
-        // (same pattern as S3/S4/S7/R6). Standalone: Type$Trait$method(obj).
-        // Via $ dispatch: obj$Trait$method() — the $ dispatch creates wrappers
-        // that prepend self as x.
+        // Build .Call() invocation — C name uses Rust ident, R name uses r_name
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
         let (full_params, call) = if method.has_self {
-            // Instance methods: prepend 'x' to formals (like S3 does)
             let fp = if formals.is_empty() {
                 "x".to_string()
             } else {
@@ -978,13 +1380,12 @@ fn generate_trait_env_r_wrapper(
             )
         };
 
-        // Generate method wrapper
+        // Generate method wrapper (R-facing name)
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident, trait_name, method_name, full_params
+            type_ident, trait_name, r_name, full_params
         ));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
-        // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.has_self && method.returns_unit() {
             lines.push("  invisible(x)".to_string());
         }
@@ -994,7 +1395,7 @@ fn generate_trait_env_r_wrapper(
         if method.has_self {
             lines.push(format!(
                 "attr({}${}${}, \".__mx_instance__\") <- TRUE",
-                type_ident, trait_name, method_name
+                type_ident, trait_name, r_name
             ));
         }
 
@@ -1065,7 +1466,7 @@ fn generate_trait_s3_r_wrapper(
     // Generate S3 generics + methods for instance methods
     for method in &instance_methods {
         let method_name = &method.ident;
-        let generic_name = method_name.to_string();
+        let generic_name = method.r_method_name();
         let s3_method_name = format!("{}.{}", generic_name, type_str);
 
         // Build R formals with defaults applied
@@ -1161,7 +1562,7 @@ fn generate_trait_s3_r_wrapper(
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
         let method_name = &method.ident;
-        let method_str = method_name.to_string();
+        let r_name = method.r_method_name();
         // Build R formals with defaults applied
         let formals =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
@@ -1172,21 +1573,21 @@ fn generate_trait_s3_r_wrapper(
         // Static method roxygen
         lines.push(format!(
             "#' Static trait method {}::{}()",
-            trait_name, method_name
+            trait_name, r_name
         ));
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, method_str))
+            .name(format!("{}${}${}", type_str, trait_str, r_name))
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
 
-        // Build .Call() invocation
+        // Build .Call() invocation — C name uses Rust ident
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident, trait_name, method_name, formals
+            type_ident, trait_name, r_name, formals
         ));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
@@ -1259,7 +1660,7 @@ fn generate_trait_s4_r_wrapper(
     // Generate S4 generics + methods for instance methods
     for method in &instance_methods {
         let method_name = &method.ident;
-        let generic_name = format!("s4_trait_{}_{}", trait_name, method_name);
+        let generic_name = format!("s4_trait_{}_{}", trait_name, method.r_method_name());
 
         // Build R formals with defaults applied
         let formals =
@@ -1330,7 +1731,8 @@ fn generate_trait_s4_r_wrapper(
     // Generate static methods as standalone functions
     for method in &static_methods {
         let method_name = &method.ident;
-        let fn_name = format!("{}_{}_{}", type_str, trait_str, method_name);
+        let r_name = method.r_method_name();
+        let fn_name = format!("{}_{}_{}", type_str, trait_str, r_name);
         // Build R formals with defaults applied
         let formals =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
@@ -1341,7 +1743,7 @@ fn generate_trait_s4_r_wrapper(
         // Static method roxygen
         lines.push(format!(
             "#' Static trait method {}::{}() for {}",
-            trait_name, method_name, type_str
+            trait_name, r_name, type_str
         ));
         let roxygen = RoxygenBuilder::new()
             .name(&fn_name)
@@ -1350,7 +1752,7 @@ fn generate_trait_s4_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        // Build .Call() invocation
+        // Build .Call() invocation — C name uses Rust ident
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
@@ -1428,7 +1830,7 @@ fn generate_trait_s7_r_wrapper(
     // Generate S7 generics + methods for instance methods
     for method in &instance_methods {
         let method_name = &method.ident;
-        let generic_name = format!("s7_trait_{}_{}", trait_name, method_name);
+        let generic_name = format!("s7_trait_{}_{}", trait_name, method.r_method_name());
 
         // Build R formals with defaults applied
         let formals =
@@ -1505,7 +1907,7 @@ fn generate_trait_s7_r_wrapper(
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
         let method_name = &method.ident;
-        let method_str = method_name.to_string();
+        let r_name = method.r_method_name();
         // Build R formals with defaults applied
         let formals =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
@@ -1515,20 +1917,21 @@ fn generate_trait_s7_r_wrapper(
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
-            trait_name, method_name
+            trait_name, r_name
         ));
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, method_str))
+            .name(format!("{}${}${}", type_str, trait_str, r_name))
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
 
+        // C name uses Rust ident
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident, trait_name, method_name, formals
+            type_ident, trait_name, r_name, formals
         ));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
@@ -1601,7 +2004,7 @@ fn generate_trait_r6_r_wrapper(
     // Generate standalone functions for instance methods
     for method in &instance_methods {
         let method_name = &method.ident;
-        let fn_name = format!("r6_trait_{}_{}", trait_name, method_name);
+        let fn_name = format!("r6_trait_{}_{}", trait_name, method.r_method_name());
 
         // Build R formals with defaults applied
         let formals =
@@ -1664,7 +2067,7 @@ fn generate_trait_r6_r_wrapper(
     // Generate static methods in Type$Trait$ namespace
     for method in &static_methods {
         let method_name = &method.ident;
-        let method_str = method_name.to_string();
+        let r_name = method.r_method_name();
         // Build R formals with defaults applied
         let formals =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
@@ -1674,20 +2077,21 @@ fn generate_trait_r6_r_wrapper(
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
-            trait_name, method_name
+            trait_name, r_name
         ));
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, method_str))
+            .name(format!("{}${}${}", type_str, trait_str, r_name))
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
 
+        // C name uses Rust ident
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident, trait_name, method_name, formals
+            type_ident, trait_name, r_name, formals
         ));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
@@ -1753,6 +2157,471 @@ fn type_to_uppercase_name(ty: &syn::Type) -> String {
                 .unwrap_or_else(|| "UNKNOWN".to_string())
         }
         _ => "UNKNOWN".to_string(),
+    }
+}
+
+// =============================================================================
+// TPIE: Trait-Provided Impl Expansion
+// =============================================================================
+
+/// Input to the `__mx_trait_impl_expand!` proc macro.
+///
+/// Parsed from tokens like:
+/// ```text
+/// concrete_type = Point;
+/// trait_path = miniextendr_api::adapter_traits::RDebug;
+/// class_system = env;
+/// method { r_name = debug_str; fn debug_str(&self) -> String; }
+/// method { r_name = debug_str_pretty; fn debug_str_pretty(&self) -> String; }
+/// ```
+struct TpieInput {
+    concrete_type: syn::Type,
+    trait_path: syn::Path,
+    class_system: ClassSystem,
+    no_rd: bool,
+    internal: bool,
+    noexport: bool,
+    methods: Vec<TpieMethod>,
+}
+
+/// A single method in TPIE metadata.
+struct TpieMethod {
+    r_name: String,
+    sig: syn::Signature,
+}
+
+impl syn::parse::Parse for TpieInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        // concrete_type = Type;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "concrete_type" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'concrete_type', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let concrete_type: syn::Type = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+
+        // trait_path = some::Path;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "trait_path" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'trait_path', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let trait_path: syn::Path = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+
+        // class_system = env;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "class_system" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'class_system', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let cs_ident: syn::Ident = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+
+        let class_system = ClassSystem::from_ident(&cs_ident).ok_or_else(|| {
+            syn::Error::new_spanned(&cs_ident, format!("unknown class system: {}", cs_ident))
+        })?;
+
+        // no_rd = true/false;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "no_rd" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'no_rd', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let no_rd_lit: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let no_rd = no_rd_lit.value;
+
+        // internal = true/false;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "internal" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'internal', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let internal_lit: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let internal = internal_lit.value;
+
+        // noexport = true/false;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "noexport" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'noexport', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let noexport_lit: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let noexport = noexport_lit.value;
+
+        // method { ... } repeated
+        let mut methods = Vec::new();
+        while !input.is_empty() {
+            let kw: syn::Ident = input.parse()?;
+            if kw != "method" {
+                return Err(syn::Error::new_spanned(
+                    &kw,
+                    format!("expected 'method', got '{}'", kw),
+                ));
+            }
+            let content;
+            syn::braced!(content in input);
+            methods.push(content.parse::<TpieMethod>()?);
+        }
+
+        Ok(TpieInput {
+            concrete_type,
+            trait_path,
+            class_system,
+            no_rd,
+            internal,
+            noexport,
+            methods,
+        })
+    }
+}
+
+impl syn::parse::Parse for TpieMethod {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        // r_name = some_name;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "r_name" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'r_name', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let r_name_ident: syn::Ident = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+
+        // fn method_name(...) -> ReturnType;
+        let sig: syn::Signature = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+
+        Ok(TpieMethod {
+            r_name: r_name_ident.to_string(),
+            sig,
+        })
+    }
+}
+
+/// Rewrite `Self` → concrete type in a method signature.
+///
+/// `&Self` params are left as-is because `generate_trait_method_c_wrapper`
+/// detects them via `is_self_ref_type` and generates `ExternalPtr<T>` extraction.
+fn rewrite_self_in_sig(sig: &mut syn::Signature, concrete_type: &syn::Type) {
+    for input in &mut sig.inputs {
+        if let syn::FnArg::Typed(pt) = input {
+            // Don't rewrite &Self — C wrapper generator handles it specially
+            if is_self_ref_type(&pt.ty) {
+                continue;
+            }
+            let rewritten = rewrite_self_type(&pt.ty, concrete_type);
+            *pt.ty = rewritten;
+        }
+    }
+    if let syn::ReturnType::Type(_, ty) = &mut sig.output {
+        let rewritten = rewrite_self_type(ty, concrete_type);
+        **ty = rewritten;
+    }
+}
+
+/// Recursively replace `Self` with the concrete type in a type tree.
+fn rewrite_self_type(ty: &syn::Type, concrete_type: &syn::Type) -> syn::Type {
+    match ty {
+        syn::Type::Path(tp) => {
+            if tp.path.is_ident("Self") {
+                return concrete_type.clone();
+            }
+            let mut new_tp = tp.clone();
+            for seg in &mut new_tp.path.segments {
+                if let syn::PathArguments::AngleBracketed(args) = &mut seg.arguments {
+                    for arg in &mut args.args {
+                        if let syn::GenericArgument::Type(inner) = arg {
+                            *inner = rewrite_self_type(inner, concrete_type);
+                        }
+                    }
+                }
+            }
+            syn::Type::Path(new_tp)
+        }
+        syn::Type::Reference(r) => {
+            let mut new_r = r.clone();
+            new_r.elem = Box::new(rewrite_self_type(&r.elem, concrete_type));
+            syn::Type::Reference(new_r)
+        }
+        syn::Type::Tuple(t) => {
+            let mut new_t = t.clone();
+            for elem in &mut new_t.elems {
+                *elem = rewrite_self_type(elem, concrete_type);
+            }
+            syn::Type::Tuple(new_t)
+        }
+        _ => ty.clone(),
+    }
+}
+
+/// Unwrap invisible Group tokens from `macro_rules!` `$t:ty` captures.
+///
+/// When a type passes through a `macro_rules!` pattern like `$concrete_type:ty`,
+/// the compiler wraps it in a `Group` with invisible delimiters. This function
+/// recursively unwraps those groups to get the underlying type.
+fn unwrap_group_type(ty: &syn::Type) -> syn::Type {
+    match ty {
+        syn::Type::Group(g) => unwrap_group_type(&g.elem),
+        _ => ty.clone(),
+    }
+}
+
+/// Entry point for the `__mx_trait_impl_expand!` proc macro.
+///
+/// Parses TPIE metadata tokens and generates C wrappers, R wrappers,
+/// and call defs — the same outputs as a manual trait impl with method bodies.
+pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let tpie_input = syn::parse_macro_input!(input as TpieInput);
+
+    // Unwrap Group tokens (macro_rules! wraps $concrete_type:ty and $trait_path:path
+    // in invisible groups)
+    let concrete_type = unwrap_group_type(&tpie_input.concrete_type);
+    let trait_path = &tpie_input.trait_path;
+    let class_system = tpie_input.class_system;
+
+    let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "trait path must have at least one segment",
+        )
+        .into_compile_error()
+        .into();
+    };
+
+    let type_ident = match &concrete_type {
+        syn::Type::Path(tp) => tp
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident.clone())
+            .unwrap_or_else(|| format_ident!("Unknown")),
+        _ => format_ident!("Unknown"),
+    };
+
+    // Convert TpieMethod → TraitMethod, rewriting Self → ConcreteType
+    let methods: Vec<TraitMethod> = tpie_input
+        .methods
+        .iter()
+        .map(|tm| {
+            let mut sig = tm.sig.clone();
+            rewrite_self_in_sig(&mut sig, &concrete_type);
+
+            let (has_self, is_mut) = sig.inputs.first().map_or((false, false), |arg| {
+                if let syn::FnArg::Receiver(r) = arg {
+                    (true, r.mutability.is_some())
+                } else {
+                    (false, false)
+                }
+            });
+
+            TraitMethod {
+                ident: sig.ident.clone(),
+                sig,
+                has_self,
+                is_mut,
+                worker: false,
+                unsafe_main_thread: false,
+                coerce: false,
+                check_interrupt: false,
+                rng: false,
+                unwrap_in_r: false,
+                error_in_r: false,
+                param_defaults: Default::default(),
+                param_tags: vec![],
+                skip: false,
+                r_name: if tm.sig.ident == tm.r_name {
+                    None // r_name matches ident → no override
+                } else {
+                    Some(tm.r_name.clone())
+                },
+            }
+        })
+        .collect();
+
+    // Generate C wrappers
+    let c_wrappers: Vec<TokenStream> = methods
+        .iter()
+        .map(|m| generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path))
+        .collect();
+
+    // Generate R wrappers
+    let r_wrapper_string = match generate_trait_r_wrapper(
+        &type_ident,
+        trait_name,
+        &methods,
+        &[], // no consts in TPIE
+        class_system,
+        tpie_input.no_rd,
+        tpie_input.internal,
+        tpie_input.noexport,
+    ) {
+        Ok(s) => s,
+        Err(e) => return e.into_compile_error().into(),
+    };
+
+    // Generate const names (same pattern as generate_vtable_static)
+    let trait_name_upper = trait_name.to_string().to_uppercase();
+    let call_defs_const = format_ident!(
+        "{}_{}_CALL_DEFS",
+        type_ident.to_string().to_uppercase(),
+        trait_name_upper
+    );
+    let r_wrappers_const = format_ident!(
+        "R_WRAPPERS_{}_{}_IMPL",
+        type_ident.to_string().to_uppercase(),
+        trait_name_upper
+    );
+
+    // Collect call method def identifiers
+    let call_def_idents: Vec<syn::Ident> = methods
+        .iter()
+        .map(|m| m.call_method_def_ident(&type_ident, trait_name))
+        .collect();
+    let call_defs_len = call_def_idents.len();
+    let call_defs_len_lit =
+        syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
+
+    // Format R wrapper as raw string literal
+    let r_wrapper_str: TokenStream = {
+        use std::str::FromStr;
+        let indented = r_wrapper_string.replace('\n', "\n  ");
+        let raw = format!("r#\"\n  {}\n\"#", indented);
+        TokenStream::from_str(&raw).expect("valid raw string literal")
+    };
+    let source_start = type_ident.span().start();
+    let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());
+    let source_col_lit =
+        syn::LitInt::new(&(source_start.column + 1).to_string(), type_ident.span());
+
+    let expanded = quote::quote! {
+        // C wrappers and call method defs for trait methods
+        #(#c_wrappers)*
+
+        #[doc(hidden)]
+        const #r_wrappers_const: &str =
+            concat!(
+                "# Generated from Rust impl `",
+                stringify!(#trait_name),
+                "` for `",
+                stringify!(#type_ident),
+                "` (",
+                file!(),
+                ":",
+                #source_line_lit,
+                ":",
+                #source_col_lit,
+                ")",
+                #r_wrapper_str
+            );
+
+        #[doc(hidden)]
+        const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
+            [#(#call_def_idents),*];
+    };
+
+    expanded.into()
+}
+
+/// Generate vtable static + TPIE macro invocation for an empty trait impl.
+fn generate_tpie_invocation(
+    trait_path: &syn::Path,
+    concrete_type: &syn::Type,
+    class_system: ClassSystem,
+    class_has_no_rd: bool,
+    internal: bool,
+    noexport: bool,
+) -> TokenStream {
+    let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
+        return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
+            .into_compile_error();
+    };
+
+    let type_name_str = type_to_uppercase_name(concrete_type);
+    let trait_name_upper = trait_name.to_string().to_uppercase();
+    let trait_name_lower = trait_name.to_string().to_lowercase();
+
+    // Vtable static
+    let vtable_static_name = format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_name_str);
+    let vtable_type_name = format_ident!("{}VTable", trait_name);
+
+    // Build vtable type path (same module as trait, strip type args)
+    let mut vtable_type_path = trait_path.clone();
+    if let Some(last) = vtable_type_path.segments.last_mut() {
+        last.ident = vtable_type_name;
+        last.arguments = syn::PathArguments::None;
+    }
+
+    // Build builder function path
+    let mut builder_path = trait_path.clone();
+    if let Some(last) = builder_path.segments.last_mut() {
+        last.ident = format_ident!("__{}_build_vtable", trait_name_lower);
+        last.arguments = syn::PathArguments::None;
+    }
+
+    // Build TPIE macro path: crate_root::__mx_impl_TraitName
+    if trait_path.segments.len() < 2 {
+        return syn::Error::new_spanned(
+            trait_path,
+            "empty trait impl requires a fully qualified trait path \
+             (e.g., miniextendr_api::adapter_traits::RDebug) so the TPIE \
+             macro can be resolved",
+        )
+        .into_compile_error();
+    }
+
+    let crate_ident = &trait_path.segments[0].ident;
+    let macro_name = format_ident!("__mx_impl_{}", trait_name);
+    let class_system_ident = class_system.to_ident();
+    let no_rd_ident = if class_has_no_rd {
+        format_ident!("true")
+    } else {
+        format_ident!("false")
+    };
+    let internal_ident = if internal {
+        format_ident!("true")
+    } else {
+        format_ident!("false")
+    };
+    let noexport_ident = if noexport {
+        format_ident!("true")
+    } else {
+        format_ident!("false")
+    };
+
+    let source_loc_doc = crate::source_location_doc(trait_name.span());
+
+    quote::quote! {
+        #[doc(hidden)]
+        #[doc = #source_loc_doc]
+        static #vtable_static_name: #vtable_type_path =
+            #builder_path::<#concrete_type>();
+
+        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident);
     }
 }
 

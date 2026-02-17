@@ -757,6 +757,46 @@ impl MyConfig {
 
 ---
 
+## Export Control
+
+Control R export visibility with `#[miniextendr(internal)]` and `#[miniextendr(noexport)]`.
+These work consistently across all five class systems.
+
+### `#[miniextendr(internal)]`
+
+Adds `@keywords internal` to roxygen and suppresses `@export`. The function still
+gets an `.Rd` man page but is hidden from the package index.
+
+```rust
+#[miniextendr(internal)]
+pub fn helper_function(x: i32) -> i32 { x * 2 }
+
+#[miniextendr(s3, internal)]
+impl InternalType {
+    pub fn new() -> Self { ... }
+}
+```
+
+### `#[miniextendr(noexport)]`
+
+Suppresses `@export` only (no `@keywords internal`). The function gets `@noRd`
+and no man page is generated.
+
+```rust
+#[miniextendr(noexport)]
+pub fn private_helper(x: i32) -> i32 { x * 2 }
+```
+
+### Comparison
+
+| Attribute | `@export` | `@keywords internal` | Man page |
+|-----------|-----------|---------------------|----------|
+| (default) | Yes | No | Yes |
+| `internal` | No | Yes | Yes (hidden from index) |
+| `noexport` | No | No | No (`@noRd`) |
+
+---
+
 ## Recommendations
 
 1. **Start with Env** for simple cases

@@ -611,12 +611,12 @@ LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
 OPTIONAL_CARGO_DEPS
+CARGO_STATICLIB_NAME
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
 CARGO_LIBDIR
 CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
-CARGO_STATICLIB_NAME
 CARGO_PROFILE
 CARGO_TARGET_DIR_CARGO
 CARGO_TARGET_DIR
@@ -632,7 +632,7 @@ ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURE_CPPFLAGS
 CARGO_FEATURES_FLAG
-MINIEXTENDR_FEATURES
+PIGWORLD_FEATURES
 NOT_CRAN
 CARGO_LOCKED_FLAG
 CARGO_OFFLINE_FLAG
@@ -690,7 +690,7 @@ enable_option_checking
       ac_precious_vars='build_alias
 host_alias
 target_alias
-MINIEXTENDR_FEATURES
+PIGWORLD_FEATURES
 RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
@@ -1315,7 +1315,7 @@ if test -n "$ac_init_help"; then
   cat <<\_ACEOF
 
 Some influential environment variables:
-  MINIEXTENDR_FEATURES
+  PIGWORLD_FEATURES
               Comma-separated cargo features to enable (e.g., "nonapi,rayon")
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
@@ -1992,16 +1992,16 @@ fi
 
 
 
-if test -z "${MINIEXTENDR_FEATURES+x}"; then
-    MINIEXTENDR_FEATURES=""
+if test -z "${PIGWORLD_FEATURES+x}"; then
+    PIGWORLD_FEATURES=""
 fi
 
-if test -n "$MINIEXTENDR_FEATURES"; then
-  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+if test -n "$PIGWORLD_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$PIGWORLD_FEATURES"
   # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
   IFS=','
-  for _feature in $MINIEXTENDR_FEATURES; do
+  for _feature in $PIGWORLD_FEATURES; do
     _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
     CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
   done
@@ -2419,8 +2419,6 @@ else
   CARGO_PROFILE_DIR="$CARGO_PROFILE"
 fi
 
-CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
-
 
 
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
@@ -2459,8 +2457,6 @@ printf "%s\n" "$as_me: NOT_CRAN              = $NOT_CRAN" >&6;}
 printf "%s\n" "$as_me: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_PROFILE         = $CARGO_PROFILE" >&5
 printf "%s\n" "$as_me: CARGO_PROFILE         = $CARGO_PROFILE" >&6;}
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
-printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&5
 printf "%s\n" "$as_me: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_LIBDIR          = $CARGO_LIBDIR" >&5
@@ -2477,10 +2473,10 @@ printf "%s\n" "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
 fi
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
 printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
-if test -n "$MINIEXTENDR_FEATURES"
+if test -n "$PIGWORLD_FEATURES"
 then :
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
-printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: PIGWORLD_FEATURES  = $PIGWORLD_FEATURES" >&5
+printf "%s\n" "$as_me: PIGWORLD_FEATURES  = $PIGWORLD_FEATURES" >&6;}
 fi
 
 pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
@@ -2489,6 +2485,11 @@ PACKAGE_TARNAME_RS=$pkg_rs
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
 
+
+CARGO_STATICLIB_NAME="$pkg_rs"
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
+printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 
 ac_config_files="$ac_config_files src/rust/document.rs"
 
@@ -2535,9 +2536,6 @@ ac_config_commands="$ac_config_commands cargo-vendor"
 
 
 ac_config_commands="$ac_config_commands post-vendor"
-
-
-ac_config_commands="$ac_config_commands patch-staticlib-name"
 
 
 cat >confcache <<\_ACEOF
@@ -3243,8 +3241,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
 NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"
-ABS_RPKG_SRC="$abs_rpkg_src"
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
+ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"
 
 _ACEOF
 
@@ -3264,7 +3261,6 @@ do
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
     "post-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS post-vendor" ;;
-    "patch-staticlib-name") CONFIG_COMMANDS="$CONFIG_COMMANDS patch-staticlib-name" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
   esac
@@ -3765,11 +3761,6 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   fi
  ;;
     "post-vendor":C)
-        touch "$ABS_RPKG_SRC/rust/Cargo.toml"
-  echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
-
-     ;;
-    "patch-staticlib-name":C)
     if test ! -f "src/rust/Cargo.lock"; then
     if test "$NOT_CRAN" = "true"; then
       $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
@@ -3778,30 +3769,10 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
     fi
   fi
 
-      if test "$NOT_CRAN" = "true"; then
-    _pkgid_flags="--color=never"
-  else
-    _pkgid_flags="--offline --color=never"
-  fi
-  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
-  _pkgid_status=$?
-  if test $_pkgid_status -ne 0; then
-    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    exit 1
-  fi
-  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\([^@]*\)@.*/\1/' | tr '-' '_')"
-  if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
-    exit 1
-  fi
-  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
+        touch "$ABS_RPKG_SRC/rust/Cargo.toml"
+  echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
-    for f in src/Makevars src/rust/document.rs; do
-    if test -f "$f"; then
-      "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-    fi
-  done
- ;;
+     ;;
 
   esac
 done # for ac_tag

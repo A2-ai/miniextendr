@@ -7,7 +7,7 @@
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
-#' @export
+#' @keywords internal
 use_miniextendr_configure <- function(path = ".") {
   with_project(path)
   use_template("configure.ac", data = template_data())
@@ -22,7 +22,7 @@ use_miniextendr_configure <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
-#' @export
+#' @keywords internal
 use_miniextendr_bootstrap <- function(path = ".") {
   with_project(path)
   use_template("bootstrap.R")
@@ -36,7 +36,7 @@ use_miniextendr_bootstrap <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
-#' @export
+#' @keywords internal
 use_miniextendr_cleanup <- function(path = ".") {
   with_project(path)
   use_template("cleanup")
@@ -61,7 +61,7 @@ use_miniextendr_cleanup <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
-#' @export
+#' @keywords internal
 use_miniextendr_configure_win <- function(path = ".") {
   with_project(path)
   use_template("configure.win")
@@ -77,7 +77,7 @@ use_miniextendr_configure_win <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were copied
-#' @export
+#' @keywords internal
 use_miniextendr_config_scripts <- function(path = ".") {
   with_project(path)
   # These go in tools/ directory per AC_CONFIG_AUX_DIR([tools]) in configure.ac
@@ -101,7 +101,7 @@ use_miniextendr_config_scripts <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
-#' @export
+#' @keywords internal
 use_miniextendr_makevars <- function(path = ".") {
   with_project(path)
   ensure_dir(usethis::proj_path("src"))

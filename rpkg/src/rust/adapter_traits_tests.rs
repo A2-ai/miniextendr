@@ -1,12 +1,16 @@
 //! Tests for adapter traits (RDebug, RDisplay, RHash, ROrd, etc.)
 //!
-//! These tests verify that the adapter trait blanket implementations work correctly
-//! by exposing their methods through wrapper functions.
+//! All adapter traits use the trait ABI pattern:
+//!   `#[miniextendr] impl Trait for Type { ... }`
+//!
+//! For blanket-impl traits (ROrd, RPartialOrd), use `#[miniextendr(blanket)]`
+//! to suppress the impl block (blanket provides it) while still generating
+//! C wrappers and R wrappers from the method signatures.
+//!
+//! For non-blanket traits (RIterator, RExtend, etc.), the impl block IS emitted
+//! and contains the actual implementation.
 
-use miniextendr_api::adapter_traits::{
-    RClone, RCopy, RDebug, RDefault, RDisplay, RError, RExtend, RFromIter, RFromStr, RHash,
-    RIterator, RMakeIter, ROrd, RPartialOrd, RToVec,
-};
+use miniextendr_api::adapter_traits::RIterator;
 use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 use std::cell::RefCell;
 use std::fmt;
@@ -66,71 +70,42 @@ impl Point {
     fn y(&self) -> i32 {
         self.y
     }
-
-    // RDebug methods
-    fn debug_str(&self) -> String {
-        RDebug::debug_str(self)
-    }
-
-    fn debug_str_pretty(&self) -> String {
-        RDebug::debug_str_pretty(self)
-    }
-
-    // RDisplay method
-    fn as_r_string(&self) -> String {
-        RDisplay::as_r_string(self)
-    }
-
-    // RHash method
-    fn hash(&self) -> f64 {
-        // Return as f64 to avoid type issues with R
-        RHash::hash(self) as f64
-    }
-
-    // ROrd method - compare with another Point
-    // Note: Use ExternalPtr<Point> instead of &Point because the macro
-    // doesn't know Point is an ExternalPtr type at compile time
-    fn cmp_to(&self, other: ExternalPtr<Point>) -> i32 {
-        ROrd::cmp(self, &*other)
-    }
-
-    // Comparison helpers
-    fn is_less_than(&self, other: ExternalPtr<Point>) -> bool {
-        ROrd::cmp(self, &*other) < 0
-    }
-
-    fn is_equal_to(&self, other: ExternalPtr<Point>) -> bool {
-        ROrd::cmp(self, &*other) == 0
-    }
-
-    fn is_greater_than(&self, other: ExternalPtr<Point>) -> bool {
-        ROrd::cmp(self, &*other) > 0
-    }
-
-    // RClone method
-    fn clone_point(&self) -> Point {
-        RClone::clone(self)
-    }
-
-    // RDefault (static method)
-    fn default_point() -> Point {
-        RDefault::default()
-    }
-
-    // RFromStr (static method) - tests &str parameter with worker thread
-    fn from_str(s: &str) -> Option<Point> {
-        <Point as RFromStr>::from_str(s)
-    }
-
-    // RCopy method (Point is Copy since it's Copy + Clone)
-    fn copy_point(&self) -> Point {
-        RCopy::copy(self)
-    }
-
-    fn is_copy(&self) -> bool {
-        RCopy::is_copy(self)
-    }
 }
+
+// Trait ABI: adapter traits registered via empty impl + TPIE (Trait-Provided Impl Expansion).
+// The trait definition exports method metadata; empty impls auto-expand C/R wrappers.
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RDebug for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RDisplay for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RHash for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RClone for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RDefault for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RFromStr for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RCopy for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::ROrd for Point {}
 
 // =============================================================================
 // Test type: MyFloat
@@ -154,30 +129,11 @@ impl MyFloat {
     fn nan() -> Self {
         MyFloat(f64::NAN)
     }
-
-    // RPartialOrd method
-    // Note: Use ExternalPtr<MyFloat> instead of &MyFloat because the macro
-    // doesn't know MyFloat is an ExternalPtr type at compile time
-    fn partial_cmp_to(&self, other: ExternalPtr<MyFloat>) -> Option<i32> {
-        RPartialOrd::partial_cmp(self, &*other)
-    }
-
-    fn is_less_than(&self, other: ExternalPtr<MyFloat>) -> bool {
-        RPartialOrd::partial_cmp(self, &*other) == Some(-1)
-    }
-
-    fn is_equal_to(&self, other: ExternalPtr<MyFloat>) -> bool {
-        RPartialOrd::partial_cmp(self, &*other) == Some(0)
-    }
-
-    fn is_greater_than(&self, other: ExternalPtr<MyFloat>) -> bool {
-        RPartialOrd::partial_cmp(self, &*other) == Some(1)
-    }
-
-    fn is_comparable(&self, other: ExternalPtr<MyFloat>) -> bool {
-        RPartialOrd::partial_cmp(self, &*other).is_some()
-    }
 }
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RPartialOrd for MyFloat {}
 
 // =============================================================================
 // Test type: ChainedError
@@ -217,9 +173,24 @@ impl std::error::Error for OuterError {
     }
 }
 
-/// Wrapper to expose OuterError to R
-#[derive(ExternalPtr)]
+/// Wrapper to expose OuterError to R.
+///
+/// Implements Error by delegating to the inner OuterError, so the
+/// RError blanket impl applies and we can use trait ABI registration.
+#[derive(Debug, ExternalPtr)]
 pub struct ChainedError(OuterError);
+
+impl fmt::Display for ChainedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for ChainedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
 
 /// @noRd
 #[miniextendr]
@@ -239,39 +210,75 @@ impl ChainedError {
             source: None,
         })
     }
-
-    // RError methods
-    fn error_message(&self) -> String {
-        RError::error_message(&self.0)
-    }
-
-    fn error_chain(&self) -> Vec<String> {
-        RError::error_chain(&self.0)
-    }
-
-    fn error_chain_length(&self) -> i32 {
-        RError::error_chain_length(&self.0)
-    }
 }
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RError for ChainedError {}
 
 // =============================================================================
 // Test type: IntVecIter
 // Demonstrates RIterator (with interior mutability)
+// Non-blanket trait with associated type — full impl required
 // =============================================================================
 
 #[derive(ExternalPtr)]
 pub struct IntVecIter(RefCell<std::vec::IntoIter<i32>>);
 
-impl RIterator for IntVecIter {
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
     type Item = i32;
 
+    #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<Self::Item> {
         self.0.borrow_mut().next()
     }
 
+    #[miniextendr(skip)]
     fn size_hint(&self) -> (i64, Option<i64>) {
         let (lo, hi) = self.0.borrow().size_hint();
         (lo as i64, hi.map(|h| h as i64))
+    }
+
+    fn count(&self) -> i64 {
+        let mut count = 0i64;
+        while self.next().is_some() {
+            count += 1;
+        }
+        count
+    }
+
+    fn collect_n(&self, n: i32) -> Vec<Self::Item> {
+        let mut result = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            match self.next() {
+                Some(item) => result.push(item),
+                None => break,
+            }
+        }
+        result
+    }
+
+    fn skip(&self, n: i32) -> i32 {
+        let mut skipped = 0i32;
+        for _ in 0..n {
+            if self.next().is_none() {
+                break;
+            }
+            skipped += 1;
+        }
+        skipped
+    }
+
+    fn nth(&self, n: i32) -> Option<Self::Item> {
+        if n < 0 {
+            return None;
+        }
+        for _ in 0..n {
+            self.next()?;
+        }
+        self.next()
     }
 }
 
@@ -281,50 +288,30 @@ impl IntVecIter {
     fn new(data: Vec<i32>) -> Self {
         IntVecIter(RefCell::new(data.into_iter()))
     }
-
-    // Renamed from `next` because `next` is a reserved word in R
-    fn next_item(&self) -> Option<i32> {
-        RIterator::next(self)
-    }
-
-    // Returns (lower_bound, upper_bound) where upper_bound is -1 if unknown
-    fn size_hint(&self) -> Vec<i32> {
-        let (lo, hi) = RIterator::size_hint(self);
-        vec![lo as i32, hi.map(|h| h as i32).unwrap_or(-1)]
-    }
-
-    fn count(&self) -> i64 {
-        RIterator::count(self)
-    }
-
-    fn collect_n(&self, n: i32) -> Vec<i32> {
-        RIterator::collect_n(self, n)
-    }
-
-    fn skip(&self, n: i32) -> i32 {
-        RIterator::skip(self, n)
-    }
-
-    fn nth(&self, n: i32) -> Option<i32> {
-        RIterator::nth(self, n)
-    }
 }
 
 // =============================================================================
 // Test type: GrowableVec
 // Demonstrates RExtend (collection extension with interior mutability)
+// Non-blanket generic trait — full impl required
 // =============================================================================
 
 #[derive(ExternalPtr)]
 pub struct GrowableVec(RefCell<Vec<i32>>);
 
-impl RExtend<i32> for GrowableVec {
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec {
     fn extend_from_vec(&self, items: Vec<i32>) {
         self.0.borrow_mut().extend(items);
     }
 
     fn len(&self) -> i64 {
         self.0.borrow().len() as i64
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
     }
 }
 
@@ -337,18 +324,6 @@ impl GrowableVec {
 
     fn from_vec(data: Vec<i32>) -> Self {
         GrowableVec(RefCell::new(data))
-    }
-
-    fn extend(&self, items: Vec<i32>) {
-        RExtend::extend_from_vec(self, items);
-    }
-
-    fn len(&self) -> i64 {
-        RExtend::<i32>::len(self)
-    }
-
-    fn is_empty(&self) -> bool {
-        RExtend::<i32>::is_empty(self)
     }
 
     fn to_vec(&self) -> Vec<i32> {
@@ -370,28 +345,37 @@ use std::collections::HashSet;
 #[derive(ExternalPtr)]
 pub struct IntSet(HashSet<i32>);
 
+// RFromIter: static factory method (IntSet doesn't impl FromIterator directly)
 /// @noRd
 #[miniextendr]
-impl IntSet {
-    // RFromIter via wrapper (HashSet implements FromIterator)
+impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet {
     fn from_vec(items: Vec<i32>) -> Self {
-        IntSet(RFromIter::from_vec(items))
+        IntSet(items.into_iter().collect())
     }
+}
 
-    fn len(&self) -> i64 {
-        RToVec::<i32>::len(&self.0)
-    }
-
-    fn is_empty(&self) -> bool {
-        RToVec::<i32>::is_empty(&self.0)
-    }
-
+// RToVec: sorted output for deterministic tests
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
     fn to_vec(&self) -> Vec<i32> {
-        let mut v = RToVec::to_vec(&self.0);
+        let mut v: Vec<_> = self.0.iter().cloned().collect();
         v.sort();
         v
     }
 
+    fn len(&self) -> i64 {
+        self.0.len() as i64
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// @noRd
+#[miniextendr]
+impl IntSet {
     fn contains(&self, value: i32) -> bool {
         self.0.contains(&value)
     }
@@ -421,7 +405,9 @@ impl RIterator for IterableVecIter {
     }
 }
 
-impl RMakeIter<i32, IterableVecIter> for IterableVec {
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RMakeIter<i32, IterableVecIter> for IterableVec {
     fn make_iter(&self) -> IterableVecIter {
         IterableVecIter(RefCell::new(Clone::clone(&self.0).into_iter()))
     }
@@ -441,27 +427,43 @@ impl IterableVec {
     fn to_vec(&self) -> Vec<i32> {
         Clone::clone(&self.0)
     }
+}
 
-    fn make_iter(&self) -> IterableVecIter {
-        RMakeIter::make_iter(self)
+/// @noRd
+#[miniextendr(blanket)]
+impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
+    type Item = i32;
+
+    #[miniextendr(r_name = "next_item")]
+    fn next(&self) -> Option<Self::Item> {
+        unreachable!()
+    }
+
+    #[miniextendr(skip)]
+    fn size_hint(&self) -> (i64, Option<i64>) {
+        unreachable!()
+    }
+
+    fn count(&self) -> i64 {
+        unreachable!()
+    }
+
+    fn collect_n(&self, n: i32) -> Vec<Self::Item> {
+        unreachable!()
+    }
+
+    fn skip(&self, n: i32) -> i32 {
+        unreachable!()
+    }
+
+    fn nth(&self, n: i32) -> Option<Self::Item> {
+        unreachable!()
     }
 }
 
-// NOTE: IterableVecIter impl temporarily removed from module due to macro issue.
-// See comment at module registration below.
+/// @noRd
 #[miniextendr]
 impl IterableVecIter {
-    // Renamed from `next` because `next` is a reserved word in R
-    fn next_item(&self) -> Option<i32> {
-        RIterator::next(self)
-    }
-
-    // Returns (lower_bound, upper_bound) where upper_bound is -1 if unknown
-    fn size_hint(&self) -> Vec<i32> {
-        let (lo, hi) = RIterator::size_hint(self);
-        vec![lo as i32, hi.map(|h| h as i32).unwrap_or(-1)]
-    }
-
     fn collect_all(&self) -> Vec<i32> {
         let mut result = Vec::new();
         while let Some(item) = RIterator::next(self) {
@@ -470,6 +472,38 @@ impl IterableVecIter {
         result
     }
 }
+
+// =============================================================================
+// Test type: ExportControlTraitPoint
+// Demonstrates internal/noexport on trait impls
+// =============================================================================
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, ExternalPtr)]
+pub struct ExportControlTraitPoint {
+    x: i32,
+}
+
+impl fmt::Display for ExportControlTraitPoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({})", self.x)
+    }
+}
+
+/// @keywords internal
+#[miniextendr(internal)]
+impl ExportControlTraitPoint {
+    fn new(x: i32) -> Self {
+        ExportControlTraitPoint { x }
+    }
+}
+
+/// Internal trait impl: should have @keywords internal, no @export
+#[miniextendr(internal)]
+impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint {}
+
+/// Noexport trait impl: should have docs but no @export
+#[miniextendr(noexport)]
+impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint {}
 
 // =============================================================================
 // Module registration
@@ -486,4 +520,31 @@ miniextendr_module! {
     impl IntSet;
     impl IterableVec;
     impl IterableVecIter;
+    impl ExportControlTraitPoint;
+
+    // Non-generic adapter traits (TPIE: empty impl auto-expands wrappers)
+    impl miniextendr_api::adapter_traits::RDebug for Point;
+    impl miniextendr_api::adapter_traits::RDisplay for Point;
+    impl miniextendr_api::adapter_traits::RHash for Point;
+    impl miniextendr_api::adapter_traits::RClone for Point;
+    impl miniextendr_api::adapter_traits::RDefault for Point;
+    impl miniextendr_api::adapter_traits::RFromStr for Point;
+    impl miniextendr_api::adapter_traits::RCopy for Point;
+    impl miniextendr_api::adapter_traits::RError for ChainedError;
+    impl miniextendr_api::adapter_traits::ROrd for Point;
+    impl miniextendr_api::adapter_traits::RPartialOrd for MyFloat;
+
+    // Export control on trait impls
+    impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint;
+    impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint;
+
+    // Associated-type trait (non-blanket)
+    impl miniextendr_api::adapter_traits::RIterator for IntVecIter;
+    impl miniextendr_api::adapter_traits::RIterator for IterableVecIter;
+
+    // Generic traits
+    impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec;
+    impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet;
+    impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet;
+    impl miniextendr_api::adapter_traits::RMakeIter<i32, IterableVecIter> for IterableVec;
 }
