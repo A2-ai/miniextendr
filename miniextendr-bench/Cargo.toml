@@ -133,5 +133,9 @@ name = "raw_access"
 harness = false
 
 [[bench]]
+name = "typed_list"
+harness = false
+
+[[bench]]
 name = "refcount_protect"
 harness = false
