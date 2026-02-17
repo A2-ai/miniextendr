@@ -4,7 +4,7 @@ struct Foo;
 
 #[miniextendr(env)]
 impl Foo {
-    #[miniextendr(as = "tibble")]
+    #[miniextendr(as = "foo_bar_baz")]
     pub fn bad_coercion(&self) -> String {
         "test".to_string()
     }

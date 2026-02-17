@@ -1,5 +1,0 @@
-error: `subset` is not supported for impl_altreal_from_data; only `integer` and `complex` support it
- --> tests/ui/derive_altrep_real_rejects_subset.rs:6:10
-  |
-6 | #[altrep(subset)]
-  |          ^^^^^^

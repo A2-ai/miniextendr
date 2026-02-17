@@ -1,4 +1,4 @@
-error: unknown dataframe attribute; expected `name`, `align`, `tag`, or `parallel`
+error: unknown dataframe attribute; expected `name`, `align`, `tag`, `parallel`, or `conflicts`
  --> tests/ui/derive_dataframe_unknown_attr.rs:6:13
   |
 6 | #[dataframe(bogus)]

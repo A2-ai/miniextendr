@@ -1,5 +1,0 @@
-error: syntax not supported
- --> tests/ui/module_use_path.rs:7:9
-  |
-7 |     use foo::bar;
-  |         ^^^

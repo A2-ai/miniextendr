@@ -1,5 +1,0 @@
-error: DataFrameRow only supports structs with named fields
- --> tests/ui/derive_dataframe_struct_unnamed_fields.rs:6:8
-  |
-6 | struct Bad(f64, i32);
-  |        ^^^

@@ -1,5 +1,0 @@
-error: `tag` is only supported on enums
- --> tests/ui/derive_dataframe_tag_on_struct.rs:7:8
-  |
-7 | struct Point {
-  |        ^^^^^

@@ -1,8 +1,8 @@
-//! Test: invalid return option value.
+//! Test: invalid prefer option value.
 
 use miniextendr_macros::miniextendr;
 
-#[miniextendr(return = "bogus")]
+#[miniextendr(prefer = "bogus")]
 fn my_fn() -> i32 {
     42
 }
