@@ -19,10 +19,10 @@ miniextendr-macros        miniextendr-engine
       │                         │
       ├─────────┬───────────────┘
       ▼         ▼
-miniextendr-api
-(runtime library: FFI, ExternalPtr, ALTREP, worker thread)
-      │
-      ▼
+miniextendr-api           miniextendr-macros-core
+(runtime library)         (shared parser types)
+      │                         │
+      ▼                    used by macros + lint
 rpkg / user packages
 (R package with Rust backend)
 ```
@@ -50,6 +50,10 @@ Proc macros that generate the glue code:
 ### miniextendr-engine
 
 Code generation engine used by the `document` binary. Reads proc-macro output and generates `miniextendr_wrappers.R` (the R-side wrapper functions).
+
+### miniextendr-macros-core
+
+Shared parser types used by both `miniextendr-macros` and `miniextendr-lint`. Provides the `miniextendr_module!` parser and common AST types, ensuring both crates agree on syntax.
 
 ### miniextendr-lint
 

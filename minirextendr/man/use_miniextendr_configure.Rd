@@ -4,7 +4,10 @@
 \alias{use_miniextendr_configure}
 \title{Add configure.ac to package}
 \usage{
-use_miniextendr_configure()
+use_miniextendr_configure(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if file was created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if file was created
 Creates the autoconf configure.ac template that handles Rust toolchain
 discovery, feature flags, and generates build files.
 }
+\keyword{internal}

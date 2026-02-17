@@ -4,7 +4,10 @@
 \alias{miniextendr_document}
 \title{Generate R wrapper functions from Rust}
 \usage{
-miniextendr_document()
+miniextendr_document(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{NULL} to use the active project.}
 }
 \value{
 Invisibly returns TRUE on success

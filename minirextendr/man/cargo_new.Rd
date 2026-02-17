@@ -5,6 +5,7 @@
 \title{Create a new Rust crate in a workspace}
 \usage{
 cargo_new(
+  path = ".",
   name,
   lib = TRUE,
   edition = "2024",
@@ -14,6 +15,8 @@ cargo_new(
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{name}{Name of the crate to create. This will be the directory name.}
 
 \item{lib}{Logical. If TRUE, create a library crate (default). If FALSE, create a binary.}

@@ -5,17 +5,21 @@
 \title{Download and vendor miniextendr crates}
 \usage{
 vendor_miniextendr(
+  path = ".",
   version = "main",
-  dest = usethis::proj_path("vendor"),
+  dest = NULL,
   refresh = FALSE,
   local_path = NULL
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{version}{Version tag to download (default: "main" for latest).
 Ignored if \code{local_path} is provided.}
 
-\item{dest}{Destination directory for vendored crates}
+\item{dest}{Destination directory for vendored crates. Defaults to
+\verb{vendor/} inside the project root.}
 
 \item{refresh}{Force re-download even if cached (default: FALSE)}
 

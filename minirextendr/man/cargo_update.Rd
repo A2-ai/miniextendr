@@ -4,9 +4,17 @@
 \alias{cargo_update}
 \title{Update dependencies in Cargo.lock}
 \usage{
-cargo_update(dep = NULL, precise = NULL, dry_run = FALSE, quiet = FALSE)
+cargo_update(
+  path = ".",
+  dep = NULL,
+  precise = NULL,
+  dry_run = FALSE,
+  quiet = FALSE
+)
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{dep}{Optional. Specific package(s) to update. If NULL, updates all.}
 
 \item{precise}{Character. Update to exactly this version (use with single dep).}

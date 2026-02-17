@@ -5,12 +5,13 @@
 \title{Add a dependency to Cargo.toml}
 \usage{
 cargo_add(
+  path = ".",
   dep,
   features = NULL,
   no_default_features = FALSE,
   optional = FALSE,
   rename = NULL,
-  path = NULL,
+  crate_path = NULL,
   git = NULL,
   branch = NULL,
   tag = NULL,
@@ -25,6 +26,8 @@ cargo_add(
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{dep}{Dependency specification. Can be:
 \itemize{
 \item A crate name: \code{"serde"}
@@ -40,7 +43,7 @@ cargo_add(
 
 \item{rename}{Character. Rename the dependency (useful for multiple versions).}
 
-\item{path}{Character. Path to local crate to add instead of from crates.io.}
+\item{crate_path}{Character. Path to local crate to add instead of from crates.io.}
 
 \item{git}{Character. Git repository URL to add dependency from.}
 
@@ -89,7 +92,7 @@ cargo_add("mycrate", git = "https://github.com/user/mycrate")
 cargo_add("mycrate", git = "https://github.com/user/mycrate", branch = "dev")
 
 # Add from local path
-cargo_add("localcrate", path = "../my-local-crate")
+cargo_add("localcrate", crate_path = "../my-local-crate")
 
 # Add multiple crates at once
 cargo_add(c("serde", "serde_json"))

@@ -98,6 +98,12 @@ mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
 mod dataframe_examples;
+#[cfg(feature = "rayon")]
+#[path = "dataframe_rayon_tests.rs"]
+mod dataframe_rayon_tests;
+#[cfg(not(feature = "rayon"))]
+#[path = "dataframe_rayon_tests_disabled.rs"]
+mod dataframe_rayon_tests;
 mod default_tests;
 mod dots_tests;
 mod error_in_r_tests;
@@ -1920,6 +1926,7 @@ miniextendr_module! {
     use shared_trait_test;
     use convert_pref_tests;
     use dataframe_examples;
+    use dataframe_rayon_tests;
     use rng_tests;
     use rayon_tests;
     use serde_r_tests;

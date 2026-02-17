@@ -4,7 +4,10 @@
 \alias{use_miniextendr_rbuildignore}
 \title{Add .Rbuildignore patterns for miniextendr}
 \usage{
-use_miniextendr_rbuildignore()
+use_miniextendr_rbuildignore(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE
@@ -13,3 +16,4 @@ Invisibly returns TRUE
 Appends miniextendr-specific ignore patterns to .Rbuildignore,
 or creates the file if it doesn't exist.
 }
+\keyword{internal}

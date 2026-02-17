@@ -31,6 +31,7 @@
 //! data$debug_str_pretty() # Pretty-printed with newlines
 //! ```
 
+use crate::miniextendr;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
@@ -60,6 +61,7 @@ use std::str::FromStr;
 ///     impl RDebug for Config;
 /// }
 /// ```
+#[miniextendr]
 pub trait RDebug {
     /// Get a compact debug string representation.
     fn debug_str(&self) -> String;
@@ -106,6 +108,7 @@ impl<T: Debug> RDebug for T {
 ///     impl RDisplay for Version;
 /// }
 /// ```
+#[miniextendr]
 pub trait RDisplay {
     /// Convert to a user-friendly string.
     fn as_r_string(&self) -> String;
@@ -145,6 +148,7 @@ impl<T: Display> RDisplay for T {
 ///     impl RHash for Record;
 /// }
 /// ```
+#[miniextendr]
 pub trait RHash {
     /// Compute a hash of this value.
     fn hash(&self) -> i64;
@@ -181,6 +185,7 @@ impl<T: Hash> RHash for T {
 ///     impl ROrd for Priority;
 /// }
 /// ```
+#[miniextendr]
 pub trait ROrd {
     /// Compare with another value.
     ///
@@ -225,6 +230,7 @@ impl<T: Ord> ROrd for T {
 ///     impl RPartialOrd for MyFloat;
 /// }
 /// ```
+#[miniextendr]
 pub trait RPartialOrd {
     /// Compare with another value, returning None if incomparable.
     ///
@@ -289,6 +295,7 @@ impl<T: PartialOrd> RPartialOrd for T {
 ///     impl RError for MyErrorWrapper;
 /// }
 /// ```
+#[miniextendr]
 pub trait RError {
     /// Get the error message (Display representation).
     fn error_message(&self) -> String;
@@ -357,6 +364,7 @@ impl<T: std::error::Error> RError for T {
 /// ```r
 /// ip <- IpAddress$from_str("192.168.1.1")
 /// ```
+#[miniextendr]
 pub trait RFromStr: Sized {
     /// Parse a string into this type.
     ///
@@ -401,6 +409,7 @@ impl<T: FromStr> RFromStr for T {
 /// buf1 <- Buffer$new(...)
 /// buf2 <- buf1$clone()  # Independent copy
 /// ```
+#[miniextendr]
 pub trait RClone {
     /// Create a deep copy of this value.
     fn clone(&self) -> Self;
@@ -444,6 +453,7 @@ impl<T: Clone> RClone for T {
 /// ```r
 /// config <- Config$default()  # All fields have default values
 /// ```
+#[miniextendr]
 pub trait RDefault {
     /// Create a new instance with default values.
     fn default() -> Self;
@@ -495,6 +505,7 @@ impl<T: Default> RDefault for T {
 /// p2 <- p1$copy()  # Cheap bitwise copy
 /// p1$is_copy()       # TRUE
 /// ```
+#[miniextendr]
 pub trait RCopy {
     /// Create a bitwise copy of this value.
     ///
@@ -585,6 +596,7 @@ impl<T: Copy> RCopy for T {
 /// because iterators require `&mut self` for `next()`, but R's ExternalPtr
 /// pattern typically provides `&self`. Users must implement this trait
 /// manually using interior mutability (RefCell, Mutex, etc.).
+#[miniextendr]
 pub trait RIterator {
     /// The type of elements yielded by this iterator.
     type Item;
@@ -593,12 +605,17 @@ pub trait RIterator {
     ///
     /// Returns `Some(item)` if there are more elements, `None` if exhausted.
     /// None maps to NULL in R.
+    #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<Self::Item>;
 
     /// Get the estimated number of remaining elements.
     ///
     /// Returns `(lower_bound, upper_bound)` where upper_bound is None if unknown.
     /// In R, this becomes `c(lower, upper)` where upper is NA if unknown.
+    ///
+    /// Skipped from trait ABI because tuples don't have R conversions.
+    /// Expose via manual forwarding or custom wrapper methods.
+    #[miniextendr(skip)]
     fn size_hint(&self) -> (i64, Option<i64>);
 
     /// Consume the iterator and count remaining elements.
@@ -710,6 +727,7 @@ pub trait RIterator {
 /// Like `RIterator`, `RExtend` does NOT have a blanket impl because `Extend::extend()`
 /// requires `&mut self`, but R's ExternalPtr pattern provides `&self`. Users must
 /// implement this trait manually using interior mutability (RefCell, Mutex, etc.).
+#[miniextendr]
 pub trait RExtend<T> {
     /// Extend the collection with items from a vector.
     ///
@@ -719,6 +737,9 @@ pub trait RExtend<T> {
     /// Extend the collection with cloned items from a slice.
     ///
     /// Default implementation clones items into a Vec and calls `extend_from_vec`.
+    ///
+    /// Skipped from trait ABI because `&[T]` doesn't have TryFromSexp.
+    #[miniextendr(skip)]
     fn extend_from_slice(&self, items: &[T])
     where
         T: Clone,
@@ -778,6 +799,7 @@ pub trait RExtend<T> {
 /// ```r
 /// set <- MySet$from_vec(c(1L, 2L, 2L, 3L))  # Creates {1, 2, 3}
 /// ```
+#[miniextendr]
 pub trait RFromIter<T>: Sized {
     /// Create a new collection from a vector of items.
     fn from_vec(items: Vec<T>) -> Self;
@@ -836,6 +858,7 @@ where
 /// set$len()              # Number of elements
 /// set$is_empty()         # Check if empty
 /// ```
+#[miniextendr]
 pub trait RToVec<T> {
     /// Collect all elements into a vector.
     ///
@@ -935,6 +958,7 @@ where
 /// it$next_item()        # 2L
 /// v$to_vec()            # c(1L, 2L, 3L) - original unchanged
 /// ```
+#[miniextendr]
 pub trait RMakeIter<T, I>
 where
     I: RIterator<Item = T>,

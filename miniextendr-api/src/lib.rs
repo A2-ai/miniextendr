@@ -176,6 +176,8 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Procedural macros (re-exported from miniextendr-macros)
+#[doc(hidden)]
+pub use miniextendr_macros::__mx_trait_impl_expand;
 #[doc(inline)]
 pub use miniextendr_macros::ExternalPtr;
 #[doc(inline)]

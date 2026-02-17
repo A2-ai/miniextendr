@@ -119,6 +119,7 @@ pub struct ErrorInRR6Widget {
 #[miniextendr(r6)]
 impl ErrorInRR6Widget {
     /// Create a new widget.
+    /// @param name Name for the widget.
     pub fn new(name: String) -> Self {
         Self { name }
     }

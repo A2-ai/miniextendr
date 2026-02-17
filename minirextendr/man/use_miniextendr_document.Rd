@@ -4,7 +4,10 @@
 \alias{use_miniextendr_document}
 \title{Add document.rs.in template}
 \usage{
-use_miniextendr_document()
+use_miniextendr_document(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if file was created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if file was created
 Creates src/rust/document.rs.in which generates R wrapper functions
 from the Rust code. This is processed by configure to create document.rs.
 }
+\keyword{internal}

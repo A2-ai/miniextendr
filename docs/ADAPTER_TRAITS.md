@@ -85,14 +85,27 @@ These have blanket implementations so you just need to export them for your type
 |-------|-------|---------|
 | `RDebug` | `Debug` | `debug_str()`, `debug_str_pretty()` |
 | `RDisplay` | `Display` | `as_r_string()` |
-| `RFromStr` | `FromStr` | `r_from_str(s) -> Option<Self>` |
-| `RHash` | `Hash` | `r_hash() -> i64` |
-| `ROrd` | `Ord` | `r_cmp(&self, other) -> i32` |
-| `RPartialOrd` | `PartialOrd` | `r_partial_cmp(&self, other) -> Option<i32>` |
+| `RFromStr` | `FromStr` | `from_str(s) -> Option<Self>` |
+| `RHash` | `Hash` | `hash() -> i64` |
+| `ROrd` | `Ord` | `cmp(&self, other) -> i32` |
+| `RPartialOrd` | `PartialOrd` | `partial_cmp(&self, other) -> Option<i32>` |
 | `RError` | `Error` | `error_message()`, `error_chain()`, `error_chain_length()` |
-| `RClone` | `Clone` | `r_clone() -> Self` |
-| `RCopy` | `Copy` | `r_copy() -> Self`, `is_copy() -> bool` |
-| `RDefault` | `Default` | `r_default() -> Self` |
+| `RClone` | `Clone` | `clone() -> Self` |
+| `RCopy` | `Copy` | `copy() -> Self`, `is_copy() -> bool` |
+| `RDefault` | `Default` | `default() -> Self` |
+
+### Generic / Associated-Type Adapter Traits
+
+These traits have generic parameters or associated types, and are supported via
+concrete vtable shim generation at the impl site:
+
+| Trait | Wraps | Methods | Notes |
+|-------|-------|---------|-------|
+| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `count()`, `collect_n()`, `skip()`, `nth()` | `next` renamed to `next_item` via `r_name`; `size_hint` skipped |
+| `RExtend<T>` | `Extend` | `extend_from_vec()`, `len()`, `is_empty()` | `extend_from_slice` skipped |
+| `RFromIter<T>` | `FromIterator` | `from_vec(items) -> Self` | |
+| `RToVec<T>` | (iterable collections) | `to_vec()`, `len()`, `is_empty()` | |
+| `RMakeIter<T, I>` | (iterator factory) | `make_iter() -> I` | `I` must implement `RIterator` |
 
 **Usage:**
 
@@ -123,47 +136,54 @@ When designing adapter traits, keep these limitations in mind:
 
 | Feature | Supported? | Notes |
 |---------|------------|-------|
-| Generic parameters on trait | No | `trait Foo<T>` not allowed |
+| Generic parameters on trait | Yes | `trait Foo<T>` — concrete shims generated at impl site |
 | Generic methods | No | `fn bar<T>()` not allowed |
 | Async methods | No | `async fn` not allowed |
-| Associated types | No | `type Item` not allowed |
+| Associated types | Yes | `type Item` — resolved to concrete type at impl site |
 | Self by value | Yes | `fn consume(self)` works |
 | &self / &mut self | Yes | Standard receivers |
 | Static methods | Yes | But don't go through vtable |
+| `#[miniextendr(skip)]` | Yes | Exclude specific methods from R wrappers |
+| `#[miniextendr(r_name = "...")]` | Yes | Rename a method in R (e.g., `next` → `next_item`) |
 
 **Method arguments and return types** must implement:
 
 - `TryFromSexp` for parameters (R → Rust conversion)
 - `IntoR` for return values (Rust → R conversion)
 
-## Example: Exposing Iterator-like Behavior
+## Example: Using the Built-in RIterator Trait
 
-External trait `Iterator` has associated types, so we create a simpler adapter:
+The built-in `RIterator` trait has an associated type `Item` and uses
+`#[miniextendr(skip)]` and `#[miniextendr(r_name = "...")]` to customize
+its R interface:
 
 ```rust
-#[miniextendr]
-pub trait RIterator {
-    /// Get the next item, or NULL if exhausted
-    fn next_item(&mut self) -> Option<i32>;
+use miniextendr_api::prelude::*;
+use miniextendr_api::RIterator;
 
-    /// Collect remaining items into a vector
-    fn collect_rest(&mut self) -> Vec<i32>;
+#[derive(ExternalPtr)]
+struct CountUp {
+    current: i32,
+    max: i32,
 }
 
-// For any Iterator<Item = i32>
-impl<T> RIterator for T
-where
-    T: Iterator<Item = i32>,
-{
-    fn next_item(&mut self) -> Option<i32> {
-        self.next()
-    }
+// RIterator has an associated type Item, resolved to i32 here
+#[miniextendr]
+impl RIterator for CountUp {
+    type Item = i32;
 
-    fn collect_rest(&mut self) -> Vec<i32> {
-        self.collect()
-    }
+    fn next(&self) -> Option<i32> { /* ... */ }
+    fn count(&self) -> i64 { /* ... */ }
+    fn collect_n(&self, n: i32) -> Vec<i32> { /* ... */ }
+    fn skip(&self, n: i32) -> i32 { /* ... */ }
+    fn nth(&self, n: i32) -> Option<i32> { /* ... */ }
+    // size_hint is #[miniextendr(skip)] — not exposed to R
+    // next is #[miniextendr(r_name = "next_item")] — called next_item() in R
 }
 ```
+
+In R, the method is called `next_item()` (not `next()`, which would shadow
+R's built-in).
 
 ## Alternative: Newtype Wrapper
 
@@ -268,276 +288,55 @@ See `tests/cross-package/` for a working example of:
 4. **Handle errors explicitly** - Return `Result<T, String>` for fallible operations
 5. **Consider serialization** - For complex external types, `character` (JSON/string) often works
 
-## More Adapter Trait Examples
+## Trait-Provided Impl Expansion (TPIE)
 
-### Display and FromStr Adapters
-
-Expose string formatting and parsing from external types:
+When an adapter trait has a blanket impl, you can write an empty `#[miniextendr] impl`
+block and the trait's default implementations are automatically used:
 
 ```rust
-use std::fmt::Display;
-use std::str::FromStr;
+use miniextendr_api::{RDebug, RClone};
 
-/// Adapter for Display - convert any Display type to R character
+#[derive(Debug, Clone, ExternalPtr)]
+struct MyData { value: i32 }
+
+// Empty body — uses blanket impl from RDebug
 #[miniextendr]
-pub trait RDisplay {
-    fn as_r_string(&self) -> String;
-}
+impl RDebug for MyData {}
 
-impl<T: Display> RDisplay for T {
-    fn as_r_string(&self) -> String {
-        self.to_string()
-    }
-}
-
-/// Adapter for FromStr - parse R character into Rust types
+// Empty body — uses blanket impl from RClone
 #[miniextendr]
-pub trait RFromStr: Sized {
-    fn from_r_string(s: &str) -> Result<Self, String>;
-}
+impl RClone for MyData {}
+```
 
-// Example impl for a specific type (can't blanket impl due to Sized constraint)
-impl RFromStr for MyType {
-    fn from_r_string(s: &str) -> Result<Self, String> {
-        MyType::from_str(s).map_err(|e| e.to_string())
-    }
+This generates all the R wrappers, vtable registration, and C-callable shims
+without requiring you to re-implement the methods.
+
+## Method Attributes
+
+### `#[miniextendr(skip)]`
+
+Exclude a trait method from the R interface. The method exists in Rust but
+gets no R wrapper:
+
+```rust
+#[miniextendr]
+pub trait MyTrait {
+    fn useful_method(&self) -> i32;
+
+    #[miniextendr(skip)]
+    fn internal_only(&self) -> usize;  // Not exposed to R
 }
 ```
 
-### Debug Adapter
+### `#[miniextendr(r_name = "...")]`
 
-Expose debug formatting for inspection in R:
-
-```rust
-use std::fmt::Debug;
-
-#[miniextendr]
-pub trait RDebug {
-    fn debug_string(&self) -> String;
-    fn debug_pretty(&self) -> String;
-}
-
-impl<T: Debug> RDebug for T {
-    fn debug_string(&self) -> String {
-        format!("{:?}", self)
-    }
-
-    fn debug_pretty(&self) -> String {
-        format!("{:#?}", self)
-    }
-}
-```
-
-### Comparison Adapters
-
-Expose ordering for R sort operations:
+Rename a method in R to avoid conflicts with R keywords or built-ins:
 
 ```rust
-use std::cmp::Ordering;
-
 #[miniextendr]
-pub trait ROrd {
-    /// Compare two values: returns -1, 0, or 1
-    fn r_cmp(&self, other: &Self) -> i32;
-}
-
-impl<T: Ord> ROrd for T {
-    fn r_cmp(&self, other: &Self) -> i32 {
-        match self.cmp(other) {
-            Ordering::Less => -1,
-            Ordering::Equal => 0,
-            Ordering::Greater => 1,
-        }
-    }
-}
-
-#[miniextendr]
-pub trait RPartialOrd {
-    /// Compare two values: returns -1, 0, 1, or NA for incomparable
-    fn r_partial_cmp(&self, other: &Self) -> Option<i32>;
-}
-
-impl<T: PartialOrd> RPartialOrd for T {
-    fn r_partial_cmp(&self, other: &Self) -> Option<i32> {
-        self.partial_cmp(other).map(|ord| match ord {
-            Ordering::Less => -1,
-            Ordering::Equal => 0,
-            Ordering::Greater => 1,
-        })
-    }
-}
-```
-
-### Hash Adapter
-
-Expose hashing for R deduplication or environments:
-
-```rust
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
-
-#[miniextendr]
-pub trait RHash {
-    /// Get a 64-bit hash of the value
-    fn r_hash(&self) -> i64;
-}
-
-impl<T: Hash> RHash for T {
-    fn r_hash(&self) -> i64 {
-        let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
-        hasher.finish() as i64
-    }
-}
-```
-
-### Serde Adapters (with `serde` feature)
-
-Expose JSON serialization for R interop:
-
-```rust
-use serde::{Serialize, Deserialize};
-
-#[miniextendr]
-pub trait RSerialize {
-    /// Serialize to JSON string
-    fn to_json(&self) -> Result<String, String>;
-
-    /// Serialize to pretty-printed JSON
-    fn to_json_pretty(&self) -> Result<String, String>;
-}
-
-impl<T: Serialize> RSerialize for T {
-    fn to_json(&self) -> Result<String, String> {
-        serde_json::to_string(self).map_err(|e| e.to_string())
-    }
-
-    fn to_json_pretty(&self) -> Result<String, String> {
-        serde_json::to_string_pretty(self).map_err(|e| e.to_string())
-    }
-}
-
-#[miniextendr]
-pub trait RDeserialize: Sized {
-    /// Deserialize from JSON string
-    fn from_json(s: &str) -> Result<Self, String>;
-}
-
-// Example for a specific type
-impl RDeserialize for MyConfig {
-    fn from_json(s: &str) -> Result<Self, String> {
-        serde_json::from_str(s).map_err(|e| e.to_string())
-    }
-}
-```
-
-### Error Adapter
-
-Expose error chains for rich R error reporting:
-
-```rust
-use std::error::Error;
-
-#[miniextendr]
-pub trait RError {
-    /// Get the error message
-    fn error_message(&self) -> String;
-
-    /// Get the full error chain as a vector of messages
-    fn error_chain(&self) -> Vec<String>;
-}
-
-impl<T: Error> RError for T {
-    fn error_message(&self) -> String {
-        self.to_string()
-    }
-
-    fn error_chain(&self) -> Vec<String> {
-        let mut chain = vec![self.to_string()];
-        let mut current: &dyn Error = self;
-        while let Some(source) = current.source() {
-            chain.push(source.to_string());
-            current = source;
-        }
-        chain
-    }
-}
-```
-
-### IO Adapters (with `connections` feature)
-
-Expose Rust IO traits for R connection interop:
-
-```rust
-use std::io::{Read, Write, BufRead};
-
-#[miniextendr]
-pub trait RRead {
-    /// Read up to n bytes, returns raw vector
-    fn read_bytes(&mut self, n: usize) -> Result<Vec<u8>, String>;
-
-    /// Read all remaining bytes
-    fn read_to_end(&mut self) -> Result<Vec<u8>, String>;
-}
-
-impl<T: Read> RRead for T {
-    fn read_bytes(&mut self, n: usize) -> Result<Vec<u8>, String> {
-        let mut buf = vec![0u8; n];
-        let bytes_read = self.read(&mut buf).map_err(|e| e.to_string())?;
-        buf.truncate(bytes_read);
-        Ok(buf)
-    }
-
-    fn read_to_end(&mut self) -> Result<Vec<u8>, String> {
-        let mut buf = Vec::new();
-        Read::read_to_end(self, &mut buf).map_err(|e| e.to_string())?;
-        Ok(buf)
-    }
-}
-
-#[miniextendr]
-pub trait RWrite {
-    /// Write bytes, returns number written
-    fn write_bytes(&mut self, data: Vec<u8>) -> Result<usize, String>;
-
-    /// Flush the writer
-    fn flush(&mut self) -> Result<(), String>;
-}
-
-impl<T: Write> RWrite for T {
-    fn write_bytes(&mut self, data: Vec<u8>) -> Result<usize, String> {
-        self.write(&data).map_err(|e| e.to_string())
-    }
-
-    fn flush(&mut self) -> Result<(), String> {
-        Write::flush(self).map_err(|e| e.to_string())
-    }
-}
-
-#[miniextendr]
-pub trait RBufRead {
-    /// Read a single line (without newline)
-    fn read_line(&mut self) -> Result<Option<String>, String>;
-}
-
-impl<T: BufRead> RBufRead for T {
-    fn read_line(&mut self) -> Result<Option<String>, String> {
-        let mut line = String::new();
-        match BufRead::read_line(self, &mut line) {
-            Ok(0) => Ok(None),  // EOF
-            Ok(_) => {
-                // Remove trailing newline
-                if line.ends_with('\n') {
-                    line.pop();
-                    if line.ends_with('\r') {
-                        line.pop();
-                    }
-                }
-                Ok(Some(line))
-            }
-            Err(e) => Err(e.to_string()),
-        }
-    }
+pub trait RIterator {
+    #[miniextendr(r_name = "next_item")]
+    fn next(&self) -> Option<Self::Item>;  // Called next_item() in R
 }
 ```
 

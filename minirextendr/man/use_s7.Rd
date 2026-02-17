@@ -4,7 +4,10 @@
 \alias{use_s7}
 \title{Enable S7 class system support}
 \usage{
-use_s7()
+use_s7(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE
