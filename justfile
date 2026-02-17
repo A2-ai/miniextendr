@@ -40,6 +40,8 @@
 #     just bench-r            - Run R-side benchmarks (requires rpkg installed)
 #     just bench-save         - Save benchmark baseline
 #     just bench-compare      - Compare against last baseline
+#     just bench-compile      - Macro compile-time perf (synthetic crates)
+#     just bench-lint         - Lint scan performance
 #     just bench-check        - Check benchmark crate compiles
 #
 #   Vendor sync:
@@ -214,6 +216,14 @@ bench-compare *cargo_flags:
 # Check benchmark crate
 bench-check *cargo_flags:
     cargo check --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
+
+# Run macro compile-time benchmark (synthetic crates, measures cold/warm/incremental)
+bench-compile *flags:
+    bash tests/perf/macro_compile_bench.sh {{flags}}
+
+# Run lint scan benchmark
+bench-lint *cargo_flags:
+    cargo bench --manifest-path=miniextendr-lint/Cargo.toml --bench lint_scan {{cargo_flags}}
 
 # Run core benchmarks (default features, high-signal targets)
 bench-core *cargo_flags:
