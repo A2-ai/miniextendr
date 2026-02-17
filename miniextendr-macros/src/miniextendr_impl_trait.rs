@@ -414,11 +414,19 @@ fn generate_vtable_static(
 
     // Generate R wrapper code string based on class system (only non-skipped methods)
     let methods_owned: Vec<TraitMethod> = methods.iter().map(|m| (*m).clone()).collect();
-    let r_wrapper_string =
-        match generate_trait_r_wrapper(&type_ident, trait_name, &methods_owned, &consts, class_system, class_has_no_rd, internal, noexport) {
-            Ok(s) => s,
-            Err(e) => return e.into_compile_error(),
-        };
+    let r_wrapper_string = match generate_trait_r_wrapper(
+        &type_ident,
+        trait_name,
+        &methods_owned,
+        &consts,
+        class_system,
+        class_has_no_rd,
+        internal,
+        noexport,
+    ) {
+        Ok(s) => s,
+        Err(e) => return e.into_compile_error(),
+    };
 
     // Generate constant names for module registration
     let call_defs_const = format_ident!(
@@ -508,12 +516,8 @@ fn generate_vtable_static(
             .filter(|m| m.has_self)
             .map(|m| {
                 let name = &m.ident;
-                let shim_name = format_ident!(
-                    "__vtshim_{}__{}__{}",
-                    type_ident,
-                    trait_name,
-                    m.ident
-                );
+                let shim_name =
+                    format_ident!("__vtshim_{}__{}__{}", type_ident, trait_name, m.ident);
                 quote::quote! { #name: #shim_name }
             })
             .collect();
@@ -610,12 +614,7 @@ fn generate_concrete_vtable_shims(
         }
 
         let method_ident = &method.ident;
-        let shim_name = format_ident!(
-            "__vtshim_{}__{}__{}",
-            type_ident,
-            trait_name,
-            method_ident
-        );
+        let shim_name = format_ident!("__vtshim_{}__{}__{}", type_ident, trait_name, method_ident);
 
         // Count non-self parameters
         let param_count = method

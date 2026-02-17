@@ -620,7 +620,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         if input.is_empty() {
             return Ok(Self {
-                force_main_thread: force_main_thread.unwrap_or(cfg!(feature = "default-main-thread")),
+                force_main_thread: force_main_thread
+                    .unwrap_or(cfg!(feature = "default-main-thread")),
                 force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
                 force_invisible,
                 check_interrupt,

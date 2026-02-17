@@ -1332,7 +1332,8 @@ impl ParsedMethod {
 
         // Resolve feature defaults for fields not explicitly set
         method_attrs.worker = worker.unwrap_or(cfg!(feature = "default-worker"));
-        method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(cfg!(feature = "default-main-thread"));
+        method_attrs.unsafe_main_thread =
+            unsafe_main_thread.unwrap_or(cfg!(feature = "default-main-thread"));
         method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "default-coerce"));
         let resolved_error_in_r = error_in_r.unwrap_or(cfg!(feature = "default-error-in-r"));
         if resolved_error_in_r && method_attrs.unwrap_in_r {
@@ -2109,9 +2110,14 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    # Not found at top level — search trait namespace environments".to_string());
     lines.push(format!("    for (ns_name in names({})) {{", class_name));
     lines.push(format!("      ns <- {}[[ns_name]]", class_name));
-    lines.push("      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {".to_string());
+    lines.push(
+        "      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {".to_string(),
+    );
     lines.push("        method <- ns[[name]]".to_string());
-    lines.push("        if (is.function(method) && isTRUE(attr(method, \".__mx_instance__\"))) {".to_string());
+    lines.push(
+        "        if (is.function(method) && isTRUE(attr(method, \".__mx_instance__\"))) {"
+            .to_string(),
+    );
     lines.push("          # Instance method — bind self as first arg".to_string());
     lines.push("          m <- method".to_string());
     lines.push("          s <- self".to_string());

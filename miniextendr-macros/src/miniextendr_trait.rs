@@ -256,8 +256,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         quote::format_ident!("__{}_build_vtable", trait_name.to_string().to_lowercase());
 
     // Collect trait-level generic type parameters
-    let trait_type_params: Vec<&syn::GenericParam> =
-        trait_item.generics.params.iter().collect();
+    let trait_type_params: Vec<&syn::GenericParam> = trait_item.generics.params.iter().collect();
     let trait_param_idents: Vec<&syn::Ident> = trait_type_params
         .iter()
         .filter_map(|p| {
@@ -585,11 +584,7 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
     // Skip methods where Self appears in return type or parameters.
     // In the View context, Self refers to the View struct, not the concrete type,
     // so these methods can't work through the type-erased vtable dispatch.
-    if method
-        .return_type
-        .as_ref()
-        .is_some_and(type_contains_self)
-    {
+    if method.return_type.as_ref().is_some_and(type_contains_self) {
         return None;
     }
     if method.param_types.iter().any(type_contains_self) {
@@ -919,7 +914,10 @@ fn type_contains_self_assoc(ty: &syn::Type, assoc_name: &syn::Ident) -> bool {
             false
         }
         syn::Type::Reference(r) => type_contains_self_assoc(&r.elem, assoc_name),
-        syn::Type::Tuple(t) => t.elems.iter().any(|e| type_contains_self_assoc(e, assoc_name)),
+        syn::Type::Tuple(t) => t
+            .elems
+            .iter()
+            .any(|e| type_contains_self_assoc(e, assoc_name)),
         syn::Type::Slice(s) => type_contains_self_assoc(&s.elem, assoc_name),
         syn::Type::Array(a) => type_contains_self_assoc(&a.elem, assoc_name),
         syn::Type::Paren(p) => type_contains_self_assoc(&p.elem, assoc_name),
@@ -1064,11 +1062,7 @@ fn compute_extra_bounds(
 
     for method in methods {
         // Bare Self in returns → __ImplT: IntoR (as impl bound)
-        if method
-            .return_type
-            .as_ref()
-            .is_some_and(type_contains_self)
-        {
+        if method.return_type.as_ref().is_some_and(type_contains_self) {
             needs_into_r = true;
         }
         // &Self in params → __ImplT: TypedExternal + 'static
@@ -1113,8 +1107,7 @@ fn compute_extra_bounds(
         impl_bounds.push(quote::quote! { ::miniextendr_api::IntoR });
     }
     if needs_typed_external {
-        impl_bounds
-            .push(quote::quote! { ::miniextendr_api::TypedExternal + Send + 'static });
+        impl_bounds.push(quote::quote! { ::miniextendr_api::TypedExternal + Send + 'static });
     }
 
     // Add full return type bounds: RewrittenType: IntoR
