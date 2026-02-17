@@ -1,0 +1,5 @@
+error: defaults(...) references non-existent parameter(s): ghost
+ --> tests/ui/fn_default_attr_nonexistent_param.rs:7:19
+  |
+7 |     #[miniextendr(defaults(ghost = "42"))]
+  |                   ^^^^^^^^

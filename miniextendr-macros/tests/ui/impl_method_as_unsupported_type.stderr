@@ -1,0 +1,5 @@
+error: unsupported `as` type: "tibble". Supported types: data.frame, list, character, numeric, double, integer, logical, matrix, vector, factor, Date, POSIXct, complex, raw, environment, function
+ --> tests/ui/impl_method_as_unsupported_type.rs:7:24
+  |
+7 |     #[miniextendr(as = "tibble")]
+  |                        ^^^^^^^^
