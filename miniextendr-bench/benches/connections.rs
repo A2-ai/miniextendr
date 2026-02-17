@@ -83,16 +83,18 @@ fn connection_write(bencher: divan::Bencher) {
 }
 
 // =============================================================================
-// Read benchmarks at different sizes
+// Parameterized read/write benchmarks
 // =============================================================================
 
-/// Read 128 bytes from a small connection.
 #[cfg(feature = "connections")]
-#[divan::bench]
-fn connection_read_small(bencher: divan::Bencher) {
-    let mut buf = [0u8; 128];
+const IO_SIZES: &[usize] = &[64, 256, 1024, 4096, 16384];
+
+#[cfg(feature = "connections")]
+#[divan::bench(args = IO_SIZES)]
+fn connection_read(bencher: divan::Bencher, size: usize) {
+    let mut buf = vec![0u8; size];
     bencher
-        .with_inputs(|| make_readable_connection(128))
+        .with_inputs(|| make_readable_connection(size))
         .bench_local_refs(|conn| unsafe {
             let handle = get_connection(conn.sexp);
             let n = read_connection(handle, &mut buf);
@@ -100,34 +102,38 @@ fn connection_read_small(bencher: divan::Bencher) {
         });
 }
 
-/// Read 4096 bytes from a larger connection.
 #[cfg(feature = "connections")]
-#[divan::bench]
-fn connection_read_large(bencher: divan::Bencher) {
-    let mut buf = [0u8; 4096];
-    bencher
-        .with_inputs(|| make_readable_connection(4096))
-        .bench_local_refs(|conn| unsafe {
-            let handle = get_connection(conn.sexp);
-            let n = read_connection(handle, &mut buf);
-            divan::black_box(n);
-        });
-}
-
-// =============================================================================
-// Write benchmark with larger payload
-// =============================================================================
-
-/// Write 4096 bytes to a connection (vs the existing 128-byte write).
-#[cfg(feature = "connections")]
-#[divan::bench]
-fn connection_write_large(bencher: divan::Bencher) {
-    let buf = [1u8; 4096];
+#[divan::bench(args = IO_SIZES)]
+fn connection_write_sized(bencher: divan::Bencher, size: usize) {
+    let buf = vec![1u8; size];
     bencher
         .with_inputs(make_connection)
         .bench_local_refs(|conn| unsafe {
             let handle = get_connection(conn.sexp);
             let written = write_connection(handle, &buf);
             divan::black_box(written);
+        });
+}
+
+// =============================================================================
+// Sequential writes — measure throughput under repeated writes
+// =============================================================================
+
+#[cfg(feature = "connections")]
+const WRITE_COUNTS: &[usize] = &[1, 10, 50];
+
+#[cfg(feature = "connections")]
+#[divan::bench(args = WRITE_COUNTS)]
+fn connection_burst_write(bencher: divan::Bencher, n_writes: usize) {
+    let buf = [1u8; 256];
+    bencher
+        .with_inputs(make_connection)
+        .bench_local_refs(|conn| unsafe {
+            let handle = get_connection(conn.sexp);
+            let mut total = 0;
+            for _ in 0..n_writes {
+                total += write_connection(handle, &buf);
+            }
+            divan::black_box(total);
         });
 }
