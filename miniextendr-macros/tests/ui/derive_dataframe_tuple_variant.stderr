@@ -1,0 +1,5 @@
+error: DataFrameRow align does not support tuple variants
+ --> tests/ui/derive_dataframe_tuple_variant.rs:9:5
+  |
+9 |     Data(i32, i32),
+  |     ^^^^

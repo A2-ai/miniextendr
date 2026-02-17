@@ -1,0 +1,5 @@
+error: type conflict for field `value`: variant `B` has a different type than a previous variant
+ --> tests/ui/derive_dataframe_type_collision.rs:9:16
+  |
+9 |     B { value: String },
+  |                ^^^^^^

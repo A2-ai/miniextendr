@@ -795,7 +795,7 @@ impl TryFromSexp for Option<Bytes> {
     type Error = crate::from_r::SexpTypeError;
 
     fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SexpExt, SEXPTYPE};
+        use crate::ffi::{SEXPTYPE, SexpExt};
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
@@ -803,7 +803,7 @@ impl TryFromSexp for Option<Bytes> {
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SexpExt, SEXPTYPE};
+        use crate::ffi::{SEXPTYPE, SexpExt};
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
@@ -816,7 +816,7 @@ impl TryFromSexp for Option<BytesMut> {
     type Error = crate::from_r::SexpTypeError;
 
     fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SexpExt, SEXPTYPE};
+        use crate::ffi::{SEXPTYPE, SexpExt};
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
@@ -824,7 +824,7 @@ impl TryFromSexp for Option<BytesMut> {
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SexpExt, SEXPTYPE};
+        use crate::ffi::{SEXPTYPE, SexpExt};
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
