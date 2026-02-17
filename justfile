@@ -38,8 +38,10 @@
 #     just bench-features     - Feature-gated benchmarks (connections, rayon, etc.)
 #     just bench-full         - Full suite (core + feature matrix)
 #     just bench-r            - Run R-side benchmarks (requires rpkg installed)
-#     just bench-save         - Save benchmark baseline
-#     just bench-compare      - Compare against last baseline
+#     just bench-save         - Save structured baseline (text + CSV + metadata)
+#     just bench-compare      - Show top benchmarks from a baseline
+#     just bench-drift        - Check for regressions between last 2 baselines
+#     just bench-info         - List saved baselines with metadata
 #     just bench-compile      - Macro compile-time perf (synthetic crates)
 #     just bench-lint         - Lint scan performance
 #     just bench-check        - Check benchmark crate compiles
@@ -191,27 +193,21 @@ alias cargo-bench := bench
 bench *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
 
-# Save benchmark baseline (JSON output for regression comparison)
+# Save structured benchmark baseline (raw text + CSV + metadata)
 bench-save *cargo_flags:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p miniextendr-bench/baselines
-    timestamp=$(date +%Y%m%d-%H%M%S)
-    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}} 2>&1 | tee "miniextendr-bench/baselines/bench-${timestamp}.txt"
-    echo "Baseline saved to miniextendr-bench/baselines/bench-${timestamp}.txt"
+    bash tests/perf/bench_baseline.sh save -- {{cargo_flags}}
 
-# Compare current benchmarks against most recent baseline
-bench-compare *cargo_flags:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    baseline=$(ls -t miniextendr-bench/baselines/bench-*.txt 2>/dev/null | head -1)
-    if [[ -z "$baseline" ]]; then
-      echo "No baseline found. Run 'just bench-save' first."
-      exit 1
-    fi
-    echo "Comparing against baseline: $baseline"
-    echo "---"
-    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
+# Show top benchmarks from most recent baseline
+bench-compare *csv_file:
+    bash tests/perf/bench_baseline.sh compare {{csv_file}}
+
+# Check for performance regressions between last 2 baselines
+bench-drift *flags:
+    bash tests/perf/bench_baseline.sh drift {{flags}}
+
+# List saved benchmark baselines with metadata
+bench-info:
+    bash tests/perf/bench_baseline.sh info
 
 # Check benchmark crate
 bench-check *cargo_flags:
