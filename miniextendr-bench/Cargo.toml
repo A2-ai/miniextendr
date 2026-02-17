@@ -89,6 +89,10 @@ name = "sexp_ext"
 harness = false
 
 [[bench]]
+name = "strict"
+harness = false
+
+[[bench]]
 name = "unwind_protect"
 harness = false
 
