@@ -2888,6 +2888,60 @@ where
     Ok(map)
 }
 
+/// Convert R list of named lists to `Vec<HashMap<String, V>>`.
+impl<V: TryFromSexp> TryFromSexp for Vec<HashMap<String, V>>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        list_to_vec_of_maps::<HashMap<String, V>>(sexp)
+    }
+}
+
+/// Convert R list of named lists to `Vec<BTreeMap<String, V>>`.
+impl<V: TryFromSexp> TryFromSexp for Vec<BTreeMap<String, V>>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        list_to_vec_of_maps::<BTreeMap<String, V>>(sexp)
+    }
+}
+
+/// Helper to convert R list (VECSXP) to `Vec<M>` where each element is
+/// converted via `M: TryFromSexp`.
+fn list_to_vec_of_maps<M>(sexp: SEXP) -> Result<Vec<M>, SexpError>
+where
+    M: TryFromSexp,
+    M::Error: Into<SexpError>,
+{
+    use crate::ffi::VECTOR_ELT;
+
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::VECSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::VECSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = sexp.len();
+    let mut result = Vec::with_capacity(len);
+
+    for i in 0..len {
+        let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+        let map = M::try_from_sexp(elem).map_err(Into::into)?;
+        result.push(map);
+    }
+
+    Ok(result)
+}
+
 macro_rules! impl_set_try_from_sexp_native {
     ($set:ident<$t:ty>) => {
         impl TryFromSexp for $set<$t> {

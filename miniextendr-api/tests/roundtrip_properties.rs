@@ -325,6 +325,29 @@ fn prop_vec_option_string_roundtrip() {
 }
 
 // =============================================================================
+// Vec<HashMap<String, T>> roundtrip
+// =============================================================================
+
+#[test]
+fn prop_vec_hashmap_string_i32_roundtrip() {
+    use std::collections::HashMap;
+    // Keys: short non-NUL strings; values: valid (non-NA) i32
+    let entry_strategy = (
+        "[a-z]{1,5}".prop_map(|s: String| s),
+        (i32::MIN + 1)..=i32::MAX,
+    );
+    let map_strategy =
+        prop::collection::hash_map(entry_strategy.0, entry_strategy.1, 0..5);
+    let vec_strategy = prop::collection::vec(map_strategy, 0..5);
+
+    run_proptest(10, vec_strategy, |vals: Vec<HashMap<String, i32>>| {
+        let sexp = vals.clone().into_sexp();
+        let recovered: Vec<HashMap<String, i32>> = unsafe { protected_roundtrip(sexp) };
+        assert_eq!(vals, recovered);
+    });
+}
+
+// =============================================================================
 // i64 safe-range roundtrip (via f64 representation)
 // =============================================================================
 

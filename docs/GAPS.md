@@ -213,19 +213,18 @@ let string_matrix: Vec<Vec<String>> = array.outer_iter()
 
 ### 2.3 Nested Collection Conversions
 
-**Status:** Partial
+**Status:** Complete
 **Impact:** Low
 
-Some nested collection types lack direct conversions:
+All common nested collection types are supported:
 
 | Type | Status |
 |------|--------|
 | `Vec<Vec<T>>` | Works |
 | `Vec<Option<T>>` | Works (all scalar types) |
-| `Vec<HashMap<K, V>>` | Not directly convertible |
+| `Vec<HashMap<String, V>>` | Works (converts to/from R list of named lists) |
+| `Vec<BTreeMap<String, V>>` | Works (converts to/from R list of named lists) |
 | `HashMap<K, Vec<V>>` | Works via nested conversion |
-
-**Workaround:** Decompose to parallel vectors or use `ExternalPtr` for complex structures.
 
 ---
 

@@ -2068,3 +2068,34 @@ impl IntoR for Vec<std::collections::BTreeSet<String>> {
         }
     }
 }
+
+/// Convert `Vec<HashMap<String, V>>` to R list of named lists.
+impl<V: IntoR> IntoR for Vec<HashMap<String, V>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_of_maps_to_list(self)
+    }
+}
+
+/// Convert `Vec<BTreeMap<String, V>>` to R list of named lists.
+impl<V: IntoR> IntoR for Vec<BTreeMap<String, V>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        vec_of_maps_to_list(self)
+    }
+}
+
+/// Helper to convert a Vec of map-like types to an R list of named lists.
+fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::ffi::SEXP {
+    unsafe {
+        let n = vec.len();
+        let list =
+            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(list);
+
+        for (i, map) in vec.into_iter().enumerate() {
+            crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, map.into_sexp());
+        }
+
+        crate::ffi::Rf_unprotect(1);
+        list
+    }
+}
