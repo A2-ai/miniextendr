@@ -725,8 +725,7 @@ impl<K: AsRef<str>, V: AtomicElement, const N: usize> IntoR for AsNamedVector<[(
 
 impl<K: AsRef<str>, V: Clone + AtomicElement> IntoR for AsNamedVector<&[(K, V)]> {
     fn into_sexp(self) -> crate::ffi::SEXP {
-        let (keys, values): (Vec<&K>, Vec<V>) =
-            self.0.iter().map(|(k, v)| (k, v.clone())).unzip();
+        let (keys, values): (Vec<&K>, Vec<V>) = self.0.iter().map(|(k, v)| (k, v.clone())).unzip();
         let sexp = V::vec_to_sexp(values);
         unsafe {
             crate::ffi::Rf_protect(sexp);

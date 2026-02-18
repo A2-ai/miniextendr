@@ -2833,31 +2833,8 @@ where
     let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
     let has_names = names.type_of() == SEXPTYPE::STRSXP && names.len() == len;
 
-    // Check for duplicate non-empty names before conversion
-    if has_names {
-        let mut seen = HashSet::new();
-        for i in 0..len {
-            let charsxp = unsafe { STRING_ELT(names, i as crate::ffi::R_xlen_t) };
-            // Skip NA names
-            if charsxp == unsafe { crate::ffi::R_NaString } {
-                continue;
-            }
-            let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-            if c_str.is_null() {
-                continue;
-            }
-            let name = unsafe { std::ffi::CStr::from_ptr(c_str) }
-                .to_str()
-                .unwrap_or("");
-            // Skip empty names
-            if name.is_empty() {
-                continue;
-            }
-            if !seen.insert(name) {
-                return Err(SexpError::DuplicateName(name.to_string()));
-            }
-        }
-    }
+    // Single-pass: check duplicates AND convert in one loop
+    let mut seen = HashSet::with_capacity(len);
 
     for i in 0..len {
         let key = if has_names {
@@ -2879,6 +2856,11 @@ where
             // Use index as key if no names
             i.to_string()
         };
+
+        // Check duplicate for non-empty keys
+        if !key.is_empty() && !seen.insert(key.clone()) {
+            return Err(SexpError::DuplicateName(key));
+        }
 
         let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
         let value = V::try_from_sexp(elem).map_err(|e| e.into())?;

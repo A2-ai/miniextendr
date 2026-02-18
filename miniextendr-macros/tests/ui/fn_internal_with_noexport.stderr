@@ -1,0 +1,7 @@
+error: `internal` and `noexport` cannot be used together. `internal` already suppresses @export and also adds @keywords internal. Use `internal` alone to mark as internal, or `noexport` alone to only suppress export.
+ --> tests/ui/fn_internal_with_noexport.rs:5:1
+  |
+5 | #[miniextendr(internal, noexport)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)

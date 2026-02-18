@@ -207,14 +207,8 @@ pub fn create_scored_items_df() -> ToDataFrame<ScoredItemDataFrame> {
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(tag = "_type")]
 pub enum SensorReading {
-    Xyz {
-        sensor_id: i32,
-        values: [f64; 3],
-    },
-    Single {
-        sensor_id: i32,
-        reading: f64,
-    },
+    Xyz { sensor_id: i32, values: [f64; 3] },
+    Single { sensor_id: i32, reading: f64 },
 }
 
 /// Create a data frame from enum with array expansion.

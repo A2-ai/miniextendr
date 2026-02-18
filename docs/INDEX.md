@@ -39,6 +39,8 @@
 
 ## Build System
 
+- [DEVELOPER_WORKFLOW.md](DEVELOPER_WORKFLOW.md) -- Quick reference for common development tasks
+- [MACRO_ERRORS.md](MACRO_ERRORS.md) -- Proc-macro and lint error guide (all MXL codes)
 - [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) -- How R builds packages with compiled code
 - [TEMPLATES.md](TEMPLATES.md) -- Template system (`.in` files and configure)
 - [VENDOR.md](VENDOR.md) -- Vendoring, PREPARE_CRAN, and CRAN release prep

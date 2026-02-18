@@ -682,6 +682,7 @@ use miniextendr_macros::r_ffi_checked;
 // Unchecked variadic functions (internal use only, no thread check)
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
+#[allow(varargs_without_pattern)]
 unsafe extern "C-unwind" {
     /// Unchecked variadic `Rf_error`; call checked wrapper when possible.
     #[link_name = "Rf_error"]

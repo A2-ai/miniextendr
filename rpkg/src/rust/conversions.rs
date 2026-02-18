@@ -1402,12 +1402,16 @@ pub fn conv_as_named_list_vec() -> AsNamedList<Vec<(String, i32)>> {
 /// @noRd
 #[miniextendr]
 pub fn conv_as_named_list_array() -> AsNamedList<[(String, f64); 2]> {
-    AsNamedList([("pi".into(), std::f64::consts::PI), ("e".into(), std::f64::consts::E)])
+    AsNamedList([
+        ("pi".into(), std::f64::consts::PI),
+        ("e".into(), std::f64::consts::E),
+    ])
 }
 
 /// @noRd
 #[miniextendr]
-pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::ffi::SEXP)>> {
+pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::ffi::SEXP)>>
+{
     use miniextendr_api::IntoR;
     AsNamedList(vec![
         ("name".into(), "Alice".to_string().into_sexp()),
@@ -1447,7 +1451,10 @@ pub fn conv_as_named_vector_i32() -> AsNamedVector<Vec<(String, i32)>> {
 /// @noRd
 #[miniextendr]
 pub fn conv_as_named_vector_f64() -> AsNamedVector<Vec<(&'static str, f64)>> {
-    AsNamedVector(vec![("pi", std::f64::consts::PI), ("e", std::f64::consts::E)])
+    AsNamedVector(vec![
+        ("pi", std::f64::consts::PI),
+        ("e", std::f64::consts::E),
+    ])
 }
 
 /// @noRd

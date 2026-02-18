@@ -248,7 +248,6 @@ impl<T: serde::Serialize> AsSerialize<T> {
     pub fn into_inner(self) -> T {
         self.0
     }
-
 }
 
 impl<T: serde::Serialize> AsRef<T> for AsSerialize<T> {

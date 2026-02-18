@@ -36,8 +36,7 @@ pub enum ThreadStrategy {
     WorkerThread,
 }
 
-impl ThreadStrategy {
-}
+impl ThreadStrategy {}
 
 /// Return value handling strategy.
 #[derive(Debug, Clone)]

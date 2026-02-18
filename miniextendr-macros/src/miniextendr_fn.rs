@@ -788,7 +788,13 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             } else {
                                 return Err(syn::Error::new_spanned(
                                     ident,
-                                    "unknown boolean option",
+                                    format!(
+                                        "unknown `#[miniextendr]` option `{}`; expected one of: \
+                                         invisible, visible, check_interrupt, unsafe(main_thread), \
+                                         worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, \
+                                         error_in_r, no_error_in_r, strict, no_strict, internal, noexport",
+                                        ident,
+                                    ),
                                 ));
                             }
                             continue;
@@ -910,9 +916,15 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             }
                         }
                     } else {
+                        let key_name = nv.path.get_ident().map(|i| i.to_string()).unwrap_or_default();
                         return Err(syn::Error::new_spanned(
                             nv,
-                            "unknown option; expected `prefer`, `dots`, `lifecycle`, `doc`, or `c_symbol`",
+                            format!(
+                                "unknown `#[miniextendr]` key-value option `{}`. \
+                                 Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
+                                 `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`",
+                                key_name,
+                            ),
                         ));
                     }
                 }
@@ -1021,26 +1033,46 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             } else if ident == "noexport" {
                                 noexport = val;
                             } else {
+                                let opt_name = ident.to_string();
                                 return Err(syn::Error::new_spanned(
-                                    list,
-                                    "this option does not take these arguments; use `option` alone or `option = true/false`",
+                                    &list,
+                                    format!(
+                                        "unknown `#[miniextendr]` option `{opt_name}`. Boolean flags should be \
+                                         written as `option` (alone) or `option = true/false`. \
+                                         Nested options: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
+                                    ),
                                 ));
                             }
                         } else {
+                            let opt_name = list.path.get_ident().map(|i| i.to_string()).unwrap_or_default();
                             return Err(syn::Error::new_spanned(
-                                list,
-                                "this option does not take these arguments; use `option` alone or `option = true/false`",
+                                &list,
+                                format!(
+                                    "`{opt_name}` does not accept parenthesized arguments. \
+                                     Use `{opt_name}` alone or `{opt_name} = true/false`.",
+                                ),
                             ));
                         }
                     } else {
                         // path(something) where path is not a single ident
                         return Err(syn::Error::new_spanned(
                             list,
-                            "this option does not take any arguments",
+                            "unrecognized nested option. \
+                             Nested options are: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
                         ));
                     }
                 }
             }
+        }
+
+        // Validate: `internal` and `noexport` are redundant together
+        if internal && noexport {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`internal` and `noexport` cannot be used together. \
+                 `internal` already suppresses @export and also adds @keywords internal. \
+                 Use `internal` alone to mark as internal, or `noexport` alone to only suppress export.",
+            ));
         }
 
         // Resolve feature defaults for fields not explicitly set

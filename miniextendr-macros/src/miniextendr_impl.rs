@@ -773,7 +773,14 @@ impl syn::parse::Parse for ImplAttrs {
                     _ => {
                         return Err(syn::Error::new(
                             ident.span(),
-                            format!("unknown option: {}", ident_str),
+                            format!(
+                                "unknown impl block option `{}`; expected one of: \
+                                 env, r6, s3, s4, s7, vctrs (class system), \
+                                 class = \"...\" (R class name), \
+                                 label = \"...\" (multi-impl label), \
+                                 strict (strict type conversion)",
+                                ident_str,
+                            ),
                         ));
                     }
                 }
@@ -1679,11 +1686,15 @@ impl ParsedImpl {
                 .segments
                 .last()
                 .map(|s| s.ident.clone())
-                .ok_or_else(|| syn::Error::new_spanned(&item_impl.self_ty, "expected type path"))?,
+                .ok_or_else(|| syn::Error::new_spanned(
+                    &item_impl.self_ty,
+                    "#[miniextendr] impl blocks require a named type (e.g., `impl MyType`)",
+                ))?,
             _ => {
                 return Err(syn::Error::new_spanned(
                     &item_impl.self_ty,
-                    "expected type path",
+                    "#[miniextendr] impl blocks require a named struct type. \
+                     Found a non-path type. Use `impl MyStruct { ... }` with a concrete struct.",
                 ));
             }
         };
@@ -1694,7 +1705,9 @@ impl ParsedImpl {
         if !item_impl.generics.params.is_empty() {
             return Err(syn::Error::new_spanned(
                 &item_impl.generics,
-                "generic impl blocks are not yet supported by #[miniextendr]",
+                "generic impl blocks are not supported by #[miniextendr]. \
+                 R's .Call interface requires monomorphic C symbols, so generic type parameters \
+                 cannot be used. Remove the generic parameters and use a concrete type instead.",
             ));
         }
 
@@ -2860,8 +2873,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         deprecated: Option<String>,
     }
 
-    let mut properties: std::collections::HashMap<String, S7Property> =
-        std::collections::HashMap::new();
+    let mut properties: std::collections::BTreeMap<String, S7Property> =
+        std::collections::BTreeMap::new();
     let mut property_method_idents: std::collections::HashSet<String> =
         std::collections::HashSet::new();
 

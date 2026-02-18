@@ -99,6 +99,15 @@ default-main-thread = ["miniextendr-macros/default-main-thread"]
 ## Enable ALTREP materialization tracking. Logs when ALTREP vectors materialize
 ## (Dataptr called) and provides a counter for diagnostics. Zero-cost when disabled.
 materialization-tracking = []
+## Enable debug instrumentation for tracking collection growth events.
+## Provides track_growth! and report_growth! macros for diagnosing unexpected
+## Vec/arena reallocations. Zero-cost (no-ops) when disabled.
+growth-debug = []
+## Enable main-thread assertions in release builds. In debug builds, the
+## checked FFI wrappers already panic on wrong-thread calls. This feature
+## enables the same assertions in release mode, useful for catching threading
+## bugs during integration testing without full debug overhead.
+release-thread-check = []
 ## Enable fast hasher for refcount protect arenas. Uses ahash instead of SipHash
 ## for improved throughput on large collections. Not DOS-resistant.
 refcount-fast-hash = ["dep:ahash"]

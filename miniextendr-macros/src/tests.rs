@@ -129,7 +129,7 @@ fn miniextendr_attr_rejects_option_arguments() {
     let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(invisible("string_value")))
         .err()
         .unwrap();
-    assert!(err.to_string().contains("does not take these arguments"));
+    assert!(err.to_string().contains("does not accept parenthesized arguments"));
 }
 
 #[test]

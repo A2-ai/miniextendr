@@ -83,9 +83,7 @@ fn test_string_slice() {
 
 // ── AsNamedList / AsNamedVector tests ────────────────────────────────────────
 
-use miniextendr_api::ffi::{
-    INTEGER, R_NamesSymbol, REAL, Rf_getAttrib, VECTOR_ELT,
-};
+use miniextendr_api::ffi::{INTEGER, R_NamesSymbol, REAL, Rf_getAttrib, VECTOR_ELT};
 use miniextendr_api::{AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt};
 
 /// Extract names from an R SEXP as Vec<String>.
@@ -104,11 +102,7 @@ unsafe fn extract_names(sexp: SEXP) -> Vec<String> {
 }
 
 fn test_as_named_list_vec() {
-    let pairs: Vec<(String, i32)> = vec![
-        ("a".into(), 1),
-        ("b".into(), 2),
-        ("c".into(), 3),
-    ];
+    let pairs: Vec<(String, i32)> = vec![("a".into(), 1), ("b".into(), 2), ("c".into(), 3)];
     let sexp = AsNamedList(pairs).into_sexp();
     assert_eq!(unsafe { TYPEOF(sexp) }, SEXPTYPE::VECSXP);
     assert_eq!(unsafe { Rf_xlength(sexp) }, 3);

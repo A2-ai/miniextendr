@@ -285,7 +285,6 @@ enum ResolvedField {
     },
 }
 
-
 /// Resolve a struct field into a `ResolvedField`, applying field attrs.
 fn resolve_struct_field(
     field: &syn::Field,

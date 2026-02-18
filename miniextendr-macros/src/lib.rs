@@ -1148,7 +1148,11 @@ pub fn miniextendr(
                     .first()
                     .map(|attr| attr.span())
                     .unwrap_or_else(|| abi.span()),
-                "missing #[no_mangle] (edition 2021), #[unsafe(no_mangle)] (edition 2024), or #[export_name = \"...\"]",
+                "extern \"C-unwind\" functions need a visible C symbol for R's .Call interface. \
+                 Add one of:\n  \
+                 - `#[unsafe(no_mangle)]` (Rust 2024 edition)\n  \
+                 - `#[no_mangle]` (Rust 2021 edition)\n  \
+                 - `#[export_name = \"my_symbol\"]` (custom symbol name)",
             )
             .into_compile_error()
             .into();
@@ -1157,24 +1161,45 @@ pub fn miniextendr(
         // Validate return type is SEXP for extern "C-unwind" functions
         match output {
             non_return_type @ syn::ReturnType::Default => {
-                return syn::Error::new(non_return_type.span(), "output must be SEXP")
-                    .into_compile_error()
-                    .into();
+                return syn::Error::new(
+                    non_return_type.span(),
+                    "extern \"C-unwind\" functions used with #[miniextendr] must return SEXP. \
+                     Add `-> miniextendr_api::ffi::SEXP` as the return type. \
+                     If you want automatic type conversion, remove `extern \"C-unwind\"` and let \
+                     the macro generate the C wrapper.",
+                )
+                .into_compile_error()
+                .into();
             }
             syn::ReturnType::Type(_rarrow, output_type) => match output_type.as_ref() {
                 syn::Type::Path(type_path) => {
                     if let Some(path_to_sexp) = type_path.path.segments.last().map(|x| &x.ident)
                         && path_to_sexp != "SEXP"
                     {
-                        return syn::Error::new(path_to_sexp.span(), "output must be SEXP")
-                            .into_compile_error()
-                            .into();
+                        return syn::Error::new(
+                            path_to_sexp.span(),
+                            format!(
+                                "extern \"C-unwind\" functions must return SEXP, found `{}`. \
+                                 R's .Call interface expects SEXP return values. \
+                                 Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                                 `extern \"C-unwind\"` to let the macro handle type conversion.",
+                                path_to_sexp,
+                            ),
+                        )
+                        .into_compile_error()
+                        .into();
                     }
                 }
                 _ => {
-                    return syn::Error::new(output_type.span(), "output must be SEXP")
-                        .into_compile_error()
-                        .into();
+                    return syn::Error::new(
+                        output_type.span(),
+                        "extern \"C-unwind\" functions must return SEXP. \
+                         R's .Call interface expects SEXP return values. \
+                         Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                         `extern \"C-unwind\"` to let the macro handle type conversion.",
+                    )
+                    .into_compile_error()
+                    .into();
                 }
             },
         }
@@ -1187,7 +1212,9 @@ pub fn miniextendr(
                 syn::FnArg::Receiver(recv) => {
                     return syn::Error::new_spanned(
                         recv,
-                        "extern functions cannot have self parameter",
+                        "extern \"C-unwind\" functions cannot have a `self` parameter. \
+                         R's .Call interface only accepts SEXP arguments. \
+                         Use `#[miniextendr(env|r6|s3|s4|s7)]` on an impl block for methods.",
                     )
                     .into_compile_error()
                     .into();

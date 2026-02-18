@@ -1276,7 +1276,7 @@ impl TryFromSexp for List {
         let names_sexp = unsafe { ffi::Rf_getAttrib(list_sexp, ffi::R_NamesSymbol) };
         if names_sexp != unsafe { ffi::R_NilValue } {
             let n = unsafe { ffi::Rf_xlength(list_sexp) };
-            let mut seen = HashSet::new();
+            let mut seen = HashSet::with_capacity(n as usize);
 
             for i in 0..n {
                 let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };

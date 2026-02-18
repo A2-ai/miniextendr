@@ -1,4 +1,3 @@
-#![allow(varargs_without_pattern)]
 //! miniextendr-api: core runtime for Rust <-> R interop.
 //!
 //! This crate provides the FFI surface, safety wrappers, and macro re-exports
@@ -321,6 +320,62 @@ pub mod thread;
 #[cfg(feature = "materialization-tracking")]
 pub mod altrep_tracking;
 
+// Collection growth debug instrumentation (diagnostics)
+#[cfg(feature = "growth-debug")]
+pub mod growth_debug;
+
+/// Track a collection growth (reallocation) event.
+///
+/// When the `growth-debug` feature is enabled, increments a thread-local counter
+/// for the named collection. When disabled, compiles to a no-op.
+///
+/// # Example
+///
+/// ```ignore
+/// let old_cap = vec.capacity();
+/// vec.push(item);
+/// if vec.capacity() != old_cap {
+///     track_growth!("my_vec");
+/// }
+/// ```
+#[cfg(feature = "growth-debug")]
+#[macro_export]
+macro_rules! track_growth {
+    ($name:expr) => {
+        $crate::growth_debug::record_growth($name)
+    };
+}
+
+/// Track a collection growth (reallocation) event.
+///
+/// No-op when `growth-debug` feature is disabled.
+#[cfg(not(feature = "growth-debug"))]
+#[macro_export]
+macro_rules! track_growth {
+    ($name:expr) => {};
+}
+
+/// Print and reset all growth counters.
+///
+/// When the `growth-debug` feature is enabled, prints all tracked growth events
+/// to stderr and resets the counters. When disabled, compiles to a no-op.
+#[cfg(feature = "growth-debug")]
+#[macro_export]
+macro_rules! report_growth {
+    () => {
+        $crate::growth_debug::report_and_reset()
+    };
+}
+
+/// Print and reset all growth counters.
+///
+/// No-op when `growth-debug` feature is disabled.
+#[cfg(not(feature = "growth-debug"))]
+#[macro_export]
+macro_rules! report_growth {
+    () => {};
+}
+
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]
 pub mod progress;
@@ -410,9 +465,9 @@ pub mod named_vector;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
-    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsNamedList, AsNamedListExt,
-    AsNamedVector, AsNamedVectorExt, AsRNative, AsRNativeExt, DataFrame, IntoDataFrame,
-    ToDataFrame, ToDataFrameExt,
+    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsNamedList, AsNamedListExt, AsNamedVector,
+    AsNamedVectorExt, AsRNative, AsRNativeExt, DataFrame, IntoDataFrame, ToDataFrame,
+    ToDataFrameExt,
 };
 #[cfg(feature = "serde")]
 pub use convert::{AsSerializeRow, SerializeDataFrame};
