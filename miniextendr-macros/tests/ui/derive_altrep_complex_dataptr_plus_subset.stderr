@@ -1,0 +1,5 @@
+error: `dataptr` and `subset` are mutually exclusive
+ --> tests/ui/derive_altrep_complex_dataptr_plus_subset.rs:6:19
+  |
+6 | #[altrep(dataptr, subset)]
+  |                   ^^^^^^

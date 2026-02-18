@@ -1,0 +1,8 @@
+error: #[derive(Vctrs)] can only be applied to structs (use #[derive(RFactor)] for enums)
+ --> tests/ui_vctrs/derive_vctrs_on_enum.rs:6:1
+  |
+6 | / enum Bad {
+7 | |     A,
+8 | |     B,
+9 | | }
+  | |_^

@@ -1,0 +1,5 @@
+error: unknown type `bogus`; expected one of: numeric, integer, logical, character, raw, complex, list, data_frame, factor, matrix, array, function, environment, null, any, or a string literal for class name
+ --> tests/ui/typed_list_unknown_type.rs:4:34
+  |
+4 |     let _ = typed_list!(alpha => bogus());
+  |                                  ^^^^^

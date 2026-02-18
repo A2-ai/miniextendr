@@ -29,6 +29,9 @@ pub mod bench_plan;
 /// Standard size constants for benchmark parameterization.
 pub const SIZES: &[usize] = &[1, 16, 256, 4096, 65536];
 
+/// Extended sizes for scaling benchmarks (catches GC pressure / cache effects).
+pub const LARGE_SIZES: &[usize] = &[1_000, 10_000, 100_000, 1_000_000];
+
 /// Size labels for divan output.
 pub const SIZE_LABELS: &[&str] = &["1", "16", "256", "4K", "64K"];
 

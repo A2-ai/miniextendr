@@ -1,0 +1,5 @@
+error: IntoList can only be derived for structs
+ --> tests/ui/derive_into_list_on_enum.rs:6:6
+  |
+6 | enum Bad {
+  |      ^^^

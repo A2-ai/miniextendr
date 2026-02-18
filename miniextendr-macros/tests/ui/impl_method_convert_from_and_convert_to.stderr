@@ -1,0 +1,5 @@
+error: cannot specify both `convert_from` and `convert_to` on the same method; convert_from is for static methods, convert_to is for instance methods
+ --> tests/ui/impl_method_convert_from_and_convert_to.rs:8:12
+  |
+8 |     pub fn conflicting(&self) {}
+  |            ^^^^^^^^^^^

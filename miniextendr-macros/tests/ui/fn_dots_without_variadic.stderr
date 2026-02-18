@@ -1,0 +1,5 @@
+error: #[miniextendr(dots = typed_list!(...))] requires a `...` parameter in the function signature
+ --> tests/ui/fn_dots_without_variadic.rs:3:15
+  |
+3 | #[miniextendr(dots = typed_list!(x => numeric()))]
+  |               ^^^^

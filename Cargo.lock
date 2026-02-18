@@ -795,6 +795,7 @@ dependencies = [
 name = "miniextendr-lint"
 version = "0.1.0"
 dependencies = [
+ "divan",
  "miniextendr-macros-core",
  "proc-macro2",
  "quote",

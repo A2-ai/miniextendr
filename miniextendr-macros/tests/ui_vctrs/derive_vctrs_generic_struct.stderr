@@ -1,0 +1,5 @@
+error: Vctrs does not support generic structs
+ --> tests/ui_vctrs/derive_vctrs_generic_struct.rs:7:11
+  |
+7 | struct Bad<T> {
+  |           ^^^

@@ -1,0 +1,5 @@
+error: unknown r6 option: unknown_opt (expected inherit, portable, cloneable, lock_objects, lock_class, r_data_accessors)
+ --> tests/ui/impl_r6_unknown_option.rs:7:18
+  |
+7 | #[miniextendr(r6(unknown_opt = true))]
+  |                  ^^^^^^^^^^^

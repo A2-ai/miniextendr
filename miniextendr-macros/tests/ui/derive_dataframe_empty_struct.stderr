@@ -1,5 +1,0 @@
-error: DataFrameRow requires at least one named field
- --> tests/ui/derive_dataframe_empty_struct.rs:6:8
-  |
-6 | struct Empty {}
-  |        ^^^^^

@@ -140,15 +140,21 @@ miniextendr_module! {
 
 ---
 
-### ~~1.4 No Documentation Override Attributes~~ PARTIALLY RESOLVED
+### ~~1.4 No Documentation Override Attributes~~ RESOLVED
 
-**Status:** `internal` and `noexport` implemented; `doc` override not implemented
+**Status:** All implemented
 **Resolution:** `#[miniextendr(internal)]` injects `@keywords internal` and suppresses `@export`.
 `#[miniextendr(noexport)]` suppresses `@export` only. Both work on standalone functions
 and all 6 class system impl blocks via `ClassDocBuilder::with_export_control()`.
+`#[miniextendr(doc = "...")]` provides custom roxygen override (replaces auto-generated docs).
 
-**Still missing:**
-- `#[miniextendr(doc = "Custom documentation")]` — custom roxygen override
+**Working example:**
+```rust
+#[miniextendr(doc = "@title Custom Title\n@description Custom description.")]
+pub fn my_func(x: i32) -> i32 { x }
+```
+
+See `rpkg/src/rust/doc_attr_tests.rs` for test coverage.
 
 ---
 
@@ -388,8 +394,6 @@ The connections API wraps R's internal connection system but is marked unstable 
 - `RConnectionIo` builder with capability detection
 
 **What's missing:**
-- No example implementations
-- No tests beyond compile-time checks
 - No wide character support
 - Limited binary mode handling
 - No statistics/introspection
@@ -695,19 +699,14 @@ Run with: `cargo test --test ui -p miniextendr-macros`
 
 ---
 
-### ~~6.3 Snapshot Testing Underutilized~~ RESOLVED
+### 6.3 Snapshot Testing
 
-**Status:** Implemented (12 tests)
-**Location:** `miniextendr-macros/tests/snapshots.rs`
+**Status:** Not implemented
+**Impact:** Low
 
-`expect-test` inline snapshot tests cover:
-- Standalone function R wrappers: simple, greeting, void return, private (no @export),
-  roxygen-documented, Option return, Result return, strict mode
-- Export control: `#[miniextendr(internal)]` (@keywords internal), `#[miniextendr(noexport)]`
-- Class systems: env class (constructor + methods + dispatch), R6 class
-
-Run with: `cargo test -p miniextendr-macros --test snapshots`
-Update snapshots: `UPDATE_EXPECT=1 cargo test -p miniextendr-macros --test snapshots`
+`miniextendr-macros/tests/snapshots.rs` does not exist. R wrapper output is tested
+indirectly via trybuild UI tests (6.2) and R-level integration tests, but there are
+no inline snapshot tests for generated R code.
 
 ---
 

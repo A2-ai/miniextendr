@@ -4,7 +4,7 @@
 
 use miniextendr_api::IntoR;
 use miniextendr_api::ffi::SEXP;
-use miniextendr_bench::SIZES;
+use miniextendr_bench::{LARGE_SIZES, SIZES};
 
 fn main() {
     miniextendr_bench::init();
@@ -268,4 +268,32 @@ fn vec_option_string_10pct_na(n: usize) -> SEXP {
 #[divan::bench]
 fn unit_type() -> SEXP {
     divan::black_box(().into_sexp())
+}
+
+// =============================================================================
+// Large-scale benchmarks (A10: detect GC pressure / cache effects at 100K-1M)
+// =============================================================================
+
+#[divan::bench(args = LARGE_SIZES)]
+fn scale_vec_i32(n: usize) -> SEXP {
+    let vec = make_int_vec(n);
+    divan::black_box(vec.into_sexp())
+}
+
+#[divan::bench(args = LARGE_SIZES)]
+fn scale_vec_f64(n: usize) -> SEXP {
+    let vec = make_real_vec(n);
+    divan::black_box(vec.into_sexp())
+}
+
+#[divan::bench(args = LARGE_SIZES)]
+fn scale_vec_string(n: usize) -> SEXP {
+    let vec = make_string_vec(n);
+    divan::black_box(vec.into_sexp())
+}
+
+#[divan::bench(args = LARGE_SIZES)]
+fn scale_vec_option_i32_50pct_na(n: usize) -> SEXP {
+    let vec = make_option_i32_vec(n, 0.5);
+    divan::black_box(vec.into_sexp())
 }
