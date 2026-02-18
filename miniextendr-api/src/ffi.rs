@@ -681,7 +681,6 @@ use miniextendr_macros::r_ffi_checked;
 
 // Unchecked variadic functions (internal use only, no thread check)
 #[allow(clashing_extern_declarations)]
-#[allow(non_snake_case)]
 #[allow(varargs_without_pattern)]
 unsafe extern "C-unwind" {
     /// Unchecked variadic `Rf_error`; call checked wrapper when possible.
@@ -724,7 +723,6 @@ unsafe extern "C-unwind" {
 
 // Console hooks (non-API; declared in Rinterface.h)
 #[cfg(feature = "nonapi")]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     pub static ptr_R_WriteConsoleEx: Option<
         unsafe extern "C-unwind" fn(
@@ -823,7 +821,6 @@ pub unsafe fn REprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::o
 #[allow(missing_docs)]
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     /// The canonical R `NULL` value.
     pub static R_NilValue: SEXP;
@@ -1572,7 +1569,6 @@ unsafe extern "C-unwind" {
 // Use with caution and always check R_CONNECTIONS_VERSION.
 #[r_ffi_checked]
 #[cfg(feature = "connections")]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     /// Create a new custom connection.
     ///
@@ -1733,7 +1729,6 @@ pub type R_ExternalMethodDef = R_CallMethodDef;
 #[allow(missing_docs)]
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     pub fn R_registerRoutines(
         info: *mut DllInfo,
@@ -1827,7 +1822,6 @@ pub mod nonapi_encoding {
 
     #[r_ffi_checked]
     #[allow(clashing_extern_declarations)]
-    #[allow(non_snake_case)]
     unsafe extern "C-unwind" {
         pub fn R_nativeEncoding() -> *const ::std::os::raw::c_char;
 
@@ -2276,7 +2270,6 @@ pub enum Sampletype {
 }
 
 #[r_ffi_checked]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     /// Save the current RNG state from R's global state.
     ///
@@ -2340,7 +2333,6 @@ unsafe extern "C-unwind" {
 // region: Memory allocation (R_ext/Memory.h)
 
 #[r_ffi_checked]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     /// Get the current R memory stack watermark.
     ///
@@ -2450,7 +2442,6 @@ unsafe extern "C-unwind" {
 // region: Sorting and utility functions (R_ext/Utils.h)
 
 #[r_ffi_checked]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     /// Sort an integer vector in place (ascending order).
     ///
@@ -2550,7 +2541,6 @@ unsafe extern "C-unwind" {
     /// - `indx`: Pointer to index array (permuted alongside v)
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    #[allow(non_snake_case)]
     pub fn R_qsort_I(
         v: *mut f64,
         indx: *mut ::std::os::raw::c_int,
@@ -2575,7 +2565,6 @@ unsafe extern "C-unwind" {
     /// - `indx`: Pointer to index array
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    #[allow(non_snake_case)]
     pub fn R_qsort_int_I(
         iv: *mut ::std::os::raw::c_int,
         indx: *mut ::std::os::raw::c_int,
@@ -2727,7 +2716,6 @@ unsafe extern "C-unwind" {
 // region: Additional Rinternals.h functions
 
 #[r_ffi_checked]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     // String/character functions
 
