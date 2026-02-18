@@ -1,0 +1,5 @@
+error: `width` must be >= 1
+ --> tests/ui/derive_dataframe_field_width_zero.rs:7:25
+  |
+7 |     #[dataframe(width = 0)]
+  |                         ^
