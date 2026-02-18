@@ -91,26 +91,16 @@ my_func <- function(x, ...) {
 
 ---
 
-### 1.3 Feature-Gated Module Entries Don't Work
+### 1.3 Feature-Gated Module Entries
 
-**Status:** Broken
-**Impact:** Medium
+**Status:** By design
+**Impact:** Low
 **Location:** `miniextendr-macros/src/lib.rs:1207`
 
-Although the macro parses `#[cfg(...)]` attributes on module entries, they don't function correctly at runtime.
+`#[cfg(...)]` attributes on individual `fn` entries inside `miniextendr_module!` don't work because the macro generates a monolithic module registration block — individual entries can't be conditionally compiled independently.
 
-**Current behavior:**
-```rust
-// THIS DOES NOT WORK CORRECTLY
-miniextendr_module! {
-    mod mymod;
+The **correct pattern** is path-based module switching, which keeps function definitions and their module registrations in sync:
 
-    #[cfg(feature = "rayon")]
-    fn rayon_function;  // Won't be conditionally compiled properly
-}
-```
-
-**Workaround - use path-based module switching:**
 ```rust
 // In lib.rs
 #[cfg(feature = "rayon")]
@@ -123,7 +113,7 @@ mod rayon_tests;
 
 miniextendr_module! {
     mod mymod;
-    use rayon_tests;  // Always present, contents vary
+    use rayon_tests;  // Always present, contents vary by feature
 }
 ```
 
@@ -137,6 +127,8 @@ miniextendr_module! {
     // Empty when feature disabled
 }
 ```
+
+This pattern is used throughout the rpkg example package (e.g., `rayon_tests.rs` / `rayon_tests_disabled.rs`) and is documented in CLAUDE.md.
 
 ---
 
@@ -239,13 +231,12 @@ Some nested collection types lack direct conversions:
 
 ## 3. Class System Gaps
 
-### 3.1 S7 Features
+### ~~3.1 S7 Features~~ RESOLVED
 
-**Status:** Core features implemented; advanced features remain
-**Impact:** Low (remaining items are niche)
+**Status:** All features implemented
 **Location:** `miniextendr-macros/src/miniextendr_impl.rs`
 
-S7 support covers constructors, methods, properties, inheritance, and type coercion:
+All S7 features are implemented:
 
 | Feature | Status |
 |---------|--------|
@@ -262,8 +253,9 @@ S7 support covers constructors, methods, properties, inheritance, and type coerc
 | Abstract classes (`s7(abstract)`) | Implemented |
 | Single inheritance (`s7(parent = "...")`) | Implemented |
 | Multi-level inheritance (3+ level chains) | Implemented |
-| Property validation (`@prop_validator`) | Not implemented |
-| Method combination (before/after) | Not implemented |
+| Property validation (`s7(validate)`) | Implemented |
+
+Method combination (before/after) is not applicable — S7 is single-dispatch by design.
 
 **Multi-level inheritance example:** `S7Animal` (abstract) -> `S7Dog` -> `S7GoldenRetriever`
 demonstrates a 3-level chain with methods and properties inherited through S7 generic dispatch.
@@ -360,7 +352,7 @@ across all class systems.
 
 ### 3.4 S4 Limitations
 
-**Status:** Basic implementation only
+**Status:** Core features implemented; advanced S4 features mostly not applicable
 **Impact:** Low
 **Location:** `miniextendr-macros/src/miniextendr_impl.rs:1701-1826`
 
@@ -368,11 +360,15 @@ across all class systems.
 |---------|--------|
 | `setClass` with `.ptr` slot | Implemented |
 | `setGeneric`/`setMethod` | Implemented |
-| Virtual classes | Not implemented |
-| Multiple dispatch | Not implemented |
-| Method combination | Not implemented |
-| Slot validation | Not implemented |
-| Class inheritance | Not implemented |
+| Virtual classes | N/A (use S7 abstract classes instead) |
+| Multiple dispatch | N/A (miniextendr is single-dispatch; Rust types are opaque `.ptr`) |
+| Method combination | N/A (not meaningful for `.Call`-based methods) |
+| Slot validation | N/A (`.ptr` is always externalptr, validation happens in Rust) |
+| Class inheritance | Not implemented (use S7 for inheritance chains) |
+
+Most "missing" S4 features are not applicable because miniextendr wraps Rust types as opaque
+external pointers — S4's slot system, multiple dispatch, and validation operate on R-native
+data structures that don't exist here. **S7 is the recommended class system for advanced OOP.**
 
 ---
 
@@ -432,17 +428,13 @@ check_connections_version();  // Expects R_CONNECTIONS_VERSION == 1
 
 ### 4.3 Async/Await Support
 
-**Status:** Not implemented
-**Impact:** Low (workarounds exist)
+**Status:** Not planned (by design)
+**Impact:** Low
 
-There is no async/await or Tokio integration. The worker thread pattern handles most use cases.
+There is no async/await or Tokio integration. R's C API is single-threaded and synchronous —
+async would require a runtime that conflicts with R's execution model. The worker thread
+pattern already provides the key benefit (non-blocking Rust execution):
 
-**Current architecture:**
-- Worker thread for CPU-bound Rust code
-- `with_r_thread()` for R API calls from worker
-- Synchronous execution model
-
-**Workaround for I/O-bound operations:**
 ```rust
 #[miniextendr]
 pub fn fetch_data(url: String) -> String {
@@ -452,21 +444,23 @@ pub fn fetch_data(url: String) -> String {
 }
 ```
 
+For true async I/O needs, users should use R-level parallelism (mirai, callr) with
+miniextendr handling the per-request Rust work synchronously.
+
 ---
 
 ### 4.4 Lazy Evaluation / Promises
 
-**Status:** Not implemented
-**Impact:** Low
+**Status:** Not planned (not applicable)
+**Impact:** None
 
-No support for R's promise mechanism (`PROMSXP`). Cannot implement lazy function arguments.
+R's promise mechanism (`PROMSXP`) is not useful in `.Call()` context because R evaluates
+all arguments before passing them to C/Rust code. By the time miniextendr receives a value,
+it's already been forced. Implementing promise accessors would only be useful for
+manipulating promises passed inside list/environment containers, which is a niche use case
+better handled with raw SEXP manipulation.
 
-**What would be needed:**
-- `PRVALUE()`, `PRCODE()`, `PRENV()` accessors
-- Promise state tracking (unevaluated/evaluated/errored)
-- Integration with R's evaluation system
-
-**Workaround:** Work with unevaluated expressions (`LANGSXP`) and call `eval()` explicitly.
+**If needed:** Work with unevaluated expressions (`LANGSXP`) and call `eval()` explicitly.
 
 ---
 
