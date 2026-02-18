@@ -162,9 +162,9 @@ See `rpkg/src/rust/doc_attr_tests.rs` for test coverage.
 **Impact:** Medium
 **Location:** `miniextendr-api/src/from_r.rs:1464-1494`
 
-**Contract:** R vectors are copy-on-write; miniextendr enforces this by disallowing mutable slice parameters in `#[miniextendr]` functions. While `TryFromSexp` is implemented for `&'static mut [T]`, exposing it through the macro boundary would violate R's invariants:
+**Contract:** Mutable slices backed by R SEXPs are unsafe because writing through them can trigger GC. For example, setting an element in a `&mut [SEXP]` to `R_NilValue` may drop the last reference to an object, causing GC to collect it and shrink/move the backing storage -- invalidating the slice pointer mid-use. While `TryFromSexp` is implemented for `&'static mut [T]`, exposing it through the macro boundary is banned because:
 
-1. R vectors use copy-on-write semantics -- mutation violates R's invariants
+1. Writing through an R-backed slice can trigger GC, invalidating the pointer
 2. The `'static` lifetime on slices is a "lie" -- actual lifetime is tied to GC protection
 3. Multiple R references to the same vector would create aliased mutable references
 

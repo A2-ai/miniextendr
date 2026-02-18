@@ -10,7 +10,10 @@ Previous session completed Tier 1 + most of Tier 2-3 (commits b70e3cd..044146c).
 ### B4. Safe mutable input helpers
 
 Copy-in/copy-out pattern for users who want to "mutate" R vectors from Rust.
-R vectors are copy-on-write, so `&mut [T]` parameters are banned at the macro boundary.
+`&mut [T]` parameters are banned at the macro boundary because writing through
+a slice backed by an R SEXP is unsafe: setting an element (e.g. to R_NilValue
+in a `&mut [SEXP]`) can drop the last reference to an object, triggering GC,
+which may shrink/move the backing storage — invalidating the slice pointer.
 The workaround is: accept `&[T]`, copy into `Vec<T>`, mutate, return `Vec<T>`.
 Formalize this as a helper type or documented pattern with examples.
 
