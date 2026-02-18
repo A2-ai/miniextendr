@@ -23,6 +23,7 @@ just devtools-test      # Run R tests
 
 ```bash
 just check              # Type-check all crates
+just check-features     # Verify feature combinations compile
 just test               # Run Rust unit tests
 just clippy             # Lint
 just fmt                # Format
