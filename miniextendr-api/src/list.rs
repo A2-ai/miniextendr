@@ -10,6 +10,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 /// Owned handle to an R list (`VECSXP`).
+///
+/// # Examples
+///
+/// ```no_run
+/// use miniextendr_api::list::List;
+///
+/// let list = List::from_values(vec![1i32, 2, 3]);
+/// assert_eq!(list.len(), 3);
+/// let first: Option<i32> = list.get_index(0);
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct List(SEXP);
 

@@ -16,6 +16,15 @@
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 
 /// Trait for converting Rust types to R SEXP values.
+///
+/// # Examples
+///
+/// ```no_run
+/// use miniextendr_api::into_r::IntoR;
+///
+/// let sexp = 42i32.into_sexp();
+/// let sexp = "hello".to_string().into_sexp();
+/// ```
 pub trait IntoR {
     /// Convert this value to an R SEXP.
     ///

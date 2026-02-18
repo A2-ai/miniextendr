@@ -252,6 +252,18 @@ impl From<SexpNaError> for SexpError {
 }
 
 /// TryFrom-style trait for converting SEXP to Rust types.
+///
+/// # Examples
+///
+/// ```no_run
+/// use miniextendr_api::ffi::SEXP;
+/// use miniextendr_api::from_r::TryFromSexp;
+///
+/// fn example(sexp: SEXP) {
+///     let value: i32 = TryFromSexp::try_from_sexp(sexp).unwrap();
+///     let text: String = TryFromSexp::try_from_sexp(sexp).unwrap();
+/// }
+/// ```
 pub trait TryFromSexp: Sized {
     /// The error type returned when conversion fails.
     type Error;
