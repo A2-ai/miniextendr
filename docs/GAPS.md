@@ -80,7 +80,7 @@ pub fn my_func(x: i32, ...) { }
 pub fn my_func(..., x: i32) { }
 ```
 
-**Why:** R's argument matching algorithm requires `...` to be final. When R encounters `...`, it captures all remaining unmatched arguments. Placing named parameters after `...` creates ambiguity in R's dispatch mechanism.
+**Contract:** R's argument matching algorithm requires `...` to be final. When R encounters `...`, it captures all remaining unmatched arguments. Placing named parameters after `...` creates ambiguity in R's dispatch mechanism. miniextendr enforces this at compile time.
 
 The generated R wrapper:
 ```r
@@ -88,6 +88,8 @@ my_func <- function(x, ...) {
     .Call(C_my_func, .call = match.call(), x, list(...))
 }
 ```
+
+See [dots_typed_list.md](dots_typed_list.md) for the full dots guide, including `typed_list!` validation.
 
 ---
 
@@ -130,6 +132,8 @@ miniextendr_module! {
 
 This pattern is used throughout the rpkg example package (e.g., `rayon_tests.rs` / `rayon_tests_disabled.rs`) and is documented in CLAUDE.md.
 
+See [FEATURES.md](FEATURES.md) for the full feature flags reference.
+
 ---
 
 ### ~~1.4 No Documentation Override Attributes~~ RESOLVED
@@ -154,15 +158,14 @@ See `rpkg/src/rust/doc_attr_tests.rs` for test coverage.
 
 ### 2.1 Mutable Slice Parameters Not Supported
 
-**Status:** By design (safety)
+**Status:** By design (safety contract)
 **Impact:** Medium
 **Location:** `miniextendr-api/src/from_r.rs:1464-1494`
 
-While `TryFromSexp` is implemented for `&'static mut [T]`, using mutable slices as `#[miniextendr]` function parameters is unsafe and not supported.
+**Contract:** R vectors are copy-on-write; miniextendr enforces this by disallowing mutable slice parameters in `#[miniextendr]` functions. While `TryFromSexp` is implemented for `&'static mut [T]`, exposing it through the macro boundary would violate R's invariants:
 
-**Why it's unsafe:**
-1. R vectors use copy-on-write semantics - mutation violates R's invariants
-2. The `'static` lifetime on slices is a "lie" - actual lifetime is tied to GC protection
+1. R vectors use copy-on-write semantics -- mutation violates R's invariants
+2. The `'static` lifetime on slices is a "lie" -- actual lifetime is tied to GC protection
 3. Multiple R references to the same vector would create aliased mutable references
 
 **Workarounds:**
@@ -189,6 +192,8 @@ pub fn modify_state(state: &mut MyState) {
 }
 ```
 
+See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) for slice lifetime details and [SAFETY.md](SAFETY.md) for the full safety model.
+
 ---
 
 ### 2.2 String Matrix/Array Support
@@ -207,7 +212,9 @@ let string_matrix: Vec<Vec<String>> = array.outer_iter()
     .collect();
 ```
 
-**Why:** R's STRSXP is a vector of CHARSXP pointers, not contiguous memory. Direct ndarray integration would require special handling.
+**Why:** R's STRSXP is a vector of CHARSXP pointers, not contiguous memory. Direct ndarray integration would require special handling because ndarray assumes a contiguous backing buffer.
+
+See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) for supported matrix types and [FEATURES.md](FEATURES.md#ndarray) for the `ndarray` feature flag.
 
 ---
 
@@ -368,8 +375,14 @@ across all class systems.
 | Class inheritance | Not implemented (use S7 for inheritance chains) |
 
 Most "missing" S4 features are not applicable because miniextendr wraps Rust types as opaque
-external pointers — S4's slot system, multiple dispatch, and validation operate on R-native
+external pointers -- S4's slot system, multiple dispatch, and validation operate on R-native
 data structures that don't exist here. **S7 is the recommended class system for advanced OOP.**
+
+**Recommended pattern:** Use `#[miniextendr(s7)]` for inheritance chains, computed properties,
+and generic dispatch. Fall back to S4 only when integrating with Bioconductor or other S4-based
+ecosystems.
+
+See [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) for the full class system comparison and decision flowchart.
 
 ---
 
@@ -403,6 +416,15 @@ check_connections_version();  // Expects R_CONNECTIONS_VERSION == 1
 
 **Warning from R source:**
 > "We do not expect future connection APIs to be backward-compatible so if you use this, you *must* check the version and proceed only if it matches what you expect."
+
+**Recommended pattern:** Gate connection usage behind feature detection and always check the ABI version:
+```rust
+if check_connections_version().is_ok() {
+    // Safe to use connection API
+}
+```
+
+See [FEATURES.md](FEATURES.md#connections) for the `connections` feature flag.
 
 ---
 
@@ -448,6 +470,8 @@ pub fn fetch_data(url: String) -> String {
 For true async I/O needs, users should use R-level parallelism (mirai, callr) with
 miniextendr handling the per-request Rust work synchronously.
 
+See [THREADS.md](THREADS.md) for the worker thread model and [FEATURES.md](FEATURES.md#rayon) for parallel iteration via Rayon.
+
 ---
 
 ### 4.4 Lazy Evaluation / Promises
@@ -455,13 +479,11 @@ miniextendr handling the per-request Rust work synchronously.
 **Status:** Not planned (not applicable)
 **Impact:** None
 
-R's promise mechanism (`PROMSXP`) is not useful in `.Call()` context because R evaluates
-all arguments before passing them to C/Rust code. By the time miniextendr receives a value,
-it's already been forced. Implementing promise accessors would only be useful for
-manipulating promises passed inside list/environment containers, which is a niche use case
-better handled with raw SEXP manipulation.
+**Contract:** R evaluates all `.Call()` arguments before entering C/Rust code. By the time miniextendr receives a value, promises have already been forced. This is an R-level guarantee, not a miniextendr limitation.
 
-**If needed:** Work with unevaluated expressions (`LANGSXP`) and call `eval()` explicitly.
+Implementing promise accessors would only be useful for manipulating promises passed inside list/environment containers, which is a niche use case better handled with raw SEXP manipulation.
+
+**Recommended pattern:** For lazy evaluation needs, use R-level wrappers (e.g., `delayedAssign`, `substitute`) and pass the resulting values to Rust. If you need unevaluated expressions, work with `LANGSXP` and call `Rf_eval()` explicitly via the FFI.
 
 ---
 
@@ -491,6 +513,8 @@ impl<T, R> TryCoerce<R> for T where T: Coerce<R> {
     }
 }
 ```
+
+See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#coercion-system) for the user-facing coercion guide and [COERCE.md](COERCE.md) for the full coercion trait design.
 
 ---
 
@@ -528,11 +552,15 @@ let x: Option<i32> = None;
 let r: i32 = x.coerce();  // Returns NA_INTEGER
 ```
 
+See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#na-value-representation) for the full NA handling guide with examples for all types.
+
 ---
 
 ### 5.3 SEXP Lifetime Assumptions
 
 **Location:** `miniextendr-api/src/ffi.rs:215-228`
+
+**Contract:** SEXP lifetimes are tied to R's GC protection, not Rust's borrow checker. miniextendr uses `'static` as a convenience but the actual lifetime is the protection scope.
 
 **The `'static` lifetime is a lie:**
 ```rust
@@ -558,13 +586,17 @@ unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T];
 unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str
 ```
 
+**Recommended pattern:** Use `OwnedProtect` or `ProtectScope` for RAII-based SEXP protection. Never store raw SEXPs in long-lived Rust structures without protection.
+
+See [GC_PROTECT.md](GC_PROTECT.md) for the full GC protection toolkit and [SAFETY.md](SAFETY.md) for safety invariants.
+
 ---
 
 ### 5.4 Mutable Receiver Semantics on ExternalPtr
 
 **Location:** `miniextendr-api/src/externalptr.rs:667-683`
 
-**The pitfall:** `&mut self` methods on `ExternalPtr` mutate the Rust data but this doesn't "update" R's copy.
+**Contract:** `ExternalPtr` wraps a heap-allocated Rust value behind an R external pointer. Mutation via `&mut self` affects the shared heap allocation directly -- both R and Rust see the same data. This is reference semantics, not copy-on-write.
 
 ```rust
 impl MyStruct {
@@ -592,22 +624,30 @@ pub fn replace(&mut self, new: Self) {
 }
 ```
 
+See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#externalptr-semantics) for the ExternalPtr ownership model.
+
 ---
 
 ### 5.5 Thread Safety Debug Assertions
 
 **Location:** `miniextendr-api/src/from_r.rs`
 
-Thread safety checks only run in debug builds:
+**Contract:** R's C API is single-threaded. miniextendr enforces this via two layers: debug-only assertions on SEXP access, and runtime checks on all checked FFI wrappers.
+
+Debug-only SEXP thread assertions:
 
 ```rust
 #[cfg(debug_assertions)]
 fn assert_main_thread() { ... }
 ```
 
-**Implication:** Release builds could have thread safety violations that go undetected. Use `#[miniextendr(unsafe(main_thread))]` for explicit main-thread-only functions.
+**Implication:** Release builds could have SEXP-access thread safety violations that go undetected. Use `#[miniextendr(unsafe(main_thread))]` for explicit main-thread-only functions.
 
-**Runtime thread checks:** The checked FFI wrappers (`Rf_error`, `Rprintf`, etc.) DO check `is_r_main_thread()` at runtime and panic with a clear message like "Rf_error called from non-main thread".
+**Runtime thread checks (always active):** The checked FFI wrappers (`Rf_error`, `Rprintf`, etc.) check `is_r_main_thread()` at runtime in all build modes and panic with a clear message like "Rf_error called from non-main thread".
+
+**Recommended pattern:** Rely on the worker thread model for safe R API access. For explicit thread control, use `spawn_with_r()` or `StackCheckGuard`.
+
+See [THREADS.md](THREADS.md) for the thread safety model, [SAFETY.md](SAFETY.md) for invariants, and [ERROR_HANDLING.md](ERROR_HANDLING.md#thread-safety) for thread-related error patterns.
 
 ---
 
@@ -655,6 +695,8 @@ pub fn safe_threaded_work() -> Result<i32, String> {
 ```
 
 **Tests:** See `test-errors-more.R` for skipped tests demonstrating this behavior.
+
+See [ERROR_HANDLING.md](ERROR_HANDLING.md) for the full error handling model and [THREADS.md](THREADS.md) for the worker thread architecture.
 
 ---
 

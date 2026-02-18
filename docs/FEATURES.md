@@ -551,3 +551,21 @@ Feature implications (automatically enabled):
 | `serde_json` | `serde` |
 | `rand_distr` | `rand` |
 | `indicatif` | `nonapi` |
+
+---
+
+## Known Limitations
+
+- **`connections` is experimental.** R reserves the right to change the connection ABI without backward compatibility. Always check `R_CONNECTIONS_VERSION`. See [GAPS.md](GAPS.md#41-r-connections-api-experimental).
+- **Feature-gated module entries** require path-based module switching, not `#[cfg]` on individual `fn` entries in `miniextendr_module!`. See [GAPS.md](GAPS.md#13-feature-gated-module-entries).
+- **vctrs cross-package export** and inheritance are not yet implemented. See [GAPS.md](GAPS.md) section 4.2.
+
+See [GAPS.md](GAPS.md) for the full catalog of known limitations.
+
+---
+
+## See Also
+
+- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) -- How feature-gated types convert to/from R
+- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features
+- [THREADS.md](THREADS.md) -- Thread utilities enabled by the `nonapi` feature
