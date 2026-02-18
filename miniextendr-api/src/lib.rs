@@ -406,6 +406,7 @@ pub mod convert;
 pub mod dots;
 pub mod list;
 pub mod missing;
+pub mod named_vector;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
@@ -416,6 +417,7 @@ pub use convert::{
 pub use convert::{AsSerializeRow, SerializeDataFrame};
 pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
 pub use missing::{Missing, is_missing_arg};
+pub use named_vector::{AtomicElement, NamedVector};
 pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,

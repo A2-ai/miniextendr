@@ -7,7 +7,7 @@
 
 use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
 use miniextendr_api::list::List;
-use miniextendr_api::typed_list::{TypedEntry, TypedListSpec, TypeSpec, validate_list};
+use miniextendr_api::typed_list::{TypeSpec, TypedEntry, TypedListSpec, validate_list};
 
 fn main() {
     miniextendr_bench::init();
@@ -22,10 +22,7 @@ fn main() {
 fn make_numeric_list(n: usize) -> SEXP {
     unsafe {
         let list = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t));
-        let names = ffi::Rf_protect(ffi::Rf_allocVector(
-            SEXPTYPE::STRSXP,
-            n as ffi::R_xlen_t,
-        ));
+        let names = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t));
 
         for i in 0..n {
             let val = ffi::Rf_ScalarReal(i as f64);
@@ -94,10 +91,7 @@ fn make_mixed_spec(n: usize) -> TypedListSpec {
 fn make_mixed_list(n: usize) -> SEXP {
     unsafe {
         let list = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t));
-        let names = ffi::Rf_protect(ffi::Rf_allocVector(
-            SEXPTYPE::STRSXP,
-            n as ffi::R_xlen_t,
-        ));
+        let names = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t));
 
         for i in 0..n {
             let val = match i % 4 {

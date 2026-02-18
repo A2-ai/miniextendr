@@ -5,8 +5,8 @@
 //! of the safety wrapper that prevents SIGABRT on empty vectors (R returns
 //! misaligned 0x1 sentinel for empty vector data pointers).
 
-use miniextendr_api::ffi::{self, SEXP, SexpExt};
 use miniextendr_api::IntoR;
+use miniextendr_api::ffi::{self, SEXP, SexpExt};
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 

@@ -225,6 +225,8 @@ All common nested collection types are supported:
 | `Vec<HashMap<String, V>>` | Works (converts to/from R list of named lists) |
 | `Vec<BTreeMap<String, V>>` | Works (converts to/from R list of named lists) |
 | `HashMap<K, Vec<V>>` | Works via nested conversion |
+| `NamedVector<HashMap<String, V>>` | Works (converts to/from named atomic vector) |
+| `NamedVector<BTreeMap<String, V>>` | Works (converts to/from named atomic vector) |
 
 ---
 

@@ -6,7 +6,7 @@
 
 #[cfg(feature = "connections")]
 use miniextendr_api::connection::{
-    Rconn, RConnectionIo, get_connection, read_connection, write_connection,
+    RConnectionIo, Rconn, get_connection, read_connection, write_connection,
 };
 #[cfg(feature = "connections")]
 use miniextendr_api::ffi;
