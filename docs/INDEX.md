@@ -15,7 +15,7 @@
 
 ## Class Systems
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) -- S3, S4, R7 class generation from Rust types
+- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) -- S3, S4, S7 class generation from Rust types
 
 ## Features
 
