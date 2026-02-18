@@ -519,3 +519,127 @@ test_that("Scalar Option<T> extended numeric return types", {
   expect_true(is.integer(conv_option_u32_some()))
   expect_equal(conv_option_u32_some(), 100L)
 })
+
+# ── AsNamedList / AsNamedVector ─────────────────────────────────────────────
+
+test_that("AsNamedList<Vec<(K,V)>> creates named R list", {
+  res <- conv_as_named_list_vec()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("width", "height", "depth"))
+  expect_equal(res$width, 100L)
+  expect_equal(res$height, 200L)
+  expect_equal(res$depth, 300L)
+})
+
+test_that("AsNamedList<[(K,V); N]> creates named R list from array", {
+  res <- conv_as_named_list_array()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("pi", "e"))
+  expect_equal(res$pi, pi)
+  expect_equal(res$e, exp(1))
+})
+
+test_that("AsNamedList supports heterogeneous value types", {
+  res <- conv_as_named_list_heterogeneous()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("name", "age", "score"))
+  expect_equal(res$name, "Alice")
+  expect_equal(res$age, 30L)
+  expect_equal(res$score, 95.5)
+})
+
+test_that("AsNamedList works with &str keys", {
+  res <- conv_as_named_list_str_keys()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("a", "b"))
+  expect_equal(res$a, 1L)
+  expect_equal(res$b, 2L)
+})
+
+test_that("AsNamedList handles empty input", {
+  res <- conv_as_named_list_empty()
+  expect_true(is.list(res))
+  expect_equal(length(res), 0L)
+})
+
+test_that("AsNamedList preserves duplicate names", {
+  res <- conv_as_named_list_duplicate_names()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("x", "x", "x"))
+  expect_equal(length(res), 3L)
+  expect_equal(res[[1]], 1L)
+  expect_equal(res[[2]], 2L)
+  expect_equal(res[[3]], 3L)
+})
+
+test_that("AsNamedVector<Vec<(K,V)>> creates named integer vector", {
+  res <- conv_as_named_vector_i32()
+  expect_true(is.integer(res))
+  expect_equal(names(res), c("alice", "bob", "carol"))
+  expect_equal(unname(res), c(95L, 87L, 92L))
+})
+
+test_that("AsNamedVector creates named double vector", {
+  res <- conv_as_named_vector_f64()
+  expect_true(is.double(res))
+  expect_equal(names(res), c("pi", "e"))
+  expect_equal(unname(res), c(pi, exp(1)))
+})
+
+test_that("AsNamedVector creates named character vector", {
+  res <- conv_as_named_vector_string()
+  expect_true(is.character(res))
+  expect_equal(names(res), c("greeting", "farewell"))
+  expect_equal(unname(res), c("hello", "goodbye"))
+})
+
+test_that("AsNamedVector with Option<i32> preserves NA", {
+  res <- conv_as_named_vector_option_i32()
+  expect_true(is.integer(res))
+  expect_equal(names(res), c("a", "b", "c"))
+  expect_equal(res[["a"]], 1L)
+  expect_true(is.na(res[["b"]]))
+  expect_equal(res[["c"]], 3L)
+})
+
+test_that("AsNamedVector<[(K,V); N]> works with array input", {
+  res <- conv_as_named_vector_array()
+  expect_true(is.double(res))
+  expect_equal(names(res), c("x", "y", "z"))
+  expect_equal(unname(res), c(1.0, 2.0, 3.0))
+})
+
+test_that("AsNamedVector handles empty input", {
+  res <- conv_as_named_vector_empty()
+  expect_true(is.double(res))
+  expect_equal(length(res), 0L)
+})
+
+test_that("extension traits (.as_named_vector / .as_named_list) work", {
+  vec_res <- conv_as_named_vector_ext_trait()
+  expect_true(is.integer(vec_res))
+  expect_equal(names(vec_res), c("one", "two"))
+  expect_equal(unname(vec_res), c(1L, 2L))
+
+  list_res <- conv_as_named_list_ext_trait()
+  expect_true(is.list(list_res))
+  expect_equal(names(list_res), c("one", "two"))
+  expect_equal(list_res$one, 1L)
+  expect_equal(list_res$two, 2L)
+})
+
+test_that("AsNamedList from borrowed slice creates named list", {
+  res <- conv_as_named_list_slice()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("x", "y", "z"))
+  expect_equal(res$x, 10L)
+  expect_equal(res$y, 20L)
+  expect_equal(res$z, 30L)
+})
+
+test_that("AsNamedVector from borrowed slice creates named atomic vector", {
+  res <- conv_as_named_vector_slice()
+  expect_true(is.double(res))
+  expect_equal(names(res), c("a", "b"))
+  expect_equal(unname(res), c(1.5, 2.5))
+})

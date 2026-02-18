@@ -210,19 +210,20 @@ impl<M> From<M> for NamedVector<M> {
 // Helpers
 // =============================================================================
 
-/// Set names attribute on an R SEXP from a slice of strings.
+/// Set names attribute on an R SEXP from a slice of name-like values.
 ///
 /// # Safety
 ///
 /// `sexp` must be a valid, protected SEXP. Caller must manage protect stack.
-unsafe fn set_names_on_sexp(sexp: SEXP, keys: &[String]) {
+pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
     unsafe {
         let n = keys.len();
         let names = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t);
         ffi::Rf_protect(names);
 
         for (i, key) in keys.iter().enumerate() {
-            let charsxp = ffi::Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, ffi::CE_UTF8);
+            let s = key.as_ref();
+            let charsxp = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8);
             ffi::SET_STRING_ELT(names, i as ffi::R_xlen_t, charsxp);
         }
 

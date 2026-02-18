@@ -1308,6 +1308,126 @@ pub fn conv_option_u32_some() -> Option<u32> {
     Some(100)
 }
 
+// =============================================================================
+// Named pair wrappers (AsNamedList / AsNamedVector)
+// =============================================================================
+
+use miniextendr_api::{AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt};
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_vec() -> AsNamedList<Vec<(String, i32)>> {
+    AsNamedList(vec![
+        ("width".into(), 100),
+        ("height".into(), 200),
+        ("depth".into(), 300),
+    ])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_array() -> AsNamedList<[(String, f64); 2]> {
+    AsNamedList([("pi".into(), std::f64::consts::PI), ("e".into(), std::f64::consts::E)])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_heterogeneous() -> AsNamedList<Vec<(String, miniextendr_api::ffi::SEXP)>> {
+    use miniextendr_api::IntoR;
+    AsNamedList(vec![
+        ("name".into(), "Alice".to_string().into_sexp()),
+        ("age".into(), 30i32.into_sexp()),
+        ("score".into(), 95.5f64.into_sexp()),
+    ])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_str_keys() -> AsNamedList<Vec<(&'static str, i32)>> {
+    AsNamedList(vec![("a", 1), ("b", 2)])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_empty() -> AsNamedList<Vec<(String, i32)>> {
+    AsNamedList(vec![])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_duplicate_names() -> AsNamedList<Vec<(&'static str, i32)>> {
+    AsNamedList(vec![("x", 1), ("x", 2), ("x", 3)])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_i32() -> AsNamedVector<Vec<(String, i32)>> {
+    AsNamedVector(vec![
+        ("alice".into(), 95),
+        ("bob".into(), 87),
+        ("carol".into(), 92),
+    ])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_f64() -> AsNamedVector<Vec<(&'static str, f64)>> {
+    AsNamedVector(vec![("pi", std::f64::consts::PI), ("e", std::f64::consts::E)])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_string() -> AsNamedVector<Vec<(String, String)>> {
+    AsNamedVector(vec![
+        ("greeting".into(), "hello".into()),
+        ("farewell".into(), "goodbye".into()),
+    ])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_option_i32() -> AsNamedVector<Vec<(&'static str, Option<i32>)>> {
+    AsNamedVector(vec![("a", Some(1)), ("b", None), ("c", Some(3))])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_array() -> AsNamedVector<[(&'static str, f64); 3]> {
+    AsNamedVector([("x", 1.0), ("y", 2.0), ("z", 3.0)])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_empty() -> AsNamedVector<Vec<(String, f64)>> {
+    AsNamedVector(vec![])
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_ext_trait() -> AsNamedVector<Vec<(&'static str, i32)>> {
+    vec![("one", 1), ("two", 2)].as_named_vector()
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_ext_trait() -> AsNamedList<Vec<(&'static str, i32)>> {
+    vec![("one", 1), ("two", 2)].as_named_list()
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_list_slice() -> miniextendr_api::ffi::SEXP {
+    let pairs: &[(&str, i32)] = &[("x", 10), ("y", 20), ("z", 30)];
+    AsNamedList(pairs).into_sexp()
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_as_named_vector_slice() -> miniextendr_api::ffi::SEXP {
+    let pairs: &[(&str, f64)] = &[("a", 1.5), ("b", 2.5)];
+    AsNamedVector(pairs).into_sexp()
+}
+
 miniextendr_module! {
     mod conversions;
 
@@ -1507,4 +1627,22 @@ miniextendr_module! {
     fn conv_option_i64_none;
     fn conv_option_f32_some;
     fn conv_option_u32_some;
+
+    // Named pair wrappers
+    fn conv_as_named_list_vec;
+    fn conv_as_named_list_array;
+    fn conv_as_named_list_heterogeneous;
+    fn conv_as_named_list_str_keys;
+    fn conv_as_named_list_empty;
+    fn conv_as_named_list_duplicate_names;
+    fn conv_as_named_vector_i32;
+    fn conv_as_named_vector_f64;
+    fn conv_as_named_vector_string;
+    fn conv_as_named_vector_option_i32;
+    fn conv_as_named_vector_array;
+    fn conv_as_named_vector_empty;
+    fn conv_as_named_vector_ext_trait;
+    fn conv_as_named_list_ext_trait;
+    fn conv_as_named_list_slice;
+    fn conv_as_named_vector_slice;
 }
