@@ -130,7 +130,6 @@ pub(crate) unsafe fn get_unchecked() -> SEXP {
 /// # Safety
 ///
 /// Must be called from the R main thread.
-#[allow(dead_code)]
 #[inline]
 pub unsafe fn count() -> R_xlen_t {
     unsafe {
@@ -149,7 +148,6 @@ pub unsafe fn count() -> R_xlen_t {
 ///
 /// Must be called from the R main thread. Only use in contexts where
 /// you're certain you're on the main thread.
-#[allow(dead_code)]
 #[inline]
 pub unsafe fn count_unchecked() -> R_xlen_t {
     use crate::ffi::Rf_xlength_unchecked;

@@ -37,6 +37,21 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
     }
 }
 
+/// Helper to build TraitWrapperOpts for tests.
+fn opts(
+    class_system: ClassSystem,
+    class_has_no_rd: bool,
+    internal: bool,
+    noexport: bool,
+) -> TraitWrapperOpts {
+    TraitWrapperOpts {
+        class_system,
+        class_has_no_rd,
+        internal,
+        noexport,
+    }
+}
+
 // S3 generates @exportMethod, S4 generates @export + @exportMethod.
 // Env does not generate @export at all (uses $ dispatch), so internal/noexport
 // are no-ops for Env — we test with S3 and S4 instead.
@@ -52,10 +67,7 @@ fn test_internal_suppresses_export_s3() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::S3,
-        false, // no_rd
-        true,  // internal
-        false, // noexport
+        opts(ClassSystem::S3, false, true, false),
     )
     .unwrap();
 
@@ -82,10 +94,7 @@ fn test_noexport_suppresses_export_s3() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::S3,
-        false, // no_rd
-        false, // internal
-        true,  // noexport
+        opts(ClassSystem::S3, false, false, true),
     )
     .unwrap();
 
@@ -112,10 +121,7 @@ fn test_internal_suppresses_export_s4() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::S4,
-        false, // no_rd
-        true,  // internal
-        false, // noexport
+        opts(ClassSystem::S4, false, true, false),
     )
     .unwrap();
 
@@ -142,10 +148,7 @@ fn test_noexport_suppresses_export_s4() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::S4,
-        false, // no_rd
-        false, // internal
-        true,  // noexport
+        opts(ClassSystem::S4, false, false, true),
     )
     .unwrap();
 
@@ -172,10 +175,7 @@ fn test_no_flags_preserves_export_s3() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::S3,
-        false, // no_rd
-        false, // internal
-        false, // noexport
+        opts(ClassSystem::S3, false, false, false),
     )
     .unwrap();
 
@@ -198,10 +198,7 @@ fn test_nord_takes_precedence_over_internal_env() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::Env,
-        true,  // no_rd
-        true,  // internal
-        false, // noexport
+        opts(ClassSystem::Env, true, true, false),
     )
     .unwrap();
 
@@ -225,10 +222,7 @@ fn test_env_no_export_tags_even_without_flags() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::Env,
-        false, // no_rd
-        false, // internal
-        false, // noexport
+        opts(ClassSystem::Env, false, false, false),
     )
     .unwrap();
 
@@ -252,10 +246,7 @@ fn test_internal_adds_keywords_internal_env() {
         &trait_name,
         &methods,
         &[],
-        ClassSystem::Env,
-        false, // no_rd
-        true,  // internal
-        false, // noexport
+        opts(ClassSystem::Env, false, true, false),
     )
     .unwrap();
 

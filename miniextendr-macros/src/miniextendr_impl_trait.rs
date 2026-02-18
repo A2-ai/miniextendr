@@ -414,10 +414,12 @@ fn generate_vtable_static(
         trait_name,
         &methods_owned,
         &consts,
-        class_system,
-        class_has_no_rd,
-        internal,
-        noexport,
+        TraitWrapperOpts {
+            class_system,
+            class_has_no_rd,
+            internal,
+            noexport,
+        },
     ) {
         Ok(s) => s,
         Err(e) => return e.into_compile_error(),
@@ -1188,18 +1190,28 @@ fn generate_trait_const_c_wrapper(
     builder.build().generate()
 }
 
+/// Export/documentation control for trait R wrapper generation.
+struct TraitWrapperOpts {
+    class_system: ClassSystem,
+    class_has_no_rd: bool,
+    internal: bool,
+    noexport: bool,
+}
+
 /// Generate R wrapper code for trait methods and consts (dispatch by class system).
-#[allow(clippy::too_many_arguments)]
 fn generate_trait_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-    class_system: ClassSystem,
-    class_has_no_rd: bool,
-    internal: bool,
-    noexport: bool,
+    opts: TraitWrapperOpts,
 ) -> syn::Result<String> {
+    let TraitWrapperOpts {
+        class_system,
+        class_has_no_rd,
+        internal,
+        noexport,
+    } = opts;
     let result = match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts)?,
         ClassSystem::S3 => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
@@ -2471,10 +2483,12 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         trait_name,
         &methods,
         &[], // no consts in TPIE
-        class_system,
-        tpie_input.no_rd,
-        tpie_input.internal,
-        tpie_input.noexport,
+        TraitWrapperOpts {
+            class_system,
+            class_has_no_rd: tpie_input.no_rd,
+            internal: tpie_input.internal,
+            noexport: tpie_input.noexport,
+        },
     ) {
         Ok(s) => s,
         Err(e) => return e.into_compile_error().into(),

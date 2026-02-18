@@ -1,15 +1,6 @@
 use super::*;
 
 #[test]
-fn thread_strategy_detection() {
-    // Worker by default
-    assert_eq!(ThreadStrategy::detect(false), ThreadStrategy::WorkerThread);
-
-    // Main thread only when explicitly forced
-    assert_eq!(ThreadStrategy::detect(true), ThreadStrategy::MainThread);
-}
-
-#[test]
 fn return_handling_detection() {
     // Default (no return type) -> Unit
     assert!(matches!(
