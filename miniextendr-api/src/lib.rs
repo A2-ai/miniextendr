@@ -172,6 +172,12 @@
 //! | Feature | Types | Description |
 //! |---------|-------|-------------|
 //! | `raw_conversions` | `Raw<T>`, `RawSlice<T>` | POD types ↔ raw vectors via bytemuck |
+// ALTREP trait methods are safe fns that receive SEXP / *mut T parameters and
+// must pass them to FFI or unsafe helpers — clippy::not_unsafe_ptr_arg_deref
+// is unavoidable without making every trait method `unsafe fn`.
+// Per-impl-block `#[allow]` in the macros covers downstream crates; this
+// crate-level allow covers the hand-written impls in altrep_impl.rs and
+// altrep_data/iter.rs.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Procedural macros (re-exported from miniextendr-macros)

@@ -31,6 +31,27 @@ pub unsafe fn checked_mkchar(s: &str) -> crate::ffi::SEXP {
 }
 
 // =============================================================================
+// Centralized ALTREP buffer access helper
+// =============================================================================
+
+/// Create a mutable slice from an ALTREP `get_region` output buffer pointer.
+///
+/// This centralizes the `from_raw_parts_mut(buf, len)` calls used across all
+/// ALTREP `get_region` trait implementations, keeping the raw-pointer deref in
+/// a single `unsafe fn` rather than scattered across every impl block.
+///
+/// # Safety
+///
+/// - `buf` must be a valid, aligned, writable pointer to at least `len` elements of `T`.
+/// - The caller must ensure no aliasing references to the same memory exist.
+/// - This is guaranteed when called from R's ALTREP `Get_region` dispatch, which
+///   provides a freshly allocated buffer.
+#[inline]
+pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] {
+    unsafe { std::slice::from_raw_parts_mut(buf, len) }
+}
+
+// =============================================================================
 // Macros for generating trait implementations
 // =============================================================================
 
@@ -379,7 +400,7 @@ macro_rules! __impl_altinteger_methods {
                             return 0;
                         }
                         let len = len as usize;
-                        let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
                         <$ty as $crate::altrep_data::AltIntegerData>::get_region(
                             &*d,
                             start as usize,
@@ -521,7 +542,7 @@ macro_rules! __impl_altreal_methods {
                             return 0;
                         }
                         let len = len as usize;
-                        let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
                         <$ty as $crate::altrep_data::AltRealData>::get_region(
                             &*d,
                             start as usize,
@@ -660,7 +681,7 @@ macro_rules! __impl_altlogical_methods {
                             return 0;
                         }
                         let len = len as usize;
-                        let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
                         <$ty as $crate::altrep_data::AltLogicalData>::get_region(
                             &*d,
                             start as usize,
@@ -784,7 +805,7 @@ macro_rules! __impl_altraw_methods {
                             return 0;
                         }
                         let len = len as usize;
-                        let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
                         <$ty as $crate::altrep_data::AltRawData>::get_region(
                             &*d,
                             start as usize,
@@ -951,7 +972,7 @@ macro_rules! __impl_altcomplex_methods {
                             return 0;
                         }
                         let len = len as usize;
-                        let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
                         <$ty as $crate::altrep_data::AltComplexData>::get_region(
                             &*d,
                             start as usize,
@@ -1112,7 +1133,7 @@ impl<const N: usize> crate::altrep_traits::AltInteger for [i32; N] {
                     return 0;
                 }
                 let len = len as usize;
-                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                let slice = unsafe { altrep_region_buf(buf, len) };
                 <[i32; N] as crate::altrep_data::AltIntegerData>::get_region(
                     &*d,
                     start as usize,
@@ -1178,7 +1199,7 @@ impl<const N: usize> crate::altrep_traits::AltReal for [f64; N] {
                     return 0;
                 }
                 let len = len as usize;
-                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                let slice = unsafe { altrep_region_buf(buf, len) };
                 <[f64; N] as crate::altrep_data::AltRealData>::get_region(
                     &*d,
                     start as usize,
@@ -1277,7 +1298,7 @@ impl<const N: usize> crate::altrep_traits::AltRaw for [u8; N] {
                     return 0;
                 }
                 let len = len as usize;
-                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                let slice = unsafe { altrep_region_buf(buf, len) };
                 <[u8; N] as crate::altrep_data::AltRawData>::get_region(
                     &*d,
                     start as usize,
@@ -1370,7 +1391,7 @@ impl<const N: usize> crate::altrep_traits::AltComplex for [crate::ffi::Rcomplex;
                     return 0;
                 }
                 let len = len as usize;
-                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                let slice = unsafe { altrep_region_buf(buf, len) };
                 <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::get_region(
                     &*d,
                     start as usize,
@@ -1589,7 +1610,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
                     return 0;
                 }
                 let len = len as usize;
-                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                let slice = unsafe { altrep_region_buf(buf, len) };
                 crate::altrep_data::AltIntegerData::get_region(&*d, start as usize, len, slice)
                     as crate::ffi::R_xlen_t
             })
@@ -1699,7 +1720,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
                     return 0;
                 }
                 let len = len as usize;
-                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                let slice = unsafe { altrep_region_buf(buf, len) };
                 crate::altrep_data::AltRealData::get_region(&*d, start as usize, len, slice)
                     as crate::ffi::R_xlen_t
             })
@@ -1850,7 +1871,7 @@ impl crate::altrep_traits::AltRaw for &'static [u8] {
                     return 0;
                 }
                 let len = len as usize;
-                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+                let slice = unsafe { altrep_region_buf(buf, len) };
                 crate::altrep_data::AltRawData::get_region(&*d, start as usize, len, slice)
                     as crate::ffi::R_xlen_t
             })
