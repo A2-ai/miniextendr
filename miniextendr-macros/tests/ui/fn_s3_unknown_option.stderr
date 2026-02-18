@@ -1,0 +1,5 @@
+error: unknown s3 option; expected `generic` or `class`
+ --> tests/ui/fn_s3_unknown_option.rs:5:33
+  |
+5 | #[miniextendr(s3(class = "foo", unknown = "bar"))]
+  |                                 ^^^^^^^

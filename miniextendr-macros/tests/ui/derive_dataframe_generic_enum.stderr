@@ -1,0 +1,5 @@
+error: DataFrameRow does not support generic types
+ --> tests/ui/derive_dataframe_generic_enum.rs:6:11
+  |
+6 | enum Event<T> {
+  |           ^^^

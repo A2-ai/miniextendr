@@ -1194,6 +1194,7 @@ fn generate_trait_const_c_wrapper(
 }
 
 /// Generate R wrapper code for trait methods and consts (dispatch by class system).
+#[allow(clippy::too_many_arguments)]
 fn generate_trait_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -1283,10 +1284,11 @@ fn generate_trait_r_wrapper(
             .collect();
         // For class systems without @export (e.g., Env), insert @keywords internal
         // before the first roxygen tag if no @export line was found to replace.
-        if internal && !has_export {
-            if let Some(pos) = processed.iter().position(|l| l.starts_with("#'")) {
-                processed.insert(pos, "#' @keywords internal".to_string());
-            }
+        if internal
+            && !has_export
+            && let Some(pos) = processed.iter().position(|l| l.starts_with("#'"))
+        {
+            processed.insert(pos, "#' @keywords internal".to_string());
         }
         Ok(processed.join("\n"))
     } else {

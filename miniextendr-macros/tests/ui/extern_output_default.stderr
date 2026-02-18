@@ -1,0 +1,7 @@
+error: output must be SEXP
+ --> tests/ui/extern_output_default.rs:5:1
+  |
+5 | #[miniextendr]
+  | ^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)

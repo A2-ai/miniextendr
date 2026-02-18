@@ -1,0 +1,5 @@
+error: vctrs types require named fields
+ --> tests/ui_vctrs/derive_vctrs_unnamed_fields.rs:7:11
+  |
+7 | struct Bad(f64, i32);
+  |           ^^^^^^^^^^

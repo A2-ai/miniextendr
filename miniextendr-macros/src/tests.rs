@@ -31,7 +31,7 @@ fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
     let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
         panic!("expected ident pattern");
     };
-    assert_eq!(pat_ident.ident, "_dots");
+    assert_eq!(pat_ident.ident, "__miniextendr_dots");
 
     let syn::Type::Reference(r) = pat_type.ty.as_ref() else {
         panic!("expected reference type");
@@ -91,7 +91,7 @@ fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
 #[test]
 fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
     let err = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {
-        fn f(_dots: i32, ...) {}
+        fn f(__miniextendr_dots: i32, ...) {}
     })
     .err()
     .unwrap();
@@ -126,10 +126,10 @@ fn miniextendr_attr_rejects_unknown_options() {
 
 #[test]
 fn miniextendr_attr_rejects_option_arguments() {
-    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(invisible(true)))
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(invisible("string_value")))
         .err()
         .unwrap();
-    assert!(err.to_string().contains("does not take any arguments"));
+    assert!(err.to_string().contains("does not take these arguments"));
 }
 
 #[test]
@@ -519,59 +519,56 @@ fn test_derive_altrep_list_with_guard() {
 // =============================================================================
 
 #[test]
-fn test_derive_altrep_real_rejects_subset() {
+fn test_derive_altrep_real_accepts_subset() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         #[altrep(subset)]
-        pub struct BadReal {
+        pub struct GoodReal {
             len: usize,
         }
     })
     .unwrap();
 
-    let err = crate::altrep_derive::derive_altrep_real(input).unwrap_err();
-    assert!(err.to_string().contains("not supported"));
+    // subset is now supported for all atomic types including real
+    crate::altrep_derive::derive_altrep_real(input).unwrap();
 }
 
 #[test]
-fn test_derive_altrep_logical_rejects_subset() {
+fn test_derive_altrep_logical_accepts_subset() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         #[altrep(subset)]
-        pub struct BadLogical {
+        pub struct GoodLogical {
             len: usize,
         }
     })
     .unwrap();
 
-    let err = crate::altrep_derive::derive_altrep_logical(input).unwrap_err();
-    assert!(err.to_string().contains("not supported"));
+    crate::altrep_derive::derive_altrep_logical(input).unwrap();
 }
 
 #[test]
-fn test_derive_altrep_raw_rejects_subset() {
+fn test_derive_altrep_raw_accepts_subset() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         #[altrep(subset)]
-        pub struct BadRaw {
+        pub struct GoodRaw {
             len: usize,
         }
     })
     .unwrap();
 
-    let err = crate::altrep_derive::derive_altrep_raw(input).unwrap_err();
-    assert!(err.to_string().contains("not supported"));
+    crate::altrep_derive::derive_altrep_raw(input).unwrap();
 }
 
 #[test]
-fn test_derive_altrep_string_rejects_subset() {
+fn test_derive_altrep_string_accepts_subset() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         #[altrep(subset)]
-        pub struct BadString {
+        pub struct GoodString {
             len: usize,
         }
     })
     .unwrap();
 
-    let err = crate::altrep_derive::derive_altrep_string(input).unwrap_err();
-    assert!(err.to_string().contains("not supported"));
+    crate::altrep_derive::derive_altrep_string(input).unwrap();
 }
 
 #[test]
@@ -617,30 +614,29 @@ fn test_derive_altrep_list_rejects_dataptr() {
 }
 
 #[test]
-fn test_derive_altrep_list_rejects_serialize() {
+fn test_derive_altrep_list_accepts_serialize() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         #[altrep(serialize)]
-        pub struct BadList {
+        pub struct GoodList {
             len: usize,
         }
     })
     .unwrap();
 
-    let err = crate::altrep_derive::derive_altrep_list(input).unwrap_err();
-    assert!(err.to_string().contains("not supported"));
+    // serialize is now supported for list
+    crate::altrep_derive::derive_altrep_list(input).unwrap();
 }
 
 #[test]
-fn test_derive_altrep_real_subset_rejected_with_guard_too() {
-    // Ensure validation applies regardless of guard mode
+fn test_derive_altrep_real_subset_accepted_with_guard_too() {
+    // subset is now supported for real, even with non-default guard
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         #[altrep(r#unsafe, subset)]
-        pub struct BadReal {
+        pub struct GoodReal {
             len: usize,
         }
     })
     .unwrap();
 
-    let err = crate::altrep_derive::derive_altrep_real(input).unwrap_err();
-    assert!(err.to_string().contains("not supported"));
+    crate::altrep_derive::derive_altrep_real(input).unwrap();
 }

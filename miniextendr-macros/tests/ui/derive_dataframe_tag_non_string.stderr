@@ -1,0 +1,5 @@
+error: expected string literal for `tag`
+ --> tests/ui/derive_dataframe_tag_non_string.rs:6:19
+  |
+6 | #[dataframe(tag = 123)]
+  |                   ^^^

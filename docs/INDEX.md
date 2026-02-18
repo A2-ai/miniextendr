@@ -71,6 +71,7 @@
 
 ## Benchmarks
 
+- [BENCHMARKS.md](BENCHMARKS.md) -- **Performance baseline** (all subsystems, 2026-02-18)
 - [ALTREP_BENCHMARKS.md](ALTREP_BENCHMARKS.md) -- ALTREP performance benchmarks
 - [ALTREP_PERFORMANCE_REPORT.md](ALTREP_PERFORMANCE_REPORT.md) -- ALTREP performance analysis report
 - [ALTREP_AS_FOUNDATION.md](ALTREP_AS_FOUNDATION.md) -- ALTREP as a foundation: building blocks and conveniences

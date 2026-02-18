@@ -1,0 +1,5 @@
+error: expected type specification: string literal or type call like `numeric(4)`
+ --> tests/ui/typed_list_invalid_spec.rs:4:34
+  |
+4 |     let _ = typed_list!(alpha => 42);
+  |                                  ^^

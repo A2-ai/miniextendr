@@ -1,0 +1,5 @@
+error: extern functions cannot use Dots; use `...` syntax in non-extern #[miniextendr] functions instead
+ --> tests/ui/extern_variadic.rs:7:35
+  |
+7 | extern "C-unwind" fn C_bad(_dots: &miniextendr_api::Dots) -> miniextendr_api::ffi::SEXP {
+  |                                   ^^^^^^^^^^^^^^^^^^^^^^

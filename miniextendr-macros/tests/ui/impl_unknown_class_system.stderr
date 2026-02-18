@@ -1,0 +1,5 @@
+error: unknown class system: flutter
+ --> tests/ui/impl_unknown_class_system.rs:7:15
+  |
+7 | #[miniextendr(flutter)]
+  |               ^^^^^^^

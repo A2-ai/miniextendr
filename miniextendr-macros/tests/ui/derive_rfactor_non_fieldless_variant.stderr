@@ -1,0 +1,5 @@
+error: #[derive(RFactor)] only supports fieldless (C-style) enum variants (use #[r_factor(interaction = [...])] for tuple variants)
+ --> tests/ui/derive_rfactor_non_fieldless_variant.rs:8:5
+  |
+8 |     B { x: i32 },
+  |     ^^^^^^^^^^^^

@@ -1,43 +1,5 @@
-error[E0277]: the trait bound `Counter: TypedExternal` is not satisfied
- --> tests/ui/impl_multiple_class_systems.rs:7:1
+error: multiple class systems specified (`r6` and `s4`); use only one of: env, r6, s3, s4, s7, vctrs
+ --> tests/ui/impl_multiple_class_systems.rs:7:19
   |
 7 | #[miniextendr(r6, s4)]
-  | ^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-  |
-help: the trait `TypedExternal` is not implemented for `Counter`
- --> tests/ui/impl_multiple_class_systems.rs:5:1
-  |
-5 | struct Counter(i32);
-  | ^^^^^^^^^^^^^^
-  = help: the following other types implement trait `TypedExternal`:
-            &'static [T]
-            ()
-            (A, B)
-            (A, B, C)
-            (A, B, C, D)
-            (A, B, C, D, E)
-            (A, B, C, D, E, F)
-            (A, B, C, D, E, F, G)
-          and $N others
-note: required by a bound in `ExternalPtr::<T>::new`
- --> $WORKSPACE/miniextendr-api/src/externalptr.rs
-  |
-  | impl<T: TypedExternal> ExternalPtr<T> {
-  |         ^^^^^^^^^^^^^ required by this bound in `ExternalPtr::<T>::new`
-...
-  |     pub fn new(x: T) -> Self {
-  |            --- required by a bound in this associated function
-  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `ExternalPtr<Counter>: IntoR` is not satisfied
- --> tests/ui/impl_multiple_class_systems.rs:7:1
-  |
-7 | #[miniextendr(r6, s4)]
-  | ^^^^^^^^^^^^^^^^^^^^^^ the trait `IntoR` is not implemented for `ExternalPtr<Counter>`
-  |
-help: the trait `IntoR` is implemented for `ExternalPtr<T>`
- --> $WORKSPACE/miniextendr-api/src/into_r.rs
-  |
-  | impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)
+  |                   ^^
