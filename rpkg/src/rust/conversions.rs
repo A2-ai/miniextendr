@@ -1180,6 +1180,81 @@ pub fn conv_opt_hashset_i32_none_ret() -> Option<HashSet<i32>> {
     None
 }
 
+// --- Option<BTreeMap> (None → NULL, Some → named list) ---
+/// @noRd
+#[miniextendr]
+pub fn conv_opt_btreemap_i32_arg(x: Option<BTreeMap<String, i32>>) -> i32 {
+    match x {
+        Some(m) => m.values().sum(),
+        None => -999,
+    }
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_opt_btreemap_i32_some_ret() -> Option<BTreeMap<String, i32>> {
+    let mut m = BTreeMap::new();
+    m.insert("a".to_string(), 1);
+    m.insert("b".to_string(), 2);
+    Some(m)
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_opt_btreemap_i32_none_ret() -> Option<BTreeMap<String, i32>> {
+    None
+}
+
+// --- Vec<HashMap> (list of named lists → Vec<HashMap>) ---
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_hashmap_i32_arg(x: Vec<HashMap<String, i32>>) -> i32 {
+    x.iter().map(|m| m.values().sum::<i32>()).sum()
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_hashmap_i32_ret() -> Vec<HashMap<String, i32>> {
+    vec![
+        {
+            let mut m = HashMap::new();
+            m.insert("a".to_string(), 1);
+            m
+        },
+        {
+            let mut m = HashMap::new();
+            m.insert("b".to_string(), 2);
+            m.insert("c".to_string(), 3);
+            m
+        },
+    ]
+}
+
+// --- Vec<BTreeMap> (list of named lists → Vec<BTreeMap>) ---
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_btreemap_i32_arg(x: Vec<BTreeMap<String, i32>>) -> i32 {
+    x.iter().map(|m| m.values().sum::<i32>()).sum()
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_btreemap_i32_ret() -> Vec<BTreeMap<String, i32>> {
+    vec![
+        {
+            let mut m = BTreeMap::new();
+            m.insert("x".to_string(), 10);
+            m
+        },
+        {
+            let mut m = BTreeMap::new();
+            m.insert("y".to_string(), 20);
+            m.insert("z".to_string(), 30);
+            m
+        },
+    ]
+}
+
 // --- Vec<Vec<T>> (list of vectors) ---
 /// @noRd
 #[miniextendr]
@@ -1603,6 +1678,13 @@ miniextendr_module! {
     fn conv_opt_hashset_i32_arg;
     fn conv_opt_hashset_i32_some_ret;
     fn conv_opt_hashset_i32_none_ret;
+    fn conv_opt_btreemap_i32_arg;
+    fn conv_opt_btreemap_i32_some_ret;
+    fn conv_opt_btreemap_i32_none_ret;
+    fn conv_vec_hashmap_i32_arg;
+    fn conv_vec_hashmap_i32_ret;
+    fn conv_vec_btreemap_i32_arg;
+    fn conv_vec_btreemap_i32_ret;
     fn conv_vec_vec_i32_arg;
     fn conv_vec_vec_i32_ret;
     fn conv_vec_vec_string_ret;
