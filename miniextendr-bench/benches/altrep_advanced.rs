@@ -263,7 +263,7 @@ mod string_altrep {
             .collect();
         let sexp = BenchString::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::STRING_ELT(sexp, 1));
+            divan::black_box(ffi::STRING_ELT(sexp, (len - 1) as isize));
         }
     }
 

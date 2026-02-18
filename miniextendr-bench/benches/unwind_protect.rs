@@ -42,13 +42,18 @@ fn catch_unwind_success() {
 }
 
 /// Measure catch_unwind cost when a panic IS caught.
-/// Uses AssertUnwindSafe to allow benchmarking the error path.
+/// Installs a no-op panic hook to suppress output during benchmarking.
 #[divan::bench]
-fn catch_unwind_panic() {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> i32 {
-        panic!("bench panic")
-    }));
-    divan::black_box(result.is_err());
+fn catch_unwind_panic(bencher: divan::Bencher) {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    bencher.bench_local(|| {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> i32 {
+            panic!("bench panic")
+        }));
+        divan::black_box(result.is_err());
+    });
+    std::panic::set_hook(prev);
 }
 
 // =============================================================================
