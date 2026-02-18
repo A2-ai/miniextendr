@@ -112,20 +112,12 @@ fn main() {
             ".__bench_wrapper_coerce_chr__ <- function(x) .__bench_noop__(as.character(x))",
         );
 
-        // Env-style class (like miniextendr's default Env class system)
-        r_eval_string(concat!(
-            ".__bench_EnvClass__ <- new.env(parent = emptyenv())\n",
-            ".__bench_EnvClass__$value <- function() 42L\n",
-            ".__bench_EnvClass__$noop <- function() invisible(NULL)\n",
-        ));
-        r_eval_string(concat!(
-            "`$.__bench_EnvObj__` <- function(self, name) {\n",
-            "  obj <- .__bench_EnvClass__[[name]]\n",
-            "  environment(obj) <- environment()\n",
-            "  obj\n",
-            "}\n",
-        ));
-        r_eval_string(".__bench_env_obj__ <- structure(list(), class = '.__bench_EnvObj__')");
+        // Env-style class (like miniextendr's default Env class system).
+        // Methods are stored directly in the environment object; R's native
+        // `$` for environments handles dispatch.
+        r_eval_string(".__bench_env_obj__ <- new.env(parent = emptyenv())");
+        r_eval_string(".__bench_env_obj__$value <- function() 42L");
+        r_eval_string(".__bench_env_obj__$noop <- function() invisible(NULL)");
 
         // R6-style class
         r_eval_string(concat!(
@@ -141,21 +133,21 @@ fn main() {
         ));
 
         // S3-style dispatch
-        r_eval_string(concat!(
-            ".__bench_s3_value__ <- function(x, ...) UseMethod('.__bench_s3_value__')\n",
-            ".__bench_s3_value__.BenchS3 <- function(x, ...) 42L\n",
-            ".__bench_s3_obj__ <- structure(list(), class = 'BenchS3')\n",
-        ));
+        r_eval_string(".__bench_s3_value__ <- function(x, ...) UseMethod('.__bench_s3_value__')");
+        r_eval_string(".__bench_s3_value__.BenchS3 <- function(x, ...) 42L");
+        r_eval_string(".__bench_s3_obj__ <- structure(list(), class = 'BenchS3')");
 
         // S4-style dispatch
+        r_eval_string("methods::setClass('BenchS4', slots = c(data = 'integer'))");
         r_eval_string(concat!(
-            "methods::setClass('BenchS4', slots = c(data = 'integer'))\n",
             "methods::setGeneric('.__bench_s4_value__',\n",
-            "  function(x, ...) standardGeneric('.__bench_s4_value__'))\n",
-            "methods::setMethod('.__bench_s4_value__', 'BenchS4',\n",
-            "  function(x, ...) 42L)\n",
-            ".__bench_s4_obj__ <- methods::new('BenchS4', data = 42L)\n",
+            "  function(x, ...) standardGeneric('.__bench_s4_value__'))",
         ));
+        r_eval_string(concat!(
+            "methods::setMethod('.__bench_s4_value__', 'BenchS4',\n",
+            "  function(x, ...) 42L)",
+        ));
+        r_eval_string(".__bench_s4_obj__ <- methods::new('BenchS4', data = 42L)");
 
         // S7-style dispatch (if available)
         r_eval_string(concat!(
