@@ -30,10 +30,74 @@ fn unwind_r_call() {
     divan::black_box(out);
 }
 
-// TODO: panic_path — benchmark the cost of catching a Rust panic inside
-// with_r_unwind_protect. Requires subprocess isolation to avoid contaminating
-// the benchmark process state (panic hook, unwinding side effects).
+// =============================================================================
+// catch_unwind overhead — measures the cost of panic-catching infrastructure
+// =============================================================================
 
-// TODO: r_error_path — benchmark the cost of catching an R error (Rf_error)
-// via R_UnwindProtect. Also requires subprocess isolation since R errors
-// may leave the R session in a partially-reset state.
+/// Baseline: std::panic::catch_unwind on a non-panicking closure.
+#[divan::bench]
+fn catch_unwind_success() {
+    let result = std::panic::catch_unwind(|| 42i32);
+    divan::black_box(result.unwrap());
+}
+
+/// Measure catch_unwind cost when a panic IS caught.
+/// Installs a no-op panic hook to suppress output during benchmarking.
+#[divan::bench]
+fn catch_unwind_panic(bencher: divan::Bencher) {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    bencher.bench_local(|| {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> i32 {
+            panic!("bench panic")
+        }));
+        divan::black_box(result.is_err());
+    });
+    std::panic::set_hook(prev);
+}
+
+// =============================================================================
+// Nested unwind protection — measures cost of stacking protection layers
+// =============================================================================
+
+#[divan::bench]
+fn unwind_nested_2() {
+    let out = with_r_unwind_protect(
+        || with_r_unwind_protect(|| unsafe { ffi::Rf_ScalarInteger(1) }, None),
+        None,
+    );
+    divan::black_box(out);
+}
+
+#[divan::bench]
+fn unwind_nested_5() {
+    let out = with_r_unwind_protect(
+        || {
+            with_r_unwind_protect(
+                || {
+                    with_r_unwind_protect(
+                        || {
+                            with_r_unwind_protect(
+                                || {
+                                    with_r_unwind_protect(
+                                        || unsafe { ffi::Rf_ScalarInteger(1) },
+                                        None,
+                                    )
+                                },
+                                None,
+                            )
+                        },
+                        None,
+                    )
+                },
+                None,
+            )
+        },
+        None,
+    );
+    divan::black_box(out);
+}
+
+// NOTE: R error path (Rf_error inside with_r_unwind_protect) and panic-through-R-unwind
+// benchmarks require subprocess isolation since the error/panic longjmps past the divan
+// harness. These paths are tested for correctness in rpkg/tests/testthat/test-subprocess-isolated.R.

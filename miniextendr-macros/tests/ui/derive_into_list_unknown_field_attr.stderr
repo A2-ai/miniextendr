@@ -1,0 +1,5 @@
+error: unknown #[into_list(...)] option; supported: ignore
+ --> tests/ui/derive_into_list_unknown_field_attr.rs:7:17
+  |
+7 |     #[into_list(typo)]
+  |                 ^^^^

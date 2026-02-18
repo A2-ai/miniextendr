@@ -17,10 +17,13 @@ struct DataFrameAttrs {
     name: Option<syn::Ident>,
     /// Enum alignment mode — implicit for enums, accepted but not required.
     align: bool,
-    /// Tag column name for variant discriminator (enums only).
+    /// Tag column name for variant discriminator (also supported on structs).
     tag: Option<String>,
     /// Emit rayon parallel fill path (only effective when `rayon` feature is enabled).
     parallel: bool,
+    /// Conflict resolution mode for type collisions across enum variants.
+    /// Currently only "string" is supported: convert conflicting fields via `ToString`.
+    conflicts: Option<String>,
 }
 
 /// Parse container-level `#[dataframe(...)]` attributes.
@@ -35,6 +38,7 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
         align: false,
         tag: None,
         parallel: false,
+        conflicts: None,
     };
 
     for attr in &input.attrs {
@@ -77,6 +81,27 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
                         ));
                     }
                 }
+                syn::Meta::NameValue(nv) if nv.path.is_ident("conflicts") => {
+                    if let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(lit_str),
+                        ..
+                    }) = &nv.value
+                    {
+                        let value = lit_str.value();
+                        if value != "string" {
+                            return Err(syn::Error::new_spanned(
+                                lit_str,
+                                "unknown conflict resolution mode; only `\"string\"` is supported",
+                            ));
+                        }
+                        attrs.conflicts = Some(value);
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            &nv.value,
+                            "expected string literal for `conflicts`",
+                        ));
+                    }
+                }
                 syn::Meta::Path(path) if path.is_ident("align") => {
                     attrs.align = true;
                 }
@@ -86,7 +111,7 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
                 other => {
                     return Err(syn::Error::new_spanned(
                         other,
-                        "unknown dataframe attribute; expected `name`, `align`, `tag`, or `parallel`",
+                        "unknown dataframe attribute; expected `name`, `align`, `tag`, `parallel`, or `conflicts`",
                     ));
                 }
             }
@@ -154,19 +179,8 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 
     match &input.data {
         Data::Struct(data) => {
-            if attrs.align {
-                return Err(syn::Error::new_spanned(
-                    row_name,
-                    "`align` is only supported on enums, not structs",
-                ));
-            }
-            if attrs.tag.is_some() {
-                return Err(syn::Error::new_spanned(
-                    row_name,
-                    "`tag` is only supported on enums",
-                ));
-            }
-            derive_struct_dataframe(row_name, &input, data, &df_name, attrs.parallel)
+            // `align` is a no-op on structs (only semantically meaningful for enums)
+            derive_struct_dataframe(row_name, &input, data, &df_name, &attrs)
         }
         Data::Enum(data) => {
             // align is implicit for enums — accept but don't require
@@ -188,39 +202,48 @@ fn derive_struct_dataframe(
     input: &DeriveInput,
     data: &syn::DataStruct,
     df_name: &syn::Ident,
-    parallel: bool,
+    attrs: &DataFrameAttrs,
 ) -> syn::Result<TokenStream> {
+    let parallel = attrs.parallel;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    let fields = match &data.fields {
-        Fields::Named(fields) => &fields.named,
-        _ => {
-            return Err(syn::Error::new_spanned(
-                row_name,
-                "DataFrameRow only supports structs with named fields",
-            ));
-        }
+    // Collect field info — supports both named and unnamed (tuple) fields.
+    // For unnamed fields, synthesize column names: _0, _1, _2, ...
+    let owned_field_info: Vec<(syn::Ident, &syn::Type)> = match &data.fields {
+        Fields::Named(fields) => fields
+            .named
+            .iter()
+            .map(|f| (f.ident.as_ref().unwrap().clone(), &f.ty))
+            .collect(),
+        Fields::Unnamed(fields) => fields
+            .unnamed
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (format_ident!("_{}", i), &f.ty))
+            .collect(),
+        Fields::Unit => vec![],
     };
 
-    // Reject zero-field structs — a DataFrame with no columns is meaningless.
-    if fields.is_empty() {
-        return Err(syn::Error::new_spanned(
-            row_name,
-            "DataFrameRow requires at least one named field",
-        ));
-    }
-
-    // Collect field info
-    let field_info: Vec<_> = fields
+    // Build field_info as references for compatibility with existing code
+    let field_info: Vec<(&syn::Ident, &syn::Type)> = owned_field_info
         .iter()
-        .map(|f| {
-            let name = f.ident.as_ref().unwrap();
-            let ty = &f.ty;
-            (name, ty)
-        })
+        .map(|(name, ty)| (name, *ty))
         .collect();
 
-    // Build DataFrame struct with one field at a time
+    let is_tuple_struct = matches!(&data.fields, Fields::Unnamed(_));
+    let is_unit_struct = matches!(&data.fields, Fields::Unit);
+
+    let has_tag = attrs.tag.is_some();
+    let row_name_str = row_name.to_string();
+
+    // ── Companion struct ────────────────────────────────────────────────
+    let tag_field_decl = if has_tag {
+        quote! { pub _tag: Vec<String>, }
+    } else {
+        TokenStream::new()
+    };
+
+    // Build DataFrame struct fields (one Vec per source field)
     let df_fields_tokens: Vec<TokenStream> = field_info
         .iter()
         .map(|(name, ty)| {
@@ -228,40 +251,60 @@ fn derive_struct_dataframe(
         })
         .collect();
 
-    // Generate the companion DataFrame struct
+    // For empty structs, add a _len tracking field
+    let len_field_decl = if field_info.is_empty() && !has_tag {
+        quote! { pub _len: usize, }
+    } else {
+        TokenStream::new()
+    };
+
     let dataframe_struct = quote! {
         #[derive(Debug, Clone)]
         pub struct #df_name {
+            #tag_field_decl
+            #len_field_decl
             #(#df_fields_tokens),*
         }
     };
 
-    // Extract field names
-    let field_names: Vec<_> = field_info.iter().map(|(name, _)| name).collect();
+    // ── IntoDataFrame ───────────────────────────────────────────────────
+    // Determine the row-count reference
+    let length_ref = if has_tag {
+        quote! { self._tag.len() }
+    } else if field_info.is_empty() {
+        quote! { self._len }
+    } else {
+        let first = &field_info[0].0;
+        quote! { self.#first.len() }
+    };
 
-    // Generate IntoDataFrame for DataFrame type
-    let first_field = field_names.first().unwrap();
-    let df_pairs = field_names.iter().map(|name| {
-        let name_str = name.to_string();
-        quote! { (#name_str, ::miniextendr_api::IntoR::into_sexp(self.#name)) }
-    });
+    let tag_pair = if let Some(ref tag_name) = attrs.tag {
+        quote! { (#tag_name, ::miniextendr_api::IntoR::into_sexp(self._tag)), }
+    } else {
+        TokenStream::new()
+    };
 
-    // Generate column length checks for all fields after the first
-    let length_checks: Vec<TokenStream> = field_names
+    let df_pairs: Vec<TokenStream> = field_info
         .iter()
-        .skip(1)
-        .map(|name| {
+        .map(|(name, _)| {
             let name_str = name.to_string();
-            let first_str = first_field.to_string();
+            quote! { (#name_str, ::miniextendr_api::IntoR::into_sexp(self.#name)) }
+        })
+        .collect();
+
+    // Length checks for all columns
+    let length_checks: Vec<TokenStream> = field_info
+        .iter()
+        .map(|(name, _)| {
+            let name_str = name.to_string();
             quote! {
                 assert!(
-                    self.#name.len() == n_rows,
-                    "column length mismatch in {}: column `{}` has length {} but column `{}` has length {}",
+                    self.#name.len() == _n_rows,
+                    "column length mismatch in {}: column `{}` has length {} but expected {}",
                     stringify!(#df_name),
                     #name_str,
                     self.#name.len(),
-                    #first_str,
-                    n_rows,
+                    _n_rows,
                 );
             }
         })
@@ -270,19 +313,19 @@ fn derive_struct_dataframe(
     let into_dataframe_impl = quote! {
         impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
             fn into_data_frame(self) -> ::miniextendr_api::List {
-                let n_rows = self.#first_field.len();
+                let _n_rows = #length_ref;
                 #(#length_checks)*
                 ::miniextendr_api::list::List::from_raw_pairs(vec![
+                    #tag_pair
                     #(#df_pairs),*
                 ])
                 .set_class_str(&["data.frame"])
-                .set_row_names_int(n_rows)
+                .set_row_names_int(_n_rows)
             }
         }
     };
 
-    // Build From impl: consume rows by value to avoid Clone requirement.
-    // Single pass: destructure each row and push fields into column Vecs.
+    // ── From<Vec<RowType>> ──────────────────────────────────────────────
     let col_vec_inits: Vec<TokenStream> = field_info
         .iter()
         .map(|(name, ty)| {
@@ -290,21 +333,55 @@ fn derive_struct_dataframe(
         })
         .collect();
 
-    let col_pushes: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, _ty)| {
-            quote! { #name.push(row.#name); }
-        })
-        .collect();
+    let tag_init = if has_tag {
+        quote! { let mut _tag: Vec<String> = Vec::with_capacity(len); }
+    } else {
+        TokenStream::new()
+    };
+
+    let tag_push = if has_tag {
+        quote! { _tag.push(#row_name_str.to_string()); }
+    } else {
+        TokenStream::new()
+    };
+
+    // Access pattern for row fields depends on named vs tuple struct
+    let col_pushes: Vec<TokenStream> = if is_tuple_struct {
+        field_info
+            .iter()
+            .enumerate()
+            .map(|(i, (name, _))| {
+                let idx = syn::Index::from(i);
+                quote! { #name.push(row.#idx); }
+            })
+            .collect()
+    } else {
+        field_info
+            .iter()
+            .map(|(name, _)| {
+                quote! { #name.push(row.#name); }
+            })
+            .collect()
+    };
+
+    let tag_struct_field = if has_tag {
+        quote! { _tag, }
+    } else {
+        TokenStream::new()
+    };
+
+    let len_struct_field = if field_info.is_empty() && !has_tag {
+        quote! { _len: len, }
+    } else {
+        TokenStream::new()
+    };
 
     let col_struct_fields: Vec<TokenStream> = field_info
         .iter()
-        .map(|(name, _ty)| {
-            quote! { #name }
-        })
+        .map(|(name, _)| quote! { #name })
         .collect();
 
-    let parallel_block = if parallel {
+    let parallel_block = if parallel && !field_info.is_empty() {
         gen_parallel_struct_from(row_name, df_name, &field_info)
     } else {
         TokenStream::new()
@@ -315,81 +392,105 @@ fn derive_struct_dataframe(
             fn from(rows: Vec<#row_name>) -> Self {
                 let len = rows.len();
                 #parallel_block
+                #tag_init
                 #(#col_vec_inits)*
                 for row in rows {
+                    #tag_push
                     #(#col_pushes)*
                 }
                 #df_name {
+                    #tag_struct_field
+                    #len_struct_field
                     #(#col_struct_fields),*
                 }
             }
         }
     };
 
-    // Generate IntoIterator for DataFrame - use concrete types for simplicity
-    let iterator_name = format_ident!("{}Iterator", df_name);
+    // ── IntoIterator (only when there are fields — empty/unit structs skip) ─
+    let into_iterator_impl = if !field_info.is_empty() && !is_tuple_struct && !is_unit_struct {
+        let iterator_name = format_ident!("{}Iterator", df_name);
 
-    // Generate iterator fields paired with their types to ensure correct correspondence
-    let iter_field_decls: Vec<_> = field_info
-        .iter()
-        .map(|(name, ty)| {
-            quote! { #name: std::vec::IntoIter<#ty> }
-        })
-        .collect();
+        let iter_field_decls: Vec<_> = field_info
+            .iter()
+            .map(|(name, ty)| quote! { #name: std::vec::IntoIter<#ty> })
+            .collect();
 
-    // Generate destructuring pattern
-    let destruct_pattern = field_info
-        .iter()
-        .map(|(name, _ty)| quote! { #name })
-        .collect::<Vec<_>>();
+        let destruct_pattern: Vec<_> = field_info
+            .iter()
+            .map(|(name, _)| quote! { #name })
+            .collect();
 
-    // Build struct initialization tokens explicitly with explicit types
-    let mut iter_init_tokens = TokenStream::new();
-    for (i, (name, ty)) in field_info.iter().enumerate() {
-        if i > 0 {
-            iter_init_tokens.extend(quote! { , });
-        }
-        iter_init_tokens.extend(quote! { #name: <Vec<#ty>>::into_iter(#name) });
-    }
-
-    // Build Iterator::next() return struct tokens explicitly
-    let mut next_struct_tokens = TokenStream::new();
-    for (i, (name, _ty)) in field_info.iter().enumerate() {
-        if i > 0 {
-            next_struct_tokens.extend(quote! { , });
-        }
-        next_struct_tokens.extend(quote! { #name: self.#name.next()? });
-    }
-
-    let into_iterator_impl = quote! {
-        pub struct #iterator_name {
-            #(#iter_field_decls),*
+        let mut iter_init_tokens = TokenStream::new();
+        for (i, (name, ty)) in field_info.iter().enumerate() {
+            if i > 0 {
+                iter_init_tokens.extend(quote! { , });
+            }
+            iter_init_tokens.extend(quote! { #name: <Vec<#ty>>::into_iter(#name) });
         }
 
-        impl IntoIterator for #df_name {
-            type Item = #row_name;
-            type IntoIter = #iterator_name;
+        let mut next_struct_tokens = TokenStream::new();
+        for (i, (name, _)) in field_info.iter().enumerate() {
+            if i > 0 {
+                next_struct_tokens.extend(quote! { , });
+            }
+            next_struct_tokens.extend(quote! { #name: self.#name.next()? });
+        }
 
-            fn into_iter(self) -> Self::IntoIter {
-                let #df_name { #(#destruct_pattern),* } = self;
-                #iterator_name {
-                    #iter_init_tokens
+        // Destructure the df, ignoring tag/_len fields
+        let ignore_tag = if has_tag {
+            quote! { _tag: _, }
+        } else {
+            TokenStream::new()
+        };
+
+        quote! {
+            pub struct #iterator_name {
+                #(#iter_field_decls),*
+            }
+
+            impl IntoIterator for #df_name {
+                type Item = #row_name;
+                type IntoIter = #iterator_name;
+
+                fn into_iter(self) -> Self::IntoIter {
+                    let #df_name { #ignore_tag #(#destruct_pattern),* } = self;
+                    #iterator_name {
+                        #iter_init_tokens
+                    }
+                }
+            }
+
+            impl Iterator for #iterator_name {
+                type Item = #row_name;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    Some(#row_name {
+                        #next_struct_tokens
+                    })
                 }
             }
         }
-
-        impl Iterator for #iterator_name {
-            type Item = #row_name;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                Some(#row_name {
-                    #next_struct_tokens
-                })
-            }
-        }
+    } else {
+        // For tuple structs, unit structs, and empty structs:
+        // skip IntoIterator generation (no round-trip back to original type)
+        TokenStream::new()
     };
 
-    // Generate associated methods on row type for working with DataFrame
+    // ── Associated methods ──────────────────────────────────────────────
+    let from_dataframe_method = if !field_info.is_empty() && !is_tuple_struct && !is_unit_struct {
+        quote! {
+            /// Convert a DataFrame back into a vector of rows.
+            ///
+            /// This transposes column-oriented data back into row-oriented format.
+            pub fn from_dataframe(df: #df_name) -> Vec<Self> {
+                df.into_iter().collect()
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             /// Name of the generated DataFrame companion type.
@@ -402,23 +503,23 @@ fn derive_struct_dataframe(
                 rows.into()
             }
 
-            /// Convert a DataFrame back into a vector of rows.
-            ///
-            /// This transposes column-oriented data back into row-oriented format.
-            pub fn from_dataframe(df: #df_name) -> Vec<Self> {
-                df.into_iter().collect()
-            }
+            #from_dataframe_method
         }
     };
 
     // Compile-time assertion: row type must implement IntoList
-    let trait_check = quote! {
-        const _: () = {
-            fn _assert_into_list #impl_generics () #where_clause {
-                fn _check<T: ::miniextendr_api::list::IntoList>() {}
-                _check::<#row_name #ty_generics>();
-            }
-        };
+    // Skip for unit/empty structs and tuple structs (they may not implement IntoList)
+    let trait_check = if !field_info.is_empty() && !is_tuple_struct && !is_unit_struct {
+        quote! {
+            const _: () = {
+                fn _assert_into_list #impl_generics () #where_clause {
+                    fn _check<T: ::miniextendr_api::list::IntoList>() {}
+                    _check::<#row_name #ty_generics>();
+                }
+            };
+        }
+    } else {
+        TokenStream::new()
     };
 
     Ok(quote! {
@@ -440,9 +541,35 @@ struct ResolvedColumn {
     /// Column name in the companion struct / data frame.
     col_name: syn::Ident,
     /// Element type (used as `Vec<Option<#ty>>`).
+    /// When `string_coerced` is true, this is always `String`.
     ty: syn::Type,
     /// Indices of variants that contain this field.
     present_in: Vec<usize>,
+    /// Whether this column was coerced to `String` due to type conflicts.
+    /// When true, values are converted via `ToString::to_string()` at push time.
+    string_coerced: bool,
+}
+
+/// Describes the shape of an enum variant's fields.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VariantShape {
+    /// `Variant { field: Type, ... }`
+    Named,
+    /// `Variant(Type, ...)`
+    Tuple,
+    /// `Variant` (no fields)
+    Unit,
+}
+
+/// Parsed information about an enum variant.
+struct VariantInfo {
+    /// Variant name.
+    name: syn::Ident,
+    /// Shape of this variant.
+    shape: VariantShape,
+    /// Fields: (column_name, type). For tuple variants, column names are _0, _1, etc.
+    /// For unit variants, this is empty.
+    fields: Vec<(syn::Ident, syn::Type)>,
 }
 
 /// Derive `DataFrameRow` for an enum with `#[dataframe(align)]`.
@@ -464,7 +591,7 @@ fn derive_enum_dataframe(
         ));
     }
 
-    let mut variant_infos: Vec<(&syn::Ident, Vec<(&syn::Ident, &syn::Type)>)> = Vec::new();
+    let mut variant_infos: Vec<VariantInfo> = Vec::new();
 
     for variant in &data.variants {
         match &variant.fields {
@@ -472,60 +599,79 @@ fn derive_enum_dataframe(
                 let field_info: Vec<_> = fields
                     .named
                     .iter()
-                    .map(|f| (f.ident.as_ref().unwrap(), &f.ty))
+                    .map(|f| (f.ident.as_ref().unwrap().clone(), f.ty.clone()))
                     .collect();
-                if field_info.is_empty() {
-                    return Err(syn::Error::new_spanned(
-                        &variant.ident,
-                        "DataFrameRow align: variants must have at least one named field",
-                    ));
-                }
-                variant_infos.push((&variant.ident, field_info));
+                // Empty named variants are allowed — they only contribute to tag column
+                variant_infos.push(VariantInfo {
+                    name: variant.ident.clone(),
+                    shape: VariantShape::Named,
+                    fields: field_info,
+                });
+            }
+            Fields::Unnamed(fields) => {
+                let field_info: Vec<_> = fields
+                    .unnamed
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| (format_ident!("_{}", i), f.ty.clone()))
+                    .collect();
+                variant_infos.push(VariantInfo {
+                    name: variant.ident.clone(),
+                    shape: VariantShape::Tuple,
+                    fields: field_info,
+                });
             }
             Fields::Unit => {
-                return Err(syn::Error::new_spanned(
-                    &variant.ident,
-                    "DataFrameRow align does not support unit variants",
-                ));
-            }
-            Fields::Unnamed(_) => {
-                return Err(syn::Error::new_spanned(
-                    &variant.ident,
-                    "DataFrameRow align does not support tuple variants",
-                ));
+                // Unit variants contribute only to tag column; all data columns get None
+                variant_infos.push(VariantInfo {
+                    name: variant.ident.clone(),
+                    shape: VariantShape::Unit,
+                    fields: vec![],
+                });
             }
         }
     }
 
     // ── Resolve unified schema ───────────────────────────────────────────
     // Collect all unique field names, check type consistency.
+    let coerce_to_string = attrs.conflicts.as_deref() == Some("string");
+    let string_ty: syn::Type = syn::parse_quote!(String);
+
     let mut columns: Vec<ResolvedColumn> = Vec::new();
     // Map field name → index in `columns` for fast lookup.
     let mut col_index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
-    for (variant_idx, (_variant_name, fields)) in variant_infos.iter().enumerate() {
-        for (field_name, field_ty) in fields {
+    for (variant_idx, vi) in variant_infos.iter().enumerate() {
+        for (field_name, field_ty) in &vi.fields {
             let key = field_name.to_string();
             if let Some(&idx) = col_index.get(&key) {
-                // Field already seen — check type matches exactly.
+                // Field already seen — check type matches.
                 let existing = &columns[idx];
-                if existing.ty != **field_ty {
-                    return Err(syn::Error::new_spanned(
-                        field_ty,
-                        format!(
-                            "type conflict for field `{}`: variant `{}` has a different type \
-                             than a previous variant",
-                            key, _variant_name
-                        ),
-                    ));
+                if !existing.string_coerced && existing.ty != *field_ty {
+                    if coerce_to_string {
+                        // Coerce this column to String
+                        columns[idx].ty = string_ty.clone();
+                        columns[idx].string_coerced = true;
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            field_ty,
+                            format!(
+                                "type conflict for field `{}`: variant `{}` has a different type \
+                                 than a previous variant; \
+                                 use `#[dataframe(conflicts = \"string\")]` to coerce all conflicting fields to String",
+                                key, vi.name
+                            ),
+                        ));
+                    }
                 }
                 columns[idx].present_in.push(variant_idx);
             } else {
                 let idx = columns.len();
                 columns.push(ResolvedColumn {
                     col_name: format_ident!("{}", field_name),
-                    ty: (*field_ty).clone(),
+                    ty: field_ty.clone(),
                     present_in: vec![variant_idx],
+                    string_coerced: false,
                 });
                 col_index.insert(key, idx);
             }
@@ -562,9 +708,12 @@ fn derive_enum_dataframe(
     // The first "real" column for length reference. If tag exists, use _tag.
     let length_ref = if has_tag {
         quote! { self._tag.len() }
+    } else if let Some(first_col) = columns.first() {
+        let first = &first_col.col_name;
+        quote! { self.#first.len() }
     } else {
-        let first_col = &columns[0].col_name;
-        quote! { self.#first_col.len() }
+        // No columns and no tag — degenerate case, length is 0
+        quote! { 0usize }
     };
 
     let tag_pair = if let Some(ref tag_name) = attrs.tag {
@@ -582,7 +731,7 @@ fn derive_enum_dataframe(
         })
         .collect();
 
-    // Length checks for all columns after the first
+    // Length checks for all columns
     let length_checks: Vec<TokenStream> = columns
         .iter()
         .map(|col| {
@@ -636,17 +785,9 @@ fn derive_enum_dataframe(
     let match_arms: Vec<TokenStream> = variant_infos
         .iter()
         .enumerate()
-        .map(|(variant_idx, (variant_name, fields))| {
+        .map(|(variant_idx, vi)| {
+            let variant_name = &vi.name;
             let variant_name_str = variant_name.to_string();
-
-            // Destructure pattern: variant fields get prefixed to avoid shadowing
-            let field_bindings: Vec<TokenStream> = fields
-                .iter()
-                .map(|(fname, _)| {
-                    let binding = format_ident!("__v_{}", fname);
-                    quote! { #fname: #binding }
-                })
-                .collect();
 
             let tag_push = if has_tag {
                 quote! { _tag.push(#variant_name_str.to_string()); }
@@ -654,24 +795,64 @@ fn derive_enum_dataframe(
                 TokenStream::new()
             };
 
-            // Push Some for present fields, None for absent
+            // Push Some for present fields, None for absent.
+            // String-coerced columns use `ToString::to_string()` on the value.
             let col_pushes: Vec<TokenStream> = columns
                 .iter()
                 .map(|col| {
                     let col_name = &col.col_name;
                     if col.present_in.contains(&variant_idx) {
                         let binding = format_ident!("__v_{}", col_name);
-                        quote! { #col_name.push(Some(#binding)); }
+                        if col.string_coerced {
+                            quote! { #col_name.push(Some(ToString::to_string(&#binding))); }
+                        } else {
+                            quote! { #col_name.push(Some(#binding)); }
+                        }
                     } else {
                         quote! { #col_name.push(None); }
                     }
                 })
                 .collect();
 
-            quote! {
-                #row_name::#variant_name { #(#field_bindings),* } => {
-                    #tag_push
-                    #(#col_pushes)*
+            // Generate destructure pattern based on variant shape
+            match vi.shape {
+                VariantShape::Named => {
+                    let field_bindings: Vec<TokenStream> = vi
+                        .fields
+                        .iter()
+                        .map(|(fname, _)| {
+                            let binding = format_ident!("__v_{}", fname);
+                            quote! { #fname: #binding }
+                        })
+                        .collect();
+                    quote! {
+                        #row_name::#variant_name { #(#field_bindings),* } => {
+                            #tag_push
+                            #(#col_pushes)*
+                        }
+                    }
+                }
+                VariantShape::Tuple => {
+                    let field_bindings: Vec<TokenStream> = vi
+                        .fields
+                        .iter()
+                        .map(|(fname, _)| format_ident!("__v_{}", fname))
+                        .map(|binding| quote! { #binding })
+                        .collect();
+                    quote! {
+                        #row_name::#variant_name(#(#field_bindings),*) => {
+                            #tag_push
+                            #(#col_pushes)*
+                        }
+                    }
+                }
+                VariantShape::Unit => {
+                    quote! {
+                        #row_name::#variant_name => {
+                            #tag_push
+                            #(#col_pushes)*
+                        }
+                    }
                 }
             }
         })
@@ -691,8 +872,20 @@ fn derive_enum_dataframe(
         })
         .collect();
 
-    let parallel_block = if attrs.parallel {
-        gen_parallel_enum_from(row_name, df_name, &columns, &variant_infos, has_tag)
+    // Skip parallel path for simplicity when non-named variants are present
+    let has_non_named = variant_infos
+        .iter()
+        .any(|vi| vi.shape != VariantShape::Named);
+    let parallel_block = if attrs.parallel && !has_non_named {
+        // Convert to old-style variant_infos for parallel gen (only named variants)
+        let old_variant_infos: Vec<(&syn::Ident, Vec<(&syn::Ident, &syn::Type)>)> = variant_infos
+            .iter()
+            .map(|vi| {
+                let fields: Vec<_> = vi.fields.iter().map(|(n, t)| (n, t)).collect();
+                (&vi.name, fields)
+            })
+            .collect();
+        gen_parallel_enum_from(row_name, df_name, &columns, &old_variant_infos, has_tag)
     } else {
         TokenStream::new()
     };

@@ -1,0 +1,8 @@
+error: unknown base type 'invalid'; expected one of: double, integer, logical, character, raw, list, record
+ --> tests/ui_vctrs/derive_vctrs_unknown_base.rs:6:1
+  |
+6 | / #[vctrs(class = "my_class", base = "invalid")]
+7 | | struct Bad {
+8 | |     x: f64,
+9 | | }
+  | |_^

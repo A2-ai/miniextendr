@@ -61,11 +61,19 @@ name = "altrep"
 harness = false
 
 [[bench]]
+name = "altrep_advanced"
+harness = false
+
+[[bench]]
 name = "altrep_iter"
 harness = false
 
 [[bench]]
 name = "connections"
+harness = false
+
+[[bench]]
+name = "panic_telemetry"
 harness = false
 
 [[bench]]
@@ -82,6 +90,10 @@ harness = false
 
 [[bench]]
 name = "sexp_ext"
+harness = false
+
+[[bench]]
+name = "strict"
 harness = false
 
 [[bench]]
@@ -114,6 +126,18 @@ harness = false
 
 [[bench]]
 name = "gc_protect"
+harness = false
+
+[[bench]]
+name = "raw_access"
+harness = false
+
+[[bench]]
+name = "typed_list"
+harness = false
+
+[[bench]]
+name = "dataframe"
 harness = false
 
 [[bench]]

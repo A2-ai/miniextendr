@@ -123,9 +123,7 @@ impl AltrepAttrs {
                     .find(|o| *o == "subset")
                     .unwrap()
                     .span(),
-                format!(
-                    "`subset` is not supported for {family}; only `integer` and `complex` support it"
-                ),
+                format!("`subset` is not supported for {family}"),
             ));
         }
 
@@ -161,8 +159,18 @@ impl AltrepAttrs {
 
         self.validate_options(macro_base, altvec_subset)?;
 
-        // If no non-default guard, use the simple impl_alt*_from_data! macro
-        if !self.has_non_default_guard() {
+        let has_serialize = self.lowlevel_options.iter().any(|o| o == "serialize");
+        let has_dataptr = self.lowlevel_options.iter().any(|o| o == "dataptr");
+        let has_subset = self.lowlevel_options.iter().any(|o| o == "subset");
+
+        // Use the expanded path (individual internal macros) when:
+        // - Non-default guard mode is set, OR
+        // - `subset` is requested (the runtime from_data macros only have subset
+        //   variants for integer and complex; other families expand manually)
+        let needs_expanded_path = self.has_non_default_guard() || has_subset;
+
+        if !needs_expanded_path {
+            // Simple path: delegate to the impl_alt*_from_data! runtime macro
             let macro_ident = syn::Ident::new(macro_base, proc_macro2::Span::call_site());
             if self.lowlevel_options.is_empty() {
                 return Ok(quote! {
@@ -176,11 +184,12 @@ impl AltrepAttrs {
             }
         }
 
-        // Non-default guard: expand individual internal macros with guard param
-        let guard = self.guard.as_ref().unwrap();
-        let has_serialize = self.lowlevel_options.iter().any(|o| o == "serialize");
-        let has_dataptr = self.lowlevel_options.iter().any(|o| o == "dataptr");
-        let has_subset = self.lowlevel_options.iter().any(|o| o == "subset");
+        // Expanded path: emit individual internal macros
+        let guard = self
+            .guard
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| syn::Ident::new("RustUnwind", proc_macro2::Span::call_site()));
 
         // 1. Altrep base (with or without serialize)
         let base_impl = if has_serialize {
@@ -328,7 +337,7 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         "impl_altreal_from_data",
         Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
         false,
-        false,
+        true,
         "__impl_altreal_methods",
         "impl_inferbase_real",
     )?;
@@ -375,7 +384,7 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
         "impl_altlogical_from_data",
         Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
         false,
-        false,
+        true,
         "__impl_altlogical_methods",
         "impl_inferbase_logical",
     )?;
@@ -422,7 +431,7 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         "impl_altraw_from_data",
         Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
         false,
-        false,
+        true,
         "__impl_altraw_methods",
         "impl_inferbase_raw",
     )?;
@@ -471,7 +480,7 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
         "impl_altstring_from_data",
         None,
         true,
-        false,
+        true,
         "__impl_altstring_methods",
         "impl_inferbase_string",
     )?;
@@ -567,16 +576,54 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    // List does not support dataptr, serialize, or subset
-    if let Some(opt) = attrs.lowlevel_options.first() {
-        return Err(syn::Error::new(
-            opt.span(),
-            format!("`{opt}` is not supported for AltrepList"),
-        ));
+    // List does not support dataptr or subset
+    for opt in &attrs.lowlevel_options {
+        if opt == "dataptr" || opt == "subset" {
+            return Err(syn::Error::new(
+                opt.span(),
+                format!("`{opt}` is not supported for AltrepList"),
+            ));
+        }
     }
+
+    let has_serialize = attrs.lowlevel_options.iter().any(|o| o == "serialize");
 
     let lowlevel_impl = if !attrs.generate_lowlevel {
         quote! {}
+    } else if has_serialize {
+        // Serialize requires expanding individual macros since impl_altlist_from_data!
+        // does not have a serialize variant. Use __impl_altrep_base_with_serialize!
+        // for the Altrep trait, then manually emit AltVec + AltList + InferBase.
+        if attrs.has_non_default_guard() {
+            let guard = attrs.guard.as_ref().unwrap();
+            quote! {
+                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name, #guard);
+                impl ::miniextendr_api::altrep_traits::AltVec for #name {}
+                #[allow(clippy::not_unsafe_ptr_arg_deref)]
+                impl ::miniextendr_api::altrep_traits::AltList for #name {
+                    fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
+                        unsafe { ::miniextendr_api::altrep_data1_as::<#name>(x) }
+                            .map(|d| <#name as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                            .unwrap_or(unsafe { ::miniextendr_api::ffi::R_NilValue })
+                    }
+                }
+                ::miniextendr_api::impl_inferbase_list!(#name);
+            }
+        } else {
+            quote! {
+                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name);
+                impl ::miniextendr_api::altrep_traits::AltVec for #name {}
+                #[allow(clippy::not_unsafe_ptr_arg_deref)]
+                impl ::miniextendr_api::altrep_traits::AltList for #name {
+                    fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
+                        unsafe { ::miniextendr_api::altrep_data1_as::<#name>(x) }
+                            .map(|d| <#name as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                            .unwrap_or(unsafe { ::miniextendr_api::ffi::R_NilValue })
+                    }
+                }
+                ::miniextendr_api::impl_inferbase_list!(#name);
+            }
+        }
     } else if attrs.has_non_default_guard() {
         let guard = attrs.guard.as_ref().unwrap();
         quote! {

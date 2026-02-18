@@ -225,6 +225,7 @@ mod roxygen;
 mod externalptr_derive;
 mod miniextendr_impl_trait;
 mod miniextendr_trait;
+mod typed_external_macro;
 
 // Factor support
 mod factor_derive;
@@ -642,9 +643,21 @@ pub fn miniextendr(
         noexport,
         doc,
         error_in_r,
+        c_symbol,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
+
+    // Reject async functions
+    if let Some(asyncness) = &parsed.item().sig.asyncness {
+        return syn::Error::new_spanned(
+            asyncness,
+            "async functions are not supported by #[miniextendr]; \
+             R's C API is synchronous and incompatible with async executors",
+        )
+        .into_compile_error()
+        .into();
+    }
 
     // Validate: reject generic functions (extern "C-unwind" + #[no_mangle] incompatible with generics)
     if !parsed.item().sig.generics.params.is_empty() {
@@ -663,7 +676,11 @@ pub fn miniextendr(
     // Extract commonly used values
     let uses_internal_c_wrapper = parsed.uses_internal_c_wrapper();
     let call_method_def = parsed.call_method_def_ident();
-    let c_ident = parsed.c_wrapper_ident();
+    let c_ident = if let Some(ref sym) = c_symbol {
+        syn::Ident::new(sym, parsed.c_wrapper_ident().span())
+    } else {
+        parsed.c_wrapper_ident()
+    };
     let r_wrapper_generator = parsed.r_wrapper_const_ident();
 
     use syn::spanned::Spanned;
@@ -1197,12 +1214,36 @@ pub fn miniextendr(
                     };
 
                     if !is_sexp {
-                        return syn::Error::new_spanned(
-                            &pat_type.ty,
-                            "extern function parameters must be SEXP - .Call passes all arguments as SEXP",
-                        )
-                        .into_compile_error()
-                        .into();
+                        // Check if the type looks like &Dots or Dots
+                        let is_dots_type =
+                            if let syn::Type::Reference(type_ref) = pat_type.ty.as_ref() {
+                                if let syn::Type::Path(inner) = type_ref.elem.as_ref() {
+                                    inner
+                                        .path
+                                        .segments
+                                        .last()
+                                        .is_some_and(|seg| seg.ident == "Dots")
+                                } else {
+                                    false
+                                }
+                            } else if let syn::Type::Path(type_path) = pat_type.ty.as_ref() {
+                                type_path
+                                    .path
+                                    .segments
+                                    .last()
+                                    .is_some_and(|seg| seg.ident == "Dots")
+                            } else {
+                                false
+                            };
+
+                        let msg = if is_dots_type {
+                            "extern functions cannot use Dots; use `...` syntax in non-extern #[miniextendr] functions instead"
+                        } else {
+                            "extern function parameters must be SEXP - .Call passes all arguments as SEXP"
+                        };
+                        return syn::Error::new_spanned(&pat_type.ty, msg)
+                            .into_compile_error()
+                            .into();
                     }
                 }
             }
@@ -1404,9 +1445,9 @@ pub fn miniextendr(
 
     // Inject dots_typed binding into function body if dots = typed_list!(...) was specified
     if let Some(ref spec_tokens) = dots_spec {
-        let dots_param = named_dots
-            .clone()
-            .unwrap_or_else(|| syn::Ident::new("_dots", proc_macro2::Span::call_site()));
+        let dots_param = named_dots.clone().unwrap_or_else(|| {
+            syn::Ident::new("__miniextendr_dots", proc_macro2::Span::call_site())
+        });
         let validation_stmt: syn::Stmt = syn::parse_quote! {
             let dots_typed = #dots_param.typed(#spec_tokens)
                 .expect("dots validation failed");
@@ -3115,6 +3156,28 @@ pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[doc(hidden)]
 pub fn __mx_trait_impl_expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     miniextendr_impl_trait::expand_tpie(input)
+}
+
+/// Generate `TypedExternal` and `IntoExternalPtr` impls for a concrete monomorphization
+/// of a generic type.
+///
+/// Since `#[derive(ExternalPtr)]` rejects generic types, use this macro to generate
+/// the necessary impls for a specific type instantiation.
+///
+/// # Example
+///
+/// ```ignore
+/// struct Wrapper<T> { inner: T }
+///
+/// impl_typed_external!(Wrapper<i32>);
+/// impl_typed_external!(Wrapper<String>);
+/// ```
+#[proc_macro]
+pub fn impl_typed_external(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    match typed_external_macro::impl_typed_external(input.into()) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.into_compile_error().into(),
+    }
 }
 
 #[cfg(test)]

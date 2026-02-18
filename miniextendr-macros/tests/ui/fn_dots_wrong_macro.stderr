@@ -1,0 +1,5 @@
+error: dots expects `typed_list!(...)` macro
+ --> tests/ui/fn_dots_wrong_macro.rs:5:22
+  |
+5 | #[miniextendr(dots = vec!(i32))]
+  |                      ^^^

@@ -1,0 +1,5 @@
+error: s3(...) requires `class = "..."` to specify the S3 class suffix; `generic` is optional and defaults to the function name
+ --> tests/ui/fn_s3_missing_class.rs:5:15
+  |
+5 | #[miniextendr(s3(generic = "print"))]
+  |               ^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: unknown s7 option: unknown_opt (expected parent, abstract, r_data_accessors)
+ --> tests/ui/impl_s7_unknown_option.rs:7:18
+  |
+7 | #[miniextendr(s7(unknown_opt = true))]
+  |                  ^^^^^^^^^^^

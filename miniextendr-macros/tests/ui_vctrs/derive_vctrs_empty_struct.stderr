@@ -1,0 +1,5 @@
+error: Vctrs requires at least one field
+ --> tests/ui_vctrs/derive_vctrs_empty_struct.rs:7:8
+  |
+7 | struct Bad {}
+  |        ^^^

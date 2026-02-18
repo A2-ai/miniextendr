@@ -1,0 +1,5 @@
+error: expected `exact` after @; use `@exact;` for strict mode
+ --> tests/ui/typed_list_unknown_mode.rs:4:26
+  |
+4 |     let _ = typed_list!(@strict; alpha);
+  |                          ^^^^^^

@@ -1,0 +1,5 @@
+error: invalid lifecycle stage; expected one of: experimental, stable, superseded, soft-deprecated, deprecated, defunct
+ --> tests/ui/fn_lifecycle_invalid_stage.rs:5:27
+  |
+5 | #[miniextendr(lifecycle = "bogus")]
+  |                           ^^^^^^^

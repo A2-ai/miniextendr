@@ -1,5 +1,0 @@
-error: DataFrameRow align does not support unit variants
- --> tests/ui/derive_dataframe_unit_variant.rs:9:5
-  |
-9 |     Nothing,
-  |     ^^^^^^^

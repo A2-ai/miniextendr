@@ -1,0 +1,5 @@
+error: self parameter not allowed in standalone functions; use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead
+ --> tests/ui/extern_self_param.rs:8:37
+  |
+8 | pub extern "C-unwind" fn bad_extern(self) {
+  |                                     ^^^^

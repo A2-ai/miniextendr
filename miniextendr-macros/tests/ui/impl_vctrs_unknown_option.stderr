@@ -1,0 +1,5 @@
+error: unknown vctrs option: unknown_opt (expected kind, base, inherit_base_type, ptype, abbr)
+ --> tests/ui/impl_vctrs_unknown_option.rs:7:21
+  |
+7 | #[miniextendr(vctrs(unknown_opt = true))]
+  |                     ^^^^^^^^^^^

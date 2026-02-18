@@ -1,0 +1,5 @@
+error: DataFrameRow requires at least one variant
+ --> tests/ui/derive_dataframe_enum_no_variants.rs:6:6
+  |
+6 | enum Empty {}
+  |      ^^^^^
