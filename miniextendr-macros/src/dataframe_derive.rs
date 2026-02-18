@@ -994,6 +994,66 @@ struct ResolvedColumn {
     string_coerced: bool,
 }
 
+/// Accumulates unique columns for an enum-to-dataframe schema.
+struct ColumnRegistry<'a> {
+    columns: Vec<ResolvedColumn>,
+    col_index: std::collections::HashMap<String, usize>,
+    coerce_to_string: bool,
+    string_ty: &'a syn::Type,
+}
+
+impl<'a> ColumnRegistry<'a> {
+    fn new(coerce_to_string: bool, string_ty: &'a syn::Type) -> Self {
+        Self {
+            columns: Vec::new(),
+            col_index: std::collections::HashMap::new(),
+            coerce_to_string,
+            string_ty,
+        }
+    }
+
+    /// Register a single column in the schema.
+    fn register(
+        &mut self,
+        col_name: &str,
+        col_ty: &syn::Type,
+        variant_idx: usize,
+        variant_name: &syn::Ident,
+        error_span: Span,
+    ) -> syn::Result<()> {
+        if let Some(&idx) = self.col_index.get(col_name) {
+            let existing = &self.columns[idx];
+            if !existing.string_coerced && existing.ty != *col_ty {
+                if self.coerce_to_string {
+                    self.columns[idx].ty = self.string_ty.clone();
+                    self.columns[idx].string_coerced = true;
+                } else {
+                    return Err(syn::Error::new(
+                        error_span,
+                        format!(
+                            "type conflict for field `{}`: variant `{}` has a different type \
+                             than a previous variant; \
+                             use `#[dataframe(conflicts = \"string\")]` to coerce all conflicting fields to String",
+                            col_name, variant_name
+                        ),
+                    ));
+                }
+            }
+            self.columns[idx].present_in.push(variant_idx);
+        } else {
+            let idx = self.columns.len();
+            self.columns.push(ResolvedColumn {
+                col_name: format_ident!("{}", col_name),
+                ty: col_ty.clone(),
+                present_in: vec![variant_idx],
+                string_coerced: false,
+            });
+            self.col_index.insert(col_name.to_string(), idx);
+        }
+        Ok(())
+    }
+}
+
 /// Describes the shape of an enum variant's fields.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum VariantShape {
@@ -1247,54 +1307,7 @@ fn derive_enum_dataframe(
     // Expanded fields contribute multiple columns to the schema.
     let coerce_to_string = attrs.conflicts.as_deref() == Some("string");
     let string_ty: syn::Type = syn::parse_quote!(String);
-
-    let mut columns: Vec<ResolvedColumn> = Vec::new();
-    let mut col_index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-
-    /// Helper: register a single column in the schema.
-    #[allow(clippy::too_many_arguments)]
-    fn register_column(
-        columns: &mut Vec<ResolvedColumn>,
-        col_index: &mut std::collections::HashMap<String, usize>,
-        col_name: &str,
-        col_ty: &syn::Type,
-        variant_idx: usize,
-        variant_name: &syn::Ident,
-        coerce_to_string: bool,
-        string_ty: &syn::Type,
-        error_span: Span,
-    ) -> syn::Result<()> {
-        if let Some(&idx) = col_index.get(col_name) {
-            let existing = &columns[idx];
-            if !existing.string_coerced && existing.ty != *col_ty {
-                if coerce_to_string {
-                    columns[idx].ty = string_ty.clone();
-                    columns[idx].string_coerced = true;
-                } else {
-                    return Err(syn::Error::new(
-                        error_span,
-                        format!(
-                            "type conflict for field `{}`: variant `{}` has a different type \
-                             than a previous variant; \
-                             use `#[dataframe(conflicts = \"string\")]` to coerce all conflicting fields to String",
-                            col_name, variant_name
-                        ),
-                    ));
-                }
-            }
-            columns[idx].present_in.push(variant_idx);
-        } else {
-            let idx = columns.len();
-            columns.push(ResolvedColumn {
-                col_name: format_ident!("{}", col_name),
-                ty: col_ty.clone(),
-                present_in: vec![variant_idx],
-                string_coerced: false,
-            });
-            col_index.insert(col_name.to_string(), idx);
-        }
-        Ok(())
-    }
+    let mut registry = ColumnRegistry::new(coerce_to_string, &string_ty);
 
     for (variant_idx, vi) in variant_infos.iter().enumerate() {
         for erf in &vi.fields {
@@ -1306,15 +1319,11 @@ fn derive_enum_dataframe(
             };
             match erf {
                 EnumResolvedField::Single { col_name, ty, .. } => {
-                    register_column(
-                        &mut columns,
-                        &mut col_index,
+                    registry.register(
                         &col_name.to_string(),
                         ty,
                         variant_idx,
                         &vi.name,
-                        coerce_to_string,
-                        &string_ty,
                         err_span,
                     )?;
                 }
@@ -1326,15 +1335,11 @@ fn derive_enum_dataframe(
                 } => {
                     for i in 1..=*len {
                         let name = format!("{}_{}", base_name, i);
-                        register_column(
-                            &mut columns,
-                            &mut col_index,
+                        registry.register(
                             &name,
                             elem_ty,
                             variant_idx,
                             &vi.name,
-                            coerce_to_string,
-                            &string_ty,
                             err_span,
                         )?;
                     }
@@ -1347,15 +1352,11 @@ fn derive_enum_dataframe(
                 } => {
                     for i in 1..=*width {
                         let name = format!("{}_{}", base_name, i);
-                        register_column(
-                            &mut columns,
-                            &mut col_index,
+                        registry.register(
                             &name,
                             elem_ty,
                             variant_idx,
                             &vi.name,
-                            coerce_to_string,
-                            &string_ty,
                             err_span,
                         )?;
                     }
@@ -1363,6 +1364,7 @@ fn derive_enum_dataframe(
             }
         }
     }
+    let columns = registry.columns;
 
     // ── Generate companion struct ────────────────────────────────────────
     let has_tag = attrs.tag.is_some();

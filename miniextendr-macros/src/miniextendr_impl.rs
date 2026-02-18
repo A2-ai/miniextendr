@@ -273,11 +273,6 @@ impl ReceiverKind {
         matches!(self, ReceiverKind::Ref | ReceiverKind::RefMut)
     }
 
-    /// Returns true if this requires mutable access.
-    #[allow(dead_code)]
-    pub fn is_mut(&self) -> bool {
-        matches!(self, ReceiverKind::RefMut | ReceiverKind::Value)
-    }
 }
 
 /// Parsed method from an impl block.

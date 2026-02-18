@@ -7,6 +7,16 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
 
+/// Per-family configuration for ALTREP lowlevel codegen.
+struct AltrepFamilyConfig<'a> {
+    macro_base: &'a str,
+    dataptr_macro: Option<(&'a str, Option<TokenStream>)>,
+    string_dataptr: bool,
+    subset: bool,
+    methods_macro: &'a str,
+    inferbase_macro: &'a str,
+}
+
 /// Common attributes for ALTREP derives.
 struct AltrepAttrs {
     /// Field name containing the length
@@ -142,17 +152,22 @@ impl AltrepAttrs {
     }
 
     /// Generate lowlevel impl code for a given ALTREP type family.
-    #[allow(clippy::too_many_arguments)]
     fn generate_lowlevel(
         &self,
         name: &syn::Ident,
-        macro_base: &str,
-        altvec_dataptr_macro: Option<(&str, Option<TokenStream>)>,
-        altvec_string_dataptr: bool,
-        altvec_subset: bool,
-        methods_macro: &str,
-        inferbase_macro: &str,
+        family: &AltrepFamilyConfig,
     ) -> syn::Result<TokenStream> {
+        let AltrepFamilyConfig {
+            macro_base,
+            ref dataptr_macro,
+            string_dataptr,
+            subset,
+            methods_macro,
+            inferbase_macro,
+        } = *family;
+        let altvec_dataptr_macro = dataptr_macro;
+        let altvec_string_dataptr = string_dataptr;
+        let altvec_subset = subset;
         if !self.generate_lowlevel {
             return Ok(quote! {});
         }
@@ -287,12 +302,14 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
 
     let lowlevel_impl = attrs.generate_lowlevel(
         name,
-        "impl_altinteger_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
-        false,
-        true,
-        "__impl_altinteger_methods",
-        "impl_inferbase_integer",
+        &AltrepFamilyConfig {
+            macro_base: "impl_altinteger_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altinteger_methods",
+            inferbase_macro: "impl_inferbase_integer",
+        },
     )?;
 
     Ok(quote! {
@@ -334,12 +351,14 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 
     let lowlevel_impl = attrs.generate_lowlevel(
         name,
-        "impl_altreal_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
-        false,
-        true,
-        "__impl_altreal_methods",
-        "impl_inferbase_real",
+        &AltrepFamilyConfig {
+            macro_base: "impl_altreal_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altreal_methods",
+            inferbase_macro: "impl_inferbase_real",
+        },
     )?;
 
     Ok(quote! {
@@ -381,12 +400,14 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
 
     let lowlevel_impl = attrs.generate_lowlevel(
         name,
-        "impl_altlogical_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
-        false,
-        true,
-        "__impl_altlogical_methods",
-        "impl_inferbase_logical",
+        &AltrepFamilyConfig {
+            macro_base: "impl_altlogical_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altlogical_methods",
+            inferbase_macro: "impl_inferbase_logical",
+        },
     )?;
 
     Ok(quote! {
@@ -428,12 +449,14 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 
     let lowlevel_impl = attrs.generate_lowlevel(
         name,
-        "impl_altraw_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
-        false,
-        true,
-        "__impl_altraw_methods",
-        "impl_inferbase_raw",
+        &AltrepFamilyConfig {
+            macro_base: "impl_altraw_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altraw_methods",
+            inferbase_macro: "impl_inferbase_raw",
+        },
     )?;
 
     Ok(quote! {
@@ -477,12 +500,14 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
 
     let lowlevel_impl = attrs.generate_lowlevel(
         name,
-        "impl_altstring_from_data",
-        None,
-        true,
-        true,
-        "__impl_altstring_methods",
-        "impl_inferbase_string",
+        &AltrepFamilyConfig {
+            macro_base: "impl_altstring_from_data",
+            dataptr_macro: None,
+            string_dataptr: true,
+            subset: true,
+            methods_macro: "__impl_altstring_methods",
+            inferbase_macro: "impl_inferbase_string",
+        },
     )?;
 
     Ok(quote! {
@@ -527,15 +552,17 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
 
     let lowlevel_impl = attrs.generate_lowlevel(
         name,
-        "impl_altcomplex_from_data",
-        Some((
-            "__impl_altvec_dataptr",
-            Some(quote! { ::miniextendr_api::ffi::Rcomplex }),
-        )),
-        false,
-        true,
-        "__impl_altcomplex_methods",
-        "impl_inferbase_complex",
+        &AltrepFamilyConfig {
+            macro_base: "impl_altcomplex_from_data",
+            dataptr_macro: Some((
+                "__impl_altvec_dataptr",
+                Some(quote! { ::miniextendr_api::ffi::Rcomplex }),
+            )),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altcomplex_methods",
+            inferbase_macro: "impl_inferbase_complex",
+        },
     )?;
 
     Ok(quote! {

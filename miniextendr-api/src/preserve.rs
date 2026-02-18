@@ -48,8 +48,8 @@
 //! All functions in this module are unsafe and must be called from the R main thread.
 
 use crate::ffi::{
-    CAR, CDR, R_NilValue, R_PreserveObject, R_xlen_t, Rf_cons, Rf_protect, Rf_unprotect,
-    Rf_xlength, SET_TAG, SETCAR, SETCDR, SEXP,
+    CAR, CDR, R_NilValue, R_PreserveObject, Rf_cons, Rf_protect, Rf_unprotect, SET_TAG, SETCAR,
+    SETCDR, SEXP,
 };
 use std::cell::OnceCell;
 
@@ -130,8 +130,10 @@ pub(crate) unsafe fn get_unchecked() -> SEXP {
 /// # Safety
 ///
 /// Must be called from the R main thread.
+#[cfg(feature = "debug-preserve")]
 #[inline]
-pub unsafe fn count() -> R_xlen_t {
+pub unsafe fn count() -> crate::ffi::R_xlen_t {
+    use crate::ffi::{R_xlen_t, Rf_xlength};
     unsafe {
         let head: R_xlen_t = 1;
         let tail: R_xlen_t = 1;
@@ -148,9 +150,10 @@ pub unsafe fn count() -> R_xlen_t {
 ///
 /// Must be called from the R main thread. Only use in contexts where
 /// you're certain you're on the main thread.
+#[cfg(feature = "debug-preserve")]
 #[inline]
-pub unsafe fn count_unchecked() -> R_xlen_t {
-    use crate::ffi::Rf_xlength_unchecked;
+pub unsafe fn count_unchecked() -> crate::ffi::R_xlen_t {
+    use crate::ffi::{R_xlen_t, Rf_xlength_unchecked};
 
     unsafe {
         let head: R_xlen_t = 1;

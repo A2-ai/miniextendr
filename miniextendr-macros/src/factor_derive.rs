@@ -262,7 +262,7 @@ fn derive_simple_factor(
 }
 
 /// Generate RFactor impl for interaction (tuple variant) enums.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)] // generics plumbing, single call site
 fn derive_interaction_factor(
     name: &syn::Ident,
     impl_generics: &syn::ImplGenerics,

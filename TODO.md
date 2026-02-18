@@ -166,44 +166,16 @@ Helper generation for S4 wrapper patterns. Migration notes S4 → S7.
 
 ---
 
-## Allow attribute cleanup
+## Allow attribute cleanup (completed)
 
-Small mechanical items from the audit (`analysis/allow_attributes_refactor_audit.md`,
-now deleted but findings are captured here).
+All items from the audit have been addressed:
 
-### Remove stale dead_code allows (5 items)
-
-These helpers/methods appear unused:
-- `miniextendr-api/src/list.rs:228` — `set_attr_impl_unchecked`
-- `miniextendr-api/src/rarray.rs:574` — `set_attr_impl_unchecked`
-- `miniextendr-macros/src/dataframe_derive.rs:290` — `column_count`
-- `miniextendr-macros/src/lifecycle.rs:89` — `needs_signal`
-- `miniextendr-macros/src/r_class_formatter.rs:310` — `with_export`
-
-### Remove dead parsed fields (3 items)
-
-Fields parsed but never consumed by codegen:
-- `miniextendr-macros/src/miniextendr_impl_trait.rs:129` — `worker` field
-- `miniextendr-macros/src/miniextendr_impl.rs:621` — `generics` field
-- `miniextendr-macros/src/miniextendr_trait.rs:834` — `has_default` field
-
-### Trivial lint fixes (2 items)
-
-- `miniextendr-macros/src/lib.rs:2481` — `clippy::collapsible_if` (merge nested if-let)
-- `miniextendr-lint/src/crate_index.rs:353` — `clippy::only_used_in_recursion` (drop unused `path` param)
-
-### too_many_arguments (5 functions, needs param structs)
-
-These have 8+ parameters. Introduce `*Ctx`/`*Config` structs:
-- `miniextendr-macros/src/altrep_derive.rs:145`
-- `miniextendr-macros/src/dataframe_derive.rs:1267`
-- `miniextendr-macros/src/factor_derive.rs:265`
-- `miniextendr-macros/src/miniextendr_impl_trait.rs:1197`
-- `miniextendr-macros/src/return_type_analysis.rs:160`
-
-### Feature-gate test-only APIs (2 items)
-
-- `miniextendr-api/src/preserve.rs:133` — `count()`
-- `miniextendr-api/src/preserve.rs:152` — `count_unchecked()`
-
-Gate with `#[cfg(any(test, feature = "debug-preserve"))]`.
+- **Dead code allows**: 5 items in previous commit + 3 in this session
+  (`has_default` field, `ReceiverKind::is_mut()`, `LifecycleSpec::roxygen_tags()`)
+- **Dead parsed fields**: 3 items — 2 in previous commit, 1 in this session (`has_default`)
+- **Trivial lint fixes**: 2 items — completed in previous commit
+- **too_many_arguments**: 4 remaining → 3 resolved with param structs
+  (`AltrepFamilyConfig`, `ColumnRegistry`, `AnalysisCtx`), 1 annotated
+  (`derive_interaction_factor` — single call site, generics plumbing)
+- **Feature-gate test-only APIs**: `preserve::count()` / `count_unchecked()`
+  gated with `#[cfg(feature = "debug-preserve")]`

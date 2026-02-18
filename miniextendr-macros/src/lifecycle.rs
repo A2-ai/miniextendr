@@ -200,25 +200,6 @@ impl LifecycleSpec {
         }
     }
 
-    /// Generate roxygen tags for this lifecycle spec.
-    ///
-    /// Returns tags to add to the function documentation.
-    #[allow(dead_code)]
-    pub fn roxygen_tags(&self) -> Vec<String> {
-        let mut tags = Vec::new();
-
-        // Add badge to description
-        if let Some(badge) = self.stage.badge() {
-            tags.push(format!("@description {}", badge));
-        }
-
-        // Add keywords if needed
-        if let Some(keywords) = self.stage.keywords() {
-            tags.push(format!("@keywords {}", keywords));
-        }
-
-        tags
-    }
 }
 
 /// Parse lifecycle spec from miniextendr attribute arguments.
