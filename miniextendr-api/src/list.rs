@@ -219,18 +219,6 @@ impl List {
     // Attribute setters (equivalent to R's SET_* macros)
     // =========================================================================
 
-    /// Set an arbitrary attribute by symbol (unchecked internal helper).
-    ///
-    /// # Safety
-    ///
-    /// Caller must ensure `what` is a valid symbol SEXP.
-    #[inline]
-    #[allow(dead_code)]
-    unsafe fn set_attr_impl_unchecked(self, what: SEXP, value: SEXP) -> Self {
-        unsafe { ffi::Rf_setAttrib(self.0, what, value) };
-        self
-    }
-
     /// Set the `names` attribute; returns the same list for chaining.
     ///
     /// Equivalent to R's `SET_NAMES(x, n)`.

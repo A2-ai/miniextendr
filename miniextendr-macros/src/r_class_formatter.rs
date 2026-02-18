@@ -306,13 +306,6 @@ impl<'a> MethodDocBuilder<'a> {
         self
     }
 
-    /// Set whether to always add @export (default: true).
-    #[allow(dead_code)]
-    pub fn with_export(mut self, export: bool) -> Self {
-        self.always_export = export;
-        self
-    }
-
     /// Set whether the parent class has @noRd.
     ///
     /// When true, skips @name, @rdname, @source tags and adds @noRd instead.

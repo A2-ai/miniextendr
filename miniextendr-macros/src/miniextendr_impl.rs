@@ -617,9 +617,6 @@ pub struct MethodAttrs {
 pub struct ParsedImpl {
     /// Type being implemented
     pub type_ident: syn::Ident,
-    /// Type generics (rejected in v1 unless 'static)
-    #[allow(dead_code)]
-    pub generics: syn::Generics,
     /// Class system to use
     pub class_system: ClassSystem,
     /// Override class name (else type name)
@@ -1738,7 +1735,6 @@ impl ParsedImpl {
 
         Ok(ParsedImpl {
             type_ident,
-            generics: item_impl.generics.clone(),
             class_system: attrs.class_system,
             class_name: attrs.class_name,
             label: attrs.label,

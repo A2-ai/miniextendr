@@ -285,17 +285,6 @@ enum ResolvedField {
     },
 }
 
-impl ResolvedField {
-    /// Number of DataFrame columns this field expands to.
-    #[allow(dead_code)]
-    fn column_count(&self) -> usize {
-        match self {
-            ResolvedField::Single { .. } => 1,
-            ResolvedField::ExpandedFixed { len, .. } => *len,
-            ResolvedField::ExpandedVec { width, .. } => *width,
-        }
-    }
-}
 
 /// Resolve a struct field into a `ResolvedField`, applying field attrs.
 fn resolve_struct_field(

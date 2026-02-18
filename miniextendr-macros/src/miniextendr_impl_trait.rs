@@ -123,11 +123,6 @@ struct TraitMethod {
     has_self: bool,
     /// Is this &mut self (vs &self)? Only meaningful if has_self is true.
     is_mut: bool,
-    /// Opt-in flags controlling thread strategy.
-    /// Note: This field is currently unused since WorkerThread is the default for static methods.
-    /// Kept for explicitness and potential future use (e.g., forcing main thread static methods).
-    #[allow(dead_code)]
-    worker: bool,
     unsafe_main_thread: bool,
     /// Enable automatic type coercion for all parameters
     coerce: bool,
@@ -768,7 +763,6 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     sig: method.sig.clone(),
                     has_self,
                     is_mut,
-                    worker: attrs.worker,
                     unsafe_main_thread: attrs.unsafe_main_thread,
                     coerce: attrs.coerce,
                     check_interrupt: attrs.check_interrupt,
@@ -789,7 +783,6 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
 
 /// Parsed attributes for a trait method.
 struct TraitMethodAttrs {
-    worker: bool,
     unsafe_main_thread: bool,
     coerce: bool,
     check_interrupt: bool,
@@ -907,8 +900,10 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         });
     }
 
+    // `worker` is parsed but not used — WorkerThread is the default for static methods
+    let _ = worker;
+
     TraitMethodAttrs {
-        worker,
         unsafe_main_thread,
         coerce,
         check_interrupt,
@@ -2446,7 +2441,6 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 sig,
                 has_self,
                 is_mut,
-                worker: false,
                 unsafe_main_thread: false,
                 coerce: false,
                 check_interrupt: false,

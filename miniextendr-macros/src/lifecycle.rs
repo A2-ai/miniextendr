@@ -85,12 +85,6 @@ impl LifecycleStage {
         }
     }
 
-    /// Check if this stage needs a signal call.
-    #[allow(dead_code)]
-    pub fn needs_signal(&self) -> bool {
-        !matches!(self, Self::Stable)
-    }
-
     /// Get the roxygen @keywords value (if needed).
     pub fn keywords(&self) -> Option<&'static str> {
         match self {

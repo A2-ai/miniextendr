@@ -437,7 +437,6 @@ impl MiniextendrFunctionParsed {
     }
 
     /// The normalized function item (with original doc comments).
-    #[allow(dead_code)] // Used in tests
     pub(crate) fn item(&self) -> &syn::ItemFn {
         &self.item
     }

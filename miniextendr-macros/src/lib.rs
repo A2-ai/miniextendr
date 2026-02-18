@@ -2478,13 +2478,13 @@ pub fn r_ffi_checked(
                     let arg_names: Vec<_> = inputs
                         .iter()
                         .filter_map(|arg| {
-                            #[allow(clippy::collapsible_if)]
-                            if let syn::FnArg::Typed(pat_type) = arg {
-                                if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
-                                    return Some(pat_ident.ident.clone());
-                                }
+                            if let syn::FnArg::Typed(pat_type) = arg
+                                && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+                            {
+                                Some(pat_ident.ident.clone())
+                            } else {
+                                None
                             }
-                            None
                         })
                         .collect();
 
