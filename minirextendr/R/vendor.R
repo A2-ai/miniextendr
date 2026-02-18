@@ -258,6 +258,13 @@ patch_cargo_toml <- function(path, crate_name) {
   # miniextendr-engine in miniextendr-api dev-deps is not used by scaffolded packages
   content <- content[!grepl("^miniextendr-engine = ", content)]
 
+  # Remove [[bench]], [[test]], and [dev-dependencies] sections entirely.
+  # strip_vendored_crate() deletes benches/ and tests/ directories, so these
+
+  # TOML sections become dangling references that cause cargo errors.
+  content <- strip_toml_sections(content,
+    c("[[bench]]", "[[test]]", "[dev-dependencies]"))
+
   # Validate: warn if any workspace = true entries remain unhandled
   remaining <- grep("workspace\\s*=\\s*true", content, value = TRUE)
   if (length(remaining) > 0) {
@@ -410,6 +417,45 @@ strip_vendored_crate <- function(crate_path) {
       fs::file_delete(f)
     }
   }
+}
+
+#' Remove TOML sections from a character vector of lines
+#'
+#' Removes complete sections (header line through end of section) for the
+#' given TOML headers. A section ends at the next header (`[...]`) or EOF.
+#'
+#' @param lines Character vector of TOML file lines
+#' @param headers Character vector of section headers to remove, e.g.
+#'   `c("[[bench]]", "[dev-dependencies]")`
+#' @return Filtered character vector with those sections removed
+#' @noRd
+strip_toml_sections <- function(lines, headers) {
+  trimmed <- trimws(lines)
+
+  # Check if a line matches any target header (exact match after trim)
+  is_target <- trimmed %in% headers
+
+  # Check if a line starts any TOML section (single or double bracket)
+  is_any_header <- grepl("^\\[", trimmed)
+
+  keep <- rep(TRUE, length(lines))
+  in_section <- FALSE
+
+  for (i in seq_along(lines)) {
+    if (is_target[i]) {
+      in_section <- TRUE
+      keep[i] <- FALSE
+    } else if (in_section) {
+      if (is_any_header[i]) {
+        # Hit a new section — stop stripping
+        in_section <- FALSE
+      } else {
+        keep[i] <- FALSE
+      }
+    }
+  }
+
+  lines[keep]
 }
 
 #' Strip CRAN-unfriendly content from an entire vendor directory
