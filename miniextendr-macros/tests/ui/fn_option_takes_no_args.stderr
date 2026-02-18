@@ -1,0 +1,5 @@
+error: this option does not take these arguments; use `option` alone or `option = true/false`
+ --> tests/ui/fn_option_takes_no_args.rs:3:15
+  |
+3 | #[miniextendr(invisible("string_value"))]
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^

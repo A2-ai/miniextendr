@@ -15,4 +15,9 @@ quote = { workspace = true }
 syn = { workspace = true }
 
 [dev-dependencies]
+divan = "0.1.21"
 tempfile = "3.12"
+
+[[bench]]
+name = "lint_scan"
+harness = false

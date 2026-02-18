@@ -1,0 +1,5 @@
+error: unknown lifecycle option; expected: stage, when, what, with, details, id
+ --> tests/ui/fn_lifecycle_unknown_key.rs:5:25
+  |
+5 | #[miniextendr(lifecycle(unknown = "val"))]
+  |                         ^^^^^^^

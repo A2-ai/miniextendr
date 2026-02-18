@@ -441,38 +441,66 @@ impl MiniextendrModuleVctrs {
 
 /// A `use <module>;` line inside `miniextendr_module! { ... }`.
 ///
-/// Only the simple `use name;` form is supported. This is intentionally restrictive so the
-/// generated init/wrapper symbol names are predictable:
+/// Supports both simple and path forms:
+/// - `use submodule;` — simple form
+/// - `use crate::submodule;` — path form (leaf segment used as module name)
+/// - `use super::submodule;` — path form (leaf segment used as module name)
+///
+/// The leaf segment determines the generated init/wrapper symbol names:
 /// - `name::R_init_<name>_miniextendr(dll)`
 /// - `name::R_WRAPPERS_PARTS_<NAME_UPPER>`
+///
+/// Rejected forms:
+/// - `use x as y;` — renamed imports would break R wrapper name correspondence
+/// - `use x::*;` — glob imports can't be enumerated statically
+/// - `use x::{a, b};` — grouped imports must be listed separately
 pub struct MiniextendrModuleUse {
     _use_token: syn::Token![use],
-    /// Target module to re-export wrappers from.
+    /// Target module to re-export wrappers from (leaf segment of the path).
     pub use_name: syn::UseName,
 }
 
 impl syn::parse::Parse for MiniextendrModuleUse {
-    /// Parses one restricted `use name;` module entry.
+    /// Parses one `use name;` or `use path::to::name;` module entry.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        use syn::spanned::Spanned;
         let _use_token = input.parse()?;
-        let use_name: syn::UseTree = input.parse()?;
-        let use_name = match use_name {
-            syn::UseTree::Name(use_name) => use_name,
-            syn::UseTree::Rename(use_rename) => {
-                return Err(syn::Error::new(
-                    use_rename.span(),
-                    "it is not possible to rename wrappers in `miniextendr_module`",
-                ));
-            }
-            syn::UseTree::Path(_) | syn::UseTree::Glob(_) | syn::UseTree::Group(_) => {
-                return Err(syn::Error::new(use_name.span(), "syntax not supported"));
-            }
-        };
+        let use_tree: syn::UseTree = input.parse()?;
+        let use_name = Self::extract_leaf_name(&use_tree)?;
         Ok(Self {
             _use_token,
             use_name,
         })
+    }
+}
+
+impl MiniextendrModuleUse {
+    /// Walks a `UseTree` to extract the leaf `UseName`.
+    ///
+    /// Accepts `UseTree::Name` (simple) and `UseTree::Path` (walks to leaf).
+    /// Rejects rename, glob, and group forms with descriptive errors.
+    fn extract_leaf_name(tree: &syn::UseTree) -> syn::Result<syn::UseName> {
+        match tree {
+            syn::UseTree::Name(use_name) => Ok(use_name.clone()),
+            syn::UseTree::Path(use_path) => {
+                // Recurse into the nested tree to find the leaf
+                Self::extract_leaf_name(&use_path.tree)
+            }
+            syn::UseTree::Rename(_) => Err(syn::Error::new_spanned(
+                tree,
+                "renamed imports (`use x as y`) are not supported in miniextendr_module!; \
+                     the module name determines R wrapper names",
+            )),
+            syn::UseTree::Glob(_) => Err(syn::Error::new_spanned(
+                tree,
+                "glob imports (`use x::*`) are not supported in miniextendr_module!; \
+                     modules must be listed explicitly",
+            )),
+            syn::UseTree::Group(_) => Err(syn::Error::new_spanned(
+                tree,
+                "grouped imports (`use x::{a, b}`) are not supported in miniextendr_module!; \
+                     list each module separately",
+            )),
+        }
     }
 }
 
@@ -579,7 +607,10 @@ impl syn::parse::Parse for MiniextendrModuleItem {
                 ))
             }
         } else {
-            Err(look_ahead.error())
+            Err(syn::Error::new(
+                fork.span(),
+                "unrecognized item in miniextendr_module!; expected: mod name;, use submodule;, fn name;, struct Name;, impl Type;, vctrs Name;",
+            ))
         }
     }
 }
@@ -675,6 +706,87 @@ mod tests {
         assert!(
             !err.contains("first item"),
             "error message should not say 'first item': {err}"
+        );
+    }
+
+    #[test]
+    fn use_simple_name() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            use submod;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens).unwrap();
+        assert_eq!(parsed.uses.len(), 1);
+        assert_eq!(parsed.uses[0].use_name.ident, "submod");
+    }
+
+    #[test]
+    fn use_path_extracts_leaf() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            use crate::submod;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens).unwrap();
+        assert_eq!(parsed.uses.len(), 1);
+        assert_eq!(parsed.uses[0].use_name.ident, "submod");
+    }
+
+    #[test]
+    fn use_deep_path_extracts_leaf() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            use super::nested::deep::submod;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens).unwrap();
+        assert_eq!(parsed.uses.len(), 1);
+        assert_eq!(parsed.uses[0].use_name.ident, "submod");
+    }
+
+    #[test]
+    fn use_rename_rejected() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            use submod as renamed;
+        };
+        let err = match syn::parse2::<MiniextendrModule>(tokens) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error for renamed use"),
+        };
+        assert!(
+            err.contains("renamed imports"),
+            "error should mention renamed imports: {err}"
+        );
+    }
+
+    #[test]
+    fn use_glob_rejected() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            use foo::*;
+        };
+        let err = match syn::parse2::<MiniextendrModule>(tokens) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error for glob use"),
+        };
+        assert!(
+            err.contains("glob imports"),
+            "error should mention glob imports: {err}"
+        );
+    }
+
+    #[test]
+    fn use_group_rejected() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            use foo::{bar, baz};
+        };
+        let err = match syn::parse2::<MiniextendrModule>(tokens) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error for grouped use"),
+        };
+        assert!(
+            err.contains("grouped imports"),
+            "error should mention grouped imports: {err}"
         );
     }
 }

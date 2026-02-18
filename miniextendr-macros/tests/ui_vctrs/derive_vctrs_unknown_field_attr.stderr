@@ -1,0 +1,5 @@
+error: unknown vctrs field attribute; expected: data, skip
+ --> tests/ui_vctrs/derive_vctrs_unknown_field_attr.rs:8:13
+  |
+8 |     #[vctrs(bogus)]
+  |             ^^^^^

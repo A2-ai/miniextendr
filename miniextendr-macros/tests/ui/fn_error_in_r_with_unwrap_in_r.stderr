@@ -1,0 +1,5 @@
+error: `error_in_r` and `unwrap_in_r` are mutually exclusive
+ --> tests/ui/fn_error_in_r_with_unwrap_in_r.rs:5:27
+  |
+5 | #[miniextendr(error_in_r, unwrap_in_r)]
+  |                           ^^^^^^^^^^^

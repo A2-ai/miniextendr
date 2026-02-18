@@ -1,0 +1,5 @@
+error: unknown `unsafe(...)` option; only `main_thread` is supported
+  --> tests/ui/impl_method_unsafe_unknown.rs:13:26
+   |
+13 |     #[miniextendr(unsafe(bogus))]
+   |                          ^^^^^

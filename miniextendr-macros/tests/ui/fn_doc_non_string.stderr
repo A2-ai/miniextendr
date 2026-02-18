@@ -1,0 +1,5 @@
+error: doc expects a string literal
+ --> tests/ui/fn_doc_non_string.rs:5:21
+  |
+5 | #[miniextendr(doc = 1)]
+  |                     ^

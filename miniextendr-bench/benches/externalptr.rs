@@ -275,3 +275,53 @@ fn erased_downcast_mut_hit(bencher: divan::Bencher) {
             divan::black_box(r.value);
         });
 }
+
+// =============================================================================
+// Parameterized payload creation (A11: payload size scaling)
+// =============================================================================
+
+const PAYLOAD_BYTES: &[usize] = &[8, 64, 512, 4096, 65536];
+
+/// Measure ExternalPtr creation cost as payload size increases.
+#[divan::bench(args = PAYLOAD_BYTES)]
+fn create_sized_payload(size: usize) {
+    let data = vec![0u8; size];
+    let ptr = ExternalPtr::new(data);
+    divan::black_box(ptr);
+}
+
+/// Measure Box creation cost for comparison (same sizes).
+#[divan::bench(args = PAYLOAD_BYTES)]
+fn baseline_box_sized(size: usize) {
+    let data = vec![0u8; size];
+    let boxed = Box::new(data);
+    divan::black_box(boxed);
+}
+
+// =============================================================================
+// Multiple ExternalPtrs (collection stress)
+// =============================================================================
+
+const COLLECTION_COUNTS: &[usize] = &[1, 10, 100, 1000];
+
+/// Create N ExternalPtrs in sequence (measures allocation throughput).
+#[divan::bench(args = COLLECTION_COUNTS)]
+fn create_n_ptrs(n: usize) {
+    for _ in 0..n {
+        let ptr = ExternalPtr::new(SmallPayload { value: 42 });
+        divan::black_box(ptr);
+    }
+}
+
+/// Create N ExternalPtrs and check type on each (measures type check throughput).
+#[divan::bench(args = COLLECTION_COUNTS)]
+fn create_and_check_n_ptrs(bencher: divan::Bencher, n: usize) {
+    bencher.bench_local(|| {
+        for _ in 0..n {
+            let ptr = ExternalPtr::new(SmallPayload { value: 42 });
+            let sexp = ptr.as_sexp();
+            let erased = unsafe { ErasedExternalPtr::from_sexp(sexp) };
+            divan::black_box(erased.is::<SmallPayload>());
+        }
+    });
+}

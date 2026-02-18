@@ -1,0 +1,7 @@
+error: #[derive(RFactor)] can only be applied to enums
+ --> tests/ui/derive_rfactor_on_struct.rs:6:1
+  |
+6 | / struct Bad {
+7 | |     x: i32,
+8 | | }
+  | |_^

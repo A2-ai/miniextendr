@@ -42,6 +42,7 @@ impl Counter for SimpleCounter {
 miniextendr_module! {
     mod trait_abi_bench;
     impl Counter for SimpleCounter;
+    impl MathOps for SimpleCounter;
 }
 
 // =============================================================================
@@ -225,5 +226,96 @@ fn dispatch_self_mut_increment(bencher: divan::Bencher) {
         .bench_local_refs(|owned| {
             owned.view.increment();
             divan::black_box(());
+        });
+}
+
+// =============================================================================
+// Multi-method trait — measures dispatch cost with a larger vtable
+// =============================================================================
+
+#[miniextendr]
+pub trait MathOps {
+    fn add(&self, a: i32, b: i32) -> i32;
+    fn subtract(&self, a: i32, b: i32) -> i32;
+    fn multiply(&self, a: i32, b: i32) -> i32;
+    fn negate(&self, a: i32) -> i32;
+    fn description(&self) -> &str;
+}
+
+#[miniextendr]
+impl MathOps for SimpleCounter {
+    fn add(&self, a: i32, b: i32) -> i32 {
+        a + b + self.value
+    }
+    fn subtract(&self, a: i32, b: i32) -> i32 {
+        a - b + self.value
+    }
+    fn multiply(&self, a: i32, b: i32) -> i32 {
+        a * b + self.value
+    }
+    fn negate(&self, a: i32) -> i32 {
+        -a + self.value
+    }
+    fn description(&self) -> &str {
+        "simple_counter"
+    }
+}
+
+struct OwnedMathOpsView {
+    _erased: ErasedCounter,
+    view: MathOpsView,
+}
+
+impl OwnedMathOpsView {
+    fn new(start: i32) -> Self {
+        let erased = ErasedCounter::new(start);
+        let vtable = unsafe {
+            let base = (*erased.ptr).base;
+            ((*base).query)(erased.ptr, TAG_MATHOPS)
+        };
+        let data = unsafe { erased.data_ptr() };
+        let view = unsafe { <MathOpsView as TraitView>::from_raw_parts(data, vtable) };
+        Self {
+            _erased: erased,
+            view,
+        }
+    }
+}
+
+/// Query a larger vtable (5 methods vs Counter's 2).
+#[divan::bench]
+fn mx_query_multi_method_vtable(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(|| ErasedCounter::new(1))
+        .bench_local_refs(|erased| unsafe {
+            let base = (*erased.ptr).base;
+            let vtable = ((*base).query)(erased.ptr, TAG_MATHOPS);
+            divan::black_box(vtable);
+        });
+}
+
+/// Dispatch through a 5-method vtable — call each method once.
+#[divan::bench]
+fn dispatch_multi_method_all(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(|| OwnedMathOpsView::new(0))
+        .bench_local_refs(|owned| {
+            let v = &owned.view;
+            divan::black_box(v.add(1, 2));
+            divan::black_box(v.subtract(10, 3));
+            divan::black_box(v.multiply(4, 5));
+            divan::black_box(v.negate(7));
+        });
+}
+
+/// Cache-hot repeated dispatch on the multi-method trait.
+#[divan::bench]
+fn dispatch_multi_method_hot(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(|| OwnedMathOpsView::new(0))
+        .bench_local_refs(|owned| {
+            for i in 0..10 {
+                divan::black_box(owned.view.add(i, i + 1));
+            }
         });
 }

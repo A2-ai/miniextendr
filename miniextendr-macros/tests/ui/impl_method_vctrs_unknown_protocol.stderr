@@ -1,0 +1,5 @@
+error: unknown vctrs protocol: invalid_protocol; expected one of: format, vec_proxy, vec_proxy_equal, vec_proxy_compare, vec_proxy_order, vec_restore, obj_print_data, obj_print_header, obj_print_footer
+ --> tests/ui/impl_method_vctrs_unknown_protocol.rs:7:25
+  |
+7 |     #[miniextendr(vctrs(invalid_protocol))]
+  |                         ^^^^^^^^^^^^^^^^

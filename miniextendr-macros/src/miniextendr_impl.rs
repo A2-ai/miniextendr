@@ -728,6 +728,7 @@ impl syn::parse::Parse for ImplAttrs {
         } else {
             ClassSystem::Env
         };
+        let mut class_system_span: Option<(&str, proc_macro2::Span)> = None;
         let mut class_name = None;
         let mut label = None;
         let mut vctrs_attrs = VctrsAttrs::default();
@@ -781,6 +782,16 @@ impl syn::parse::Parse for ImplAttrs {
                 }
             } else if ident_str == "vctrs" {
                 // vctrs class system with optional nested attributes
+                if let Some((prev_name, _prev_span)) = class_system_span {
+                    return Err(syn::Error::new(
+                        ident.span(),
+                        format!(
+                            "multiple class systems specified (`{}` and `{}`); use only one of: env, r6, s3, s4, s7, vctrs",
+                            prev_name, ident_str
+                        ),
+                    ));
+                }
+                class_system_span = Some(("vctrs", ident.span()));
                 class_system = ClassSystem::Vctrs;
 
                 // Check for nested vctrs options: vctrs(kind = "rcrd", base = "double", ...)
@@ -837,6 +848,16 @@ impl syn::parse::Parse for ImplAttrs {
             } else if ident_str == "r6" {
                 // R6 class system with optional nested attributes
                 // r6 or r6(inherit = "Parent", portable = false, cloneable, lock_class)
+                if let Some((prev_name, _prev_span)) = class_system_span {
+                    return Err(syn::Error::new(
+                        ident.span(),
+                        format!(
+                            "multiple class systems specified (`{}` and `{}`); use only one of: env, r6, s3, s4, s7, vctrs",
+                            prev_name, ident_str
+                        ),
+                    ));
+                }
+                class_system_span = Some(("r6", ident.span()));
                 class_system = ClassSystem::R6;
 
                 if input.peek(syn::token::Paren) {
@@ -912,6 +933,16 @@ impl syn::parse::Parse for ImplAttrs {
             } else if ident_str == "s7" {
                 // S7 class system with optional nested attributes
                 // s7 or s7(parent = "Parent", abstract)
+                if let Some((prev_name, _prev_span)) = class_system_span {
+                    return Err(syn::Error::new(
+                        ident.span(),
+                        format!(
+                            "multiple class systems specified (`{}` and `{}`); use only one of: env, r6, s3, s4, s7, vctrs",
+                            prev_name, ident_str
+                        ),
+                    ));
+                }
+                class_system_span = Some(("s7", ident.span()));
                 class_system = ClassSystem::S7;
 
                 if input.peek(syn::token::Paren) {
@@ -971,9 +1002,30 @@ impl syn::parse::Parse for ImplAttrs {
                 noexport = true;
             } else {
                 // This is a class system identifier
-                class_system = ident_str
+                let parsed_system: ClassSystem = ident_str
                     .parse()
                     .map_err(|e| syn::Error::new(ident.span(), e))?;
+                if let Some((prev_name, _prev_span)) = class_system_span {
+                    return Err(syn::Error::new(
+                        ident.span(),
+                        format!(
+                            "multiple class systems specified (`{}` and `{}`); use only one of: env, r6, s3, s4, s7, vctrs",
+                            prev_name, ident_str
+                        ),
+                    ));
+                }
+                class_system_span = Some((
+                    match parsed_system {
+                        ClassSystem::Env => "env",
+                        ClassSystem::R6 => "r6",
+                        ClassSystem::S3 => "s3",
+                        ClassSystem::S4 => "s4",
+                        ClassSystem::S7 => "s7",
+                        ClassSystem::Vctrs => "vctrs",
+                    },
+                    ident.span(),
+                ));
+                class_system = parsed_system;
             }
 
             // Consume trailing comma if present
@@ -1245,6 +1297,10 @@ impl ParsedMethod {
                         "raw",
                         "environment",
                         "function",
+                        "tibble",
+                        "data.table",
+                        "array",
+                        "ts",
                     ];
 
                     if !SUPPORTED_AS_TYPES.contains(&coercion_type.as_str()) {
@@ -1303,9 +1359,27 @@ impl ParsedMethod {
                 } else if meta.path.is_ident("vctrs") {
                     // vctrs protocol method: vctrs(format), vctrs(vec_proxy), etc.
                     meta.parse_nested_meta(|inner| {
-                        let protocol = inner.path.get_ident()
+                        let raw_name = inner.path.get_ident()
                             .ok_or_else(|| inner.error("expected protocol name"))?
                             .to_string();
+
+                        // Normalize short aliases to full protocol names
+                        const PROTOCOL_ALIASES: &[(&str, &str)] = &[
+                            ("print_data", "obj_print_data"),
+                            ("print_header", "obj_print_header"),
+                            ("print_footer", "obj_print_footer"),
+                            ("proxy", "vec_proxy"),
+                            ("proxy_equal", "vec_proxy_equal"),
+                            ("proxy_compare", "vec_proxy_compare"),
+                            ("proxy_order", "vec_proxy_order"),
+                            ("restore", "vec_restore"),
+                        ];
+                        let protocol = PROTOCOL_ALIASES
+                            .iter()
+                            .find(|(alias, _)| *alias == raw_name)
+                            .map(|(_, full)| full.to_string())
+                            .unwrap_or_else(|| raw_name.to_string());
+
                         const VALID_PROTOCOLS: &[&str] = &[
                             "format", "vec_proxy", "vec_proxy_equal", "vec_proxy_compare",
                             "vec_proxy_order", "vec_restore", "obj_print_data",
@@ -1314,7 +1388,7 @@ impl ParsedMethod {
                         if !VALID_PROTOCOLS.contains(&protocol.as_str()) {
                             return Err(inner.error(format!(
                                 "unknown vctrs protocol: {}; expected one of: {}",
-                                protocol,
+                                raw_name,
                                 VALID_PROTOCOLS.join(", ")
                             )));
                         }
@@ -3859,9 +3933,12 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
 
         // Normalize coercion target for R generic name
         // R has both as.numeric and as.double - they're equivalent, but we use the specified one
+        // Some targets use non-standard S3 generic names (e.g., tibble uses as_tibble, not as.tibble)
         let r_generic = match coercion_target.as_str() {
             "numeric" => "as.numeric".to_string(),
             "double" => "as.double".to_string(),
+            "tibble" => "as_tibble".to_string(),
+            "ts" => "as.ts".to_string(),
             other => format!("as.{}", other),
         };
 
