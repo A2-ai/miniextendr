@@ -342,8 +342,93 @@ vendor_miniextendr_local <- function(local_path, dest) {
     ))
   }
 
+  # Record the source path for future auto-sync
+  writeLines(local_path, fs::path(dest, ".vendor-source"))
+
   cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")
   invisible(TRUE)
+}
+
+#' Sync vendored miniextendr crates from local source
+#'
+#' Auto-detects whether vendor/ was populated from a local miniextendr
+#' repository and re-syncs crates if the source is available. This ensures
+#' vendor/ stays up-to-date with workspace crate changes during development.
+#'
+#' Detection order:
+#' 1. `MINIEXTENDR_LOCAL` environment variable (explicit path)
+#' 2. `.vendor-source` marker file in vendor/ (recorded by previous local vendor)
+#' 3. Auto-scan parent directories for a miniextendr workspace
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @return Invisibly returns TRUE if sync occurred, FALSE if no local source found.
+#' @export
+vendor_sync <- function(path = ".") {
+  with_project(path)
+  vendor_dir <- usethis::proj_path("vendor")
+
+  if (!fs::dir_exists(vendor_dir)) {
+    cli::cli_alert_info("No vendor/ directory — nothing to sync")
+    return(invisible(FALSE))
+  }
+
+  local_path <- detect_miniextendr_local(vendor_dir)
+
+  if (is.null(local_path)) {
+    cli::cli_alert_info("No local miniextendr source detected — vendor/ unchanged")
+    return(invisible(FALSE))
+  }
+
+  cli::cli_alert("Syncing vendor/ from {.path {local_path}}")
+  vendor_miniextendr_local(local_path, vendor_dir)
+  invisible(TRUE)
+}
+
+#' Detect local miniextendr repository for vendor sync
+#'
+#' Checks multiple sources to find a local miniextendr monorepo:
+#' 1. `MINIEXTENDR_LOCAL` environment variable
+#' 2. `.vendor-source` marker file in vendor/
+#' 3. Walk up parent directories looking for miniextendr-api/Cargo.toml
+#'
+#' @param vendor_dir Path to vendor/ directory
+#' @return Normalized path to miniextendr repo root, or NULL if not found
+#' @noRd
+detect_miniextendr_local <- function(vendor_dir) {
+  # 1. Explicit env var (highest priority)
+  env_path <- Sys.getenv("MINIEXTENDR_LOCAL", unset = "")
+  if (nzchar(env_path) && dir.exists(env_path)) {
+    api_toml <- file.path(env_path, "miniextendr-api", "Cargo.toml")
+    if (file.exists(api_toml)) {
+      return(normalizePath(env_path, mustWork = TRUE))
+    }
+  }
+
+  # 2. Recorded source from previous local vendor
+  source_file <- fs::path(vendor_dir, ".vendor-source")
+  if (fs::file_exists(source_file)) {
+    recorded <- trimws(readLines(source_file, n = 1, warn = FALSE))
+    if (nzchar(recorded) && dir.exists(recorded)) {
+      api_toml <- file.path(recorded, "miniextendr-api", "Cargo.toml")
+      if (file.exists(api_toml)) {
+        return(normalizePath(recorded, mustWork = TRUE))
+      }
+    }
+  }
+
+  # 3. Walk up parent directories looking for miniextendr workspace
+  pkg_root <- dirname(vendor_dir)
+  search_dir <- normalizePath(pkg_root, mustWork = TRUE)
+  for (i in seq_len(10)) {
+    search_dir <- dirname(search_dir)
+    if (search_dir == dirname(search_dir)) break # hit filesystem root
+    candidate <- file.path(search_dir, "miniextendr-api", "Cargo.toml")
+    if (file.exists(candidate)) {
+      return(normalizePath(search_dir, mustWork = TRUE))
+    }
+  }
+
+  NULL
 }
 
 #' Vendor external crates.io dependencies

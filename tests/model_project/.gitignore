@@ -1,11 +1,8 @@
 configure~
 autom4te.cache
-config.log
-config.status
 .cargo/config.toml
 src/Makevars
 src/*-wrappers.R
-src/*-win.def
 src/*.o
 src/*.so
 src/*.dll
@@ -14,6 +11,5 @@ ra-target/
 src/rust/ra_target/
 src/rust/target/
 inst/.vendor.tar.xz.cksum
-inst/vendor.tar.xz
 .vendor-tarball-staging/
 vendor/

@@ -56,29 +56,27 @@ World
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{n_initial}{Number of pigs to create at time zero.}
-
-\item{food_per_tick}{Energy gained by each pig per simulation tick.}
-
-\item{move_cost}{Energy spent by each pig per tick for movement.}
-
-\item{reproduction_threshold}{Energy level above which a pig reproduces.}
-
-\item{max_age}{Maximum age in ticks before a pig dies of old age.}
-
-\item{interaction_radius}{Euclidean distance within which pigs compete.}
-
-\item{seed}{Integer seed for the random number generator (for reproducibility).}
-
-\item{steps}{Number of ticks to advance.}
 }
 \value{
 A new \code{World} object (opaque pointer).
 
+\describe{
+\item{\code{n_initial}}{Number of pigs to create at time zero.}
+\item{\code{food_per_tick}}{Energy gained by each pig per simulation tick.}
+\item{\code{move_cost}}{Energy spent by each pig per tick for movement.}
+\item{\code{reproduction_threshold}}{Energy level above which a pig reproduces.}
+\item{\code{max_age}}{Maximum age in ticks before a pig dies of old age.}
+\item{\code{interaction_radius}}{Euclidean distance within which pigs compete.}
+\item{\code{seed}}{Integer seed for the random number generator (for reproducibility).}
+}
+
 The \code{World} object (invisibly, for method chaining).
 
 The \code{World} object (invisibly, for method chaining).
+
+\describe{
+\item{\code{steps}}{Number of ticks to advance.}
+}
 
 Integer tick count (starts at 0, incremented by each \code{step()}).
 

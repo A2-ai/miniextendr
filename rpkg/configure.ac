@@ -358,12 +358,18 @@ dnl ---- optional cargo deps: include if present ----
 OPTIONAL_CARGO_DEPS=
 for f in \
   "$RUST_SRC_DIR/build.rs" \
-  "$RUST_SRC_DIR/.cargo/config.toml" \
   "$RUST_SRC_DIR/rust-toolchain.toml" \
   "$RUST_SRC_DIR/rust-toolchain"
 do
   test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
 done
+dnl Only include .cargo/config.toml in vendored modes (dev modes delete it)
+case "$BUILD_CONTEXT" in
+  vendored-install|prepare-cran)
+    f="$RUST_SRC_DIR/.cargo/config.toml"
+    test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
+    ;;
+esac
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
 dnl ---- vendoring (at package root, outside src/) ----
