@@ -202,11 +202,13 @@ pub use miniextendr_macros::typed_list;
 #[cfg(feature = "vctrs")]
 #[doc(inline)]
 pub use miniextendr_macros::Vctrs;
+// Note: MatchArg derive macro is re-exported - it shares the name with the MatchArg trait
+// but they're in different namespaces (derive macros vs types/traits), same as RFactor.
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    DataFrameRow, IntoList, PreferDataFrame, PreferExternalPtr, PreferList, PreferRNativeType,
-    RFactor, TryFromList,
+    DataFrameRow, IntoList, MatchArg, PreferDataFrame, PreferExternalPtr, PreferList,
+    PreferRNativeType, RFactor, TryFromList,
 };
 
 pub mod altrep;
@@ -874,6 +876,14 @@ pub use raw_conversions::{
     Pod, Raw, RawError, RawHeader, RawSlice, RawSliceTagged, RawTagged, Zeroable, raw_from_bytes,
     raw_slice_from_bytes, raw_slice_to_bytes, raw_to_bytes,
 };
+
+/// `match.arg`-style string conversion for enums.
+///
+/// Provides the [`MatchArg`] trait for converting Rust enums to/from R character
+/// strings with partial matching, like R's `match.arg()`.
+/// Use `#[derive(MatchArg)]` on C-style enums to auto-generate the implementation.
+pub mod match_arg;
+pub use match_arg::{MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp};
 
 /// Factor support for enum ↔ R factor conversions.
 ///

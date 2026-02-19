@@ -22,3 +22,13 @@ pub fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
 }
+
+/// Identifier for the generated `const [R_CallMethodDef; N]` holding match_arg
+/// choices helper call defs for a function.
+///
+/// Every `#[miniextendr]` function generates this array (empty if no match_arg params).
+/// The module macro references it for registration.
+pub fn match_arg_call_defs_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
+    let rust_ident_upper = rust_ident.to_string().to_uppercase();
+    quote::format_ident!("MATCH_ARG_CALL_DEFS_{rust_ident_upper}")
+}

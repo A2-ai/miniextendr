@@ -110,6 +110,7 @@ mod error_in_r_tests;
 mod externalptr_tests;
 mod factor_tests;
 mod gc_protect_tests;
+mod match_arg_tests;
 mod gc_stress_fixtures;
 mod identical_tests;
 mod interrupt_tests;
@@ -1955,6 +1956,7 @@ miniextendr_module! {
     use connection_tests;
     use nonapi;
     use factor_tests;
+    use match_arg_tests;
     use vctrs_tests;
     use vctrs_class_example;
     use vctrs_derive_example;
