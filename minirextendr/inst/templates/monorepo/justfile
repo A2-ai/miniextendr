@@ -57,7 +57,7 @@ clean:
 # This must be run before any R CMD operation. It:
 # 1. Generates {{rpkg}}/src/Makevars from Makevars.in
 # 2. Sets up cargo config for vendored sources (CRAN mode only)
-# Note: vendor/ is pre-populated by scaffolding; configure does NOT run cargo vendor.
+# Note: vendor/ has miniextendr crates from scaffolding. Run 'just vendor' for full CRAN prep.
 configure:
     cd {{rpkg}} && NOT_CRAN=true ./configure
 
@@ -113,8 +113,13 @@ dev: check test install
 # Quick iteration: just reinstall R package
 reinstall: install
 
-# Prepare for CRAN submission: configure in CRAN mode, build, check
-cran-prep: configure-cran rbuild rcheck
+# Vendor all dependencies for CRAN submission
+# Downloads external crates and compresses into inst/vendor.tar.xz
+vendor:
+    Rscript -e 'minirextendr::miniextendr_vendor("{{{rpkg_name}}}")'
+
+# Prepare for CRAN submission: vendor deps, configure in CRAN mode, build, check
+cran-prep: vendor configure-cran rbuild rcheck
 
 # ============================================================================
 # Version management

@@ -179,6 +179,11 @@ pub(crate) fn format_roxygen_tags(tags: &[String]) -> String {
 ///
 /// Multiline tags (containing '\n') are split into separate `#'` lines.
 pub(crate) fn push_roxygen_tags(lines: &mut Vec<String>, tags: &[String]) {
+    push_roxygen_tags_str(lines, &tags.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+}
+
+/// Like [`push_roxygen_tags`] but takes `&[&str]` for filtered tag slices.
+pub(crate) fn push_roxygen_tags_str(lines: &mut Vec<String>, tags: &[&str]) {
     for tag in tags {
         for line in tag.lines() {
             lines.push(format!("#' {}", line));

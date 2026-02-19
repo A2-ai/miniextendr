@@ -594,10 +594,10 @@ fn roxygen_tags_propagate_to_wrapper() {
     let parsed = parse_impl(ClassSystem::Env, item_impl);
     let wrapper = generate_env_r_wrapper(&parsed);
 
-    // Explicit roxygen tags should propagate
+    // For env-class, @param tags are converted to \describe blocks (avoids R CMD check warning)
     assert!(
-        wrapper.contains("#' @param value Initial value"),
-        "wrapper should contain @param tag"
+        wrapper.contains("\\item{\\code{value}}{Initial value}"),
+        "wrapper should contain param as \\describe item"
     );
     assert!(
         wrapper.contains("#' @return The counter value"),

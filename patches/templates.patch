@@ -1,5 +1,5 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-02-17 02:30:25
+--- a/monorepo/rpkg/configure.ac	2026-02-19 12:54:54
 +++ b/monorepo/rpkg/configure.ac	2026-02-16 23:38:38
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -340,7 +340,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -490,144 +381,76 @@
+@@ -490,115 +381,76 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
@@ -394,32 +394,9 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
 -          fi
 -        else
--          dnl No vendor tarball — try vendoring from network (e.g. GitHub installs)
--          echo "configure: no vendor found, vendoring from network" >&2
--          echo "configure:   (normal for GitHub installs via remotes::install_github())" >&2
--          mkdir -p "$VENDOR_OUT"
--          $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
--          if test $? -ne 0; then
--            echo "configure: error: cargo vendor failed (network required)" >&2
--            exit 1
--          fi
--          dnl Strip tests/benches/examples/hidden files from vendored crates
--          for _crate_dir in "$VENDOR_OUT"/*/; do
--            if test -d "$_crate_dir"; then
--              rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
--                     "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
--              for _dotfile in "$_crate_dir"/.*; do
--                case "$(basename "$_dotfile")" in
--                  .|..|.cargo-checksum.json) ;;
--                  *) rm -rf "$_dotfile" ;;
--                esac
--              done
--              echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
--            fi
--          done
--          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
--            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
--          fi
+-          echo "configure: error: $BUILD_CONTEXT requires vendored sources." >&2
+-          echo "configure:        Run 'just vendor' to create inst/vendor.tar.xz first." >&2
+-          exit 1
 -        fi
 -      fi
 +    fi
@@ -488,12 +465,6 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
        fi
 -
--      dnl Strip git source replacement from cargo config
--      RPKG_CFG="src/rust/.cargo/config.toml"
--      if test -f "$RPKG_CFG"; then
--        "$SED" '/^\@<:@source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
--      fi
--
 -      dnl Regenerate Cargo.lock from vendored sources
 -      rm -f src/rust/Cargo.lock
 -      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
@@ -541,7 +512,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  
-@@ -641,5 +464,5 @@
+@@ -612,5 +464,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
@@ -549,7 +520,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-02-17 02:30:25
+--- a/rpkg/configure.ac	2026-02-19 12:54:54
 +++ b/rpkg/configure.ac	2026-02-16 23:38:32
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -890,7 +861,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -490,144 +381,76 @@
+@@ -490,115 +381,76 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
@@ -944,32 +915,9 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
 -          fi
 -        else
--          dnl No vendor tarball — try vendoring from network (e.g. GitHub installs)
--          echo "configure: no vendor found, vendoring from network" >&2
--          echo "configure:   (normal for GitHub installs via remotes::install_github())" >&2
--          mkdir -p "$VENDOR_OUT"
--          $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
--          if test $? -ne 0; then
--            echo "configure: error: cargo vendor failed (network required)" >&2
--            exit 1
--          fi
--          dnl Strip tests/benches/examples/hidden files from vendored crates
--          for _crate_dir in "$VENDOR_OUT"/*/; do
--            if test -d "$_crate_dir"; then
--              rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
--                     "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
--              for _dotfile in "$_crate_dir"/.*; do
--                case "$(basename "$_dotfile")" in
--                  .|..|.cargo-checksum.json) ;;
--                  *) rm -rf "$_dotfile" ;;
--                esac
--              done
--              echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
--            fi
--          done
--          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
--            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
--          fi
+-          echo "configure: error: $BUILD_CONTEXT requires vendored sources." >&2
+-          echo "configure:        Run 'just vendor' to create inst/vendor.tar.xz first." >&2
+-          exit 1
 -        fi
 -      fi
 +    fi
@@ -1038,12 +986,6 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
        fi
 -
--      dnl Strip git source replacement from cargo config
--      RPKG_CFG="src/rust/.cargo/config.toml"
--      if test -f "$RPKG_CFG"; then
--        "$SED" '/^\@<:@source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
--      fi
--
 -      dnl Regenerate Cargo.lock from vendored sources
 -      rm -f src/rust/Cargo.lock
 -      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
@@ -1091,7 +1033,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  
-@@ -641,5 +464,5 @@
+@@ -612,5 +464,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])

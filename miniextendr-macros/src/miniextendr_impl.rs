@@ -2069,7 +2069,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
-                    .with_name_prefix("$");
+                    .with_name_prefix("$")
+                    .with_params_as_details();
             lines.extend(method_doc.build());
         }
         lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
@@ -2087,7 +2088,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                    .with_name_prefix("$");
+                    .with_name_prefix("$")
+                    .with_params_as_details();
             lines.extend(method_doc.build());
         }
 
@@ -2121,7 +2123,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                    .with_name_prefix("$");
+                    .with_name_prefix("$")
+                    .with_params_as_details();
             lines.extend(method_doc.build());
         }
 
