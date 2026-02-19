@@ -235,6 +235,20 @@ miniextendr_vendor <- function(path = ".") {
   with_project(path)
   cli::cli_h1("miniextendr vendor workflow")
 
+  # Check for path dependencies that won't be resolved by cargo vendor
+  path_deps <- check_path_deps()
+  if (nrow(path_deps) > 0) {
+    cli::cli_alert_warning(
+      "Found path dependencies in Cargo.toml (these are NOT vendored by {.code cargo vendor}):"
+    )
+    for (i in seq_len(nrow(path_deps))) {
+      cli::cli_bullets(c("!" = "{.val {path_deps$crate[i]}} -> {.path {path_deps$path[i]}}"))
+    }
+    cli::cli_alert_info(
+      "Use {.code minirextendr::use_vendor_lib()} to configure these for CRAN builds"
+    )
+  }
+
   # Step 1: cargo vendor + strip (delegates to vendor_crates_io)
   cli::cli_h2("Step 1: vendor all dependencies")
   vendor_crates_io()
@@ -318,6 +332,26 @@ miniextendr_check <- function(path = ".",
 
   cli::cli_h2("Step 1: build (autoconf + configure + install + document)")
   miniextendr_build(install = TRUE, not_cran = TRUE)
+
+  # Check for path dependencies that will fail R CMD check without vendor-lib
+  path_deps <- check_path_deps()
+  if (nrow(path_deps) > 0) {
+    missing <- vapply(path_deps$crate, function(crate) {
+      !file.exists(usethis::proj_path("inst", paste0(crate, "-lib.tar.gz")))
+    }, logical(1))
+    if (any(missing)) {
+      missing_crates <- path_deps$crate[missing]
+      cli::cli_alert_danger(
+        "Path dependencies without vendor-lib tarballs will cause R CMD check to fail:"
+      )
+      for (crate in missing_crates) {
+        dev_path <- path_deps$path[path_deps$crate == crate]
+        cli::cli_bullets(c(
+          "x" = '{.val {crate}}: run {.code minirextendr::use_vendor_lib("{crate}", dev_path = "{dev_path}")}'
+        ))
+      }
+    }
+  }
 
   cli::cli_h2("Step 2: R CMD check")
   cli::cli_alert("Running rcmdcheck with args: {.val {args}}")

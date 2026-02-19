@@ -118,6 +118,13 @@ reinstall: install
 vendor:
     Rscript -e 'minirextendr::miniextendr_vendor("{{{rpkg_name}}}")'
 
+# Vendor monorepo library crates for CRAN (use_vendor_lib)
+# Call this for each monorepo crate that your R package depends on.
+# Example: just vendor-lib my-crate ../../../my-crate
+vendor-lib crate dev_path:
+    Rscript -e 'minirextendr::use_vendor_lib("{{crate}}", dev_path = "{{dev_path}}", path = "{{{rpkg_name}}}")'
+    cd {{rpkg}} && autoconf -vif
+
 # Prepare for CRAN submission: vendor deps, configure in CRAN mode, build, check
 cran-prep: vendor configure-cran rbuild rcheck
 

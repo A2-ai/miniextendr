@@ -639,6 +639,51 @@ miniextendr_cache_info <- function() {
   invisible(info[, c("version", "size", "modification_time")])
 }
 
+#' Check for path dependencies in Cargo.toml
+#'
+#' Scans `[dependencies]` and `[build-dependencies]` sections for path-based
+#' dependencies. `[patch.*]` sections are excluded since those are normal
+#' dev-mode behavior handled by configure.ac.
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @return A data frame with columns `crate` and `path`, or zero-row data frame
+#'   if no path deps found.
+#' @noRd
+check_path_deps <- function(path = ".") {
+  cargo_toml <- file.path(path, "src", "rust", "Cargo.toml")
+  if (!file.exists(cargo_toml)) {
+    return(data.frame(crate = character(), path = character(), stringsAsFactors = FALSE))
+  }
+
+  lines <- readLines(cargo_toml, warn = FALSE)
+  trimmed <- trimws(lines)
+
+  # Track which TOML section we're in
+  # Only flag path deps in [dependencies] and [build-dependencies]
+  crates <- character()
+  paths <- character()
+  in_relevant_section <- FALSE
+
+  for (line in trimmed) {
+    # Detect section headers
+    if (grepl("^\\[", line)) {
+      in_relevant_section <- line %in% c("[dependencies]", "[build-dependencies]")
+      next
+    }
+
+    if (!in_relevant_section) next
+
+    # Match lines like: crate-name = { path = "..." ... }
+    m <- regmatches(line, regexec('^([a-zA-Z0-9_-]+)\\s*=.*path\\s*=\\s*"([^"]+)"', line))[[1]]
+    if (length(m) == 3) {
+      crates <- c(crates, m[2])
+      paths <- c(paths, m[3])
+    }
+  }
+
+  data.frame(crate = crates, path = paths, stringsAsFactors = FALSE)
+}
+
 #' Add [patch] entries to Cargo.toml for vendored crates
 #'
 #' After vendoring miniextendr crates to vendor/, adds a
