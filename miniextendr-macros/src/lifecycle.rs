@@ -215,6 +215,33 @@ impl LifecycleSpec {
 
 }
 
+/// Collect the `@importFrom lifecycle ...` roxygen tag needed for a set of lifecycle specs.
+///
+/// This is used by class generators (R6, env, S3, S4, S7) to aggregate lifecycle
+/// imports from all methods and include them in the class-level roxygen block.
+/// Returns `None` if no lifecycle imports are needed.
+pub fn collect_lifecycle_imports<'a>(
+    specs: impl Iterator<Item = &'a LifecycleSpec>,
+) -> Option<String> {
+    let mut fns = std::collections::BTreeSet::new();
+    for spec in specs {
+        if spec.stage.badge().is_some() {
+            fns.insert("badge");
+        }
+        if let Some(fn_name) = spec.stage.import_from_fn() {
+            fns.insert(fn_name);
+        }
+    }
+    if fns.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "@importFrom lifecycle {}",
+            fns.into_iter().collect::<Vec<_>>().join(" ")
+        ))
+    }
+}
+
 /// Parse lifecycle spec from miniextendr attribute arguments.
 ///
 /// Supports:
@@ -554,5 +581,32 @@ mod tests {
             .filter(|t| t.starts_with("@importFrom lifecycle"))
             .count();
         assert_eq!(import_count, 1);
+    }
+
+    #[test]
+    fn test_collect_lifecycle_imports_mixed_methods() {
+        let specs = vec![
+            LifecycleSpec::new(LifecycleStage::Deprecated),
+            LifecycleSpec::new(LifecycleStage::Experimental),
+            LifecycleSpec::new(LifecycleStage::Stable),
+        ];
+        let result = collect_lifecycle_imports(specs.iter());
+        let import = result.expect("should produce import tag");
+        // BTreeSet gives sorted order: badge, deprecate_warn, signal_stage
+        assert_eq!(import, "@importFrom lifecycle badge deprecate_warn signal_stage");
+    }
+
+    #[test]
+    fn test_collect_lifecycle_imports_no_lifecycle() {
+        let specs: Vec<LifecycleSpec> = vec![];
+        let result = collect_lifecycle_imports(specs.iter());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_collect_lifecycle_imports_only_stable() {
+        let specs = vec![LifecycleSpec::new(LifecycleStage::Stable)];
+        let result = collect_lifecycle_imports(specs.iter());
+        assert!(result.is_none());
     }
 }
