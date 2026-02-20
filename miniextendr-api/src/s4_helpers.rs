@@ -1,0 +1,172 @@
+/// S4 slot access and class checking helpers.
+///
+/// Provides safe wrappers around R's S4 class system FFI functions.
+/// Since R's C API for S4 slot access (`R_has_slot`, `R_do_slot`,
+/// `R_do_slot_assign`) is not exposed in miniextendr's FFI bindings,
+/// these helpers use R expression evaluation via [`RCall`] as a fallback.
+///
+/// All functions require being called from the R main thread and operate
+/// on raw SEXP values.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::ffi::SEXP;
+/// use miniextendr_api::s4_helpers;
+///
+/// unsafe {
+///     if s4_helpers::s4_is(obj) {
+///         if let Some(class) = s4_helpers::s4_class_name(obj) {
+///             println!("S4 class: {class}");
+///         }
+///         let slot_val = s4_helpers::s4_get_slot(obj, "data")?;
+///     }
+/// }
+/// ```
+use crate::expression::RCall;
+use crate::ffi::{
+    self, R_ClassSymbol, Rf_getAttrib, Rf_isS4, Rf_protect, Rf_unprotect, Rboolean, SexpExt, SEXP,
+    STRING_ELT,
+};
+use std::ffi::CStr;
+
+/// Check if a SEXP is an S4 object.
+///
+/// # Safety
+///
+/// - `obj` must be a valid SEXP.
+/// - Must be called from the R main thread.
+#[inline]
+pub unsafe fn s4_is(obj: SEXP) -> bool {
+    unsafe { Rf_isS4(obj) == Rboolean::TRUE }
+}
+
+/// Check if an S4 object has a named slot.
+///
+/// Attempts to access the slot via [`s4_get_slot`]. Returns `true` if the
+/// slot exists and is accessible, `false` if accessing it errors (i.e.,
+/// the slot does not exist).
+///
+/// # Safety
+///
+/// - `obj` must be a valid SEXP (typically an S4 object).
+/// - Must be called from the R main thread.
+pub unsafe fn s4_has_slot(obj: SEXP, slot_name: &str) -> bool {
+    unsafe { s4_get_slot(obj, slot_name).is_ok() }
+}
+
+/// Get the value of a named slot from an S4 object.
+///
+/// Uses R's `slot(obj, name)` to access the slot value.
+///
+/// # Safety
+///
+/// - `obj` must be a valid S4 SEXP with the named slot.
+/// - Must be called from the R main thread.
+///
+/// # Returns
+///
+/// - `Ok(SEXP)` with the slot value (unprotected).
+/// - `Err(String)` if the slot doesn't exist or another R error occurs.
+pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, String> {
+    unsafe {
+        RCall::new("slot")
+            .arg(obj)
+            .named_arg("name", scalar_string(slot_name))
+            .eval_base()
+    }
+}
+
+/// Set the value of a named slot on an S4 object.
+///
+/// Uses R's `slot(obj, name) <- value` to assign the slot value.
+///
+/// # Safety
+///
+/// - `obj` must be a valid S4 SEXP with the named slot.
+/// - `value` must be a valid SEXP of the appropriate type for the slot.
+/// - Must be called from the R main thread.
+///
+/// # Returns
+///
+/// - `Ok(())` on success.
+/// - `Err(String)` if the slot doesn't exist or the value type is incompatible.
+pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(), String> {
+    unsafe {
+        // slot(obj, name) <- value  is equivalent to `slot<-`(obj, name, value)
+        RCall::new("slot<-")
+            .arg(obj)
+            .named_arg("name", scalar_string(slot_name))
+            .named_arg("value", value)
+            .eval_base()?;
+        Ok(())
+    }
+}
+
+/// Extract the S4 class name from an object.
+///
+/// Reads the `class` attribute and returns the first element as a `String`.
+/// Returns `None` if the object has no class attribute or the attribute is empty.
+///
+/// # Safety
+///
+/// - `obj` must be a valid SEXP.
+/// - Must be called from the R main thread.
+pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
+    unsafe {
+        let class_attr = Rf_getAttrib(obj, R_ClassSymbol);
+        if class_attr.is_null_or_nil() || ffi::Rf_xlength(class_attr) == 0 {
+            return None;
+        }
+
+        let first = STRING_ELT(class_attr, 0);
+        if first.is_null_or_nil() {
+            return None;
+        }
+
+        let ptr = ffi::R_CHAR(first);
+        if ptr.is_null() {
+            return None;
+        }
+
+        Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Create a scalar R character string from a Rust `&str`.
+///
+/// The returned SEXP is unprotected.
+unsafe fn scalar_string(s: &str) -> SEXP {
+    use std::ffi::CString;
+    unsafe {
+        let c_str = CString::new(s).expect("slot name must not contain null bytes");
+        let charsxp = ffi::Rf_mkChar(c_str.as_ptr());
+        Rf_protect(charsxp);
+        let strsxp = ffi::Rf_ScalarString(charsxp);
+        Rf_unprotect(1);
+        strsxp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn s4_is_compiles() {
+        // Verify the function signature compiles.
+        // Actual testing requires the R runtime.
+        fn assert_fn<F: Fn(SEXP) -> bool>(_f: F) {}
+        assert_fn(|s| unsafe { s4_is(s) });
+    }
+
+    #[test]
+    fn s4_class_name_compiles() {
+        fn assert_fn<F: Fn(SEXP) -> Option<String>>(_f: F) {}
+        assert_fn(|s| unsafe { s4_class_name(s) });
+    }
+}
