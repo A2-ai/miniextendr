@@ -63,18 +63,12 @@ struct Named4 {
     b: f64,
     c: bool,
     #[into_list(ignore)]
-    #[allow(dead_code)]
-    d: i32,
+    _d: i32,
 }
 
 #[derive(miniextendr_api::IntoList, miniextendr_api::TryFromList)]
-struct Tuple3(
-    i32,
-    #[into_list(ignore)]
-    #[allow(dead_code)]
-    i32,
-    i32,
-);
+#[allow(dead_code)] // Tuple field 1 is ignored by derive but needed for struct layout
+struct Tuple3(i32, #[into_list(ignore)] i32, i32);
 
 #[divan::bench]
 fn derive_into_list_named() {
@@ -82,7 +76,7 @@ fn derive_into_list_named() {
         a: 1,
         b: 2.0,
         c: true,
-        d: 999,
+        _d: 999,
     };
     let list = v.into_list();
     divan::black_box(list.as_sexp());
@@ -113,7 +107,7 @@ fn derive_try_from_list_named(bencher: divan::Bencher) {
                 a: 1,
                 b: 2.0,
                 c: true,
-                d: 999,
+                _d: 999,
             }
             .into_list();
             let sexp = list.as_sexp();

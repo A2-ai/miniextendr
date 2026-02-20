@@ -3,6 +3,7 @@
 # Quick reference:
 #   Rust:
 #     just check              - Run cargo check
+#     just check-features     - Check feature combinations compile
 #     just test               - Run cargo tests
 #     just clippy             - Run lints
 #     just fmt                - Format Rust code
@@ -84,6 +85,54 @@ cargo-clean *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo clean --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clean --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clean --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+
+# Check feature combinations compile (F2: feature interaction testing)
+# Tests important feature combos that might interact but are only tested independently.
+check-features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    manifest="miniextendr-api/Cargo.toml"
+    combos=(
+        # serde interacts with many types
+        "serde,ndarray"
+        "serde,nalgebra"
+        "serde,indexmap"
+        "serde_json,ndarray"
+        # rayon + type features
+        "rayon,vctrs"
+        "rayon,ndarray"
+        "rayon,serde"
+        # connections + strict mode
+        "connections,default-strict"
+        # numeric ecosystem
+        "num-bigint,num-complex,num-traits,ordered-float,rust_decimal"
+        # string/pattern features together
+        "regex,aho-corasick,url,uuid"
+        # serialization combos
+        "serde,serde_json,borsh,toml"
+        # collection combos
+        "indexmap,tinyvec,bitvec,bitflags"
+        # defaults combos
+        "default-strict,default-coerce,default-r6"
+        "default-strict,default-s7,default-worker"
+        # diagnostic features
+        "growth-debug,materialization-tracking,release-thread-check"
+        # all features together
+        "rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi"
+    )
+    total=${#combos[@]}
+    passed=0
+    for combo in "${combos[@]}"; do
+        echo "--- Checking: $combo ---"
+        if cargo check --manifest-path="$manifest" --features "$combo" 2>&1; then
+            ((passed++))
+        else
+            echo "FAILED: $combo"
+            exit 1
+        fi
+    done
+    echo ""
+    echo "=== All $passed/$total feature combinations passed ==="
 
 # Check all crates
 alias cargo-check := check

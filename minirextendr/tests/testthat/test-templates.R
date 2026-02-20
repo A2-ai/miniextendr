@@ -117,9 +117,9 @@ test_that("monorepo root Cargo.toml has valid workspace configuration", {
   expect_true(grepl("testpkg-rs", cargo_text))
   expect_true(grepl('exclude = \\["testpkg/src/rust"', cargo_text))
 
-  # Check workspace dependencies
-  expect_true(grepl("miniextendr-api", cargo_text))
-  expect_true(grepl("miniextendr-macros", cargo_text))
+  # Check workspace package section (version, edition)
+  expect_true(grepl("\\[workspace\\.package\\]", cargo_text))
+  expect_true(grepl('version = "0\\.1\\.0"', cargo_text))
 })
 
 test_that("monorepo rpkg DESCRIPTION has correct miniextendr config", {

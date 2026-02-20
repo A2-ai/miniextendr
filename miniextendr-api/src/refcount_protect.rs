@@ -266,6 +266,11 @@ pub struct ArenaState<M> {
 
 impl<M: MapStorage> ArenaState<M> {
     /// Initial capacity for the backing VECSXP.
+    ///
+    /// This is suitable for light usage (a handful of protected values).
+    /// For ppsize-scale workloads (hundreds or thousands of protected values),
+    /// use [`Arena::with_capacity`] or [`init_with_capacity`](ThreadLocalState::init_with_capacity)
+    /// to avoid repeated backing VECSXP growth and map rehashing.
     pub const INITIAL_CAPACITY: usize = 16;
 
     /// Maximum capacity: the backing VECSXP is indexed by `R_xlen_t` (isize),
@@ -580,7 +585,11 @@ pub struct Arena<M: MapStorage> {
 }
 
 impl<M: MapStorage> Arena<M> {
-    /// Create a new arena with default capacity.
+    /// Create a new arena with default capacity (16 slots).
+    ///
+    /// For workloads protecting many distinct SEXPs (e.g., ppsize-scale loops),
+    /// prefer [`with_capacity`](Self::with_capacity) to avoid backing VECSXP
+    /// growth and map rehashing during operation.
     ///
     /// # Safety
     ///
@@ -590,6 +599,10 @@ impl<M: MapStorage> Arena<M> {
     }
 
     /// Create a new arena with specific initial capacity.
+    ///
+    /// Pre-sizing the arena avoids growth of the backing VECSXP and rehashing
+    /// of the internal map. Use this when the expected number of distinct
+    /// protected values is known or can be estimated.
     ///
     /// # Safety
     ///
@@ -1100,7 +1113,10 @@ impl<M: MapStorage> ThreadLocalState<M> {
         }
     }
 
-    /// Initialize with default capacity.
+    /// Initialize with default capacity (16 slots).
+    ///
+    /// For ppsize-scale workloads, prefer [`init_with_capacity`](Self::init_with_capacity)
+    /// to avoid backing VECSXP growth and map rehashing during operation.
     ///
     /// # Safety
     ///
@@ -1112,8 +1128,9 @@ impl<M: MapStorage> ThreadLocalState<M> {
 
     /// Initialize with specific capacity.
     ///
-    /// Use this when you know the expected number of distinct protected values
-    /// to avoid backing VECSXP growth and map rehashing.
+    /// Pre-sizing avoids growth of the backing VECSXP and rehashing of the
+    /// internal map. Use this when the expected number of distinct protected
+    /// values is known or can be estimated (e.g., the length of an input vector).
     ///
     /// # Safety
     ///

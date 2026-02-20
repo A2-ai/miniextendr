@@ -4,12 +4,12 @@
 \name{pigworld-package}
 \alias{pigworld}
 \alias{pigworld-package}
-\title{pigworld: Agent-Based Ecological Model of Pigs on an Infinite 2D Plane}
+\title{pigworld: What the Package Does (One Line, Title Case)}
 \description{
-An agent-based ecological simulation of pigs roaming an infinite 2D plane. Features birth and death processes, Gaussian random-walk movement, pairwise interaction within a configurable radius, and energy-based reproduction. Implemented in Rust via miniextendr for performance, using rand/rand_distr for stochastic processes, rayon for parallel computation, and itertools for data aggregation.
+What the package does (one paragraph).
 }
 \author{
-\strong{Maintainer}: miniextendr authors \email{miniextendr@example.com}
+\strong{Maintainer}: First Last \email{first.last@example.com}
 
 }
 \keyword{internal}

@@ -272,12 +272,6 @@ impl ReceiverKind {
     pub fn is_instance(&self) -> bool {
         matches!(self, ReceiverKind::Ref | ReceiverKind::RefMut)
     }
-
-    /// Returns true if this requires mutable access.
-    #[allow(dead_code)]
-    pub fn is_mut(&self) -> bool {
-        matches!(self, ReceiverKind::RefMut | ReceiverKind::Value)
-    }
 }
 
 /// Parsed method from an impl block.
@@ -617,9 +611,6 @@ pub struct MethodAttrs {
 pub struct ParsedImpl {
     /// Type being implemented
     pub type_ident: syn::Ident,
-    /// Type generics (rejected in v1 unless 'static)
-    #[allow(dead_code)]
-    pub generics: syn::Generics,
     /// Class system to use
     pub class_system: ClassSystem,
     /// Override class name (else type name)
@@ -776,7 +767,14 @@ impl syn::parse::Parse for ImplAttrs {
                     _ => {
                         return Err(syn::Error::new(
                             ident.span(),
-                            format!("unknown option: {}", ident_str),
+                            format!(
+                                "unknown impl block option `{}`; expected one of: \
+                                 env, r6, s3, s4, s7, vctrs (class system), \
+                                 class = \"...\" (R class name), \
+                                 label = \"...\" (multi-impl label), \
+                                 strict (strict type conversion)",
+                                ident_str,
+                            ),
                         ));
                     }
                 }
@@ -1676,20 +1674,24 @@ impl ParsedImpl {
     /// before this function is called, so we only handle inherent impls here.
     pub fn parse(attrs: ImplAttrs, item_impl: syn::ItemImpl) -> syn::Result<Self> {
         // Extract type identifier
-        let type_ident = match item_impl.self_ty.as_ref() {
-            syn::Type::Path(p) => p
-                .path
-                .segments
-                .last()
-                .map(|s| s.ident.clone())
-                .ok_or_else(|| syn::Error::new_spanned(&item_impl.self_ty, "expected type path"))?,
-            _ => {
-                return Err(syn::Error::new_spanned(
-                    &item_impl.self_ty,
-                    "expected type path",
-                ));
-            }
-        };
+        let type_ident =
+            match item_impl.self_ty.as_ref() {
+                syn::Type::Path(p) => p.path.segments.last().map(|s| s.ident.clone()).ok_or_else(
+                    || {
+                        syn::Error::new_spanned(
+                            &item_impl.self_ty,
+                            "#[miniextendr] impl blocks require a named type (e.g., `impl MyType`)",
+                        )
+                    },
+                )?,
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        &item_impl.self_ty,
+                        "#[miniextendr] impl blocks require a named struct type. \
+                     Found a non-path type. Use `impl MyStruct { ... }` with a concrete struct.",
+                    ));
+                }
+            };
 
         // Reject all generics until codegen fully supports them.
         // The wrapper generation uses `type_ident` without generic args, which would
@@ -1697,7 +1699,9 @@ impl ParsedImpl {
         if !item_impl.generics.params.is_empty() {
             return Err(syn::Error::new_spanned(
                 &item_impl.generics,
-                "generic impl blocks are not yet supported by #[miniextendr]",
+                "generic impl blocks are not supported by #[miniextendr]. \
+                 R's .Call interface requires monomorphic C symbols, so generic type parameters \
+                 cannot be used. Remove the generic parameters and use a concrete type instead.",
             ));
         }
 
@@ -1738,7 +1742,6 @@ impl ParsedImpl {
 
         Ok(ParsedImpl {
             type_ident,
-            generics: item_impl.generics.clone(),
             class_system: attrs.class_system,
             class_name: attrs.class_name,
             label: attrs.label,
@@ -2065,10 +2068,14 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
-                    .with_name_prefix("$");
+                    .with_name_prefix("$")
+                    .with_params_as_details();
             lines.extend(method_doc.build());
         }
         lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
+        }
         lines.push(format!("  self <- {}", ctx.static_call()));
         lines.push(format!("  class(self) <- \"{}\"", class_name));
         lines.push("  self".to_string());
@@ -2083,7 +2090,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                    .with_name_prefix("$");
+                    .with_name_prefix("$")
+                    .with_params_as_details();
             lines.extend(method_doc.build());
         }
 
@@ -2096,6 +2104,10 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
             lines.push(format!("  {}", prelude));
+        }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
         }
 
         let call = ctx.instance_call("self");
@@ -2117,7 +2129,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                    .with_name_prefix("$");
+                    .with_name_prefix("$")
+                    .with_params_as_details();
             lines.extend(method_doc.build());
         }
 
@@ -2130,6 +2143,10 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
             lines.push(format!("  {}", prelude));
+        }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -2301,6 +2318,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Only add trailing comma if there are public methods after initialize
         let comma = if has_public_methods { "," } else { "" };
 
+        // Precondition checks for constructor parameters
+        let ctor_preconditions = ctx.precondition_checks();
+
         if has_self_returning_methods {
             let full_params = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -2308,6 +2328,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("    initialize = function({}) {{", full_params));
+            // Only check preconditions when not using .ptr shortcut
+            if !ctor_preconditions.is_empty() {
+                lines.push("      if (is.null(.ptr)) {".to_string());
+                for check in &ctor_preconditions {
+                    lines.push(format!("        {}", check));
+                }
+                lines.push("      }".to_string());
+            }
             lines.push("      if (!is.null(.ptr)) {".to_string());
             lines.push("        private$.ptr <- .ptr".to_string());
             lines.push("      } else {".to_string());
@@ -2316,6 +2344,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push(format!("    }}{}", comma));
         } else {
             lines.push(format!("    initialize = function({}) {{", ctx.params));
+            for check in &ctor_preconditions {
+                lines.push(format!("      {}", check));
+            }
             lines.push(format!("      private$.ptr <- {}", ctx.static_call()));
             lines.push(format!("    }}{}", comma));
         }
@@ -2351,6 +2382,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let what = format!("{}${}", class_name, ctx.method.ident);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
             lines.push(format!("      {}", prelude));
+        }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("      {}", check));
         }
 
         let call = ctx.instance_call("private$.ptr");
@@ -2560,6 +2595,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
             lines.push(format!("  {}", prelude));
         }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
@@ -2606,6 +2645,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .build(),
         );
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
+        }
         lines.push(format!(
             "  structure({}, class = \"{}\")",
             ctx.static_call(),
@@ -2669,6 +2711,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
             lines.push(format!("  {}", prelude));
         }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
+        }
 
         let call = ctx.instance_call("x");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -2701,6 +2747,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
             lines.push(format!("  {}", prelude));
+        }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -2864,8 +2914,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         deprecated: Option<String>,
     }
 
-    let mut properties: std::collections::HashMap<String, S7Property> =
-        std::collections::HashMap::new();
+    let mut properties: std::collections::BTreeMap<String, S7Property> =
+        std::collections::BTreeMap::new();
     let mut property_method_idents: std::collections::HashSet<String> =
         std::collections::HashSet::new();
 
@@ -3135,6 +3185,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     if let Some(ctx) = parsed_impl.constructor_context() {
+        let ctor_preconditions = ctx.precondition_checks();
         if has_self_returning_methods {
             let params_with_ptr = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -3142,6 +3193,14 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("  constructor = function({}) {{", params_with_ptr));
+            // Only check preconditions when not using .ptr shortcut
+            if !ctor_preconditions.is_empty() {
+                lines.push("    if (is.null(.ptr)) {".to_string());
+                for check in &ctor_preconditions {
+                    lines.push(format!("      {}", check));
+                }
+                lines.push("    }".to_string());
+            }
             lines.push("    if (!is.null(.ptr)) {".to_string());
             lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
             lines.push("    } else {".to_string());
@@ -3153,6 +3212,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("  }".to_string());
         } else {
             lines.push(format!("  constructor = function({}) {{", ctx.params));
+            for check in &ctor_preconditions {
+                lines.push(format!("    {}", check));
+            }
             lines.push(format!(
                 "    S7::new_object(S7::S7_object(), .ptr = {})",
                 ctx.static_call()
@@ -3224,13 +3286,20 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_inline();
 
-            // Inject lifecycle prelude if present
+            // Inject lifecycle prelude and precondition checks if present
             let what = format!("{}.{}", generic_name, class_name);
-            if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            let lifecycle = ctx.method.lifecycle_prelude(&what);
+            let preconditions = ctx.precondition_checks();
+            if lifecycle.is_some() || !preconditions.is_empty() {
                 lines.push(format!(
                     "S7::method({gen_name}, {method_class}) <- function({full_params}) {{"
                 ));
-                lines.push(format!("  {prelude}"));
+                if let Some(prelude) = lifecycle {
+                    lines.push(format!("  {prelude}"));
+                }
+                for check in &preconditions {
+                    lines.push(format!("  {check}"));
+                }
                 lines.push(format!("  {return_expr}"));
                 lines.push("}".to_string());
             } else {
@@ -3302,13 +3371,20 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
 
-            // Inject lifecycle prelude if present
+            // Inject lifecycle prelude and precondition checks if present
             let what = format!("{}.{}", generic_name, class_name);
-            if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            let lifecycle = ctx.method.lifecycle_prelude(&what);
+            let preconditions = ctx.precondition_checks();
+            if lifecycle.is_some() || !preconditions.is_empty() {
                 lines.push(format!(
                     "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{"
                 ));
-                lines.push(format!("  {prelude}"));
+                if let Some(prelude) = lifecycle {
+                    lines.push(format!("  {prelude}"));
+                }
+                for check in &preconditions {
+                    lines.push(format!("  {check}"));
+                }
                 lines.push(format!("  {return_expr}"));
                 lines.push("}".to_string());
             } else {
@@ -3342,6 +3418,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
             lines.push(format!("  {}", prelude));
+        }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3506,6 +3586,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         lines.push(format!("{} <- function({}) {{", class_name, ctx.params));
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
+        }
         lines.push(format!(
             "  methods::new(\"{}\", ptr = {})",
             class_name,
@@ -3569,14 +3652,24 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_error_in_r(method.method_attrs.error_in_r)
             .build_s4_inline();
 
-        // Inject lifecycle prelude if present
+        // Inject lifecycle prelude and precondition checks if present
         let what = format!("{}.{}", method_name, class_name);
-        if let Some(prelude) = method.lifecycle_prelude(&what) {
+        let lifecycle = method.lifecycle_prelude(&what);
+        let preconditions = crate::r_preconditions::build_precondition_checks(
+            &method.sig.inputs,
+            &std::collections::HashSet::new(),
+        );
+        if lifecycle.is_some() || !preconditions.is_empty() {
             lines.push(format!(
                 "methods::setMethod(\"{}\", \"{}\", function({}) {{",
                 method_name, class_name, full_params
             ));
-            lines.push(format!("  {}", prelude));
+            if let Some(prelude) = lifecycle {
+                lines.push(format!("  {}", prelude));
+            }
+            for check in &preconditions {
+                lines.push(format!("  {}", check));
+            }
             lines.push(format!("  {}", return_expr));
             lines.push("})".to_string());
         } else {
@@ -3610,6 +3703,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
             lines.push(format!("  {}", prelude));
+        }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3666,6 +3763,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Generate constructor body based on vctrs kind
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
+        }
         lines.push(format!("  data <- {}", ctx.static_call()));
 
         match vctrs_attrs.kind {
@@ -3847,6 +3947,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
             lines.push(format!("  {}", prelude));
         }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
+        }
 
         let call = ctx.instance_call("x");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3876,6 +3980,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
             lines.push(format!("  {}", prelude));
+        }
+        // Inject precondition checks
+        for check in ctx.precondition_checks() {
+            lines.push(format!("  {}", check));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);

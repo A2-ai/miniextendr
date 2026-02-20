@@ -35,4 +35,5 @@ syn = { workspace = true }
 
 [dev-dependencies]
 trybuild = "1.0"
+insta = "1"
 miniextendr-api = { workspace = true }

@@ -49,12 +49,122 @@
 
 use std::any::Any;
 use std::cell::RefCell;
+use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::OnceLock;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 
 use crate::ffi::{self, Rboolean, SEXP};
+
+// ---------------------------------------------------------------------------
+// PanicError: structured panic payload wrapper
+// ---------------------------------------------------------------------------
+
+/// A structured representation of a Rust panic payload with diagnostics.
+///
+/// Wraps the raw `Box<dyn Any + Send>` panic payload and extracts a human-readable
+/// message. Also records the [`PanicSource`] (worker, ALTREP, unwind_protect, or
+/// connection) so callers can distinguish where the panic originated.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::worker::PanicError;
+/// use miniextendr_api::panic_telemetry::PanicSource;
+///
+/// let err = PanicError::from_panic_payload(
+///     Box::new("something went wrong"),
+///     PanicSource::Worker,
+/// );
+/// assert_eq!(err.message(), "something went wrong");
+/// assert_eq!(err.source(), PanicSource::Worker);
+/// ```
+pub struct PanicError {
+    message: String,
+    source: crate::panic_telemetry::PanicSource,
+    /// The original type name of the panic payload (for diagnostics).
+    payload_type: &'static str,
+}
+
+impl PanicError {
+    /// Create a `PanicError` from a raw panic payload.
+    ///
+    /// Extracts the message from `&str`, `String`, and `&String` payloads.
+    /// For unrecognised types, falls back to `"unknown panic"`.
+    pub fn from_panic_payload(
+        payload: Box<dyn Any + Send>,
+        source: crate::panic_telemetry::PanicSource,
+    ) -> Self {
+        let payload_type = payload_type_name(payload.as_ref());
+        let message = crate::unwind_protect::panic_payload_to_string(payload.as_ref());
+        Self {
+            message,
+            source,
+            payload_type,
+        }
+    }
+
+    /// Create a `PanicError` from a string message directly.
+    pub fn from_message(message: String, source: crate::panic_telemetry::PanicSource) -> Self {
+        Self {
+            message,
+            source,
+            payload_type: "String",
+        }
+    }
+
+    /// The human-readable panic message.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Which panic→R-error boundary caught this panic.
+    pub fn source(&self) -> crate::panic_telemetry::PanicSource {
+        self.source
+    }
+
+    /// The Rust type name of the original panic payload (e.g., `"&str"`, `"String"`).
+    pub fn payload_type(&self) -> &'static str {
+        self.payload_type
+    }
+
+    /// Consume into the inner message string.
+    pub fn into_message(self) -> String {
+        self.message
+    }
+}
+
+impl fmt::Display for PanicError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{:?}] {}", self.source, self.message)
+    }
+}
+
+impl fmt::Debug for PanicError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PanicError")
+            .field("message", &self.message)
+            .field("source", &self.source)
+            .field("payload_type", &self.payload_type)
+            .finish()
+    }
+}
+
+impl std::error::Error for PanicError {}
+
+/// Identify the type name of a panic payload for diagnostics.
+fn payload_type_name(payload: &(dyn Any + Send)) -> &'static str {
+    if payload.downcast_ref::<&str>().is_some() {
+        "&str"
+    } else if payload.downcast_ref::<String>().is_some() {
+        "String"
+    } else if payload.downcast_ref::<&String>().is_some() {
+        "&String"
+    } else {
+        "unknown"
+    }
+}
 
 static R_MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 
@@ -124,6 +234,27 @@ pub fn is_r_main_thread() -> bool {
         .get()
         .map(|&id| id == std::thread::current().id())
         .unwrap_or(false) // Safe default: assume NOT main thread until initialized
+}
+
+/// Assert that the current thread is R's main thread.
+///
+/// In debug builds this is always active. In release builds it is a no-op
+/// unless the `release-thread-check` feature is enabled.
+///
+/// Use this at the top of functions that MUST run on the main thread
+/// (e.g., raw pointer accessors like `INTEGER`, `REAL`).
+///
+/// # Panics
+///
+/// Panics with a descriptive message if called from a non-main thread.
+#[inline(always)]
+pub fn assert_r_main_thread(fn_name: &str) {
+    if (cfg!(debug_assertions) || cfg!(feature = "release-thread-check")) && !is_r_main_thread() {
+        panic!(
+            "{fn_name} must be called on R's main thread (current: {:?})",
+            std::thread::current().id()
+        );
+    }
 }
 
 /// Extract a message from a panic payload.
@@ -524,4 +655,207 @@ pub extern "C-unwind" fn miniextendr_worker_init() {
 
         JOB_TX.set(job_tx).expect("worker already initialized");
     });
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for failure paths
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // PanicError tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn panic_error_from_str_payload() {
+        let payload: Box<dyn Any + Send> = Box::new("something broke");
+        let err =
+            PanicError::from_panic_payload(payload, crate::panic_telemetry::PanicSource::Worker);
+        assert_eq!(err.message(), "something broke");
+        assert_eq!(err.source(), crate::panic_telemetry::PanicSource::Worker);
+        assert_eq!(err.payload_type(), "&str");
+        assert_eq!(err.to_string(), "[Worker] something broke");
+    }
+
+    #[test]
+    fn panic_error_from_string_payload() {
+        let payload: Box<dyn Any + Send> = Box::new(String::from("owned message"));
+        let err =
+            PanicError::from_panic_payload(payload, crate::panic_telemetry::PanicSource::Altrep);
+        assert_eq!(err.message(), "owned message");
+        assert_eq!(err.source(), crate::panic_telemetry::PanicSource::Altrep);
+        assert_eq!(err.payload_type(), "String");
+    }
+
+    #[test]
+    fn panic_error_from_unknown_payload() {
+        let payload: Box<dyn Any + Send> = Box::new(42i32);
+        let err = PanicError::from_panic_payload(
+            payload,
+            crate::panic_telemetry::PanicSource::UnwindProtect,
+        );
+        assert_eq!(err.message(), "unknown panic");
+        assert_eq!(err.payload_type(), "unknown");
+    }
+
+    #[test]
+    fn panic_error_from_message() {
+        let err = PanicError::from_message(
+            "direct message".to_string(),
+            crate::panic_telemetry::PanicSource::Connection,
+        );
+        assert_eq!(err.message(), "direct message");
+        assert_eq!(
+            err.source(),
+            crate::panic_telemetry::PanicSource::Connection
+        );
+        assert_eq!(err.into_message(), "direct message");
+    }
+
+    #[test]
+    fn panic_error_debug_format() {
+        let err = PanicError::from_message(
+            "test".to_string(),
+            crate::panic_telemetry::PanicSource::Worker,
+        );
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("PanicError"));
+        assert!(debug.contains("test"));
+        assert!(debug.contains("Worker"));
+    }
+
+    #[test]
+    fn panic_error_implements_error_trait() {
+        let err = PanicError::from_message(
+            "trait check".to_string(),
+            crate::panic_telemetry::PanicSource::Worker,
+        );
+        // Verify it can be used as &dyn std::error::Error
+        let _: &dyn std::error::Error = &err;
+    }
+
+    // -----------------------------------------------------------------------
+    // payload_type_name tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn payload_type_name_str() {
+        let p: Box<dyn Any + Send> = Box::new("hello");
+        assert_eq!(payload_type_name(p.as_ref()), "&str");
+    }
+
+    #[test]
+    fn payload_type_name_string() {
+        let p: Box<dyn Any + Send> = Box::new(String::from("hello"));
+        assert_eq!(payload_type_name(p.as_ref()), "String");
+    }
+
+    #[test]
+    fn payload_type_name_other() {
+        let p: Box<dyn Any + Send> = Box::new(1.234f64);
+        assert_eq!(payload_type_name(p.as_ref()), "unknown");
+    }
+
+    // -----------------------------------------------------------------------
+    // assert_r_main_thread tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn assert_r_main_thread_panics_when_uninitialized() {
+        // R_MAIN_THREAD_ID hasn't been set, so is_r_main_thread() returns false.
+        // In debug builds (which test runs are), this should panic.
+        let result = std::panic::catch_unwind(|| {
+            assert_r_main_thread("test_fn");
+        });
+        // In debug builds, this must panic
+        if cfg!(debug_assertions) {
+            assert!(result.is_err(), "should panic in debug mode");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Worker channel / failure path tests (no R required)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn panic_payload_to_string_handles_str() {
+        let payload: Box<dyn Any + Send> = Box::new("test message");
+        assert_eq!(panic_payload_to_string(&payload), "test message");
+    }
+
+    #[test]
+    fn panic_payload_to_string_handles_string() {
+        let payload: Box<dyn Any + Send> = Box::new(String::from("owned"));
+        assert_eq!(panic_payload_to_string(&payload), "owned");
+    }
+
+    #[test]
+    fn panic_payload_to_string_handles_unknown() {
+        let payload: Box<dyn Any + Send> = Box::new(42u64);
+        assert_eq!(panic_payload_to_string(&payload), "unknown panic");
+    }
+
+    #[test]
+    fn with_r_thread_panics_before_init() {
+        // Calling with_r_thread before miniextendr_worker_init should panic
+        // with a descriptive message. We can't call init here (needs R), but
+        // we can verify the panic path.
+        let result = std::panic::catch_unwind(|| {
+            with_r_thread(|| 42);
+        });
+        assert!(result.is_err());
+        let payload = result.unwrap_err();
+        let msg = crate::unwind_protect::panic_payload_to_string(payload.as_ref());
+        assert!(
+            msg.contains("miniextendr_worker_init"),
+            "expected init error message, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn has_worker_context_false_outside_worker() {
+        // Outside of run_on_worker, there should be no worker context
+        assert!(!has_worker_context());
+    }
+
+    #[test]
+    fn sendable_is_send() {
+        fn assert_send<T: Send>() {}
+        // Verify Sendable makes non-Send types Send at the type level
+        assert_send::<Sendable<*const u8>>();
+    }
+
+    /// Test that dropping a SyncSender for the response channel (simulating
+    /// main thread disappearing) produces a recv error on the worker side.
+    /// This validates that the channel invariants detect broken pipes.
+    #[test]
+    fn response_channel_closed_detected() {
+        let (tx, rx) = mpsc::sync_channel::<MainThreadResponse>(1);
+        drop(tx); // simulate main thread gone
+        let result = rx.recv();
+        assert!(result.is_err(), "recv should fail when sender is dropped");
+    }
+
+    /// Test that dropping the worker_rx (main side) causes worker_tx.send to fail.
+    /// This validates the "worker thread dead" detection path.
+    #[test]
+    fn worker_channel_closed_detected() {
+        let (tx, rx) = mpsc::sync_channel::<TypeErasedWorkerMessage>(1);
+        drop(rx); // simulate main thread dropped receiver
+        let result = tx.send(WorkerMessage::Done(Ok(Box::new(42i32))));
+        assert!(result.is_err(), "send should fail when receiver is dropped");
+    }
+
+    /// Test that the job channel detects a dead worker thread.
+    #[test]
+    fn job_channel_dead_worker_detected() {
+        let (tx, rx) = mpsc::sync_channel::<AnyJob>(0);
+        drop(rx); // simulate worker thread exited
+        let job: AnyJob = Box::new(|| {});
+        let result = tx.send(job);
+        assert!(result.is_err(), "send should fail when worker is dead");
+    }
 }

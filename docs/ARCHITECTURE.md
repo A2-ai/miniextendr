@@ -49,7 +49,7 @@ Proc macros that generate the glue code:
 
 ### miniextendr-engine
 
-Code generation engine used by the `document` binary. Reads proc-macro output and generates `miniextendr_wrappers.R` (the R-side wrapper functions).
+Code generation engine used by the `document` binary. Reads proc-macro output and generates `miniextendr-wrappers.R` (the R-side wrapper functions).
 
 ### miniextendr-macros-core
 

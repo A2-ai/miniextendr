@@ -50,7 +50,7 @@
 //!
 //! The `miniextendr-lint` crate validates these rules at build time.
 
-use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
+use crate::{call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for};
 
 /// A single `fn ...;` line inside `miniextendr_module! { ... }`.
 ///
@@ -103,6 +103,11 @@ impl MiniextendrModuleFunction {
     /// Identifier for the generated R wrapper source string const.
     pub fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(&self.ident)
+    }
+
+    /// Identifier for the match_arg choices helper call defs array.
+    pub fn match_arg_call_defs_ident(&self) -> syn::Ident {
+        match_arg_call_defs_ident_for(&self.ident)
     }
 }
 

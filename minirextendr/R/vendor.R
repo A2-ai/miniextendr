@@ -258,6 +258,13 @@ patch_cargo_toml <- function(path, crate_name) {
   # miniextendr-engine in miniextendr-api dev-deps is not used by scaffolded packages
   content <- content[!grepl("^miniextendr-engine = ", content)]
 
+  # Remove [[bench]], [[test]], and [dev-dependencies] sections entirely.
+  # strip_vendored_crate() deletes benches/ and tests/ directories, so these
+
+  # TOML sections become dangling references that cause cargo errors.
+  content <- strip_toml_sections(content,
+    c("[[bench]]", "[[test]]", "[dev-dependencies]"))
+
   # Validate: warn if any workspace = true entries remain unhandled
   remaining <- grep("workspace\\s*=\\s*true", content, value = TRUE)
   if (length(remaining) > 0) {
@@ -335,8 +342,93 @@ vendor_miniextendr_local <- function(local_path, dest) {
     ))
   }
 
+  # Record the source path for future auto-sync
+  writeLines(local_path, fs::path(dest, ".vendor-source"))
+
   cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")
   invisible(TRUE)
+}
+
+#' Sync vendored miniextendr crates from local source
+#'
+#' Auto-detects whether vendor/ was populated from a local miniextendr
+#' repository and re-syncs crates if the source is available. This ensures
+#' vendor/ stays up-to-date with workspace crate changes during development.
+#'
+#' Detection order:
+#' 1. `MINIEXTENDR_LOCAL` environment variable (explicit path)
+#' 2. `.vendor-source` marker file in vendor/ (recorded by previous local vendor)
+#' 3. Auto-scan parent directories for a miniextendr workspace
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @return Invisibly returns TRUE if sync occurred, FALSE if no local source found.
+#' @export
+vendor_sync <- function(path = ".") {
+  with_project(path)
+  vendor_dir <- usethis::proj_path("vendor")
+
+  if (!fs::dir_exists(vendor_dir)) {
+    cli::cli_alert_info("No vendor/ directory — nothing to sync")
+    return(invisible(FALSE))
+  }
+
+  local_path <- detect_miniextendr_local(vendor_dir)
+
+  if (is.null(local_path)) {
+    cli::cli_alert_info("No local miniextendr source detected — vendor/ unchanged")
+    return(invisible(FALSE))
+  }
+
+  cli::cli_alert("Syncing vendor/ from {.path {local_path}}")
+  vendor_miniextendr_local(local_path, vendor_dir)
+  invisible(TRUE)
+}
+
+#' Detect local miniextendr repository for vendor sync
+#'
+#' Checks multiple sources to find a local miniextendr monorepo:
+#' 1. `MINIEXTENDR_LOCAL` environment variable
+#' 2. `.vendor-source` marker file in vendor/
+#' 3. Walk up parent directories looking for miniextendr-api/Cargo.toml
+#'
+#' @param vendor_dir Path to vendor/ directory
+#' @return Normalized path to miniextendr repo root, or NULL if not found
+#' @noRd
+detect_miniextendr_local <- function(vendor_dir) {
+  # 1. Explicit env var (highest priority)
+  env_path <- Sys.getenv("MINIEXTENDR_LOCAL", unset = "")
+  if (nzchar(env_path) && dir.exists(env_path)) {
+    api_toml <- file.path(env_path, "miniextendr-api", "Cargo.toml")
+    if (file.exists(api_toml)) {
+      return(normalizePath(env_path, mustWork = TRUE))
+    }
+  }
+
+  # 2. Recorded source from previous local vendor
+  source_file <- fs::path(vendor_dir, ".vendor-source")
+  if (fs::file_exists(source_file)) {
+    recorded <- trimws(readLines(source_file, n = 1, warn = FALSE))
+    if (nzchar(recorded) && dir.exists(recorded)) {
+      api_toml <- file.path(recorded, "miniextendr-api", "Cargo.toml")
+      if (file.exists(api_toml)) {
+        return(normalizePath(recorded, mustWork = TRUE))
+      }
+    }
+  }
+
+  # 3. Walk up parent directories looking for miniextendr workspace
+  pkg_root <- dirname(vendor_dir)
+  search_dir <- normalizePath(pkg_root, mustWork = TRUE)
+  for (i in seq_len(10)) {
+    search_dir <- dirname(search_dir)
+    if (search_dir == dirname(search_dir)) break # hit filesystem root
+    candidate <- file.path(search_dir, "miniextendr-api", "Cargo.toml")
+    if (file.exists(candidate)) {
+      return(normalizePath(search_dir, mustWork = TRUE))
+    }
+  }
+
+  NULL
 }
 
 #' Vendor external crates.io dependencies
@@ -410,6 +502,45 @@ strip_vendored_crate <- function(crate_path) {
       fs::file_delete(f)
     }
   }
+}
+
+#' Remove TOML sections from a character vector of lines
+#'
+#' Removes complete sections (header line through end of section) for the
+#' given TOML headers. A section ends at the next header (`[...]`) or EOF.
+#'
+#' @param lines Character vector of TOML file lines
+#' @param headers Character vector of section headers to remove, e.g.
+#'   `c("[[bench]]", "[dev-dependencies]")`
+#' @return Filtered character vector with those sections removed
+#' @noRd
+strip_toml_sections <- function(lines, headers) {
+  trimmed <- trimws(lines)
+
+  # Check if a line matches any target header (exact match after trim)
+  is_target <- trimmed %in% headers
+
+  # Check if a line starts any TOML section (single or double bracket)
+  is_any_header <- grepl("^\\[", trimmed)
+
+  keep <- rep(TRUE, length(lines))
+  in_section <- FALSE
+
+  for (i in seq_along(lines)) {
+    if (is_target[i]) {
+      in_section <- TRUE
+      keep[i] <- FALSE
+    } else if (in_section) {
+      if (is_any_header[i]) {
+        # Hit a new section — stop stripping
+        in_section <- FALSE
+      } else {
+        keep[i] <- FALSE
+      }
+    }
+  }
+
+  lines[keep]
 }
 
 #' Strip CRAN-unfriendly content from an entire vendor directory
@@ -506,6 +637,51 @@ miniextendr_cache_info <- function() {
   }
 
   invisible(info[, c("version", "size", "modification_time")])
+}
+
+#' Check for path dependencies in Cargo.toml
+#'
+#' Scans `[dependencies]` and `[build-dependencies]` sections for path-based
+#' dependencies. `[patch.*]` sections are excluded since those are normal
+#' dev-mode behavior handled by configure.ac.
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @return A data frame with columns `crate` and `path`, or zero-row data frame
+#'   if no path deps found.
+#' @noRd
+check_path_deps <- function(path = ".") {
+  cargo_toml <- file.path(path, "src", "rust", "Cargo.toml")
+  if (!file.exists(cargo_toml)) {
+    return(data.frame(crate = character(), path = character(), stringsAsFactors = FALSE))
+  }
+
+  lines <- readLines(cargo_toml, warn = FALSE)
+  trimmed <- trimws(lines)
+
+  # Track which TOML section we're in
+  # Only flag path deps in [dependencies] and [build-dependencies]
+  crates <- character()
+  paths <- character()
+  in_relevant_section <- FALSE
+
+  for (line in trimmed) {
+    # Detect section headers
+    if (grepl("^\\[", line)) {
+      in_relevant_section <- line %in% c("[dependencies]", "[build-dependencies]")
+      next
+    }
+
+    if (!in_relevant_section) next
+
+    # Match lines like: crate-name = { path = "..." ... }
+    m <- regmatches(line, regexec('^([a-zA-Z0-9_-]+)\\s*=.*path\\s*=\\s*"([^"]+)"', line))[[1]]
+    if (length(m) == 3) {
+      crates <- c(crates, m[2])
+      paths <- c(paths, m[3])
+    }
+  }
+
+  data.frame(crate = crates, path = paths, stringsAsFactors = FALSE)
 }
 
 #' Add [patch] entries to Cargo.toml for vendored crates

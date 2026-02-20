@@ -1,5 +1,5 @@
 error: type conflict for field `value`: variant `B` has a different type than a previous variant; use `#[dataframe(conflicts = "string")]` to coerce all conflicting fields to String
- --> tests/ui/derive_dataframe_type_collision.rs:9:16
+ --> tests/ui/derive_dataframe_type_collision.rs:9:9
   |
 9 |     B { value: String },
-  |                ^^^^^^
+  |         ^^^^^

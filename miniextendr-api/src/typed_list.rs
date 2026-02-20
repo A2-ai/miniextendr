@@ -390,7 +390,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
     let names_sexp = list.names();
     let n = list.len();
     let mut name_to_idx: std::collections::HashMap<String, isize> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(n as usize);
 
     if let Some(names) = names_sexp {
         for i in 0..n {
@@ -415,7 +415,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
     }
 
     // Validate each spec entry
-    let mut validated_names: HashSet<&str> = HashSet::new();
+    let mut validated_names: HashSet<&str> = HashSet::with_capacity(spec.entries.len());
 
     for entry in &spec.entries {
         validated_names.insert(entry.name);

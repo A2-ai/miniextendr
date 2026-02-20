@@ -1,0 +1,5 @@
+error: `as_list` and `expand` are mutually exclusive
+ --> tests/ui/derive_dataframe_field_as_list_expand_conflict.rs:8:5
+  |
+8 |     coords: [f64; 3],
+  |     ^^^^^^

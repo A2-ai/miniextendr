@@ -34,8 +34,7 @@ pub struct LargePayload {
 /// Another small payload type to benchmark downcast miss paths.
 #[derive(miniextendr_api::ExternalPtr)]
 struct OtherPayload {
-    #[allow(dead_code)]
-    value: i64,
+    _value: i64,
 }
 
 // =============================================================================

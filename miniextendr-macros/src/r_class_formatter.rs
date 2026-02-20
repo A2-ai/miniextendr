@@ -144,6 +144,16 @@ impl<'a> MethodContext<'a> {
     pub fn has_class_override(&self) -> bool {
         self.method.method_attrs.class.is_some()
     }
+
+    /// Build R-side precondition `stopifnot()` lines for this method's parameters.
+    ///
+    /// Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`).
+    pub fn precondition_checks(&self) -> Vec<String> {
+        crate::r_preconditions::build_precondition_checks(
+            &self.method.sig.inputs,
+            &std::collections::HashSet::new(),
+        )
+    }
 }
 
 /// Builder for class-level roxygen documentation header.
@@ -266,6 +276,12 @@ pub struct MethodDocBuilder<'a> {
     always_export: bool,
     /// Whether the parent class has @noRd (suppresses method docs too)
     class_has_no_rd: bool,
+    /// When true, convert `@param` tags into `\describe{}` blocks in the description.
+    ///
+    /// Used for env-class methods where roxygen can't infer `\usage` from `Class$method <- function()`.
+    /// Without this, `@param` tags create `\arguments` entries with no matching `\usage`, causing
+    /// R CMD check warnings ("Documented arguments not in \\usage").
+    params_as_details: bool,
 }
 
 impl<'a> MethodDocBuilder<'a> {
@@ -288,6 +304,7 @@ impl<'a> MethodDocBuilder<'a> {
             r_name_override: None,
             always_export: false,
             class_has_no_rd: false,
+            params_as_details: false,
         }
     }
 
@@ -306,18 +323,21 @@ impl<'a> MethodDocBuilder<'a> {
         self
     }
 
-    /// Set whether to always add @export (default: true).
-    #[allow(dead_code)]
-    pub fn with_export(mut self, export: bool) -> Self {
-        self.always_export = export;
-        self
-    }
-
     /// Set whether the parent class has @noRd.
     ///
     /// When true, skips @name, @rdname, @source tags and adds @noRd instead.
     pub fn with_class_no_rd(mut self, class_has_no_rd: bool) -> Self {
         self.class_has_no_rd = class_has_no_rd;
+        self
+    }
+
+    /// Convert `@param` tags to inline `\describe{}` blocks instead of roxygen `@param`.
+    ///
+    /// Used for env-class methods where roxygen can't infer `\usage` from `Class$method <- function()`.
+    /// Without this, `@param` tags create `\arguments` entries with no matching `\usage`,
+    /// causing R CMD check warnings ("Documented arguments not in \\usage").
+    pub fn with_params_as_details(mut self) -> Self {
+        self.params_as_details = true;
         self
     }
 
@@ -332,7 +352,30 @@ impl<'a> MethodDocBuilder<'a> {
         }
 
         if !self.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
+            if self.params_as_details {
+                // For env-class: emit non-@param tags normally, convert @param to \describe
+                let (param_tags, other_tags): (Vec<_>, Vec<_>) = self
+                    .doc_tags
+                    .iter()
+                    .partition(|t| t.trim_start().starts_with("@param "));
+                let other_refs: Vec<&str> = other_tags.iter().map(|s| s.as_str()).collect();
+                crate::roxygen::push_roxygen_tags_str(&mut lines, &other_refs);
+                if !param_tags.is_empty() {
+                    lines.push("#'".to_string());
+                    lines.push("#' \\describe{".to_string());
+                    for tag in &param_tags {
+                        if let Some(rest) = tag.trim_start().strip_prefix("@param ") {
+                            let mut parts = rest.splitn(2, char::is_whitespace);
+                            let name = parts.next().unwrap_or("");
+                            let desc = parts.next().unwrap_or("");
+                            lines.push(format!("#'   \\item{{\\code{{{name}}}}}{{{desc}}}"));
+                        }
+                    }
+                    lines.push("#' }".to_string());
+                }
+            } else {
+                crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
+            }
         }
 
         if !crate::roxygen::has_roxygen_tag(self.doc_tags, "name") {

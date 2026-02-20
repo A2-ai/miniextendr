@@ -84,12 +84,19 @@
     "**/*.so": true,
     "**/*.a": true
   },
+  "search.useIgnoreFiles": false,
   "search.exclude": {
     "**/target": true,
     "**/rust-target": true,
     "**/ra-target": true,
     "**/rpkg/vendor": true,
-    "**/Cargo.lock": true
+    "**/Cargo.lock": true,
+    "**/*.Rcheck": true,
+    "**/rpkg-check-output": true,
+    "**/dvs_reviews": true,
+    "**/dev_lib": true,
+    "**/*.tar.gz": true,
+    "**/background": true
   },
   "tinymist.formatterMode": "typstyle"
 }

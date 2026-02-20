@@ -1,9 +1,8 @@
 ^LICENSE\.md$
 ^dev$
-^src/rust/target$
 ^rust-target$
 ^ra-target$
-^DEV_PROCESS\.md$
+^src/rust/target$
 ^src/rust/ra_target$
 ^src/rust/\.cargo$
 ^\.cargo$
@@ -20,6 +19,7 @@
 ^\.DS_Store$
 \.Rcheck$
 ^inst/\.vendor\.tar\.xz\.cksum$
+^vendor$
 \.cargo-checksum\.json$
 \.cargo_vcs_info\.json$
 ^vendor/.*\.github$

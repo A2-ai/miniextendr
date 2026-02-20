@@ -830,9 +830,6 @@ struct MethodInfo {
     param_names: Vec<syn::Ident>,
     /// Return type (None for `()`)
     return_type: Option<syn::Type>,
-    /// Whether method has a default implementation
-    #[allow(dead_code)]
-    has_default: bool,
     /// Whether method is marked `#[miniextendr(skip)]`
     skip: bool,
     /// Override the R-facing method name (from `#[miniextendr(r_name = "...")]`)
@@ -1207,9 +1204,6 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
         }
     };
 
-    // Check for default implementation
-    let has_default = method.default.is_some();
-
     MethodInfo {
         name,
         has_self,
@@ -1217,7 +1211,6 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
         param_types,
         param_names,
         return_type,
-        has_default,
         skip,
         r_name,
     }

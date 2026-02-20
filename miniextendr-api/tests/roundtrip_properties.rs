@@ -325,6 +325,87 @@ fn prop_vec_option_string_roundtrip() {
 }
 
 // =============================================================================
+// Vec<HashMap<String, T>> roundtrip
+// =============================================================================
+
+#[test]
+fn prop_vec_hashmap_string_i32_roundtrip() {
+    use std::collections::HashMap;
+    // Keys: short non-NUL strings; values: valid (non-NA) i32
+    let entry_strategy = (
+        "[a-z]{1,5}".prop_map(|s: String| s),
+        (i32::MIN + 1)..=i32::MAX,
+    );
+    let map_strategy = prop::collection::hash_map(entry_strategy.0, entry_strategy.1, 0..5);
+    let vec_strategy = prop::collection::vec(map_strategy, 0..5);
+
+    run_proptest(10, vec_strategy, |vals: Vec<HashMap<String, i32>>| {
+        let sexp = vals.clone().into_sexp();
+        let recovered: Vec<HashMap<String, i32>> = unsafe { protected_roundtrip(sexp) };
+        assert_eq!(vals, recovered);
+    });
+}
+
+// =============================================================================
+// NamedVector<HashMap<String, T>> roundtrip (named atomic vectors)
+// =============================================================================
+
+#[test]
+fn prop_named_vector_hashmap_i32_roundtrip() {
+    use miniextendr_api::NamedVector;
+    use std::collections::HashMap;
+
+    // Keys: unique short lowercase strings; values: valid (non-NA) i32
+    let map_strategy = prop::collection::hash_map(
+        "[a-z]{1,5}".prop_map(|s: String| s),
+        (i32::MIN + 1)..=i32::MAX,
+        0..10,
+    );
+
+    run_proptest(10, map_strategy, |vals: HashMap<String, i32>| {
+        let sexp = NamedVector(vals.clone()).into_sexp();
+        let recovered: NamedVector<HashMap<String, i32>> = unsafe { protected_roundtrip(sexp) };
+        assert_eq!(vals, recovered.into_inner());
+    });
+}
+
+#[test]
+fn prop_named_vector_hashmap_f64_roundtrip() {
+    use miniextendr_api::NamedVector;
+    use std::collections::HashMap;
+
+    let map_strategy = prop::collection::hash_map(
+        "[a-z]{1,5}".prop_map(|s: String| s),
+        prop::num::f64::NORMAL | prop::num::f64::ZERO,
+        0..10,
+    );
+
+    run_proptest(10, map_strategy, |vals: HashMap<String, f64>| {
+        let sexp = NamedVector(vals.clone()).into_sexp();
+        let recovered: NamedVector<HashMap<String, f64>> = unsafe { protected_roundtrip(sexp) };
+        assert_eq!(vals, recovered.into_inner());
+    });
+}
+
+#[test]
+fn prop_named_vector_btreemap_i32_roundtrip() {
+    use miniextendr_api::NamedVector;
+    use std::collections::BTreeMap;
+
+    let map_strategy = prop::collection::btree_map(
+        "[a-z]{1,5}".prop_map(|s: String| s),
+        (i32::MIN + 1)..=i32::MAX,
+        0..10,
+    );
+
+    run_proptest(10, map_strategy, |vals: BTreeMap<String, i32>| {
+        let sexp = NamedVector(vals.clone()).into_sexp();
+        let recovered: NamedVector<BTreeMap<String, i32>> = unsafe { protected_roundtrip(sexp) };
+        assert_eq!(vals, recovered.into_inner());
+    });
+}
+
+// =============================================================================
 // i64 safe-range roundtrip (via f64 representation)
 // =============================================================================
 

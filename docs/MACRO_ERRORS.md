@@ -1,0 +1,129 @@
+# Proc-Macro and Lint Error Guide
+
+This guide covers common error messages from `#[miniextendr]` proc macros and the `miniextendr-lint` static analysis tool.
+
+## Running the Lint
+
+```bash
+just lint               # Run lint on rpkg
+```
+
+The lint also runs automatically during `cargo build`/`cargo check` via `build.rs`. To disable temporarily:
+
+```bash
+MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
+```
+
+## Lint Codes Reference
+
+### Errors (CI-blocking)
+
+| Code | Description | Fix |
+|------|-------------|-----|
+| **MXL001** | Multiple `miniextendr_module!` in one file | Merge into a single `miniextendr_module!` per file |
+| **MXL002** | `#[miniextendr]` items found but no module | Add `miniextendr_module! { mod name; fn your_fn; }` |
+| **MXL003** | Module present but no `#[miniextendr]` items | Add `#[miniextendr]` to functions, or remove module |
+| **MXL004** | `#[miniextendr]` item not listed in module | Add `fn item_name;` to your `miniextendr_module!` |
+| **MXL005** | Module entry has no `#[miniextendr]` attribute | Add `#[miniextendr]` to the function/impl, or remove from module |
+| **MXL006** | Child module missing `use child;` in parent | Add `use child_module;` to parent's `miniextendr_module!` |
+| **MXL007** | `impl Type;` requires ExternalPtr derive | Add `#[derive(ExternalPtr)]` or implement `TypedExternal` |
+| **MXL008** | Trait impl class system incompatible | Ensure trait impl uses same class system as inherent impl |
+| **MXL009** | Multiple impl blocks without labels | Add `#[miniextendr(label = "unique")]` to each impl block |
+| **MXL010** | Duplicate labels on impl blocks | Use unique labels for each impl block |
+
+### Warnings (P0 — high impact)
+
+| Code | Description | Fix |
+|------|-------------|-----|
+| **MXL100** | Duplicate module entrypoint symbol | Rename one of the conflicting `mod name;` entries |
+| **MXL101** | Duplicate entries in module | Remove the duplicate `fn`/`impl` entry |
+| **MXL102** | Trait impl missing TypedExternal | Implement `TypedExternal` for the type |
+| **MXL103** | Generic concrete type in trait-ABI | Use concrete (non-generic) types for trait ABI |
+| **MXL104** | `#[cfg]` mismatch between item and module | Ensure `#[cfg]` attributes match on both |
+| **MXL105** | Unreachable module file | Check file paths and module hierarchy |
+| **MXL106** | Registered function is not `pub` | Add `pub` to the function definition |
+| **MXL107** | Missing `#[miniextendr] impl Trait for Type` | Add the attribute to the trait impl |
+| **MXL108** | Missing module entry for trait impl | Add `impl Trait for Type;` to module |
+
+### Warnings (P1 — important)
+
+| Code | Description | Fix |
+|------|-------------|-----|
+| **MXL200** | Trait tag collision preflight | Use unique trait names or labels |
+| **MXL201** | Impl label mismatch | Check label spelling matches across impls |
+| **MXL202** | Orphan `use child;` | Remove the `use` for non-existent child module |
+| **MXL203** | `internal` + `noexport` redundancy | Use just `#[miniextendr(internal)]` (implies noexport) |
+| **MXL204** | Multiple root-level modules | Only one root `miniextendr_module!` per crate |
+
+## Common Proc-Macro Errors
+
+### "dots must be the last parameter"
+
+The `...` (dots) argument must appear last in the function signature:
+
+```rust
+// Wrong
+#[miniextendr]
+fn bad(dots: &Dots, x: i32) -> i32 { x }
+
+// Correct
+#[miniextendr]
+fn good(x: i32, dots: &Dots) -> i32 { x }
+```
+
+### "expected `pub` function"
+
+Only `pub` functions get `@export` in R wrappers. If the function is intentionally private, use `#[miniextendr(noexport)]` or `#[miniextendr(internal)]`.
+
+### "multiple impl blocks for Type need labels"
+
+When a type has more than one `#[miniextendr]` impl block, each needs a unique label:
+
+```rust
+#[miniextendr(label = "core")]
+impl MyType {
+    fn method_a(&self) -> i32 { 0 }
+}
+
+#[miniextendr(label = "extra")]
+impl MyType {
+    fn method_b(&self) -> String { String::new() }
+}
+```
+
+### "trait impl class system incompatible"
+
+A trait impl's class system must match the inherent impl's class system:
+
+```rust
+#[miniextendr(s3)]
+impl MyType { /* ... */ }
+
+// This will error if the trait impl uses a different class system
+#[miniextendr]  // Must inherit s3 from the inherent impl
+impl Display for MyType { /* ... */ }
+```
+
+### "type must derive ExternalPtr or implement TypedExternal"
+
+Types registered in `miniextendr_module!` as `impl Type;` need pointer identity:
+
+```rust
+#[derive(ExternalPtr)]
+struct MyType { /* ... */ }
+
+#[miniextendr]
+impl MyType { /* ... */ }
+
+miniextendr_module! {
+    mod my_module;
+    impl MyType;  // Requires ExternalPtr derive
+}
+```
+
+## Debugging Tips
+
+1. **Run `just lint`** before building — it catches macro/module mismatches earlier than compile errors
+2. **Check NAMESPACE** — if a function exists in Rust but not in R, run `just devtools-document`
+3. **Watch for `use child;`** — the lint catches this (MXL006), but forgetting it means R can't find child module functions
+4. **Feature-gated modules** — use `#[cfg]` on both the module declaration and the `miniextendr_module!` entry

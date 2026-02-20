@@ -115,6 +115,7 @@ mod identical_tests;
 mod interrupt_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
+mod match_arg_tests;
 mod misc_tests;
 #[cfg(feature = "ndarray")]
 #[path = "ndarray_tests.rs"]
@@ -1955,6 +1956,7 @@ miniextendr_module! {
     use connection_tests;
     use nonapi;
     use factor_tests;
+    use match_arg_tests;
     use vctrs_tests;
     use vctrs_class_example;
     use vctrs_derive_example;
