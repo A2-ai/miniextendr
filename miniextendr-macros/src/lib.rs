@@ -1302,6 +1302,18 @@ pub fn miniextendr(
             .entry(r_name)
             .or_insert_with(|| "NULL".to_string());
     }
+    // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
+    for (param_name, choices) in parsed.choices_params() {
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            param_name,
+            proc_macro2::Span::call_site(),
+        ))
+        .to_string();
+        let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
+        merged_defaults
+            .entry(r_name)
+            .or_insert_with(|| format!("c({})", quoted.join(", ")));
+    }
     arg_builder = arg_builder.with_defaults(merged_defaults);
 
     let r_formals = arg_builder.build_formals();
@@ -1383,6 +1395,27 @@ pub fn miniextendr(
         crate::lifecycle::inject_lifecycle_badge(&mut roxygen_tags, spec);
     }
 
+    // Auto-generate @param tags for choices params (unless user already wrote one)
+    for arg in inputs.iter() {
+        if let syn::FnArg::Typed(pt) = arg
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+        {
+            let rust_name = pat_ident.ident.to_string();
+            if let Some(choices) = parsed.choices_for_param(&rust_name) {
+                let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                // Only inject if user didn't already write @param for this param
+                let has_user_param = roxygen_tags
+                    .iter()
+                    .any(|t| t.trim_start().starts_with(&format!("@param {}", r_name)));
+                if !has_user_param {
+                    let quoted: Vec<String> =
+                        choices.iter().map(|c| format!("\"{}\"", c)).collect();
+                    roxygen_tags.push(format!("@param {} One of {}.", r_name, quoted.join(", ")));
+                }
+            }
+        }
+    }
+
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
     let has_no_rd_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "noRd");
@@ -1460,21 +1493,53 @@ pub fn miniextendr(
         lines.join("\n  ")
     };
 
+    // Generate idiomatic match.arg prelude for choices params
+    // These use the simpler pattern: `param <- match.arg(param)` (no C helper call needed)
+    let choices_prelude = {
+        let mut lines = Vec::new();
+        for arg in inputs.iter() {
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                let rust_name = pat_ident.ident.to_string();
+                if parsed.choices_for_param(&rust_name).is_some() {
+                    let r_name =
+                        r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    lines.push(format!("{r_name} <- match.arg({r_name})"));
+                }
+            }
+        }
+        if lines.is_empty() {
+            String::new()
+        } else {
+            lines.join("\n  ")
+        }
+    };
+
     // Generate lifecycle prelude if needed
     let lifecycle_prelude = lifecycle_spec
         .as_ref()
         .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str));
 
-    // Generate R-side precondition checks (stopifnot)
-    let precondition_checks =
-        r_preconditions::build_precondition_checks(inputs, parsed.match_arg_params());
-    let precondition_prelude = if precondition_checks.is_empty() {
+    // Generate R-side precondition checks (stopifnot + fallback precheck calls)
+    // Skip both match_arg and choices params (already validated by match.arg)
+    let mut skip_params = parsed.match_arg_params().clone();
+    for param_name in parsed.choices_params().keys() {
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            param_name,
+            proc_macro2::Span::call_site(),
+        ))
+        .to_string();
+        skip_params.insert(r_name);
+    }
+    let precondition_output = r_preconditions::build_precondition_checks(inputs, &skip_params);
+    let precondition_prelude = if precondition_output.static_checks.is_empty() {
         String::new()
     } else {
-        precondition_checks.join("\n  ")
+        precondition_output.static_checks.join("\n  ")
     };
 
-    // Combine all preludes: lifecycle first, then preconditions, then match.arg, then main call
+    // Combine all preludes: lifecycle, static preconditions, match.arg (enum), choices match.arg
     let combined_prelude = {
         let mut parts = Vec::new();
         if let Some(ref lc) = lifecycle_prelude {
@@ -1485,6 +1550,9 @@ pub fn miniextendr(
         }
         if !match_arg_prelude.is_empty() {
             parts.push(&match_arg_prelude);
+        }
+        if !choices_prelude.is_empty() {
+            parts.push(&choices_prelude);
         }
         if parts.is_empty() {
             None
@@ -1964,25 +2032,30 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .collect();
 
     // Get CALL_ENTRIES const arrays from child modules (via `use`)
-    let use_module_call_entries_consts: Vec<syn::Expr> = parsed_module
+    let use_module_call_entries_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .uses
         .iter()
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
             let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
             let call_entries_const = quote::format_ident!("CALL_ENTRIES_{use_module_ident_upper}");
-            syn::parse_quote!(#use_module_ident::#call_entries_const)
+            let cfg_attrs = extract_cfg_attrs(&x.attrs);
+            (
+                cfg_attrs,
+                syn::parse_quote!(#use_module_ident::#call_entries_const),
+            )
         })
         .collect();
 
     // Call ALTREP registration from child modules (via `use`)
-    let use_module_altrep_regs: Vec<syn::Expr> = parsed_module
+    let use_module_altrep_regs: Vec<proc_macro2::TokenStream> = parsed_module
         .uses
         .iter()
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
             let altrep_reg_fn = quote::format_ident!("{use_module_ident}_register_altrep");
-            syn::parse_quote!(#use_module_ident::#altrep_reg_fn())
+            let cfg_attrs = extract_cfg_attrs(&x.attrs);
+            quote::quote!(#(#cfg_attrs)* #use_module_ident::#altrep_reg_fn())
         })
         .collect();
 
@@ -2015,7 +2088,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
     // Collect child modules' function wrappers (PARTS)
-    let r_wrappers_use_other_modules = parsed_module
+    let r_wrappers_use_other_modules: Vec<proc_macro2::TokenStream> = parsed_module
         .uses
         .iter()
         .map(|x| {
@@ -2023,12 +2096,13 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
             let r_wrappers_use_module =
                 quote::format_ident!("R_WRAPPERS_PARTS_{use_module_ident_upper}");
-            syn::parse_quote!(#use_module_ident::#r_wrappers_use_module)
+            let cfg_attrs = extract_cfg_attrs(&x.attrs);
+            quote::quote!(#(#cfg_attrs)* #use_module_ident::#r_wrappers_use_module)
         })
-        .collect::<Vec<syn::Expr>>();
+        .collect();
 
     // Collect child modules' impl wrappers (IMPLS)
-    let r_wrappers_impl_use_other_modules = parsed_module
+    let r_wrappers_impl_use_other_modules: Vec<proc_macro2::TokenStream> = parsed_module
         .uses
         .iter()
         .map(|x| {
@@ -2036,9 +2110,10 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
             let r_wrappers_use_module =
                 quote::format_ident!("R_WRAPPERS_IMPLS_{use_module_ident_upper}");
-            syn::parse_quote!(#use_module_ident::#r_wrappers_use_module)
+            let cfg_attrs = extract_cfg_attrs(&x.attrs);
+            quote::quote!(#(#cfg_attrs)* #use_module_ident::#r_wrappers_use_module)
         })
-        .collect::<Vec<syn::Expr>>();
+        .collect();
 
     let module_upper = module.to_string().to_uppercase();
     let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module_upper}");
@@ -2163,6 +2238,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Precheck fallback helper call defs length (per-function)
     // Calculate total length expression, including conditional cfg lengths
     let cfg_len_exprs: Vec<proc_macro2::TokenStream> = cfg_len_idents
         .iter()
@@ -2261,19 +2337,89 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     };
 
     // Build a combined const array including child modules and a sentinel.
-    // Use UFCS to call slice's inherent len() instead of RToVec::len()
-    let use_module_call_entries_len_exprs: Vec<proc_macro2::TokenStream> =
-        use_module_call_entries_consts
-            .iter()
-            .map(|expr| quote::quote!(<[_]>::len(&#expr)))
-            .collect();
+    //
+    // For cfg-gated use entries, generate paired const declarations (like __CFG_FN_LEN_*)
+    // so the array size is always valid regardless of which features are enabled.
+    let cfg_use_len_consts: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
+        .iter()
+        .enumerate()
+        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
+        .map(|(i, (cfg_attrs, expr))| {
+            let const_name = quote::format_ident!("__CFG_USE_LEN_{}", i);
+            let negated_attrs: Vec<proc_macro2::TokenStream> = cfg_attrs
+                .iter()
+                .map(|attr| {
+                    let meta = &attr.meta;
+                    quote::quote!(#[cfg(not #meta)])
+                })
+                .collect();
+            quote::quote! {
+                #(#cfg_attrs)*
+                const #const_name: usize = <[_]>::len(&#expr);
+                #(#negated_attrs)*
+                const #const_name: usize = 0;
+            }
+        })
+        .collect();
+
+    // Length expressions for unconfigured use entries (always present)
+    let uncfg_use_len_exprs: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
+        .iter()
+        .filter(|(cfg_attrs, _)| cfg_attrs.is_empty())
+        .map(|(_, expr)| quote::quote!(<[_]>::len(&#expr)))
+        .collect();
+
+    // Length idents for cfg-gated use entries
+    let cfg_use_len_idents: Vec<syn::Ident> = use_module_call_entries_with_cfg
+        .iter()
+        .enumerate()
+        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
+        .map(|(i, _)| quote::format_ident!("__CFG_USE_LEN_{}", i))
+        .collect();
+
+    // Combine all use-module length addends
+    let all_use_len_exprs: Vec<proc_macro2::TokenStream> = uncfg_use_len_exprs
+        .into_iter()
+        .chain(cfg_use_len_idents.iter().map(|ident| quote::quote!(#ident)))
+        .collect();
+
     let all_call_entries_const_ident = quote::format_ident!("ALL_CALL_ENTRIES_{module_upper}");
-    let all_entries_len_expr = if use_module_call_entries_len_exprs.is_empty() {
+    let all_entries_len_expr = if all_use_len_exprs.is_empty() {
         quote::quote!(#total_len_expr + 1usize)
     } else {
-        quote::quote!(#total_len_expr + #(#use_module_call_entries_len_exprs)+* + 1usize)
+        quote::quote!(#total_len_expr + #(#all_use_len_exprs)+* + 1usize)
     };
+
+    // Generate child-module copy blocks, each wrapped with cfg attrs if needed
+    let use_module_copy_blocks: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
+        .iter()
+        .map(|(cfg_attrs, expr)| {
+            let copy_block = quote::quote! {
+                let mut j: usize = 0;
+                let slice = &#expr;
+                while j < <[_]>::len(slice) {
+                    entries[idx] = slice[j];
+                    idx += 1;
+                    j += 1;
+                }
+            };
+            if cfg_attrs.is_empty() {
+                copy_block
+            } else {
+                quote::quote! {
+                    #(#cfg_attrs)*
+                    {
+                        #copy_block
+                    }
+                }
+            }
+        })
+        .collect();
+
     let all_call_entries_storage = quote::quote! {
+        // Conditional length constants for feature-gated child module entries
+        #(#cfg_use_len_consts)*
+
         /// This module's call entries including children, with sentinel.
         #[doc(hidden)]
         const #all_call_entries_const_ident: [::miniextendr_api::ffi::R_CallMethodDef; #all_entries_len_expr] = {
@@ -2295,15 +2441,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             }
 
             // Child module entries
-            #(
-                let mut j: usize = 0;
-                let slice = &#use_module_call_entries_consts;
-                while j < <[_]>::len(slice) {
-                    entries[idx] = slice[j];
-                    idx += 1;
-                    j += 1;
-                }
-            )*
+            #(#use_module_copy_blocks)*
 
             // Sentinel
             entries[idx] = ::miniextendr_api::ffi::R_CallMethodDef {

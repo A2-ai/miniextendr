@@ -24,6 +24,8 @@
 - [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md) -- Practical ALTREP examples
 - [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md) -- ALTREP quick reference card
 - [SPARSE_ITERATOR_ALTREP.md](SPARSE_ITERATOR_ALTREP.md) -- Compute-on-access ALTREP pattern guide
+- [CONNECTIONS.md](CONNECTIONS.md) -- Custom R connections from Rust (experimental)
+- [PROGRESS.md](PROGRESS.md) -- Progress bars in R via indicatif
 - [FEATURES.md](FEATURES.md) -- Feature flags reference (all optional features)
 - [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features (strict, coerce, class system, etc.)
 - [RAYON.md](RAYON.md) -- Parallel iteration with rayon

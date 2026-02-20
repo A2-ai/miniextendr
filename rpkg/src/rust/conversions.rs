@@ -1510,6 +1510,40 @@ pub fn conv_as_named_vector_slice() -> miniextendr_api::ffi::SEXP {
     AsNamedVector(pairs).into_sexp()
 }
 
+// NamedList (O(1) lookup wrapper)
+
+use miniextendr_api::NamedList;
+
+/// @noRd
+#[miniextendr]
+pub fn conv_named_list_get(config: NamedList) -> i32 {
+    let width: i32 = config.get("width").unwrap_or(0);
+    let height: i32 = config.get("height").unwrap_or(0);
+    width * height
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_named_list_contains(config: NamedList) -> Vec<bool> {
+    vec![
+        config.contains("a"),
+        config.contains("b"),
+        config.contains("missing"),
+    ]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_named_list_len(config: NamedList) -> Vec<i32> {
+    vec![config.len() as i32, config.named_len() as i32]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_named_list_roundtrip(config: NamedList) -> miniextendr_api::list::List {
+    config.into_list()
+}
+
 miniextendr_module! {
     mod conversions;
 
@@ -1734,4 +1768,10 @@ miniextendr_module! {
     fn conv_as_named_list_ext_trait;
     fn conv_as_named_list_slice;
     fn conv_as_named_vector_slice;
+
+    // NamedList (O(1) lookup)
+    fn conv_named_list_get;
+    fn conv_named_list_contains;
+    fn conv_named_list_len;
+    fn conv_named_list_roundtrip;
 }

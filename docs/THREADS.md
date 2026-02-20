@@ -233,6 +233,39 @@ spawn_with_r(move || {
 let sexp = rx.recv().unwrap();
 ```
 
+### Worker Batching
+
+The default `with_r_thread` sends one closure per round-trip (~440us overhead). For multiple R API calls, use batching to amortize that cost:
+
+**Homogeneous batching** -- all closures return the same type:
+
+```rust
+use miniextendr_api::with_r_thread_batch;
+
+let results = with_r_thread_batch(vec![
+    Box::new(|| 1 + 1),
+    Box::new(|| 2 + 2),
+    Box::new(|| 3 + 3),
+]);
+// results == vec![2, 4, 6] -- single round-trip
+```
+
+**Heterogeneous batching** -- closures return different types:
+
+```rust
+use miniextendr_api::RThreadScope;
+
+let mut scope = RThreadScope::new();
+let idx_a = scope.push(|| 42i32);
+let idx_b = scope.push(|| String::from("hello"));
+
+let results = scope.execute(); // single round-trip
+let a: i32 = *results[idx_a].downcast().unwrap();
+let b: String = *results[idx_b].downcast().unwrap();
+```
+
+`RThreadScope` returns `Vec<Box<dyn Any + Send>>` -- use `downcast()` to recover concrete types.
+
 ### ALTREP Callbacks
 
 ALTREP methods are called by R on the main thread, so they don't need `StackCheckGuard`. However, if an ALTREP method spawns threads that call back into R, those threads need the guard.

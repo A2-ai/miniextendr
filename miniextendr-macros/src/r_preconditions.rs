@@ -198,8 +198,11 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
             r_check_for_vec_element(inner_ty)
         }
 
-        // Map types → List
-        "HashMap" | "BTreeMap" => Some(RTypeCheck::List),
+        // Map types and named list → List
+        "HashMap" | "BTreeMap" | "NamedList" => Some(RTypeCheck::List),
+
+        // List (bare) → List
+        "List" | "ListMut" => Some(RTypeCheck::List),
 
         // Skip types: SEXP, Dots, Missing, ExternalPtr, RLogical, etc.
         "SEXP" | "Dots" | "Missing" | "ExternalPtr" | "OwnedProtect" => None,
@@ -276,31 +279,73 @@ fn extract_single_generic_arg(segment: &syn::PathSegment) -> Option<&syn::Type> 
     None
 }
 
-/// Build precondition `stopifnot()` lines for a function's parameters.
+/// A parameter that needs a fallback precheck (unknown to the static table).
+#[allow(dead_code)]
+pub struct FallbackParam {
+    /// R-normalized parameter name.
+    pub r_name: String,
+    /// The Rust type (for generating type-aware validation).
+    pub rust_type: syn::Type,
+}
+
+/// Output of precondition analysis: static checks + fallback params.
+pub struct PreconditionOutput {
+    /// Lines forming a `stopifnot(...)` call for known types.
+    pub static_checks: Vec<String>,
+    /// Parameters needing fallback validation (unknown custom types).
+    #[allow(dead_code)]
+    pub fallback_params: Vec<FallbackParam>,
+}
+
+/// Types that should never get a fallback precheck (they're handled specially
+/// or can't be meaningfully prechecked from R).
+fn is_skip_type(ident: &str) -> bool {
+    matches!(
+        ident,
+        "SEXP" | "Dots" | "Missing" | "ExternalPtr" | "OwnedProtect"
+    )
+}
+
+/// Check if a type should get a fallback precheck (unknown to static table,
+/// not a skip type, not a reference).
+fn needs_fallback(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(tp) => {
+            let Some(seg) = tp.path.segments.last() else {
+                return false;
+            };
+            !is_skip_type(&seg.ident.to_string())
+        }
+        // References (&str, &[T], &Dots) are handled by static table or skipped
+        syn::Type::Reference(_) => false,
+        _ => false,
+    }
+}
+
+/// Build precondition checks for a function's parameters.
 ///
-/// Returns lines forming a single `stopifnot(...)` call. Each assertion checks
-/// one thing with a precise error message:
+/// Returns:
+/// - **`static_checks`**: Lines forming a `stopifnot(...)` call for known types
+/// - **`fallback_params`**: Parameters needing validation (unknown custom types)
 ///
+/// Static checks produce R-side `stopifnot()`:
 /// ```r
 /// stopifnot(
 ///   "'a' must be numeric, logical, or raw" = is.numeric(a) || is.logical(a) || is.raw(a),
-///   "'a' must have length 1" = length(a) == 1L,
-///   "'b' must be character" = is.character(b),
-///   "'b' must have length 1" = length(b) == 1L
+///   "'a' must have length 1" = length(a) == 1L
 /// )
 /// ```
-///
-/// Callers add their own outer indentation to each returned line.
 ///
 /// Skips:
 /// - `self`/`&self`/`&mut self` (receiver args)
 /// - Parameters in `skip_params` (e.g., match_arg params already validated)
-/// - Parameters whose Rust types don't map to R checks (SEXP, Dots, ExternalPtr, etc.)
+/// - Skip types (SEXP, Dots, ExternalPtr, etc.)
 pub fn build_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     skip_params: &HashSet<String>,
-) -> Vec<String> {
+) -> PreconditionOutput {
     let mut args = Vec::new();
+    let mut fallback_params = Vec::new();
 
     for arg in inputs {
         // Skip receiver (self/&self/&mut self)
@@ -321,15 +366,21 @@ pub fn build_precondition_checks(
             continue;
         }
 
-        // Map the Rust type to R assertions
+        // Map the Rust type to R assertions (known types)
         if let Some(check) = r_check_for_type(pt.ty.as_ref()) {
             for assertion in check.assertions(&r_name) {
                 args.push(assertion.to_stopifnot_arg());
             }
+        } else if needs_fallback(pt.ty.as_ref()) {
+            // Unknown type → record for potential future validation
+            fallback_params.push(FallbackParam {
+                r_name,
+                rust_type: (*pt.ty).clone(),
+            });
         }
     }
 
-    match args.len() {
+    let static_checks = match args.len() {
         0 => Vec::new(),
         1 => vec![format!("stopifnot({})", args[0])],
         _ => {
@@ -342,6 +393,11 @@ pub fn build_precondition_checks(
             lines.push(")".to_string());
             lines
         }
+    };
+
+    PreconditionOutput {
+        static_checks,
+        fallback_params,
     }
 }
 
@@ -539,19 +595,22 @@ mod tests {
     fn single_param_produces_multi_line() {
         // i32 produces 2 assertions → always multi-line now
         let sig: syn::Signature = syn::parse_str("fn f(n: i32)").unwrap();
-        let checks = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let checks = &output.static_checks;
         assert_eq!(checks.len(), 4); // stopifnot( + 2 args + )
         assert_eq!(checks[0], "stopifnot(");
         assert!(checks[1].contains("numeric, logical, or raw"));
         assert!(checks[2].contains("length 1"));
         assert_eq!(checks[3], ")");
+        assert!(output.fallback_params.is_empty());
     }
 
     #[test]
     fn vector_param_single_line() {
         // Vec<f64> produces 1 assertion → single line
         let sig: syn::Signature = syn::parse_str("fn f(x: Vec<f64>)").unwrap();
-        let checks = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let checks = &output.static_checks;
         assert_eq!(checks.len(), 1);
         assert!(checks[0].starts_with("stopifnot("));
         assert!(checks[0].ends_with(')'));
@@ -560,7 +619,8 @@ mod tests {
     #[test]
     fn two_scalar_params_produces_six_lines() {
         let sig: syn::Signature = syn::parse_str("fn f(a: i32, b: f64)").unwrap();
-        let checks = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        let checks = &output.static_checks;
         // stopifnot( + 4 assertions (2 per param) + )
         assert_eq!(checks.len(), 6);
         assert_eq!(checks[0], "stopifnot(");
@@ -576,10 +636,41 @@ mod tests {
         let sig: syn::Signature = syn::parse_str("fn f(n: i32, mode: String)").unwrap();
         let mut skip = HashSet::new();
         skip.insert("mode".to_string());
-        let checks = build_precondition_checks(&sig.inputs, &skip);
+        let output = build_precondition_checks(&sig.inputs, &skip);
         // Only n's 2 assertions remain
-        let joined = checks.join("\n");
+        let joined = output.static_checks.join("\n");
         assert!(joined.contains("'n'"));
         assert!(!joined.contains("'mode'"));
+    }
+
+    #[test]
+    fn unknown_type_produces_fallback() {
+        let sig: syn::Signature = syn::parse_str("fn f(x: MyCustomType)").unwrap();
+        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        assert!(output.static_checks.is_empty());
+        assert_eq!(output.fallback_params.len(), 1);
+        assert_eq!(output.fallback_params[0].r_name, "x");
+    }
+
+    #[test]
+    fn mixed_known_and_unknown_types() {
+        let sig: syn::Signature = syn::parse_str("fn f(a: i32, b: MyType, c: String)").unwrap();
+        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        // a (i32) and c (String) are known → static checks
+        let joined = output.static_checks.join("\n");
+        assert!(joined.contains("'a'"));
+        assert!(joined.contains("'c'"));
+        assert!(!joined.contains("'b'"));
+        // b (MyType) is unknown → fallback
+        assert_eq!(output.fallback_params.len(), 1);
+        assert_eq!(output.fallback_params[0].r_name, "b");
+    }
+
+    #[test]
+    fn sexp_not_fallback() {
+        let sig: syn::Signature = syn::parse_str("fn f(x: SEXP)").unwrap();
+        let output = build_precondition_checks(&sig.inputs, &HashSet::new());
+        assert!(output.static_checks.is_empty());
+        assert!(output.fallback_params.is_empty());
     }
 }
