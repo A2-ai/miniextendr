@@ -623,11 +623,7 @@ pub use trait_abi::TraitView;
 
 /// Marker traits for proc-macro derived types.
 pub mod markers;
-pub use markers::{
-    IsAltrepComplexData, IsAltrepIntegerData, IsAltrepListData, IsAltrepLogicalData,
-    IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType, PrefersDataFrame,
-    PrefersExternalPtr, PrefersList, PrefersRNativeType,
-};
+pub use markers::{PrefersDataFrame, PrefersExternalPtr, PrefersList, PrefersRNativeType};
 
 // =============================================================================
 // Adapter Traits
