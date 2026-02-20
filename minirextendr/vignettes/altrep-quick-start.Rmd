@@ -1,0 +1,353 @@
+---
+title: "ALTREP Quick Start"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{ALTREP Quick Start}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## What is ALTREP?
+
+ALTREP (Alternative Representations) is R's system for creating vectors with
+custom internal representations. Instead of storing every element in R's
+native memory format, an ALTREP vector can:
+
+- **Compute elements on demand** -- an arithmetic sequence uses O(1) memory
+  regardless of length.
+- **Reference external data** without copying -- zero-copy views into Rust
+  vectors.
+- **Provide optimized operations** -- O(1) `sum()` for a sequence that knows
+  its formula.
+
+miniextendr provides a safe, ergonomic Rust interface for creating ALTREP
+vectors.
+
+## When to Use ALTREP
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Small data (<1000 elements) | Regular `Vec<T>` return |
+| Large vectors, read-mostly | ALTREP |
+| Lazy/computed sequences | ALTREP |
+| Data R will modify in place | Regular `Vec<T>` return |
+
+## The Five-Step Pattern
+
+Every custom ALTREP type follows the same structure:
+
+1. **Define a data struct** with `#[derive(ExternalPtr)]`
+2. **Implement `AltrepLen`** (required) and a type-specific data trait
+3. **Generate low-level traits** with `impl_alt*_from_data!`
+4. **Create the ALTREP class wrapper** with `#[miniextendr(class = "...")]`
+5. **Write a constructor function** that returns `SEXP`
+
+## Example: Arithmetic Sequence
+
+This example creates an ALTREP numeric vector that represents an arithmetic
+sequence. It uses O(1) memory no matter how long the sequence is, because
+elements are computed from `start + i * step`.
+
+### Step 1: Define the data struct
+
+```rust
+use miniextendr_api::ffi::SEXP;
+use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::altrep_data::{AltrepLen, AltRealData};
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct ArithSeqData {
+    start: f64,
+    step: f64,
+    len: usize,
+}
+```
+
+The `#[derive(ExternalPtr)]` is required so miniextendr can store your data
+inside R's external pointer system.
+
+### Step 2: Implement the required traits
+
+Every ALTREP type needs `AltrepLen`. Then implement the trait for your
+vector's element type -- `AltRealData` for `numeric`, `AltIntegerData` for
+`integer`, etc.
+
+```rust
+impl AltrepLen for ArithSeqData {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl AltRealData for ArithSeqData {
+    fn elt(&self, i: usize) -> f64 {
+        self.start + (i as f64) * self.step
+    }
+
+    // Optional: tell R this vector never contains NA
+    fn no_na(&self) -> Option<bool> {
+        Some(true)
+    }
+}
+```
+
+The `elt()` method is the only required method on the data trait. R calls it
+whenever it needs a specific element.
+
+### Step 3: Generate the low-level trait implementations
+
+```rust
+miniextendr_api::impl_altreal_from_data!(ArithSeqData);
+```
+
+This macro generates the glue code that connects your high-level Rust traits
+to R's low-level ALTREP C callbacks.
+
+### Step 4: Create the ALTREP class wrapper
+
+```rust
+#[miniextendr(class = "ArithSeq")]
+pub struct ArithSeqClass(pub ArithSeqData);
+```
+
+The wrapper is a newtype around your data. The `class` attribute sets the
+name R uses to identify this ALTREP class.
+
+### Step 5: Write a constructor
+
+```rust
+#[miniextendr]
+pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
+    let data = ArithSeqData {
+        start: from,
+        step,
+        len: length_out as usize,
+    };
+    ArithSeqClass(data).into_sexp()
+}
+
+miniextendr_module! {
+    mod mypackage;
+    struct ArithSeqClass;
+    fn arith_seq;
+}
+```
+
+The constructor returns `SEXP` (a raw R object). Calling `.into_sexp()` on
+the wrapper creates the ALTREP vector and hands it to R.
+
+### Using it from R
+
+```r
+# A million-element sequence using O(1) memory
+x <- arith_seq(1, 0.5, 1000000L)
+
+x[1]
+#> [1] 1
+
+x[1000000]
+#> [1] 500000.5
+
+length(x)
+#> [1] 1000000
+
+# R operations work transparently
+head(x)
+#> [1] 1.0 1.5 2.0 2.5 3.0 3.5
+```
+
+## Available Type Traits
+
+Each R vector type has a corresponding data trait:
+
+| R Vector Type | Rust Trait | `elt()` Returns | Macro |
+|---------------|------------|-----------------|-------|
+| `integer` | `AltIntegerData` | `i32` | `impl_altinteger_from_data!` |
+| `numeric` | `AltRealData` | `f64` | `impl_altreal_from_data!` |
+| `logical` | `AltLogicalData` | `Logical` | `impl_altlogical_from_data!` |
+| `raw` | `AltRawData` | `u8` | `impl_altraw_from_data!` |
+| `character` | `AltStringData` | `Option<&str>` | `impl_altstring_from_data!` |
+| `complex` | `AltComplexData` | `Rcomplex` | `impl_altcomplex_from_data!` |
+| `list` | `AltListData` | `SEXP` | `impl_altlist_from_data!` |
+
+## Optional Methods
+
+Beyond the required `elt()`, each data trait offers optional methods you can
+override for better performance:
+
+```rust
+impl AltRealData for ArithSeqData {
+    fn elt(&self, i: usize) -> f64 {
+        self.start + (i as f64) * self.step
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true) // Enables R to skip NA checks
+    }
+
+    fn is_sorted(&self) -> Option<Sortedness> {
+        // Tells R the data is pre-sorted
+        if self.step >= 0.0 {
+            Some(Sortedness::Increasing)
+        } else {
+            Some(Sortedness::Decreasing)
+        }
+    }
+
+    fn sum(&self, _na_rm: bool) -> Option<f64> {
+        // O(1) sum using the arithmetic series formula
+        let last = self.start + (self.len - 1) as f64 * self.step;
+        Some(self.len as f64 * (self.start + last) / 2.0)
+    }
+
+    fn min(&self, _na_rm: bool) -> Option<f64> {
+        if self.step >= 0.0 {
+            Some(self.start)
+        } else {
+            Some(self.start + (self.len - 1) as f64 * self.step)
+        }
+    }
+
+    fn max(&self, _na_rm: bool) -> Option<f64> {
+        if self.step >= 0.0 {
+            Some(self.start + (self.len - 1) as f64 * self.step)
+        } else {
+            Some(self.start)
+        }
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        // Bulk element access -- can be faster than calling elt() in a loop
+        let n = len.min(buf.len()).min(self.len.saturating_sub(start));
+        for i in 0..n {
+            buf[i] = self.start + ((start + i) as f64) * self.step;
+        }
+        n
+    }
+}
+```
+
+Implementing `sum()`, `min()`, and `max()` lets R compute these in O(1)
+instead of iterating over every element.
+
+## Vec-Based ALTREP (Zero-Copy)
+
+If you already have data in a `Vec<T>`, you can expose it as an ALTREP
+vector without copying:
+
+```rust
+use miniextendr_api::IntoRAltrep;
+
+/// Return a large vector without copying to R's heap.
+/// @param n Number of elements.
+/// @return An integer vector.
+#[miniextendr]
+pub fn large_zeros(n: i32) -> SEXP {
+    vec![0i32; n as usize].into_sexp_altrep()
+}
+```
+
+The `.into_sexp_altrep()` method wraps the `Vec` in a built-in ALTREP class.
+The data stays on the Rust heap; R accesses it through ALTREP callbacks.
+This is useful for large vectors where the copy to R's heap would be
+expensive.
+
+## Guard Modes
+
+ALTREP callbacks run on R's main thread (not the worker thread). miniextendr
+wraps each callback in a guard that catches Rust panics so they don't crash
+R. Three guard modes are available:
+
+| Mode | Attribute | Behavior |
+|------|-----------|----------|
+| `rust_unwind` (default) | none needed | Catches Rust panics via `catch_unwind` |
+| `r_unwind` | `#[altrep(r_unwind)]` | Also catches R longjmps (for callbacks that call R API) |
+| `unsafe` | `#[altrep(unsafe)]` | No guard -- fastest, but panics crash R |
+
+The default `rust_unwind` is correct for the vast majority of cases. Only
+use `r_unwind` if your `elt()` or other methods call R API functions, and
+only use `unsafe` in performance-critical code where you have verified panics
+cannot occur.
+
+## Putting It All Together
+
+Here is a complete, self-contained example you can drop into `lib.rs`:
+
+```rust
+use miniextendr_api::ffi::SEXP;
+use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::altrep_data::{AltrepLen, AltIntegerData};
+
+// --- Data struct ---
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct ConstantIntData {
+    value: i32,
+    len: usize,
+}
+
+impl AltrepLen for ConstantIntData {
+    fn len(&self) -> usize { self.len }
+}
+
+impl AltIntegerData for ConstantIntData {
+    fn elt(&self, _i: usize) -> i32 { self.value }
+
+    fn no_na(&self) -> Option<bool> { Some(true) }
+}
+
+// --- Low-level glue ---
+miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
+
+// --- ALTREP class wrapper ---
+#[miniextendr(class = "ConstantInt")]
+pub struct ConstantInt(pub ConstantIntData);
+
+// --- Constructor ---
+/// Create a constant integer vector.
+/// @param value The repeated value.
+/// @param n Length of the vector.
+/// @return An ALTREP integer vector.
+#[miniextendr]
+pub fn constant_int(value: i32, n: i32) -> SEXP {
+    ConstantInt(ConstantIntData {
+        value,
+        len: n as usize,
+    })
+    .into_sexp()
+}
+
+miniextendr_module! {
+    mod mypackage;
+    struct ConstantInt;
+    fn constant_int;
+}
+```
+
+```r
+x <- constant_int(42L, 1000000L)
+length(x)
+#> [1] 1000000
+
+x[1]
+#> [1] 42
+
+x[999999]
+#> [1] 42
+
+# Only a few bytes of memory used, regardless of length
+```
+
+## Further Reading
+
+- Full ALTREP documentation: `docs/ALTREP.md` in the miniextendr repository
+- Dataptr and lazy materialization: `docs/ALTREP.md` (Materialization section)
+- Sparse iterator ALTREP: `docs/SPARSE_ITERATOR_ALTREP.md`
+- Serialization support: `docs/ALTREP.md` (Serialization section)

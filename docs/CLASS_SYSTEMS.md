@@ -797,6 +797,42 @@ pub fn private_helper(x: i32) -> i32 { x * 2 }
 
 ---
 
+## S4 Helpers Module
+
+miniextendr provides Rust helpers for interoperating with existing S4 objects (e.g., Bioconductor). These are for **reading/writing S4 objects passed as arguments**, not for generating S4 classes (use `#[miniextendr(s4)]` for that).
+
+```rust
+use miniextendr_api::s4_helpers;
+
+unsafe {
+    // Check if an object is S4
+    if s4_helpers::s4_is(obj) {
+        // Get the class name
+        let class = s4_helpers::s4_class_name(obj); // Option<String>
+
+        // Check and access slots
+        if s4_helpers::s4_has_slot(obj, "data") {
+            let data = s4_helpers::s4_get_slot(obj, "data")?; // Result<SEXP, String>
+        }
+
+        // Set a slot value
+        s4_helpers::s4_set_slot(obj, "label", new_value)?;
+    }
+}
+```
+
+| Function | Purpose |
+|----------|---------|
+| `s4_is(obj)` | Check if SEXP is an S4 object |
+| `s4_class_name(obj)` | Get the S4 class name as `Option<String>` |
+| `s4_has_slot(obj, name)` | Check if a slot exists |
+| `s4_get_slot(obj, name)` | Get a slot value as `Result<SEXP, String>` |
+| `s4_set_slot(obj, name, value)` | Set a slot value |
+
+All functions require the R main thread and operate on raw SEXP values.
+
+---
+
 ## Recommendations
 
 1. **Start with Env** for simple cases

@@ -85,6 +85,19 @@ impl LifecycleStage {
         }
     }
 
+    /// Get the bare R function name for `@importFrom lifecycle` roxygen tag.
+    ///
+    /// Returns the function name without the `lifecycle::` prefix.
+    pub fn import_from_fn(&self) -> Option<&'static str> {
+        match self {
+            Self::Experimental | Self::Superseded => Some("signal_stage"),
+            Self::Stable => None,
+            Self::SoftDeprecated => Some("deprecate_soft"),
+            Self::Deprecated => Some("deprecate_warn"),
+            Self::Defunct => Some("deprecate_stop"),
+        }
+    }
+
     /// Get the roxygen @keywords value (if needed).
     pub fn keywords(&self) -> Option<&'static str> {
         match self {
@@ -198,6 +211,33 @@ impl LifecycleSpec {
             }
             LifecycleStage::Stable => None,
         }
+    }
+}
+
+/// Collect the `@importFrom lifecycle ...` roxygen tag needed for a set of lifecycle specs.
+///
+/// This is used by class generators (R6, env, S3, S4, S7) to aggregate lifecycle
+/// imports from all methods and include them in the class-level roxygen block.
+/// Returns `None` if no lifecycle imports are needed.
+pub fn collect_lifecycle_imports<'a>(
+    specs: impl Iterator<Item = &'a LifecycleSpec>,
+) -> Option<String> {
+    let mut fns = std::collections::BTreeSet::new();
+    for spec in specs {
+        if spec.stage.badge().is_some() {
+            fns.insert("badge");
+        }
+        if let Some(fn_name) = spec.stage.import_from_fn() {
+            fns.insert(fn_name);
+        }
+    }
+    if fns.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "@importFrom lifecycle {}",
+            fns.into_iter().collect::<Vec<_>>().join(" ")
+        ))
     }
 }
 
@@ -369,6 +409,45 @@ pub fn inject_lifecycle_badge(tags: &mut Vec<String>, spec: &LifecycleSpec) {
     {
         tags.push(format!("@keywords {}", keywords));
     }
+
+    // Add @importFrom for the lifecycle signal function and badge
+    inject_lifecycle_imports(tags, spec);
+}
+
+/// Inject `@importFrom lifecycle` roxygen tags for the signal function and badge.
+///
+/// Adds the necessary `@importFrom` tag so roxygen2 registers the lifecycle
+/// dependency in NAMESPACE. This is only added if not already present.
+pub fn inject_lifecycle_imports(tags: &mut Vec<String>, spec: &LifecycleSpec) {
+    // Collect the lifecycle functions we need to import
+    let mut fns_to_import = Vec::new();
+
+    // The badge inline R code uses lifecycle::badge()
+    if spec.stage.badge().is_some() {
+        fns_to_import.push("badge");
+    }
+
+    // The runtime signal function
+    if let Some(fn_name) = spec.stage.import_from_fn() {
+        fns_to_import.push(fn_name);
+    }
+
+    if fns_to_import.is_empty() {
+        return;
+    }
+
+    // Deduplicate against already-present @importFrom lifecycle tags
+    let already_imported: Vec<&str> = tags
+        .iter()
+        .filter_map(|t| t.strip_prefix("@importFrom lifecycle "))
+        .flat_map(|s| s.split_whitespace())
+        .collect();
+
+    fns_to_import.retain(|f| !already_imported.contains(f));
+
+    if !fns_to_import.is_empty() {
+        tags.push(format!("@importFrom lifecycle {}", fns_to_import.join(" ")));
+    }
 }
 
 #[cfg(test)]
@@ -424,5 +503,112 @@ mod tests {
         assert_eq!(spec.stage, LifecycleStage::Deprecated);
         assert_eq!(spec.when, Some("1.0.0".into()));
         assert_eq!(spec.with, Some("bar()".into()));
+    }
+
+    #[test]
+    fn test_import_from_fn() {
+        assert_eq!(
+            LifecycleStage::Experimental.import_from_fn(),
+            Some("signal_stage")
+        );
+        assert_eq!(LifecycleStage::Stable.import_from_fn(), None);
+        assert_eq!(
+            LifecycleStage::Superseded.import_from_fn(),
+            Some("signal_stage")
+        );
+        assert_eq!(
+            LifecycleStage::SoftDeprecated.import_from_fn(),
+            Some("deprecate_soft")
+        );
+        assert_eq!(
+            LifecycleStage::Deprecated.import_from_fn(),
+            Some("deprecate_warn")
+        );
+        assert_eq!(
+            LifecycleStage::Defunct.import_from_fn(),
+            Some("deprecate_stop")
+        );
+    }
+
+    #[test]
+    fn test_inject_lifecycle_imports_deprecated() {
+        let spec = LifecycleSpec::new(LifecycleStage::Deprecated);
+        let mut tags = vec!["@title My function".to_string()];
+        inject_lifecycle_badge(&mut tags, &spec);
+        // Should have @importFrom lifecycle badge deprecate_warn
+        let import_tag = tags
+            .iter()
+            .find(|t| t.starts_with("@importFrom lifecycle"))
+            .expect("should have @importFrom lifecycle tag");
+        assert!(import_tag.contains("badge"));
+        assert!(import_tag.contains("deprecate_warn"));
+    }
+
+    #[test]
+    fn test_inject_lifecycle_imports_experimental() {
+        let spec = LifecycleSpec::new(LifecycleStage::Experimental);
+        let mut tags = vec!["@title My function".to_string()];
+        inject_lifecycle_badge(&mut tags, &spec);
+        let import_tag = tags
+            .iter()
+            .find(|t| t.starts_with("@importFrom lifecycle"))
+            .expect("should have @importFrom lifecycle tag");
+        assert!(import_tag.contains("badge"));
+        assert!(import_tag.contains("signal_stage"));
+    }
+
+    #[test]
+    fn test_inject_lifecycle_imports_stable_no_import() {
+        let spec = LifecycleSpec::new(LifecycleStage::Stable);
+        let mut tags = vec!["@title My function".to_string()];
+        inject_lifecycle_badge(&mut tags, &spec);
+        // Stable stage should not add any @importFrom
+        assert!(!tags.iter().any(|t| t.starts_with("@importFrom")));
+    }
+
+    #[test]
+    fn test_inject_lifecycle_imports_no_duplicates() {
+        let spec = LifecycleSpec::new(LifecycleStage::Deprecated);
+        let mut tags = vec![
+            "@title My function".to_string(),
+            "@importFrom lifecycle deprecate_warn badge".to_string(),
+        ];
+        inject_lifecycle_badge(&mut tags, &spec);
+        // Should not add a duplicate @importFrom tag
+        let import_count = tags
+            .iter()
+            .filter(|t| t.starts_with("@importFrom lifecycle"))
+            .count();
+        assert_eq!(import_count, 1);
+    }
+
+    #[test]
+    fn test_collect_lifecycle_imports_mixed_methods() {
+        let specs = vec![
+            LifecycleSpec::new(LifecycleStage::Deprecated),
+            LifecycleSpec::new(LifecycleStage::Experimental),
+            LifecycleSpec::new(LifecycleStage::Stable),
+        ];
+        let result = collect_lifecycle_imports(specs.iter());
+        let import = result.expect("should produce import tag");
+        // BTreeSet gives sorted order: badge, deprecate_warn, signal_stage
+        assert_eq!(
+            import,
+            "@importFrom lifecycle badge deprecate_warn signal_stage"
+        );
+    }
+
+    #[test]
+    fn test_collect_lifecycle_imports_no_lifecycle() {
+        let specs: Vec<LifecycleSpec> = vec![];
+        let result = collect_lifecycle_imports(specs.iter());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_collect_lifecycle_imports_only_stable() {
+        let specs = vec![LifecycleSpec::new(LifecycleStage::Stable)];
+        let result = collect_lifecycle_imports(specs.iter());
+        assert!(result.is_none());
     }
 }

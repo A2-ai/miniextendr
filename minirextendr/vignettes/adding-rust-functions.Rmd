@@ -1,0 +1,362 @@
+---
+title: "Adding Rust Functions to Your R Package"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Adding Rust Functions to Your R Package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Overview
+
+This tutorial walks through adding Rust functions to an R package powered by
+miniextendr. You will learn how to write functions that accept and return
+common R types, handle optional values and errors, and expose opaque Rust
+objects to R.
+
+**Prerequisites:** A working miniextendr package created with
+`create_miniextendr_package()` or `create_miniextendr_monorepo()`. See
+`vignette("getting-started")` if you haven't set one up yet.
+
+## Your First Function
+
+Open `src/rust/lib.rs` (or `rpkg/src/rust/lib.rs` in a monorepo) and add a
+function annotated with `#[miniextendr]`:
+
+```rust
+use miniextendr_api::{miniextendr, miniextendr_module};
+
+/// Double a number.
+/// @param x An integer value.
+/// @return The input multiplied by two.
+#[miniextendr]
+pub fn double_it(x: i32) -> i32 {
+    x * 2
+}
+
+miniextendr_module! {
+    mod mypackage;
+    fn double_it;
+}
+```
+
+Key elements:
+
+- **`#[miniextendr]`** -- tells the proc macro to generate an R-callable
+  wrapper for this function.
+- **`pub fn`** -- the function must be `pub` to receive an `@export` tag in
+  the generated R documentation.
+- **`miniextendr_module!`** -- registers the function so the R package can
+  find it at load time. Every exported function must be listed here.
+- **Rust doc comments (`///`)** -- become roxygen2 documentation in R.
+
+## Scalar Types
+
+miniextendr maps R scalars to Rust types automatically:
+
+| R Type | Rust Type | Notes |
+|--------|-----------|-------|
+| `integer(1)` | `i32` | NA causes an error |
+| `numeric(1)` | `f64` | NA preserved as `NA_REAL` |
+| `logical(1)` | `bool` | NA causes an error |
+| `character(1)` | `String` or `&str` | NA causes an error |
+| `raw(1)` | `u8` | No NA concept |
+
+```rust
+/// Concatenate a greeting.
+/// @param name A character string.
+/// @param excited Whether to use an exclamation mark.
+/// @return A greeting string.
+#[miniextendr]
+pub fn greet(name: &str, excited: bool) -> String {
+    if excited {
+        format!("Hello, {}!", name)
+    } else {
+        format!("Hello, {}.", name)
+    }
+}
+```
+
+```r
+greet("world", TRUE)
+#> [1] "Hello, world!"
+```
+
+Use `&str` for read-only string parameters (zero-copy from R's internal
+string pool) and `String` when you need an owned copy.
+
+## Vectors
+
+Vectors are passed as slices (read-only, zero-copy) or `Vec` (owned copy):
+
+| R Type | Rust Type | Notes |
+|--------|-----------|-------|
+| `integer()` | `&[i32]` or `Vec<i32>` | NA = `i32::MIN` in raw form |
+| `numeric()` | `&[f64]` or `Vec<f64>` | |
+| `character()` | `Vec<String>` | NA causes an error |
+| `raw()` | `&[u8]` or `Vec<u8>` | |
+
+Prefer `&[T]` when you only need to read the data:
+
+```rust
+/// Compute the mean of a numeric vector.
+/// @param x A numeric vector.
+/// @return The arithmetic mean.
+#[miniextendr]
+pub fn rust_mean(x: &[f64]) -> f64 {
+    if x.is_empty() {
+        return f64::NAN;
+    }
+    x.iter().sum::<f64>() / x.len() as f64
+}
+```
+
+Use `Vec<T>` when you need to return a new vector:
+
+```rust
+/// Return the cumulative sum of an integer vector.
+/// @param x An integer vector.
+/// @return A vector of cumulative sums.
+#[miniextendr]
+pub fn cumsum_int(x: &[i32]) -> Vec<i32> {
+    let mut acc = 0i32;
+    x.iter()
+        .map(|v| {
+            acc = acc.wrapping_add(*v);
+            acc
+        })
+        .collect()
+}
+```
+
+```r
+cumsum_int(1:5)
+#> [1]  1  3  6 10 15
+```
+
+## Optional Types and NA Handling
+
+By default, passing `NA` to a non-Option parameter raises an R error. Wrap
+the type in `Option<T>` to handle NA gracefully:
+
+```rust
+/// Add two values, propagating NA.
+/// @param a An integer or NA.
+/// @param b An integer or NA.
+/// @return The sum, or NA if either input is NA.
+#[miniextendr]
+pub fn add_nullable(a: Option<i32>, b: Option<i32>) -> Option<i32> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x + y),
+        _ => None, // None becomes NA in R
+    }
+}
+```
+
+```r
+add_nullable(1L, 2L)
+#> [1] 3
+
+add_nullable(1L, NA_integer_)
+#> [1] NA
+```
+
+Returning `None` from an `Option<T>` produces `NA` in R.
+
+## Returning Opaque Rust Objects (ExternalPtr)
+
+For complex Rust types that don't map to R primitives, use `ExternalPtr` to
+hand an opaque pointer to R. R code can pass it back into other Rust
+functions but cannot inspect the contents directly.
+
+```rust
+use miniextendr_api::ExternalPtr;
+
+#[derive(ExternalPtr)]
+pub struct Counter {
+    value: i64,
+}
+
+/// Create a new counter starting at zero.
+/// @return An external pointer to a Counter.
+#[miniextendr]
+pub fn counter_new() -> Counter {
+    Counter { value: 0 }
+}
+
+/// Increment the counter and return the new value.
+/// @param ctr An external pointer to a Counter (modified in place).
+/// @return The new counter value.
+#[miniextendr]
+pub fn counter_increment(ctr: &mut Counter) -> i64 {
+    ctr.value += 1;
+    ctr.value
+}
+```
+
+```r
+ctr <- counter_new()
+counter_increment(ctr)
+#> [1] 1
+counter_increment(ctr)
+#> [1] 2
+```
+
+The `#[derive(ExternalPtr)]` macro generates the boilerplate for wrapping
+and unwrapping the Rust struct inside R's `EXTPTRSXP`. R's garbage collector
+will call the Rust `Drop` implementation when the pointer is no longer
+reachable.
+
+## Error Handling
+
+Rust panics are caught by the miniextendr worker thread and converted to R
+errors automatically:
+
+```rust
+/// Divide two numbers, panicking on division by zero.
+/// @param a Numerator.
+/// @param b Denominator (must not be zero).
+/// @return The quotient.
+#[miniextendr]
+pub fn safe_divide(a: f64, b: f64) -> f64 {
+    if b == 0.0 {
+        panic!("division by zero");
+    }
+    a / b
+}
+```
+
+```r
+safe_divide(10, 3)
+#> [1] 3.333333
+
+safe_divide(10, 0)
+#> Error: division by zero
+```
+
+For more structured error handling, return a `Result<T, E>` where `E`
+implements `Display`. The `Err` variant is converted to an R error message:
+
+```rust
+/// Parse a string as an integer.
+/// @param s A character string.
+/// @return The parsed integer.
+#[miniextendr]
+pub fn parse_int(s: &str) -> Result<i32, String> {
+    s.parse::<i32>().map_err(|e| format!("parse error: {}", e))
+}
+```
+
+## Registering Functions in miniextendr_module!
+
+Every `#[miniextendr]` function must be listed in a `miniextendr_module!`
+block. This block tells the framework which functions to expose to R:
+
+```rust
+miniextendr_module! {
+    mod mypackage;
+    fn double_it;
+    fn greet;
+    fn rust_mean;
+    fn cumsum_int;
+    fn add_nullable;
+    fn counter_new;
+    fn counter_increment;
+    fn safe_divide;
+    fn parse_int;
+}
+```
+
+### Sub-modules
+
+For larger packages, organize functions into separate files. Each file gets
+its own `miniextendr_module!`, and the parent module uses `use`:
+
+```rust
+// In src/rust/lib.rs
+miniextendr_module! {
+    mod mypackage;
+    use math;      // pulls in math.rs module
+    use strings;   // pulls in strings.rs module
+}
+```
+
+```rust
+// In src/rust/math.rs
+use miniextendr_api::{miniextendr, miniextendr_module};
+
+#[miniextendr]
+pub fn square(x: f64) -> f64 { x * x }
+
+miniextendr_module! {
+    mod math;
+    fn square;
+}
+```
+
+## Building and Testing
+
+After adding new functions, rebuild and regenerate R wrappers:
+
+```{r}
+library(minirextendr)
+
+# 1. Compile the Rust code
+devtools::install()
+
+# 2. Generate R wrapper functions from Rust signatures
+miniextendr_document()
+
+# 3. Reinstall with the new wrappers
+devtools::install()
+```
+
+Or use the all-in-one command:
+
+```{r}
+miniextendr_build()
+```
+
+### Verifying exports
+
+Check that your function appears in `R/miniextendr_wrappers.R` and
+`NAMESPACE` after running `miniextendr_document()`. If a function is missing,
+verify that it is:
+
+1. Marked `pub`
+2. Has `#[miniextendr]`
+3. Listed in `miniextendr_module!`
+4. Sub-module is `use`d in the parent module
+
+The `miniextendr-lint` tool catches mismatches between `#[miniextendr]`
+annotations and `miniextendr_module!` declarations during compilation.
+
+## The Worker Thread Model
+
+miniextendr runs your Rust code on a dedicated worker thread, separate from
+R's main thread. This design ensures that Rust panics are caught safely
+without crashing the R session.
+
+You generally do not need to think about this -- the `#[miniextendr]` macro
+handles the dispatch automatically. Two things to be aware of:
+
+- **Rust panics** are caught and forwarded as R errors.
+- **R API calls** (e.g., allocating R objects) must happen on the main
+  thread. Functions that accept or return `SEXP` are automatically routed
+  to the main thread.
+
+## Next Steps
+
+- See the [type conversion reference](../docs/TYPE_CONVERSIONS.md) for the
+  full list of supported types, NA handling, and coercion rules.
+- For class systems (R6, S7, environment classes), see the miniextendr
+  documentation.
+- For lazy/compact vectors, see `vignette("altrep-quick-start")`.

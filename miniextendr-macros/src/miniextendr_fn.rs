@@ -108,37 +108,77 @@ pub(crate) struct PerParamMiniextendrAttr {
     pub has_coerce: bool,
     pub has_match_arg: bool,
     pub default_value: Option<(String, proc_macro2::Span)>,
+    /// Choices for string parameters: `#[miniextendr(choices("a", "b", "c"))]`.
+    pub choices: Option<Vec<String>>,
 }
 
 /// Parse all per-parameter options from a `#[miniextendr(...)]` attribute.
 ///
-/// Handles mixed content like `#[miniextendr(match_arg, default = "\"Safe\"")]`.
+/// Handles mixed content like `#[miniextendr(match_arg, default = "\"Safe\"")]`
+/// and `#[miniextendr(choices("a", "b", "c"))]`.
 pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMiniextendrAttr> {
     use syn::spanned::Spanned;
     if !attr.path().is_ident("miniextendr") {
         return None;
     }
+
+    let syn::Meta::List(meta_list) = &attr.meta else {
+        return None;
+    };
+
     let mut result = PerParamMiniextendrAttr::default();
     let mut is_per_param = false;
-    let parse_result = attr.parse_nested_meta(|meta| {
-        if meta.path.is_ident("coerce") {
-            result.has_coerce = true;
-            is_per_param = true;
-        } else if meta.path.is_ident("match_arg") {
-            result.has_match_arg = true;
-            is_per_param = true;
-        } else if meta.path.is_ident("default") {
-            let value: syn::LitStr = meta.value()?.parse()?;
-            result.default_value = Some((value.value(), attr.span()));
-            is_per_param = true;
-        } else {
-            // Not a per-param attribute (could be a function-level attr like `strict`)
-            return Ok(());
+
+    let metas = match meta_list
+        .parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+    {
+        Ok(m) => m,
+        Err(_) => return None,
+    };
+
+    for meta in &metas {
+        match meta {
+            syn::Meta::Path(path) => {
+                if path.is_ident("coerce") {
+                    result.has_coerce = true;
+                    is_per_param = true;
+                } else if path.is_ident("match_arg") {
+                    result.has_match_arg = true;
+                    is_per_param = true;
+                }
+                // Other paths (like `strict`) are function-level, ignore here
+            }
+            syn::Meta::NameValue(nv) => {
+                if nv.path.is_ident("default")
+                    && let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(lit_str),
+                        ..
+                    }) = &nv.value
+                {
+                    result.default_value = Some((lit_str.value(), attr.span()));
+                    is_per_param = true;
+                }
+                // Other name-value pairs are function-level, ignore here
+            }
+            syn::Meta::List(list) => {
+                if list.path.is_ident("choices") {
+                    // Parse choices("a", "b", "c") — a comma-separated list of string literals
+                    let choice_lits = match list.parse_args_with(
+                        syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated,
+                    ) {
+                        Ok(lits) => lits,
+                        Err(_) => continue,
+                    };
+                    let choices: Vec<String> = choice_lits.iter().map(|l| l.value()).collect();
+                    result.choices = Some(choices);
+                    is_per_param = true;
+                }
+                // Other list forms are function-level, ignore here
+            }
         }
-        Ok(())
-    });
-    // If parsing failed or no per-param options found, return None
-    if parse_result.is_err() || !is_per_param {
+    }
+
+    if !is_per_param {
         return None;
     }
     Some(result)
@@ -152,6 +192,16 @@ pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
 /// Check if an attribute contains `#[miniextendr(match_arg)]` (possibly combined with others).
 pub(crate) fn is_miniextendr_match_arg_attr(attr: &syn::Attribute) -> bool {
     parse_per_param_attr(attr).is_some_and(|a| a.has_match_arg)
+}
+
+/// Check if an attribute contains `#[miniextendr(choices(...))]` (possibly combined with others).
+pub(crate) fn is_miniextendr_choices_attr(attr: &syn::Attribute) -> bool {
+    parse_per_param_attr(attr).is_some_and(|a| a.choices.is_some())
+}
+
+/// Parse choices from `#[miniextendr(choices("a", "b", "c"))]` (possibly combined with others).
+pub(crate) fn parse_choices_attr(attr: &syn::Attribute) -> Option<Vec<String>> {
+    parse_per_param_attr(attr).and_then(|a| a.choices)
 }
 
 /// Parse default value from `#[miniextendr(default = "...")]` (possibly combined with others).
@@ -185,6 +235,8 @@ pub(crate) struct MiniextendrFunctionParsed {
     per_param_match_arg: std::collections::HashSet<String>,
     /// Parameter names with `#[miniextendr(default = "...")]` and their default values.
     per_param_defaults: std::collections::HashMap<String, String>,
+    /// Parameter names with `#[miniextendr(choices("a", "b", "c"))]` and their choices.
+    per_param_choices: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl syn::parse::Parse for MiniextendrFunctionParsed {
@@ -230,7 +282,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         }
 
         // Transform `_` wildcard patterns to synthetic identifiers, and consume
-        // per-parameter `#[miniextendr(coerce)]` and `#[miniextendr(default = "...")]` attributes.
+        // per-parameter `#[miniextendr(coerce)]`, `#[miniextendr(default = "...")]`,
+        // and `#[miniextendr(choices(...))]` attributes.
         let mut per_param_coerce: std::collections::HashSet<String> =
             std::collections::HashSet::new();
         let mut per_param_match_arg: std::collections::HashSet<String> =
@@ -238,6 +291,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         let mut per_param_defaults: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let mut per_param_default_spans: std::collections::HashMap<String, proc_macro2::Span> =
+            std::collections::HashMap::new();
+        let mut per_param_choices: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
         let mut unused_counter = 0usize;
         let mut pattern_destructures: Vec<(Box<syn::Pat>, syn::Ident)> = Vec::new();
@@ -252,11 +307,13 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             let had_coerce_attr = pat_type.attrs.iter().any(is_miniextendr_coerce_attr);
             let had_match_arg_attr = pat_type.attrs.iter().any(is_miniextendr_match_arg_attr);
             let default_with_span = pat_type.attrs.iter().find_map(parse_default_attr);
+            let had_choices = pat_type.attrs.iter().find_map(parse_choices_attr);
 
-            // Remove miniextendr attributes from parameters (coerce, match_arg, and default)
+            // Remove miniextendr attributes from parameters (coerce, match_arg, choices, default)
             pat_type.attrs.retain(|attr| {
                 !is_miniextendr_coerce_attr(attr)
                     && !is_miniextendr_match_arg_attr(attr)
+                    && !is_miniextendr_choices_attr(attr)
                     && parse_default_attr(attr).is_none()
             });
 
@@ -268,6 +325,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     }
                     if had_match_arg_attr {
                         per_param_match_arg.insert(param_name.clone());
+                    }
+                    if let Some(choices) = had_choices.clone() {
+                        per_param_choices.insert(param_name.clone(), choices);
                     }
                     if let Some((default, span)) = default_with_span {
                         per_param_defaults.insert(param_name.clone(), default);
@@ -290,6 +350,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     }
                     if had_match_arg_attr {
                         per_param_match_arg.insert(synthetic_name.clone());
+                    }
+                    if let Some(choices) = had_choices.clone() {
+                        per_param_choices.insert(synthetic_name.clone(), choices);
                     }
                     if let Some((default, span)) = default_with_span {
                         per_param_defaults.insert(synthetic_name.clone(), default);
@@ -314,6 +377,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     }
                     if had_match_arg_attr {
                         per_param_match_arg.insert(synthetic_name.clone());
+                    }
+                    if let Some(choices) = had_choices {
+                        per_param_choices.insert(synthetic_name.clone(), choices);
                     }
                     if let Some((default, span)) = default_with_span {
                         per_param_defaults.insert(synthetic_name.clone(), default);
@@ -409,6 +475,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             per_param_coerce,
             per_param_match_arg,
             per_param_defaults,
+            per_param_choices,
         })
     }
 }
@@ -441,6 +508,16 @@ impl MiniextendrFunctionParsed {
     /// Get the set of match_arg parameter names.
     pub(crate) fn match_arg_params(&self) -> &std::collections::HashSet<String> {
         &self.per_param_match_arg
+    }
+
+    /// Get the choices for a parameter, if any.
+    pub(crate) fn choices_for_param(&self, param_name: &str) -> Option<&[String]> {
+        self.per_param_choices.get(param_name).map(|v| v.as_slice())
+    }
+
+    /// Get the full choices map (param_name → choices).
+    pub(crate) fn choices_params(&self) -> &std::collections::HashMap<String, Vec<String>> {
+        &self.per_param_choices
     }
 
     /// Get all parameter defaults.

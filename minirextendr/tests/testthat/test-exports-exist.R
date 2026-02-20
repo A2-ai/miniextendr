@@ -9,6 +9,7 @@ exported_funs <- c(
   "miniextendr_configure", "miniextendr_dev_link",
   "miniextendr_doctor", "miniextendr_document", "miniextendr_validate",
   "miniextendr_vendor",
+  "mx_config", "mx_config_defaults",
   "upgrade_miniextendr_package",
   "use_miniextendr", "use_miniextendr_bootstrap", "use_miniextendr_build_rs",
   "use_miniextendr_cargo_config",

@@ -2059,6 +2059,16 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
+    // Inject lifecycle imports from methods into class-level roxygen block
+    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+    ) {
+        let insert_pos = lines.len().saturating_sub(1);
+        lines.insert(insert_pos, format!("#' {}", lc_import));
+    }
     lines.push(format!("{} <- new.env(parent = emptyenv())", class_name));
     lines.push(String::new());
 
@@ -2266,6 +2276,17 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
+    // Inject lifecycle imports from methods into class-level roxygen block
+    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+    ) {
+        // Insert before @export (which is last)
+        let insert_pos = lines.len().saturating_sub(1);
+        lines.insert(insert_pos, format!("#' {}", lc_import));
+    }
 
     // Document .ptr param if initialize will have it (for static methods returning Self)
     if has_self_returning_methods && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
@@ -2644,6 +2665,16 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_export_control(parsed_impl.internal, parsed_impl.noexport)
                 .build(),
         );
+        // Inject lifecycle imports from methods into class-level roxygen block
+        if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
+            parsed_impl
+                .methods
+                .iter()
+                .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+        ) {
+            let insert_pos = lines.len().saturating_sub(1);
+            lines.insert(insert_pos, format!("#' {}", lc_import));
+        }
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
@@ -3034,6 +3065,16 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
+    // Inject lifecycle imports from methods into class-level roxygen block
+    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+    ) {
+        let insert_pos = lines.len().saturating_sub(1);
+        lines.insert(insert_pos, format!("#' {}", lc_import));
+    }
 
     // Document .ptr param - S7::new_class always creates a constructor that accepts
     // all properties as parameters, so .ptr is always a valid parameter
@@ -3556,6 +3597,16 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
+    // Inject lifecycle imports from methods into class-level roxygen block
+    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+    ) {
+        let insert_pos = lines.len().saturating_sub(1);
+        lines.insert(insert_pos, format!("#' {}", lc_import));
+    }
     // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class definition)
     if !has_export {
         lines.pop();
@@ -3658,7 +3709,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let preconditions = crate::r_preconditions::build_precondition_checks(
             &method.sig.inputs,
             &std::collections::HashSet::new(),
-        );
+        )
+        .static_checks;
         if lifecycle.is_some() || !preconditions.is_empty() {
             lines.push(format!(
                 "methods::setMethod(\"{}\", \"{}\", function({}) {{",
@@ -3760,6 +3812,16 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_export_control(parsed_impl.internal, parsed_impl.noexport)
                 .build(),
         );
+        // Inject lifecycle imports from methods into class-level roxygen block
+        if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
+            parsed_impl
+                .methods
+                .iter()
+                .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+        ) {
+            let insert_pos = lines.len().saturating_sub(1);
+            lines.insert(insert_pos, format!("#' {}", lc_import));
+        }
 
         // Generate constructor body based on vctrs kind
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
@@ -4167,6 +4229,7 @@ pub fn expand_impl(
         .included_methods()
         .map(|m| m.call_method_def_ident(type_ident, label))
         .collect();
+
     let call_defs_len = call_def_idents.len();
     let call_defs_len_lit =
         syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
