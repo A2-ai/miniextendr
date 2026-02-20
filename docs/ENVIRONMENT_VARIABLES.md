@@ -1,0 +1,82 @@
+# Environment Variables
+
+All environment variables that affect miniextendr's build, configure, test, and lint processes.
+
+## Build Context
+
+| Variable | Purpose | Values | Default |
+|----------|---------|--------|---------|
+| `NOT_CRAN` | Dev vs release mode | `true`/`TRUE`/`1` = dev mode | Auto-detected from monorepo presence |
+| `PREPARE_CRAN` | CRAN release prep (highest precedence) | `true`/`TRUE`/`1` = release mode | Not set |
+
+These control which **build context** configure resolves:
+
+| Context | Trigger | Behavior |
+|---------|---------|----------|
+| `dev-monorepo` | Monorepo detected (or `NOT_CRAN=true`) | `[patch]` paths, no vendoring |
+| `dev-detached` | No monorepo, no vendor artifacts | Git/network deps directly |
+| `vendored-install` | Vendor artifacts present | Offline build from vendored sources |
+| `prepare-cran` | `PREPARE_CRAN=true` | Explicit CRAN release prep |
+
+## Cargo & Rust
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `MINIEXTENDR_FEATURES` | Comma-separated cargo features to enable | All features except `nonapi` |
+| `CARGO_PROFILE` | Build profile: `dev` or `release` | `release` |
+| `CARGO_TARGET_DIR` | Artifact directory (must be outside `src/`) | `${abs_top_srcdir}/rust-target` |
+| `CARGO_BUILD_TARGET` | Rust target triple for cross-compilation | Empty (native); auto-detected from autoconf host |
+| `RUST_TOOLCHAIN` | Toolchain selector (e.g., `+stable`, `+nightly`) | Empty (system default) |
+| `ENV_RUSTFLAGS` | Rust compiler flags, passed as `RUSTFLAGS` to cargo | Value of `RUSTFLAGS` |
+
+All of the above are declared as `AC_ARG_VAR` in `configure.ac` and can be set when invoking `./configure`:
+
+```bash
+cd rpkg && MINIEXTENDR_FEATURES="rayon,serde" CARGO_PROFILE=dev bash ./configure
+```
+
+## R Installation
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `R_HOME` | Path to R installation | Auto-detected via `R RHOME` |
+| `R_LIBS` | R library path for package installation | System default |
+
+## Lint
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `MINIEXTENDR_LINT` | Disable lint: `0`, `false`, `no`, or `off` | Enabled |
+
+The lint runs automatically during `cargo build`/`cargo check` via `build.rs`. Disable with:
+
+```bash
+MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
+```
+
+## minirextendr (Scaffolding)
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `MINIEXTENDR_LOCAL_PATH` | Path to local miniextendr monorepo for tests/scaffolding | Auto-detected |
+| `MINIEXTENDR_LOCAL` | Alternative name used in vendor operations | Empty |
+
+## Bootstrap (Internal)
+
+These are set automatically by `bootstrap.R` during `R CMD INSTALL` and shouldn't be set manually:
+
+| Variable | Purpose |
+|----------|---------|
+| `CC`, `CFLAGS`, `CXX`, `CXXFLAGS`, `CPPFLAGS`, `LDFLAGS` | C/C++ toolchain from `R CMD config` |
+| `_R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_` | Symbol table generation (set to `false`) |
+
+## Cargo-Internal (Set Automatically)
+
+These are set by cargo/build.rs and not meant for manual use:
+
+| Variable | Purpose |
+|----------|---------|
+| `CARGO_MANIFEST_DIR` | Directory containing Cargo.toml |
+| `CARGO_CFG_TARGET_OS` | Target OS (windows, macos, linux) |
+| `CARGO_CFG_TARGET_ENV` | Target environment (msvc, gnu, musl) |
+| `CARGO_FEATURE_*` | One per enabled feature (uppercase + underscore) |
