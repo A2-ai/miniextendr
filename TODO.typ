@@ -20,25 +20,27 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 == API Gaps
 
-- [ ] Safe mutable input helpers — copy-in/copy-out pattern for `&mut [T]`
-  - `&mut [T]` banned at macro boundary (GC can invalidate slice pointer)
-  - Formalize as helper type or documented pattern with examples
-  - Files: `from_r.rs`, `docs/GAPS.md` §2.1
+- [x] Safe mutable input helpers — `CopySliceMut<T>` copy-in/copy-out + `&mut [T]` compile error
+  - `&mut [T]` rejected at macro boundary with helpful error message
+  - `CopySliceMut<T>`: TryFromSexp copies in, DerefMut for mutation, IntoR copies out
+  - UI test: `fn_mut_slice_rejected.rs`; docs: `GAPS.md` §2.1
 - [~] String ndarray/matrix conversion
   - ndarray is designed for numeric/Copy types; `String` doesn't fit the model
   - `Vec<String>` / `Vec<Vec<String>>` are the natural Rust representations
-- [ ] Quoted-expression evaluation helpers
-  - Wrapper types for LANGSXP, safe `Rf_eval` with explicit environment
-- [ ] S4 compatibility helpers — helper generation, migration notes S4 → S7
+- [x] Quoted-expression evaluation helpers — `RSymbol`, `RCall`, `REnv`
+  - `RCall` builder: `.arg()`, `.named_arg()`, `.eval()` via `R_tryEvalSilent`
+  - `RSymbol`: interned SYMSXP wrapper; `REnv`: GlobalEnv/BaseEnv/EmptyEnv handles
+- [x] S4 compatibility helpers — `s4_helpers` module with slot access wrappers
+  - `s4_is`, `s4_class_name`, `s4_has_slot`, `s4_get_slot`, `s4_set_slot`
 
 == Performance
 
 - [ ] Worker batching/context reuse API
   - Current `with_r_thread` is one message per call (440µs amortizable overhead)
   - Batch API to send multiple work items in one round-trip
-- [ ] Direct/no-wrapper export mode for hot functions
-  - Skip R wrapper layer, direct `.Call` entrypoints
-  - Benchmark shows 2x overhead (249ns vs 126ns)
+- [~] Direct/no-wrapper export mode for hot functions
+  - Already covered by `extern "C-unwind"` + `#[no_mangle]` support
+  - Function IS the C symbol; R wrapper is `unsafe_` prefixed convenience only
 - [x] Name-indexed list API — `NamedList` wrapper with `HashMap<String, usize>`
   - O(1) lookup via `get()`, `contains()`, `get_raw()`; `TryFromSexp` for use as fn param
 
@@ -55,9 +57,10 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - `test-thread.R` — disabled anti-pattern tests (R API calls from worker thread); correctly disabled
   - `test-thread-broken.R` — `RThreadBuilder` crashes R's stack checking; needs R-level API changes
   - Both files serve as documentation; `test-worker.R` (198 tests) covers the correct patterns
-- [ ] Cross-package test expansion
-  - Currently tests basic dispatch only
-  - Expand to complex trait patterns, version compat, multiple trait impls
+- [x] Cross-package test expansion — `Resettable` trait + `StatefulCounter` + 163 new tests
+  - Multi-trait dispatch (Counter + Resettable on same type across packages)
+  - Type discrimination (DoubleCounter is Counter but NOT Resettable)
+  - Combined trait operations (increment-then-reset, get-reset-get)
 
 == Build / Infrastructure
 
@@ -65,9 +68,9 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 - [ ] Windows CI debugging
   - The `-l` (login) flag in bash might change working directory
   - Path format when passing Windows paths to bash
-- [ ] Module `#[cfg]` friction reduction
-  - Macro-level support for `#[cfg]`-aware module wiring
-  - Currently requires path-based module switching pattern
+- [x] Module `#[cfg]` friction reduction — `#[cfg(...)] use module;` in `miniextendr_module!`
+  - `MiniextendrModuleUse` now parses outer attributes
+  - cfg attrs applied at all 5 expansion points (CALL_ENTRIES, altrep, wrappers)
 
 == Optional Features
 
@@ -98,10 +101,8 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 == Documentation
 
-- [ ] Connection & progress bar guides (`docs/CONNECTIONS.md`, `docs/PROGRESS.md`)
-- [ ] Intermediate minirextendr vignettes
-  - "Adding Rust Functions" hands-on tutorial
-  - ALTREP quick start
+- [x] Connection & progress bar guides — `docs/CONNECTIONS.md` + `docs/PROGRESS.md`
+- [x] Intermediate minirextendr vignettes — `adding-rust-functions.Rmd` + `altrep-quick-start.Rmd`
 
 == Low Priority / Nice to Have
 

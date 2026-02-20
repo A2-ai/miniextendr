@@ -1,0 +1,101 @@
+# miniextendr Documentation
+
+Comprehensive documentation for the miniextendr Rust-R interoperability framework.
+
+## Quick Links
+
+| I want to... | Read |
+|---|---|
+| Build my first package | [Getting Started](GETTING_STARTED.md) |
+| Add a Rust function to R | [Type Conversions](TYPE_CONVERSIONS.md) |
+| Use lazy/compact vectors | [ALTREP](ALTREP.md) |
+| Understand the architecture | [Architecture](ARCHITECTURE.md) |
+| See what features exist | [Features](FEATURES.md) |
+| Debug a problem | [Troubleshooting](TROUBLESHOOTING.md) |
+
+## Documentation Map
+
+### Getting Started
+
+- **[Getting Started](GETTING_STARTED.md)** -- End-to-end guide: create a package, write Rust, call from R
+- **[Developer Workflow](DEVELOPER_WORKFLOW.md)** -- Day-to-day development commands and patterns
+
+### Core Concepts
+
+How miniextendr works under the hood.
+
+- **[Architecture](ARCHITECTURE.md)** -- Crate structure, call flow, how Rust talks to R
+- **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp`/`IntoR` system: how Rust types map to R types
+- **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`, and error propagation
+- **[GC Protection](GC_PROTECT.md)** -- RAII-based protect/unprotect (`OwnedProtect`, `ProtectScope`)
+- **[Safety](SAFETY.md)** -- Safety invariants and what miniextendr guarantees
+- **[Threads](THREADS.md)** -- Worker thread architecture, main thread safety, `with_r_thread`
+
+### Class Systems
+
+Generate R class wrappers from Rust structs.
+
+- **[Class Systems](CLASS_SYSTEMS.md)** -- Env (default), R6, S3, S4, S7 generation from `#[miniextendr] impl`
+
+### Features
+
+Optional capabilities enabled via Cargo feature flags.
+
+| Feature | Guide | What it does |
+|---|---|---|
+| ALTREP | [ALTREP](ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
+| Connections | [Connections](CONNECTIONS.md) | Custom R connections from Rust (experimental) |
+| Progress bars | [Progress](PROGRESS.md) | indicatif progress bars routed through R console |
+| rayon | [Rayon](RAYON.md) | Parallel iteration with data-race safety |
+| vctrs | [Vctrs](VCTRS.md) | vctrs integration with `#[derive(Vctrs)]` |
+| serde | [serde_r](serde_r.md) | Direct Rust-R serialization |
+| DataFrames | [DataFrames](dataframe.md) | `#[derive(DataFrameRow)]` for struct ↔ data.frame |
+| Dots | [Dots](dots_typed_list.md) | R's `...` args + `typed_list!` validation |
+| Adapters | [Adapter Traits](ADAPTER_TRAITS.md), [Cookbook](ADAPTER_COOKBOOK.md) | Export external crate traits to R |
+| Feature defaults | [Feature Defaults](FEATURE_DEFAULTS.md) | Project-wide defaults (strict, coerce, class system) |
+| All flags | [Features](FEATURES.md) | Complete feature flag reference |
+
+### Cross-Package Interop
+
+Share Rust types and trait dispatch across R packages.
+
+- **[Trait ABI](TRAIT_ABI.md)** -- How cross-package trait dispatch works
+- **[Trait as R](TRAIT_AS_R.md)** -- Implementation details
+
+### Build System
+
+How miniextendr packages are built, configured, and released.
+
+- **[R Build System](R_BUILD_SYSTEM.md)** -- How R builds packages with compiled code
+- **[Templates](TEMPLATES.md)** -- `.in` template files and configure
+- **[Entrypoint](ENTRYPOINT.md)** -- R package entry point (`R_init_*`)
+- **[Vendoring](VENDOR.md)** -- Dependency vendoring and CRAN release prep
+- **[Linking](LINKING.md)** -- Shared library linking strategy
+- **[Environment Variables](ENVIRONMENT_VARIABLES.md)** -- All env vars affecting build/configure/lint
+- **[Engine](ENGINE.md)** -- miniextendr-engine: standalone R embedding
+
+### Type System Deep Dive
+
+Advanced type conversion and coercion details.
+
+- **[Conversion Matrix](CONVERSION_MATRIX.md)** -- R type × Rust type behavior reference
+- **[Conversion Semantics](CONVERSION_SEMANTICS.md)** -- Storage-directed conversion rules
+- **[Coercion](COERCE.md)** -- Automatic type coercion
+- **[Extending](extending-miniextendr.md)** -- Adding custom types to miniextendr
+
+### Testing & Debugging
+
+- **[Smoke Tests](SMOKE_TEST.md)** -- Quick/standard/demanding test lanes
+- **[Troubleshooting](TROUBLESHOOTING.md)** -- Common issues and solutions
+- **[Macro Errors](MACRO_ERRORS.md)** -- All MXL error codes explained
+
+### Benchmarks
+
+- **[Performance Baseline](BENCHMARKS.md)** -- All subsystems benchmarked (2026-02-18)
+- **[ALTREP Benchmarks](ALTREP_BENCHMARKS.md)** -- ALTREP-specific performance data
+
+### Project Status
+
+- **[Known Gaps](GAPS.md)** -- What's missing, what's broken, and why
+- **[Feature Backlog](FEATURE_BACKLOG.md)** -- Proposed features and sequencing
+- **[Maintainer Guide](MAINTAINER.md)** -- Release process and maintenance tasks
