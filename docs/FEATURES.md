@@ -111,16 +111,20 @@ See [RAYON.md](RAYON.md) for the full guide.
 ### `connections`
 
 Experimental R connection framework. Wraps R's internal connection system for
-creating custom readable/writable connections.
+creating custom readable/writable connections from Rust types.
 
 **Warning:** R explicitly reserves the right to change the connection ABI without
-a compatibility layer. Always check `R_CONNECTIONS_VERSION` at runtime. Gated behind
+a compatibility layer. A compile-time version check catches mismatches. Gated behind
 this feature flag to make the instability opt-in.
 
 **Provides:**
-- `RConnectionImpl` trait
-- `RCustomConnection` builder
-- `std::io` adapters (`IoRead`, `IoWrite`, `IoReadWrite`)
+- `RConnectionImpl` trait -- implement to define custom connection behavior
+- `RCustomConnection` builder -- configure and create R connection objects
+- `std::io` adapters (`IoRead`, `IoWrite`, `IoReadWrite`, `IoReadWriteSeek`, `IoBufRead`)
+- `RConnectionIo` builder -- auto-wraps any `std::io` type with zero boilerplate
+- Helper functions: `get_connection()`, `read_connection()`, `write_connection()`
+
+See [CONNECTIONS.md](CONNECTIONS.md) for the full guide with examples.
 
 ### `indicatif`
 
@@ -130,8 +134,11 @@ through `ptr_R_WriteConsoleEx` (a non-API symbol), so this feature implies `nona
 All output is a no-op when called off the R main thread.
 
 **Provides:**
-- `progress::RConsole` -- `TermLike` implementation for R console
+- `progress::RTerm` -- `TermLike` implementation for R console output
 - `progress::RStream` -- stdout/stderr target selection
+- Convenience constructors: `term_like_stdout()`, `term_like_stderr()`, `term_like_*_with_hz()`
+
+See [PROGRESS.md](PROGRESS.md) for the full guide with examples.
 
 ### `vctrs`
 
