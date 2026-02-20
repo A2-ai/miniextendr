@@ -7,7 +7,9 @@
 //! - [`MiniextendrFnAttrs`]: Parsed `#[miniextendr(...)]` attribute options
 //! - [`CoercionMapping`]: Type coercion analysis for automatic R→Rust conversion
 
-use crate::{call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for};
+use crate::{
+    call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for,
+};
 
 // =============================================================================
 // Coercion analysis

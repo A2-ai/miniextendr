@@ -3659,7 +3659,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let preconditions = crate::r_preconditions::build_precondition_checks(
             &method.sig.inputs,
             &std::collections::HashSet::new(),
-        );
+        )
+        .static_checks;
         if lifecycle.is_some() || !preconditions.is_empty() {
             lines.push(format!(
                 "methods::setMethod(\"{}\", \"{}\", function({}) {{",
@@ -4168,6 +4169,7 @@ pub fn expand_impl(
         .included_methods()
         .map(|m| m.call_method_def_ident(type_ident, label))
         .collect();
+
     let call_defs_len = call_def_idents.len();
     let call_defs_len_lit =
         syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());

@@ -32,3 +32,4 @@ pub fn match_arg_call_defs_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("MATCH_ARG_CALL_DEFS_{rust_ident_upper}")
 }
+

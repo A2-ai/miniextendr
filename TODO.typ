@@ -24,9 +24,9 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - `&mut [T]` banned at macro boundary (GC can invalidate slice pointer)
   - Formalize as helper type or documented pattern with examples
   - Files: `from_r.rs`, `docs/GAPS.md` §2.1
-- [ ] String ndarray/matrix conversion
-  - `Array1<String>` / `Array2<String>` ↔ character vector/matrix
-  - Feature-gated behind `ndarray`
+- [~] String ndarray/matrix conversion
+  - ndarray is designed for numeric/Copy types; `String` doesn't fit the model
+  - `Vec<String>` / `Vec<Vec<String>>` are the natural Rust representations
 - [ ] Quoted-expression evaluation helpers
   - Wrapper types for LANGSXP, safe `Rf_eval` with explicit environment
 - [ ] S4 compatibility helpers — helper generation, migration notes S4 → S7
@@ -39,8 +39,8 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 - [ ] Direct/no-wrapper export mode for hot functions
   - Skip R wrapper layer, direct `.Call` entrypoints
   - Benchmark shows 2x overhead (249ns vs 126ns)
-- [ ] Name-indexed list API — cached name index for `List::get_named`
-  - Currently every `get_named` does linear scan of R's names vector
+- [x] Name-indexed list API — `NamedList` wrapper with `HashMap<String, usize>`
+  - O(1) lookup via `get()`, `contains()`, `get_raw()`; `TryFromSexp` for use as fn param
 
 == Testing
 
@@ -51,9 +51,10 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - Remaining gap: RThreadBuilder direct tests skipped (crashes R runtime)
 - [x] String ALTREP NA serialization — fixed in cc115a7 (use `Vec<Option<String>>`,
   register `Vec_Option_String` ALTREP class)
-- [ ] Worker thread test re-enablement
-  - `test-thread.R` and `test-thread-broken.R` have disabled tests
-  - Investigate RThreadBuilder issues, re-enable or document why skipped
+- [~] Worker thread test re-enablement
+  - `test-thread.R` — disabled anti-pattern tests (R API calls from worker thread); correctly disabled
+  - `test-thread-broken.R` — `RThreadBuilder` crashes R's stack checking; needs R-level API changes
+  - Both files serve as documentation; `test-worker.R` (198 tests) covers the correct patterns
 - [ ] Cross-package test expansion
   - Currently tests basic dispatch only
   - Expand to complex trait patterns, version compat, multiple trait impls

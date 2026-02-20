@@ -147,12 +147,16 @@ impl<'a> MethodContext<'a> {
 
     /// Build R-side precondition `stopifnot()` lines for this method's parameters.
     ///
+    /// Returns static checks for known types. Custom types not in the static table
+    /// are identified as fallback params but no R-side precheck is generated for them.
+    ///
     /// Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`).
     pub fn precondition_checks(&self) -> Vec<String> {
         crate::r_preconditions::build_precondition_checks(
             &self.method.sig.inputs,
             &std::collections::HashSet::new(),
         )
+        .static_checks
     }
 }
 

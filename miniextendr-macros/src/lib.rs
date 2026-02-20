@@ -1462,16 +1462,16 @@ pub fn miniextendr(
         .as_ref()
         .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str));
 
-    // Generate R-side precondition checks (stopifnot)
-    let precondition_checks =
+    // Generate R-side precondition checks (stopifnot + fallback precheck calls)
+    let precondition_output =
         r_preconditions::build_precondition_checks(inputs, parsed.match_arg_params());
-    let precondition_prelude = if precondition_checks.is_empty() {
+    let precondition_prelude = if precondition_output.static_checks.is_empty() {
         String::new()
     } else {
-        precondition_checks.join("\n  ")
+        precondition_output.static_checks.join("\n  ")
     };
 
-    // Combine all preludes: lifecycle first, then preconditions, then match.arg, then main call
+    // Combine all preludes: lifecycle, static preconditions, match.arg
     let combined_prelude = {
         let mut parts = Vec::new();
         if let Some(ref lc) = lifecycle_prelude {
@@ -2161,6 +2161,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Precheck fallback helper call defs length (per-function)
     // Calculate total length expression, including conditional cfg lengths
     let cfg_len_exprs: Vec<proc_macro2::TokenStream> = cfg_len_idents
         .iter()
