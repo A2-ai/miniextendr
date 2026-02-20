@@ -83,48 +83,14 @@ pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] 
 /// ```
 #[macro_export]
 macro_rules! impl_altinteger_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_dataptr!($ty, i32);
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_extract_subset!($ty);
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_dataptr!($ty, i32);
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, serialize, dataptr) => {
-        $crate::impl_altinteger_from_data!($ty, dataptr, serialize);
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_extract_subset!($ty);
-        $crate::__impl_altinteger_methods!($ty);
-        $crate::impl_inferbase_integer!($ty);
-    };
-    ($ty:ty, serialize, subset) => {
-        $crate::impl_altinteger_from_data!($ty, subset, serialize);
-    };
+    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer); };
+    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, dataptr(i32)); };
+    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, serialize); };
+    ($ty:ty, subset) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, subset); };
+    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, dataptr(i32), serialize); };
+    ($ty:ty, serialize, dataptr) => { $crate::impl_altinteger_from_data!($ty, dataptr, serialize); };
+    ($ty:ty, subset, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, subset, serialize); };
+    ($ty:ty, serialize, subset) => { $crate::impl_altinteger_from_data!($ty, subset, serialize); };
 }
 
 /// Internal macro: impl Altrep with just length
@@ -369,6 +335,179 @@ macro_rules! __impl_altvec_extract_subset {
     };
 }
 
+// =============================================================================
+// Shared building-block macros for ALTREP trait implementations
+// =============================================================================
+//
+// These macros expand to associated items inside `impl` blocks. They are
+// invoked by the per-family `__impl_alt*_methods!` macros to eliminate
+// code duplication across the 7 ALTREP type families.
+
+/// Shared `elt` implementation for ALTREP families with direct element access.
+///
+/// Generates `const HAS_ELT` and `fn elt(...)` inside an impl block.
+/// Used by integer, real, raw, and complex families.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_alt_elt {
+    ($ty:ty, $trait:path, $elem:ty, $na:expr) => {
+        const HAS_ELT: bool = true;
+
+        fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $elem {
+            unsafe { $crate::altrep_data1_as::<$ty>(x) }
+                .map(|d| <$ty as $trait>::elt(&*d, i.max(0) as usize))
+                .unwrap_or($na)
+        }
+    };
+}
+
+/// Shared `get_region` implementation for ALTREP families.
+///
+/// Generates `const HAS_GET_REGION` and `fn get_region(...)` inside an impl block.
+/// Used by integer, real, logical, raw, and complex families.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_alt_get_region {
+    ($ty:ty, $trait:path, $buf_ty:ty) => {
+        const HAS_GET_REGION: bool = true;
+
+        fn get_region(
+            x: $crate::ffi::SEXP,
+            start: $crate::ffi::R_xlen_t,
+            len: $crate::ffi::R_xlen_t,
+            buf: *mut $buf_ty,
+        ) -> $crate::ffi::R_xlen_t {
+            unsafe { $crate::altrep_data1_as::<$ty>(x) }
+                .map(|d| {
+                    if start < 0 || len <= 0 {
+                        return 0;
+                    }
+                    let len = len as usize;
+                    let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
+                    <$ty as $trait>::get_region(
+                        &*d,
+                        start as usize,
+                        len,
+                        slice,
+                    ) as $crate::ffi::R_xlen_t
+                })
+                .unwrap_or(0)
+        }
+    };
+}
+
+/// Shared `is_sorted` implementation for ALTREP families.
+///
+/// Generates `const HAS_IS_SORTED` and `fn is_sorted(...)` inside an impl block.
+/// Used by integer, real, logical, and string families.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_alt_is_sorted {
+    ($ty:ty, $trait:path) => {
+        const HAS_IS_SORTED: bool = true;
+
+        fn is_sorted(x: $crate::ffi::SEXP) -> i32 {
+            unsafe { $crate::altrep_data1_as::<$ty>(x) }
+                .and_then(|d| <$ty as $trait>::is_sorted(&*d))
+                .map(|s| s.to_r_int())
+                .unwrap_or(i32::MIN)
+        }
+    };
+}
+
+/// Shared `no_na` implementation for ALTREP families.
+///
+/// Generates `const HAS_NO_NA` and `fn no_na(...)` inside an impl block.
+/// Used by integer, real, logical, and string families.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_alt_no_na {
+    ($ty:ty, $trait:path) => {
+        const HAS_NO_NA: bool = true;
+
+        fn no_na(x: $crate::ffi::SEXP) -> i32 {
+            unsafe { $crate::altrep_data1_as::<$ty>(x) }
+                .and_then(|d| <$ty as $trait>::no_na(&*d))
+                .map(|b| if b { 1 } else { 0 })
+                .unwrap_or(0)
+        }
+    };
+}
+
+// =============================================================================
+// Parametric macro: __impl_alt_from_data!
+// =============================================================================
+//
+// This internal macro generates the standard ALTREP trait implementations
+// (Altrep, AltVec, family-specific methods, InferBase) for a given type.
+// The 7 public `impl_alt*_from_data!` macros delegate to this with
+// family-specific parameters.
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_alt_from_data {
+    // Base: no options
+    ($ty:ty, $methods:ident, $inferbase:ident) => {
+        $crate::__impl_altrep_base!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // Dataptr with element type
+    ($ty:ty, $methods:ident, $inferbase:ident, dataptr($elem:ty)) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_dataptr!($ty, $elem);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // String dataptr (materialization into STRSXP)
+    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_string_dataptr!($ty);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // Serialize only
+    ($ty:ty, $methods:ident, $inferbase:ident, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // Subset only
+    ($ty:ty, $methods:ident, $inferbase:ident, subset) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_extract_subset!($ty);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // Dataptr + serialize
+    ($ty:ty, $methods:ident, $inferbase:ident, dataptr($elem:ty), serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_dataptr!($ty, $elem);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // String dataptr + serialize
+    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_string_dataptr!($ty);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // Subset + serialize
+    ($ty:ty, $methods:ident, $inferbase:ident, subset, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_extract_subset!($ty);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+}
+
+// =============================================================================
+// Per-family method macros (using shared building blocks)
+// =============================================================================
+
 /// Internal macro for AltInteger method implementations.
 #[macro_export]
 #[doc(hidden)]
@@ -376,58 +515,10 @@ macro_rules! __impl_altinteger_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltInteger for $ty {
-            const HAS_ELT: bool = true;
-
-            fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltIntegerData>::elt(&*d, i.max(0) as usize)
-                    })
-                    .unwrap_or(i32::MIN)
-            }
-
-            const HAS_GET_REGION: bool = true;
-
-            fn get_region(
-                x: $crate::ffi::SEXP,
-                start: $crate::ffi::R_xlen_t,
-                len: $crate::ffi::R_xlen_t,
-                buf: *mut i32,
-            ) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        if start < 0 || len <= 0 {
-                            return 0;
-                        }
-                        let len = len as usize;
-                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
-                        <$ty as $crate::altrep_data::AltIntegerData>::get_region(
-                            &*d,
-                            start as usize,
-                            len,
-                            slice,
-                        ) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
-
-            const HAS_IS_SORTED: bool = true;
-
-            fn is_sorted(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::is_sorted(&*d))
-                    .map(|s| s.to_r_int())
-                    .unwrap_or(i32::MIN)
-            }
-
-            const HAS_NO_NA: bool = true;
-
-            fn no_na(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::no_na(&*d))
-                    .map(|b| if b { 1 } else { 0 })
-                    .unwrap_or(0)
-            }
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltIntegerData, i32, i32::MIN);
+            $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltIntegerData, i32);
+            $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltIntegerData);
+            $crate::__impl_alt_no_na!($ty, $crate::altrep_data::AltIntegerData);
 
             const HAS_SUM: bool = true;
 
@@ -484,33 +575,11 @@ macro_rules! __impl_altinteger_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altreal_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altreal_methods!($ty);
-        $crate::impl_inferbase_real!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_dataptr!($ty, f64);
-        $crate::__impl_altreal_methods!($ty);
-        $crate::impl_inferbase_real!($ty);
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altreal_methods!($ty);
-        $crate::impl_inferbase_real!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_dataptr!($ty, f64);
-        $crate::__impl_altreal_methods!($ty);
-        $crate::impl_inferbase_real!($ty);
-    };
-    ($ty:ty, serialize, dataptr) => {
-        $crate::impl_altreal_from_data!($ty, dataptr, serialize);
-    };
+    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real); };
+    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, dataptr(f64)); };
+    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, serialize); };
+    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, dataptr(f64), serialize); };
+    ($ty:ty, serialize, dataptr) => { $crate::impl_altreal_from_data!($ty, dataptr, serialize); };
 }
 
 /// Internal macro for AltReal method implementations.
@@ -520,56 +589,10 @@ macro_rules! __impl_altreal_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltReal for $ty {
-            const HAS_ELT: bool = true;
-
-            fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> f64 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltRealData>::elt(&*d, i.max(0) as usize))
-                    .unwrap_or(f64::NAN)
-            }
-
-            const HAS_GET_REGION: bool = true;
-
-            fn get_region(
-                x: $crate::ffi::SEXP,
-                start: $crate::ffi::R_xlen_t,
-                len: $crate::ffi::R_xlen_t,
-                buf: *mut f64,
-            ) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        if start < 0 || len <= 0 {
-                            return 0;
-                        }
-                        let len = len as usize;
-                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
-                        <$ty as $crate::altrep_data::AltRealData>::get_region(
-                            &*d,
-                            start as usize,
-                            len,
-                            slice,
-                        ) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
-
-            const HAS_IS_SORTED: bool = true;
-
-            fn is_sorted(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::is_sorted(&*d))
-                    .map(|s| s.to_r_int())
-                    .unwrap_or(i32::MIN)
-            }
-
-            const HAS_NO_NA: bool = true;
-
-            fn no_na(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::no_na(&*d))
-                    .map(|b| if b { 1 } else { 0 })
-                    .unwrap_or(0)
-            }
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRealData, f64, f64::NAN);
+            $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltRealData, f64);
+            $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltRealData);
+            $crate::__impl_alt_no_na!($ty, $crate::altrep_data::AltRealData);
 
             const HAS_SUM: bool = true;
 
@@ -620,33 +643,11 @@ macro_rules! __impl_altreal_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altlogical_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altlogical_methods!($ty);
-        $crate::impl_inferbase_logical!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_dataptr!($ty, i32);
-        $crate::__impl_altlogical_methods!($ty);
-        $crate::impl_inferbase_logical!($ty);
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altlogical_methods!($ty);
-        $crate::impl_inferbase_logical!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_dataptr!($ty, i32);
-        $crate::__impl_altlogical_methods!($ty);
-        $crate::impl_inferbase_logical!($ty);
-    };
-    ($ty:ty, serialize, dataptr) => {
-        $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
-    };
+    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical); };
+    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical, dataptr(i32)); };
+    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical, serialize); };
+    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical, dataptr(i32), serialize); };
+    ($ty:ty, serialize, dataptr) => { $crate::impl_altlogical_from_data!($ty, dataptr, serialize); };
 }
 
 /// Internal macro: impl AltLogical methods from AltLogicalData
@@ -656,6 +657,7 @@ macro_rules! __impl_altlogical_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltLogical for $ty {
+            // Logical elt is special: returns Logical → .to_r_int()
             const HAS_ELT: bool = true;
 
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> i32 {
@@ -667,48 +669,9 @@ macro_rules! __impl_altlogical_methods {
                     .unwrap_or(i32::MIN)
             }
 
-            const HAS_GET_REGION: bool = true;
-
-            fn get_region(
-                x: $crate::ffi::SEXP,
-                start: $crate::ffi::R_xlen_t,
-                len: $crate::ffi::R_xlen_t,
-                buf: *mut i32,
-            ) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        if start < 0 || len <= 0 {
-                            return 0;
-                        }
-                        let len = len as usize;
-                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
-                        <$ty as $crate::altrep_data::AltLogicalData>::get_region(
-                            &*d,
-                            start as usize,
-                            len,
-                            slice,
-                        ) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
-
-            const HAS_IS_SORTED: bool = true;
-
-            fn is_sorted(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltLogicalData>::is_sorted(&*d))
-                    .map(|s| s.to_r_int())
-                    .unwrap_or(i32::MIN)
-            }
-
-            const HAS_NO_NA: bool = true;
-
-            fn no_na(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltLogicalData>::no_na(&*d))
-                    .map(|b| if b { 1 } else { 0 })
-                    .unwrap_or(0)
-            }
+            $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltLogicalData, i32);
+            $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltLogicalData);
+            $crate::__impl_alt_no_na!($ty, $crate::altrep_data::AltLogicalData);
 
             const HAS_SUM: bool = true;
 
@@ -747,33 +710,11 @@ macro_rules! __impl_altlogical_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altraw_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altraw_methods!($ty);
-        $crate::impl_inferbase_raw!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_dataptr!($ty, u8);
-        $crate::__impl_altraw_methods!($ty);
-        $crate::impl_inferbase_raw!($ty);
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altraw_methods!($ty);
-        $crate::impl_inferbase_raw!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_dataptr!($ty, u8);
-        $crate::__impl_altraw_methods!($ty);
-        $crate::impl_inferbase_raw!($ty);
-    };
-    ($ty:ty, serialize, dataptr) => {
-        $crate::impl_altraw_from_data!($ty, dataptr, serialize);
-    };
+    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw); };
+    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, dataptr(u8)); };
+    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, serialize); };
+    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, dataptr(u8), serialize); };
+    ($ty:ty, serialize, dataptr) => { $crate::impl_altraw_from_data!($ty, dataptr, serialize); };
 }
 
 /// Internal macro for AltRaw method implementations.
@@ -783,38 +724,8 @@ macro_rules! __impl_altraw_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltRaw for $ty {
-            const HAS_ELT: bool = true;
-
-            fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> u8 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltRawData>::elt(&*d, i.max(0) as usize))
-                    .unwrap_or(0)
-            }
-
-            const HAS_GET_REGION: bool = true;
-
-            fn get_region(
-                x: $crate::ffi::SEXP,
-                start: $crate::ffi::R_xlen_t,
-                len: $crate::ffi::R_xlen_t,
-                buf: *mut u8,
-            ) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        if start < 0 || len <= 0 {
-                            return 0;
-                        }
-                        let len = len as usize;
-                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
-                        <$ty as $crate::altrep_data::AltRawData>::get_region(
-                            &*d,
-                            start as usize,
-                            len,
-                            slice,
-                        ) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRawData, u8, 0);
+            $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltRawData, u8);
         }
     };
 }
@@ -832,30 +743,10 @@ macro_rules! __impl_altraw_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altstring_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altstring_methods!($ty);
-        $crate::impl_inferbase_string!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::__impl_altstring_methods!($ty);
-        $crate::impl_inferbase_string!($ty);
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altstring_methods!($ty);
-        $crate::impl_inferbase_string!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_string_dataptr!($ty);
-        $crate::__impl_altstring_methods!($ty);
-        $crate::impl_inferbase_string!($ty);
-    };
+    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string); };
+    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, string_dataptr); };
+    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, serialize); };
+    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, string_dataptr, serialize); };
 }
 
 /// Internal macro for AltString method implementations.
@@ -865,8 +756,8 @@ macro_rules! __impl_altstring_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltString for $ty {
+            // String elt is special: Option<&str> → CHARSXP or R_NaString
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
-                // Keep ExternalPtr alive while we use the string reference
                 match unsafe { $crate::altrep_data1_as::<$ty>(x) } {
                     Some(d) => {
                         match <$ty as $crate::altrep_data::AltStringData>::elt(
@@ -881,23 +772,8 @@ macro_rules! __impl_altstring_methods {
                 }
             }
 
-            const HAS_IS_SORTED: bool = true;
-
-            fn is_sorted(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltStringData>::is_sorted(&*d))
-                    .map(|s| s.to_r_int())
-                    .unwrap_or(i32::MIN)
-            }
-
-            const HAS_NO_NA: bool = true;
-
-            fn no_na(x: $crate::ffi::SEXP) -> i32 {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltStringData>::no_na(&*d))
-                    .map(|b| if b { 1 } else { 0 })
-                    .unwrap_or(0)
-            }
+            $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltStringData);
+            $crate::__impl_alt_no_na!($ty, $crate::altrep_data::AltStringData);
         }
     };
 }
@@ -945,43 +821,9 @@ macro_rules! __impl_altcomplex_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltComplex for $ty {
-            const HAS_ELT: bool = true;
-
-            fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::Rcomplex {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltComplexData>::elt(&*d, i.max(0) as usize)
-                    })
-                    .unwrap_or($crate::ffi::Rcomplex {
-                        r: f64::NAN,
-                        i: f64::NAN,
-                    })
-            }
-
-            const HAS_GET_REGION: bool = true;
-
-            fn get_region(
-                x: $crate::ffi::SEXP,
-                start: $crate::ffi::R_xlen_t,
-                len: $crate::ffi::R_xlen_t,
-                buf: *mut $crate::ffi::Rcomplex,
-            ) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        if start < 0 || len <= 0 {
-                            return 0;
-                        }
-                        let len = len as usize;
-                        let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
-                        <$ty as $crate::altrep_data::AltComplexData>::get_region(
-                            &*d,
-                            start as usize,
-                            len,
-                            slice,
-                        ) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltComplexData, $crate::ffi::Rcomplex,
+                $crate::ffi::Rcomplex { r: f64::NAN, i: f64::NAN });
+            $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltComplexData, $crate::ffi::Rcomplex);
         }
     };
 }
@@ -994,48 +836,14 @@ macro_rules! __impl_altcomplex_methods {
 /// - `subset`: Enable optimized subsetting (requires `AltrepExtractSubset`)
 #[macro_export]
 macro_rules! impl_altcomplex_from_data {
-    ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, dataptr) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_dataptr!($ty, $crate::ffi::Rcomplex);
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        impl $crate::altrep_traits::AltVec for $ty {}
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, subset) => {
-        $crate::__impl_altrep_base!($ty);
-        $crate::__impl_altvec_extract_subset!($ty);
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, dataptr, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_dataptr!($ty, $crate::ffi::Rcomplex);
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, serialize, dataptr) => {
-        $crate::impl_altcomplex_from_data!($ty, dataptr, serialize);
-    };
-    ($ty:ty, subset, serialize) => {
-        $crate::__impl_altrep_base_with_serialize!($ty);
-        $crate::__impl_altvec_extract_subset!($ty);
-        $crate::__impl_altcomplex_methods!($ty);
-        $crate::impl_inferbase_complex!($ty);
-    };
-    ($ty:ty, serialize, subset) => {
-        $crate::impl_altcomplex_from_data!($ty, subset, serialize);
-    };
+    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex); };
+    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, dataptr($crate::ffi::Rcomplex)); };
+    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, serialize); };
+    ($ty:ty, subset) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, subset); };
+    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, dataptr($crate::ffi::Rcomplex), serialize); };
+    ($ty:ty, serialize, dataptr) => { $crate::impl_altcomplex_from_data!($ty, dataptr, serialize); };
+    ($ty:ty, subset, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, subset, serialize); };
+    ($ty:ty, serialize, subset) => { $crate::impl_altcomplex_from_data!($ty, subset, serialize); };
 }
 
 // =============================================================================

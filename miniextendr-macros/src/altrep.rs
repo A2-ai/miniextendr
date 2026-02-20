@@ -17,6 +17,128 @@
 //! pub struct MyInts(Vec<i32>);
 //! ```
 
+/// Valid ALTREP base type names (RBase variants).
+const VALID_BASES: &[&str] = &["Int", "Real", "Logical", "Raw", "String", "List", "Complex"];
+
+/// Generate family-specific method setter code for an explicit base type.
+///
+/// Returns `set_if!(...)` statements for conditional methods and unconditional
+/// `unsafe { setter(cls, ...) }` statements for required methods (String/List Elt).
+fn generate_explicit_setters(
+    base_name: &str,
+    tramp_ty: &syn::Type,
+) -> proc_macro2::TokenStream {
+    let span = proc_macro2::Span::call_site();
+
+    // (trait_name, [(has_const, setter_fn, trampoline)], [(always_setter, always_trampoline)])
+    type Cond = [(&'static str, &'static str, &'static str)];
+    type Always = [(&'static str, &'static str)];
+    let (trait_name, cond, always): (&str, &Cond, &Always) = match base_name {
+            "Int" => ("AltInteger", &[
+                ("HAS_ELT", "R_set_altinteger_Elt_method", "t_int_elt"),
+                ("HAS_GET_REGION", "R_set_altinteger_Get_region_method", "t_int_get_region"),
+                ("HAS_IS_SORTED", "R_set_altinteger_Is_sorted_method", "t_int_is_sorted"),
+                ("HAS_NO_NA", "R_set_altinteger_No_NA_method", "t_int_no_na"),
+                ("HAS_SUM", "R_set_altinteger_Sum_method", "t_int_sum"),
+                ("HAS_MIN", "R_set_altinteger_Min_method", "t_int_min"),
+                ("HAS_MAX", "R_set_altinteger_Max_method", "t_int_max"),
+            ][..], &[][..]),
+            "Real" => ("AltReal", &[
+                ("HAS_ELT", "R_set_altreal_Elt_method", "t_real_elt"),
+                ("HAS_GET_REGION", "R_set_altreal_Get_region_method", "t_real_get_region"),
+                ("HAS_IS_SORTED", "R_set_altreal_Is_sorted_method", "t_real_is_sorted"),
+                ("HAS_NO_NA", "R_set_altreal_No_NA_method", "t_real_no_na"),
+                ("HAS_SUM", "R_set_altreal_Sum_method", "t_real_sum"),
+                ("HAS_MIN", "R_set_altreal_Min_method", "t_real_min"),
+                ("HAS_MAX", "R_set_altreal_Max_method", "t_real_max"),
+            ][..], &[][..]),
+            "Logical" => ("AltLogical", &[
+                ("HAS_ELT", "R_set_altlogical_Elt_method", "t_lgl_elt"),
+                ("HAS_GET_REGION", "R_set_altlogical_Get_region_method", "t_lgl_get_region"),
+                ("HAS_IS_SORTED", "R_set_altlogical_Is_sorted_method", "t_lgl_is_sorted"),
+                ("HAS_NO_NA", "R_set_altlogical_No_NA_method", "t_lgl_no_na"),
+            ][..], &[][..]),
+            "Raw" => ("AltRaw", &[
+                ("HAS_ELT", "R_set_altraw_Elt_method", "t_raw_elt"),
+                ("HAS_GET_REGION", "R_set_altraw_Get_region_method", "t_raw_get_region"),
+            ][..], &[][..]),
+            "String" => ("AltString", &[
+                ("HAS_IS_SORTED", "R_set_altstring_Is_sorted_method", "t_str_is_sorted"),
+                ("HAS_NO_NA", "R_set_altstring_No_NA_method", "t_str_no_na"),
+                ("HAS_SET_ELT", "R_set_altstring_Set_elt_method", "t_str_set_elt"),
+            ][..], &[
+                ("R_set_altstring_Elt_method", "t_str_elt"),
+            ][..]),
+            "List" => ("AltList", &[
+                ("HAS_SET_ELT", "R_set_altlist_Set_elt_method", "t_list_set_elt"),
+            ][..], &[
+                ("R_set_altlist_Elt_method", "t_list_elt"),
+            ][..]),
+            "Complex" => ("AltComplex", &[
+                ("HAS_ELT", "R_set_altcomplex_Elt_method", "t_cplx_elt"),
+                ("HAS_GET_REGION", "R_set_altcomplex_Get_region_method", "t_cplx_get_region"),
+            ][..], &[][..]),
+            _ => return quote::quote! {},
+        };
+
+    let trait_ident = syn::Ident::new(trait_name, span);
+
+    let always_stmts = always.iter().map(|(setter, tramp)| {
+        let s = syn::Ident::new(setter, span);
+        let t = syn::Ident::new(tramp, span);
+        quote::quote! { unsafe { #s(cls, Some(bridge::#t::<#tramp_ty>)); } }
+    });
+
+    let cond_stmts = cond.iter().map(|(has, setter, tramp)| {
+        let h = syn::Ident::new(has, span);
+        let s = syn::Ident::new(setter, span);
+        let t = syn::Ident::new(tramp, span);
+        quote::quote! {
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::#trait_ident>::#h, #s, bridge::#t::<#tramp_ty>);
+        }
+    });
+
+    quote::quote! {
+        #(#always_stmts)*
+        #(#cond_stmts)*
+    }
+}
+
+/// Generate the `R_make_alt*_class(...)` + `validate_altrep_class(...)` code for an explicit base type.
+fn generate_explicit_make_class(
+    base_name: &str,
+    ident: &syn::Ident,
+) -> proc_macro2::TokenStream {
+    let span = proc_macro2::Span::call_site();
+
+    let make_fn_name = match base_name {
+        "Int" => "R_make_altinteger_class",
+        "Real" => "R_make_altreal_class",
+        "Logical" => "R_make_altlogical_class",
+        "Raw" => "R_make_altraw_class",
+        "String" => "R_make_altstring_class",
+        "List" => "R_make_altlist_class",
+        "Complex" => "R_make_altcomplex_class",
+        _ => unreachable!("validated by VALID_BASES check"),
+    };
+
+    let make_fn = syn::Ident::new(make_fn_name, span);
+    let base_ident = syn::Ident::new(base_name, span);
+
+    quote::quote! {{
+        let __cls = ::miniextendr_api::ffi::altrep::#make_fn(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            ::miniextendr_api::AltrepPkgName::as_ptr(),
+            core::ptr::null_mut(),
+        );
+        ::miniextendr_api::altrep::validate_altrep_class(
+            __cls,
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME,
+            ::miniextendr_api::altrep::RBase::#base_ident,
+        )
+    }}
+}
+
 /// Expands `#[miniextendr]` on a one-field wrapper struct into ALTREP plumbing.
 pub fn expand_altrep_struct(
     attr: proc_macro::TokenStream,
@@ -91,23 +213,16 @@ pub fn expand_altrep_struct(
 
     // Validate base if provided, otherwise use InferBase inference
     let base_variant: syn::Expr = if let Some(ref base_name) = base_name {
-        match base_name.as_str() {
-            "Int" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Int),
-            "Real" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Real),
-            "Logical" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Logical),
-            "Raw" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Raw),
-            "String" => syn::parse_quote!(::miniextendr_api::altrep::RBase::String),
-            "List" => syn::parse_quote!(::miniextendr_api::altrep::RBase::List),
-            "Complex" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Complex),
-            _ => {
-                return syn::Error::new_spanned(
-                    base_lit.expect("base_lit set when base_name is Some"),
-                    "base must be one of Int|Real|Logical|Raw|String|List|Complex",
-                )
-                .into_compile_error()
-                .into();
-            }
+        if !VALID_BASES.contains(&base_name.as_str()) {
+            return syn::Error::new_spanned(
+                base_lit.expect("base_lit set when base_name is Some"),
+                "base must be one of Int|Real|Logical|Raw|String|List|Complex",
+            )
+            .into_compile_error()
+            .into();
         }
+        let base_ident = syn::Ident::new(base_name, proc_macro2::Span::call_site());
+        syn::parse_quote!(::miniextendr_api::altrep::RBase::#base_ident)
     } else {
         // Infer from InferBase trait (auto-implemented via impl_inferbase_* macros)
         syn::parse_quote!(<#data_ty as ::miniextendr_api::altrep_data::InferBase>::BASE)
@@ -116,129 +231,15 @@ pub fn expand_altrep_struct(
     // The trampoline type is always the inner data type
     let tramp_ty = data_ty.clone();
 
-    // Generate family setters and make_class based on the base type
-    // If base is explicitly provided, generate type-specific code at macro time.
-    // If base is not provided, use AltrepInstaller trait for compile-time dispatch.
+    // Generate family setters and make_class based on the base type.
+    // If base is explicitly provided, use table-driven helpers.
+    // If base is not provided, use InferBase trait for compile-time dispatch.
     let (family_setters, make_class): (proc_macro2::TokenStream, proc_macro2::TokenStream) =
         if let Some(ref base_name) = base_name {
-            // Explicit base: generate type-specific code at macro time
-            let setters = match base_name.as_str() {
-                "Int" => quote::quote! {
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_ELT, R_set_altinteger_Elt_method, bridge::t_int_elt::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_GET_REGION, R_set_altinteger_Get_region_method, bridge::t_int_get_region::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_IS_SORTED, R_set_altinteger_Is_sorted_method, bridge::t_int_is_sorted::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_NO_NA, R_set_altinteger_No_NA_method, bridge::t_int_no_na::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_SUM, R_set_altinteger_Sum_method, bridge::t_int_sum::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MIN, R_set_altinteger_Min_method, bridge::t_int_min::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MAX, R_set_altinteger_Max_method, bridge::t_int_max::<#tramp_ty>);
-                },
-                "Real" => quote::quote! {
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_ELT, R_set_altreal_Elt_method, bridge::t_real_elt::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_GET_REGION, R_set_altreal_Get_region_method, bridge::t_real_get_region::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_IS_SORTED, R_set_altreal_Is_sorted_method, bridge::t_real_is_sorted::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_NO_NA, R_set_altreal_No_NA_method, bridge::t_real_no_na::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_SUM, R_set_altreal_Sum_method, bridge::t_real_sum::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MIN, R_set_altreal_Min_method, bridge::t_real_min::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MAX, R_set_altreal_Max_method, bridge::t_real_max::<#tramp_ty>);
-                },
-                "Logical" => quote::quote! {
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_ELT, R_set_altlogical_Elt_method, bridge::t_lgl_elt::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_GET_REGION, R_set_altlogical_Get_region_method, bridge::t_lgl_get_region::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_IS_SORTED, R_set_altlogical_Is_sorted_method, bridge::t_lgl_is_sorted::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_NO_NA, R_set_altlogical_No_NA_method, bridge::t_lgl_no_na::<#tramp_ty>);
-                },
-                "Raw" => quote::quote! {
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_ELT, R_set_altraw_Elt_method, bridge::t_raw_elt::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_GET_REGION, R_set_altraw_Get_region_method, bridge::t_raw_get_region::<#tramp_ty>);
-                },
-                "String" => quote::quote! {
-                    unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<#tramp_ty>)); }
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_IS_SORTED, R_set_altstring_Is_sorted_method, bridge::t_str_is_sorted::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_NO_NA, R_set_altstring_No_NA_method, bridge::t_str_no_na::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_SET_ELT, R_set_altstring_Set_elt_method, bridge::t_str_set_elt::<#tramp_ty>);
-                },
-                "List" => quote::quote! {
-                    unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<#tramp_ty>)); }
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT, R_set_altlist_Set_elt_method, bridge::t_list_set_elt::<#tramp_ty>);
-                },
-                "Complex" => quote::quote! {
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltComplex>::HAS_ELT, R_set_altcomplex_Elt_method, bridge::t_cplx_elt::<#tramp_ty>);
-                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltComplex>::HAS_GET_REGION, R_set_altcomplex_Get_region_method, bridge::t_cplx_get_region::<#tramp_ty>);
-                },
-                _ => quote::quote! {},
-            };
-            // For explicit base, generate the R_make_alt*_class call then validate.
-            // The validation is done via validate_altrep_class which panics on null.
-            let make = {
-                let base_variant_for_validate: proc_macro2::TokenStream = match base_name.as_str() {
-                    "Int" => quote::quote!(::miniextendr_api::altrep::RBase::Int),
-                    "Real" => quote::quote!(::miniextendr_api::altrep::RBase::Real),
-                    "Logical" => quote::quote!(::miniextendr_api::altrep::RBase::Logical),
-                    "Raw" => quote::quote!(::miniextendr_api::altrep::RBase::Raw),
-                    "String" => quote::quote!(::miniextendr_api::altrep::RBase::String),
-                    "List" => quote::quote!(::miniextendr_api::altrep::RBase::List),
-                    "Complex" => quote::quote!(::miniextendr_api::altrep::RBase::Complex),
-                    _ => quote::quote!(unreachable!()),
-                };
-                let make_call = match base_name.as_str() {
-                    "Int" => {
-                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
-                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                            ::miniextendr_api::AltrepPkgName::as_ptr(),
-                            core::ptr::null_mut(),
-                        ) }
-                    }
-                    "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                        ::miniextendr_api::AltrepPkgName::as_ptr(),
-                        core::ptr::null_mut(),
-                    ) },
-                    "Logical" => {
-                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
-                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                            ::miniextendr_api::AltrepPkgName::as_ptr(),
-                            core::ptr::null_mut(),
-                        ) }
-                    }
-                    "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                        ::miniextendr_api::AltrepPkgName::as_ptr(),
-                        core::ptr::null_mut(),
-                    ) },
-                    "String" => {
-                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
-                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                            ::miniextendr_api::AltrepPkgName::as_ptr(),
-                            core::ptr::null_mut(),
-                        ) }
-                    }
-                    "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                        ::miniextendr_api::AltrepPkgName::as_ptr(),
-                        core::ptr::null_mut(),
-                    ) },
-                    "Complex" => {
-                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
-                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                            ::miniextendr_api::AltrepPkgName::as_ptr(),
-                            core::ptr::null_mut(),
-                        ) }
-                    }
-                    _ => quote::quote! { unreachable!() },
-                };
-                quote::quote! {{
-                    let __cls = #make_call;
-                    ::miniextendr_api::altrep::validate_altrep_class(
-                        __cls,
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME,
-                        #base_variant_for_validate,
-                    )
-                }}
-            };
+            let setters = generate_explicit_setters(base_name, &tramp_ty);
+            let make = generate_explicit_make_class(base_name, &ident);
             (setters, make)
         } else {
-            // No explicit base: use InferBase trait for compile-time dispatch
-            // This is auto-implemented via impl_inferbase_* macros alongside impl_alt*_from_data!
             let setters = quote::quote! {
                 // SAFETY: Called during R initialization while holding exclusive R access
                 unsafe { <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::install_methods(cls); }

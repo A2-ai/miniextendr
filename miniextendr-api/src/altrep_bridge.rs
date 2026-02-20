@@ -478,136 +478,126 @@ pub unsafe fn install_vec<T: AltVec>(cls: R_altrep_class_t) {
     }
 }
 
-/// Install integer-specific methods.
-/// # Safety
-/// Must be called during R initialization with a valid ALTREP class handle.
-pub unsafe fn install_int<T: AltInteger>(cls: R_altrep_class_t) {
-    if T::HAS_ELT {
-        unsafe { R_set_altinteger_Elt_method(cls, Some(t_int_elt::<T>)) };
-    }
-    if T::HAS_GET_REGION {
-        unsafe { R_set_altinteger_Get_region_method(cls, Some(t_int_get_region::<T>)) };
-    }
-    if T::HAS_IS_SORTED {
-        unsafe { R_set_altinteger_Is_sorted_method(cls, Some(t_int_is_sorted::<T>)) };
-    }
-    if T::HAS_NO_NA {
-        unsafe { R_set_altinteger_No_NA_method(cls, Some(t_int_no_na::<T>)) };
-    }
-    if T::HAS_SUM {
-        unsafe { R_set_altinteger_Sum_method(cls, Some(t_int_sum::<T>)) };
-    }
-    if T::HAS_MIN {
-        unsafe { R_set_altinteger_Min_method(cls, Some(t_int_min::<T>)) };
-    }
-    if T::HAS_MAX {
-        unsafe { R_set_altinteger_Max_method(cls, Some(t_int_max::<T>)) };
+/// Generate a family-specific installer function from a declarative spec.
+///
+/// Each entry maps a `HAS_*` const to a setter function and trampoline.
+/// Optional `always` entries are installed unconditionally (e.g. required Elt).
+macro_rules! def_installer {
+    (
+        $(#[$meta:meta])*
+        $fn_name:ident < T: $trait:ident > {
+            $( $has:ident => $setter:path, $tramp:ident; )*
+        }
+    ) => {
+        $(#[$meta])*
+        pub unsafe fn $fn_name<T: $trait>(cls: R_altrep_class_t) {
+            $(
+                if T::$has { unsafe { $setter(cls, Some($tramp::<T>)) } }
+            )*
+        }
+    };
+    (
+        $(#[$meta:meta])*
+        $fn_name:ident < T: $trait:ident > {
+            $( $has:ident => $setter:path, $tramp:ident; )*
+        }
+        always { $( $always_setter:path, $always_tramp:ident; )* }
+    ) => {
+        $(#[$meta])*
+        pub unsafe fn $fn_name<T: $trait>(cls: R_altrep_class_t) {
+            $(
+                unsafe { $always_setter(cls, Some($always_tramp::<T>)) }
+            )*
+            $(
+                if T::$has { unsafe { $setter(cls, Some($tramp::<T>)) } }
+            )*
+        }
+    };
+}
+
+def_installer! {
+    /// Install integer-specific methods.
+    /// # Safety
+    /// Must be called during R initialization with a valid ALTREP class handle.
+    install_int<T: AltInteger> {
+        HAS_ELT => R_set_altinteger_Elt_method, t_int_elt;
+        HAS_GET_REGION => R_set_altinteger_Get_region_method, t_int_get_region;
+        HAS_IS_SORTED => R_set_altinteger_Is_sorted_method, t_int_is_sorted;
+        HAS_NO_NA => R_set_altinteger_No_NA_method, t_int_no_na;
+        HAS_SUM => R_set_altinteger_Sum_method, t_int_sum;
+        HAS_MIN => R_set_altinteger_Min_method, t_int_min;
+        HAS_MAX => R_set_altinteger_Max_method, t_int_max;
     }
 }
 
-/// Install real-specific methods.
-/// # Safety
-/// Must be called during R initialization with a valid ALTREP class handle.
-pub unsafe fn install_real<T: AltReal>(cls: R_altrep_class_t) {
-    if T::HAS_ELT {
-        unsafe { R_set_altreal_Elt_method(cls, Some(t_real_elt::<T>)) };
-    }
-    if T::HAS_GET_REGION {
-        unsafe { R_set_altreal_Get_region_method(cls, Some(t_real_get_region::<T>)) };
-    }
-    if T::HAS_IS_SORTED {
-        unsafe { R_set_altreal_Is_sorted_method(cls, Some(t_real_is_sorted::<T>)) };
-    }
-    if T::HAS_NO_NA {
-        unsafe { R_set_altreal_No_NA_method(cls, Some(t_real_no_na::<T>)) };
-    }
-    if T::HAS_SUM {
-        unsafe { R_set_altreal_Sum_method(cls, Some(t_real_sum::<T>)) };
-    }
-    if T::HAS_MIN {
-        unsafe { R_set_altreal_Min_method(cls, Some(t_real_min::<T>)) };
-    }
-    if T::HAS_MAX {
-        unsafe { R_set_altreal_Max_method(cls, Some(t_real_max::<T>)) };
+def_installer! {
+    /// Install real-specific methods.
+    /// # Safety
+    /// Must be called during R initialization with a valid ALTREP class handle.
+    install_real<T: AltReal> {
+        HAS_ELT => R_set_altreal_Elt_method, t_real_elt;
+        HAS_GET_REGION => R_set_altreal_Get_region_method, t_real_get_region;
+        HAS_IS_SORTED => R_set_altreal_Is_sorted_method, t_real_is_sorted;
+        HAS_NO_NA => R_set_altreal_No_NA_method, t_real_no_na;
+        HAS_SUM => R_set_altreal_Sum_method, t_real_sum;
+        HAS_MIN => R_set_altreal_Min_method, t_real_min;
+        HAS_MAX => R_set_altreal_Max_method, t_real_max;
     }
 }
 
-/// Install logical-specific methods.
-/// # Safety
-/// Must be called during R initialization with a valid ALTREP class handle.
-pub unsafe fn install_lgl<T: AltLogical>(cls: R_altrep_class_t) {
-    if T::HAS_ELT {
-        unsafe { R_set_altlogical_Elt_method(cls, Some(t_lgl_elt::<T>)) };
-    }
-    if T::HAS_GET_REGION {
-        unsafe { R_set_altlogical_Get_region_method(cls, Some(t_lgl_get_region::<T>)) };
-    }
-    if T::HAS_IS_SORTED {
-        unsafe { R_set_altlogical_Is_sorted_method(cls, Some(t_lgl_is_sorted::<T>)) };
-    }
-    if T::HAS_NO_NA {
-        unsafe { R_set_altlogical_No_NA_method(cls, Some(t_lgl_no_na::<T>)) };
-    }
-    if T::HAS_SUM {
-        unsafe { R_set_altlogical_Sum_method(cls, Some(t_lgl_sum::<T>)) };
-    }
-    // Note: R's ALTREP API does not expose min/max for logical vectors
-}
-
-/// Install raw-specific methods.
-/// # Safety
-/// Must be called during R initialization with a valid ALTREP class handle.
-pub unsafe fn install_raw<T: AltRaw>(cls: R_altrep_class_t) {
-    if T::HAS_ELT {
-        unsafe { R_set_altraw_Elt_method(cls, Some(t_raw_elt::<T>)) };
-    }
-    if T::HAS_GET_REGION {
-        unsafe { R_set_altraw_Get_region_method(cls, Some(t_raw_get_region::<T>)) };
+def_installer! {
+    /// Install logical-specific methods.
+    /// # Safety
+    /// Must be called during R initialization with a valid ALTREP class handle.
+    install_lgl<T: AltLogical> {
+        HAS_ELT => R_set_altlogical_Elt_method, t_lgl_elt;
+        HAS_GET_REGION => R_set_altlogical_Get_region_method, t_lgl_get_region;
+        HAS_IS_SORTED => R_set_altlogical_Is_sorted_method, t_lgl_is_sorted;
+        HAS_NO_NA => R_set_altlogical_No_NA_method, t_lgl_no_na;
+        HAS_SUM => R_set_altlogical_Sum_method, t_lgl_sum;
     }
 }
 
-/// Install complex-specific methods.
-/// # Safety
-/// Must be called during R initialization with a valid ALTREP class handle.
-pub unsafe fn install_cplx<T: AltComplex>(cls: R_altrep_class_t) {
-    if T::HAS_ELT {
-        unsafe { R_set_altcomplex_Elt_method(cls, Some(t_cplx_elt::<T>)) };
-    }
-    if T::HAS_GET_REGION {
-        unsafe { R_set_altcomplex_Get_region_method(cls, Some(t_cplx_get_region::<T>)) };
+def_installer! {
+    /// Install raw-specific methods.
+    /// # Safety
+    /// Must be called during R initialization with a valid ALTREP class handle.
+    install_raw<T: AltRaw> {
+        HAS_ELT => R_set_altraw_Elt_method, t_raw_elt;
+        HAS_GET_REGION => R_set_altraw_Get_region_method, t_raw_get_region;
     }
 }
 
-/// Install string-specific methods.
-/// # Safety
-/// Must be called during R initialization with a valid ALTREP class handle.
-/// Note: Elt is always installed for ALTSTRING (required).
-pub unsafe fn install_str<T: AltString>(cls: R_altrep_class_t) {
-    // Elt is ALWAYS installed (required for ALTSTRING)
-    unsafe { R_set_altstring_Elt_method(cls, Some(t_str_elt::<T>)) };
-
-    // Optional methods
-    if T::HAS_SET_ELT {
-        unsafe { R_set_altstring_Set_elt_method(cls, Some(t_str_set_elt::<T>)) };
-    }
-    if T::HAS_IS_SORTED {
-        unsafe { R_set_altstring_Is_sorted_method(cls, Some(t_str_is_sorted::<T>)) };
-    }
-    if T::HAS_NO_NA {
-        unsafe { R_set_altstring_No_NA_method(cls, Some(t_str_no_na::<T>)) };
+def_installer! {
+    /// Install complex-specific methods.
+    /// # Safety
+    /// Must be called during R initialization with a valid ALTREP class handle.
+    install_cplx<T: AltComplex> {
+        HAS_ELT => R_set_altcomplex_Elt_method, t_cplx_elt;
+        HAS_GET_REGION => R_set_altcomplex_Get_region_method, t_cplx_get_region;
     }
 }
 
-/// Install list-specific methods.
-/// # Safety
-/// Must be called during R initialization with a valid ALTREP class handle.
-/// Note: Elt is always installed for ALTLIST (required).
-pub unsafe fn install_list<T: AltList>(cls: R_altrep_class_t) {
-    // Elt is ALWAYS installed (required for ALTLIST)
-    unsafe { R_set_altlist_Elt_method(cls, Some(t_list_elt::<T>)) };
-
-    // Optional methods
-    if T::HAS_SET_ELT {
-        unsafe { R_set_altlist_Set_elt_method(cls, Some(t_list_set_elt::<T>)) };
+def_installer! {
+    /// Install string-specific methods.
+    /// # Safety
+    /// Must be called during R initialization with a valid ALTREP class handle.
+    /// Note: Elt is always installed for ALTSTRING (required).
+    install_str<T: AltString> {
+        HAS_SET_ELT => R_set_altstring_Set_elt_method, t_str_set_elt;
+        HAS_IS_SORTED => R_set_altstring_Is_sorted_method, t_str_is_sorted;
+        HAS_NO_NA => R_set_altstring_No_NA_method, t_str_no_na;
     }
+    always { R_set_altstring_Elt_method, t_str_elt; }
+}
+
+def_installer! {
+    /// Install list-specific methods.
+    /// # Safety
+    /// Must be called during R initialization with a valid ALTREP class handle.
+    /// Note: Elt is always installed for ALTLIST (required).
+    install_list<T: AltList> {
+        HAS_SET_ELT => R_set_altlist_Set_elt_method, t_list_set_elt;
+    }
+    always { R_set_altlist_Elt_method, t_list_elt; }
 }
