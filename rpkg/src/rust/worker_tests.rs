@@ -33,11 +33,7 @@ pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
         eprintln!("[Rust] Worker: about to panic");
         panic!("intentional panic from worker");
     });
-    // Never reached - panic converts to R error
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 // =============================================================================
@@ -126,10 +122,7 @@ pub extern "C-unwind" fn C_test_worker_panic_simple() -> SEXP {
     run_on_worker::<_, ()>(|| {
         panic!("simple panic on worker");
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 /// @noRd
@@ -142,10 +135,7 @@ pub extern "C-unwind" fn C_test_worker_panic_with_drops() -> SEXP {
         let _resource2 = Box::new(SimpleDropMsg("test_panic_drops: resource2 (boxed)"));
         panic!("panic after creating resources");
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 /// @noRd
@@ -158,10 +148,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread() -> SEXP {
             panic!("panic inside with_r_thread callback");
         });
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 /// @noRd
@@ -177,10 +164,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops() -> SEXP {
             panic!("panic in with_r_thread with resources");
         });
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 // -----------------------------------------------------------------------------
@@ -197,10 +181,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_in_r_thread() -> SEXP {
             miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error in with_r_thread".as_ptr());
         });
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 /// @noRd
@@ -218,10 +199,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_with_drops() -> SEXP {
             }
         });
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 // -----------------------------------------------------------------------------
@@ -250,10 +228,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_error() -> SEXP {
             );
         });
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 /// @noRd
@@ -271,10 +246,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 
         panic!("Rust panic after successful R call");
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 // -----------------------------------------------------------------------------
@@ -435,10 +407,7 @@ pub extern "C-unwind" fn C_test_wrong_thread_r_api() -> SEXP {
         // and we're not on main thread
         let _ = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 // -----------------------------------------------------------------------------
@@ -544,10 +513,7 @@ pub extern "C-unwind" fn C_test_nested_with_error() -> SEXP {
             }
         })
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 /// @noRd
@@ -571,10 +537,7 @@ pub extern "C-unwind" fn C_test_nested_with_panic() -> SEXP {
             panic!("Panic in nested with_r_thread");
         })
     });
-    #[allow(unreachable_code)]
-    unsafe {
-        R_NilValue
-    }
+    unsafe { R_NilValue }
 }
 
 /// @noRd

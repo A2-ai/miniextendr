@@ -358,12 +358,18 @@ dnl ---- optional cargo deps: include if present ----
 OPTIONAL_CARGO_DEPS=
 for f in \
   "$RUST_SRC_DIR/build.rs" \
-  "$RUST_SRC_DIR/.cargo/config.toml" \
   "$RUST_SRC_DIR/rust-toolchain.toml" \
   "$RUST_SRC_DIR/rust-toolchain"
 do
   test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
 done
+dnl Only include .cargo/config.toml in vendored modes (dev modes delete it)
+case "$BUILD_CONTEXT" in
+  vendored-install|prepare-cran)
+    f="$RUST_SRC_DIR/.cargo/config.toml"
+    test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
+    ;;
+esac
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
 dnl ---- vendoring (at package root, outside src/) ----
@@ -526,32 +532,9 @@ AC_CONFIG_COMMANDS([cargo-vendor],
             $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
           fi
         else
-          dnl No vendor tarball — try vendoring from network (e.g. GitHub installs)
-          echo "configure: no vendor found, vendoring from network" >&2
-          echo "configure:   (normal for GitHub installs via remotes::install_github())" >&2
-          mkdir -p "$VENDOR_OUT"
-          $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
-          if test $? -ne 0; then
-            echo "configure: error: cargo vendor failed (network required)" >&2
-            exit 1
-          fi
-          dnl Strip tests/benches/examples/hidden files from vendored crates
-          for _crate_dir in "$VENDOR_OUT"/*/; do
-            if test -d "$_crate_dir"; then
-              rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-                     "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-              for _dotfile in "$_crate_dir"/.*; do
-                case "$(basename "$_dotfile")" in
-                  .|..|.cargo-checksum.json) ;;
-                  *) rm -rf "$_dotfile" ;;
-                esac
-              done
-              echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
-            fi
-          done
-          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-          fi
+          echo "configure: error: $BUILD_CONTEXT requires vendored sources." >&2
+          echo "configure:        Run 'just vendor' to create inst/vendor.tar.xz first." >&2
+          exit 1
         fi
       fi
 
@@ -595,12 +578,6 @@ $_crate = { path = \"../../vendor/$_dirname\" }"
       if test -n "$_patch_lines"; then
         printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
         echo "configure: added [patch.crates-io] for transitive deps"
-      fi
-
-      dnl Strip git source replacement from cargo config
-      RPKG_CFG="src/rust/.cargo/config.toml"
-      if test -f "$RPKG_CFG"; then
-        "$SED" '/^\@<:@source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
       fi
 
       dnl Regenerate Cargo.lock from vendored sources

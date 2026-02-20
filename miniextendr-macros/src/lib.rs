@@ -218,6 +218,7 @@ mod dataframe_derive;
 mod lifecycle;
 mod list_derive;
 mod r_class_formatter;
+mod r_preconditions;
 mod return_type_analysis;
 mod roxygen;
 
@@ -229,12 +230,15 @@ mod typed_external_macro;
 
 // Factor support
 mod factor_derive;
+mod match_arg_derive;
 
 // vctrs support
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
 
-pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
+pub(crate) use miniextendr_macros_core::{
+    call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for,
+};
 
 // Feature default mutual exclusivity guards
 #[cfg(all(feature = "default-r6", feature = "default-s7"))]
@@ -676,6 +680,7 @@ pub fn miniextendr(
     // Extract commonly used values
     let uses_internal_c_wrapper = parsed.uses_internal_c_wrapper();
     let call_method_def = parsed.call_method_def_ident();
+    let match_arg_call_defs = parsed.match_arg_call_defs_ident();
     let c_ident = if let Some(ref sym) = c_symbol {
         syn::Ident::new(sym, parsed.c_wrapper_ident().span())
     } else {
@@ -1148,7 +1153,11 @@ pub fn miniextendr(
                     .first()
                     .map(|attr| attr.span())
                     .unwrap_or_else(|| abi.span()),
-                "missing #[no_mangle] (edition 2021), #[unsafe(no_mangle)] (edition 2024), or #[export_name = \"...\"]",
+                "extern \"C-unwind\" functions need a visible C symbol for R's .Call interface. \
+                 Add one of:\n  \
+                 - `#[unsafe(no_mangle)]` (Rust 2024 edition)\n  \
+                 - `#[no_mangle]` (Rust 2021 edition)\n  \
+                 - `#[export_name = \"my_symbol\"]` (custom symbol name)",
             )
             .into_compile_error()
             .into();
@@ -1157,24 +1166,45 @@ pub fn miniextendr(
         // Validate return type is SEXP for extern "C-unwind" functions
         match output {
             non_return_type @ syn::ReturnType::Default => {
-                return syn::Error::new(non_return_type.span(), "output must be SEXP")
-                    .into_compile_error()
-                    .into();
+                return syn::Error::new(
+                    non_return_type.span(),
+                    "extern \"C-unwind\" functions used with #[miniextendr] must return SEXP. \
+                     Add `-> miniextendr_api::ffi::SEXP` as the return type. \
+                     If you want automatic type conversion, remove `extern \"C-unwind\"` and let \
+                     the macro generate the C wrapper.",
+                )
+                .into_compile_error()
+                .into();
             }
             syn::ReturnType::Type(_rarrow, output_type) => match output_type.as_ref() {
                 syn::Type::Path(type_path) => {
                     if let Some(path_to_sexp) = type_path.path.segments.last().map(|x| &x.ident)
                         && path_to_sexp != "SEXP"
                     {
-                        return syn::Error::new(path_to_sexp.span(), "output must be SEXP")
-                            .into_compile_error()
-                            .into();
+                        return syn::Error::new(
+                            path_to_sexp.span(),
+                            format!(
+                                "extern \"C-unwind\" functions must return SEXP, found `{}`. \
+                                 R's .Call interface expects SEXP return values. \
+                                 Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                                 `extern \"C-unwind\"` to let the macro handle type conversion.",
+                                path_to_sexp,
+                            ),
+                        )
+                        .into_compile_error()
+                        .into();
                     }
                 }
                 _ => {
-                    return syn::Error::new(output_type.span(), "output must be SEXP")
-                        .into_compile_error()
-                        .into();
+                    return syn::Error::new(
+                        output_type.span(),
+                        "extern \"C-unwind\" functions must return SEXP. \
+                         R's .Call interface expects SEXP return values. \
+                         Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                         `extern \"C-unwind\"` to let the macro handle type conversion.",
+                    )
+                    .into_compile_error()
+                    .into();
                 }
             },
         }
@@ -1187,7 +1217,9 @@ pub fn miniextendr(
                 syn::FnArg::Receiver(recv) => {
                     return syn::Error::new_spanned(
                         recv,
-                        "extern functions cannot have self parameter",
+                        "extern \"C-unwind\" functions cannot have a `self` parameter. \
+                         R's .Call interface only accepts SEXP arguments. \
+                         Use `#[miniextendr(env|r6|s3|s4|s7)]` on an impl block for methods.",
                     )
                     .into_compile_error()
                     .into();
@@ -1257,8 +1289,19 @@ pub fn miniextendr(
         arg_builder = arg_builder.with_dots(named_dots.clone().map(|id| id.to_string()));
     }
     // Add user-specified parameter defaults, merged with auto-defaults for Missing<T> params
-    let merged_defaults =
+    let mut merged_defaults =
         r_wrapper_builder::merge_missing_defaults(inputs, parsed.param_defaults());
+    // Add NULL default for match_arg params that don't already have an explicit default
+    for match_arg_param in parsed.match_arg_params() {
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            match_arg_param,
+            proc_macro2::Span::call_site(),
+        ))
+        .to_string();
+        merged_defaults
+            .entry(r_name)
+            .or_insert_with(|| "NULL".to_string());
+    }
     arg_builder = arg_builder.with_defaults(merged_defaults);
 
     let r_formals = arg_builder.build_formals();
@@ -1368,12 +1411,89 @@ pub fn miniextendr(
     } else {
         String::new()
     };
+    // Generate match.arg prelude for parameters with #[miniextendr(match_arg)]
+    // Collect (r_param_name, rust_type) for each match_arg param
+    let match_arg_param_info: Vec<(String, &syn::Type)> = inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                let rust_name = pat_ident.ident.to_string();
+                if parsed.has_match_arg_attr(&rust_name) {
+                    let r_name =
+                        r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    return Some((r_name, pt.ty.as_ref()));
+                }
+            }
+            None
+        })
+        .collect();
+
+    let match_arg_prelude = if match_arg_param_info.is_empty() {
+        String::new()
+    } else {
+        let mut lines = Vec::new();
+        for (r_param, _) in &match_arg_param_info {
+            // choices helper call
+            let choices_c_name = format!(
+                "C_{}__match_arg_choices__{}",
+                c_ident.to_string().trim_start_matches("C_"),
+                r_param
+            );
+            lines.push(format!(
+                ".__mx_choices_{param} <- .Call({choices_c}, .call = match.call())",
+                param = r_param,
+                choices_c = choices_c_name,
+            ));
+            // factor → character normalization
+            lines.push(format!(
+                "{param} <- if (is.factor({param})) as.character({param}) else {param}",
+                param = r_param,
+            ));
+            // match.arg validation
+            lines.push(format!(
+                "{param} <- base::match.arg({param}, .__mx_choices_{param})",
+                param = r_param,
+            ));
+        }
+        lines.join("\n  ")
+    };
+
     // Generate lifecycle prelude if needed
     let lifecycle_prelude = lifecycle_spec
         .as_ref()
         .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str));
 
-    let r_wrapper_string = if let Some(prelude) = lifecycle_prelude {
+    // Generate R-side precondition checks (stopifnot)
+    let precondition_checks =
+        r_preconditions::build_precondition_checks(inputs, parsed.match_arg_params());
+    let precondition_prelude = if precondition_checks.is_empty() {
+        String::new()
+    } else {
+        precondition_checks.join("\n  ")
+    };
+
+    // Combine all preludes: lifecycle first, then preconditions, then match.arg, then main call
+    let combined_prelude = {
+        let mut parts = Vec::new();
+        if let Some(ref lc) = lifecycle_prelude {
+            parts.push(lc.as_str());
+        }
+        if !precondition_prelude.is_empty() {
+            parts.push(&precondition_prelude);
+        }
+        if !match_arg_prelude.is_empty() {
+            parts.push(&match_arg_prelude);
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("\n  "))
+        }
+    };
+
+    let r_wrapper_string = if let Some(prelude) = combined_prelude {
         format!(
             "{}{}{}{}{}{} <- function({}) {{\n  {}\n  {}\n}}",
             roxygen_tags_str,
@@ -1457,6 +1577,58 @@ pub fn miniextendr(
 
     let original_item = original_item;
 
+    // Generate match_arg choices helper C wrappers and R_CallMethodDef entries
+    let mut match_arg_helper_def_idents: Vec<syn::Ident> = Vec::new();
+    let match_arg_helpers: Vec<proc_macro2::TokenStream> = match_arg_param_info
+        .iter()
+        .map(|(r_param, param_ty)| {
+            let helper_fn_name = format!(
+                "C_{}__match_arg_choices__{}",
+                c_ident.to_string().trim_start_matches("C_"),
+                r_param
+            );
+            let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
+            let helper_def_ident = syn::Ident::new(
+                &format!("call_method_def_{}", helper_fn_name),
+                proc_macro2::Span::call_site(),
+            );
+            match_arg_helper_def_idents.push(helper_def_ident.clone());
+            let helper_c_name = syn::LitCStr::new(
+                std::ffi::CString::new(helper_fn_name.clone())
+                    .expect("valid C string")
+                    .as_c_str(),
+                proc_macro2::Span::call_site(),
+            );
+            quote::quote! {
+                #(#cfg_attrs)*
+                #[allow(non_snake_case)]
+                #[unsafe(no_mangle)]
+                pub extern "C-unwind" fn #helper_fn_ident(
+                    __miniextendr_call: ::miniextendr_api::ffi::SEXP,
+                ) -> ::miniextendr_api::ffi::SEXP {
+                    ::miniextendr_api::choices_sexp::<#param_ty>()
+                }
+
+                #(#cfg_attrs)*
+                #[allow(non_upper_case_globals)]
+                #[allow(non_snake_case)]
+                const #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+                    ::miniextendr_api::ffi::R_CallMethodDef {
+                        name: #helper_c_name.as_ptr(),
+                        fun: Some(std::mem::transmute::<
+                            unsafe extern "C-unwind" fn(
+                                ::miniextendr_api::ffi::SEXP,
+                            ) -> ::miniextendr_api::ffi::SEXP,
+                            unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
+                        >(#helper_fn_ident)),
+                        numArgs: 1i32,
+                    }
+                };
+            }
+        })
+        .collect();
+    let match_arg_count = match_arg_helper_def_idents.len();
+
     // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
         "See [`{}`] for C wrapper, [`{}`] for R wrapper.",
@@ -1513,6 +1685,17 @@ pub fn miniextendr(
                 numArgs: #num_args,
             }
         };
+
+        // match_arg choices helpers (C wrappers + R_CallMethodDef entries)
+        #(#match_arg_helpers)*
+
+        // match_arg call defs array (collected by miniextendr_module!)
+        #(#cfg_attrs)*
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        #[allow(non_snake_case)]
+        const #match_arg_call_defs: [::miniextendr_api::ffi::R_CallMethodDef; #match_arg_count] =
+            [#(#match_arg_helper_def_idents),*];
 
         // doc-lint warnings (if any)
         #doc_lint_warnings
@@ -1695,6 +1878,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|i| {
             let call_defs_static = i.rdata_call_defs_const_ident();
+            syn::parse_quote!(#call_defs_static)
+        })
+        .collect();
+
+    // Generate match_arg choices helper call defs for registration (per-function)
+    // Every #[miniextendr] function generates a MATCH_ARG_CALL_DEFS_* array (empty if no match_arg params)
+    let match_arg_call_defs: Vec<syn::Expr> = parsed_module
+        .functions
+        .iter()
+        .map(|f| {
+            let call_defs_static = f.match_arg_call_defs_ident();
             syn::parse_quote!(#call_defs_static)
         })
         .collect();
@@ -1959,6 +2153,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Match-arg choices helper call defs length (per-function)
+    let match_arg_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
+        .functions
+        .iter()
+        .map(|f| {
+            let call_defs_static = f.match_arg_call_defs_ident();
+            quote::quote!(<[_]>::len(&#call_defs_static))
+        })
+        .collect();
+
     // Calculate total length expression, including conditional cfg lengths
     let cfg_len_exprs: Vec<proc_macro2::TokenStream> = cfg_len_idents
         .iter()
@@ -1970,13 +2174,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             .chain(impl_call_defs_len_exprs.iter().cloned())
             .chain(trait_impl_call_defs_len_exprs.iter().cloned())
             .chain(rdata_call_defs_len_exprs.iter().cloned())
+            .chain(match_arg_call_defs_len_exprs.iter().cloned())
             .collect();
     let total_len_expr = if all_len_exprs.is_empty()
         || (call_entries_len == 0
             && cfg_len_idents.is_empty()
             && impl_call_defs_len_exprs.is_empty()
             && trait_impl_call_defs_len_exprs.is_empty()
-            && rdata_call_defs_len_exprs.is_empty())
+            && rdata_call_defs_len_exprs.is_empty()
+            && match_arg_call_defs_len_exprs.is_empty())
     {
         quote::quote!(0usize)
     } else {
@@ -2030,6 +2236,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(
                 let mut j: usize = 0;
                 let slice = &#rdata_call_defs;
+                while j < <[_]>::len(slice) {
+                    entries[idx] = slice[j];
+                    idx += 1;
+                    j += 1;
+                }
+            )*
+            #(
+                let mut j: usize = 0;
+                let slice = &#match_arg_call_defs;
                 while j < <[_]>::len(slice) {
                     entries[idx] = slice[j];
                     idx += 1;
@@ -2478,13 +2693,13 @@ pub fn r_ffi_checked(
                     let arg_names: Vec<_> = inputs
                         .iter()
                         .filter_map(|arg| {
-                            #[allow(clippy::collapsible_if)]
-                            if let syn::FnArg::Typed(pat_type) = arg {
-                                if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
-                                    return Some(pat_ident.ident.clone());
-                                }
+                            if let syn::FnArg::Typed(pat_type) = arg
+                                && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+                            {
+                                Some(pat_ident.ident.clone())
+                            } else {
+                                None
                             }
-                            None
                         })
                         .collect();
 
@@ -2948,6 +3163,38 @@ pub fn derive_dataframe_row(input: proc_macro::TokenStream) -> proc_macro::Token
 pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     factor_derive::derive_r_factor(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `MatchArg`: enables conversion between Rust enums and R character strings
+/// with `match.arg` semantics (partial matching, informative errors).
+///
+/// # Usage
+///
+/// ```ignore
+/// #[derive(Copy, Clone, MatchArg)]
+/// enum Mode {
+///     Fast,
+///     Safe,
+///     Debug,
+/// }
+/// ```
+///
+/// # Attributes
+///
+/// - `#[match_arg(rename = "name")]` - Rename a variant's choice string
+/// - `#[match_arg(rename_all = "snake_case")]` - Rename all variants (snake_case, kebab-case, lower, upper)
+///
+/// # Generated Implementations
+///
+/// - `MatchArg` - Choice metadata and bidirectional conversion
+/// - `TryFromSexp` - Convert R STRSXP/factor to enum (with partial matching)
+/// - `IntoR` - Convert enum to R character scalar
+#[proc_macro_derive(MatchArg, attributes(match_arg))]
+pub fn derive_match_arg(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    match_arg_derive::derive_match_arg(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

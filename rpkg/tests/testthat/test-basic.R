@@ -57,3 +57,17 @@ test_that("add variants with different argument styles work", {
   expect_equal(add_right_mut(2L, 3L), 5L)
   expect_equal(add_left_right_mut(2L, 3L), 5L)
 })
+
+# =============================================================================
+# doc_attr_* runtime tests (Phase B1)
+# =============================================================================
+
+test_that("doc_attr_basic doubles its input", {
+  expect_equal(doc_attr_basic(2), 4)
+  expect_equal(doc_attr_basic(0), 0)
+  expect_equal(doc_attr_basic(-3.5), -7.0)
+})
+
+test_that("doc_attr_no_params returns expected string", {
+  expect_equal(doc_attr_no_params(), "hello from doc_attr")
+})

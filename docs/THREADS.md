@@ -249,6 +249,23 @@ These are gated behind `feature = "nonapi"` and may break with R updates:
 
 See [NONAPI.md](NONAPI.md) for the full tracking document.
 
+## Known Limitations
+
+- **Async/await is not supported.** R's C API is single-threaded and synchronous; use blocking I/O on the worker thread or R-level parallelism (mirai, callr). See [GAPS.md](GAPS.md#43-asyncawait-support).
+- **Spawned-thread panics cannot be propagated** through `extern "C-unwind"` functions. Handle thread errors explicitly via `Result` rather than `resume_unwind`. See [GAPS.md](GAPS.md#56-thread-panic-propagation-limitation).
+- **Debug-only SEXP thread assertions** mean release builds may not detect SEXP access from wrong threads. Checked FFI wrappers provide runtime checks in all build modes.
+
+See [GAPS.md](GAPS.md) for the full catalog of known limitations.
+
+---
+
+## See Also
+
+- [SAFETY.md](SAFETY.md) -- Safety invariants and the worker thread model
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling and R error propagation
+- [FEATURES.md](FEATURES.md#nonapi) -- The `nonapi` feature flag for thread utilities
+- [RAYON.md](RAYON.md) -- Parallel iteration with Rayon
+
 ## References
 
 - R source: `src/main/errors.c` - `R_CheckStack()` implementation

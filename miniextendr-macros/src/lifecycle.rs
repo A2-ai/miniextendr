@@ -85,12 +85,6 @@ impl LifecycleStage {
         }
     }
 
-    /// Check if this stage needs a signal call.
-    #[allow(dead_code)]
-    pub fn needs_signal(&self) -> bool {
-        !matches!(self, Self::Stable)
-    }
-
     /// Get the roxygen @keywords value (if needed).
     pub fn keywords(&self) -> Option<&'static str> {
         match self {
@@ -204,26 +198,6 @@ impl LifecycleSpec {
             }
             LifecycleStage::Stable => None,
         }
-    }
-
-    /// Generate roxygen tags for this lifecycle spec.
-    ///
-    /// Returns tags to add to the function documentation.
-    #[allow(dead_code)]
-    pub fn roxygen_tags(&self) -> Vec<String> {
-        let mut tags = Vec::new();
-
-        // Add badge to description
-        if let Some(badge) = self.stage.badge() {
-            tags.push(format!("@description {}", badge));
-        }
-
-        // Add keywords if needed
-        if let Some(keywords) = self.stage.keywords() {
-            tags.push(format!("@keywords {}", keywords));
-        }
-
-        tags
     }
 }
 

@@ -1,0 +1,27 @@
+---
+source: miniextendr-macros/src/r_wrapper_builder/tests.rs
+expression: output
+---
+# Basic scalars
+formals: x, y, name
+call_args: x, y, name
+
+# Unit type default
+formals: x, unused = NULL
+call_args: x, unused
+
+# With dots
+formals: x, ...
+call_args: x, list(...)
+
+# Skip first (method)
+formals: x, y
+call_args: x, y
+
+# User defaults
+formals: x, step = 1L, verbose = FALSE
+call_args: x, step, verbose
+
+# Missing<T> auto-defaults
+formals: x, y = quote(expr=), z = quote(expr=)
+call_args: x, y, z

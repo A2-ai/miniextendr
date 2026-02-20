@@ -4,13 +4,13 @@ This guide walks you through creating your first R package with a Rust backend u
 
 ## Prerequisites
 
-- **Rust** (1.70+): Install from [rustup.rs](https://rustup.rs)
+- **Rust** (1.85+): Install from [rustup.rs](https://rustup.rs)
 - **R** (4.0+): Install from [CRAN](https://cran.r-project.org)
 - **R development tools**: `install.packages("devtools")`
 
 Verify your setup:
 ```bash
-rustc --version   # Should be 1.70+
+rustc --version   # Should be 1.85+
 R --version       # Should be 4.0+
 ```
 
@@ -79,7 +79,7 @@ miniextendr_module! {
 ### Step 3: Build and Test
 
 ```bash
-# Configure (generates Makevars, vendors dependencies)
+# Configure (generates Makevars and build config)
 cd mypackage
 ./configure
 
@@ -436,9 +436,9 @@ describe_color(factor("Red", levels = c("Red", "Green", "Blue")))
 ## Next Steps
 
 - [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) - Detailed class system comparison
-- [ALTREP.md](../altrep.md) - Lazy/compact vectors
-- [THREADS.md](../THREADS.md) - Threading and parallelism
-- [SAFETY.md](../SAFETY.md) - Memory safety guarantees
+- [ALTREP.md](ALTREP.md) - Lazy/compact vectors
+- [THREADS.md](THREADS.md) - Threading and parallelism
+- [SAFETY.md](SAFETY.md) - Memory safety guarantees
 
 ---
 

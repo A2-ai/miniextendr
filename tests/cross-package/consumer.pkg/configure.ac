@@ -242,12 +242,16 @@ dnl ---- optional cargo deps: include if present ----
 OPTIONAL_CARGO_DEPS=
 for f in \
   "$RUST_SRC_DIR/build.rs" \
-  "$RUST_SRC_DIR/.cargo/config.toml" \
   "$RUST_SRC_DIR/rust-toolchain.toml" \
   "$RUST_SRC_DIR/rust-toolchain"
 do
   test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
 done
+dnl Only include .cargo/config.toml in CRAN mode (dev mode deletes it)
+if test "$NOT_CRAN" != "true"; then
+  f="$RUST_SRC_DIR/.cargo/config.toml"
+  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
+fi
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
 dnl ---- no vendoring needed (direct path deps to workspace crates) ----

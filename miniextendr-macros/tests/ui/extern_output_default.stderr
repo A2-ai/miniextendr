@@ -1,4 +1,4 @@
-error: output must be SEXP
+error: extern "C-unwind" functions used with #[miniextendr] must return SEXP. Add `-> miniextendr_api::ffi::SEXP` as the return type. If you want automatic type conversion, remove `extern "C-unwind"` and let the macro generate the C wrapper.
  --> tests/ui/extern_output_default.rs:5:1
   |
 5 | #[miniextendr]

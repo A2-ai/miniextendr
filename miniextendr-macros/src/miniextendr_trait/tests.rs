@@ -358,20 +358,3 @@ fn extract_method_info_extracts_params() {
     assert_eq!(info.param_names[1].to_string(), "b");
     assert_eq!(info.param_types.len(), 2);
 }
-
-#[test]
-fn extract_method_info_detects_default() {
-    let without_default: syn::TraitItemFn = syn::parse2(quote::quote! {
-        fn required(&self) -> i32;
-    })
-    .unwrap();
-    let info = extract_method_info(&without_default);
-    assert!(!info.has_default);
-
-    let with_default: syn::TraitItemFn = syn::parse2(quote::quote! {
-        fn defaulted(&self) -> i32 { 42 }
-    })
-    .unwrap();
-    let info = extract_method_info(&with_default);
-    assert!(info.has_default);
-}

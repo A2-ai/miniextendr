@@ -16,6 +16,7 @@ miniextendr-engine = { workspace = true }
 rayon = ["miniextendr-api/rayon"]
 connections = ["miniextendr-api/connections"]
 refcount-fast-hash = ["miniextendr-api/refcount-fast-hash"]
+debug-preserve = ["miniextendr-api/debug-preserve"]
 
 [dev-dependencies]
 divan = "0.1.21"

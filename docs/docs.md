@@ -13,7 +13,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 | `just clippy` | Run clippy lints |
 | `just fmt` | Format all code |
 | `just test` | Run Rust tests |
-| `just configure` | Vendor deps and run ./configure |
+| `just configure` | Run ./configure (generates Makevars, no vendoring) |
 | `just devtools-test` | Run R tests via devtools |
 | `just devtools-load` | Load rpkg with devtools::load_all |
 | `just r-cmd-install` | Install rpkg via R CMD INSTALL |

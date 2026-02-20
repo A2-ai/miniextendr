@@ -12,6 +12,9 @@ extern void miniextendr_assert_utf8_locale(void);
 extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 
+// Set ALTREP package name before ALTREP registration
+extern void miniextendr_set_altrep_pkg_name(const char* name);
+
 // Optional vctrs support initialization
 // Returns: 0=success, 1=not available, 2=not main thread, 3=already initialized
 // When vctrs feature is disabled, always returns 1 (not available)
@@ -27,6 +30,10 @@ void R_init_@PACKAGE_NAME@(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_worker_init();
     miniextendr_assert_utf8_locale();
+
+    // Set ALTREP package name before ALTREP registration
+    // Use @PACKAGE_NAME@ (case-preserved) for R-facing APIs
+    miniextendr_set_altrep_pkg_name("@PACKAGE_NAME@");
 
     // Optional: initialize vctrs C API support
     // Status 1 (not available) is fine - vctrs is optional

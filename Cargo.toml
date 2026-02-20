@@ -16,6 +16,9 @@ exclude = [
     "tests/cross-package/producer.pkg",
     "tests/cross-package/consumer.pkg/src/rust/",
     "tests/cross-package/producer.pkg/src/rust/",
+    "tests/model_project",
+    "tests/model_project/src/rust",
+    "tests/model_project/vendor",
     "minirextendr",
 ]
 

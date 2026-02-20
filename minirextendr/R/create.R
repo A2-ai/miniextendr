@@ -126,6 +126,18 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
     local_path = local_path
   )
 
+  # Generate configure script from configure.ac
+  if (nzchar(Sys.which("autoconf"))) {
+    cli::cli_h2("Generating configure script")
+    tryCatch(
+      miniextendr_autoconf(usethis::proj_path(rpkg_name)),
+      error = function(e) {
+        cli::cli_alert_warning("autoconf failed: {conditionMessage(e)}")
+        cli::cli_alert_info("Run {.code miniextendr_autoconf()} manually later")
+      }
+    )
+  }
+
   # Initialize git
   if (!fs::file_exists(usethis::proj_path(".git"))) {
     usethis::use_git()

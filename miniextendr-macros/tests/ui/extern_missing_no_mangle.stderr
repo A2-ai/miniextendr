@@ -1,4 +1,7 @@
-error: missing #[no_mangle] (edition 2021), #[unsafe(no_mangle)] (edition 2024), or #[export_name = "..."]
+error: extern "C-unwind" functions need a visible C symbol for R's .Call interface. Add one of:
+         - `#[unsafe(no_mangle)]` (Rust 2024 edition)
+         - `#[no_mangle]` (Rust 2021 edition)
+         - `#[export_name = "my_symbol"]` (custom symbol name)
  --> tests/ui/extern_missing_no_mangle.rs:5:1
   |
 5 | extern "C-unwind" fn C_bad(_x: miniextendr_api::ffi::SEXP) -> miniextendr_api::ffi::SEXP {

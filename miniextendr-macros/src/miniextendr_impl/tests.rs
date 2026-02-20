@@ -594,10 +594,10 @@ fn roxygen_tags_propagate_to_wrapper() {
     let parsed = parse_impl(ClassSystem::Env, item_impl);
     let wrapper = generate_env_r_wrapper(&parsed);
 
-    // Explicit roxygen tags should propagate
+    // For env-class, @param tags are converted to \describe blocks (avoids R CMD check warning)
     assert!(
-        wrapper.contains("#' @param value Initial value"),
-        "wrapper should contain @param tag"
+        wrapper.contains("\\item{\\code{value}}{Initial value}"),
+        "wrapper should contain param as \\describe item"
     );
     assert!(
         wrapper.contains("#' @return The counter value"),
@@ -1762,4 +1762,197 @@ fn s7_wrapper_no_r_data_accessors() {
         "Should not have .rdata_properties in:\n{}",
         wrapper
     );
+}
+
+// =============================================================================
+// Insta snapshot tests for R wrapper output stability
+// =============================================================================
+//
+// These tests capture the full generated R wrapper output as snapshots.
+// Run `cargo insta review` to review and accept changes after modifying codegen.
+
+#[test]
+fn snapshot_env_basic() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            /// Create a new counter
+            /// @param value Initial value
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            /// Get the current value
+            pub fn get(&self) -> i32 { unimplemented!() }
+            /// Increment by one
+            pub fn increment(&mut self) { unimplemented!() }
+            /// Add a value and return the result
+            pub fn add(&mut self, n: i32) -> i32 { unimplemented!() }
+            /// Create from string
+            pub fn from_string(s: String) -> Self { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_env_defaults() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Widget {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(defaults(step = "1L", verbose = "FALSE"))]
+            pub fn update(&mut self, step: i32, verbose: bool) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_r6_basic() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            /// Create a new counter
+            /// @param value Initial value
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            /// Get the current value
+            pub fn get(&self) -> i32 { unimplemented!() }
+            /// Increment by one
+            pub fn increment(&mut self) { unimplemented!() }
+            /// Create from value (static factory)
+            pub fn from_value(v: i32) -> Self { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    insta::assert_snapshot!(generate_r6_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_r6_with_options() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Child {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn greet(&self) -> String { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.r6_inherit = Some("ParentClass".to_string());
+    attrs.r6_cloneable = Some(true);
+    attrs.r6_lock_class = Some(true);
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    insta::assert_snapshot!(generate_r6_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_r6_private_methods() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Secure {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn public_api(&self) -> i32 { unimplemented!() }
+            fn internal_compute(&self) -> i32 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    insta::assert_snapshot!(generate_r6_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_s3_basic() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            pub fn get(&self) -> i32 { unimplemented!() }
+            pub fn increment(&mut self) { unimplemented!() }
+            pub fn zero() -> Self { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    insta::assert_snapshot!(generate_s3_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_s4_basic() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            pub fn get(&self) -> i32 { unimplemented!() }
+            pub fn increment(&mut self) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S4, item_impl);
+    insta::assert_snapshot!(generate_s4_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_s7_basic() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            pub fn get(&self) -> i32 { unimplemented!() }
+            pub fn increment(&mut self) { unimplemented!() }
+            pub fn from_parts(a: i32, b: i32) -> Self { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_s7_properties() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Range {
+            pub fn new(start: f64, end: f64) -> Self { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn length(&self) -> f64 { unimplemented!() }
+
+            #[miniextendr(s7(getter, prop = "midpoint"))]
+            pub fn get_midpoint(&self) -> f64 { unimplemented!() }
+
+            #[miniextendr(s7(setter, prop = "midpoint"))]
+            pub fn set_midpoint(&mut self, value: f64) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_vctrs_vctr() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Percent {
+            pub fn new(x: f64) -> Self { unimplemented!() }
+            pub fn value(&self) -> f64 { unimplemented!() }
+            pub fn scale(&mut self, factor: f64) { unimplemented!() }
+        }
+    };
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: Some(false),
+        ptype: None,
+        abbr: Some("pct".to_string()),
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs = vctrs_attrs;
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    insta::assert_snapshot!(generate_vctrs_r_wrapper(&parsed));
+}
+
+#[test]
+fn snapshot_vctrs_rcrd() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Rational {
+            pub fn new(n: i32, d: i32) -> Self { unimplemented!() }
+            pub fn numerator(&self) -> i32 { unimplemented!() }
+        }
+    };
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Rcrd,
+        base: None,
+        inherit_base_type: None,
+        ptype: None,
+        abbr: Some("rat".to_string()),
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs = vctrs_attrs;
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    insta::assert_snapshot!(generate_vctrs_r_wrapper(&parsed));
 }
