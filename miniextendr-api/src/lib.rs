@@ -425,6 +425,10 @@ pub use from_r::{
 // #[cfg(feature = "nonapi")]
 pub mod encoding;
 
+// Expression evaluation helpers (RSymbol, RCall, REnv)
+pub mod expression;
+pub use expression::{RCall, REnv, RSymbol};
+
 // Note: RNativeType is pub(crate), imported directly in modules that need it
 
 pub mod backtrace;
