@@ -16,7 +16,6 @@
 ## Class Systems
 
 - [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) -- S3, S4, S7 class generation from Rust types
-- [S4_MIGRATION.md](S4_MIGRATION.md) -- S4 to S7 migration guide and S4 helpers
 
 ## Features
 
