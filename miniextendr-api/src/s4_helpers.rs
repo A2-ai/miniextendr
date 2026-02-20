@@ -1,6 +1,10 @@
 /// S4 slot access and class checking helpers.
 ///
-/// Provides safe wrappers around R's S4 class system FFI functions.
+/// For new packages, [`S7`](https://rconsortium.github.io/S7/) is the
+/// recommended class system (use `#[miniextendr(s7)]`). These S4 helpers
+/// exist for interoperating with existing S4 packages -- for example,
+/// reading slots from Bioconductor objects passed as function arguments.
+///
 /// Since R's C API for S4 slot access (`R_has_slot`, `R_do_slot`,
 /// `R_do_slot_assign`) is not exposed in miniextendr's FFI bindings,
 /// these helpers use R expression evaluation via [`RCall`] as a fallback.
