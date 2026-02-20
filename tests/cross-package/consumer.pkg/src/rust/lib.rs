@@ -11,6 +11,12 @@ use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, miniextendr_module, t
 // Import the shared Counter trait and its generated ABI types
 pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
 
+// Import the shared Resettable trait and its generated ABI types
+pub use shared_traits::{
+    Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
+    __resettable_build_vtable,
+};
+
 // ============================================================================
 // Cross-package ExternalPtr pass-through utilities
 // ============================================================================
@@ -171,6 +177,86 @@ pub fn is_counter(sexp: SEXP) -> bool {
 }
 
 // ============================================================================
+// Generic functions working with Resettable trait
+// ============================================================================
+
+/// Reset an object and check if it's in default state
+/// This function works with Resettable objects from ANY package.
+/// @param sexp An ExternalPtr to any type implementing Resettable
+/// @return TRUE if the object is in default state after reset
+/// @export
+#[miniextendr]
+pub fn reset_and_check(sexp: SEXP) -> bool {
+    let mut view = unsafe { ResettableView::from_sexp(sexp) };
+    view.reset();
+    view.is_default()
+}
+
+/// Check if an object is in its default state (without resetting)
+/// @param sexp An ExternalPtr to any type implementing Resettable
+/// @return TRUE if the object is in default state
+/// @export
+#[miniextendr]
+pub fn check_is_default(sexp: SEXP) -> bool {
+    let view = unsafe { ResettableView::from_sexp(sexp) };
+    view.is_default()
+}
+
+/// Check if an object implements the Resettable trait
+/// @param sexp Any R object
+/// @return TRUE if the object implements Resettable trait
+/// @export
+#[miniextendr]
+pub fn is_resettable(sexp: SEXP) -> bool {
+    unsafe { ResettableView::try_from_sexp(sexp).is_some() }
+}
+
+// ============================================================================
+// Combined trait usage (Counter + Resettable on same object)
+// ============================================================================
+
+/// Increment a Counter twice, then reset it via Resettable, return is_default
+/// Tests combined trait usage on the same object across packages.
+/// @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
+/// @return TRUE if the object is in default state after increment+reset
+/// @export
+#[miniextendr]
+pub fn increment_then_reset(sexp: SEXP) -> bool {
+    // First use it as a Counter
+    let mut counter = unsafe { CounterView::from_sexp(sexp) };
+    counter.increment();
+    counter.increment();
+
+    // Then use it as a Resettable (same underlying object)
+    let mut resettable = unsafe { ResettableView::from_sexp(sexp) };
+    resettable.reset();
+    resettable.is_default()
+}
+
+/// Get the value of a Counter, reset it, then get the value again
+/// Returns the value after reset.
+/// @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
+/// @return The counter value after reset
+/// @export
+#[miniextendr]
+pub fn get_reset_get(sexp: SEXP) -> i32 {
+    // Reset via Resettable
+    let mut resettable = unsafe { ResettableView::from_sexp(sexp) };
+    resettable.reset();
+
+    // Read via Counter
+    let counter = unsafe { CounterView::from_sexp(sexp) };
+    counter.value()
+}
+
+/// Debug: Get TAG_RESETTABLE as hex string
+/// @export
+#[miniextendr]
+pub fn debug_consumer_tag_resettable() -> String {
+    format!("{:016x}{:016x}", TAG_RESETTABLE.hi, TAG_RESETTABLE.lo)
+}
+
+// ============================================================================
 // Simple utility functions for testing
 // ============================================================================
 
@@ -218,8 +304,18 @@ miniextendr_module! {
     fn peek_value;
     fn is_counter;
 
+    // Resettable trait generic functions
+    fn reset_and_check;
+    fn check_is_default;
+    fn is_resettable;
+
+    // Combined trait functions (Counter + Resettable)
+    fn increment_then_reset;
+    fn get_reset_get;
+
     // Utility functions
     fn consumer_greet;
     fn consumer_magic_number;
     fn debug_consumer_tag_counter;
+    fn debug_consumer_tag_resettable;
 }
