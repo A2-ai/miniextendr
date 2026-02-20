@@ -5,7 +5,6 @@
 #![allow(non_camel_case_types)]
 use crate::ffi::{DllInfo, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 
-#[allow(non_camel_case_types)]
 /// Signature for ALTREP `coerce` method.
 pub type R_altrep_Coerce_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(x: SEXP, rtype: SEXPTYPE) -> SEXP>;
@@ -182,7 +181,6 @@ unsafe impl Sync for R_altrep_class_t {}
 // Imported ALTREP constructor and method-registration symbols.
 #[allow(missing_docs)]
 #[miniextendr_macros::r_ffi_checked]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     pub fn R_new_altrep(aclass: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
 

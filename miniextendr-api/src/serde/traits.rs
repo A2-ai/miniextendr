@@ -248,18 +248,18 @@ impl<T: serde::Serialize> AsSerialize<T> {
     pub fn into_inner(self) -> T {
         self.0
     }
+}
 
-    /// Get a reference to the inner value.
+impl<T: serde::Serialize> AsRef<T> for AsSerialize<T> {
     #[inline]
-    #[allow(clippy::should_implement_trait)]
-    pub fn as_ref(&self) -> &T {
+    fn as_ref(&self) -> &T {
         &self.0
     }
+}
 
-    /// Get a mutable reference to the inner value.
+impl<T: serde::Serialize> AsMut<T> for AsSerialize<T> {
     #[inline]
-    #[allow(clippy::should_implement_trait)]
-    pub fn as_mut(&mut self) -> &mut T {
+    fn as_mut(&mut self) -> &mut T {
         &mut self.0
     }
 }

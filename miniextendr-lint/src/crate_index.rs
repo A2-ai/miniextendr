@@ -345,13 +345,12 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
         .map_err(|err| format!("{}: failed to parse: {err}", path.display()))?;
 
     let mut data = FileData::default();
-    collect_items_recursive(&parsed.items, path, &mut data);
+    collect_items_recursive(&parsed.items, &mut data);
     Ok(data)
 }
 
 /// Recursively collect all lint-relevant information from parsed items.
-#[allow(clippy::only_used_in_recursion)]
-fn collect_items_recursive(items: &[Item], path: &Path, data: &mut FileData) {
+fn collect_items_recursive(items: &[Item], data: &mut FileData) {
     for item in items {
         match item {
             Item::Fn(item_fn) => {
@@ -574,7 +573,7 @@ fn collect_items_recursive(items: &[Item], path: &Path, data: &mut FileData) {
             Item::Mod(item_mod) => {
                 if let Some((_, child_items)) = &item_mod.content {
                     // Inline module
-                    collect_items_recursive(child_items, path, data);
+                    collect_items_recursive(child_items, data);
                 } else {
                     // Out-of-line module declaration
                     let mod_name = item_mod.ident.to_string();

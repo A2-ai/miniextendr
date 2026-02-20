@@ -55,20 +55,14 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
             eprintln!("[Rust] a.0 = {}", a.0);
             eprintln!("[Rust] b.0 = {}", b.0);
 
-            // Now trigger R error - cleanup should drop a and b
+            // Now trigger R error - cleanup should drop a and b.
+            // a and b are captured by the `move` closure, so they remain
+            // alive at this point. Rf_error diverges (returns !).
             unsafe {
                 ::miniextendr_api::ffi::Rf_error(
                     c"%s".as_ptr(),
                     c"intentional R error for testing".as_ptr(),
                 )
-            };
-            #[allow(unreachable_code)]
-            unsafe {
-                // This is never reached, but we need to "use" a and b
-                // to prevent the compiler from moving them earlier
-                drop(a);
-                drop(b);
-                ::miniextendr_api::ffi::R_NilValue
             }
         },
         None,
@@ -85,9 +79,7 @@ pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
         with_r_unwind_protect(
             || {
                 eprintln!("[Rust] Inside protected function, about to trigger R error");
-                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr());
-                #[allow(unreachable_code)]
-                ::miniextendr_api::ffi::R_NilValue
+                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr())
             },
             None,
         )

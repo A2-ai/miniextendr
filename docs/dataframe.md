@@ -86,40 +86,139 @@ struct Person {
 // Each field maintains its distinct type throughout conversion
 ```
 
-### Collection Types
+### Collection Expansion
 
-Row fields can use various collection types:
+Fixed-size arrays `[T; N]` are **automatically expanded** into N suffixed columns:
+
+```rust
+#[derive(Clone, DataFrameRow)]
+struct Point3D {
+    label: String,
+    coords: [f64; 3],  // → coords_1, coords_2, coords_3
+}
+
+// Generates:
+// struct Point3DDataFrame {
+//     label: Vec<String>,
+//     coords_1: Vec<f64>,
+//     coords_2: Vec<f64>,
+//     coords_3: Vec<f64>,
+// }
+```
+
+For `Vec<T>`, use `#[dataframe(width = N)]` to expand with pinned width:
+
+```rust
+#[derive(Clone, DataFrameRow)]
+struct Scored {
+    name: String,
+    #[dataframe(width = 3)]
+    scores: Vec<f64>,  // → scores_1, scores_2, scores_3 as Option<f64>
+}
+// Shorter vecs get trailing None (→ NA in R), longer vecs are truncated.
+```
+
+Without `width`, `Vec<T>` stays as an opaque single column (list column in R).
+
+### Field-Level Attributes
+
+```rust
+#[derive(Clone, DataFrameRow)]
+struct Row {
+    #[dataframe(skip)]           // Omit from DataFrame
+    internal_id: u64,
+
+    #[dataframe(rename = "lbl")] // Custom column name
+    label: String,
+
+    #[dataframe(as_list)]        // Suppress expansion (keep as single column)
+    coords: [f64; 3],
+
+    #[dataframe(width = 5)]      // Expand Vec to 5 columns
+    scores: Vec<f64>,
+}
+```
+
+| Attribute | Effect | Valid On |
+|-----------|--------|----------|
+| `skip` | Omit field from DataFrame | Any field |
+| `rename = "name"` | Custom column name | Any field |
+| `as_list` | Suppress expansion | `[T; N]`, `Vec<T>` |
+| `expand` | Explicit expansion (default for `[T; N]`) | `[T; N]`, `Vec<T>` |
+| `width = N` | Pin expansion width | `Vec<T>` only |
+
+**Conflicts:** `as_list + expand`, `as_list + width` are compile errors. `expand` on `Vec<T>` requires `width = N`.
+
+**Note on round-tripping:** Structs with expanded fields don't generate `IntoIterator` or `from_dataframe()`, since the companion struct shape differs from the original. Use `to_dataframe()` only.
+
+### Other Collection Types
+
+Non-expanded collection types (opaque columns) work with manual `IntoList`:
 
 ```rust
 use std::collections::{HashSet, BTreeSet};
 
 #[derive(Clone, DataFrameRow)]
 struct ComplexRow {
-    // Standard vectors
-    measurements: Vec<f64>,
-
-    // Fixed-size arrays
-    coords: [f64; 3],
-
-    // Boxed slices (heap-allocated)
-    data: Box<[i32]>,
-
-    // Hash sets (unordered, unique values)
-    tags: HashSet<String>,
-
-    // Tree sets (ordered, unique values)
-    categories: BTreeSet<i32>,
+    measurements: Vec<f64>,      // opaque list column
+    data: Box<[i32]>,            // opaque list column
+    tags: HashSet<String>,       // opaque list column
+    categories: BTreeSet<i32>,   // opaque list column
 }
-
-// Generated DataFrame has Vec<CollectionType> for each field:
-// - measurements: Vec<Vec<f64>>
-// - coords: Vec<[f64; 3]>
-// - data: Vec<Box<[i32]>>
-// - tags: Vec<HashSet<String>>
-// - categories: Vec<BTreeSet<i32>>
 ```
 
-**Note:** Collection field types need manual `IntoList` implementations (see examples in `rpkg/src/rust/dataframe_collections_test.rs`)
+**Note:** These need manual `IntoList` implementations (see `rpkg/src/rust/dataframe_collections_test.rs`).
+
+### Enum Align Mode
+
+Enums derive a companion DataFrame where each variant's fields contribute to a unified schema. Fields absent in a variant are filled with `None` (→ NA in R):
+
+```rust
+#[derive(Clone, DataFrameRow)]
+#[dataframe(tag = "_type")]
+enum Event {
+    Click { id: i64, x: f64, y: f64 },
+    Impression { id: i64, slot: String },
+    Error { id: i64, code: i32, message: String },
+}
+
+// In R:
+//   _type       id    x     y   slot        code  message
+//   Click       1     1.5   2.5 NA          NA    NA
+//   Impression  2     NA    NA  top_banner  NA    NA
+//   Error       3     NA    NA  NA          404   not found
+```
+
+**Key points:**
+- All enum columns are `Vec<Option<T>>` (absent fields get `None`)
+- `tag = "col"` adds a variant discriminator column
+- `align` is implicit for enums (accepted but not required)
+
+#### Type Conflicts Across Variants
+
+If two variants use the same field name with different types, the derive fails by default. Use `conflicts = "string"` to coerce all conflicting columns to String:
+
+```rust
+#[derive(Clone, DataFrameRow)]
+#[dataframe(conflicts = "string")]
+enum Mixed {
+    A { value: f64 },
+    B { value: String },  // value column becomes String for all variants
+}
+```
+
+#### Enum Field Attributes
+
+All field-level attributes (`skip`, `rename`, `as_list`, `width`) work in enum variants too:
+
+```rust
+#[derive(Clone, DataFrameRow)]
+#[dataframe(tag = "_type")]
+enum Observation {
+    Point { id: i32, coords: [f64; 2] },          // coords → coords_1, coords_2
+    Measurement { id: i32, #[dataframe(width = 3)] readings: Vec<f64> },
+}
+```
 
 ### With Serde (when `serde` feature enabled)
 
@@ -183,11 +282,16 @@ The row type must implement `IntoList`:
 - Via `#[derive(Serialize)]` when `serde` feature is enabled
 - Via manual implementation using `List::from_raw_pairs()` (for heterogeneous fields)
 
-### Attributes
+### Container Attributes
 
 ```rust
 #[derive(DataFrameRow)]
-#[dataframe(name = "Measurements")]  // Custom DataFrame name (default: {StructName}DataFrame)
+#[dataframe(
+    name = "Measurements",     // Custom DataFrame name (default: {StructName}DataFrame)
+    tag = "_type",             // Add variant discriminator column (enums)
+    parallel,                  // Enable rayon parallel fill (requires `rayon` feature)
+    conflicts = "string",      // Coerce type conflicts to String (enums)
+)]
 struct Measurement { /* ... */ }
 ```
 

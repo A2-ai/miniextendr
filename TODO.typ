@@ -18,6 +18,30 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - Architecturally impossible: proc macros can't access struct field definitions
   - Workaround: use `#[r_data]` sidecar pattern (documented in CLASS_SYSTEMS.md)
 
+== API Gaps
+
+- [ ] Safe mutable input helpers — copy-in/copy-out pattern for `&mut [T]`
+  - `&mut [T]` banned at macro boundary (GC can invalidate slice pointer)
+  - Formalize as helper type or documented pattern with examples
+  - Files: `from_r.rs`, `docs/GAPS.md` §2.1
+- [ ] String ndarray/matrix conversion
+  - `Array1<String>` / `Array2<String>` ↔ character vector/matrix
+  - Feature-gated behind `ndarray`
+- [ ] Quoted-expression evaluation helpers
+  - Wrapper types for LANGSXP, safe `Rf_eval` with explicit environment
+- [ ] S4 compatibility helpers — helper generation, migration notes S4 → S7
+
+== Performance
+
+- [ ] Worker batching/context reuse API
+  - Current `with_r_thread` is one message per call (440µs amortizable overhead)
+  - Batch API to send multiple work items in one round-trip
+- [ ] Direct/no-wrapper export mode for hot functions
+  - Skip R wrapper layer, direct `.Call` entrypoints
+  - Benchmark shows 2x overhead (249ns vs 126ns)
+- [ ] Name-indexed list API — cached name index for `List::get_named`
+  - Currently every `get_named` does linear scan of R's names vector
+
 == Testing
 
 - [x] Property-based roundtrip tests — 24 proptest tests for all scalar/vector/option types
@@ -27,6 +51,12 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - Remaining gap: RThreadBuilder direct tests skipped (crashes R runtime)
 - [x] String ALTREP NA serialization — fixed in cc115a7 (use `Vec<Option<String>>`,
   register `Vec_Option_String` ALTREP class)
+- [ ] Worker thread test re-enablement
+  - `test-thread.R` and `test-thread-broken.R` have disabled tests
+  - Investigate RThreadBuilder issues, re-enable or document why skipped
+- [ ] Cross-package test expansion
+  - Currently tests basic dispatch only
+  - Expand to complex trait patterns, version compat, multiple trait impls
 
 == Build / Infrastructure
 
@@ -34,6 +64,9 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 - [ ] Windows CI debugging
   - The `-l` (login) flag in bash might change working directory
   - Path format when passing Windows paths to bash
+- [ ] Module `#[cfg]` friction reduction
+  - Macro-level support for `#[cfg]`-aware module wiring
+  - Currently requires path-based module switching pattern
 
 == Optional Features
 
@@ -44,7 +77,6 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - `RBorshOps` adapter trait with blanket impl
 - [ ] `rkyv` optional feature for zero-copy serialization (DEFERRED)
   - Complex: lifetime/validation issues with R's GC model
-  - Revisit after borsh is in place
 
 === Adapter Traits
 
@@ -52,10 +84,23 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - `JsonValue` IntoR/TryFromSexp, homogeneous array optimization
   - NA/NaN/Inf handling via `JsonOptions`, factor support
 
+=== Connections
+
+- [ ] Connections API stability
+  - Capability probing, stronger runtime version checks, binary/stat support
+
 === Concurrency (POSTPONED)
 
 - [ ] crossbeam channel adapters (`RSender`, `RReceiver`)
 - [ ] Future/async adapters (`RFuture`) — requires async runtime integration
+- [ ] Async-like handle model for background tasks (poll/wait/cancel)
+
+== Documentation
+
+- [ ] Connection & progress bar guides (`docs/CONNECTIONS.md`, `docs/PROGRESS.md`)
+- [ ] Intermediate minirextendr vignettes
+  - "Adding Rust Functions" hands-on tutorial
+  - ALTREP quick start
 
 == Low Priority / Nice to Have
 

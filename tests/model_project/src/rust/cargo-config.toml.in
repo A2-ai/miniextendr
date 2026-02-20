@@ -5,10 +5,6 @@
 [source.crates-io]
 replace-with = "vendored-sources"
 
-[source."git+https://github.com/CGMossa/miniextendr"]
-git = "https://github.com/CGMossa/miniextendr"
-replace-with = "vendored-sources"
-
 [source.vendored-sources]
 directory = "@VENDOR_OUT_CARGO@"
 

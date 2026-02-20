@@ -36,23 +36,7 @@ pub enum ThreadStrategy {
     WorkerThread,
 }
 
-impl ThreadStrategy {
-    /// Detect thread strategy based on function characteristics.
-    ///
-    /// Worker thread is the default - provides proper panic handling with destructor cleanup.
-    /// Main thread is only used when explicitly requested.
-    ///
-    /// # Arguments
-    /// * `force_main_thread` - Explicit `#[miniextendr(unsafe(main_thread))]`
-    #[allow(dead_code)] // Will be used when lib.rs is refactored
-    pub fn detect(force_main_thread: bool) -> Self {
-        if force_main_thread {
-            ThreadStrategy::MainThread
-        } else {
-            ThreadStrategy::WorkerThread
-        }
-    }
-}
+impl ThreadStrategy {}
 
 /// Return value handling strategy.
 #[derive(Debug, Clone)]
@@ -1078,13 +1062,6 @@ impl CWrapperContextBuilder {
         self
     }
 
-    /// Add a parameter to coerce.
-    #[allow(dead_code)] // Will be used when lib.rs is refactored
-    pub fn coerce_param(mut self, param: String) -> Self {
-        self.coerce_params.push(param);
-        self
-    }
-
     /// Enable interrupt checking.
     pub fn check_interrupt(mut self) -> Self {
         self.check_interrupt = true;
@@ -1289,29 +1266,6 @@ fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
         }
     }
     None
-}
-
-/// Check if a type is SEXP.
-#[allow(dead_code)] // Will be used when lib.rs is refactored
-pub fn is_sexp_type(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(p) if p
-        .path
-        .segments
-        .last()
-        .map(|s| s.ident == "SEXP")
-        .unwrap_or(false))
-}
-
-/// Check if any input parameter is SEXP.
-#[allow(dead_code)] // Will be used when lib.rs is refactored
-pub fn has_sexp_inputs(inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>) -> bool {
-    inputs.iter().any(|arg| {
-        if let syn::FnArg::Typed(pat_type) = arg {
-            is_sexp_type(pat_type.ty.as_ref())
-        } else {
-            false
-        }
-    })
 }
 
 #[cfg(test)]

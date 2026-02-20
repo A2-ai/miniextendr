@@ -126,11 +126,7 @@ pub fn nested_panic() {
 ///   unsafe_C_r_print_in_thread
 pub fn add_panic(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
-    panic!("we cannot add right now! ");
-    #[allow(unreachable_code)]
-    {
-        _left + _right
-    }
+    panic!("we cannot add right now! ")
 }
 
 /// @noRd
@@ -139,10 +135,6 @@ pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
     unsafe {
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
-    };
-    #[allow(unreachable_code)]
-    {
-        _left + _right
     }
 }
 

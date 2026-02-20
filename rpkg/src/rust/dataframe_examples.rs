@@ -140,6 +140,99 @@ pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
     ToDataFrame(ShapeRow::to_dataframe(rows))
 }
 
+// ── Collection expansion examples ────────────────────────────────────────────
+
+/// Struct with array expansion: [f64; 3] → coords_1, coords_2, coords_3.
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct PointExpanded {
+    pub label: String,
+    pub coords: [f64; 3],
+}
+
+/// Create a data frame with expanded array columns.
+///
+/// @export
+#[miniextendr]
+pub fn create_expanded_points_df() -> ToDataFrame<PointExpandedDataFrame> {
+    let rows = vec![
+        PointExpanded {
+            label: "A".to_string(),
+            coords: [1.0, 2.0, 3.0],
+        },
+        PointExpanded {
+            label: "B".to_string(),
+            coords: [4.0, 5.0, 6.0],
+        },
+    ];
+    ToDataFrame(PointExpanded::to_dataframe(rows))
+}
+
+/// Struct with skip, rename, and pinned Vec expansion.
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct ScoredItem {
+    #[dataframe(rename = "item")]
+    pub name: String,
+    #[dataframe(skip)]
+    pub _internal_id: u64,
+    #[dataframe(width = 3)]
+    pub scores: Vec<f64>,
+}
+
+/// Create a data frame with skip, rename, and Vec expansion.
+///
+/// @export
+#[miniextendr]
+pub fn create_scored_items_df() -> ToDataFrame<ScoredItemDataFrame> {
+    let rows = vec![
+        ScoredItem {
+            name: "alpha".to_string(),
+            _internal_id: 1,
+            scores: vec![10.0, 20.0, 30.0],
+        },
+        ScoredItem {
+            name: "beta".to_string(),
+            _internal_id: 2,
+            scores: vec![40.0],
+        },
+        ScoredItem {
+            name: "gamma".to_string(),
+            _internal_id: 3,
+            scores: vec![],
+        },
+    ];
+    ToDataFrame(ScoredItem::to_dataframe(rows))
+}
+
+/// Enum with array expansion in variants.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(tag = "_type")]
+pub enum SensorReading {
+    Xyz { sensor_id: i32, values: [f64; 3] },
+    Single { sensor_id: i32, reading: f64 },
+}
+
+/// Create a data frame from enum with array expansion.
+///
+/// @export
+#[miniextendr]
+pub fn create_sensor_readings_df() -> ToDataFrame<SensorReadingDataFrame> {
+    let rows = vec![
+        SensorReading::Xyz {
+            sensor_id: 1,
+            values: [1.0, 2.0, 3.0],
+        },
+        SensorReading::Single {
+            sensor_id: 2,
+            reading: 42.0,
+        },
+        SensorReading::Xyz {
+            sensor_id: 3,
+            values: [7.0, 8.0, 9.0],
+        },
+    ];
+    ToDataFrame(SensorReading::to_dataframe(rows))
+}
+
 use miniextendr_api::miniextendr_module;
 
 miniextendr_module! {
@@ -148,4 +241,7 @@ miniextendr_module! {
     fn create_people_df;
     fn create_events_df;
     fn create_shapes_df;
+    fn create_expanded_points_df;
+    fn create_scored_items_df;
+    fn create_sensor_readings_df;
 }

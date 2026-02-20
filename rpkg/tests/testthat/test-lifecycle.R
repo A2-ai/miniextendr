@@ -97,3 +97,13 @@ test_that("R6 method with #[deprecated] generates lifecycle warning", {
     class = "lifecycle_warning_deprecated"
   )
 })
+
+test_that("also_deprecated() generates lifecycle warning", {
+  skip_if_not_installed("lifecycle")
+
+  expect_warning(
+    result <- also_deprecated(),
+    class = "lifecycle_warning_deprecated"
+  )
+  expect_equal(result, "deprecated")
+})

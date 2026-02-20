@@ -568,14 +568,6 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// # Safety
     ///
-    /// - The SEXP must be valid and not shared.
-    /// - `what` must be a valid symbol SEXP.
-    #[inline]
-    #[allow(dead_code)]
-    unsafe fn set_attr_impl_unchecked(&mut self, what: SEXP, value: SEXP) {
-        unsafe { ffi::Rf_setAttrib(self.sexp, what, value) };
-    }
-
     /// Set the `names` attribute.
     ///
     /// Equivalent to R's `SET_NAMES(x, n)`.

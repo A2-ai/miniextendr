@@ -56,7 +56,7 @@ just rcmdinstall        # 4. Rebuild with regenerated wrappers
 Symptoms: R wrappers don't reflect your new `#[miniextendr]` functions.
 
 ```bash
-NOT_CRAN=true just devtools-document  # Regenerate R/miniextendr_wrappers.R
+NOT_CRAN=true just devtools-document  # Regenerate R/miniextendr-wrappers.R
 NOT_CRAN=true just rcmdinstall        # Rebuild with new wrappers
 ```
 

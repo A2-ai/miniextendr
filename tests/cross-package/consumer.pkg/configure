@@ -2486,12 +2486,15 @@ ac_config_files="$ac_config_files src/rust/document.rs"
 OPTIONAL_CARGO_DEPS=
 for f in \
   "$RUST_SRC_DIR/build.rs" \
-  "$RUST_SRC_DIR/.cargo/config.toml" \
   "$RUST_SRC_DIR/rust-toolchain.toml" \
   "$RUST_SRC_DIR/rust-toolchain"
 do
   test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
 done
+if test "$NOT_CRAN" != "true"; then
+  f="$RUST_SRC_DIR/.cargo/config.toml"
+  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
+fi
 
 
 VENDOR_OUT=""

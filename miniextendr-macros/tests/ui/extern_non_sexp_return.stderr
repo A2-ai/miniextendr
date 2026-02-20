@@ -1,4 +1,4 @@
-error: output must be SEXP
+error: extern "C-unwind" functions must return SEXP, found `i32`. R's .Call interface expects SEXP return values. Change the return type to `miniextendr_api::ffi::SEXP`, or remove `extern "C-unwind"` to let the macro handle type conversion.
  --> tests/ui/extern_non_sexp_return.rs:6:63
   |
 6 | extern "C-unwind" fn C_bad(_x: miniextendr_api::ffi::SEXP) -> i32 {

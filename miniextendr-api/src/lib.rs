@@ -1,4 +1,3 @@
-#![allow(varargs_without_pattern)]
 //! miniextendr-api: core runtime for Rust <-> R interop.
 //!
 //! This crate provides the FFI surface, safety wrappers, and macro re-exports
@@ -173,6 +172,12 @@
 //! | Feature | Types | Description |
 //! |---------|-------|-------------|
 //! | `raw_conversions` | `Raw<T>`, `RawSlice<T>` | POD types ↔ raw vectors via bytemuck |
+// ALTREP trait methods are safe fns that receive SEXP / *mut T parameters and
+// must pass them to FFI or unsafe helpers — clippy::not_unsafe_ptr_arg_deref
+// is unavoidable without making every trait method `unsafe fn`.
+// Per-impl-block `#[allow]` in the macros covers downstream crates; this
+// crate-level allow covers the hand-written impls in altrep_impl.rs and
+// altrep_data/iter.rs.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Procedural macros (re-exported from miniextendr-macros)
@@ -197,11 +202,13 @@ pub use miniextendr_macros::typed_list;
 #[cfg(feature = "vctrs")]
 #[doc(inline)]
 pub use miniextendr_macros::Vctrs;
+// Note: MatchArg derive macro is re-exported - it shares the name with the MatchArg trait
+// but they're in different namespaces (derive macros vs types/traits), same as RFactor.
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    DataFrameRow, IntoList, PreferDataFrame, PreferExternalPtr, PreferList, PreferRNativeType,
-    RFactor, TryFromList,
+    DataFrameRow, IntoList, MatchArg, PreferDataFrame, PreferExternalPtr, PreferList,
+    PreferRNativeType, RFactor, TryFromList,
 };
 
 pub mod altrep;
@@ -321,6 +328,62 @@ pub mod thread;
 #[cfg(feature = "materialization-tracking")]
 pub mod altrep_tracking;
 
+// Collection growth debug instrumentation (diagnostics)
+#[cfg(feature = "growth-debug")]
+pub mod growth_debug;
+
+/// Track a collection growth (reallocation) event.
+///
+/// When the `growth-debug` feature is enabled, increments a thread-local counter
+/// for the named collection. When disabled, compiles to a no-op.
+///
+/// # Example
+///
+/// ```ignore
+/// let old_cap = vec.capacity();
+/// vec.push(item);
+/// if vec.capacity() != old_cap {
+///     track_growth!("my_vec");
+/// }
+/// ```
+#[cfg(feature = "growth-debug")]
+#[macro_export]
+macro_rules! track_growth {
+    ($name:expr) => {
+        $crate::growth_debug::record_growth($name)
+    };
+}
+
+/// Track a collection growth (reallocation) event.
+///
+/// No-op when `growth-debug` feature is disabled.
+#[cfg(not(feature = "growth-debug"))]
+#[macro_export]
+macro_rules! track_growth {
+    ($name:expr) => {};
+}
+
+/// Print and reset all growth counters.
+///
+/// When the `growth-debug` feature is enabled, prints all tracked growth events
+/// to stderr and resets the counters. When disabled, compiles to a no-op.
+#[cfg(feature = "growth-debug")]
+#[macro_export]
+macro_rules! report_growth {
+    () => {
+        $crate::growth_debug::report_and_reset()
+    };
+}
+
+/// Print and reset all growth counters.
+///
+/// No-op when `growth-debug` feature is disabled.
+#[cfg(not(feature = "growth-debug"))]
+#[macro_export]
+macro_rules! report_growth {
+    () => {};
+}
+
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]
 pub mod progress;
@@ -406,16 +469,19 @@ pub mod convert;
 pub mod dots;
 pub mod list;
 pub mod missing;
+pub mod named_vector;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
-    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt, DataFrame,
-    IntoDataFrame, ToDataFrame, ToDataFrameExt,
+    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsNamedList, AsNamedListExt, AsNamedVector,
+    AsNamedVectorExt, AsRNative, AsRNativeExt, DataFrame, IntoDataFrame, ToDataFrame,
+    ToDataFrameExt,
 };
 #[cfg(feature = "serde")]
 pub use convert::{AsSerializeRow, SerializeDataFrame};
 pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
 pub use missing::{Missing, is_missing_arg};
+pub use named_vector::{AtomicElement, NamedVector};
 pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
@@ -557,11 +623,7 @@ pub use trait_abi::TraitView;
 
 /// Marker traits for proc-macro derived types.
 pub mod markers;
-pub use markers::{
-    IsAltrepComplexData, IsAltrepIntegerData, IsAltrepListData, IsAltrepLogicalData,
-    IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType, PrefersDataFrame,
-    PrefersExternalPtr, PrefersList, PrefersRNativeType,
-};
+pub use markers::{PrefersDataFrame, PrefersExternalPtr, PrefersList, PrefersRNativeType};
 
 // =============================================================================
 // Adapter Traits
@@ -810,6 +872,14 @@ pub use raw_conversions::{
     Pod, Raw, RawError, RawHeader, RawSlice, RawSliceTagged, RawTagged, Zeroable, raw_from_bytes,
     raw_slice_from_bytes, raw_slice_to_bytes, raw_to_bytes,
 };
+
+/// `match.arg`-style string conversion for enums.
+///
+/// Provides the [`MatchArg`] trait for converting Rust enums to/from R character
+/// strings with partial matching, like R's `match.arg()`.
+/// Use `#[derive(MatchArg)]` on C-style enums to auto-generate the implementation.
+pub mod match_arg;
+pub use match_arg::{MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp};
 
 /// Factor support for enum ↔ R factor conversions.
 ///

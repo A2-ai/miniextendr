@@ -306,7 +306,7 @@ miniextendr_module! {
 }
 ```
 
-**Generated R wrappers (`producer/R/miniextendr_wrappers.R`):**
+**Generated R wrappers (`producer/R/miniextendr-wrappers.R`):**
 
 ```r
 # Type environment

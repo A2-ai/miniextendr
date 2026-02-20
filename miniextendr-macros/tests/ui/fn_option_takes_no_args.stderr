@@ -1,4 +1,4 @@
-error: this option does not take these arguments; use `option` alone or `option = true/false`
+error: `invisible` does not accept parenthesized arguments. Use `invisible` alone or `invisible = true/false`.
  --> tests/ui/fn_option_takes_no_args.rs:3:15
   |
 3 | #[miniextendr(invisible("string_value"))]

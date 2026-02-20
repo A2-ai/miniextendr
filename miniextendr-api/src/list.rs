@@ -10,6 +10,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 /// Owned handle to an R list (`VECSXP`).
+///
+/// # Examples
+///
+/// ```no_run
+/// use miniextendr_api::list::List;
+///
+/// let list = List::from_values(vec![1i32, 2, 3]);
+/// assert_eq!(list.len(), 3);
+/// let first: Option<i32> = list.get_index(0);
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct List(SEXP);
 
@@ -218,18 +228,6 @@ impl List {
     // =========================================================================
     // Attribute setters (equivalent to R's SET_* macros)
     // =========================================================================
-
-    /// Set an arbitrary attribute by symbol (unchecked internal helper).
-    ///
-    /// # Safety
-    ///
-    /// Caller must ensure `what` is a valid symbol SEXP.
-    #[inline]
-    #[allow(dead_code)]
-    unsafe fn set_attr_impl_unchecked(self, what: SEXP, value: SEXP) -> Self {
-        unsafe { ffi::Rf_setAttrib(self.0, what, value) };
-        self
-    }
 
     /// Set the `names` attribute; returns the same list for chaining.
     ///
@@ -1288,7 +1286,7 @@ impl TryFromSexp for List {
         let names_sexp = unsafe { ffi::Rf_getAttrib(list_sexp, ffi::R_NamesSymbol) };
         if names_sexp != unsafe { ffi::R_NilValue } {
             let n = unsafe { ffi::Rf_xlength(list_sexp) };
-            let mut seen = HashSet::new();
+            let mut seen = HashSet::with_capacity(n as usize);
 
             for i in 0..n {
                 let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };

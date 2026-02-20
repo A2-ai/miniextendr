@@ -123,11 +123,6 @@ struct TraitMethod {
     has_self: bool,
     /// Is this &mut self (vs &self)? Only meaningful if has_self is true.
     is_mut: bool,
-    /// Opt-in flags controlling thread strategy.
-    /// Note: This field is currently unused since WorkerThread is the default for static methods.
-    /// Kept for explicitness and potential future use (e.g., forcing main thread static methods).
-    #[allow(dead_code)]
-    worker: bool,
     unsafe_main_thread: bool,
     /// Enable automatic type coercion for all parameters
     coerce: bool,
@@ -419,10 +414,12 @@ fn generate_vtable_static(
         trait_name,
         &methods_owned,
         &consts,
-        class_system,
-        class_has_no_rd,
-        internal,
-        noexport,
+        TraitWrapperOpts {
+            class_system,
+            class_has_no_rd,
+            internal,
+            noexport,
+        },
     ) {
         Ok(s) => s,
         Err(e) => return e.into_compile_error(),
@@ -768,7 +765,6 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     sig: method.sig.clone(),
                     has_self,
                     is_mut,
-                    worker: attrs.worker,
                     unsafe_main_thread: attrs.unsafe_main_thread,
                     coerce: attrs.coerce,
                     check_interrupt: attrs.check_interrupt,
@@ -789,7 +785,6 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
 
 /// Parsed attributes for a trait method.
 struct TraitMethodAttrs {
-    worker: bool,
     unsafe_main_thread: bool,
     coerce: bool,
     check_interrupt: bool,
@@ -907,8 +902,10 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         });
     }
 
+    // `worker` is parsed but not used — WorkerThread is the default for static methods
+    let _ = worker;
+
     TraitMethodAttrs {
-        worker,
         unsafe_main_thread,
         coerce,
         check_interrupt,
@@ -1193,18 +1190,28 @@ fn generate_trait_const_c_wrapper(
     builder.build().generate()
 }
 
+/// Export/documentation control for trait R wrapper generation.
+struct TraitWrapperOpts {
+    class_system: ClassSystem,
+    class_has_no_rd: bool,
+    internal: bool,
+    noexport: bool,
+}
+
 /// Generate R wrapper code for trait methods and consts (dispatch by class system).
-#[allow(clippy::too_many_arguments)]
 fn generate_trait_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-    class_system: ClassSystem,
-    class_has_no_rd: bool,
-    internal: bool,
-    noexport: bool,
+    opts: TraitWrapperOpts,
 ) -> syn::Result<String> {
+    let TraitWrapperOpts {
+        class_system,
+        class_has_no_rd,
+        internal,
+        noexport,
+    } = opts;
     let result = match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts)?,
         ClassSystem::S3 => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
@@ -2446,7 +2453,6 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 sig,
                 has_self,
                 is_mut,
-                worker: false,
                 unsafe_main_thread: false,
                 coerce: false,
                 check_interrupt: false,
@@ -2477,10 +2483,12 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         trait_name,
         &methods,
         &[], // no consts in TPIE
-        class_system,
-        tpie_input.no_rd,
-        tpie_input.internal,
-        tpie_input.noexport,
+        TraitWrapperOpts {
+            class_system,
+            class_has_no_rd: tpie_input.no_rd,
+            internal: tpie_input.internal,
+            noexport: tpie_input.noexport,
+        },
     ) {
         Ok(s) => s,
         Err(e) => return e.into_compile_error().into(),
