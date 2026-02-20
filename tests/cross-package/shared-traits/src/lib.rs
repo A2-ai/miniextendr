@@ -31,3 +31,18 @@ pub trait Counter {
     /// Add a specific value to the counter.
     fn add(&mut self, n: i32);
 }
+
+/// A trait for types that can be reset to their default state.
+///
+/// This trait tests multiple trait impls on the same type across packages.
+/// It is implemented alongside Counter by:
+/// - `SimpleCounter` in producer.pkg (resets to 0)
+/// - `StatefulCounter` in producer.pkg (resets to 0, clears history)
+#[miniextendr]
+pub trait Resettable {
+    /// Reset to the default state.
+    fn reset(&mut self);
+
+    /// Check if the object is in its default state.
+    fn is_default(&self) -> bool;
+}

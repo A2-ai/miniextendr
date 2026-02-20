@@ -13,6 +13,12 @@ use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, miniextendr_module, t
 // Import the shared Counter trait and its generated ABI types
 pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
 
+// Import the shared Resettable trait and its generated ABI types
+pub use shared_traits::{
+    Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
+    __resettable_build_vtable,
+};
+
 // ============================================================================
 // Env-style types (default class system)
 // ============================================================================
@@ -338,6 +344,90 @@ impl Counter for SimpleCounter {
     }
 }
 
+#[miniextendr]
+impl Resettable for SimpleCounter {
+    fn reset(&mut self) {
+        self.value = 0;
+    }
+
+    fn is_default(&self) -> bool {
+        self.value == 0
+    }
+}
+
+// ============================================================================
+// StatefulCounter: tracks history and implements both Counter and Resettable
+// ============================================================================
+
+#[derive(ExternalPtr)]
+pub struct StatefulCounter {
+    value: i32,
+    history: Vec<i32>,
+}
+
+impl StatefulCounter {
+    fn create(initial: i32) -> Self {
+        Self {
+            value: initial,
+            history: vec![initial],
+        }
+    }
+}
+
+#[miniextendr]
+impl StatefulCounter {
+    /// Get current value (inherent method)
+    fn get_value(&self) -> i32 {
+        self.value
+    }
+
+    /// Get how many history entries exist
+    fn history_len(&self) -> i32 {
+        self.history.len() as i32
+    }
+}
+
+#[miniextendr]
+impl Counter for StatefulCounter {
+    fn value(&self) -> i32 {
+        self.value
+    }
+
+    fn increment(&mut self) {
+        self.value += 1;
+        self.history.push(self.value);
+    }
+
+    fn add(&mut self, n: i32) {
+        self.value += n;
+        self.history.push(self.value);
+    }
+}
+
+#[miniextendr]
+impl Resettable for StatefulCounter {
+    fn reset(&mut self) {
+        self.value = 0;
+        self.history.clear();
+        self.history.push(0);
+    }
+
+    fn is_default(&self) -> bool {
+        self.value == 0 && self.history.len() == 1
+    }
+}
+
+/// Create a new StatefulCounter with cross-package trait dispatch support
+/// @param initial Initial counter value
+/// @return An external pointer to the wrapped stateful counter
+/// @export
+#[miniextendr]
+pub fn new_stateful_counter(initial: i32) -> SEXP {
+    let counter = StatefulCounter::create(initial);
+    let erased = __mx_wrap_statefulcounter(counter);
+    unsafe { ccall::mx_wrap(erased) }
+}
+
 /// Create a new counter with cross-package trait dispatch support
 /// @param initial Initial counter value
 /// @return An external pointer to the wrapped counter
@@ -369,6 +459,13 @@ pub fn counter_get_value(counter_sexp: SEXP) -> i32 {
 #[miniextendr]
 pub fn debug_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
+}
+
+/// Debug: Get TAG_RESETTABLE as hex string
+/// @export
+#[miniextendr]
+pub fn debug_tag_resettable() -> String {
+    format!("{:016x}{:016x}", TAG_RESETTABLE.hi, TAG_RESETTABLE.lo)
 }
 
 /// Debug: Get the ExternalPtr type name for SharedData
@@ -407,14 +504,22 @@ miniextendr_module! {
     // S7-style
     impl S7Point;
 
-    // Trait dispatch
+    // Trait dispatch - SimpleCounter
     impl SimpleCounter;
     impl Counter for SimpleCounter;
+    impl Resettable for SimpleCounter;
     fn new_counter;
     fn counter_get_value;
+
+    // Trait dispatch - StatefulCounter
+    impl StatefulCounter;
+    impl Counter for StatefulCounter;
+    impl Resettable for StatefulCounter;
+    fn new_stateful_counter;
 
     // Debug/utility
     fn debug_shared_data_type_name;
     fn debug_tag_counter;
+    fn debug_tag_resettable;
     fn get_r_class;
 }
