@@ -1,0 +1,13 @@
+error[E0277]: the trait bound `SEXP: RNativeType` is not satisfied
+ --> tests/ui/fn_mut_slice_sexp_rejected.rs:7:29
+  |
+7 | fn mutate_sexp_slice(_data: &mut [SEXP]) {}
+  |                             ^ the trait `RNativeType` is not implemented for `SEXP`
+  |
+  = help: the following other types implement trait `RNativeType`:
+            RLogical
+            Rcomplex
+            f64
+            i32
+            u8
+  = note: required for `&mut [SEXP]` to implement `TryFromSexp`

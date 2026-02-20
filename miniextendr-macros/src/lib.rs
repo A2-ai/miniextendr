@@ -1299,6 +1299,17 @@ pub fn miniextendr(
         .to_string();
         merged_defaults.entry(r_name).or_insert_with(|| "NULL".to_string());
     }
+    // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
+    for (param_name, choices) in parsed.choices_params() {
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(
+            &syn::Ident::new(param_name, proc_macro2::Span::call_site()),
+        )
+        .to_string();
+        let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
+        merged_defaults
+            .entry(r_name)
+            .or_insert_with(|| format!("c({})", quoted.join(", ")));
+    }
     arg_builder = arg_builder.with_defaults(merged_defaults);
 
     let r_formals = arg_builder.build_formals();
@@ -1380,6 +1391,32 @@ pub fn miniextendr(
         crate::lifecycle::inject_lifecycle_badge(&mut roxygen_tags, spec);
     }
 
+    // Auto-generate @param tags for choices params (unless user already wrote one)
+    for arg in inputs.iter() {
+        if let syn::FnArg::Typed(pt) = arg
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+        {
+            let rust_name = pat_ident.ident.to_string();
+            if let Some(choices) = parsed.choices_for_param(&rust_name) {
+                let r_name =
+                    r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                // Only inject if user didn't already write @param for this param
+                let has_user_param = roxygen_tags
+                    .iter()
+                    .any(|t| t.trim_start().starts_with(&format!("@param {}", r_name)));
+                if !has_user_param {
+                    let quoted: Vec<String> =
+                        choices.iter().map(|c| format!("\"{}\"", c)).collect();
+                    roxygen_tags.push(format!(
+                        "@param {} One of {}.",
+                        r_name,
+                        quoted.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
     let has_no_rd_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "noRd");
@@ -1457,21 +1494,53 @@ pub fn miniextendr(
         lines.join("\n  ")
     };
 
+    // Generate idiomatic match.arg prelude for choices params
+    // These use the simpler pattern: `param <- match.arg(param)` (no C helper call needed)
+    let choices_prelude = {
+        let mut lines = Vec::new();
+        for arg in inputs.iter() {
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                let rust_name = pat_ident.ident.to_string();
+                if parsed.choices_for_param(&rust_name).is_some() {
+                    let r_name =
+                        r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    lines.push(format!("{r_name} <- match.arg({r_name})"));
+                }
+            }
+        }
+        if lines.is_empty() {
+            String::new()
+        } else {
+            lines.join("\n  ")
+        }
+    };
+
     // Generate lifecycle prelude if needed
     let lifecycle_prelude = lifecycle_spec
         .as_ref()
         .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str));
 
     // Generate R-side precondition checks (stopifnot + fallback precheck calls)
+    // Skip both match_arg and choices params (already validated by match.arg)
+    let mut skip_params = parsed.match_arg_params().clone();
+    for param_name in parsed.choices_params().keys() {
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(
+            &syn::Ident::new(param_name, proc_macro2::Span::call_site()),
+        )
+        .to_string();
+        skip_params.insert(r_name);
+    }
     let precondition_output =
-        r_preconditions::build_precondition_checks(inputs, parsed.match_arg_params());
+        r_preconditions::build_precondition_checks(inputs, &skip_params);
     let precondition_prelude = if precondition_output.static_checks.is_empty() {
         String::new()
     } else {
         precondition_output.static_checks.join("\n  ")
     };
 
-    // Combine all preludes: lifecycle, static preconditions, match.arg
+    // Combine all preludes: lifecycle, static preconditions, match.arg (enum), choices match.arg
     let combined_prelude = {
         let mut parts = Vec::new();
         if let Some(ref lc) = lifecycle_prelude {
@@ -1482,6 +1551,9 @@ pub fn miniextendr(
         }
         if !match_arg_prelude.is_empty() {
             parts.push(&match_arg_prelude);
+        }
+        if !choices_prelude.is_empty() {
+            parts.push(&choices_prelude);
         }
         if parts.is_empty() {
             None

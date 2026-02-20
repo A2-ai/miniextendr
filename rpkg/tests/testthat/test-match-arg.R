@@ -76,3 +76,37 @@ test_that("match_arg return value is character", {
   expect_equal(result, "Debug")
   expect_type(result, "character")
 })
+
+# ============================================================================
+# choices() tests — idiomatic match.arg for string parameters
+# ============================================================================
+
+test_that("choices: default picks first choice", {
+  # First choice is "pearson"
+  expect_equal(choices_correlation(1.0, 2.0), "method=pearson, x=1, y=2")
+  # First choice is "red"
+  expect_equal(choices_color(), "color=red")
+})
+
+test_that("choices: exact match", {
+  expect_equal(choices_correlation(1.0, 2.0, "pearson"), "method=pearson, x=1, y=2")
+  expect_equal(choices_correlation(1.0, 2.0, "kendall"), "method=kendall, x=1, y=2")
+  expect_equal(choices_correlation(1.0, 2.0, "spearman"), "method=spearman, x=1, y=2")
+})
+
+test_that("choices: partial match", {
+  expect_equal(choices_correlation(1.0, 2.0, "p"), "method=pearson, x=1, y=2")
+  expect_equal(choices_correlation(1.0, 2.0, "k"), "method=kendall, x=1, y=2")
+  expect_equal(choices_correlation(1.0, 2.0, "sp"), "method=spearman, x=1, y=2")
+})
+
+test_that("choices: invalid value errors", {
+  expect_error(choices_correlation(1.0, 2.0, "invalid"), "should be one of")
+  expect_error(choices_color("purple"), "should be one of")
+})
+
+test_that("choices: mixed with regular params", {
+  expect_equal(choices_mixed(42L, "fast", TRUE), "n=42, mode=fast, verbose=true")
+  # mode defaults to first choice
+  expect_equal(choices_mixed(42L, verbose = TRUE), "n=42, mode=fast, verbose=true")
+})
