@@ -429,6 +429,9 @@ pub mod encoding;
 pub mod expression;
 pub use expression::{RCall, REnv, RSymbol};
 
+// S4 slot access and class checking helpers
+pub mod s4_helpers;
+
 // Note: RNativeType is pub(crate), imported directly in modules that need it
 
 pub mod backtrace;
