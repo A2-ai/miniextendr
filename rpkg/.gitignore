@@ -1,5 +1,7 @@
 configure~
 autom4te.cache
+config.log
+config.status
 .cargo/config.toml
 src/Makevars
 # Note: Makevars.win is a static file (uses `include Makevars`), tracked in git

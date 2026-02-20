@@ -1,5 +1,9 @@
 configure~
 autom4te.cache
+config.log
+config.status
+src/*-win.def
+src/rust/.cargo/
 .cargo/config.toml
 src/Makevars
 src/*-wrappers.R
