@@ -16,6 +16,14 @@ Range <- S7::new_class("Range",
     midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
   ),
   constructor = function(start, end, .ptr = NULL) {
+    if (is.null(.ptr)) {
+      stopifnot(
+        "'start' must be numeric, logical, or raw" = is.numeric(start) || is.logical(start) || is.raw(start),
+        "'start' must have length 1" = length(start) == 1L,
+        "'end' must be numeric, logical, or raw" = is.numeric(end) || is.logical(end) || is.raw(end),
+        "'end' must have length 1" = length(end) == 1L
+      )
+    }
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {

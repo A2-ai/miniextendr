@@ -9,6 +9,12 @@ expression: generate_vctrs_r_wrapper(&parsed)
 #' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr
 #' @export
 new_rational <- function(n, d) {
+  stopifnot(
+    "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
+    "'n' must have length 1" = length(n) == 1L,
+    "'d' must be numeric, logical, or raw" = is.numeric(d) || is.logical(d) || is.raw(d),
+    "'d' must have length 1" = length(d) == 1L
+  )
   data <- .Call(C_Rational__new, .call = match.call(), n, d)
   vctrs::new_rcrd(data, class = "Rational")
 }

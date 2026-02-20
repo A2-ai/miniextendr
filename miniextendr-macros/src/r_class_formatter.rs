@@ -144,6 +144,16 @@ impl<'a> MethodContext<'a> {
     pub fn has_class_override(&self) -> bool {
         self.method.method_attrs.class.is_some()
     }
+
+    /// Build R-side precondition `stopifnot()` lines for this method's parameters.
+    ///
+    /// Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`).
+    pub fn precondition_checks(&self) -> Vec<String> {
+        crate::r_preconditions::build_precondition_checks(
+            &self.method.sig.inputs,
+            &std::collections::HashSet::new(),
+        )
+    }
 }
 
 /// Builder for class-level roxygen documentation header.

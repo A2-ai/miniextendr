@@ -218,6 +218,7 @@ mod dataframe_derive;
 mod lifecycle;
 mod list_derive;
 mod r_class_formatter;
+mod r_preconditions;
 mod return_type_analysis;
 mod roxygen;
 
@@ -1461,11 +1462,23 @@ pub fn miniextendr(
         .as_ref()
         .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str));
 
-    // Combine all preludes: lifecycle first, then match.arg, then main call
+    // Generate R-side precondition checks (stopifnot)
+    let precondition_checks =
+        r_preconditions::build_precondition_checks(inputs, parsed.match_arg_params());
+    let precondition_prelude = if precondition_checks.is_empty() {
+        String::new()
+    } else {
+        precondition_checks.join("\n  ")
+    };
+
+    // Combine all preludes: lifecycle first, then preconditions, then match.arg, then main call
     let combined_prelude = {
         let mut parts = Vec::new();
         if let Some(ref lc) = lifecycle_prelude {
             parts.push(lc.as_str());
+        }
+        if !precondition_prelude.is_empty() {
+            parts.push(&precondition_prelude);
         }
         if !match_arg_prelude.is_empty() {
             parts.push(&match_arg_prelude);
