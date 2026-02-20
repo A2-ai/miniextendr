@@ -19,6 +19,7 @@ miniextendr-api = { version = "0.1", features = ["connections"] }
 - [Connection Lifecycle](#connection-lifecycle)
 - [std::io Adapters](#stdio-adapters)
 - [Safety & Version Checking](#safety--version-checking)
+- [Capability Probing](#capability-probing)
 - [Error Handling](#error-handling)
 - [Trampoline Architecture](#trampoline-architecture)
 - [Complete Examples](#complete-examples)
@@ -279,7 +280,9 @@ R's connection C API is explicitly unstable. From R's `R_ext/Connections.h`:
 
 > "We explicitly reserve the right to change the connection implementation without a compatibility layer."
 
-miniextendr mitigates this with a **compile-time ABI check**:
+miniextendr mitigates this with **two layers of defense**:
+
+### Compile-Time ABI Check
 
 ```rust
 pub const EXPECTED_CONNECTIONS_VERSION: c_int = 1;
@@ -294,7 +297,83 @@ pub fn check_connections_version() {
 
 This is called automatically by `RCustomConnection::build()`. If the R headers used during compilation have a different `R_CONNECTIONS_VERSION`, the assertion fails at compile time (both values are const), catching ABI mismatches before any unsafe code runs.
 
-The `Rconn` struct layout (`#[repr(C)]`) mirrors R's `struct Rconn` exactly. Any field reordering or resizing in a future R version would cause memory corruption. The version check is the first line of defense.
+### Runtime Version Check
+
+For additional safety, `check_connections_runtime()` probes the running R version:
+
+```rust
+use miniextendr_api::connection::check_connections_runtime;
+
+unsafe {
+    match check_connections_runtime() {
+        Ok(()) => { /* R >= 4.3.0, connections supported */ }
+        Err(msg) => panic!("Connections not available: {msg}"),
+    }
+}
+```
+
+This calls `R.Version()` at runtime and verifies R >= 4.3.0 (when `R_CONNECTIONS_VERSION = 1` was stabilized). Use this in package initialization or before creating your first connection to fail early with a clear error message.
+
+The `Rconn` struct layout (`#[repr(C)]`) mirrors R's `struct Rconn` exactly. Any field reordering or resizing in a future R version would cause memory corruption. The version checks are the first line of defense.
+
+## Capability Probing
+
+You can query the capabilities and state of a connection at runtime using `ConnectionCapabilities`:
+
+```rust
+use miniextendr_api::connection::ConnectionCapabilities;
+
+unsafe {
+    let caps = ConnectionCapabilities::from_sexp(conn_sexp);
+    println!("read={}, write={}, seek={}, text={}, open={}, blocking={}",
+        caps.can_read, caps.can_write, caps.can_seek,
+        caps.is_text, caps.is_open, caps.is_blocking);
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `can_read` | `bool` | Connection supports reading |
+| `can_write` | `bool` | Connection supports writing |
+| `can_seek` | `bool` | Connection supports seeking |
+| `is_text` | `bool` | Text mode (`true`) vs binary mode (`false`) |
+| `is_open` | `bool` | Connection is currently open |
+| `is_blocking` | `bool` | Connection uses blocking I/O |
+
+### Construction
+
+| Method | Input | Notes |
+|--------|-------|-------|
+| `from_sexp(conn_sexp)` | R connection SEXP | Calls `R_GetConnection` internally |
+| `from_handle(handle)` | `Rconnection` handle | When you already have the handle |
+
+### Binary Mode Helper
+
+```rust
+use miniextendr_api::connection::{is_binary_mode, connection_mode};
+
+unsafe {
+    if is_binary_mode(conn_sexp) {
+        // Binary mode: "rb", "wb", "r+b", etc.
+    }
+
+    let mode = connection_mode(conn_sexp);  // e.g., "rb+"
+}
+```
+
+`is_binary_mode()` checks if the connection's mode string contains `'b'`. `connection_mode()` returns the full mode string.
+
+### Connection Description
+
+```rust
+use miniextendr_api::connection::connection_description;
+
+unsafe {
+    let desc = connection_description(conn_sexp); // e.g., "my data source"
+}
+```
 
 ## Error Handling
 
@@ -580,6 +659,7 @@ These are thin wrappers around `R_GetConnection`, `R_ReadConnection`, and `R_Wri
 - **No `vfprintf` by default.** The `vfprintf` callback receives raw C varargs (`va_list`), which are not portable in Rust. The default returns -1. R rarely calls this -- it prefers the `write` callback.
 - **Not `Send`/`Sync`.** Connections run on the main R thread. Your `RConnectionImpl` type does not need to be thread-safe.
 - **GC protection.** The SEXP returned by `build()` must be protected from R's garbage collector if you store it. Returning it directly from a `#[miniextendr]` function handles this automatically.
+- **No stat support.** R's connection C API does not include a `stat` callback (file size, modification time, etc.). If you need stat-like information, track it in your `RConnectionImpl` type or query it through a separate `#[miniextendr]` function.
 
 ## See Also
 
