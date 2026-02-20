@@ -308,7 +308,7 @@ pub mod unwind_protect;
 pub mod worker;
 
 // Re-export commonly used worker items at root for convenience
-pub use worker::{Sendable, is_r_main_thread, with_r_thread};
+pub use worker::{RThreadScope, Sendable, is_r_main_thread, with_r_thread, with_r_thread_batch};
 
 // Required exports for generated code and initialization
 pub use worker::miniextendr_worker_init;
