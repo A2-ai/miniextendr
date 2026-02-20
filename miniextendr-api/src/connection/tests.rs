@@ -57,3 +57,42 @@ fn test_checked_mul_overflow_returns_zero() {
     let total = size.checked_mul(nitems);
     assert!(total.is_none(), "usize::MAX * 2 should overflow");
 }
+
+#[test]
+fn test_connection_capabilities_default() {
+    // Verify the struct can be constructed with all fields
+    let caps = ConnectionCapabilities {
+        can_read: true,
+        can_write: false,
+        can_seek: false,
+        is_text: true,
+        is_open: true,
+        is_blocking: true,
+    };
+    assert!(caps.can_read);
+    assert!(!caps.can_write);
+    assert!(!caps.can_seek);
+    assert!(caps.is_text);
+    assert!(caps.is_open);
+    assert!(caps.is_blocking);
+}
+
+#[test]
+fn test_connection_capabilities_clone_debug() {
+    let caps = ConnectionCapabilities {
+        can_read: true,
+        can_write: true,
+        can_seek: false,
+        is_text: false,
+        is_open: true,
+        is_blocking: false,
+    };
+    let cloned = caps.clone();
+    assert_eq!(cloned.can_read, caps.can_read);
+    assert_eq!(cloned.can_write, caps.can_write);
+    assert_eq!(cloned.is_open, caps.is_open);
+
+    // Verify Debug is implemented
+    let debug_str = format!("{:?}", caps);
+    assert!(debug_str.contains("ConnectionCapabilities"));
+}

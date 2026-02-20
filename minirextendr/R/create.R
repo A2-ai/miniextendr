@@ -359,6 +359,10 @@ use_miniextendr <- function(path = ".",
       local_path = local_path
     )
 
+    # Configuration file at workspace root
+    cli::cli_h2("Creating configuration")
+    use_miniextendr_config()
+
     cli::cli_h1("Setup complete!")
     cli::cli_alert_info("Next steps:")
     cli::cli_bullets(c(
@@ -416,6 +420,10 @@ use_miniextendr <- function(path = ".",
       }
     )
   }
+
+  # Configuration file
+  cli::cli_h2("Creating configuration")
+  use_miniextendr_config()
 
   # Summary
   cli::cli_h1("Setup complete!")

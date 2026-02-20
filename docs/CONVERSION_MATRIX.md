@@ -342,4 +342,4 @@ fn sum_all(x: f64, _dots: &Dots) -> f64 {
 }
 ```
 
-For typed dots validation, see [dots_typed_list.md](dots_typed_list.md).
+For typed dots validation, see [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md).

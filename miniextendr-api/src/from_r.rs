@@ -1983,6 +1983,111 @@ where
 }
 
 // =============================================================================
+// CopySliceMut - safe copy-in/copy-out wrapper for mutable slice access
+// =============================================================================
+
+/// Safe copy-in/copy-out wrapper for mutable slice access to R vectors.
+///
+/// Copies R vector data into an owned `Vec<T>` on construction (copy-in),
+/// provides `DerefMut` to `[T]` for ergonomic mutation, and converts back
+/// to an R vector via `IntoR` (copy-out).
+///
+/// This is the safe alternative to `&mut [T]` at the `#[miniextendr]` boundary,
+/// which is rejected because R's GC can invalidate the slice pointer mid-use.
+///
+/// # Supported types
+///
+/// `i32`, `f64`, `u8`, `RLogical` -- any type implementing `RNativeType`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::CopySliceMut;
+///
+/// #[miniextendr]
+/// pub fn double_values(mut data: CopySliceMut<f64>) -> CopySliceMut<f64> {
+///     for x in data.iter_mut() {
+///         *x *= 2.0;
+///     }
+///     data
+/// }
+/// ```
+pub struct CopySliceMut<T> {
+    data: Vec<T>,
+}
+
+impl<T> CopySliceMut<T> {
+    /// Consume this wrapper and return the underlying `Vec<T>`.
+    #[inline]
+    pub fn into_vec(self) -> Vec<T> {
+        self.data
+    }
+
+    /// View the data as an immutable slice.
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        &self.data
+    }
+
+    /// View the data as a mutable slice.
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        &mut self.data
+    }
+
+    /// Return the number of elements.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Return true if the slice is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+}
+
+impl<T> std::ops::Deref for CopySliceMut<T> {
+    type Target = [T];
+
+    #[inline]
+    fn deref(&self) -> &[T] {
+        &self.data
+    }
+}
+
+impl<T> std::ops::DerefMut for CopySliceMut<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [T] {
+        &mut self.data
+    }
+}
+
+impl<T> TryFromSexp for CopySliceMut<T>
+where
+    T: crate::ffi::RNativeType + Copy,
+{
+    type Error = SexpTypeError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(CopySliceMut {
+            data: slice.to_vec(),
+        })
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(CopySliceMut {
+            data: slice.to_vec(),
+        })
+    }
+}
+
+// =============================================================================
 // String conversions - STRSXP requires special handling via STRING_ELT
 // =============================================================================
 

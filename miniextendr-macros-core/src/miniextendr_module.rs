@@ -460,18 +460,23 @@ impl MiniextendrModuleVctrs {
 /// - `use x::*;` — glob imports can't be enumerated statically
 /// - `use x::{a, b};` — grouped imports must be listed separately
 pub struct MiniextendrModuleUse {
+    /// Attributes on the use entry (e.g., `#[cfg(feature = "x")]`).
+    pub attrs: Vec<syn::Attribute>,
     _use_token: syn::Token![use],
     /// Target module to re-export wrappers from (leaf segment of the path).
     pub use_name: syn::UseName,
 }
 
 impl syn::parse::Parse for MiniextendrModuleUse {
-    /// Parses one `use name;` or `use path::to::name;` module entry.
+    /// Parses one `use name;` or `use path::to::name;` module entry,
+    /// with optional leading attributes (e.g., `#[cfg(feature = "x")] use submod;`).
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
         let _use_token = input.parse()?;
         let use_tree: syn::UseTree = input.parse()?;
         let use_name = Self::extract_leaf_name(&use_tree)?;
         Ok(Self {
+            attrs,
             _use_token,
             use_name,
         })
@@ -793,5 +798,32 @@ mod tests {
             err.contains("grouped imports"),
             "error should mention grouped imports: {err}"
         );
+    }
+
+    #[test]
+    fn use_with_cfg_attribute() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            #[cfg(feature = "rayon")]
+            use parallel_mod;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens).unwrap();
+        assert_eq!(parsed.uses.len(), 1);
+        assert_eq!(parsed.uses[0].use_name.ident, "parallel_mod");
+        assert_eq!(parsed.uses[0].attrs.len(), 1);
+        assert!(parsed.uses[0].attrs[0].path().is_ident("cfg"));
+    }
+
+    #[test]
+    fn use_with_cfg_and_path() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            mod mypkg;
+            #[cfg(feature = "rayon")]
+            use crate::parallel_mod;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens).unwrap();
+        assert_eq!(parsed.uses.len(), 1);
+        assert_eq!(parsed.uses[0].use_name.ident, "parallel_mod");
+        assert_eq!(parsed.uses[0].attrs.len(), 1);
     }
 }

@@ -597,6 +597,109 @@ where
     }
 }
 
+/// Execute multiple closures on the R main thread in a single round-trip.
+///
+/// Each closure runs sequentially on the main thread. Results are collected
+/// into a `Vec`. If any closure panics, remaining closures are skipped and
+/// the panic propagates.
+///
+/// This amortizes the ~440us channel overhead across N calls instead of
+/// paying it N times.
+///
+/// # Panics
+///
+/// Panics if the worker hasn't been initialized (see [`miniextendr_worker_init`]).
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::worker::with_r_thread_batch;
+///
+/// let results = with_r_thread_batch(vec![
+///     Box::new(|| 1 + 1),
+///     Box::new(|| 2 + 2),
+///     Box::new(|| 3 + 3),
+/// ]);
+/// assert_eq!(results, vec![2, 4, 6]);
+/// ```
+pub fn with_r_thread_batch<F, T>(work_items: Vec<F>) -> Vec<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    with_r_thread(move || work_items.into_iter().map(|f| f()).collect())
+}
+
+/// A scope for batching multiple R thread calls into a single round-trip.
+///
+/// Instead of one channel round-trip per call, `RThreadScope` collects
+/// closures and executes them all in a single `with_r_thread` call when
+/// [`execute`](RThreadScope::execute) is invoked.
+///
+/// Results are returned as `Vec<Box<dyn Any + Send>>` because each closure
+/// may return a different type. Use [`downcast`](Box::downcast) to recover
+/// the concrete type.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::worker::RThreadScope;
+///
+/// let mut scope = RThreadScope::new();
+/// let idx_a = scope.push(|| 42i32);
+/// let idx_b = scope.push(|| String::from("hello"));
+///
+/// let results = scope.execute();
+/// let a: i32 = *results[idx_a].downcast().unwrap();
+/// let b: String = *results[idx_b].downcast().unwrap();
+/// assert_eq!(a, 42);
+/// assert_eq!(b, "hello");
+/// ```
+pub struct RThreadScope {
+    work_items: Vec<Box<dyn FnOnce() -> Box<dyn Any + Send> + Send>>,
+}
+
+impl RThreadScope {
+    /// Create a new empty scope.
+    pub fn new() -> Self {
+        Self {
+            work_items: Vec::new(),
+        }
+    }
+
+    /// Queue a closure to run on the R main thread.
+    ///
+    /// Returns an index that can be used to retrieve the result from the
+    /// `Vec` returned by [`execute`](RThreadScope::execute).
+    pub fn push<F, T>(&mut self, f: F) -> usize
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        let idx = self.work_items.len();
+        self.work_items
+            .push(Box::new(move || Box::new(f()) as Box<dyn Any + Send>));
+        idx
+    }
+
+    /// Execute all queued closures in a single round-trip to the R main thread.
+    ///
+    /// Returns results in the order they were pushed. Each result is a
+    /// `Box<dyn Any + Send>` that can be downcast to the original return type.
+    ///
+    /// If any closure panics, remaining closures are skipped and the panic
+    /// propagates.
+    pub fn execute(self) -> Vec<Box<dyn Any + Send>> {
+        with_r_thread(move || self.work_items.into_iter().map(|f| f()).collect())
+    }
+}
+
+impl Default for RThreadScope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Initialize the miniextendr worker thread infrastructure.
 ///
 /// # Requirements
@@ -857,5 +960,64 @@ mod tests {
         let job: AnyJob = Box::new(|| {});
         let result = tx.send(job);
         assert!(result.is_err(), "send should fail when worker is dead");
+    }
+
+    // -----------------------------------------------------------------------
+    // Batching API tests (no R required)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn with_r_thread_batch_panics_before_init() {
+        // Like with_r_thread, batch should panic before worker init
+        let result = std::panic::catch_unwind(|| {
+            with_r_thread_batch(vec![Box::new(|| 42) as Box<dyn FnOnce() -> i32 + Send>]);
+        });
+        assert!(result.is_err());
+        let payload = result.unwrap_err();
+        let msg = crate::unwind_protect::panic_payload_to_string(payload.as_ref());
+        assert!(
+            msg.contains("miniextendr_worker_init"),
+            "expected init error message, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn with_r_thread_batch_empty_vec() {
+        // Empty batch should also panic before init (goes through with_r_thread)
+        let result = std::panic::catch_unwind(|| {
+            with_r_thread_batch::<Box<dyn FnOnce() -> i32 + Send>, i32>(vec![]);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn r_thread_scope_new_is_empty() {
+        let scope = RThreadScope::new();
+        // Execute an empty scope — still panics before init, but validates construction
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            scope.execute();
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn r_thread_scope_push_returns_sequential_indices() {
+        let mut scope = RThreadScope::new();
+        let idx0 = scope.push(|| 1);
+        let idx1 = scope.push(|| 2);
+        let idx2 = scope.push(|| 3);
+        assert_eq!(idx0, 0);
+        assert_eq!(idx1, 1);
+        assert_eq!(idx2, 2);
+    }
+
+    #[test]
+    fn r_thread_scope_default_trait() {
+        let scope = RThreadScope::default();
+        // Just verifies Default is implemented
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            scope.execute();
+        }));
+        assert!(result.is_err()); // panics before init, expected
     }
 }

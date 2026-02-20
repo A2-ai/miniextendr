@@ -308,7 +308,7 @@ pub mod unwind_protect;
 pub mod worker;
 
 // Re-export commonly used worker items at root for convenience
-pub use worker::{Sendable, is_r_main_thread, with_r_thread};
+pub use worker::{RThreadScope, Sendable, is_r_main_thread, with_r_thread, with_r_thread_batch};
 
 // Required exports for generated code and initialization
 pub use worker::miniextendr_worker_init;
@@ -415,13 +415,22 @@ pub mod rng;
 pub use rng::{RngGuard, with_rng};
 
 // Re-export from_r
-pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
+pub use from_r::{
+    CopySliceMut, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
+};
 
 // Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
 // NOTE: Disabled because it references non-exported symbols from R's Defn.h
 // (e.g., known_to_be_utf8, utf8locale) that cause dlopen failures at runtime.
 // #[cfg(feature = "nonapi")]
 pub mod encoding;
+
+// Expression evaluation helpers (RSymbol, RCall, REnv)
+pub mod expression;
+pub use expression::{RCall, REnv, RSymbol};
+
+// S4 slot access and class checking helpers
+pub mod s4_helpers;
 
 // Note: RNativeType is pub(crate), imported directly in modules that need it
 
@@ -479,7 +488,9 @@ pub use convert::{
 };
 #[cfg(feature = "serde")]
 pub use convert::{AsSerializeRow, SerializeDataFrame};
-pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
+pub use list::{
+    IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, TryFromList, collect_list,
+};
 pub use missing::{Missing, is_missing_arg};
 pub use named_vector::{AtomicElement, NamedVector};
 pub use strvec::{StrVec, StrVecBuilder};
