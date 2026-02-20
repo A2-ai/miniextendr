@@ -416,7 +416,7 @@ pub use rng::{RngGuard, with_rng};
 
 // Re-export from_r
 pub use from_r::{
-    SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
+    CopySliceMut, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
 };
 
 // Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
