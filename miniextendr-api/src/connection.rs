@@ -45,7 +45,7 @@
 //!     .build(MyConnection { data: vec![1, 2, 3], position: 0 });
 //! ```
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 
 use crate::ffi::{R_CONNECTIONS_VERSION, R_NilValue, Rboolean, Rconnection, SEXP};
@@ -84,6 +84,244 @@ pub fn check_connections_version() {
          The R connections API may have changed incompatibly.",
         EXPECTED_CONNECTIONS_VERSION, R_CONNECTIONS_VERSION
     );
+}
+
+/// Check if the running R version supports custom connections.
+///
+/// The custom connections API (`R_new_custom_connection`) requires R >= 4.3.0,
+/// when the API was stabilized with `R_CONNECTIONS_VERSION = 1`.
+///
+/// This is a **runtime** check using `R.Version()`, complementing the
+/// compile-time [`check_connections_version`] assertion.
+///
+/// # Safety
+///
+/// Must be called from the R main thread (uses R API calls).
+///
+/// # Returns
+///
+/// - `Ok(())` if the running R version supports custom connections
+/// - `Err(message)` if the version is too old or could not be determined
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::check_connections_runtime;
+///
+/// unsafe {
+///     if let Err(msg) = check_connections_runtime() {
+///         panic!("Connections not supported: {msg}");
+///     }
+/// }
+/// ```
+pub unsafe fn check_connections_runtime() -> Result<(), String> {
+    use crate::expression::RCall;
+    use crate::ffi::{Rf_asInteger, Rf_protect, Rf_unprotect, R_BaseEnv};
+
+    unsafe {
+        // Evaluate R.Version() in base env
+        let version_list = RCall::new("R.Version").eval(R_BaseEnv)?;
+        Rf_protect(version_list);
+
+        // Extract $major
+        let major_sexp = RCall::new("$")
+            .arg(version_list)
+            .arg(crate::ffi::Rf_mkString(c"major".as_ptr()))
+            .eval(R_BaseEnv)
+            .map_err(|e| {
+                Rf_unprotect(1);
+                e
+            })?;
+        Rf_protect(major_sexp);
+
+        // Extract $minor
+        let minor_sexp = RCall::new("$")
+            .arg(version_list)
+            .arg(crate::ffi::Rf_mkString(c"minor".as_ptr()))
+            .eval(R_BaseEnv)
+            .map_err(|e| {
+                Rf_unprotect(2);
+                e
+            })?;
+        Rf_protect(minor_sexp);
+
+        // Convert major (character) to integer via as.integer()
+        let major_int = RCall::new("as.integer")
+            .arg(major_sexp)
+            .eval(R_BaseEnv)
+            .map_err(|e| {
+                Rf_unprotect(3);
+                e
+            })?;
+        let major = Rf_asInteger(major_int);
+
+        // Parse minor: it's a string like "3.1", we only need the part before the dot
+        let minor_int = RCall::new("as.integer")
+            .arg(RCall::new("sub")
+                .arg(crate::ffi::Rf_mkString(c"\\..*".as_ptr()))
+                .arg(crate::ffi::Rf_mkString(c"".as_ptr()))
+                .arg(minor_sexp)
+                .eval(R_BaseEnv)
+                .map_err(|e| {
+                    Rf_unprotect(3);
+                    e
+                })?)
+            .eval(R_BaseEnv)
+            .map_err(|e| {
+                Rf_unprotect(3);
+                e
+            })?;
+        let minor = Rf_asInteger(minor_int);
+
+        Rf_unprotect(3); // version_list, major_sexp, minor_sexp
+
+        // R_new_custom_connection requires R >= 4.3.0
+        if major > 4 || (major == 4 && minor >= 3) {
+            Ok(())
+        } else {
+            Err(format!(
+                "Custom connections require R >= 4.3.0, but running R {major}.{minor}"
+            ))
+        }
+    }
+}
+
+// =============================================================================
+// ConnectionCapabilities - query connection state
+// =============================================================================
+
+/// Capabilities and state of an R connection.
+///
+/// Obtained by probing the fields of an R connection struct.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::ConnectionCapabilities;
+///
+/// unsafe {
+///     let caps = ConnectionCapabilities::from_sexp(conn_sexp);
+///     if caps.can_read && caps.is_open {
+///         // safe to read
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ConnectionCapabilities {
+    /// Whether the connection supports reading.
+    pub can_read: bool,
+    /// Whether the connection supports writing.
+    pub can_write: bool,
+    /// Whether the connection supports seeking.
+    pub can_seek: bool,
+    /// Whether the connection is in text mode (vs binary).
+    pub is_text: bool,
+    /// Whether the connection is currently open.
+    pub is_open: bool,
+    /// Whether the connection is blocking.
+    pub is_blocking: bool,
+}
+
+impl ConnectionCapabilities {
+    /// Probe the capabilities of a connection from its SEXP.
+    ///
+    /// Reads the boolean flags directly from the `Rconn` struct.
+    ///
+    /// # Safety
+    ///
+    /// - `conn_sexp` must be a valid R connection object
+    /// - Must be called from the R main thread
+    pub unsafe fn from_sexp(conn_sexp: SEXP) -> Self {
+        let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+        let conn = handle as *const Rconn;
+        unsafe {
+            ConnectionCapabilities {
+                can_read: (*conn).canread == Rboolean::TRUE,
+                can_write: (*conn).canwrite == Rboolean::TRUE,
+                can_seek: (*conn).canseek == Rboolean::TRUE,
+                is_text: (*conn).text == Rboolean::TRUE,
+                is_open: (*conn).isopen == Rboolean::TRUE,
+                is_blocking: (*conn).blocking == Rboolean::TRUE,
+            }
+        }
+    }
+
+    /// Probe the capabilities of a connection from its handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid `Rconnection` obtained from `R_GetConnection`
+    pub unsafe fn from_handle(handle: Rconnection) -> Self {
+        let conn = handle as *const Rconn;
+        unsafe {
+            ConnectionCapabilities {
+                can_read: (*conn).canread == Rboolean::TRUE,
+                can_write: (*conn).canwrite == Rboolean::TRUE,
+                can_seek: (*conn).canseek == Rboolean::TRUE,
+                is_text: (*conn).text == Rboolean::TRUE,
+                is_open: (*conn).isopen == Rboolean::TRUE,
+                is_blocking: (*conn).blocking == Rboolean::TRUE,
+            }
+        }
+    }
+}
+
+/// Check if a connection is in binary mode by inspecting its mode string.
+///
+/// Returns `true` if the mode contains `'b'` (e.g., `"rb"`, `"wb"`, `"r+b"`).
+///
+/// # Safety
+///
+/// - `conn_sexp` must be a valid R connection object
+/// - Must be called from the R main thread
+pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
+    let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+    let conn = handle as *const Rconn;
+    unsafe {
+        let mode = &(*conn).mode;
+        mode.iter().any(|&c| c == b'b' as c_char)
+    }
+}
+
+/// Get the mode string of a connection.
+///
+/// Returns the mode string (e.g., `"r"`, `"wb"`, `"r+b"`).
+///
+/// # Safety
+///
+/// - `conn_sexp` must be a valid R connection object
+/// - Must be called from the R main thread
+pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
+    let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+    let conn = handle as *const Rconn;
+    unsafe {
+        let mode_ptr = (*conn).mode.as_ptr();
+        CStr::from_ptr(mode_ptr)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+/// Get the description string of a connection.
+///
+/// Returns the description string (shown in `summary(conn)`).
+///
+/// # Safety
+///
+/// - `conn_sexp` must be a valid R connection object
+/// - Must be called from the R main thread
+pub unsafe fn connection_description(conn_sexp: SEXP) -> String {
+    let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
+    let conn = handle as *const Rconn;
+    unsafe {
+        if (*conn).description.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr((*conn).description)
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
 }
 
 // =============================================================================
