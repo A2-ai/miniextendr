@@ -455,3 +455,24 @@ miniextendr-api = { version = "0.1", features = ["uuid", "time"] }
    ```rust
    pub fn maybe(x: i32) -> Option<i32> { if x > 0 { Some(x) } else { None } }
    ```
+
+---
+
+## Known Limitations
+
+- **Mutable slice parameters** (`&mut [T]`) are not supported in `#[miniextendr]` functions. R vectors are copy-on-write; accept `&[T]` and return a new `Vec<T>` instead.
+- **String matrices** (`ndarray::Array<String, Ix2>`) are not directly convertible because R's STRSXP is not contiguous memory. Use `Vec<Vec<String>>` as an intermediary.
+- **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
+
+See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds.
+
+---
+
+## See Also
+
+- [COERCE.md](COERCE.md) -- Type coercion trait design
+- [CONVERSION_SEMANTICS.md](CONVERSION_SEMANTICS.md) -- Storage-directed conversion semantics
+- [CONVERSION_MATRIX.md](CONVERSION_MATRIX.md) -- R type x Rust type behavior reference
+- [FEATURES.md](FEATURES.md) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
+- [GC_PROTECT.md](GC_PROTECT.md) -- RAII-based GC protection for SEXP lifetimes
+- [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) -- Type conversion error messages

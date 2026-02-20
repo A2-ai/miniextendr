@@ -96,6 +96,7 @@ fn preserve_release_arbitrary_order(n: usize) {
 }
 
 /// Preserve list: count check
+#[cfg(feature = "debug-preserve")]
 #[divan::bench]
 fn preserve_count() {
     unsafe {
@@ -112,7 +113,6 @@ fn preserve_ppsize_scale(n: usize) {
             let sexp = ffi::Rf_ScalarInteger((i % 1000) as i32);
             cells.push(preserve::insert_unchecked(sexp));
         }
-        divan::black_box(preserve::count());
         // Release all
         for cell in cells {
             preserve::release_unchecked(cell);

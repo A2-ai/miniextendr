@@ -15,7 +15,7 @@
 
 ## Class Systems
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) -- S3, S4, R7 class generation from Rust types
+- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) -- S3, S4, S7 class generation from Rust types
 
 ## Features
 
@@ -39,8 +39,11 @@
 
 ## Build System
 
+- [DEVELOPER_WORKFLOW.md](DEVELOPER_WORKFLOW.md) -- Quick reference for common development tasks
+- [MACRO_ERRORS.md](MACRO_ERRORS.md) -- Proc-macro and lint error guide (all MXL codes)
 - [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) -- How R builds packages with compiled code
 - [TEMPLATES.md](TEMPLATES.md) -- Template system (`.in` files and configure)
+- [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) -- All env vars affecting build/configure/lint
 - [VENDOR.md](VENDOR.md) -- Vendoring, PREPARE_CRAN, and CRAN release prep
 - [LINKING.md](LINKING.md) -- Linking strategy for shared libraries
 - [ENTRYPOINT.md](ENTRYPOINT.md) -- R package entry point (`R_init_*`)

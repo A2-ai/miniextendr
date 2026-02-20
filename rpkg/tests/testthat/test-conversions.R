@@ -519,3 +519,250 @@ test_that("Scalar Option<T> extended numeric return types", {
   expect_true(is.integer(conv_option_u32_some()))
   expect_equal(conv_option_u32_some(), 100L)
 })
+
+# ── AsNamedList / AsNamedVector ─────────────────────────────────────────────
+
+test_that("AsNamedList<Vec<(K,V)>> creates named R list", {
+  res <- conv_as_named_list_vec()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("width", "height", "depth"))
+  expect_equal(res$width, 100L)
+  expect_equal(res$height, 200L)
+  expect_equal(res$depth, 300L)
+})
+
+test_that("AsNamedList<[(K,V); N]> creates named R list from array", {
+  res <- conv_as_named_list_array()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("pi", "e"))
+  expect_equal(res$pi, pi)
+  expect_equal(res$e, exp(1))
+})
+
+test_that("AsNamedList supports heterogeneous value types", {
+  res <- conv_as_named_list_heterogeneous()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("name", "age", "score"))
+  expect_equal(res$name, "Alice")
+  expect_equal(res$age, 30L)
+  expect_equal(res$score, 95.5)
+})
+
+test_that("AsNamedList works with &str keys", {
+  res <- conv_as_named_list_str_keys()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("a", "b"))
+  expect_equal(res$a, 1L)
+  expect_equal(res$b, 2L)
+})
+
+test_that("AsNamedList handles empty input", {
+  res <- conv_as_named_list_empty()
+  expect_true(is.list(res))
+  expect_equal(length(res), 0L)
+})
+
+test_that("AsNamedList preserves duplicate names", {
+  res <- conv_as_named_list_duplicate_names()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("x", "x", "x"))
+  expect_equal(length(res), 3L)
+  expect_equal(res[[1]], 1L)
+  expect_equal(res[[2]], 2L)
+  expect_equal(res[[3]], 3L)
+})
+
+test_that("AsNamedVector<Vec<(K,V)>> creates named integer vector", {
+  res <- conv_as_named_vector_i32()
+  expect_true(is.integer(res))
+  expect_equal(names(res), c("alice", "bob", "carol"))
+  expect_equal(unname(res), c(95L, 87L, 92L))
+})
+
+test_that("AsNamedVector creates named double vector", {
+  res <- conv_as_named_vector_f64()
+  expect_true(is.double(res))
+  expect_equal(names(res), c("pi", "e"))
+  expect_equal(unname(res), c(pi, exp(1)))
+})
+
+test_that("AsNamedVector creates named character vector", {
+  res <- conv_as_named_vector_string()
+  expect_true(is.character(res))
+  expect_equal(names(res), c("greeting", "farewell"))
+  expect_equal(unname(res), c("hello", "goodbye"))
+})
+
+test_that("AsNamedVector with Option<i32> preserves NA", {
+  res <- conv_as_named_vector_option_i32()
+  expect_true(is.integer(res))
+  expect_equal(names(res), c("a", "b", "c"))
+  expect_equal(res[["a"]], 1L)
+  expect_true(is.na(res[["b"]]))
+  expect_equal(res[["c"]], 3L)
+})
+
+test_that("AsNamedVector<[(K,V); N]> works with array input", {
+  res <- conv_as_named_vector_array()
+  expect_true(is.double(res))
+  expect_equal(names(res), c("x", "y", "z"))
+  expect_equal(unname(res), c(1.0, 2.0, 3.0))
+})
+
+test_that("AsNamedVector handles empty input", {
+  res <- conv_as_named_vector_empty()
+  expect_true(is.double(res))
+  expect_equal(length(res), 0L)
+})
+
+test_that("extension traits (.as_named_vector / .as_named_list) work", {
+  vec_res <- conv_as_named_vector_ext_trait()
+  expect_true(is.integer(vec_res))
+  expect_equal(names(vec_res), c("one", "two"))
+  expect_equal(unname(vec_res), c(1L, 2L))
+
+  list_res <- conv_as_named_list_ext_trait()
+  expect_true(is.list(list_res))
+  expect_equal(names(list_res), c("one", "two"))
+  expect_equal(list_res$one, 1L)
+  expect_equal(list_res$two, 2L)
+})
+
+# =============================================================================
+# Map conversion edge cases (Phase A1/A2)
+# =============================================================================
+
+test_that("HashMap rejects duplicate non-empty names", {
+  expect_error(
+    conv_hashmap_i32_len(list(a = 1L, b = 2L, a = 3L)),
+    "DuplicateName"
+  )
+})
+
+test_that("BTreeMap rejects duplicate non-empty names", {
+  expect_error(
+    conv_btreemap_i32_len(list(a = 1L, b = 2L, a = 3L)),
+    "DuplicateName"
+  )
+})
+
+test_that("Option<HashMap> non-NULL path rejects duplicate names", {
+  expect_error(
+    conv_opt_hashmap_i32_arg(list(a = 1L, b = 2L, a = 3L)),
+    "DuplicateName"
+  )
+})
+
+test_that("HashMap uses index keys for completely unnamed lists", {
+  # list(1L, 2L) has no names → keys "0" and "1"
+  result <- conv_hashmap_i32_len(list(1L, 2L))
+  expect_equal(result, 2L)
+})
+
+test_that("HashMap NA/empty names collapse to empty string with last-write-wins", {
+  # Explicit NA name and empty name both → "" key, last write wins
+  x <- list(1L, 2L)
+  names(x) <- c(NA, "")
+  result <- conv_hashmap_i32_len(x)
+  expect_equal(result, 1L)  # collapsed to single "" key
+})
+
+test_that("BTreeMap uses index keys for completely unnamed lists", {
+  result <- conv_btreemap_i32_len(list(1L, 2L))
+  expect_equal(result, 2L)
+})
+
+test_that("BTreeMap NA/empty names collapse to empty string with last-write-wins", {
+  x <- list(1L, 2L)
+  names(x) <- c(NA, "")
+  result <- conv_btreemap_i32_len(x)
+  expect_equal(result, 1L)
+})
+
+test_that("HashMap mixed named/unnamed: empty names collapse to empty string", {
+  # list(1L, a = 2L, 3L): "" entries (positions 1 and 3) → key ""
+  # last-write-wins gives key "" → 3, key "a" → 2 → total length 2
+  result <- conv_hashmap_i32_len(list(1L, a = 2L, 3L))
+  expect_equal(result, 2L)
+})
+
+# =============================================================================
+# Option<BTreeMap> conversions (Phase A3)
+# =============================================================================
+
+test_that("Option<BTreeMap> arg works for Some and None", {
+  expect_equal(conv_opt_btreemap_i32_arg(list(a = 1L, b = 2L)), 3L)
+  expect_equal(conv_opt_btreemap_i32_arg(NULL), -999L)
+})
+
+test_that("Option<BTreeMap> return Some produces named list", {
+  res <- conv_opt_btreemap_i32_some_ret()
+  expect_true(is.list(res))
+  expect_equal(res$a, 1L)
+  expect_equal(res$b, 2L)
+})
+
+test_that("Option<BTreeMap> return None produces NULL", {
+  expect_null(conv_opt_btreemap_i32_none_ret())
+})
+
+test_that("Option<BTreeMap> non-NULL path rejects duplicate names", {
+  expect_error(
+    conv_opt_btreemap_i32_arg(list(a = 1L, b = 2L, a = 3L)),
+    "DuplicateName"
+  )
+})
+
+# =============================================================================
+# Vec<HashMap> / Vec<BTreeMap> conversions (Phase A3)
+# =============================================================================
+
+test_that("Vec<HashMap> arg sums correctly", {
+  input <- list(list(a = 1L, b = 2L), list(c = 3L))
+  expect_equal(conv_vec_hashmap_i32_arg(input), 6L)
+})
+
+test_that("Vec<HashMap> ret produces list of named lists", {
+  res <- conv_vec_hashmap_i32_ret()
+  expect_true(is.list(res))
+  expect_equal(length(res), 2L)
+  expect_equal(res[[1]]$a, 1L)
+  expect_equal(length(res[[2]]), 2L)
+})
+
+test_that("Vec<BTreeMap> arg sums correctly", {
+  input <- list(list(x = 10L, y = 20L), list(z = 30L))
+  expect_equal(conv_vec_btreemap_i32_arg(input), 60L)
+})
+
+test_that("Vec<BTreeMap> ret produces list of named lists", {
+  res <- conv_vec_btreemap_i32_ret()
+  expect_true(is.list(res))
+  expect_equal(length(res), 2L)
+  expect_equal(res[[1]]$x, 10L)
+  expect_equal(res[[2]]$y, 20L)
+  expect_equal(res[[2]]$z, 30L)
+})
+
+test_that("Vec<HashMap> inner list rejects duplicate names", {
+  expect_error(
+    conv_vec_hashmap_i32_arg(list(list(a = 1L, a = 2L))),
+    "DuplicateName"
+  )
+})
+
+test_that("AsNamedList from borrowed slice creates named list", {
+  res <- conv_as_named_list_slice()
+  expect_true(is.list(res))
+  expect_equal(names(res), c("x", "y", "z"))
+  expect_equal(res$x, 10L)
+  expect_equal(res$y, 20L)
+  expect_equal(res$z, 30L)
+})
+
+test_that("AsNamedVector from borrowed slice creates named atomic vector", {
+  res <- conv_as_named_vector_slice()
+  expect_true(is.double(res))
+  expect_equal(names(res), c("a", "b"))
+  expect_equal(unname(res), c(1.5, 2.5))
+})

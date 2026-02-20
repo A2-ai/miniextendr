@@ -128,6 +128,54 @@ test_that("add_r_error triggers R error cleanly in subprocess", {
 # can leave state inconsistent. Verify that a subprocess can survive two
 # sequential unwind-error calls without crashing.
 
+# ===========================================================================
+# Hazardous extern "C-unwind" wrappers (Phase C2)
+# ===========================================================================
+# These functions use extern "C-unwind" and trigger panics or R errors
+# in ways that may crash the process. We verify the subprocess terminates
+# with an error (or succeeds) but does not hang.
+
+test_that("unsafe_C_just_panic signals error in subprocess", {
+  result <- tryCatch(
+    run_isolated(miniextendr:::unsafe_C_just_panic()),
+    error = function(e) e
+  )
+  expect_true(inherits(result, "error"))
+})
+
+test_that("unsafe_C_panic_and_catch completes in subprocess", {
+  result <- tryCatch(
+    run_isolated(miniextendr:::unsafe_C_panic_and_catch()),
+    error = function(e) e
+  )
+  # This catches its own panic, so it may return NULL or error
+  if (inherits(result, "error")) {
+    expect_true(inherits(result, "error"))
+  } else {
+    expect_true(is.null(result))
+  }
+})
+
+test_that("unsafe_C_r_error signals R error in subprocess", {
+  result <- tryCatch(
+    run_isolated(miniextendr:::unsafe_C_r_error()),
+    error = function(e) e
+  )
+  expect_true(inherits(result, "error"))
+})
+
+test_that("unsafe_C_r_error_in_catch signals error in subprocess", {
+  result <- tryCatch(
+    run_isolated(miniextendr:::unsafe_C_r_error_in_catch()),
+    error = function(e) e
+  )
+  expect_true(inherits(result, "error"))
+})
+
+# ===========================================================================
+# Sequence stability: run multiple unwind error paths back-to-back
+# ===========================================================================
+
 test_that("sequential unwind error paths survive in single subprocess", {
   result <- tryCatch(
     callr::r(function() {

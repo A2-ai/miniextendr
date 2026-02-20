@@ -76,6 +76,10 @@ run_configure <- function() {
       Sys.setenv(NOT_CRAN = "true")
       message("Setting NOT_CRAN=true for dev build")
     }
+    # Prevent accidental inheritance of release-prep mode
+    if (!nzchar(Sys.getenv("PREPARE_CRAN"))) {
+      Sys.setenv(PREPARE_CRAN = "false")
+    }
 
     if (!file.exists(configure_script)) {
       # Try running autoconf first

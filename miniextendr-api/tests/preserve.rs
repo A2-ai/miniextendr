@@ -6,7 +6,26 @@ use miniextendr_api::ffi::{R_NilValue, Rf_ScalarInteger, Rf_ScalarReal};
 use miniextendr_api::preserve;
 
 #[test]
-fn preserve_suite() {
+fn preserve_insert_release() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let a = Rf_ScalarInteger(1);
+        let b = Rf_ScalarReal(2.5);
+
+        let cell_a = preserve::insert(a);
+        let cell_b = preserve::insert(b);
+
+        preserve::release(cell_a);
+        preserve::release(cell_b);
+
+        // R_NilValue is never collected, so insert returns R_NilValue itself
+        let nil_cell = preserve::insert(R_NilValue);
+        assert!(std::ptr::addr_eq(nil_cell.0, R_NilValue.0));
+    });
+}
+
+#[cfg(feature = "debug-preserve")]
+#[test]
+fn preserve_count_tracking() {
     r_test_utils::with_r_thread(|| unsafe {
         let initial = preserve::count();
 

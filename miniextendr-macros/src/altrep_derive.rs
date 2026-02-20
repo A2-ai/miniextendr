@@ -7,6 +7,16 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
 
+/// Per-family configuration for ALTREP lowlevel codegen.
+struct AltrepFamilyConfig<'a> {
+    macro_base: &'a str,
+    dataptr_macro: Option<(&'a str, Option<TokenStream>)>,
+    string_dataptr: bool,
+    subset: bool,
+    methods_macro: &'a str,
+    inferbase_macro: &'a str,
+}
+
 /// Common attributes for ALTREP derives.
 struct AltrepAttrs {
     /// Field name containing the length
@@ -142,17 +152,22 @@ impl AltrepAttrs {
     }
 
     /// Generate lowlevel impl code for a given ALTREP type family.
-    #[allow(clippy::too_many_arguments)]
     fn generate_lowlevel(
         &self,
         name: &syn::Ident,
-        macro_base: &str,
-        altvec_dataptr_macro: Option<(&str, Option<TokenStream>)>,
-        altvec_string_dataptr: bool,
-        altvec_subset: bool,
-        methods_macro: &str,
-        inferbase_macro: &str,
+        family: &AltrepFamilyConfig,
     ) -> syn::Result<TokenStream> {
+        let AltrepFamilyConfig {
+            macro_base,
+            ref dataptr_macro,
+            string_dataptr,
+            subset,
+            methods_macro,
+            inferbase_macro,
+        } = *family;
+        let altvec_dataptr_macro = dataptr_macro;
+        let altvec_string_dataptr = string_dataptr;
+        let altvec_subset = subset;
         if !self.generate_lowlevel {
             return Ok(quote! {});
         }
@@ -252,8 +267,16 @@ fn generate_altrep_len(
     }
 }
 
-/// Derive AltrepInteger - auto-implements AltrepLen and AltIntegerData.
-pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream> {
+/// Shared implementation for all non-list ALTREP derive macros.
+///
+/// The `gen_elt_impl` closure receives `elt_field` (if specified via `#[altrep(elt = "...")]`)
+/// and returns the `fn elt(...)` method body for the data trait implementation.
+fn derive_altrep_generic(
+    input: syn::DeriveInput,
+    data_trait_path: TokenStream,
+    gen_elt_impl: impl FnOnce(Option<&syn::Ident>) -> TokenStream,
+    family: &AltrepFamilyConfig,
+) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let generics = &input.generics;
     let attrs = AltrepAttrs::parse(&input)?;
@@ -262,287 +285,166 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
     let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    // Generate elt() implementation if elt_field is specified
-    let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
-        quote! {
-            fn elt(&self, _i: usize) -> i32 {
-                self.#elt_field
-            }
-        }
-    } else {
-        // No elt field - generate stub that returns NA
-        // Users must override this
-        quote! {
-            fn elt(&self, _i: usize) -> i32 {
-                ::miniextendr_api::altrep_traits::NA_INTEGER
-            }
-        }
-    };
+    let elt_impl = gen_elt_impl(attrs.elt_field.as_ref());
 
-    let alt_integer_impl = quote! {
-        impl #impl_generics ::miniextendr_api::altrep_data::AltIntegerData for #name #ty_generics #where_clause {
+    let data_trait_impl = quote! {
+        impl #impl_generics #data_trait_path for #name #ty_generics #where_clause {
             #elt_impl
         }
     };
 
-    let lowlevel_impl = attrs.generate_lowlevel(
-        name,
-        "impl_altinteger_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
-        false,
-        true,
-        "__impl_altinteger_methods",
-        "impl_inferbase_integer",
-    )?;
+    let lowlevel_impl = attrs.generate_lowlevel(name, family)?;
 
     Ok(quote! {
         #altrep_len_impl
-        #alt_integer_impl
+        #data_trait_impl
         #lowlevel_impl
     })
+}
+
+/// Derive AltrepInteger - auto-implements AltrepLen and AltIntegerData.
+pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream> {
+    derive_altrep_generic(
+        input,
+        quote! { ::miniextendr_api::altrep_data::AltIntegerData },
+        |elt_field| {
+            if let Some(f) = elt_field {
+                quote! { fn elt(&self, _i: usize) -> i32 { self.#f } }
+            } else {
+                quote! { fn elt(&self, _i: usize) -> i32 { ::miniextendr_api::altrep_traits::NA_INTEGER } }
+            }
+        },
+        &AltrepFamilyConfig {
+            macro_base: "impl_altinteger_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altinteger_methods",
+            inferbase_macro: "impl_inferbase_integer",
+        },
+    )
 }
 
 /// Derive AltrepReal - auto-implements AltrepLen and AltRealData.
 pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
-    let name = &input.ident;
-    let generics = &input.generics;
-    let attrs = AltrepAttrs::parse(&input)?;
-    let len_field = attrs.get_len_field(&input)?;
-
-    let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
-        quote! {
-            fn elt(&self, _i: usize) -> f64 {
-                self.#elt_field
+    derive_altrep_generic(
+        input,
+        quote! { ::miniextendr_api::altrep_data::AltRealData },
+        |elt_field| {
+            if let Some(f) = elt_field {
+                quote! { fn elt(&self, _i: usize) -> f64 { self.#f } }
+            } else {
+                quote! { fn elt(&self, _i: usize) -> f64 { f64::NAN } }
             }
-        }
-    } else {
-        quote! {
-            fn elt(&self, _i: usize) -> f64 {
-                f64::NAN
-            }
-        }
-    };
-
-    let alt_real_impl = quote! {
-        impl #impl_generics ::miniextendr_api::altrep_data::AltRealData for #name #ty_generics #where_clause {
-            #elt_impl
-        }
-    };
-
-    let lowlevel_impl = attrs.generate_lowlevel(
-        name,
-        "impl_altreal_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
-        false,
-        true,
-        "__impl_altreal_methods",
-        "impl_inferbase_real",
-    )?;
-
-    Ok(quote! {
-        #altrep_len_impl
-        #alt_real_impl
-        #lowlevel_impl
-    })
+        },
+        &AltrepFamilyConfig {
+            macro_base: "impl_altreal_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altreal_methods",
+            inferbase_macro: "impl_inferbase_real",
+        },
+    )
 }
 
 /// Derive AltrepLogical - auto-implements AltrepLen and AltLogicalData.
 pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream> {
-    let name = &input.ident;
-    let generics = &input.generics;
-    let attrs = AltrepAttrs::parse(&input)?;
-    let len_field = attrs.get_len_field(&input)?;
-
-    let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
-        quote! {
-            fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical {
-                self.#elt_field.into()
+    derive_altrep_generic(
+        input,
+        quote! { ::miniextendr_api::altrep_data::AltLogicalData },
+        |elt_field| {
+            if let Some(f) = elt_field {
+                quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical { self.#f.into() } }
+            } else {
+                quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical { ::miniextendr_api::altrep_data::Logical::Na } }
             }
-        }
-    } else {
-        quote! {
-            fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical {
-                ::miniextendr_api::altrep_data::Logical::Na
-            }
-        }
-    };
-
-    let alt_logical_impl = quote! {
-        impl #impl_generics ::miniextendr_api::altrep_data::AltLogicalData for #name #ty_generics #where_clause {
-            #elt_impl
-        }
-    };
-
-    let lowlevel_impl = attrs.generate_lowlevel(
-        name,
-        "impl_altlogical_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
-        false,
-        true,
-        "__impl_altlogical_methods",
-        "impl_inferbase_logical",
-    )?;
-
-    Ok(quote! {
-        #altrep_len_impl
-        #alt_logical_impl
-        #lowlevel_impl
-    })
+        },
+        &AltrepFamilyConfig {
+            macro_base: "impl_altlogical_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altlogical_methods",
+            inferbase_macro: "impl_inferbase_logical",
+        },
+    )
 }
 
 /// Derive AltrepRaw - auto-implements AltrepLen and AltRawData.
 pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
-    let name = &input.ident;
-    let generics = &input.generics;
-    let attrs = AltrepAttrs::parse(&input)?;
-    let len_field = attrs.get_len_field(&input)?;
-
-    let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
-        quote! {
-            fn elt(&self, _i: usize) -> u8 {
-                self.#elt_field
+    derive_altrep_generic(
+        input,
+        quote! { ::miniextendr_api::altrep_data::AltRawData },
+        |elt_field| {
+            if let Some(f) = elt_field {
+                quote! { fn elt(&self, _i: usize) -> u8 { self.#f } }
+            } else {
+                quote! { fn elt(&self, _i: usize) -> u8 { 0 } }
             }
-        }
-    } else {
-        quote! {
-            fn elt(&self, _i: usize) -> u8 {
-                0
-            }
-        }
-    };
-
-    let alt_raw_impl = quote! {
-        impl #impl_generics ::miniextendr_api::altrep_data::AltRawData for #name #ty_generics #where_clause {
-            #elt_impl
-        }
-    };
-
-    let lowlevel_impl = attrs.generate_lowlevel(
-        name,
-        "impl_altraw_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
-        false,
-        true,
-        "__impl_altraw_methods",
-        "impl_inferbase_raw",
-    )?;
-
-    Ok(quote! {
-        #altrep_len_impl
-        #alt_raw_impl
-        #lowlevel_impl
-    })
+        },
+        &AltrepFamilyConfig {
+            macro_base: "impl_altraw_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altraw_methods",
+            inferbase_macro: "impl_inferbase_raw",
+        },
+    )
 }
 
 /// Derive AltrepString - auto-implements AltrepLen and AltStringData.
 pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream> {
-    let name = &input.ident;
-    let generics = &input.generics;
-    let attrs = AltrepAttrs::parse(&input)?;
-    let len_field = attrs.get_len_field(&input)?;
-
-    let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    // String elt() returns Option<&str>, so if elt_field is specified,
-    // we assume it's a String or &str field
-    let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
-        quote! {
-            fn elt(&self, _i: usize) -> Option<&str> {
-                Some(self.#elt_field.as_ref())
+    derive_altrep_generic(
+        input,
+        quote! { ::miniextendr_api::altrep_data::AltStringData },
+        |elt_field| {
+            if let Some(f) = elt_field {
+                quote! { fn elt(&self, _i: usize) -> Option<&str> { Some(self.#f.as_ref()) } }
+            } else {
+                quote! { fn elt(&self, _i: usize) -> Option<&str> { None } }
             }
-        }
-    } else {
-        quote! {
-            fn elt(&self, _i: usize) -> Option<&str> {
-                None
-            }
-        }
-    };
-
-    let alt_string_impl = quote! {
-        impl #impl_generics ::miniextendr_api::altrep_data::AltStringData for #name #ty_generics #where_clause {
-            #elt_impl
-        }
-    };
-
-    let lowlevel_impl = attrs.generate_lowlevel(
-        name,
-        "impl_altstring_from_data",
-        None,
-        true,
-        true,
-        "__impl_altstring_methods",
-        "impl_inferbase_string",
-    )?;
-
-    Ok(quote! {
-        #altrep_len_impl
-        #alt_string_impl
-        #lowlevel_impl
-    })
+        },
+        &AltrepFamilyConfig {
+            macro_base: "impl_altstring_from_data",
+            dataptr_macro: None,
+            string_dataptr: true,
+            subset: true,
+            methods_macro: "__impl_altstring_methods",
+            inferbase_macro: "impl_inferbase_string",
+        },
+    )
 }
 
 /// Derive AltrepComplex - auto-implements AltrepLen and AltComplexData.
 pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream> {
-    let name = &input.ident;
-    let generics = &input.generics;
-    let attrs = AltrepAttrs::parse(&input)?;
-    let len_field = attrs.get_len_field(&input)?;
-
-    let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
-        quote! {
-            fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::Rcomplex {
-                self.#elt_field
-            }
-        }
-    } else {
-        quote! {
-            fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::Rcomplex {
-                ::miniextendr_api::ffi::Rcomplex {
-                    r: f64::NAN,
-                    i: f64::NAN,
+    derive_altrep_generic(
+        input,
+        quote! { ::miniextendr_api::altrep_data::AltComplexData },
+        |elt_field| {
+            if let Some(f) = elt_field {
+                quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::Rcomplex { self.#f } }
+            } else {
+                quote! {
+                    fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::Rcomplex {
+                        ::miniextendr_api::ffi::Rcomplex { r: f64::NAN, i: f64::NAN }
+                    }
                 }
             }
-        }
-    };
-
-    let alt_complex_impl = quote! {
-        impl #impl_generics ::miniextendr_api::altrep_data::AltComplexData for #name #ty_generics #where_clause {
-            #elt_impl
-        }
-    };
-
-    let lowlevel_impl = attrs.generate_lowlevel(
-        name,
-        "impl_altcomplex_from_data",
-        Some((
-            "__impl_altvec_dataptr",
-            Some(quote! { ::miniextendr_api::ffi::Rcomplex }),
-        )),
-        false,
-        true,
-        "__impl_altcomplex_methods",
-        "impl_inferbase_complex",
-    )?;
-
-    Ok(quote! {
-        #altrep_len_impl
-        #alt_complex_impl
-        #lowlevel_impl
-    })
+        },
+        &AltrepFamilyConfig {
+            macro_base: "impl_altcomplex_from_data",
+            dataptr_macro: Some((
+                "__impl_altvec_dataptr",
+                Some(quote! { ::miniextendr_api::ffi::Rcomplex }),
+            )),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altcomplex_methods",
+            inferbase_macro: "impl_inferbase_complex",
+        },
+    )
 }
 
 /// Derive AltrepList - auto-implements AltrepLen and AltListData.

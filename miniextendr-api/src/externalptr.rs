@@ -341,6 +341,22 @@ impl TypedExternal for () {
 ///
 /// The ExternalPtr assumes exclusive ownership of the underlying data.
 /// Cloning the raw SEXP without proper handling will lead to double-free.
+///
+/// # Examples
+///
+/// ```no_run
+/// use miniextendr_api::externalptr::{ExternalPtr, TypedExternal};
+///
+/// struct MyData { value: f64 }
+/// impl TypedExternal for MyData {
+///     const TYPE_NAME: &'static str = "MyData";
+///     const TYPE_NAME_CSTR: &'static [u8] = b"MyData\0";
+///     const TYPE_ID_CSTR: &'static [u8] = b"my_crate::MyData\0";
+/// }
+///
+/// let ptr = ExternalPtr::new(MyData { value: 3.14 });
+/// assert_eq!(ptr.as_ref().unwrap().value, 3.14);
+/// ```
 #[repr(C)]
 pub struct ExternalPtr<T: TypedExternal> {
     sexp: SEXP,

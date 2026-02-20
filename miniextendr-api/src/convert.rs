@@ -63,6 +63,7 @@ use crate::externalptr::{ExternalPtr, IntoExternalPtr};
 use crate::ffi::RNativeType;
 use crate::into_r::IntoR;
 use crate::list::{IntoList, List};
+use crate::named_vector::AtomicElement;
 
 /// Wrap a value and convert it to an R list via [`IntoList`] when returned from Rust.
 ///
@@ -609,6 +610,149 @@ impl<T: RNativeType> IntoR for AsRNative<T> {
 }
 
 // =============================================================================
+// Named pair wrappers
+// =============================================================================
+
+/// Wrap a tuple pair collection and convert it to a **named R list** (VECSXP).
+///
+/// Preserves insertion order and allows duplicate names (sequence semantics).
+///
+/// # Supported input types
+///
+/// | Input | Bounds |
+/// |-------|--------|
+/// | `Vec<(K, V)>` | `K: AsRef<str>`, `V: IntoR` |
+/// | `[(K, V); N]` | `K: AsRef<str>`, `V: IntoR` |
+/// | `&[(K, V)]` | `K: AsRef<str>`, `V: Clone + IntoR` |
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn make_config() -> AsNamedList<Vec<(String, i32)>> {
+///     AsNamedList(vec![
+///         ("width".into(), 100),
+///         ("height".into(), 200),
+///     ])
+/// }
+/// // In R: make_config() returns list(width = 100L, height = 200L)
+/// ```
+#[derive(Debug, Clone)]
+pub struct AsNamedList<T>(pub T);
+
+impl<T> From<T> for AsNamedList<T> {
+    fn from(value: T) -> Self {
+        AsNamedList(value)
+    }
+}
+
+impl<K: AsRef<str>, V: IntoR> IntoR for AsNamedList<Vec<(K, V)>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let pairs: Vec<(K, crate::ffi::SEXP)> = self
+            .0
+            .into_iter()
+            .map(|(k, v)| (k, v.into_sexp()))
+            .collect();
+        List::from_raw_pairs(pairs).into_sexp()
+    }
+}
+
+impl<K: AsRef<str>, V: IntoR, const N: usize> IntoR for AsNamedList<[(K, V); N]> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let pairs: Vec<(K, crate::ffi::SEXP)> = self
+            .0
+            .into_iter()
+            .map(|(k, v)| (k, v.into_sexp()))
+            .collect();
+        List::from_raw_pairs(pairs).into_sexp()
+    }
+}
+
+impl<K: AsRef<str>, V: Clone + IntoR> IntoR for AsNamedList<&[(K, V)]> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let pairs: Vec<(&K, crate::ffi::SEXP)> = self
+            .0
+            .iter()
+            .map(|(k, v)| (k, v.clone().into_sexp()))
+            .collect();
+        List::from_raw_pairs(pairs).into_sexp()
+    }
+}
+
+/// Wrap a tuple pair collection and convert it to a **named atomic R vector**
+/// (INTSXP, REALSXP, LGLSXP, RAWSXP, or STRSXP).
+///
+/// Preserves insertion order and allows duplicate names (sequence semantics).
+/// Values must be homogeneous and implement [`AtomicElement`].
+///
+/// # Supported input types
+///
+/// | Input | Bounds |
+/// |-------|--------|
+/// | `Vec<(K, V)>` | `K: AsRef<str>`, `V: AtomicElement` |
+/// | `[(K, V); N]` | `K: AsRef<str>`, `V: AtomicElement` |
+/// | `&[(K, V)]` | `K: AsRef<str>`, `V: Clone + AtomicElement` |
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn make_scores() -> AsNamedVector<Vec<(&str, f64)>> {
+///     AsNamedVector(vec![("alice", 95.0), ("bob", 87.5)])
+/// }
+/// // In R: make_scores() returns c(alice = 95.0, bob = 87.5)
+/// ```
+#[derive(Debug, Clone)]
+pub struct AsNamedVector<T>(pub T);
+
+impl<T> From<T> for AsNamedVector<T> {
+    fn from(value: T) -> Self {
+        AsNamedVector(value)
+    }
+}
+
+impl<K: AsRef<str>, V: AtomicElement> IntoR for AsNamedVector<Vec<(K, V)>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        named_vector_from_pairs(self.0)
+    }
+}
+
+impl<K: AsRef<str>, V: AtomicElement, const N: usize> IntoR for AsNamedVector<[(K, V); N]> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        named_vector_from_pairs(self.0)
+    }
+}
+
+impl<K: AsRef<str>, V: Clone + AtomicElement> IntoR for AsNamedVector<&[(K, V)]> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let (keys, values): (Vec<&K>, Vec<V>) = self.0.iter().map(|(k, v)| (k, v.clone())).unzip();
+        let sexp = V::vec_to_sexp(values);
+        unsafe {
+            crate::ffi::Rf_protect(sexp);
+            crate::named_vector::set_names_on_sexp(sexp, &keys);
+            crate::ffi::Rf_unprotect(1);
+        }
+        sexp
+    }
+}
+
+/// Shared helper: build a named atomic vector from an owning iterator of (key, value) pairs.
+fn named_vector_from_pairs<K, V>(pairs: impl IntoIterator<Item = (K, V)>) -> crate::ffi::SEXP
+where
+    K: AsRef<str>,
+    V: AtomicElement,
+{
+    let (keys, values): (Vec<K>, Vec<V>) = pairs.into_iter().unzip();
+    let sexp = V::vec_to_sexp(values);
+    unsafe {
+        crate::ffi::Rf_protect(sexp);
+        crate::named_vector::set_names_on_sexp(sexp, &keys);
+        crate::ffi::Rf_unprotect(1);
+    }
+    sexp
+}
+
+// =============================================================================
 // Extension traits for ergonomic wrapping
 // =============================================================================
 //
@@ -736,3 +880,43 @@ pub trait AsRNativeExt: RNativeType + Sized {
 }
 
 impl<T: RNativeType> AsRNativeExt for T {}
+
+/// Extension trait for wrapping tuple pair collections as [`AsNamedList`].
+///
+/// # Example
+///
+/// ```ignore
+/// let pairs = vec![("x".to_string(), 1i32), ("y".to_string(), 2i32)];
+/// let wrapped = pairs.as_named_list();
+/// ```
+pub trait AsNamedListExt: Sized {
+    /// Wrap `self` in [`AsNamedList`] for named R list conversion.
+    #[allow(clippy::wrong_self_convention)]
+    fn as_named_list(self) -> AsNamedList<Self> {
+        AsNamedList(self)
+    }
+}
+
+impl<K: AsRef<str>, V: IntoR> AsNamedListExt for Vec<(K, V)> {}
+impl<K: AsRef<str>, V: IntoR, const N: usize> AsNamedListExt for [(K, V); N] {}
+impl<K: AsRef<str>, V: Clone + IntoR> AsNamedListExt for &[(K, V)] {}
+
+/// Extension trait for wrapping tuple pair collections as [`AsNamedVector`].
+///
+/// # Example
+///
+/// ```ignore
+/// let pairs = vec![("alice".to_string(), 95.0f64), ("bob".to_string(), 87.5)];
+/// let wrapped = pairs.as_named_vector();
+/// ```
+pub trait AsNamedVectorExt: Sized {
+    /// Wrap `self` in [`AsNamedVector`] for named atomic R vector conversion.
+    #[allow(clippy::wrong_self_convention)]
+    fn as_named_vector(self) -> AsNamedVector<Self> {
+        AsNamedVector(self)
+    }
+}
+
+impl<K: AsRef<str>, V: AtomicElement> AsNamedVectorExt for Vec<(K, V)> {}
+impl<K: AsRef<str>, V: AtomicElement, const N: usize> AsNamedVectorExt for [(K, V); N] {}
+impl<K: AsRef<str>, V: Clone + AtomicElement> AsNamedVectorExt for &[(K, V)] {}

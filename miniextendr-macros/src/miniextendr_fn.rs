@@ -7,7 +7,7 @@
 //! - [`MiniextendrFnAttrs`]: Parsed `#[miniextendr(...)]` attribute options
 //! - [`CoercionMapping`]: Type coercion analysis for automatic R→Rust conversion
 
-use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
+use crate::{call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for};
 
 // =============================================================================
 // Coercion analysis
@@ -99,42 +99,66 @@ impl CoercionMapping {
     }
 }
 
-/// Check if an attribute is `#[miniextendr(coerce)]`.
-pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
-    attr.path().is_ident("miniextendr")
-        && matches!(&attr.meta, syn::Meta::List(list) if list.parse_args::<syn::Ident>().is_ok_and(|id| id == "coerce"))
+/// Parsed per-parameter `#[miniextendr(...)]` attribute content.
+///
+/// A single attribute can contain multiple items, e.g.
+/// `#[miniextendr(match_arg, default = "Safe")]`.
+#[derive(Default)]
+pub(crate) struct PerParamMiniextendrAttr {
+    pub has_coerce: bool,
+    pub has_match_arg: bool,
+    pub default_value: Option<(String, proc_macro2::Span)>,
 }
 
-/// Parse default value from `#[miniextendr(default = "...")]`.
+/// Parse all per-parameter options from a `#[miniextendr(...)]` attribute.
 ///
-/// Returns Some((default_value, attr_span)) if the attribute is present, None otherwise.
-pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<(String, proc_macro2::Span)> {
+/// Handles mixed content like `#[miniextendr(match_arg, default = "\"Safe\"")]`.
+pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMiniextendrAttr> {
     use syn::spanned::Spanned;
     if !attr.path().is_ident("miniextendr") {
         return None;
     }
-    let syn::Meta::List(list) = &attr.meta else {
-        return None;
-    };
-
-    // Parse as `default = "value"`
-    let Ok(nv) = list.parse_args::<syn::MetaNameValue>() else {
-        return None;
-    };
-
-    if !nv.path.is_ident("default") {
+    let mut result = PerParamMiniextendrAttr::default();
+    let mut is_per_param = false;
+    let parse_result = attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("coerce") {
+            result.has_coerce = true;
+            is_per_param = true;
+        } else if meta.path.is_ident("match_arg") {
+            result.has_match_arg = true;
+            is_per_param = true;
+        } else if meta.path.is_ident("default") {
+            let value: syn::LitStr = meta.value()?.parse()?;
+            result.default_value = Some((value.value(), attr.span()));
+            is_per_param = true;
+        } else {
+            // Not a per-param attribute (could be a function-level attr like `strict`)
+            return Ok(());
+        }
+        Ok(())
+    });
+    // If parsing failed or no per-param options found, return None
+    if parse_result.is_err() || !is_per_param {
         return None;
     }
+    Some(result)
+}
 
-    // Extract string literal value
-    let syn::Expr::Lit(expr_lit) = &nv.value else {
-        return None;
-    };
-    let syn::Lit::Str(lit_str) = &expr_lit.lit else {
-        return None;
-    };
+/// Check if an attribute contains `#[miniextendr(coerce)]` (possibly combined with others).
+pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
+    parse_per_param_attr(attr).is_some_and(|a| a.has_coerce)
+}
 
-    Some((lit_str.value(), attr.span()))
+/// Check if an attribute contains `#[miniextendr(match_arg)]` (possibly combined with others).
+pub(crate) fn is_miniextendr_match_arg_attr(attr: &syn::Attribute) -> bool {
+    parse_per_param_attr(attr).is_some_and(|a| a.has_match_arg)
+}
+
+/// Parse default value from `#[miniextendr(default = "...")]` (possibly combined with others).
+///
+/// Returns Some((default_value, attr_span)) if the attribute contains a default.
+pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<(String, proc_macro2::Span)> {
+    parse_per_param_attr(attr).and_then(|a| a.default_value)
 }
 
 // =============================================================================
@@ -157,6 +181,8 @@ pub(crate) struct MiniextendrFunctionParsed {
     named_dots: Option<syn::Ident>,
     /// Parameter names that had `#[miniextendr(coerce)]` attribute.
     per_param_coerce: std::collections::HashSet<String>,
+    /// Parameter names that had `#[miniextendr(match_arg)]` attribute.
+    per_param_match_arg: std::collections::HashSet<String>,
     /// Parameter names with `#[miniextendr(default = "...")]` and their default values.
     per_param_defaults: std::collections::HashMap<String, String>,
 }
@@ -207,6 +233,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         // per-parameter `#[miniextendr(coerce)]` and `#[miniextendr(default = "...")]` attributes.
         let mut per_param_coerce: std::collections::HashSet<String> =
             std::collections::HashSet::new();
+        let mut per_param_match_arg: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         let mut per_param_defaults: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let mut per_param_default_spans: std::collections::HashMap<String, proc_macro2::Span> =
@@ -222,11 +250,14 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             };
 
             let had_coerce_attr = pat_type.attrs.iter().any(is_miniextendr_coerce_attr);
+            let had_match_arg_attr = pat_type.attrs.iter().any(is_miniextendr_match_arg_attr);
             let default_with_span = pat_type.attrs.iter().find_map(parse_default_attr);
 
-            // Remove miniextendr attributes from parameters (coerce and default)
+            // Remove miniextendr attributes from parameters (coerce, match_arg, and default)
             pat_type.attrs.retain(|attr| {
-                !is_miniextendr_coerce_attr(attr) && parse_default_attr(attr).is_none()
+                !is_miniextendr_coerce_attr(attr)
+                    && !is_miniextendr_match_arg_attr(attr)
+                    && parse_default_attr(attr).is_none()
             });
 
             match pat_type.pat.as_ref() {
@@ -234,6 +265,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     let param_name = pat_ident.ident.to_string();
                     if had_coerce_attr {
                         per_param_coerce.insert(param_name.clone());
+                    }
+                    if had_match_arg_attr {
+                        per_param_match_arg.insert(param_name.clone());
                     }
                     if let Some((default, span)) = default_with_span {
                         per_param_defaults.insert(param_name.clone(), default);
@@ -253,6 +287,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     });
                     if had_coerce_attr {
                         per_param_coerce.insert(synthetic_name.clone());
+                    }
+                    if had_match_arg_attr {
+                        per_param_match_arg.insert(synthetic_name.clone());
                     }
                     if let Some((default, span)) = default_with_span {
                         per_param_defaults.insert(synthetic_name.clone(), default);
@@ -274,6 +311,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     pattern_destructures.push((original_pat, synthetic_ident.clone()));
                     if had_coerce_attr {
                         per_param_coerce.insert(synthetic_name.clone());
+                    }
+                    if had_match_arg_attr {
+                        per_param_match_arg.insert(synthetic_name.clone());
                     }
                     if let Some((default, span)) = default_with_span {
                         per_param_defaults.insert(synthetic_name.clone(), default);
@@ -367,6 +407,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             has_dots,
             named_dots,
             per_param_coerce,
+            per_param_match_arg,
             per_param_defaults,
         })
     }
@@ -390,6 +431,16 @@ impl MiniextendrFunctionParsed {
     /// Check if a parameter name had `#[miniextendr(coerce)]` attribute.
     pub(crate) fn has_coerce_attr(&self, param_name: &str) -> bool {
         self.per_param_coerce.contains(param_name)
+    }
+
+    /// Check if a parameter name had `#[miniextendr(match_arg)]` attribute.
+    pub(crate) fn has_match_arg_attr(&self, param_name: &str) -> bool {
+        self.per_param_match_arg.contains(param_name)
+    }
+
+    /// Get the set of match_arg parameter names.
+    pub(crate) fn match_arg_params(&self) -> &std::collections::HashSet<String> {
+        &self.per_param_match_arg
     }
 
     /// Get all parameter defaults.
@@ -437,7 +488,6 @@ impl MiniextendrFunctionParsed {
     }
 
     /// The normalized function item (with original doc comments).
-    #[allow(dead_code)] // Used in tests
     pub(crate) fn item(&self) -> &syn::ItemFn {
         &self.item
     }
@@ -470,6 +520,11 @@ impl MiniextendrFunctionParsed {
     /// Identifier for the generated `const &str` holding the R wrapper code.
     pub(crate) fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(self.ident())
+    }
+
+    /// Identifier for the match_arg choices helper call defs array.
+    pub(crate) fn match_arg_call_defs_ident(&self) -> syn::Ident {
+        match_arg_call_defs_ident_for(self.ident())
     }
 
     /// Identifier for the C wrapper function.
@@ -789,7 +844,13 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             } else {
                                 return Err(syn::Error::new_spanned(
                                     ident,
-                                    "unknown boolean option",
+                                    format!(
+                                        "unknown `#[miniextendr]` option `{}`; expected one of: \
+                                         invisible, visible, check_interrupt, unsafe(main_thread), \
+                                         worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, \
+                                         error_in_r, no_error_in_r, strict, no_strict, internal, noexport",
+                                        ident,
+                                    ),
                                 ));
                             }
                             continue;
@@ -911,9 +972,19 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             }
                         }
                     } else {
+                        let key_name = nv
+                            .path
+                            .get_ident()
+                            .map(|i| i.to_string())
+                            .unwrap_or_default();
                         return Err(syn::Error::new_spanned(
                             nv,
-                            "unknown option; expected `prefer`, `dots`, `lifecycle`, `doc`, or `c_symbol`",
+                            format!(
+                                "unknown `#[miniextendr]` key-value option `{}`. \
+                                 Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
+                                 `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`",
+                                key_name,
+                            ),
                         ));
                     }
                 }
@@ -1022,26 +1093,50 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             } else if ident == "noexport" {
                                 noexport = val;
                             } else {
+                                let opt_name = ident.to_string();
                                 return Err(syn::Error::new_spanned(
-                                    list,
-                                    "this option does not take these arguments; use `option` alone or `option = true/false`",
+                                    &list,
+                                    format!(
+                                        "unknown `#[miniextendr]` option `{opt_name}`. Boolean flags should be \
+                                         written as `option` (alone) or `option = true/false`. \
+                                         Nested options: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
+                                    ),
                                 ));
                             }
                         } else {
+                            let opt_name = list
+                                .path
+                                .get_ident()
+                                .map(|i| i.to_string())
+                                .unwrap_or_default();
                             return Err(syn::Error::new_spanned(
-                                list,
-                                "this option does not take these arguments; use `option` alone or `option = true/false`",
+                                &list,
+                                format!(
+                                    "`{opt_name}` does not accept parenthesized arguments. \
+                                     Use `{opt_name}` alone or `{opt_name} = true/false`.",
+                                ),
                             ));
                         }
                     } else {
                         // path(something) where path is not a single ident
                         return Err(syn::Error::new_spanned(
                             list,
-                            "this option does not take any arguments",
+                            "unrecognized nested option. \
+                             Nested options are: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
                         ));
                     }
                 }
             }
+        }
+
+        // Validate: `internal` and `noexport` are redundant together
+        if internal && noexport {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`internal` and `noexport` cannot be used together. \
+                 `internal` already suppresses @export and also adds @keywords internal. \
+                 Use `internal` alone to mark as internal, or `noexport` alone to only suppress export.",
+            ));
         }
 
         // Resolve feature defaults for fields not explicitly set

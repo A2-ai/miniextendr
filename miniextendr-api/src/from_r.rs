@@ -252,6 +252,18 @@ impl From<SexpNaError> for SexpError {
 }
 
 /// TryFrom-style trait for converting SEXP to Rust types.
+///
+/// # Examples
+///
+/// ```no_run
+/// use miniextendr_api::ffi::SEXP;
+/// use miniextendr_api::from_r::TryFromSexp;
+///
+/// fn example(sexp: SEXP) {
+///     let value: i32 = TryFromSexp::try_from_sexp(sexp).unwrap();
+///     let text: String = TryFromSexp::try_from_sexp(sexp).unwrap();
+/// }
+/// ```
 pub trait TryFromSexp: Sized {
     /// The error type returned when conversion fails.
     type Error;
@@ -2833,31 +2845,8 @@ where
     let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
     let has_names = names.type_of() == SEXPTYPE::STRSXP && names.len() == len;
 
-    // Check for duplicate non-empty names before conversion
-    if has_names {
-        let mut seen = HashSet::new();
-        for i in 0..len {
-            let charsxp = unsafe { STRING_ELT(names, i as crate::ffi::R_xlen_t) };
-            // Skip NA names
-            if charsxp == unsafe { crate::ffi::R_NaString } {
-                continue;
-            }
-            let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-            if c_str.is_null() {
-                continue;
-            }
-            let name = unsafe { std::ffi::CStr::from_ptr(c_str) }
-                .to_str()
-                .unwrap_or("");
-            // Skip empty names
-            if name.is_empty() {
-                continue;
-            }
-            if !seen.insert(name) {
-                return Err(SexpError::DuplicateName(name.to_string()));
-            }
-        }
-    }
+    // Single-pass: check duplicates AND convert in one loop
+    let mut seen = HashSet::with_capacity(len);
 
     for i in 0..len {
         let key = if has_names {
@@ -2880,12 +2869,71 @@ where
             i.to_string()
         };
 
+        // Check duplicate for non-empty keys
+        if !key.is_empty() && !seen.insert(key.clone()) {
+            return Err(SexpError::DuplicateName(key));
+        }
+
         let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
         let value = V::try_from_sexp(elem).map_err(|e| e.into())?;
         map.extend(std::iter::once((key, value)));
     }
 
     Ok(map)
+}
+
+/// Convert R list of named lists to `Vec<HashMap<String, V>>`.
+impl<V: TryFromSexp> TryFromSexp for Vec<HashMap<String, V>>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        list_to_vec_of_maps::<HashMap<String, V>>(sexp)
+    }
+}
+
+/// Convert R list of named lists to `Vec<BTreeMap<String, V>>`.
+impl<V: TryFromSexp> TryFromSexp for Vec<BTreeMap<String, V>>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        list_to_vec_of_maps::<BTreeMap<String, V>>(sexp)
+    }
+}
+
+/// Helper to convert R list (VECSXP) to `Vec<M>` where each element is
+/// converted via `M: TryFromSexp`.
+fn list_to_vec_of_maps<M>(sexp: SEXP) -> Result<Vec<M>, SexpError>
+where
+    M: TryFromSexp,
+    M::Error: Into<SexpError>,
+{
+    use crate::ffi::VECTOR_ELT;
+
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::VECSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::VECSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = sexp.len();
+    let mut result = Vec::with_capacity(len);
+
+    for i in 0..len {
+        let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+        let map = M::try_from_sexp(elem).map_err(Into::into)?;
+        result.push(map);
+    }
+
+    Ok(result)
 }
 
 macro_rules! impl_set_try_from_sexp_native {

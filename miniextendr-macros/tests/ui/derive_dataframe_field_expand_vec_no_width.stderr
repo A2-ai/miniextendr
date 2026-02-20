@@ -1,0 +1,5 @@
+error: `expand` on Vec<T> requires `width = N`; use `#[dataframe(expand, width = N)]` or `#[dataframe(width = N)]`
+ --> tests/ui/derive_dataframe_field_expand_vec_no_width.rs:8:13
+  |
+8 |     scores: Vec<f64>,
+  |             ^^^^^^^^

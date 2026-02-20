@@ -17,8 +17,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 pub struct SidecarEnv {
     /// Regular Rust field (not exposed to R) - intentionally unused to demonstrate
     /// that non-#[r_data] fields are private to Rust.
-    #[allow(dead_code)]
-    internal_value: i32,
+    _internal_value: i32,
 
     /// Selector - enables R accessors
     #[r_data]
@@ -60,7 +59,7 @@ pub fn rdata_sidecar_env_new(
     use miniextendr_api::ffi::R_NilValue;
 
     ExternalPtr::new(SidecarEnv {
-        internal_value: 999,
+        _internal_value: 999,
         _r: RSidecar,
         count,
         score,

@@ -1,0 +1,5 @@
+error: `width` is only valid on `Vec<T>` fields
+ --> tests/ui/derive_dataframe_field_width_on_scalar.rs:8:12
+  |
+8 |     value: f64,
+  |            ^^^
