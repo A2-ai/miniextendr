@@ -89,7 +89,7 @@ my_func <- function(x, ...) {
 }
 ```
 
-See [dots_typed_list.md](dots_typed_list.md) for the full dots guide, including `typed_list!` validation.
+See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) for the full dots guide, including `typed_list!` validation.
 
 ---
 

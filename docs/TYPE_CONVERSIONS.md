@@ -458,9 +458,56 @@ miniextendr-api = { version = "0.1", features = ["uuid", "time"] }
 
 ---
 
+## Named Lists
+
+R lists with names can be accessed via `NamedList`, which builds a `HashMap` index for O(1) lookup:
+
+```rust
+use miniextendr_api::NamedList;
+
+#[miniextendr]
+pub fn get_option(config: NamedList) -> Option<String> {
+    config.get::<String>("name")
+}
+```
+
+| Method | Description |
+|--------|-------------|
+| `get::<T>(name)` | O(1) lookup by name, converting to type `T` |
+| `get_raw(name)` | O(1) lookup returning raw SEXP |
+| `contains(name)` | Check if a name exists |
+| `get_index::<T>(i)` | Positional access (no name lookup) |
+| `len()` / `is_empty()` | Size queries |
+
+**When to use**: `List::get_named()` is fine for a single lookup. Use `NamedList` when you need multiple lookups on the same list (O(n) build + O(1) per lookup vs O(n) per lookup).
+
+`NamedList` implements `TryFromSexp`, so it can be used directly as a function parameter. `NA` and empty-string names are excluded from the index; duplicate names resolve to the last occurrence.
+
+---
+
+## Safe Mutable Input
+
+R vectors are copy-on-write, so `&mut [T]` is not supported in `#[miniextendr]` functions (rejected at compile time with a helpful error). Use `CopySliceMut<T>` for copy-in/copy-out mutation:
+
+```rust
+use miniextendr_api::CopySliceMut;
+
+#[miniextendr]
+pub fn double_in_place(mut x: CopySliceMut<f64>) -> CopySliceMut<f64> {
+    for v in x.iter_mut() {
+        *v *= 2.0;
+    }
+    x // copies out to a new R vector on return
+}
+```
+
+`CopySliceMut<T>` copies the R vector on input (`TryFromSexp`), provides `Deref`/`DerefMut` to `[T]` for mutation, and copies out to a new R vector on return (`IntoR`).
+
+---
+
 ## Known Limitations
 
-- **Mutable slice parameters** (`&mut [T]`) are not supported in `#[miniextendr]` functions. R vectors are copy-on-write; accept `&[T]` and return a new `Vec<T>` instead.
+- **Mutable slice parameters** (`&mut [T]`) are rejected at compile time. Use `CopySliceMut<T>` (see above) or accept `&[T]` and return a new `Vec<T>`.
 - **String matrices** (`ndarray::Array<String, Ix2>`) are not directly convertible because R's STRSXP is not contiguous memory. Use `Vec<Vec<String>>` as an intermediary.
 - **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
 
@@ -471,7 +518,7 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds
 ## See Also
 
 - [COERCE.md](COERCE.md) -- Type coercion trait design
-- [CONVERSION_SEMANTICS.md](CONVERSION_SEMANTICS.md) -- Storage-directed conversion semantics
+- [AS_COERCE.md](AS_COERCE.md) -- `as.<class>()` coercion methods
 - [CONVERSION_MATRIX.md](CONVERSION_MATRIX.md) -- R type x Rust type behavior reference
 - [FEATURES.md](FEATURES.md) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
 - [GC_PROTECT.md](GC_PROTECT.md) -- RAII-based GC protection for SEXP lifetimes

@@ -300,7 +300,7 @@ NOT_CRAN=true just devtools-test # Run R tests
 - **ALTREP**: Lazy/compact vectors via proc-macro method traits
 - **R_UnwindProtect**: Ensures Rust destructors run on R errors
 - **GC Protection**: Use `OwnedProtect`/`ProtectScope` for RAII-based protect/unprotect
-- **Dots (`...`)**: R's variadic args become `_dots: &Dots`. Use `name @ ...` for custom name. See `docs/dots_typed_list.md`
+- **Dots (`...`)**: R's variadic args become `_dots: &Dots`. Use `name @ ...` for custom name. See `docs/DOTS_TYPED_LIST.md`
 - **typed_list!**: Validate dots structure with `#[miniextendr(dots = typed_list!(...))]`. Creates `dots_typed` variable.
 
 ## Reference Documentation

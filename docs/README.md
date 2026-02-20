@@ -25,33 +25,35 @@ Comprehensive documentation for the miniextendr Rust-R interoperability framewor
 How miniextendr works under the hood.
 
 - **[Architecture](ARCHITECTURE.md)** -- Crate structure, call flow, how Rust talks to R
-- **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp`/`IntoR` system: how Rust types map to R types
+- **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp`/`IntoR` system, `NamedList`, `CopySliceMut`
+- **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`, `REnv` for calling R from Rust
 - **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`, and error propagation
 - **[GC Protection](GC_PROTECT.md)** -- RAII-based protect/unprotect (`OwnedProtect`, `ProtectScope`)
 - **[Safety](SAFETY.md)** -- Safety invariants and what miniextendr guarantees
-- **[Threads](THREADS.md)** -- Worker thread architecture, main thread safety, `with_r_thread`
+- **[Threads](THREADS.md)** -- Worker thread architecture, batching, main thread safety
 
 ### Class Systems
 
 Generate R class wrappers from Rust structs.
 
-- **[Class Systems](CLASS_SYSTEMS.md)** -- Env (default), R6, S3, S4, S7 generation from `#[miniextendr] impl`
+- **[Class Systems](CLASS_SYSTEMS.md)** -- Env (default), R6, S3, S4, S7 generation + S4 helpers
 
 ### Features
 
-Optional capabilities enabled via Cargo feature flags.
+Optional capabilities enabled via Cargo feature flags or proc-macro attributes.
 
 | Feature | Guide | What it does |
 |---|---|---|
 | ALTREP | [ALTREP](ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
-| Connections | [Connections](CONNECTIONS.md) | Custom R connections from Rust (experimental) |
+| Connections | [Connections](CONNECTIONS.md) | Custom R connections from Rust |
 | Progress bars | [Progress](PROGRESS.md) | indicatif progress bars routed through R console |
 | rayon | [Rayon](RAYON.md) | Parallel iteration with data-race safety |
 | vctrs | [Vctrs](VCTRS.md) | vctrs integration with `#[derive(Vctrs)]` |
-| serde | [serde_r](serde_r.md) | Direct Rust-R serialization |
-| DataFrames | [DataFrames](dataframe.md) | `#[derive(DataFrameRow)]` for struct ↔ data.frame |
-| Dots | [Dots](dots_typed_list.md) | R's `...` args + `typed_list!` validation |
+| serde | [Serde](SERDE_R.md) | Direct Rust-R serialization |
+| DataFrames | [DataFrames](DATAFRAME.md) | `#[derive(DataFrameRow)]` for struct-to-data.frame |
+| Dots | [Dots](DOTS_TYPED_LIST.md) | R's `...` args + `typed_list!` validation |
 | Adapters | [Adapter Traits](ADAPTER_TRAITS.md), [Cookbook](ADAPTER_COOKBOOK.md) | Export external crate traits to R |
+| Lifecycle | [Lifecycle](LIFECYCLE.md) | Deprecation badges and runtime warnings |
 | Feature defaults | [Feature Defaults](FEATURE_DEFAULTS.md) | Project-wide defaults (strict, coerce, class system) |
 | All flags | [Features](FEATURES.md) | Complete feature flag reference |
 
@@ -72,16 +74,17 @@ How miniextendr packages are built, configured, and released.
 - **[Vendoring](VENDOR.md)** -- Dependency vendoring and CRAN release prep
 - **[Linking](LINKING.md)** -- Shared library linking strategy
 - **[Environment Variables](ENVIRONMENT_VARIABLES.md)** -- All env vars affecting build/configure/lint
+- **[Non-API Tracking](NONAPI.md)** -- Non-API R symbols used (for CRAN compliance)
 - **[Engine](ENGINE.md)** -- miniextendr-engine: standalone R embedding
 
 ### Type System Deep Dive
 
 Advanced type conversion and coercion details.
 
-- **[Conversion Matrix](CONVERSION_MATRIX.md)** -- R type × Rust type behavior reference
-- **[Conversion Semantics](CONVERSION_SEMANTICS.md)** -- Storage-directed conversion rules
+- **[Conversion Matrix](CONVERSION_MATRIX.md)** -- R type x Rust type behavior reference
 - **[Coercion](COERCE.md)** -- Automatic type coercion
-- **[Extending](extending-miniextendr.md)** -- Adding custom types to miniextendr
+- **[as.class() Methods](AS_COERCE.md)** -- `as.<class>()` coercion methods
+- **[Extending](EXTENDING_MINIEXTENDR.md)** -- Adding custom types to miniextendr
 
 ### Testing & Debugging
 
@@ -92,7 +95,6 @@ Advanced type conversion and coercion details.
 ### Benchmarks
 
 - **[Performance Baseline](BENCHMARKS.md)** -- All subsystems benchmarked (2026-02-18)
-- **[ALTREP Benchmarks](ALTREP_BENCHMARKS.md)** -- ALTREP-specific performance data
 
 ### Project Status
 
