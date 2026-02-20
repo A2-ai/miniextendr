@@ -35,9 +35,9 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 == Performance
 
-- [ ] Worker batching/context reuse API
-  - Current `with_r_thread` is one message per call (440µs amortizable overhead)
-  - Batch API to send multiple work items in one round-trip
+- [x] Worker batching/context reuse API — `with_r_thread_batch` + `RThreadScope`
+  - `with_r_thread_batch`: send multiple closures in one round-trip
+  - `RThreadScope`: RAII context for multiple `call()` invocations on one channel open
 - [~] Direct/no-wrapper export mode for hot functions
   - Already covered by `extern "C-unwind"` + `#[no_mangle]` support
   - Function IS the C symbol; R wrapper is `unsafe_` prefixed convenience only
@@ -90,8 +90,10 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 === Connections
 
-- [ ] Connections API stability
-  - Capability probing, stronger runtime version checks, binary/stat support
+- [x] Connections API stability — capability probing + runtime version check
+  - `ConnectionCapabilities::from_sexp()`: probe can_read/write/seek, is_open/text/blocking
+  - `check_connections_runtime()`: R.Version() probe for R >= 4.3.0
+  - `is_binary_mode()`, `connection_mode()`, `connection_description()` helpers
 
 === Concurrency (POSTPONED)
 
@@ -106,8 +108,12 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 == Low Priority / Nice to Have
 
-- [ ] `miniextendr.yml` config file support for user defaults (yaml package)
-- [ ] `lifecycle` package for deprecation warnings and API evolution
+- [x] `miniextendr.yml` config file support — `mx_config()` + `mx_config_defaults()`
+  - Reads YAML with fallback to defaults; warns on unknown keys / parse errors
+  - Template scaffolded by `use_miniextendr_config()`; yaml package optional
+- [x] `lifecycle` package for deprecation warnings — `@importFrom` tag injection
+  - `import_from_fn()` maps stages to R functions (deprecate_warn, deprecate_soft, etc.)
+  - `inject_lifecycle_imports()` adds `@importFrom lifecycle` roxygen tags with dedup
 - [x] `num-traits` as internal helper for generic numeric implementations
   - `RNum`, `RFloat`, `RSigned` adapter traits with blanket impls
   - Feature-gated: `miniextendr-api = { features = ["num-traits"] }`
