@@ -415,7 +415,9 @@ pub mod rng;
 pub use rng::{RngGuard, with_rng};
 
 // Re-export from_r
-pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
+pub use from_r::{
+    CopySliceMut, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
+};
 
 // Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
 // NOTE: Disabled because it references non-exported symbols from R's Defn.h

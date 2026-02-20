@@ -122,6 +122,16 @@ impl RustConversionBuilder {
                         let #ident = &#storage_ident;
                     };
                     (vec![stmt], vec![])
+                } else if is_slice && r.mutability.is_some() {
+                    // &mut [T]: rejected at compile time (GC safety)
+                    let span = ty.span();
+                    let stmt = quote_spanned! {span=>
+                        compile_error!(
+                            "&mut [T] parameters are not supported at the #[miniextendr] boundary (GC safety). \
+                             Use CopySliceMut<T> for safe copy-in/copy-out mutation, or Vec<T> for owned copies."
+                        );
+                    };
+                    (vec![stmt], vec![])
                 } else if is_slice {
                     // &[T]: use TryFromSexp (backed by DATAPTR_RO)
                     let error_msg = format!(

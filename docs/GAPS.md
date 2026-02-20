@@ -156,21 +156,31 @@ See `rpkg/src/rust/doc_attr_tests.rs` for test coverage.
 
 ## 2. Type Conversion Gaps
 
-### 2.1 Mutable Slice Parameters Not Supported
+### 2.1 Mutable Slice Parameters Rejected at Compile Time
 
-**Status:** By design (safety contract)
+**Status:** Enforced (compile error + safe alternative)
 **Impact:** Medium
-**Location:** `miniextendr-api/src/from_r.rs:1464-1494`
+**Location:** `miniextendr-macros/src/rust_conversion_builder.rs` (rejection), `miniextendr-api/src/from_r.rs` (`CopySliceMut<T>`)
 
-**Contract:** Mutable slices backed by R SEXPs are unsafe because writing through them can trigger GC. For example, setting an element in a `&mut [SEXP]` to `R_NilValue` may drop the last reference to an object, causing GC to collect it and shrink/move the backing storage -- invalidating the slice pointer mid-use. While `TryFromSexp` is implemented for `&'static mut [T]`, exposing it through the macro boundary is banned because:
+**Contract:** `&mut [T]` at the `#[miniextendr]` boundary is rejected with a compile error because R's GC can invalidate the slice pointer mid-use. The macro emits a helpful error directing users to `CopySliceMut<T>` or `Vec<T>`.
 
-1. Writing through an R-backed slice can trigger GC, invalidating the pointer
-2. The `'static` lifetime on slices is a "lie" -- actual lifetime is tied to GC protection
-3. Multiple R references to the same vector would create aliased mutable references
+**Safe alternative -- `CopySliceMut<T>`:**
 
-**Workarounds:**
+`CopySliceMut<T>` copies R vector data into an owned `Vec<T>` on construction (copy-in), provides `DerefMut` to `[T]` for ergonomic mutation, and converts back to an R vector via `IntoR` (copy-out). Supported element types: `i32`, `f64`, `u8`, `RLogical`.
+
 ```rust
-// Option 1: Accept immutable slice, return modified copy
+use miniextendr_api::CopySliceMut;
+
+// CopySliceMut: copy-in, mutate, copy-out
+#[miniextendr]
+pub fn double_values(mut data: CopySliceMut<f64>) -> CopySliceMut<f64> {
+    for x in data.iter_mut() {
+        *x *= 2.0;
+    }
+    data
+}
+
+// Alternative: Accept immutable slice, return modified copy
 #[miniextendr]
 pub fn modify_vec(data: &[i32]) -> Vec<i32> {
     let mut result = data.to_vec();
@@ -178,14 +188,14 @@ pub fn modify_vec(data: &[i32]) -> Vec<i32> {
     result
 }
 
-// Option 2: Accept owned Vec (copies data)
+// Alternative: Accept owned Vec (copies data)
 #[miniextendr]
-pub fn modify_vec(mut data: Vec<i32>) -> Vec<i32> {
+pub fn modify_vec_owned(mut data: Vec<i32>) -> Vec<i32> {
     data[0] = 42;
     data
 }
 
-// Option 3: Use ExternalPtr for mutable state
+// For mutable state, use ExternalPtr
 #[miniextendr]
 pub fn modify_state(state: &mut MyState) {
     state.value = 42;
