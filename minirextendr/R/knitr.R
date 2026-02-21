@@ -2,19 +2,31 @@
 
 #' Set up miniextendr knitr engine
 #'
-#' Registers a custom knitr language engine named `"miniextendr"` and runs
-#' [miniextendr_sync()] to ensure the package is built before knitting.
-#' Call this in a setup chunk at the top of your vignette.
+#' Registers a custom knitr language engine named `"miniextendr"`.
 #'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @param ... Additional arguments passed to [miniextendr_sync()].
+#' When `path` is provided (default `"."`), runs [miniextendr_sync()] to
+#' ensure an existing package is built before knitting. Chunks are then
+#' evaluated as R code.
+#'
+#' When `path = NULL`, enables **inline mode**: each `{miniextendr}` chunk
+#' is compiled as standalone Rust code via [rust_source()], and compiled
+#' functions are loaded into the knitr global environment. This is useful
+#' for self-contained vignettes that don't require an existing package.
+#'
+#' @param path Path to the R package root, `"."` to use the current directory,
+#'   or `NULL` for inline compilation mode.
+#' @param ... Additional arguments passed to [miniextendr_sync()] (package mode)
+#'   or [rust_source()] (inline mode).
 #' @return Invisibly returns `TRUE`.
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' # In an Rmd/qmd setup chunk:
+#' # Package mode (in a package vignette):
 #' miniextendr_knitr_setup()
+#'
+#' # Inline mode (self-contained vignette):
+#' miniextendr_knitr_setup(path = NULL)
 #' }
 miniextendr_knitr_setup <- function(path = ".", ...) {
   if (!requireNamespace("knitr", quietly = TRUE)) {
@@ -24,16 +36,22 @@ miniextendr_knitr_setup <- function(path = ".", ...) {
     ))
   }
 
-  # Sync the package before knitting
-  miniextendr_sync(path = path, ...)
-
-  # Register the engine
-  knitr::knit_engines$set(miniextendr = eng_miniextendr)
+  if (is.null(path)) {
+    # Inline mode: register engine that compiles chunks via rust_source()
+    inline_args <- list(...)
+    knitr::knit_engines$set(miniextendr = function(options) {
+      eng_miniextendr_inline(options, extra_args = inline_args)
+    })
+  } else {
+    # Package mode: sync the package before knitting
+    miniextendr_sync(path = path, ...)
+    knitr::knit_engines$set(miniextendr = eng_miniextendr)
+  }
 
   invisible(TRUE)
 }
 
-#' miniextendr knitr engine
+#' miniextendr knitr engine (package mode)
 #'
 #' Processes `miniextendr` chunks. Chunks are evaluated as R code
 #' (after the package has been synced by [miniextendr_knitr_setup()]).
@@ -70,6 +88,52 @@ eng_miniextendr <- function(options) {
     )
   } else {
     ""
+  }
+
+  knitr::engine_output(options, code, out)
+}
+
+#' miniextendr knitr engine (inline mode)
+#'
+#' Compiles each `{miniextendr}` chunk as standalone Rust code via
+#' [rust_source()] and loads the functions into the knitr global environment.
+#'
+#' Supported chunk options:
+#' - `quiet`: suppress build output (logical, default TRUE)
+#' - `features`: comma-separated cargo features to enable
+#'
+#' @param options Chunk options list (provided by knitr)
+#' @param extra_args Additional arguments from miniextendr_knitr_setup()
+#' @return Engine output (via [knitr::engine_output()])
+#' @noRd
+eng_miniextendr_inline <- function(options, extra_args = list()) {
+  if (!requireNamespace("knitr", quietly = TRUE)) {
+    abort("{.pkg knitr} is required")
+  }
+
+  code <- paste(options$code, collapse = "\n")
+
+  out <- ""
+  if (options$eval) {
+    quiet <- options$quiet %||% TRUE
+    features <- options$features %||% character()
+    if (is.character(features) && length(features) == 1 && grepl(",", features)) {
+      features <- trimws(strsplit(features, ",")[[1]])
+    }
+
+    args <- c(
+      list(code = code, env = knitr::knit_global(), quiet = quiet,
+           features = features),
+      extra_args
+    )
+
+    out <- tryCatch(
+      {
+        do.call(rust_source, args)
+        ""
+      },
+      error = function(e) conditionMessage(e)
+    )
   }
 
   knitr::engine_output(options, code, out)
