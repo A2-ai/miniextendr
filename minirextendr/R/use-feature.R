@@ -515,3 +515,175 @@ skip_if_missing_feature <- function(name) {
   code
 }
 
+# =============================================================================
+# Render workflow scaffolding helpers
+# =============================================================================
+
+#' Add miniextendr knitr setup to a vignette
+#'
+#' Prepends a setup chunk that calls [miniextendr_knitr_setup()] to
+#' the specified Rmd/qmd file, ensuring the Rust package is built
+#' before code chunks run.
+#'
+#' @param path Path to the Rmd or qmd file.
+#' @return Invisibly returns `TRUE` if the file was modified.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' use_miniextendr_knitr("vignettes/my-vignette.Rmd")
+#' }
+use_miniextendr_knitr <- function(path) {
+  if (missing(path) || !is.character(path) || length(path) != 1) {
+    abort("Provide a single path to an Rmd or qmd file")
+  }
+  if (!file.exists(path)) {
+    abort("File not found: {.path {path}}")
+  }
+
+  lines <- readLines(path, warn = FALSE)
+
+  # Check if setup chunk already exists
+  if (any(grepl("miniextendr_knitr_setup", lines, fixed = TRUE))) {
+    cli::cli_alert_info("miniextendr_knitr_setup() already present in {.path {path}}")
+    return(invisible(FALSE))
+  }
+
+  setup_chunk <- c(
+    "```{r setup, include=FALSE}",
+    "minirextendr::miniextendr_knitr_setup()",
+    "```",
+    ""
+  )
+
+  # Insert after YAML front matter
+  yaml_delims <- grep("^---\\s*$", lines)
+  if (length(yaml_delims) >= 2) {
+    insert_after <- yaml_delims[2]
+  } else {
+    insert_after <- 0
+  }
+
+  lines <- append(lines, setup_chunk, after = insert_after)
+  writeLines(lines, path)
+  cli::cli_alert_success("Added miniextendr_knitr_setup() chunk to {.path {path}}")
+  invisible(TRUE)
+}
+
+#' Set miniextendr rmarkdown output format
+#'
+#' Replaces the output format in an Rmd file's YAML header with
+#' a miniextendr-aware wrapper format (e.g., `miniextendr_html_document`).
+#'
+#' @param path Path to the Rmd file.
+#' @param format Output format name. One of `"html_document"` (default),
+#'   `"pdf_document"`, or `"word_document"`.
+#' @return Invisibly returns `TRUE` if the file was modified.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' use_miniextendr_rmarkdown("vignettes/my-vignette.Rmd")
+#' }
+use_miniextendr_rmarkdown <- function(path,
+                                       format = c("html_document",
+                                                   "pdf_document",
+                                                   "word_document")) {
+  if (missing(path) || !is.character(path) || length(path) != 1) {
+    abort("Provide a single path to an Rmd file")
+  }
+  if (!file.exists(path)) {
+    abort("File not found: {.path {path}}")
+  }
+  format <- match.arg(format)
+
+  mx_format <- paste0("minirextendr::miniextendr_", format)
+  lines <- readLines(path, warn = FALSE)
+
+  # Check if already using miniextendr format
+  if (any(grepl(mx_format, lines, fixed = TRUE))) {
+    cli::cli_alert_info("{.val {mx_format}} already in {.path {path}}")
+    return(invisible(FALSE))
+  }
+
+  # Find and replace output format in YAML header
+  yaml_delims <- grep("^---\\s*$", lines)
+  if (length(yaml_delims) < 2) {
+    abort("No YAML front matter found in {.path {path}}")
+  }
+
+  yaml_start <- yaml_delims[1]
+  yaml_end <- yaml_delims[2]
+
+  # Look for output: line in YAML
+  output_idx <- grep("^output:", lines[yaml_start:yaml_end]) + yaml_start - 1
+  if (length(output_idx) == 0) {
+    # No output field — add one before end of YAML
+    lines <- append(lines, paste0("output: ", mx_format), after = yaml_end - 1)
+  } else {
+    # Replace existing output line
+    lines[output_idx[1]] <- paste0("output: ", mx_format)
+  }
+
+  writeLines(lines, path)
+  cli::cli_alert_success("Set output format to {.val {mx_format}} in {.path {path}}")
+  invisible(TRUE)
+}
+
+#' Add miniextendr pre-render hook to Quarto project
+#'
+#' Adds a `project.pre-render` entry to `_quarto.yml` that calls
+#' [miniextendr_quarto_pre_render()] before rendering.
+#'
+#' @param path Path to the directory containing `_quarto.yml`,
+#'   or the `_quarto.yml` file itself.
+#' @return Invisibly returns `TRUE` if the file was modified.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' use_miniextendr_quarto("vignettes/")
+#' }
+use_miniextendr_quarto <- function(path = ".") {
+  if (dir.exists(path)) {
+    qmd_path <- file.path(path, "_quarto.yml")
+  } else {
+    qmd_path <- path
+  }
+
+  pre_render_cmd <- "Rscript -e 'minirextendr::miniextendr_quarto_pre_render()'"
+
+  if (!file.exists(qmd_path)) {
+    # Create minimal _quarto.yml
+    writeLines(c(
+      "project:",
+      paste0("  pre-render: ", pre_render_cmd)
+    ), qmd_path)
+    cli::cli_alert_success("Created {.path {qmd_path}} with pre-render hook")
+    return(invisible(TRUE))
+  }
+
+  lines <- readLines(qmd_path, warn = FALSE)
+
+  # Check if already present
+  if (any(grepl("miniextendr_quarto_pre_render", lines, fixed = TRUE))) {
+    cli::cli_alert_info("miniextendr pre-render hook already in {.path {qmd_path}}")
+    return(invisible(FALSE))
+  }
+
+  # Look for project: section
+  project_idx <- grep("^project:", lines)
+  if (length(project_idx) == 0) {
+    # Append project section
+    lines <- c(lines, "", "project:",
+               paste0("  pre-render: ", pre_render_cmd))
+  } else {
+    # Insert pre-render after project: line
+    lines <- append(lines, paste0("  pre-render: ", pre_render_cmd),
+                    after = project_idx[1])
+  }
+
+  writeLines(lines, qmd_path)
+  cli::cli_alert_success("Added miniextendr pre-render hook to {.path {qmd_path}}")
+  invisible(TRUE)
+}

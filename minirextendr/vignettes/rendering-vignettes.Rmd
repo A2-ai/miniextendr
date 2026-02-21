@@ -1,0 +1,276 @@
+---
+title: "Rendering Vignettes and Documents"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Rendering Vignettes and Documents}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+library(minirextendr)
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+miniextendr packages require a multi-step build (configure, compile, generate
+wrappers, reinstall) before R can call Rust functions. When rendering Rmd or
+qmd vignettes, this build must complete before knitr evaluates code chunks.
+
+`miniextendr_sync()` detects when Rust sources have changed and rebuilds
+automatically, so vignettes just work.
+
+## miniextendr_sync()
+
+The core function hashes all build-relevant files and rebuilds only when
+something changed:
+
+```{r sync-demo}
+# What does the sync API look like?
+args(miniextendr_sync)
+```
+
+### Mode
+
+The `mode` parameter controls when to rebuild:
+
+| Mode | Behavior |
+|------|----------|
+| `"if_stale"` (default) | Rebuild only when source hash changed |
+| `"always"` | Rebuild unconditionally |
+| `"never"` | Skip rebuild entirely |
+
+```{r sync-never}
+# mode = "never" always returns fresh = TRUE
+result <- miniextendr_sync(mode = "never", quiet = TRUE)
+result$fresh
+result$stage_run
+```
+
+### Stage
+
+The `stage` parameter controls how far to rebuild:
+
+| Stage | Steps |
+|-------|-------|
+| `"install"` (default) | Full: configure + install + document + install |
+| `"wrappers"` | Only regenerate R wrappers |
+| `"build"` | Configure + compile (no install) |
+
+### Staleness Detection
+
+`miniextendr_sync()` computes an MD5 hash over all build-relevant files:
+
+```{r hash-demo}
+# The hash function works on any directory with Rust sources
+tmp <- tempdir()
+rust_dir <- file.path(tmp, "src", "rust")
+dir.create(rust_dir, recursive = TRUE, showWarnings = FALSE)
+writeLines("fn main() {}", file.path(rust_dir, "lib.rs"))
+
+# Compute hash
+h1 <- minirextendr:::compute_source_hash(tmp)
+nchar(h1)  # MD5 = 32 hex chars
+
+# Same sources → same hash
+h2 <- minirextendr:::compute_source_hash(tmp)
+identical(h1, h2)
+
+# Change a file → different hash
+writeLines("fn main() { println!(\"changed\"); }", file.path(rust_dir, "lib.rs"))
+h3 <- minirextendr:::compute_source_hash(tmp)
+identical(h1, h3)
+```
+
+State is stored in `tools/.miniextendr/render-state.rds`, so rebuilds
+persist across R sessions.
+
+## Integrating with Vignettes
+
+Three approaches, depending on your toolchain.
+
+### Approach 1: knitr Setup Chunk
+
+Add a setup chunk at the top of your Rmd:
+
+````markdown
+```{r setup, include=FALSE}`r ""`
+minirextendr::miniextendr_knitr_setup()
+```
+````
+
+This calls `miniextendr_sync()` once before knitting, then registers a
+custom knitr engine. All subsequent chunks can call Rust functions freely.
+
+The `use_miniextendr_knitr()` helper adds this chunk for you:
+
+```{r scaffold-knitr}
+# Create a sample Rmd
+tmp_rmd <- tempfile(fileext = ".Rmd")
+writeLines(c(
+  "---",
+  "title: My Vignette",
+  "---",
+  "",
+  "```{r}",
+  "library(mypackage)",
+  "my_function(42)",
+  "```"
+), tmp_rmd)
+
+# Add the setup chunk
+use_miniextendr_knitr(tmp_rmd)
+
+# See what was added
+cat(readLines(tmp_rmd), sep = "\n")
+```
+
+Running it again is safe — it detects the existing chunk:
+
+```{r scaffold-knitr-idempotent}
+# Idempotent: won't add twice
+use_miniextendr_knitr(tmp_rmd)
+```
+
+### Approach 2: rmarkdown Wrapper Format
+
+Declare a miniextendr-aware output format in your YAML header:
+
+```yaml
+output: minirextendr::miniextendr_html_document
+```
+
+This runs `miniextendr_sync()` via a `pre_knit` hook before any chunks
+evaluate. Three formats available:
+
+```{r format-demo}
+# Each wraps the corresponding rmarkdown format
+fmt <- miniextendr_html_document()
+# The pre_knit hook is set automatically
+is.function(fmt$pre_knit)
+```
+
+The `use_miniextendr_rmarkdown()` helper sets the format:
+
+```{r scaffold-rmarkdown}
+tmp_rmd2 <- tempfile(fileext = ".Rmd")
+writeLines(c(
+  "---",
+  "title: My Report",
+  "output: html_document",
+  "---",
+  "",
+  "Some content."
+), tmp_rmd2)
+
+# Replace output format
+use_miniextendr_rmarkdown(tmp_rmd2)
+cat(readLines(tmp_rmd2), sep = "\n")
+```
+
+```{r scaffold-rmarkdown-pdf}
+# PDF variant
+tmp_rmd3 <- tempfile(fileext = ".Rmd")
+writeLines(c(
+  "---",
+  "title: PDF Report",
+  "output: pdf_document",
+  "---",
+  "",
+  "Content."
+), tmp_rmd3)
+
+use_miniextendr_rmarkdown(tmp_rmd3, format = "pdf_document")
+cat(readLines(tmp_rmd3), sep = "\n")
+```
+
+### Approach 3: Quarto Pre-Render
+
+For Quarto projects, add a pre-render hook to `_quarto.yml`:
+
+```yaml
+project:
+  pre-render: Rscript -e 'minirextendr::miniextendr_quarto_pre_render()'
+```
+
+The `use_miniextendr_quarto()` helper handles this:
+
+```{r scaffold-quarto-new}
+# Creates _quarto.yml if it doesn't exist
+tmp_dir <- tempfile("quarto-")
+dir.create(tmp_dir)
+
+use_miniextendr_quarto(tmp_dir)
+cat(readLines(file.path(tmp_dir, "_quarto.yml")), sep = "\n")
+```
+
+```{r scaffold-quarto-existing}
+# Or appends to an existing _quarto.yml
+tmp_dir2 <- tempfile("quarto-")
+dir.create(tmp_dir2)
+writeLines(c(
+  "project:",
+  "  type: website",
+  "",
+  "format:",
+  "  html:",
+  "    theme: cosmo"
+), file.path(tmp_dir2, "_quarto.yml"))
+
+use_miniextendr_quarto(tmp_dir2)
+cat(readLines(file.path(tmp_dir2, "_quarto.yml")), sep = "\n")
+```
+
+## Choosing an Approach
+
+| Context | Recommendation |
+|---------|---------------|
+| R package vignettes (`html_vignette`) | knitr setup chunk |
+| Standalone reports (HTML/PDF/Word) | rmarkdown wrapper format |
+| Quarto websites or books | Quarto pre-render hook |
+
+For package vignettes, the knitr setup chunk is simplest because it works
+with `rmarkdown::html_vignette` without changing the output format.
+
+## Complete Package Vignette Template
+
+Here is a full vignette that auto-builds and demonstrates live results:
+
+````markdown
+---
+title: "Introduction to mypackage"
+output: rmarkdown::html_vignette
+vignette: >
+ %%\VignetteIndexEntry{Introduction to mypackage}
+ %%\VignetteEngine{knitr::rmarkdown}
+ %%\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}`r ""`
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+minirextendr::miniextendr_knitr_setup(quiet = TRUE)
+```
+
+```{r}`r ""`
+library(mypackage)
+
+# Rust functions are available — the package was
+# built automatically by miniextendr_knitr_setup()
+my_add(1L, 2L)
+```
+````
+
+## Troubleshooting
+
+**"could not find function"** — The package was not rebuilt. Check that
+`miniextendr_knitr_setup()` appears in a setup chunk, or that the wrapper
+format is set correctly.
+
+**Slow renders** — On the first render after source changes, a full
+Rust compilation is needed. Subsequent renders skip the build if sources
+haven't changed (staleness detection).
+
+**Stale state** — Delete `tools/.miniextendr/render-state.rds` to force
+a fresh hash.

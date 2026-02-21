@@ -1,0 +1,305 @@
+---
+title: "miniextendr Feature Showcase"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{miniextendr Feature Showcase}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+has_rpkg <- requireNamespace("miniextendr", quietly = TRUE)
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = has_rpkg
+)
+```
+
+```{r check-rpkg, eval = !has_rpkg, echo = FALSE, results = "asis"}
+cat(
+  "> **Note:** The `miniextendr` demo package is not installed.",
+  "> Code chunks in this vignette are not evaluated.",
+  "> Install it with `just rcmdinstall` from the miniextendr monorepo",
+  "> to see live output.",
+  sep = "\n"
+)
+```
+
+This vignette demonstrates core miniextendr features using the `miniextendr`
+demo package (rpkg). Each section shows live output from Rust functions
+called through R.
+
+## Basic Function Calls
+
+The simplest miniextendr feature: calling Rust functions from R with
+automatic type conversion.
+
+```{r basic}
+library(miniextendr)
+
+# Integer arithmetic in Rust
+add(1L, 2L)
+```
+
+Rust functions accept standard R types and return them seamlessly. Scalars,
+vectors, strings, and logicals all map to their Rust counterparts.
+
+## Data Frames from Rust Structs
+
+miniextendr can return data frames directly from Rust structs using the
+`#[derive(DataFrameRow)]` macro. Each struct field becomes a column.
+
+```{r dataframe-struct}
+# Struct fields -> data frame columns
+people <- create_people_df()
+people
+```
+
+Each `Person` struct has `name`, `age`, `height`, and `is_student` fields.
+The derive macro handles the type mapping: `String` to character, `i32` to
+integer, `f64` to numeric, `bool` to logical.
+
+### Enum Variants as Rows
+
+The `#[dataframe(align)]` attribute lets enum variants with different fields
+share a single data frame. Missing fields are filled with `NA`:
+
+```{r dataframe-enum}
+events <- create_events_df()
+events
+```
+
+Three different event types -- Click (with x/y coordinates), Impression
+(with a slot name), and Error (with code/message) -- are aligned into one
+data frame. The `_type` column records which variant each row came from.
+
+```{r dataframe-shapes}
+# Shapes -- another aligned enum example
+shapes <- create_shapes_df()
+shapes
+```
+
+## ALTREP: Lazy and Zero-Copy Vectors
+
+ALTREP (Alternative Representations) lets Rust create vectors without
+copying data into R's heap.
+
+```{r altrep-lazy}
+# Lazy computation: squares computed on demand
+squares <- lazy_squares(10L)
+squares
+
+# This is a real R vector -- standard operations work
+sum(squares)
+mean(squares)
+```
+
+The `lazy_squares()` function returns an ALTREP integer vector backed by
+a Rust `Vec`. The vector exists in Rust memory; R accesses it through
+ALTREP callbacks without a copy.
+
+```{r altrep-large}
+# Zero-copy: 100,000 elements without R heap allocation
+big <- large_vec_altrep()
+length(big)
+head(big)
+```
+
+## Class Systems
+
+miniextendr supports multiple class systems for wrapping Rust structs as R
+objects. Each offers different trade-offs.
+
+### Environment Classes (Default)
+
+The default class system wraps Rust structs in environment-based objects
+with `$method()` dispatch:
+
+```{r class-env}
+counter <- SimpleCounter$new_counter(0L)
+counter$get_value()
+invisible(counter$trait_add(1L))
+invisible(counter$trait_add(1L))
+counter$get_value()
+```
+
+### Trait Dispatch
+
+Traits define shared behavior across types. In R, trait methods appear as
+a nested `$TraitName$method()` interface on environment-class objects:
+
+```{r trait-env}
+# Environment-based trait dispatch
+ctr <- CounterTraitEnv$new(10L)
+ctr$get_value()
+
+# Trait methods via $TraitName$method()
+ctr$MatrixCounter$custom_add(5L)
+ctr$get_value()
+
+# Static trait methods work too
+ctr$MatrixCounter$default_value()
+```
+
+### Cross-Package Traits
+
+The `SharedCounter` trait is implemented by both `SharedSimpleCounter` and
+`AtomicCounter`, demonstrating cross-package trait dispatch:
+
+```{r trait-shared}
+# SharedSimpleCounter with SharedCounter trait
+sc <- SharedSimpleCounter$new(0L)
+sc$get_value()
+sc$SharedCounter$increment()
+sc$SharedCounter$increment()
+sc$get_value()
+sc$SharedCounter$add(10L)
+sc$get_value()
+```
+
+## Serde Serialization
+
+Rust structs with `#[derive(Serialize, Deserialize)]` can round-trip
+through R lists via the `serde_r` feature.
+
+### Nested Structs
+
+```{r serde-rect}
+# Nested struct serialization
+rect <- Rectangle$new(0, 0, 10, 5)
+str(rect$to_r())
+```
+
+A `Rectangle` contains two `Point` structs (`top_left`, `bottom_right`)
+and an optional `fill_color`. Nested structs become nested lists.
+
+### Collections
+
+```{r serde-collections}
+# Heterogeneous collections
+coll <- Collections$new()
+str(coll$to_r())
+```
+
+Rust `Vec<T>` maps to R vectors, and `Vec<Struct>` maps to a list of lists.
+
+### Named Maps
+
+```{r serde-maps}
+# HashMap/BTreeMap -> named R lists
+maps <- Maps$new()
+str(maps$to_r())
+```
+
+Both `HashMap<String, T>` and `BTreeMap<String, T>` become named R lists.
+
+### Optional Fields
+
+`Option<T>` in Rust maps to `NULL` in serialized R lists:
+
+```{r serde-optionals}
+# All fields present
+opt_present <- WithOptionals$all_present()
+str(opt_present$to_r())
+
+# None -> NULL
+opt_none <- WithOptionals$all_none()
+str(opt_none$to_r())
+```
+
+### Enum Variants
+
+Rust enums serialize to tagged lists. Unit variants become strings, data
+variants become named lists:
+
+```{r serde-enums}
+circle <- WithEnums$new_circle(5.0)
+str(circle$to_r())
+
+rect_enum <- WithEnums$new_rectangle(3.0, 4.0)
+str(rect_enum$to_r())
+```
+
+## Match Arg: Idiomatic R Choices
+
+The `#[derive(MatchArg)]` macro gives Rust enums R's `match.arg()`
+behavior -- including partial matching:
+
+```{r match-arg}
+# Full match
+match_arg_set_mode("Fast")
+
+# Partial match (like R's match.arg)
+match_arg_set_mode("D")
+
+# Default values
+match_arg_with_default()
+
+# See available choices
+match_arg_mode_choices()
+```
+
+String-based choices work too, with the `#[miniextendr(choices(...))]`
+attribute:
+
+```{r match-arg-string}
+# String-based choices with partial matching
+choices_correlation(0.5, 0.8, "pearson")
+choices_correlation(0.5, 0.8, "spear")
+```
+
+## Error Handling
+
+Rust panics are caught by the worker thread and converted to R errors
+without crashing the session:
+
+```{r error-handling, error = TRUE}
+# Result::Err -> R error
+error_in_r_result_err()
+
+# Panic -> R error (caught by worker thread)
+error_in_r_panic()
+```
+
+`Result<T, E>` returns map naturally to values or errors:
+
+```{r error-result}
+# Result::Ok -> value
+error_in_r_result_ok()
+```
+
+```{r error-option}
+# Option::Some -> value
+error_in_r_option_some()
+```
+
+```{r error-option-none, error = TRUE}
+# Option::None -> R error
+error_in_r_option_none()
+```
+
+## Feature Detection
+
+Packages can expose their compile-time feature flags at runtime using
+the `use_feature_detection()` scaffolding helper:
+
+```{r features}
+# What features are compiled in?
+rpkg_enabled_features()
+
+# Check specific features
+rpkg_has_feature("serde")
+rpkg_has_feature("rayon")
+```
+
+## Next Steps
+
+- `vignette("getting-started", package = "minirextendr")` -- create your
+  own miniextendr package
+- `vignette("adding-rust-functions", package = "minirextendr")` -- type
+  conversions and patterns
+- `vignette("altrep-quick-start", package = "minirextendr")` -- deep dive
+  into ALTREP
+- `vignette("rendering-vignettes", package = "minirextendr")` -- auto-build
+  integration for Rmd/qmd
