@@ -39,7 +39,7 @@ use_configure_feature_detection <- function(path = ".") {
   # Validate this is a miniextendr package
   configure_ac_path <- usethis::proj_path("configure.ac")
   if (!fs::file_exists(configure_ac_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "configure.ac not found",
       "i" = "Run {.code minirextendr::use_miniextendr()} first"
     ))
@@ -114,24 +114,24 @@ add_feature_rule <- function(feature, detect, cargo_spec = NULL,
   with_project(path)
 
   if (!is.character(feature) || length(feature) != 1 || !nzchar(feature)) {
-    abort("{.arg feature} must be a single non-empty string")
+    cli::cli_abort("{.arg feature} must be a single non-empty string")
   }
 
   # Validate detect
   if (!isTRUE(detect) && !(is.character(detect) && length(detect) == 1)) {
-    abort("{.arg detect} must be TRUE or a single string containing an R expression")
+    cli::cli_abort("{.arg detect} must be TRUE or a single string containing an R expression")
   }
 
   # Validate optional_dep
   if (!isFALSE(optional_dep) && !isTRUE(optional_dep) &&
       !(is.character(optional_dep) && length(optional_dep) == 1 &&
         nzchar(optional_dep))) {
-    abort("{.arg optional_dep} must be FALSE, TRUE, or a dependency spec string")
+    cli::cli_abort("{.arg optional_dep} must be FALSE, TRUE, or a dependency spec string")
   }
 
   script_path <- usethis::proj_path("tools", "detect-features.R")
   if (!fs::file_exists(script_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "{.path tools/detect-features.R} not found",
       "i" = "Run {.code use_configure_feature_detection()} first"
     ))
@@ -180,7 +180,7 @@ remove_feature_rule <- function(feature, path = ".") {
 
   script_path <- usethis::proj_path("tools", "detect-features.R")
   if (!fs::file_exists(script_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "{.path tools/detect-features.R} not found",
       "i" = "Run {.code use_configure_feature_detection()} first"
     ))
@@ -219,7 +219,7 @@ list_feature_rules <- function(path = ".") {
 
   script_path <- usethis::proj_path("tools", "detect-features.R")
   if (!fs::file_exists(script_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "{.path tools/detect-features.R} not found",
       "i" = "Run {.code use_configure_feature_detection()} first"
     ))
@@ -268,7 +268,7 @@ list_cargo_features <- function(path = ".") {
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo metadata failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -463,7 +463,7 @@ append_feature_rule <- function(script_path, feature, detect) {
 
   end_idx <- grep("^## END RULES", lines)
   if (length(end_idx) == 0) {
-    abort("Could not find '## END RULES' marker in {.path {script_path}}")
+    cli::cli_abort("Could not find '## END RULES' marker in {.path {script_path}}")
   }
 
   # Format the detect expression

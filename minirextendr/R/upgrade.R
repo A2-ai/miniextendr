@@ -33,7 +33,7 @@ upgrade_miniextendr_package <- function(path = ".",
   with_project(path)
 
   if (!is_miniextendr_package()) {
-    abort(c(
+    cli::cli_abort(c(
       "This does not appear to be a miniextendr package.",
       "i" = "Expected configure.ac with _FEATURES variable and build templates.",
       "i" = "Use {.code create_miniextendr_package()} to scaffold a new package."
@@ -147,7 +147,7 @@ check_scaffolding_clean <- function() {
   if (nrow(st) == 0) return(invisible())
 
   dirty <- paste0("  ", st$status, " ", st$file)
-  abort(c(
+  cli::cli_abort(c(
     "Scaffolding files have uncommitted changes.",
     "i" = "Commit or stash your changes first, or use {.code allow_dirty = TRUE} to force.",
     dirty
@@ -211,7 +211,7 @@ check_configure_ac_drift <- function() {
   }
 
   if (length(missing) > 0) {
-    warn(c(
+    cli::cli_warn(c(
       "configure.ac may be outdated (missing: {paste(missing, collapse = ', ')})",
       "i" = "Re-run with {.code configure_ac = TRUE} to replace it with the current template.",
       "!" = "This will overwrite any custom feature flags in configure.ac."

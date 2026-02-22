@@ -107,7 +107,7 @@ rust_function <- function(code, env = parent.frame(), ...) {
   # Extract pub fn names for auto-module generation
   fn_names <- extract_pub_fn_names(code)
   if (length(fn_names) == 0) {
-    abort(c(
+    cli::cli_abort(c(
       "No `pub fn` declarations found in code",
       "i" = "rust_function() requires at least one `pub fn` with #[miniextendr]"
     ))
@@ -192,14 +192,14 @@ rust_source_clean <- function(hash = NULL) {
 #' @noRd
 validate_rust_input <- function(file, code) {
   if (is.null(file) && is.null(code)) {
-    abort("One of `file` or `code` must be provided")
+    cli::cli_abort("One of `file` or `code` must be provided")
   }
   if (!is.null(file) && !is.null(code)) {
-    abort("Only one of `file` or `code` may be provided, not both")
+    cli::cli_abort("Only one of `file` or `code` may be provided, not both")
   }
   if (!is.null(file)) {
     if (!fs::file_exists(file)) {
-      abort("File not found: {.path {file}}")
+      cli::cli_abort("File not found: {.path {file}}")
     }
     code <- paste(readLines(file, warn = FALSE), collapse = "\n")
   }

@@ -100,7 +100,7 @@ check_result <- function(result, context) {
       cli::cli_verbatim(paste(tail_output, collapse = "\n"))
     }
 
-    abort(c(
+    cli::cli_abort(c(
       paste0(context, " failed"),
       "i" = paste0("Full output saved to: ", result$log_file)
     ))

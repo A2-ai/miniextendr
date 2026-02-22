@@ -20,7 +20,7 @@ add_cargo_feature <- function(feature_name, feature_spec)
   cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml")
 
   if (!fs::file_exists(cargo_in)) {
-    abort(c(
+    cli::cli_abort(c(
       "Cargo.toml not found at {.path {cargo_in}}",
       "i" = "Run {.code minirextendr::miniextendr_configure()} first"
     ))
@@ -39,7 +39,7 @@ add_cargo_feature <- function(feature_name, feature_spec)
   # Find [features] section and add after it
   features_idx <- grep("^\\[features\\]", lines)
   if (length(features_idx) == 0) {
-    abort("No [features] section found in Cargo.toml")
+    cli::cli_abort("No [features] section found in Cargo.toml")
   }
 
   # Find end of features section (next section or EOF)
@@ -69,14 +69,12 @@ add_import <- function(pkg, min_version = NULL) {
   desc_path <- usethis::proj_path("DESCRIPTION")
 
   if (!fs::file_exists(desc_path)) {
-    abort("DESCRIPTION file not found")
+    cli::cli_abort("DESCRIPTION file not found")
   }
 
-  d <- desc::desc(desc_path)
-
   # Check if already in Imports
-  imports <- d$get_deps()
-  imports <- imports[imports$type == "Imports", ]
+  deps <- mx_desc_get_deps(desc_path)
+  imports <- deps[deps$type == "Imports", ]
 
   if (pkg %in% imports$package) {
     cli::cli_alert_info("{.pkg {pkg}} already in Imports")
@@ -84,13 +82,7 @@ add_import <- function(pkg, min_version = NULL) {
   }
 
   # Add to Imports
-  if (!is.null(min_version)) {
-    d$set_dep(pkg, type = "Imports", version = min_version)
-  } else {
-    d$set_dep(pkg, type = "Imports")
-  }
-
-  d$write()
+  mx_desc_set_dep(desc_path, pkg, type = "Imports", version = min_version)
   cli::cli_alert_success("Added {.pkg {pkg}} to Imports in DESCRIPTION")
   invisible(TRUE)
 }
@@ -294,9 +286,9 @@ use_feature_detection <- function(path = ".",
   if (is.null(package_name)) {
     desc_path <- usethis::proj_path("DESCRIPTION")
     if (fs::file_exists(desc_path)) {
-      package_name <- desc::desc_get_field("Package", file = desc_path)
+      package_name <- mx_desc_get_field("Package", file = desc_path)
     } else {
-      abort("Could not determine package name. Provide it explicitly or run from package root.")
+      cli::cli_abort("Could not determine package name. Provide it explicitly or run from package root.")
     }
   }
 
@@ -535,10 +527,10 @@ skip_if_missing_feature <- function(name) {
 #' }
 use_miniextendr_knitr <- function(path) {
   if (missing(path) || !is.character(path) || length(path) != 1) {
-    abort("Provide a single path to an Rmd or qmd file")
+    cli::cli_abort("Provide a single path to an Rmd or qmd file")
   }
   if (!file.exists(path)) {
-    abort("File not found: {.path {path}}")
+    cli::cli_abort("File not found: {.path {path}}")
   }
 
   lines <- readLines(path, warn = FALSE)
@@ -590,10 +582,10 @@ use_miniextendr_rmarkdown <- function(path,
                                                    "pdf_document",
                                                    "word_document")) {
   if (missing(path) || !is.character(path) || length(path) != 1) {
-    abort("Provide a single path to an Rmd file")
+    cli::cli_abort("Provide a single path to an Rmd file")
   }
   if (!file.exists(path)) {
-    abort("File not found: {.path {path}}")
+    cli::cli_abort("File not found: {.path {path}}")
   }
   format <- match.arg(format)
 
@@ -609,7 +601,7 @@ use_miniextendr_rmarkdown <- function(path,
   # Find and replace output format in YAML header
   yaml_delims <- grep("^---\\s*$", lines)
   if (length(yaml_delims) < 2) {
-    abort("No YAML front matter found in {.path {path}}")
+    cli::cli_abort("No YAML front matter found in {.path {path}}")
   }
 
   yaml_start <- yaml_delims[1]

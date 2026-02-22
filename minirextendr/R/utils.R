@@ -235,7 +235,7 @@ use_template <- function(template, save_as = template, data = list(),
     template = template_rel,
     save_as = save_as,
     data = data,
-    open = open && rlang::is_interactive(),
+    open = open && interactive(),
     package = "minirextendr"
   )
 
@@ -284,7 +284,7 @@ check_installed_cmd <- function(cmd, msg = NULL) {
       cmd, " is required but not found on PATH. ",
       "Please install ", cmd, " and ensure it's available."
     )
-    abort(msg)
+    cli::cli_abort(msg)
   }
   invisible(TRUE)
 }
@@ -323,8 +323,158 @@ check_rust <- function() {
 #' @return Package name as string
 #' @noRd
 get_package_name <- function() {
-  desc <- desc::desc(usethis::proj_get())
-  desc$get_field("Package")
+  mx_desc_get_field("Package", file = usethis::proj_path("DESCRIPTION"))
+}
+
+# =============================================================================
+# DESCRIPTION file helpers (replaces desc package)
+# =============================================================================
+
+#' Read a single field from a DESCRIPTION file
+#'
+#' @param field Field name
+#' @param file Path to DESCRIPTION
+#' @param default Value if field missing
+#' @return Field value as string
+#' @noRd
+mx_desc_get_field <- function(field, file, default = NA_character_) {
+  dcf <- read.dcf(file, fields = field)
+  val <- dcf[1, 1]
+  if (is.na(val)) default else trimws(val)
+}
+
+#' Read full DESCRIPTION as a named list
+#'
+#' @param file Path to DESCRIPTION
+#' @return Named list of field values
+#' @noRd
+mx_desc_read <- function(file) {
+  dcf <- read.dcf(file)
+  vals <- as.list(dcf[1, ])
+  # Preserve original field order by reading raw lines
+  vals
+}
+
+#' Set fields in a DESCRIPTION file
+#'
+#' @param file Path to DESCRIPTION
+#' @param ... Named values to set (e.g., Package = "foo")
+#' @noRd
+mx_desc_set <- function(file, ...) {
+  fields <- list(...)
+  lines <- readLines(file, warn = FALSE)
+
+  for (nm in names(fields)) {
+    val <- fields[[nm]]
+    # Find existing field line
+    pattern <- paste0("^", nm, ":")
+    idx <- grep(pattern, lines)
+
+    new_line <- paste0(nm, ": ", val)
+
+    if (length(idx) > 0) {
+      # Replace existing field (and any continuation lines)
+      end <- idx[1]
+      while (end < length(lines) && grepl("^\\s", lines[end + 1])) {
+        end <- end + 1
+      }
+      lines <- c(lines[seq_len(idx[1] - 1)], new_line,
+                  if (end < length(lines)) lines[(end + 1):length(lines)])
+    } else {
+      # Append new field before last empty line or at end
+      lines <- c(lines, new_line)
+    }
+  }
+
+  writeLines(lines, file)
+}
+
+#' Get dependencies from DESCRIPTION
+#'
+#' @param file Path to DESCRIPTION
+#' @return Data frame with columns: type, package, version
+#' @noRd
+mx_desc_get_deps <- function(file) {
+  dcf <- read.dcf(file)
+  result <- data.frame(type = character(), package = character(),
+                       version = character(), stringsAsFactors = FALSE)
+
+  for (type in c("Depends", "Imports", "Suggests", "LinkingTo", "Enhances")) {
+    val <- dcf[1, type]
+    if (is.na(val)) next
+    pkgs <- trimws(strsplit(val, ",")[[1]])
+    pkgs <- pkgs[nzchar(pkgs)]
+    for (pkg in pkgs) {
+      # Parse "pkg (>= 1.0)" or just "pkg"
+      m <- regmatches(pkg, regexec("^([^(]+)\\s*(?:\\((.+)\\))?$", pkg))[[1]]
+      pkg_name <- trimws(m[2])
+      pkg_ver <- if (length(m) >= 3 && !is.na(m[3])) trimws(m[3]) else "*"
+      result <- rbind(result, data.frame(type = type, package = pkg_name,
+                                         version = pkg_ver,
+                                         stringsAsFactors = FALSE))
+    }
+  }
+  result
+}
+
+#' Add or update a dependency in DESCRIPTION
+#'
+#' @param file Path to DESCRIPTION
+#' @param pkg Package name
+#' @param type Dependency type (e.g., "Imports")
+#' @param version Version constraint (e.g., ">= 1.0") or NULL
+#' @noRd
+mx_desc_set_dep <- function(file, pkg, type = "Imports", version = NULL) {
+  lines <- readLines(file, warn = FALSE)
+
+  # Build the dependency string
+  dep_str <- if (!is.null(version) && nzchar(version) && version != "*") {
+    paste0(pkg, " (", version, ")")
+  } else {
+    pkg
+  }
+
+  # Find the section
+  section_idx <- grep(paste0("^", type, ":"), lines)
+
+  if (length(section_idx) == 0) {
+    # Add new section
+    lines <- c(lines, paste0(type, ":\n    ", dep_str))
+    writeLines(lines, file)
+    return(invisible())
+  }
+
+  # Find extent of section (continuation lines start with whitespace)
+  start <- section_idx[1]
+  end <- start
+  while (end < length(lines) && grepl("^\\s", lines[end + 1])) {
+    end <- end + 1
+  }
+
+  # Extract current deps
+  section_text <- paste(lines[start:end], collapse = "\n")
+  # Remove field name
+  deps_text <- sub(paste0("^", type, ":\\s*"), "", section_text)
+  deps <- trimws(strsplit(deps_text, ",")[[1]])
+  deps <- deps[nzchar(deps)]
+
+  # Remove existing entry for this package
+  pkg_pattern <- paste0("^", pkg, "\\b")
+  deps <- deps[!grepl(pkg_pattern, deps)]
+
+  # Add new entry
+  deps <- c(deps, dep_str)
+  deps <- sort(deps)
+
+  # Rebuild section
+  new_section <- paste0(type, ":\n", paste0("    ", deps, collapse = ",\n"))
+  lines <- c(
+    if (start > 1) lines[1:(start - 1)],
+    new_section,
+    if (end < length(lines)) lines[(end + 1):length(lines)]
+  )
+
+  writeLines(lines, file)
 }
 
 #' Convert R package name to Rust-safe identifier
@@ -408,7 +558,7 @@ generate_mx_abi_c <- function(in_path, out_path, package) {
 #' @noRd
 get_package_name_from_cargo <- function(cargo_path = file.path(usethis::proj_get(), "Cargo.toml")) {
   if (!file.exists(cargo_path)) {
-    abort("Cargo.toml not found")
+    cli::cli_abort("Cargo.toml not found")
   }
 
   lines <- readLines(cargo_path, warn = FALSE)
@@ -416,7 +566,7 @@ get_package_name_from_cargo <- function(cargo_path = file.path(usethis::proj_get
   # Look for: name = "package-name"
   name_line <- grep('^name\\s*=\\s*"', lines, value = TRUE)[1]
   if (is.na(name_line)) {
-    abort("Could not find package name in Cargo.toml")
+    cli::cli_abort("Could not find package name in Cargo.toml")
   }
 
   # Extract name from: name = "my-crate"

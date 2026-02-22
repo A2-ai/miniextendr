@@ -19,7 +19,7 @@ miniextendr_available_versions <- function() {
               stdout = TRUE, stderr = FALSE)
     },
     error = function(e) {
-      warn(c(
+      cli::cli_warn(c(
         "Failed to fetch versions from GitHub",
         "i" = conditionMessage(e)
       ))
@@ -75,7 +75,7 @@ download_miniextendr_archive <- function(version, dest_path) {
   )
 
   if (!download_result) {
-    abort(c(
+    cli::cli_abort(c(
       "Failed to download miniextendr",
       "i" = "Check that version '{version}' exists at github.com/{MINIEXTENDR_REPO}"
     ))
@@ -151,7 +151,7 @@ vendor_miniextendr <- function(path = ".",
   extracted_dirs <- fs::dir_ls(tmp_dir, type = "directory")
 
   if (length(extracted_dirs) != 1) {
-    abort(c(
+    cli::cli_abort(c(
       "Unexpected archive structure",
       "i" = "Expected exactly 1 top-level directory, found {length(extracted_dirs)}"
     ))
@@ -171,7 +171,7 @@ vendor_miniextendr <- function(path = ".",
     dest_path <- fs::path(dest, crate)
 
     if (!fs::dir_exists(src_path)) {
-      warn("Crate {crate} not found in downloaded archive")
+      cli::cli_warn("Crate {crate} not found in downloaded archive")
       failed_crates <- c(failed_crates, crate)
       next
     }
@@ -197,7 +197,7 @@ vendor_miniextendr <- function(path = ".",
   }
 
   if (length(failed_crates) > 0) {
-    abort(c(
+    cli::cli_abort(c(
       "Failed to vendor {length(failed_crates)} required crate(s)",
       "x" = "Missing: {paste(failed_crates, collapse = ', ')}",
       "i" = "The downloaded archive may be from an incompatible version"
@@ -267,10 +267,12 @@ patch_cargo_toml <- function(path, crate_name) {
   # Validate: warn if any workspace = true entries remain unhandled
   remaining <- grep("workspace\\s*=\\s*true", content, value = TRUE)
   if (length(remaining) > 0) {
-    warn(c(
+    # Escape curly braces so cli doesn't interpret TOML inline tables as glue
+    escaped <- gsub("{", "{{", gsub("}", "}}", trimws(remaining), fixed = TRUE), fixed = TRUE)
+    cli::cli_warn(c(
       "Unhandled workspace inheritance in {.path {path}}",
       "i" = "The following lines still reference workspace:",
-      paste("  ", trimws(remaining))
+      paste("  ", escaped)
     ))
   }
 
@@ -303,7 +305,7 @@ vendor_miniextendr_local <- function(local_path, dest) {
     dest_path <- fs::path(dest, crate)
 
     if (!fs::dir_exists(src_path)) {
-      warn("Crate {crate} not found at {.path {src_path}}")
+      cli::cli_warn("Crate {crate} not found at {.path {src_path}}")
       failed_crates <- c(failed_crates, crate)
       next
     }
@@ -334,7 +336,7 @@ vendor_miniextendr_local <- function(local_path, dest) {
   }
 
   if (length(failed_crates) > 0) {
-    abort(c(
+    cli::cli_abort(c(
       "Failed to vendor {length(failed_crates)} required crate(s)",
       "x" = "Missing: {paste(failed_crates, collapse = ', ')}",
       "i" = "Check that {.path {local_path}} is a valid miniextendr repository"
@@ -445,7 +447,7 @@ vendor_crates_io <- function(path = ".") {
 
   cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")
   if (!fs::file_exists(cargo_toml)) {
-    abort(c(
+    cli::cli_abort(c(
       "Cargo.toml not found",
       "i" = "Run {.code minirextendr::miniextendr_configure()} first"
     ))

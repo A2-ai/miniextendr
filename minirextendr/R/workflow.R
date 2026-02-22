@@ -46,7 +46,7 @@ miniextendr_configure <- function(path = ".") {
   configure_path <- usethis::proj_path("configure")
 
   if (!fs::file_exists(configure_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "configure script not found",
       "i" = "Run {.code minirextendr::miniextendr_autoconf()} first"
     ))
@@ -105,7 +105,7 @@ miniextendr_document <- function(path = ".") {
 
   cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")
   if (!fs::file_exists(cargo_toml)) {
-    abort(c(
+    cli::cli_abort(c(
       "Cargo.toml not found",
       "i" = "Run {.code minirextendr::miniextendr_configure()} first"
     ))
@@ -125,7 +125,7 @@ miniextendr_document <- function(path = ".") {
   # Copy generated wrappers to R/
   # The document binary writes {pkg_name}-wrappers.R in src/rust/
   pkg_name <- tryCatch(
-    desc::desc_get("Package", file = usethis::proj_path("DESCRIPTION"))[[1]],
+    mx_desc_get_field("Package", file = usethis::proj_path("DESCRIPTION")),
     error = function(e) NULL
   )
   if (!is.null(pkg_name)) {
@@ -172,14 +172,14 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
   if (install) {
     cli::cli_h2("Step 3: first install (compile Rust)")
     if (!requireNamespace("devtools", quietly = TRUE)) {
-      warn("devtools not installed, skipping install step")
+      cli::cli_warn("devtools not installed, skipping install step")
     } else {
       tryCatch(
         with_envvars(env_vars, {
           devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
         }),
         error = function(e) {
-          abort(c(
+          cli::cli_abort(c(
             "Package installation failed",
             "i" = conditionMessage(e)
           ))
@@ -194,7 +194,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
 
   cli::cli_h2("Step 5: roxygen2 (update NAMESPACE + man pages)")
   if (!requireNamespace("devtools", quietly = TRUE)) {
-    warn("devtools not installed, skipping roxygen2 step")
+    cli::cli_warn("devtools not installed, skipping roxygen2 step")
   } else {
     devtools::document(pkg_path)
     cli::cli_alert_success("Updated NAMESPACE and documentation")
@@ -207,7 +207,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
         devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
       }),
       error = function(e) {
-        abort(c(
+        cli::cli_abort(c(
           "Package installation failed",
           "i" = conditionMessage(e)
         ))
@@ -288,7 +288,7 @@ miniextendr_vendor <- function(path = ".") {
     stdout = TRUE, stderr = TRUE
   )
   if (!is.null(attr(tar_output, "status"))) {
-    abort(c(
+    cli::cli_abort(c(
       "Failed to create vendor tarball",
       "i" = paste(tar_output, collapse = "\n")
     ))
@@ -321,7 +321,7 @@ miniextendr_check <- function(path = ".",
                                build_args = character()) {
   with_project(path)
   if (!requireNamespace("rcmdcheck", quietly = TRUE)) {
-    abort(c(
+    cli::cli_abort(c(
       "rcmdcheck is required for miniextendr_check()",
       "i" = 'Install it with: install.packages("rcmdcheck")'
     ))

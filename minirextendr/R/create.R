@@ -11,7 +11,7 @@
 #' @param rstudio Whether to create an RStudio project file
 #' @return Path to the created package (invisibly)
 #' @export
-create_miniextendr_package <- function(path, open = rlang::is_interactive(),
+create_miniextendr_package <- function(path, open = interactive(),
                                         rstudio = TRUE) {
   # Validate package name (derived from directory basename)
   pkg_name <- basename(normalizePath(path, mustWork = FALSE))
@@ -67,7 +67,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
                                          rpkg_name = package,
                                          local_path = NULL,
                                          miniextendr_version = "main",
-                                         open = rlang::is_interactive()) {
+                                         open = interactive()) {
   cli::cli_h1("Creating miniextendr monorepo")
 
   # Validate rpkg_name != crate_name (they're both directories under the project root)

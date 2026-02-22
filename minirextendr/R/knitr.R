@@ -30,7 +30,7 @@
 #' }
 miniextendr_knitr_setup <- function(path = ".", ...) {
   if (!requireNamespace("knitr", quietly = TRUE)) {
-    abort(c(
+    cli::cli_abort(c(
       "{.pkg knitr} is required for miniextendr_knitr_setup()",
       "i" = 'Install it with: install.packages("knitr")'
     ))
@@ -66,7 +66,7 @@ miniextendr_knitr_setup <- function(path = ".", ...) {
 #' @noRd
 eng_miniextendr <- function(options) {
   if (!requireNamespace("knitr", quietly = TRUE)) {
-    abort("{.pkg knitr} is required")
+    cli::cli_abort("{.pkg knitr} is required")
   }
 
   # Extract miniextendr-specific options
@@ -108,7 +108,7 @@ eng_miniextendr <- function(options) {
 #' @noRd
 eng_miniextendr_inline <- function(options, extra_args = list()) {
   if (!requireNamespace("knitr", quietly = TRUE)) {
-    abort("{.pkg knitr} is required")
+    cli::cli_abort("{.pkg knitr} is required")
   }
 
   code <- paste(options$code, collapse = "\n")

@@ -22,7 +22,7 @@
 #' }
 miniextendr_html_document <- function(..., sync_args = list()) {
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
-    abort(c(
+    cli::cli_abort(c(
       "{.pkg rmarkdown} is required for miniextendr_html_document()",
       "i" = 'Install it with: install.packages("rmarkdown")'
     ))
@@ -50,7 +50,7 @@ miniextendr_html_document <- function(..., sync_args = list()) {
 #' }
 miniextendr_pdf_document <- function(..., sync_args = list()) {
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
-    abort(c(
+    cli::cli_abort(c(
       "{.pkg rmarkdown} is required for miniextendr_pdf_document()",
       "i" = 'Install it with: install.packages("rmarkdown")'
     ))
@@ -78,7 +78,7 @@ miniextendr_pdf_document <- function(..., sync_args = list()) {
 #' }
 miniextendr_word_document <- function(..., sync_args = list()) {
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
-    abort(c(
+    cli::cli_abort(c(
       "{.pkg rmarkdown} is required for miniextendr_word_document()",
       "i" = 'Install it with: install.packages("rmarkdown")'
     ))
