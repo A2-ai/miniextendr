@@ -22,6 +22,13 @@ miniextendr_status <- function(path = ".") {
   with_project(path)
   cli::cli_h1("miniextendr status")
 
+  # Derive wrapper filename from actual package name
+  pkg_name <- tryCatch(
+    mx_desc_get_field("Package", file = usethis::proj_path("DESCRIPTION")),
+    error = function(e) "miniextendr"
+  )
+  wrapper_file <- paste0("R/", pkg_name, "-wrappers.R")
+
   # Define expected files
   expected <- list(
     "Build System" = c(
@@ -57,7 +64,7 @@ miniextendr_status <- function(path = ".") {
     "Generated Files" = c(
       "src/Makevars",
       "src/entrypoint.c",
-      "R/miniextendr_wrappers.R"
+      wrapper_file
     )
   )
 
@@ -155,10 +162,8 @@ miniextendr_validate <- function(path = ".") {
     issues <- c(issues, "DESCRIPTION not found")
     cli::cli_alert_danger("DESCRIPTION not found")
   } else {
-    d <- desc::desc(desc_path)
-
     # Check Config fields
-    bootstrap <- d$get_field("Config/build/bootstrap", default = "")
+    bootstrap <- mx_desc_get_field("Config/build/bootstrap", file = desc_path, default = "")
     if (bootstrap != "TRUE") {
       warnings <- c(warnings, "Config/build/bootstrap should be TRUE")
       cli::cli_alert_warning("Config/build/bootstrap not set to TRUE")
@@ -167,7 +172,7 @@ miniextendr_validate <- function(path = ".") {
     }
 
     # Check SystemRequirements
-    sys_req <- d$get_field("SystemRequirements", default = "")
+    sys_req <- mx_desc_get_field("SystemRequirements", file = desc_path, default = "")
     if (!grepl("Rust", sys_req, ignore.case = TRUE)) {
       warnings <- c(warnings, "SystemRequirements should mention Rust")
       cli::cli_alert_warning("SystemRequirements doesn't mention Rust")

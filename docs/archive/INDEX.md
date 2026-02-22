@@ -39,6 +39,10 @@
 - [TRAIT_ABI.md](TRAIT_ABI.md) -- Cross-package trait dispatch ABI
 - [TRAIT_AS_R.md](TRAIT_AS_R.md) -- Trait-based ABI implementation plan
 
+## minirextendr (Scaffolding Helper)
+
+- [MINIREXTENDR.md](MINIREXTENDR.md) -- Scaffolding, workflow, inline compilation, cargo wrappers, vendoring
+
 ## Build System
 
 - [DEVELOPER_WORKFLOW.md](DEVELOPER_WORKFLOW.md) -- Quick reference for common development tasks
