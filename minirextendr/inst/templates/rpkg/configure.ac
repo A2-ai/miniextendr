@@ -68,8 +68,15 @@ AC_ARG_VAR([{{{features_var}}}], [Comma-separated cargo features to enable (e.g.
 dnl Default: no extra features enabled
 dnl Users can set {{{features_var}}} to enable specific features
 if test -z "${{{{features_var}}}+x}"; then
-  dnl {{{features_var}}} not set - use empty (no extra features)
-  {{{features_var}}}=""
+  dnl {{{features_var}}} not set - auto-detect via R script if available
+  if test -f "${srcdir}/tools/detect-features.R"; then
+    {{{features_var}}}=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+    if test -n "${{{features_var}}}"; then
+      AC_MSG_NOTICE([Auto-detected features: ${{{features_var}}}])
+    fi
+  else
+    {{{features_var}}}=""
+  fi
 fi
 
 if test -n "${{{features_var}}}"; then
