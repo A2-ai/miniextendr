@@ -22,6 +22,13 @@ miniextendr_status <- function(path = ".") {
   with_project(path)
   cli::cli_h1("miniextendr status")
 
+  # Derive wrapper filename from actual package name
+  pkg_name <- tryCatch(
+    desc::desc_get("Package", file = usethis::proj_path("DESCRIPTION"))[[1]],
+    error = function(e) "miniextendr"
+  )
+  wrapper_file <- paste0("R/", pkg_name, "-wrappers.R")
+
   # Define expected files
   expected <- list(
     "Build System" = c(
@@ -57,7 +64,7 @@ miniextendr_status <- function(path = ".") {
     "Generated Files" = c(
       "src/Makevars",
       "src/entrypoint.c",
-      "R/miniextendr_wrappers.R"
+      wrapper_file
     )
   )
 

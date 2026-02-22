@@ -6,19 +6,17 @@ MINIEXTENDR_REPO <- "CGMossa/miniextendr"
 #' List available miniextendr versions
 #'
 #' Queries GitHub to find available releases/tags of miniextendr.
-#' Uses the gh package for proper auth token handling and rate limit awareness.
+#' Uses `git ls-remote --tags` which respects credential helpers and
+#' environment tokens (`GITHUB_TOKEN`).
 #'
 #' @return Character vector of available version tags
 #' @export
 miniextendr_available_versions <- function() {
-  response <- tryCatch(
+  repo_url <- paste0("https://github.com/", MINIEXTENDR_REPO, ".git")
+  output <- tryCatch(
     {
-      # gh handles pagination, auth tokens (GITHUB_TOKEN/GITHUB_PAT), and rate limits
-      gh::gh("GET /repos/{owner}/{repo}/tags",
-        owner = strsplit(MINIEXTENDR_REPO, "/")[[1]][1],
-        repo = strsplit(MINIEXTENDR_REPO, "/")[[1]][2],
-        .limit = 100
-      )
+      system2("git", c("ls-remote", "--tags", "--refs", repo_url),
+              stdout = TRUE, stderr = FALSE)
     },
     error = function(e) {
       warn(c(
@@ -29,12 +27,13 @@ miniextendr_available_versions <- function() {
     }
   )
 
-  if (is.null(response) || length(response) == 0) {
+  if (is.null(output) || length(output) == 0) {
     cli::cli_alert_info("No releases found, using 'main' branch")
     return("main")
   }
 
-  tags <- vapply(response, function(x) x$name, character(1))
+  # Each line: "<hash>\trefs/tags/<tagname>"
+  tags <- sub(".*refs/tags/", "", output)
   cli::cli_alert_info("Available versions: {paste(tags, collapse = ', ')}")
   tags
 }
@@ -54,7 +53,7 @@ download_miniextendr_archive <- function(version, dest_path) {
 
   download_result <- tryCatch(
     {
-      curl::curl_download(archive_url, dest_path, quiet = TRUE)
+      utils::download.file(archive_url, dest_path, quiet = TRUE, mode = "wb")
       TRUE
     },
     error = function(e) {
@@ -65,7 +64,7 @@ download_miniextendr_archive <- function(version, dest_path) {
       )
       tryCatch(
         {
-          curl::curl_download(tag_url, dest_path, quiet = TRUE)
+          utils::download.file(tag_url, dest_path, quiet = TRUE, mode = "wb")
           TRUE
         },
         error = function(e2) {
@@ -93,7 +92,7 @@ download_miniextendr_archive <- function(version, dest_path) {
 #' into vendor/. Also
 #' patches Cargo.toml files to remove workspace inheritance.
 #'
-#' Downloaded archives are cached in `rappdirs::user_cache_dir("minirextendr")`
+#' Downloaded archives are cached in `tools::R_user_dir("minirextendr", "cache")`
 #' to avoid repeated downloads of the same version.
 #'
 #' For local development (when GitHub repo is not available), set
@@ -127,7 +126,7 @@ vendor_miniextendr <- function(path = ".",
   }
 
   # Check cache first
-  cache_dir <- rappdirs::user_cache_dir("minirextendr")
+  cache_dir <- tools::R_user_dir("minirextendr", "cache")
   fs::dir_create(cache_dir, recurse = TRUE)
   cache_file <- fs::path(cache_dir, paste0("miniextendr-", version, ".tar.gz"))
 
@@ -573,7 +572,7 @@ strip_vendored_dir <- function(vendor_path) {
 #' @return Invisibly returns TRUE
 #' @export
 miniextendr_clear_cache <- function(version = NULL) {
-  cache_dir <- rappdirs::user_cache_dir("minirextendr")
+  cache_dir <- tools::R_user_dir("minirextendr", "cache")
 
   if (!fs::dir_exists(cache_dir)) {
     cli::cli_alert_info("No cache directory found")
@@ -610,7 +609,7 @@ miniextendr_clear_cache <- function(version = NULL) {
 #' @return Invisibly returns a data frame with cache info
 #' @export
 miniextendr_cache_info <- function() {
-  cache_dir <- rappdirs::user_cache_dir("minirextendr")
+  cache_dir <- tools::R_user_dir("minirextendr", "cache")
 
   cli::cli_h2("miniextendr cache")
   cli::cli_alert_info("Cache directory: {.path {cache_dir}}")

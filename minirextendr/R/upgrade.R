@@ -108,6 +108,9 @@ upgrade_miniextendr_package <- function(path = ".",
 #'
 #' @noRd
 check_scaffolding_clean <- function() {
+  # Bail out if gert is not available
+  if (!requireNamespace("gert", quietly = TRUE)) return(invisible())
+
   # Bail out if not in a git repo
   repo <- tryCatch(
     gert::git_find(usethis::proj_get()),

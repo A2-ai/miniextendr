@@ -234,7 +234,7 @@ compute_inline_hash <- function(code, features = character()) {
 #' @return Path to cache root
 #' @noRd
 inline_cache_dir <- function() {
-  fs::path(rappdirs::user_cache_dir("minirextendr"), "rust_source")
+  fs::path(tools::R_user_dir("minirextendr", "cache"), "rust_source")
 }
 
 #' Ensure shared vendor cache exists

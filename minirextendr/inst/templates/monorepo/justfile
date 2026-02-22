@@ -122,7 +122,7 @@ vendor:
 # Call this for each monorepo crate that your R package depends on.
 # Example: just vendor-lib my-crate ../../../my-crate
 vendor-lib crate dev_path:
-    Rscript -e 'minirextendr::use_vendor_lib("{{crate}}", dev_path = "{{dev_path}}", path = "{{{rpkg_name}}}")'
+    Rscript -e 'args <- commandArgs(trailingOnly = TRUE); minirextendr::use_vendor_lib(args[[1]], dev_path = args[[2]], path = args[[3]])' "{{crate}}" "{{dev_path}}" "{{{rpkg_name}}}"
     cd {{rpkg}} && autoconf -vif
 
 # Prepare for CRAN submission: vendor deps, configure in CRAN mode, build, check

@@ -29,6 +29,25 @@ with_project <- function(path, .local_envir = parent.frame()) {
   invisible()
 }
 
+#' Temporarily set environment variables and evaluate an expression
+#'
+#' @param env Named character vector of env vars to set
+#' @param expr Expression to evaluate
+#' @return Result of evaluating `expr`
+#' @noRd
+with_envvars <- function(env, expr) {
+  if (length(env) == 0) return(expr)
+  old <- Sys.getenv(names(env), unset = NA)
+  do.call(Sys.setenv, as.list(env))
+  on.exit({
+    to_unset <- names(old)[is.na(old)]
+    to_restore <- old[!is.na(old)]
+    if (length(to_unset) > 0) Sys.unsetenv(to_unset)
+    if (length(to_restore) > 0) do.call(Sys.setenv, as.list(to_restore))
+  }, add = TRUE)
+  expr
+}
+
 # Template type for current session (used by template functions)
 .template_type <- new.env(parent = emptyenv())
 .template_type$current <- "rpkg"
@@ -105,17 +124,30 @@ is_in_rust_project <- function(path = usethis::proj_get()) {
 #' Uses rprojroot for reliable detection.
 #'
 #' @param path Path to start searching from
+#' Walk up directories to find a file
+#'
+#' Starting from `path`, walks up parent directories looking for `filename`.
+#' Returns the directory containing the file, or NULL if not found.
+#'
+#' @param filename File to search for
+#' @param path Starting directory
+#' @return Path to the directory containing `filename`, or NULL
+#' @noRd
+find_root_with_file <- function(filename, path) {
+  path <- normalizePath(path, mustWork = FALSE)
+  for (i in seq_len(100)) {
+    if (file.exists(file.path(path, filename))) return(path)
+    parent <- dirname(path)
+    if (parent == path) return(NULL)
+    path <- parent
+  }
+  NULL
+}
+
 #' @return Path to Rust project root, or NULL if not found
 #' @noRd
 find_rust_root <- function(path = usethis::proj_get()) {
-  tryCatch(
-    {
-      rprojroot::find_root(rprojroot::has_file("Cargo.toml"), path = path)
-    },
-    error = function(e) {
-      NULL
-    }
-  )
+  find_root_with_file("Cargo.toml", path)
 }
 
 #' Check if project is inside a Cargo workspace
@@ -248,9 +280,9 @@ copy_template <- function(template, save_as = template, data = list(),
 check_installed_cmd <- function(cmd, msg = NULL) {
   path <- Sys.which(cmd)
   if (path == "") {
-    msg <- msg %||% glue::glue(
-      "{cmd} is required but not found on PATH. ",
-      "Please install {cmd} and ensure it's available."
+    msg <- msg %||% paste0(
+      cmd, " is required but not found on PATH. ",
+      "Please install ", cmd, " and ensure it's available."
     )
     abort(msg)
   }

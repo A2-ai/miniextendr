@@ -167,7 +167,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
   miniextendr_autoconf()
 
   cli::cli_h2("Step 2: configure")
-  withr::with_envvar(env_vars, miniextendr_configure())
+  with_envvars(env_vars, miniextendr_configure())
 
   if (install) {
     cli::cli_h2("Step 3: first install (compile Rust)")
@@ -175,7 +175,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
       warn("devtools not installed, skipping install step")
     } else {
       tryCatch(
-        withr::with_envvar(env_vars, {
+        with_envvars(env_vars, {
           devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
         }),
         error = function(e) {
@@ -203,7 +203,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
   if (install) {
     cli::cli_h2("Step 6: final install (with R wrappers + NAMESPACE)")
     tryCatch(
-      withr::with_envvar(env_vars, {
+      with_envvars(env_vars, {
         devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
       }),
       error = function(e) {

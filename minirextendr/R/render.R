@@ -97,11 +97,8 @@ miniextendr_word_document <- function(..., sync_args = list()) {
 make_pre_knit <- function(sync_args = list()) {
   function(input, ...) {
     # Resolve package root from input file location
-    pkg_path <- tryCatch(
-      rprojroot::find_root(rprojroot::has_file("DESCRIPTION"),
-                           path = dirname(input)),
-      error = function(e) dirname(input)
-    )
+    pkg_path <- find_root_with_file("DESCRIPTION", dirname(input)) %||%
+      dirname(input)
     args <- c(list(path = pkg_path), sync_args)
     do.call(miniextendr_sync, args)
   }
