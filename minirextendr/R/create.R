@@ -11,7 +11,7 @@
 #' @param rstudio Whether to create an RStudio project file
 #' @return Path to the created package (invisibly)
 #' @export
-create_miniextendr_package <- function(path, open = rlang::is_interactive(),
+create_miniextendr_package <- function(path, open = interactive(),
                                         rstudio = TRUE) {
   # Validate package name (derived from directory basename)
   pkg_name <- basename(normalizePath(path, mustWork = FALSE))
@@ -57,6 +57,8 @@ create_miniextendr_package <- function(path, open = rlang::is_interactive(),
 #' @param rpkg_name Name of the R package subdirectory (default: same as package name)
 #' @param local_path Optional path to local miniextendr repository. If provided,
 #'   vendors from local path instead of downloading from GitHub.
+#' @param miniextendr_version Version tag to download (default: "main" for latest).
+#'   Passed to [vendor_miniextendr()]. Ignored when `local_path` is provided.
 #' @param open Whether to open the new project in RStudio/IDE
 #' @return Path to the created monorepo (invisibly)
 #' @export
@@ -64,7 +66,8 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
                                          crate_name = gsub("\\.", "-", package),
                                          rpkg_name = package,
                                          local_path = NULL,
-                                         open = rlang::is_interactive()) {
+                                         miniextendr_version = "main",
+                                         open = interactive()) {
   cli::cli_h1("Creating miniextendr monorepo")
 
   # Validate rpkg_name != crate_name (they're both directories under the project root)
@@ -107,6 +110,11 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   copy_template("justfile", data = data)
   use_template("gitignore", save_as = ".gitignore", data = data)
 
+  # Version management tool (referenced by justfile version-* recipes)
+  ensure_dir(usethis::proj_path("tools"))
+  copy_template("bump-version.R", save_as = file.path("tools", "bump-version.R"),
+                subdir = "tools", data = data)
+
   # Create main Rust crate
   cli::cli_h2("Creating main Rust crate")
   ensure_dir(usethis::proj_path(crate_name, "src"))
@@ -122,6 +130,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   # Vendor miniextendr crates into rpkg/vendor/
   cli::cli_h2("Vendoring miniextendr crates")
   vendor_miniextendr(
+    version = miniextendr_version,
     dest = usethis::proj_path(rpkg_name, "vendor"),
     local_path = local_path
   )

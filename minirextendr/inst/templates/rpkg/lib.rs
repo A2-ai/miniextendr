@@ -4,16 +4,14 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 //
 // 1. Add your #[miniextendr] function below
 // 2. Register it in the miniextendr_module! block at the bottom
-// 3. Rebuild with the two-install dance:
+// 3. Rebuild:
 //
-//      ./configure                    # Generate build files
-//      R CMD INSTALL .                # 1st install: compiles Rust + new macros
-//      Rscript -e 'devtools::document()'  # Re-generate R wrappers
-//      R CMD INSTALL .                # 2nd install: includes new R wrappers
+//      Rscript -e 'devtools::document()'  # Compiles Rust + generates R wrappers
+//      Rscript -e 'devtools::install()'   # Install the package
 //
-//    The first install compiles your Rust code; devtools::document() then
-//    runs the compiled macros to emit R/miniextendr_wrappers.R; the second
-//    install bundles those new wrappers into the package.
+//    devtools::document() handles everything in one step: bootstrap.R runs
+//    ./configure, make compiles Rust, the document binary generates R wrappers,
+//    and roxygen2 updates NAMESPACE — no manual ./configure or two-pass install.
 //
 // NOTE: `cargo check` won't work until ./configure has been run at least once,
 // because document.rs contains template placeholders that need to be resolved.

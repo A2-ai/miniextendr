@@ -10,6 +10,7 @@ create_miniextendr_monorepo(
   crate_name = gsub("\\\\.", "-", package),
   rpkg_name = package,
   local_path = NULL,
+  miniextendr_version = "main",
   open = rlang::is_interactive()
 )
 }
@@ -24,6 +25,9 @@ create_miniextendr_monorepo(
 
 \item{local_path}{Optional path to local miniextendr repository. If provided,
 vendors from local path instead of downloading from GitHub.}
+
+\item{miniextendr_version}{Version tag to download (default: "main" for latest).
+Passed to \code{\link[=vendor_miniextendr]{vendor_miniextendr()}}. Ignored when \code{local_path} is provided.}
 
 \item{open}{Whether to open the new project in RStudio/IDE}
 }

@@ -14,7 +14,7 @@ miniextendr_check_rust <- function(path = ".") {
   rust_dir <- file.path(path, "src", "rust")
 
   if (!dir.exists(rust_dir)) {
-    abort(c(
+    cli::cli_abort(c(
       "No src/rust/ directory found",
       "i" = "Expected Rust code at {.path {rust_dir}}"
     ))
@@ -22,7 +22,7 @@ miniextendr_check_rust <- function(path = ".") {
 
   cargo_toml <- file.path(rust_dir, "Cargo.toml")
   if (!file.exists(cargo_toml)) {
-    abort(c(
+    cli::cli_abort(c(
       "No Cargo.toml found in src/rust/",
       "i" = "Run {.code miniextendr_configure()} first"
     ))
@@ -62,7 +62,7 @@ miniextendr_dev_link <- function(path = ".", monorepo_path) {
 
   cargo_toml <- file.path(path, "src", "rust", "Cargo.toml")
   if (!file.exists(cargo_toml)) {
-    abort(c(
+    cli::cli_abort(c(
       "No Cargo.toml found at {.path {cargo_toml}}",
       "i" = "Run {.code miniextendr_configure()} or {.code use_miniextendr()} first"
     ))
@@ -73,7 +73,7 @@ miniextendr_dev_link <- function(path = ".", monorepo_path) {
               "miniextendr-lint", "miniextendr-engine")
   missing <- crates[!dir.exists(file.path(monorepo_path, crates))]
   if (length(missing) > 0) {
-    abort(c(
+    cli::cli_abort(c(
       "Missing crates in monorepo path",
       "x" = "Not found: {paste(missing, collapse = ', ')}",
       "i" = "Ensure {.path {monorepo_path}} is the miniextendr repo root"
