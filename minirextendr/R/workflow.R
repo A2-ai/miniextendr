@@ -76,7 +76,7 @@ miniextendr_configure <- function(path = ".") {
     "./configure",
     log_prefix = "configure",
     wd = usethis::proj_get(),
-    env = devtools::r_env_vars()
+    env = if (requireNamespace("devtools", quietly = TRUE)) devtools::r_env_vars() else character()
   )
 
   check_result(result, "./configure")
