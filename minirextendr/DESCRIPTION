@@ -20,7 +20,6 @@ Imports:
     usethis (>= 2.0.0)
 Suggests:
     devtools,
-    gert,
     knitr,
     rcmdcheck,
     rmarkdown,

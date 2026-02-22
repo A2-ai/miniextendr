@@ -103,19 +103,20 @@ upgrade_miniextendr_package <- function(path = ".",
 
 #' Check that scaffolding files are clean in git
 #'
-#' Uses `gert::git_status()` to inspect build system files that will be
+#' Uses `git status --porcelain` to inspect build system files that will be
 #' overwritten during upgrade. Aborts if any have uncommitted changes.
 #'
 #' @noRd
 check_scaffolding_clean <- function() {
-  # Bail out if gert is not available
-  if (!requireNamespace("gert", quietly = TRUE)) return(invisible())
+  # Bail out if git is not available
+  if (!nzchar(Sys.which("git"))) return(invisible())
 
   # Bail out if not in a git repo
-  repo <- tryCatch(
-    gert::git_find(usethis::proj_get()),
-    error = function(e) NULL
-  )
+  repo <- tryCatch({
+    out <- system2("git", c("rev-parse", "--show-toplevel"),
+                   stdout = TRUE, stderr = TRUE)
+    if (!is.null(attr(out, "status"))) NULL else out
+  }, error = function(e) NULL)
   if (is.null(repo)) return(invisible())
 
   # Files that upgrade will overwrite
@@ -143,14 +144,14 @@ check_scaffolding_clean <- function() {
     ".gitignore"
   )
 
-  st <- gert::git_status(pathspec = scaffolding_files, repo = repo)
-  if (nrow(st) == 0) return(invisible())
+  out <- system2("git", c("status", "--porcelain", "--", scaffolding_files),
+                 stdout = TRUE, stderr = TRUE)
+  if (is.null(out) || length(out) == 0) return(invisible())
 
-  dirty <- paste0("  ", st$status, " ", st$file)
   cli::cli_abort(c(
     "Scaffolding files have uncommitted changes.",
     "i" = "Commit or stash your changes first, or use {.code allow_dirty = TRUE} to force.",
-    dirty
+    paste(" ", out)
   ))
 }
 
