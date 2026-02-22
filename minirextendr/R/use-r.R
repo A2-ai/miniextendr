@@ -37,39 +37,37 @@ use_miniextendr_description <- function(path = ".") {
   desc_path <- usethis::proj_path("DESCRIPTION")
 
   if (!fs::file_exists(desc_path)) {
-    abort("DESCRIPTION file not found. Is this an R package?")
+    cli::cli_abort("DESCRIPTION file not found. Is this an R package?")
   }
 
-  d <- desc::desc(desc_path)
-
   # Set Config fields
-  d$set("Config/build/bootstrap" = "TRUE")
-  d$set("Config/build/never-clean" = "true")
-  d$set("Config/build/extra-sources" = "src/rust/Cargo.lock")
+  mx_desc_set(desc_path,
+    "Config/build/bootstrap" = "TRUE",
+    "Config/build/never-clean" = "true",
+    "Config/build/extra-sources" = "src/rust/Cargo.lock"
+  )
 
   # Set License if not already set to something meaningful
-  license <- d$get_field("License", default = "")
+  license <- mx_desc_get_field("License", file = desc_path, default = "")
   if (!nzchar(license) || license == "use_mit_license()") {
-    d$set("License" = "MIT + file LICENSE")
+    mx_desc_set(desc_path, "License" = "MIT + file LICENSE")
   }
 
   # Add SystemRequirements if not present
-  sys_req <- d$get_field("SystemRequirements", default = "")
+  sys_req <- mx_desc_get_field("SystemRequirements", file = desc_path, default = "")
   if (!grepl("Rust", sys_req, ignore.case = TRUE)) {
     if (nzchar(sys_req)) {
       sys_req <- paste0(sys_req, ", Rust (>= 1.85)")
     } else {
       sys_req <- "Rust (>= 1.85)"
     }
-    d$set("SystemRequirements" = sys_req)
+    mx_desc_set(desc_path, "SystemRequirements" = sys_req)
   }
-
-  d$write()
 
   # Create LICENSE file if it doesn't exist (required by License: MIT + file LICENSE)
   license_path <- usethis::proj_path("LICENSE")
   if (!fs::file_exists(license_path)) {
-    pkg_name <- d$get_field("Package")
+    pkg_name <- mx_desc_get_field("Package", file = desc_path)
     license_content <- sprintf("YEAR: %s\nCOPYRIGHT HOLDER: %s authors\n",
                                format(Sys.Date(), "%Y"), pkg_name)
     writeLines(license_content, license_path)

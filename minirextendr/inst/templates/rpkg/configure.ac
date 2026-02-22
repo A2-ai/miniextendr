@@ -68,8 +68,15 @@ AC_ARG_VAR([{{{features_var}}}], [Comma-separated cargo features to enable (e.g.
 dnl Default: no extra features enabled
 dnl Users can set {{{features_var}}} to enable specific features
 if test -z "${{{{features_var}}}+x}"; then
-  dnl {{{features_var}}} not set - use empty (no extra features)
-  {{{features_var}}}=""
+  dnl {{{features_var}}} not set - auto-detect via R script if available
+  if test -f "${srcdir}/tools/detect-features.R"; then
+    {{{features_var}}}=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+    if test -n "${{{features_var}}}"; then
+      AC_MSG_NOTICE([Auto-detected features: ${{{features_var}}}])
+    fi
+  else
+    {{{features_var}}}=""
+  fi
 fi
 
 if test -n "${{{features_var}}}"; then
@@ -433,10 +440,11 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       fi
     elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
       dnl MINIEXTENDR_LOCAL set — delegate to R for proper Cargo.toml patching
+      dnl Pass path via env var so backslashes (Windows) don't break R string parsing
       echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      "$R_HOME/bin/Rscript" -e "
+      MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" "$R_HOME/bin/Rscript" -e "
         if (requireNamespace('minirextendr', quietly = TRUE)) {
-          minirextendr::vendor_miniextendr(local_path = '$MINIEXTENDR_LOCAL')
+          minirextendr::vendor_miniextendr(local_path = Sys.getenv('MINIEXTENDR_LOCAL'))
         } else {
           message('configure: minirextendr not installed — cannot auto-sync vendor/')
           message('configure: install minirextendr or run vendor_miniextendr() manually')
@@ -448,12 +456,12 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
       if test -d "$_recorded/miniextendr-api"; then
         echo "configure: syncing vendor/ from recorded source: $_recorded"
-        "$R_HOME/bin/Rscript" -e "
+        _MX_VENDOR_SOURCE="$_recorded" "$R_HOME/bin/Rscript" -e "
           if (requireNamespace('minirextendr', quietly = TRUE)) {
-            minirextendr::vendor_miniextendr(local_path = '$_recorded')
+            minirextendr::vendor_miniextendr(local_path = Sys.getenv('_MX_VENDOR_SOURCE'))
           } else {
             message('configure: minirextendr not installed — vendor/ may be stale')
-            message('configure: run: minirextendr::vendor_miniextendr(local_path = \"$_recorded\")')
+            message('configure: run: minirextendr::vendor_miniextendr(local_path = Sys.getenv(\"_MX_VENDOR_SOURCE\"))')
           }
         " 2>&1 || {
           echo "configure: warning: vendor sync failed, using existing vendor/" >&2

@@ -27,7 +27,7 @@ run_with_logging <- function(command, args = character(),
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   }
 
-  # Normalize env to a named character vector for withr::local_envvar.
+  # Normalize env to a named character vector.
   # Accepts either named vector c(FOO = "bar") or "FOO=bar" strings.
   if (length(env) > 0 && is.null(names(env))) {
     eq_pos <- regexpr("=", env, fixed = TRUE)
@@ -38,12 +38,24 @@ run_with_logging <- function(command, args = character(),
 
   # Run command via system2 with env vars and working directory
   run_fn <- function() {
-    if (length(env) > 0) withr::local_envvar(.new = env)
+    if (length(env) > 0) {
+      old_env <- Sys.getenv(names(env), unset = NA)
+      do.call(Sys.setenv, as.list(env))
+      on.exit({
+        # Restore: unset vars that were previously unset, restore others
+        to_unset <- names(old_env)[is.na(old_env)]
+        to_restore <- old_env[!is.na(old_env)]
+        if (length(to_unset) > 0) Sys.unsetenv(to_unset)
+        if (length(to_restore) > 0) do.call(Sys.setenv, as.list(to_restore))
+      }, add = TRUE)
+    }
     system2(command, args = args, stdout = TRUE, stderr = TRUE)
   }
 
   if (!is.null(wd)) {
-    output <- withr::with_dir(wd, run_fn())
+    old_wd <- setwd(wd)
+    on.exit(setwd(old_wd), add = TRUE)
+    output <- run_fn()
   } else {
     output <- run_fn()
   }
@@ -88,7 +100,7 @@ check_result <- function(result, context) {
       cli::cli_verbatim(paste(tail_output, collapse = "\n"))
     }
 
-    abort(c(
+    cli::cli_abort(c(
       paste0(context, " failed"),
       "i" = paste0("Full output saved to: ", result$log_file)
     ))
@@ -108,15 +120,9 @@ check_result <- function(result, context) {
 #'   the \code{"status"} attribute (NULL when 0, matching system2 convention).
 #' @keywords internal
 run_command <- function(command, args = character(), wd = NULL) {
-  run_fn <- function() {
-    system2(command, args = args, stdout = TRUE, stderr = TRUE)
-  }
-
   if (!is.null(wd)) {
-    output <- withr::with_dir(wd, run_fn())
-  } else {
-    output <- run_fn()
+    old_wd <- setwd(wd)
+    on.exit(setwd(old_wd), add = TRUE)
   }
-
-  output
+  system2(command, args = args, stdout = TRUE, stderr = TRUE)
 }
