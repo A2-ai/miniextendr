@@ -4,7 +4,13 @@
 \alias{add_feature_rule}
 \title{Add a feature detection rule}
 \usage{
-add_feature_rule(feature, detect, cargo_spec = NULL, path = ".")
+add_feature_rule(
+  feature,
+  detect,
+  cargo_spec = NULL,
+  optional_dep = FALSE,
+  path = "."
+)
 }
 \arguments{
 \item{feature}{Cargo feature name (e.g., \code{"vctrs"}, \code{"rayon"}).}
@@ -20,6 +26,11 @@ add_feature_rule(feature, detect, cargo_spec = NULL, path = ".")
 adds the feature to \verb{[features]} in \code{Cargo.toml} via \code{\link[=add_cargo_feature]{add_cargo_feature()}}.
 For example, \code{"miniextendr-api/vctrs"}.}
 
+\item{optional_dep}{If \code{TRUE}, also runs \verb{cargo add <feature> --optional} to
+add the crate as an optional dependency (which auto-creates a Cargo feature
+with the same name). If a string, uses it as the dependency spec instead of
+the feature name (e.g., \code{"rayon@1.10"} for a pinned version).}
+
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
@@ -27,12 +38,16 @@ Invisibly returns TRUE
 }
 \description{
 Adds a rule to \code{tools/detect-features.R} that controls whether a Cargo
-feature is enabled at configure time.
+feature is enabled at configure time. Optionally also adds the crate as an
+optional dependency via \verb{cargo add --optional}.
 }
 \examples{
 \dontrun{
-# Always enable rayon
-add_feature_rule("rayon", detect = TRUE, cargo_spec = "miniextendr-api/rayon")
+# Always enable rayon (also adds it as optional dep)
+add_feature_rule("rayon", detect = TRUE, optional_dep = TRUE)
+
+# Pin version for optional dep
+add_feature_rule("rayon", detect = TRUE, optional_dep = "rayon@1.10")
 
 # Enable vctrs only if the R package is available
 add_feature_rule("vctrs",

@@ -155,3 +155,107 @@ test_that("patch_configure_ac_for_detection is idempotent", {
   text_after_second <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
   expect_equal(text_after_first, text_after_second)
 })
+
+test_that("add_feature_rule validates optional_dep parameter", {
+  proj <- withr::local_tempdir()
+  dir.create(file.path(proj, "tools"), recursive = TRUE)
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  writeLines(lines, file.path(proj, "tools", "detect-features.R"))
+
+  local_mocked_bindings(
+    with_project = function(...) invisible(NULL),
+    .package = "minirextendr"
+  )
+  withr::local_options(usethis.quiet = TRUE)
+  usethis::local_project(proj, force = TRUE, setwd = FALSE)
+
+  # Invalid optional_dep values should error
+  expect_error(
+    add_feature_rule("foo", detect = TRUE, optional_dep = 42),
+    "optional_dep"
+  )
+  expect_error(
+    add_feature_rule("foo", detect = TRUE, optional_dep = ""),
+    "optional_dep"
+  )
+  expect_error(
+    add_feature_rule("foo", detect = TRUE, optional_dep = c("a", "b")),
+    "optional_dep"
+  )
+})
+
+test_that("add_feature_rule with optional_dep = FALSE skips cargo_add", {
+  proj <- withr::local_tempdir()
+  dir.create(file.path(proj, "tools"), recursive = TRUE)
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  writeLines(lines, file.path(proj, "tools", "detect-features.R"))
+
+  cargo_add_called <- FALSE
+
+  local_mocked_bindings(
+    with_project = function(...) invisible(NULL),
+    cargo_add = function(...) { cargo_add_called <<- TRUE; invisible(TRUE) },
+    .package = "minirextendr"
+  )
+  withr::local_options(usethis.quiet = TRUE)
+  usethis::local_project(proj, force = TRUE, setwd = FALSE)
+
+  add_feature_rule("rayon", detect = TRUE, optional_dep = FALSE)
+
+  expect_false(cargo_add_called)
+  rules <- minirextendr:::parse_detect_features_script(
+    file.path(proj, "tools", "detect-features.R")
+  )
+  expect_equal(rules$rayon, "TRUE")
+})
+
+test_that("add_feature_rule with optional_dep = TRUE calls cargo_add", {
+  proj <- withr::local_tempdir()
+  dir.create(file.path(proj, "tools"), recursive = TRUE)
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  writeLines(lines, file.path(proj, "tools", "detect-features.R"))
+
+  captured_args <- NULL
+
+  local_mocked_bindings(
+    with_project = function(...) invisible(NULL),
+    cargo_add = function(...) { captured_args <<- list(...); invisible(TRUE) },
+    .package = "minirextendr"
+  )
+  withr::local_options(usethis.quiet = TRUE)
+  usethis::local_project(proj, force = TRUE, setwd = FALSE)
+
+  add_feature_rule("rayon", detect = TRUE, optional_dep = TRUE)
+
+  expect_false(is.null(captured_args))
+  expect_equal(captured_args$dep, "rayon")
+  expect_true(captured_args$optional)
+
+  rules <- minirextendr:::parse_detect_features_script(
+    file.path(proj, "tools", "detect-features.R")
+  )
+  expect_equal(rules$rayon, "TRUE")
+})
+
+test_that("add_feature_rule with optional_dep string uses it as dep spec", {
+  proj <- withr::local_tempdir()
+  dir.create(file.path(proj, "tools"), recursive = TRUE)
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  writeLines(lines, file.path(proj, "tools", "detect-features.R"))
+
+  captured_args <- NULL
+
+  local_mocked_bindings(
+    with_project = function(...) invisible(NULL),
+    cargo_add = function(...) { captured_args <<- list(...); invisible(TRUE) },
+    .package = "minirextendr"
+  )
+  withr::local_options(usethis.quiet = TRUE)
+  usethis::local_project(proj, force = TRUE, setwd = FALSE)
+
+  add_feature_rule("rayon", detect = TRUE, optional_dep = "rayon@1.10")
+
+  expect_false(is.null(captured_args))
+  expect_equal(captured_args$dep, "rayon@1.10")
+  expect_true(captured_args$optional)
+})

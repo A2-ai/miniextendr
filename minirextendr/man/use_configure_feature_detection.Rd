@@ -28,7 +28,7 @@ After setup, use \code{\link[=add_feature_rule]{add_feature_rule()}} to add dete
 \examples{
 \dontrun{
 use_configure_feature_detection()
-add_feature_rule("rayon", detect = TRUE)
+add_feature_rule("rayon", detect = TRUE, optional_dep = TRUE)
 add_feature_rule("vctrs", detect = 'requireNamespace("vctrs", quietly = TRUE)')
 }
 }

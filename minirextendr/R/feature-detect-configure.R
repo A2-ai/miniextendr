@@ -30,7 +30,7 @@
 #' @examples
 #' \dontrun{
 #' use_configure_feature_detection()
-#' add_feature_rule("rayon", detect = TRUE)
+#' add_feature_rule("rayon", detect = TRUE, optional_dep = TRUE)
 #' add_feature_rule("vctrs", detect = 'requireNamespace("vctrs", quietly = TRUE)')
 #' }
 use_configure_feature_detection <- function(path = ".") {
@@ -77,7 +77,8 @@ use_configure_feature_detection <- function(path = ".") {
 #' Add a feature detection rule
 #'
 #' Adds a rule to `tools/detect-features.R` that controls whether a Cargo
-#' feature is enabled at configure time.
+#' feature is enabled at configure time. Optionally also adds the crate as an
+#' optional dependency via `cargo add --optional`.
 #'
 #' @param feature Cargo feature name (e.g., `"vctrs"`, `"rayon"`).
 #' @param detect Detection expression. One of:
@@ -87,21 +88,29 @@ use_configure_feature_detection <- function(path = ".") {
 #' @param cargo_spec Optional Cargo feature specification. If provided, also
 #'   adds the feature to `[features]` in `Cargo.toml` via [add_cargo_feature()].
 #'   For example, `"miniextendr-api/vctrs"`.
+#' @param optional_dep If `TRUE`, also runs `cargo add <feature> --optional` to
+#'   add the crate as an optional dependency (which auto-creates a Cargo feature
+#'   with the same name). If a string, uses it as the dependency spec instead of
+#'   the feature name (e.g., `"rayon@1.10"` for a pinned version).
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' # Always enable rayon
-#' add_feature_rule("rayon", detect = TRUE, cargo_spec = "miniextendr-api/rayon")
+#' # Always enable rayon (also adds it as optional dep)
+#' add_feature_rule("rayon", detect = TRUE, optional_dep = TRUE)
+#'
+#' # Pin version for optional dep
+#' add_feature_rule("rayon", detect = TRUE, optional_dep = "rayon@1.10")
 #'
 #' # Enable vctrs only if the R package is available
 #' add_feature_rule("vctrs",
 #'   detect = 'requireNamespace("vctrs", quietly = TRUE)',
 #'   cargo_spec = "miniextendr-api/vctrs")
 #' }
-add_feature_rule <- function(feature, detect, cargo_spec = NULL, path = ".") {
+add_feature_rule <- function(feature, detect, cargo_spec = NULL,
+                             optional_dep = FALSE, path = ".") {
   with_project(path)
 
   if (!is.character(feature) || length(feature) != 1 || !nzchar(feature)) {
@@ -111,6 +120,13 @@ add_feature_rule <- function(feature, detect, cargo_spec = NULL, path = ".") {
   # Validate detect
   if (!isTRUE(detect) && !(is.character(detect) && length(detect) == 1)) {
     abort("{.arg detect} must be TRUE or a single string containing an R expression")
+  }
+
+  # Validate optional_dep
+  if (!isFALSE(optional_dep) && !isTRUE(optional_dep) &&
+      !(is.character(optional_dep) && length(optional_dep) == 1 &&
+        nzchar(optional_dep))) {
+    abort("{.arg optional_dep} must be FALSE, TRUE, or a dependency spec string")
   }
 
   script_path <- usethis::proj_path("tools", "detect-features.R")
@@ -126,6 +142,12 @@ add_feature_rule <- function(feature, detect, cargo_spec = NULL, path = ".") {
   if (feature %in% names(existing)) {
     cli::cli_alert_info("Feature rule {.val {feature}} already exists")
     return(invisible(TRUE))
+  }
+
+  # Add optional dependency via cargo add
+  if (!isFALSE(optional_dep)) {
+    dep_spec <- if (isTRUE(optional_dep)) feature else optional_dep
+    cargo_add(dep = dep_spec, optional = TRUE)
   }
 
   # Append rule
