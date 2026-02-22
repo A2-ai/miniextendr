@@ -7,7 +7,7 @@
 cargo_toml_path <- function() {
   path <- usethis::proj_path("src", "rust", "Cargo.toml")
   if (!fs::file_exists(path)) {
-    abort(c(
+    cli::cli_abort(c(
       "Cargo.toml not found at {.path {path}}",
       "i" = "Run {.code minirextendr::miniextendr_configure()} first to generate Cargo.toml"
     ))
@@ -17,10 +17,10 @@ cargo_toml_path <- function() {
 
 validate_non_empty_char <- function(x, arg) {
   if (!is.character(x) || length(x) == 0 || anyNA(x)) {
-    abort("{arg} must be a non-empty character vector.")
+    cli::cli_abort("{arg} must be a non-empty character vector.")
   }
   if (any(!nzchar(trimws(x)))) {
-    abort("{arg} must not contain empty strings.")
+    cli::cli_abort("{arg} must not contain empty strings.")
   }
   invisible(TRUE)
 }
@@ -35,7 +35,7 @@ validate_feature_names <- function(features) {
   features <- trimws(features)
   invalid <- features[!grepl("^[A-Za-z0-9_][A-Za-z0-9._:/-]*$", features)]
   if (length(invalid) > 0) {
-    abort(c(
+    cli::cli_abort(c(
       "Invalid feature name(s).",
       "i" = "Invalid: {paste(invalid, collapse = ', ')}"
     ))
@@ -69,7 +69,7 @@ cargo_init <- function(path = ".", name = NULL, edition = "2024", quiet = FALSE)
 
   manifest_path <- fs::path(rust_dir, "Cargo.toml")
   if (fs::file_exists(manifest_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "Cargo.toml already exists at {.path {manifest_path}}",
       "i" = "Remove it first if you want to re-initialize"
     ))
@@ -80,14 +80,14 @@ cargo_init <- function(path = ".", name = NULL, edition = "2024", quiet = FALSE)
   } else {
     validate_non_empty_char(name, "name")
     if (length(name) != 1) {
-      abort("name must be a single string.")
+      cli::cli_abort("name must be a single string.")
     }
     name <- trimws(name)
   }
 
   validate_non_empty_char(edition, "edition")
   if (length(edition) != 1) {
-    abort("edition must be a single string.")
+    cli::cli_abort("edition must be a single string.")
   }
   edition <- trimws(edition)
 
@@ -103,7 +103,7 @@ cargo_init <- function(path = ".", name = NULL, edition = "2024", quiet = FALSE)
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo init failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -206,13 +206,13 @@ cargo_add <- function(path = ".",
     features <- trimws(features)
   }
   if (!is.null(git) && !is.null(crate_path)) {
-    abort("Cannot specify both 'git' and 'crate_path' - choose one source")
+    cli::cli_abort("Cannot specify both 'git' and 'crate_path' - choose one source")
   }
   if (dev && build) {
-    abort("Cannot specify both 'dev' and 'build' - choose one section")
+    cli::cli_abort("Cannot specify both 'dev' and 'build' - choose one section")
   }
   if ((!is.null(branch) || !is.null(tag) || !is.null(rev)) && is.null(git)) {
-    abort("'branch', 'tag', and 'rev' require 'git' to be specified")
+    cli::cli_abort("'branch', 'tag', and 'rev' require 'git' to be specified")
   }
 
   check_rust()
@@ -298,7 +298,7 @@ cargo_add <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo add failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -383,7 +383,7 @@ cargo_rm <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo remove failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -463,7 +463,7 @@ cargo_update <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo update failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -555,7 +555,7 @@ cargo_build <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo build failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -637,7 +637,7 @@ cargo_check <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo check failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -725,7 +725,7 @@ cargo_test <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo test failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -813,7 +813,7 @@ cargo_clippy <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo clippy failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -875,7 +875,7 @@ cargo_fmt <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo fmt failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -963,7 +963,7 @@ cargo_doc <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo doc failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -1011,7 +1011,7 @@ cargo_search <- function(query, limit = 10, registry = NULL) {
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo search failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -1071,7 +1071,7 @@ cargo_deps <- function(path = ".", depth = 1, duplicates = FALSE, invert = NULL)
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo tree failed",
       "i" = paste(result, collapse = "\n")
     ))
@@ -1127,13 +1127,13 @@ cargo_new <- function(path = ".",
   # Validate inputs
   validate_non_empty_char(name, "name")
   if (length(name) != 1) {
-    abort("name must be a single string.")
+    cli::cli_abort("name must be a single string.")
   }
   name <- trimws(name)
 
   # Validate name is a valid crate name
   if (!grepl("^[a-zA-Z][a-zA-Z0-9_-]*$", name)) {
-    abort(c(
+    cli::cli_abort(c(
       "Invalid crate name: {.val {name}}",
       "i" = "Crate names must start with a letter and contain only letters, numbers, underscores, or hyphens."
     ))
@@ -1141,7 +1141,7 @@ cargo_new <- function(path = ".",
 
   validate_non_empty_char(edition, "edition")
   if (length(edition) != 1) {
-    abort("edition must be a single string.")
+    cli::cli_abort("edition must be a single string.")
   }
   edition <- trimws(edition)
 
@@ -1165,7 +1165,7 @@ cargo_new <- function(path = ".",
   # Check if crate already exists
   new_crate_path <- file.path(run_dir, name)
   if (fs::dir_exists(new_crate_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "Directory already exists: {.path {new_crate_path}}",
       "i" = "Choose a different name or remove the existing directory."
     ))
@@ -1194,7 +1194,7 @@ cargo_new <- function(path = ".",
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
-    abort(c(
+    cli::cli_abort(c(
       "cargo new failed",
       "i" = paste(result, collapse = "\n")
     ))

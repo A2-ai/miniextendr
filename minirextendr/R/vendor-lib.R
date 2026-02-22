@@ -16,7 +16,7 @@ add_cargo_dependency <- function(crate, version) {
   cargo_path <- usethis::proj_path("src", "rust", "Cargo.toml")
 
   if (!fs::file_exists(cargo_path)) {
-    abort(c(
+    cli::cli_abort(c(
       "Cargo.toml not found at {.path {cargo_path}}",
       "i" = "Run {.code minirextendr::miniextendr_configure()} first"
     ))
@@ -34,7 +34,7 @@ add_cargo_dependency <- function(crate, version) {
   # Find [dependencies] section, insert before next section
   deps_idx <- grep("^\\[dependencies\\]", lines)
   if (length(deps_idx) == 0) {
-    abort("No [dependencies] section found in Cargo.toml")
+    cli::cli_abort("No [dependencies] section found in Cargo.toml")
   }
 
   next_section <- grep("^\\[", lines)
@@ -104,7 +104,7 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
   configure_ac <- usethis::proj_path("configure.ac")
 
   if (!fs::file_exists(configure_ac)) {
-    abort("configure.ac not found")
+    cli::cli_abort("configure.ac not found")
   }
 
   lines <- readLines(configure_ac, warn = FALSE)
@@ -254,7 +254,7 @@ use_vendor_lib <- function(crate, version = "*", dev_path, path = ".") {
   with_project(path)
 
   if (!is_miniextendr_package()) {
-    abort("Not a miniextendr package")
+    cli::cli_abort("Not a miniextendr package")
   }
 
   # 1. Cargo.toml: add dependency + [patch.crates-io]

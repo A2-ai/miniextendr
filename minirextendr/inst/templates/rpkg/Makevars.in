@@ -42,7 +42,11 @@ all: $(SHLIB)
 	  touch "$(CARGO_TOML)"; \
 	fi
 	@# CRAN mode: cleanup vendor and target directories to save space
-	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
+	@# Guard: only clean when inst/vendor.tar.xz exists (genuine CRAN tarball build).
+	@# Without this guard, pkgbuild::compile_dll() (called by devtools::document()
+	@# and roxygen2::roxygenise()) runs without NOT_CRAN=true and would delete
+	@# vendor/ populated by scaffolding, breaking subsequent builds.
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ -f "$(ABS_TOP_SRCDIR)/inst/vendor.tar.xz" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
 	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \
