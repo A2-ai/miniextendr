@@ -106,6 +106,58 @@ test_that("miniextendr_sync force=TRUE overrides mode", {
   )
 })
 
+test_that("miniextendr_sync mode='always' always rebuilds", {
+  tmp <- withr::local_tempdir()
+  writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
+  usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
+
+  # mode="always" should attempt rebuild even with saved state
+  # (will error because there's no real Rust project, but mode dispatch works)
+  expect_error(
+    miniextendr_sync(path = tmp, mode = "always", quiet = TRUE)
+  )
+})
+
+test_that("miniextendr_sync mode='if_stale' skips when hash matches", {
+  tmp <- withr::local_tempdir()
+  writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
+  usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
+
+  # Write saved state with current hash
+  current_hash <- compute_source_hash(tmp)
+  write_render_state(current_hash, "install", tmp)
+
+  result <- miniextendr_sync(path = tmp, mode = "if_stale", quiet = TRUE)
+  expect_true(result$fresh)
+  expect_equal(result$stage_run, "none")
+})
+
+test_that("miniextendr_sync mode='if_stale' rebuilds when hash differs", {
+  tmp <- withr::local_tempdir()
+  writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
+  usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
+
+  # Write saved state with stale hash
+  write_render_state("stale-hash-value", "install", tmp)
+
+  # Should attempt rebuild because hash differs
+  # (will error because there's no real Rust project)
+  expect_error(
+    miniextendr_sync(path = tmp, mode = "if_stale", quiet = TRUE)
+  )
+})
+
+test_that("miniextendr_sync mode='if_stale' rebuilds when no saved state", {
+  tmp <- withr::local_tempdir()
+  writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
+  usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
+
+  # No saved state means stale
+  expect_error(
+    miniextendr_sync(path = tmp, mode = "if_stale", quiet = TRUE)
+  )
+})
+
 # =============================================================================
 # knitr helper tests
 # =============================================================================
