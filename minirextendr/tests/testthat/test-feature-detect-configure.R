@@ -259,3 +259,45 @@ test_that("add_feature_rule with optional_dep string uses it as dep spec", {
   expect_equal(captured_args$dep, "rayon@1.10")
   expect_true(captured_args$optional)
 })
+
+# =============================================================================
+# parse_cargo_metadata_json tests
+# =============================================================================
+
+test_that("parse_cargo_metadata_json extracts features", {
+  json <- '{"packages":[{"features":{"default":[],"rayon":["miniextendr-api/rayon"],"serde":["miniextendr-api/serde","dep:serde"]},"dependencies":[]}]}'
+  result <- minirextendr:::parse_cargo_metadata_json(json)
+
+  expect_equal(result$features$default, character())
+  expect_equal(result$features$rayon, "miniextendr-api/rayon")
+  expect_equal(result$features$serde, c("miniextendr-api/serde", "dep:serde"))
+  expect_equal(length(result$optional_deps), 0)
+})
+
+test_that("parse_cargo_metadata_json extracts optional deps", {
+  json <- '{"packages":[{"features":{},"dependencies":[{"name":"serde","req":"^1","optional":true,"features":["derive"]},{"name":"miniextendr-api","req":"*","optional":false,"features":[]}]}]}'
+  result <- minirextendr:::parse_cargo_metadata_json(json)
+
+  expect_equal(length(result$optional_deps), 1)
+  expect_equal(result$optional_deps$serde$version, "^1")
+  expect_equal(result$optional_deps$serde$features, "derive")
+})
+
+test_that("parse_cargo_metadata_json handles empty features and deps", {
+  json <- '{"packages":[{"features":{},"dependencies":[]}]}'
+  result <- minirextendr:::parse_cargo_metadata_json(json)
+
+  expect_equal(length(result$features), 0)
+  expect_equal(length(result$optional_deps), 0)
+})
+
+test_that("parse_cargo_metadata_json handles multiple optional deps", {
+  json <- '{"packages":[{"features":{"bitflags":["dep:bitflags"],"time":["dep:time"]},"dependencies":[{"name":"bitflags","req":"^2","optional":true,"features":[]},{"name":"time","req":"^0.3","optional":true,"features":["macros","formatting"]},{"name":"core-dep","req":"*","optional":false,"features":[]}]}]}'
+  result <- minirextendr:::parse_cargo_metadata_json(json)
+
+  expect_equal(length(result$optional_deps), 2)
+  expect_equal(result$optional_deps$bitflags$version, "^2")
+  expect_equal(result$optional_deps$bitflags$features, character())
+  expect_equal(result$optional_deps$time$version, "^0.3")
+  expect_equal(result$optional_deps$time$features, c("macros", "formatting"))
+})

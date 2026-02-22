@@ -19,7 +19,7 @@ exported_funs <- c(
   "use_miniextendr_mx_abi", "use_miniextendr_package_doc", "use_miniextendr_rbuildignore",
   "use_miniextendr_rust",
   "use_configure_feature_detection", "add_feature_rule",
-  "remove_feature_rule", "list_feature_rules",
+  "remove_feature_rule", "list_feature_rules", "list_cargo_features",
   "use_vendor_lib",
   "rust_source", "rust_function", "rust_source_clean",
   "vendor_crates_io", "vendor_miniextendr"

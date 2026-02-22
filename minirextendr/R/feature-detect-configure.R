@@ -228,9 +228,205 @@ list_feature_rules <- function(path = ".") {
   parse_detect_features_script(script_path)
 }
 
+#' List Cargo features and optional dependencies
+#'
+#' Runs `cargo metadata` on `src/rust/Cargo.toml` and parses the output to
+#' discover all defined features and optional dependencies. Useful when a crate
+#' already has many features and you want to see which ones still need detection
+#' rules.
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @return A list with:
+#'   \describe{
+#'     \item{features}{Named list: feature name -> character vector of specs
+#'       (e.g., `list(rayon = "miniextendr-api/rayon")`) }
+#'     \item{optional_deps}{Named list: dep name -> list with `version`
+#'       and `features` (character vector of enabled features)}
+#'     \item{without_rules}{Character vector of feature names that have no
+#'       corresponding detection rule in `tools/detect-features.R` (NULL if
+#'       detection is not set up)}
+#'   }
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' info <- list_cargo_features()
+#' info$features        # all features defined in [features]
+#' info$optional_deps   # optional dependencies (auto-create features)
+#' info$without_rules   # features missing detection rules
+#' }
+list_cargo_features <- function(path = ".") {
+  with_project(path)
+  check_rust()
+  manifest_path <- cargo_toml_path()
+
+  # Run cargo metadata (--no-deps: only our package, no transitive deps)
+  result <- run_command("cargo", c(
+    "metadata", "--format-version=1", "--no-deps",
+    "--manifest-path", manifest_path
+  ))
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo metadata failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  json <- paste(result, collapse = "\n")
+  parsed <- parse_cargo_metadata_json(json)
+
+  # Check which features lack detection rules
+  without_rules <- NULL
+  script_path <- usethis::proj_path("tools", "detect-features.R")
+  if (fs::file_exists(script_path)) {
+    existing_rules <- parse_detect_features_script(script_path)
+    feature_names <- setdiff(names(parsed$features), "default")
+    without_rules <- setdiff(feature_names, names(existing_rules))
+  }
+
+  structure(
+    list(
+      features = parsed$features,
+      optional_deps = parsed$optional_deps,
+      without_rules = without_rules
+    ),
+    class = "miniextendr_cargo_features"
+  )
+}
+
+#' @export
+print.miniextendr_cargo_features <- function(x, ...) {
+  # Features
+  feature_names <- setdiff(names(x$features), "default")
+  if (length(feature_names) > 0) {
+    cli::cli_h3("Cargo features ({length(feature_names)})")
+    for (name in sort(feature_names)) {
+      specs <- x$features[[name]]
+      if (length(specs) > 0) {
+        cli::cli_li("{.val {name}} = [{paste(specs, collapse = ', ')}]")
+      } else {
+        cli::cli_li("{.val {name}} = []")
+      }
+    }
+  } else {
+    cli::cli_alert_info("No features defined")
+  }
+
+  # Optional deps
+  if (length(x$optional_deps) > 0) {
+    cli::cli_h3("Optional dependencies ({length(x$optional_deps)})")
+    for (name in sort(names(x$optional_deps))) {
+      dep <- x$optional_deps[[name]]
+      feat_str <- if (length(dep$features) > 0) {
+        paste0(" [", paste(dep$features, collapse = ", "), "]")
+      } else ""
+      cli::cli_li("{.val {name}} {dep$req}{feat_str}")
+    }
+  }
+
+  # Without rules
+  if (!is.null(x$without_rules)) {
+    if (length(x$without_rules) > 0) {
+      cli::cli_h3("Without detection rules ({length(x$without_rules)})")
+      cli::cli_li("{.val {x$without_rules}}")
+    } else {
+      cli::cli_alert_success("All features have detection rules")
+    }
+  } else {
+    cli::cli_alert_info("Feature detection not set up (run {.code use_configure_feature_detection()})")
+  }
+
+  invisible(x)
+}
+
 # =============================================================================
 # Internal helpers
 # =============================================================================
+
+#' Parse cargo metadata JSON to extract features and optional deps
+#'
+#' Minimal JSON parser using regex — handles the specific structure of
+#' `cargo metadata --no-deps` output without requiring jsonlite.
+#'
+#' @param json Raw JSON string from cargo metadata
+#' @return List with `features` and `optional_deps`
+#' @noRd
+parse_cargo_metadata_json <- function(json) {
+  # Extract the first package's features object:
+  #   "features": { "name": ["spec1", "spec2"], ... }
+  features <- list()
+  features_match <- regmatches(json, regexpr('"features"\\s*:\\s*\\{[^}]*\\}', json))
+  if (length(features_match) == 1) {
+    # Extract individual feature entries: "name": ["spec1", "spec2"]
+    inner <- sub('^"features"\\s*:\\s*\\{(.*)\\}$', "\\1", features_match)
+    # Match each key-value pair
+    entries <- gregexpr('"([^"]+)"\\s*:\\s*\\[([^]]*)\\]', inner, perl = TRUE)
+    matches <- regmatches(inner, entries)[[1]]
+    for (m in matches) {
+      name <- sub('^"([^"]+)".*', "\\1", m)
+      # Extract array contents
+      arr_str <- sub('^"[^"]+"\\s*:\\s*\\[(.*)\\]$', "\\1", m)
+      if (nzchar(trimws(arr_str))) {
+        specs <- regmatches(arr_str, gregexpr('"([^"]+)"', arr_str))[[1]]
+        specs <- gsub('^"|"$', "", specs)
+      } else {
+        specs <- character()
+      }
+      features[[name]] <- specs
+    }
+  }
+
+  # Extract optional dependencies from the dependencies array.
+  # Each dep is an object like: {"name":"serde","optional":true,"req":"^1",...}
+  # Dep objects are flat (no nested objects), but contain arrays like "features":[]
+  # so we can't use simple [^}]+ — instead extract the deps array by bracket counting.
+  optional_deps <- list()
+  deps_start <- regexpr('"dependencies"\\s*:\\s*\\[', json)
+  if (deps_start > 0) {
+    # Find matching ] by counting brackets from the opening [
+    start_pos <- deps_start + attr(deps_start, "match.length") - 1L
+    chars <- strsplit(substring(json, start_pos), "")[[1]]
+    depth <- 0L
+    end_offset <- 0L
+    for (i in seq_along(chars)) {
+      if (chars[i] == "[") depth <- depth + 1L
+      if (chars[i] == "]") depth <- depth - 1L
+      if (depth == 0L) { end_offset <- i; break }
+    }
+    deps_json <- substring(json, start_pos, start_pos + end_offset - 1L)
+
+    # Extract each {...} dep object (flat objects, safe to split on })
+    dep_objects <- regmatches(deps_json, gregexpr('\\{[^}]+\\}', deps_json))[[1]]
+    for (obj in dep_objects) {
+      is_optional <- grepl('"optional"\\s*:\\s*true', obj)
+      if (!is_optional) next
+
+      name <- sub('.*"name"\\s*:\\s*"([^"]+)".*', "\\1", obj)
+      req <- if (grepl('"req"', obj)) {
+        sub('.*"req"\\s*:\\s*"([^"]+)".*', "\\1", obj)
+      } else "*"
+
+      # Extract features array from this dep object
+      dep_features <- character()
+      if (grepl('"features"\\s*:\\s*\\[', obj)) {
+        feat_str <- sub('.*"features"\\s*:\\s*\\[([^]]*)\\].*', "\\1", obj)
+        if (nzchar(trimws(feat_str))) {
+          dep_features <- regmatches(feat_str, gregexpr('"([^"]+)"', feat_str))[[1]]
+          dep_features <- gsub('^"|"$', "", dep_features)
+        }
+      }
+
+      optional_deps[[name]] <- list(
+        version = req,
+        features = dep_features
+      )
+    }
+  }
+
+  list(features = features, optional_deps = optional_deps)
+}
 
 #' Generate empty detect-features.R script
 #'
