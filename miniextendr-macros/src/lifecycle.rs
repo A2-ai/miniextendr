@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_collect_lifecycle_imports_mixed_methods() {
-        let specs = vec![
+        let specs = [
             LifecycleSpec::new(LifecycleStage::Deprecated),
             LifecycleSpec::new(LifecycleStage::Experimental),
             LifecycleSpec::new(LifecycleStage::Stable),
@@ -605,7 +605,7 @@ mod tests {
 
     #[test]
     fn test_collect_lifecycle_imports_only_stable() {
-        let specs = vec![LifecycleSpec::new(LifecycleStage::Stable)];
+        let specs = [LifecycleSpec::new(LifecycleStage::Stable)];
         let result = collect_lifecycle_imports(specs.iter());
         assert!(result.is_none());
     }
