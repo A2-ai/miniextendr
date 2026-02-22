@@ -73,10 +73,25 @@ myproject/
 
 ## Build Workflow
 
-These functions mirror the steps in the justfile but are callable from R:
+### Recommended: devtools (one-step)
+
+`devtools::document()` handles the entire pipeline automatically:
 
 ```r
-# Full build cycle
+devtools::document("mypackage")   # Compiles Rust + generates R wrappers + runs roxygen2
+devtools::install("mypackage")    # Install the final package
+```
+
+How it works: `devtools::document()` calls `pkgload::load_all()`, which detects
+`Config/build/bootstrap: TRUE` in DESCRIPTION and runs `bootstrap.R`. That triggers
+`./configure` → `make` → cargo build → document binary → R wrappers → roxygen2, all
+in a single invocation. No manual `./configure` or two-pass install needed.
+
+### Manual: step-by-step functions
+
+For fine-grained control or when not using devtools:
+
+```r
 miniextendr_autoconf(path = "mypackage")   # autoconf → generate configure
 miniextendr_configure(path = "mypackage")  # ./configure → generate Makevars
 miniextendr_build(path = "mypackage")      # R CMD INSTALL

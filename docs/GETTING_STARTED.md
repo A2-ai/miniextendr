@@ -78,16 +78,19 @@ miniextendr_module! {
 
 ### Step 3: Build and Test
 
+```r
+# Recommended: devtools handles everything in one step
+# (compiles Rust, generates R wrappers, runs roxygen2)
+devtools::document("mypackage")
+devtools::install("mypackage")
+```
+
+Or manually without devtools:
+
 ```bash
-# Configure (generates Makevars and build config)
 cd mypackage
-./configure
-
-# Build and install
-R CMD INSTALL .
-
-# Or use devtools
-Rscript -e 'devtools::install()'
+./configure            # Generate build files
+R CMD INSTALL .        # Compile Rust and install
 ```
 
 ### Step 4: Use from R
@@ -352,21 +355,13 @@ The `ExternalPtr` derive:
 ### Iteration Cycle
 
 1. Edit Rust code in `src/rust/lib.rs`
-2. Run `./configure` (if you changed macro code or added dependencies)
-3. Build: `R CMD INSTALL .` or `devtools::install()`
+2. Run `devtools::document()` — compiles Rust, generates R wrappers, runs roxygen2
+3. Run `devtools::install()` — install the package
 4. Test in R
 
-### Regenerating R Wrappers
-
-When you add new functions:
-
-```bash
-# Option 1: Full rebuild
-./configure && R CMD INSTALL .
-
-# Option 2: Use devtools
-Rscript -e 'devtools::document(); devtools::install()'
-```
+`devtools::document()` handles `./configure`, compilation, and wrapper generation
+automatically via `bootstrap.R` and the Makevars dependency chain. No manual
+`./configure` or two-pass install needed.
 
 ### Debugging Tips
 
