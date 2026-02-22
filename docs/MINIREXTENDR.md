@@ -68,7 +68,17 @@ myproject/
 ├── mypkg/               # R package (rpkg)
 │   ├── src/rust/        # R-facing Rust bindings
 │   └── vendor/
+├── tools/               # Version management scripts
+│   └── bump-version.R
 └── justfile
+```
+
+To vendor from a specific GitHub tag instead of the default (`"main"`):
+
+```r
+create_miniextendr_monorepo("myproject",
+  miniextendr_version = "v0.1.0"
+)
 ```
 
 ## Build Workflow
@@ -122,7 +132,17 @@ pub fn add_one(x: i32) -> i32 { x + 1 }
 add_one(41L)
 #> [1] 42
 
-# Full source with explicit module
+# Vectors work too
+rust_function('
+#[miniextendr]
+pub fn double_vec(x: Vec<f64>) -> Vec<f64> {
+    x.into_iter().map(|v| v * 2.0).collect()
+}
+')
+double_vec(c(1.0, 2.5, 3.0))
+#> [1] 2.0 5.0 6.0
+
+# Full source with multiple functions and explicit module
 rust_source(code = '
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -131,19 +151,36 @@ pub fn greet(name: &str) -> String {
     format!("Hello, {}!", name)
 }
 
+#[miniextendr]
+pub fn add(a: f64, b: f64) -> f64 { a + b }
+
 miniextendr_module! {
     mod placeholder;
     fn greet;
+    fn add;
 }
 ')
 greet("world")
 #> [1] "Hello, world!"
-
-# Clean the compilation cache
-rust_source_clean()
+add(1.5, 2.5)
+#> [1] 4
 ```
 
-Results are MD5-cached: same code + features = instant reload.
+### Caching
+
+Results are MD5-cached: same code + features = instant reload. Calling the same
+`rust_function()` or `rust_source()` a second time skips compilation entirely.
+
+```r
+# First call: compiles (~10-20s)
+rust_function('#[miniextendr] pub fn sq(x: f64) -> f64 { x * x }')
+
+# Second call: instant (cache hit)
+rust_function('#[miniextendr] pub fn sq(x: f64) -> f64 { x * x }')
+
+# Clear all cached compilations
+rust_source_clean()
+```
 
 ## Cargo Wrappers
 
@@ -165,6 +202,9 @@ Thin wrappers around `cargo` that target the package's `src/rust/` directory:
 
 All accept `path` (default `"."`) and `...` for extra arguments.
 
+**Note:** `cargo_fmt("--check")` may report formatting diffs in vendored crates.
+This is expected — vendored code isn't subject to local formatting rules.
+
 ## Feature Scaffolding
 
 Add optional miniextendr features with proper Cargo.toml and R-side setup:
@@ -179,6 +219,25 @@ use_s7()                # S7 class system
 use_feature_detection() # Conditional compilation via feature flags
 use_vendor_lib()        # Vendor external Rust library for monorepo use
 ```
+
+Each `use_*()` function:
+1. Adds the Cargo feature to `src/rust/Cargo.toml`
+2. Sets up any needed R-side dependencies (e.g., R6, S7 packages)
+3. Updates `miniextendr.yml` configuration
+
+### Feature Detection
+
+`use_feature_detection()` sets up conditional compilation via R-detected feature flags:
+
+```r
+# Initial setup — creates detect-features.R and wires it into configure.ac
+use_feature_detection()
+
+# After adding new features to miniextendr.yml, regenerate the detection script
+update_feature_detection()
+```
+
+Features are detected at `./configure` time and passed as `--cfg` flags to `rustc`.
 
 ## Vendoring
 
@@ -209,14 +268,26 @@ miniextendr_doctor(path = ".")      # Comprehensive health check
 miniextendr_check_rust()            # Verify Rust toolchain is available
 ```
 
+`miniextendr_status()` reports each build artifact's state (present, stale, or missing).
+`miniextendr_validate()` checks structural consistency (DESCRIPTION fields, module
+declarations, etc.). `miniextendr_doctor()` runs the full suite including Rust
+toolchain checks.
+
+**Note:** In monorepo mode, `miniextendr_doctor()` may report false-positive vendor
+warnings because vendored crates are resolved differently via `[patch]` in the workspace.
+
 ## Configuration
 
 `miniextendr.yml` in the package root for project-level settings:
 
 ```r
-mx_config(path = ".")              # Read current config
-mx_config_defaults()               # Show all defaults
+mx_config(path = ".")              # Read current config (returns named list)
+mx_config_defaults()               # Show all defaults with descriptions
 ```
+
+`mx_config()` merges project-level `miniextendr.yml` with built-in defaults.
+Settings include feature flags, class system choices, and build options.
+`mx_config_defaults()` lists every available setting with its default value.
 
 ## knitr / Rmarkdown / Quarto Integration
 
