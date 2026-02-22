@@ -1870,51 +1870,6 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             (cfg_attrs, syn::parse_quote!(#call_method_def))
         })
         .collect();
-    let _call_entries: Vec<syn::Expr> = call_entries_with_attrs
-        .iter()
-        .map(|(_, expr)| expr.clone())
-        .collect();
-
-    // Count entries without cfg attributes (always included)
-    let unconfigured_entries_len = call_entries_with_attrs
-        .iter()
-        .filter(|(cfg_attrs, _)| cfg_attrs.is_empty())
-        .count();
-
-    // Generate conditional length constants for entries with cfg attributes
-    let cfg_len_consts: Vec<proc_macro2::TokenStream> = call_entries_with_attrs
-        .iter()
-        .enumerate()
-        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
-        .map(|(i, (cfg_attrs, _))| {
-            let const_name = quote::format_ident!("__CFG_FN_LEN_{}", i);
-            // Generate both cfg and not(cfg) variants
-            let negated_attrs: Vec<proc_macro2::TokenStream> = cfg_attrs
-                .iter()
-                .map(|attr| {
-                    // Extract the meta from the cfg attribute and negate it
-                    let meta = &attr.meta;
-                    quote::quote!(#[cfg(not #meta)])
-                })
-                .collect();
-            quote::quote! {
-                #(#cfg_attrs)*
-                const #const_name: usize = 1;
-                #(#negated_attrs)*
-                const #const_name: usize = 0;
-            }
-        })
-        .collect();
-
-    // Build the length expression: base + sum of conditional constants
-    let cfg_len_idents: Vec<syn::Ident> = call_entries_with_attrs
-        .iter()
-        .enumerate()
-        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
-        .map(|(i, _)| quote::format_ident!("__CFG_FN_LEN_{}", i))
-        .collect();
-
-    let call_entries_len = unconfigured_entries_len;
 
     // Generate ALTREP registrations for struct items (if they implement RegisterAltrep)
     let altrep_regs: Vec<syn::Expr> = parsed_module
@@ -2033,18 +1988,19 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
-    // Get CALL_ENTRIES const arrays from child modules (via `use`)
-    let use_module_call_entries_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .uses
-        .iter()
-        .map(|x| {
-            let use_module_ident = &x.use_name.ident;
-            let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
-            let call_entries_const = quote::format_ident!("CALL_ENTRIES_{use_module_ident_upper}");
-            let cfg_attrs = extract_cfg_attrs(&x.attrs);
-            (cfg_attrs, syn::parse_quote!(#use_module_ident::#call_entries_const))
-        })
-        .collect();
+    // Get call_entries functions from child modules (via `use`)
+    let use_module_call_entries_with_cfg: Vec<(Vec<syn::Attribute>, proc_macro2::TokenStream)> =
+        parsed_module
+            .uses
+            .iter()
+            .map(|x| {
+                let use_module_ident = &x.use_name.ident;
+                let call_entries_fn =
+                    quote::format_ident!("{use_module_ident}_call_entries");
+                let cfg_attrs = extract_cfg_attrs(&x.attrs);
+                (cfg_attrs, quote::quote!(#use_module_ident::#call_entries_fn()))
+            })
+            .collect();
 
     // Call ALTREP registration from child modules (via `use`)
     let use_module_altrep_regs: Vec<proc_macro2::TokenStream> = parsed_module
@@ -2156,8 +2112,6 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     // endregion
 
-    // Check if we have impl blocks to register (affects wrapper lists)
-    let _has_impls = !parsed_module.impls.is_empty();
 
     // Generate trait ABI wrapper infrastructure grouped by concrete type.
     // Only for regular trait impls (not ALTREP). Generic types are skipped since
@@ -2184,277 +2138,38 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // R wrapper parts const (includes both functions and impl wrappers)
     let r_wrappers_impls_ident = quote::format_ident!("R_WRAPPERS_IMPLS_{module_upper}");
 
-    // Generate CALL_ENTRIES constant name
-    let call_entries_const_ident = quote::format_ident!("CALL_ENTRIES_{module_upper}");
-
-    // Generate call_entries accessor function name (returns &[R_CallMethodDef])
+    // Generate call_entries function name (builds Vec at runtime)
     let call_entries_fn_ident = quote::format_ident!("{module}_call_entries");
 
     // Generate ALTREP registration function name
     let altrep_reg_fn_ident = quote::format_ident!("{module}_register_altrep");
 
-    // Build const call entries array, including impl call defs and trait impl call defs.
-    // Use explicit usize suffix to avoid type inference issues with many additions
-    let call_entries_len_lit = syn::LitInt::new(
-        &format!("{}usize", call_entries_len),
-        proc_macro2::Span::call_site(),
-    );
-    // Use UFCS to call slice's inherent len() instead of RToVec::len() which returns i64
-    let impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
-        .impls
-        .iter()
-        .map(|i| {
-            let call_defs_static = i.call_defs_const_ident();
-            quote::quote!(<[_]>::len(&#call_defs_static))
-        })
-        .collect();
-    // Only include regular trait impls (not ALTREP) in call defs length
-    let trait_impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = regular_trait_impls
-        .iter()
-        .map(|ti| {
-            let call_defs_static = ti.call_defs_const_ident();
-            quote::quote!(<[_]>::len(&#call_defs_static))
-        })
-        .collect();
-
-    // Sidecar call defs length (from #[derive(ExternalPtr)] with #[r_data])
-    let rdata_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
-        .impls
-        .iter()
-        .map(|i| {
-            let call_defs_static = i.rdata_call_defs_const_ident();
-            quote::quote!(<[_]>::len(&#call_defs_static))
-        })
-        .collect();
-
-    // Match-arg choices helper call defs length (per-function)
-    let match_arg_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
-        .functions
-        .iter()
-        .map(|f| {
-            let call_defs_static = f.match_arg_call_defs_ident();
-            quote::quote!(<[_]>::len(&#call_defs_static))
-        })
-        .collect();
-
-    // Precheck fallback helper call defs length (per-function)
-    // Calculate total length expression, including conditional cfg lengths
-    let cfg_len_exprs: Vec<proc_macro2::TokenStream> = cfg_len_idents
-        .iter()
-        .map(|ident| quote::quote!(#ident))
-        .collect();
-    let all_len_exprs: Vec<proc_macro2::TokenStream> =
-        std::iter::once(quote::quote!(#call_entries_len_lit))
-            .chain(cfg_len_exprs.iter().cloned())
-            .chain(impl_call_defs_len_exprs.iter().cloned())
-            .chain(trait_impl_call_defs_len_exprs.iter().cloned())
-            .chain(rdata_call_defs_len_exprs.iter().cloned())
-            .chain(match_arg_call_defs_len_exprs.iter().cloned())
-            .collect();
-    let total_len_expr = if all_len_exprs.is_empty()
-        || (call_entries_len == 0
-            && cfg_len_idents.is_empty()
-            && impl_call_defs_len_exprs.is_empty()
-            && trait_impl_call_defs_len_exprs.is_empty()
-            && rdata_call_defs_len_exprs.is_empty()
-            && match_arg_call_defs_len_exprs.is_empty())
-    {
-        quote::quote!(0usize)
-    } else {
-        quote::quote!(#(#all_len_exprs)+*)
-    };
-
-    // Generate conditional call entry assignment statements
-    let call_entry_assignments: Vec<proc_macro2::TokenStream> = call_entries_with_attrs
+    // Generate Vec elements for call entries, with cfg attributes preserved
+    let call_entry_vec_elements: Vec<proc_macro2::TokenStream> = call_entries_with_attrs
         .iter()
         .map(|(cfg_attrs, expr)| {
-            quote::quote! {
-                #(#cfg_attrs)*
-                {
-                    entries[idx] = #expr;
-                    idx += 1;
-                }
-            }
-        })
-        .collect();
-
-    let call_entries_storage = quote::quote! {
-        /// This module's call entries (excluding children).
-        #[doc(hidden)]
-        pub(crate) const #call_entries_const_ident: [::miniextendr_api::ffi::R_CallMethodDef; #total_len_expr] = {
-            const EMPTY: ::miniextendr_api::ffi::R_CallMethodDef = ::miniextendr_api::ffi::R_CallMethodDef {
-                name: std::ptr::null(),
-                fun: None,
-                numArgs: 0,
-            };
-            let mut entries = [EMPTY; #total_len_expr];
-            let mut idx: usize = 0;
-            #(#call_entry_assignments)*
-            #(
-                let mut j: usize = 0;
-                let slice = &#impl_call_defs;
-                while j < <[_]>::len(slice) {
-                    entries[idx] = slice[j];
-                    idx += 1;
-                    j += 1;
-                }
-            )*
-            #(
-                let mut j: usize = 0;
-                let slice = &#trait_impl_call_defs;
-                while j < <[_]>::len(slice) {
-                    entries[idx] = slice[j];
-                    idx += 1;
-                    j += 1;
-                }
-            )*
-            #(
-                let mut j: usize = 0;
-                let slice = &#rdata_call_defs;
-                while j < <[_]>::len(slice) {
-                    entries[idx] = slice[j];
-                    idx += 1;
-                    j += 1;
-                }
-            )*
-            #(
-                let mut j: usize = 0;
-                let slice = &#match_arg_call_defs;
-                while j < <[_]>::len(slice) {
-                    entries[idx] = slice[j];
-                    idx += 1;
-                    j += 1;
-                }
-            )*
-            entries
-        };
-
-        /// Returns this module's call entries as a slice.
-        fn #call_entries_fn_ident() -> &'static [::miniextendr_api::ffi::R_CallMethodDef] {
-            &#call_entries_const_ident
-        }
-    };
-
-    // Build a combined const array including child modules and a sentinel.
-    //
-    // For cfg-gated use entries, generate paired const declarations (like __CFG_FN_LEN_*)
-    // so the array size is always valid regardless of which features are enabled.
-    let cfg_use_len_consts: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
-        .iter()
-        .enumerate()
-        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
-        .map(|(i, (cfg_attrs, expr))| {
-            let const_name = quote::format_ident!("__CFG_USE_LEN_{}", i);
-            let negated_attrs: Vec<proc_macro2::TokenStream> = cfg_attrs
-                .iter()
-                .map(|attr| {
-                    let meta = &attr.meta;
-                    quote::quote!(#[cfg(not #meta)])
-                })
-                .collect();
-            quote::quote! {
-                #(#cfg_attrs)*
-                const #const_name: usize = <[_]>::len(&#expr);
-                #(#negated_attrs)*
-                const #const_name: usize = 0;
-            }
-        })
-        .collect();
-
-    // Length expressions for unconfigured use entries (always present)
-    let uncfg_use_len_exprs: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
-        .iter()
-        .filter(|(cfg_attrs, _)| cfg_attrs.is_empty())
-        .map(|(_, expr)| quote::quote!(<[_]>::len(&#expr)))
-        .collect();
-
-    // Length idents for cfg-gated use entries
-    let cfg_use_len_idents: Vec<syn::Ident> = use_module_call_entries_with_cfg
-        .iter()
-        .enumerate()
-        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
-        .map(|(i, _)| quote::format_ident!("__CFG_USE_LEN_{}", i))
-        .collect();
-
-    // Combine all use-module length addends
-    let all_use_len_exprs: Vec<proc_macro2::TokenStream> = uncfg_use_len_exprs
-        .into_iter()
-        .chain(cfg_use_len_idents.iter().map(|ident| quote::quote!(#ident)))
-        .collect();
-
-    let all_call_entries_const_ident = quote::format_ident!("ALL_CALL_ENTRIES_{module_upper}");
-    let all_entries_len_expr = if all_use_len_exprs.is_empty() {
-        quote::quote!(#total_len_expr + 1usize)
-    } else {
-        quote::quote!(#total_len_expr + #(#all_use_len_exprs)+* + 1usize)
-    };
-
-    // Generate child-module copy blocks, each wrapped with cfg attrs if needed
-    let use_module_copy_blocks: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
-        .iter()
-        .map(|(cfg_attrs, expr)| {
-            let copy_block = quote::quote! {
-                let mut j: usize = 0;
-                let slice = &#expr;
-                while j < <[_]>::len(slice) {
-                    entries[idx] = slice[j];
-                    idx += 1;
-                    j += 1;
-                }
-            };
             if cfg_attrs.is_empty() {
-                copy_block
+                quote::quote!(#expr)
+            } else {
+                quote::quote!(#(#cfg_attrs)* #expr)
+            }
+        })
+        .collect();
+
+    // Generate child-module extend calls, each wrapped with cfg attrs if needed
+    let use_module_extend_calls: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
+        .iter()
+        .map(|(cfg_attrs, expr)| {
+            if cfg_attrs.is_empty() {
+                quote::quote!(all.extend(#expr);)
             } else {
                 quote::quote! {
                     #(#cfg_attrs)*
-                    {
-                        #copy_block
-                    }
+                    all.extend(#expr);
                 }
             }
         })
         .collect();
-
-    let all_call_entries_storage = quote::quote! {
-        // Conditional length constants for feature-gated child module entries
-        #(#cfg_use_len_consts)*
-
-        /// This module's call entries including children, with sentinel.
-        #[doc(hidden)]
-        const #all_call_entries_const_ident: [::miniextendr_api::ffi::R_CallMethodDef; #all_entries_len_expr] = {
-            const EMPTY: ::miniextendr_api::ffi::R_CallMethodDef = ::miniextendr_api::ffi::R_CallMethodDef {
-                name: std::ptr::null(),
-                fun: None,
-                numArgs: 0,
-            };
-            let mut entries = [EMPTY; #all_entries_len_expr];
-            let mut idx: usize = 0;
-
-            // Local entries
-            let mut j: usize = 0;
-            let slice = &#call_entries_const_ident;
-            while j < <[_]>::len(slice) {
-                entries[idx] = slice[j];
-                idx += 1;
-                j += 1;
-            }
-
-            // Child module entries
-            #(#use_module_copy_blocks)*
-
-            // Sentinel
-            entries[idx] = ::miniextendr_api::ffi::R_CallMethodDef {
-                name: std::ptr::null(),
-                fun: None,
-                numArgs: 0,
-            };
-
-            entries
-        };
-    };
-
-    // Check if we have trait impl blocks to register
-    let _has_trait_impls = !parsed_module.trait_impls.is_empty();
 
     // Generate R wrapper impls constant - includes impl, trait impl, sidecar, and vctrs wrappers
     // Combine all with cfg info and generate conditional array elements
@@ -2516,11 +2231,18 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         pub const #r_wrappers_impl_deps_ident: &[&[&str]] = &[#(#r_wrappers_impl_use_other_modules),*];
 
-        // Conditional length constants for feature-gated function entries
-        #(#cfg_len_consts)*
-
-        #call_entries_storage
-        #all_call_entries_storage
+        /// Collect this module's call entries into a `Vec` (excluding children).
+        #[doc(hidden)]
+        pub(crate) fn #call_entries_fn_ident() -> Vec<::miniextendr_api::ffi::R_CallMethodDef> {
+            let mut entries: Vec<::miniextendr_api::ffi::R_CallMethodDef> = vec![
+                #(#call_entry_vec_elements,)*
+            ];
+            #(entries.extend_from_slice(&#impl_call_defs);)*
+            #(entries.extend_from_slice(&#trait_impl_call_defs);)*
+            #(entries.extend_from_slice(&#rdata_call_defs);)*
+            #(entries.extend_from_slice(&#match_arg_call_defs);)*
+            entries
+        }
 
         // Trait ABI wrapper infrastructure
         #(#trait_impl_wrappers)*
@@ -2548,11 +2270,23 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             // Register ALTREP classes from child modules
             #(#use_module_altrep_regs;)*
 
+            // Build call entries at runtime — no compile-time array size computation needed.
+            let mut all = #call_entries_fn_ident();
+            // Child module entries
+            #(#use_module_extend_calls)*
+            // Sentinel (null-terminated)
+            all.push(::miniextendr_api::ffi::R_CallMethodDef {
+                name: std::ptr::null(),
+                fun: None,
+                numArgs: 0,
+            });
+
             unsafe {
                 ::miniextendr_api::ffi::R_registerRoutines_unchecked(
                     dll,
                     std::ptr::null(),
-                    #all_call_entries_const_ident.as_ptr(),
+                    // Leak the Vec — init runs once at package load, so this is fine.
+                    all.leak().as_ptr(),
                     std::ptr::null(),
                     std::ptr::null()
                 );
