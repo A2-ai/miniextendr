@@ -272,6 +272,13 @@ pub(crate) fn source_location_doc(span: proc_macro2::Span) -> String {
     )
 }
 
+/// Build a `TokenStream` containing a raw string literal from an R wrapper string.
+pub(crate) fn r_wrapper_raw_literal(s: &str) -> proc_macro2::TokenStream {
+    use std::str::FromStr;
+    let raw = format!("r#\"\n{}\n\"#", s);
+    proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
+}
+
 /// Returns the first generic type argument from a path segment.
 fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     nth_type_argument(seg, 0)
@@ -1293,17 +1300,21 @@ pub fn miniextendr(
         r_wrapper_builder::merge_missing_defaults(inputs, parsed.param_defaults());
     // Add NULL default for match_arg params that don't already have an explicit default
     for match_arg_param in parsed.match_arg_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(
-            &syn::Ident::new(match_arg_param, proc_macro2::Span::call_site()),
-        )
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            match_arg_param,
+            proc_macro2::Span::call_site(),
+        ))
         .to_string();
-        merged_defaults.entry(r_name).or_insert_with(|| "NULL".to_string());
+        merged_defaults
+            .entry(r_name)
+            .or_insert_with(|| "NULL".to_string());
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
     for (param_name, choices) in parsed.choices_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(
-            &syn::Ident::new(param_name, proc_macro2::Span::call_site()),
-        )
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            param_name,
+            proc_macro2::Span::call_site(),
+        ))
         .to_string();
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
         merged_defaults
@@ -1398,8 +1409,7 @@ pub fn miniextendr(
         {
             let rust_name = pat_ident.ident.to_string();
             if let Some(choices) = parsed.choices_for_param(&rust_name) {
-                let r_name =
-                    r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
                 // Only inject if user didn't already write @param for this param
                 let has_user_param = roxygen_tags
                     .iter()
@@ -1407,11 +1417,7 @@ pub fn miniextendr(
                 if !has_user_param {
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
-                    roxygen_tags.push(format!(
-                        "@param {} One of {}.",
-                        r_name,
-                        quoted.join(", ")
-                    ));
+                    roxygen_tags.push(format!("@param {} One of {}.", r_name, quoted.join(", ")));
                 }
             }
         }
@@ -1526,14 +1532,14 @@ pub fn miniextendr(
     // Skip both match_arg and choices params (already validated by match.arg)
     let mut skip_params = parsed.match_arg_params().clone();
     for param_name in parsed.choices_params().keys() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(
-            &syn::Ident::new(param_name, proc_macro2::Span::call_site()),
-        )
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            param_name,
+            proc_macro2::Span::call_site(),
+        ))
         .to_string();
         skip_params.insert(r_name);
     }
-    let precondition_output =
-        r_preconditions::build_precondition_checks(inputs, &skip_params);
+    let precondition_output = r_preconditions::build_precondition_checks(inputs, &skip_params);
     let precondition_prelude = if precondition_output.static_checks.is_empty() {
         String::new()
     } else {
@@ -1589,13 +1595,7 @@ pub fn miniextendr(
         )
     };
     // Use a raw string literal for better readability in macro expansion
-    let r_wrapper_str: proc_macro2::TokenStream = {
-        use std::str::FromStr;
-        // Indent each line by 2 spaces for nicer formatting
-        let indented = r_wrapper_string.replace('\n', "\n  ");
-        let raw = format!("r#\"\n  {}\n\"#", indented);
-        proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
-    };
+    let r_wrapper_str = r_wrapper_raw_literal(&r_wrapper_string);
 
     // endregion
 
@@ -1656,8 +1656,7 @@ pub fn miniextendr(
                 c_ident.to_string().trim_start_matches("C_"),
                 r_param
             );
-            let helper_fn_ident =
-                syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
+            let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
             let helper_def_ident = syn::Ident::new(
                 &format!("call_method_def_{}", helper_fn_name),
                 proc_macro2::Span::call_site(),
@@ -1995,10 +1994,12 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             .iter()
             .map(|x| {
                 let use_module_ident = &x.use_name.ident;
-                let call_entries_fn =
-                    quote::format_ident!("{use_module_ident}_call_entries");
+                let call_entries_fn = quote::format_ident!("{use_module_ident}_call_entries");
                 let cfg_attrs = extract_cfg_attrs(&x.attrs);
-                (cfg_attrs, quote::quote!(#use_module_ident::#call_entries_fn()))
+                (
+                    cfg_attrs,
+                    quote::quote!(#use_module_ident::#call_entries_fn()),
+                )
             })
             .collect();
 
@@ -2111,7 +2112,6 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     };
 
     // endregion
-
 
     // Generate trait ABI wrapper infrastructure grouped by concrete type.
     // Only for regular trait impls (not ALTREP). Generic types are skipped since

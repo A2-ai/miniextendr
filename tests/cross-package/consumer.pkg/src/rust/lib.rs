@@ -13,8 +13,7 @@ pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterV
 
 // Import the shared Resettable trait and its generated ABI types
 pub use shared_traits::{
-    Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
-    __resettable_build_vtable,
+    __resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
 };
 
 // ============================================================================

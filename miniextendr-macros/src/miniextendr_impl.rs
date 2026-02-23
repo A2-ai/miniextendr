@@ -272,7 +272,6 @@ impl ReceiverKind {
     pub fn is_instance(&self) -> bool {
         matches!(self, ReceiverKind::Ref | ReceiverKind::RefMut)
     }
-
 }
 
 /// Parsed method from an impl block.
@@ -1675,24 +1674,24 @@ impl ParsedImpl {
     /// before this function is called, so we only handle inherent impls here.
     pub fn parse(attrs: ImplAttrs, item_impl: syn::ItemImpl) -> syn::Result<Self> {
         // Extract type identifier
-        let type_ident = match item_impl.self_ty.as_ref() {
-            syn::Type::Path(p) => p
-                .path
-                .segments
-                .last()
-                .map(|s| s.ident.clone())
-                .ok_or_else(|| syn::Error::new_spanned(
-                    &item_impl.self_ty,
-                    "#[miniextendr] impl blocks require a named type (e.g., `impl MyType`)",
-                ))?,
-            _ => {
-                return Err(syn::Error::new_spanned(
-                    &item_impl.self_ty,
-                    "#[miniextendr] impl blocks require a named struct type. \
+        let type_ident =
+            match item_impl.self_ty.as_ref() {
+                syn::Type::Path(p) => p.path.segments.last().map(|s| s.ident.clone()).ok_or_else(
+                    || {
+                        syn::Error::new_spanned(
+                            &item_impl.self_ty,
+                            "#[miniextendr] impl blocks require a named type (e.g., `impl MyType`)",
+                        )
+                    },
+                )?,
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        &item_impl.self_ty,
+                        "#[miniextendr] impl blocks require a named struct type. \
                      Found a non-path type. Use `impl MyStruct { ... }` with a concrete struct.",
-                ));
-            }
-        };
+                    ));
+                }
+            };
 
         // Reject all generics until codegen fully supports them.
         // The wrapper generation uses `type_ident` without generic args, which would
@@ -2062,7 +2061,10 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     );
     // Inject lifecycle imports from methods into class-level roxygen block
     if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl.methods.iter().filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
     ) {
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(insert_pos, format!("#' {}", lc_import));
@@ -2276,7 +2278,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     );
     // Inject lifecycle imports from methods into class-level roxygen block
     if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl.methods.iter().filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
     ) {
         // Insert before @export (which is last)
         let insert_pos = lines.len().saturating_sub(1);
@@ -2662,7 +2667,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         );
         // Inject lifecycle imports from methods into class-level roxygen block
         if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-            parsed_impl.methods.iter().filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+            parsed_impl
+                .methods
+                .iter()
+                .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
         ) {
             let insert_pos = lines.len().saturating_sub(1);
             lines.insert(insert_pos, format!("#' {}", lc_import));
@@ -3059,7 +3067,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     );
     // Inject lifecycle imports from methods into class-level roxygen block
     if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl.methods.iter().filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
     ) {
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(insert_pos, format!("#' {}", lc_import));
@@ -3588,7 +3599,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     );
     // Inject lifecycle imports from methods into class-level roxygen block
     if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl.methods.iter().filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+        parsed_impl
+            .methods
+            .iter()
+            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
     ) {
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(insert_pos, format!("#' {}", lc_import));
@@ -3800,7 +3814,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         );
         // Inject lifecycle imports from methods into class-level roxygen block
         if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-            parsed_impl.methods.iter().filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+            parsed_impl
+                .methods
+                .iter()
+                .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
         ) {
             let insert_pos = lines.len().saturating_sub(1);
             lines.insert(insert_pos, format!("#' {}", lc_import));
@@ -4219,12 +4236,7 @@ pub fn expand_impl(
 
     let original_impl = &parsed.original_impl;
 
-    let r_wrapper_str: TokenStream = {
-        use std::str::FromStr;
-        let indented = r_wrapper_string.replace('\n', "\n  ");
-        let raw = format!("r#\"\n  {}\n\"#", indented);
-        TokenStream::from_str(&raw).expect("valid raw string literal")
-    };
+    let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
 
     // Generate doc comment linking to R wrapper constant
     let r_wrapper_doc = format!(

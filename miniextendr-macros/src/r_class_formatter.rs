@@ -372,9 +372,7 @@ impl<'a> MethodDocBuilder<'a> {
                             let mut parts = rest.splitn(2, char::is_whitespace);
                             let name = parts.next().unwrap_or("");
                             let desc = parts.next().unwrap_or("");
-                            lines.push(format!(
-                                "#'   \\item{{\\code{{{name}}}}}{{{desc}}}"
-                            ));
+                            lines.push(format!("#'   \\item{{\\code{{{name}}}}}{{{desc}}}"));
                         }
                     }
                     lines.push("#' }".to_string());

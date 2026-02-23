@@ -7,9 +7,7 @@
 //! - [`MiniextendrFnAttrs`]: Parsed `#[miniextendr(...)]` attribute options
 //! - [`CoercionMapping`]: Type coercion analysis for automatic R→Rust conversion
 
-use crate::{
-    call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for,
-};
+use crate::{call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for};
 
 // =============================================================================
 // Coercion analysis
@@ -1051,7 +1049,11 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             }
                         }
                     } else {
-                        let key_name = nv.path.get_ident().map(|i| i.to_string()).unwrap_or_default();
+                        let key_name = nv
+                            .path
+                            .get_ident()
+                            .map(|i| i.to_string())
+                            .unwrap_or_default();
                         return Err(syn::Error::new_spanned(
                             nv,
                             format!(
@@ -1179,7 +1181,11 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 ));
                             }
                         } else {
-                            let opt_name = list.path.get_ident().map(|i| i.to_string()).unwrap_or_default();
+                            let opt_name = list
+                                .path
+                                .get_ident()
+                                .map(|i| i.to_string())
+                                .unwrap_or_default();
                             return Err(syn::Error::new_spanned(
                                 &list,
                                 format!(

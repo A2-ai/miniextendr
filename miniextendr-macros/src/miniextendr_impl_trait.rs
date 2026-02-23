@@ -455,12 +455,7 @@ fn generate_vtable_static(
         syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
 
     // Format R wrapper as raw string literal
-    let r_wrapper_str: TokenStream = {
-        use std::str::FromStr;
-        let indented = r_wrapper_string.replace('\n', "\n  ");
-        let raw = format!("r#\"\n  {}\n\"#", indented);
-        TokenStream::from_str(&raw).expect("valid raw string literal")
-    };
+    let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let source_start = type_ident.span().start();
     let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());
@@ -2517,12 +2512,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
 
     // Format R wrapper as raw string literal
-    let r_wrapper_str: TokenStream = {
-        use std::str::FromStr;
-        let indented = r_wrapper_string.replace('\n', "\n  ");
-        let raw = format!("r#\"\n  {}\n\"#", indented);
-        TokenStream::from_str(&raw).expect("valid raw string literal")
-    };
+    let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
     let source_start = type_ident.span().start();
     let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());
     let source_col_lit =

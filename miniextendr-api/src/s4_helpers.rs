@@ -29,8 +29,8 @@
 /// ```
 use crate::expression::RCall;
 use crate::ffi::{
-    self, R_ClassSymbol, Rf_getAttrib, Rf_isS4, Rf_protect, Rf_unprotect, Rboolean, SexpExt, SEXP,
-    STRING_ELT,
+    self, R_ClassSymbol, Rboolean, Rf_getAttrib, Rf_isS4, Rf_protect, Rf_unprotect, SEXP,
+    STRING_ELT, SexpExt,
 };
 use std::ffi::CStr;
 

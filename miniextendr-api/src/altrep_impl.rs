@@ -83,14 +83,57 @@ pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] 
 /// ```
 #[macro_export]
 macro_rules! impl_altinteger_from_data {
-    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer); };
-    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, dataptr(i32)); };
-    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, serialize); };
-    ($ty:ty, subset) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, subset); };
-    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, dataptr(i32), serialize); };
-    ($ty:ty, serialize, dataptr) => { $crate::impl_altinteger_from_data!($ty, dataptr, serialize); };
-    ($ty:ty, subset, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer, subset, serialize); };
-    ($ty:ty, serialize, subset) => { $crate::impl_altinteger_from_data!($ty, subset, serialize); };
+    ($ty:ty) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altinteger_methods, impl_inferbase_integer);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altinteger_methods,
+            impl_inferbase_integer,
+            dataptr(i32)
+        );
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altinteger_methods,
+            impl_inferbase_integer,
+            serialize
+        );
+    };
+    ($ty:ty, subset) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altinteger_methods,
+            impl_inferbase_integer,
+            subset
+        );
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altinteger_methods,
+            impl_inferbase_integer,
+            dataptr(i32),
+            serialize
+        );
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altinteger_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, subset, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altinteger_methods,
+            impl_inferbase_integer,
+            subset,
+            serialize
+        );
+    };
+    ($ty:ty, serialize, subset) => {
+        $crate::impl_altinteger_from_data!($ty, subset, serialize);
+    };
 }
 
 /// Internal macro: impl Altrep with just length
@@ -384,12 +427,8 @@ macro_rules! __impl_alt_get_region {
                     }
                     let len = len as usize;
                     let slice = unsafe { $crate::altrep_impl::altrep_region_buf(buf, len) };
-                    <$ty as $trait>::get_region(
-                        &*d,
-                        start as usize,
-                        len,
-                        slice,
-                    ) as $crate::ffi::R_xlen_t
+                    <$ty as $trait>::get_region(&*d, start as usize, len, slice)
+                        as $crate::ffi::R_xlen_t
                 })
                 .unwrap_or(0)
         }
@@ -575,11 +614,32 @@ macro_rules! __impl_altinteger_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altreal_from_data {
-    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real); };
-    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, dataptr(f64)); };
-    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, serialize); };
-    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, dataptr(f64), serialize); };
-    ($ty:ty, serialize, dataptr) => { $crate::impl_altreal_from_data!($ty, dataptr, serialize); };
+    ($ty:ty) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altreal_methods,
+            impl_inferbase_real,
+            dataptr(f64)
+        );
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, serialize);
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altreal_methods,
+            impl_inferbase_real,
+            dataptr(f64),
+            serialize
+        );
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altreal_from_data!($ty, dataptr, serialize);
+    };
 }
 
 /// Internal macro for AltReal method implementations.
@@ -643,11 +703,37 @@ macro_rules! __impl_altreal_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altlogical_from_data {
-    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical); };
-    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical, dataptr(i32)); };
-    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical, serialize); };
-    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical, dataptr(i32), serialize); };
-    ($ty:ty, serialize, dataptr) => { $crate::impl_altlogical_from_data!($ty, dataptr, serialize); };
+    ($ty:ty) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altlogical_methods, impl_inferbase_logical);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altlogical_methods,
+            impl_inferbase_logical,
+            dataptr(i32)
+        );
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altlogical_methods,
+            impl_inferbase_logical,
+            serialize
+        );
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altlogical_methods,
+            impl_inferbase_logical,
+            dataptr(i32),
+            serialize
+        );
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
+    };
 }
 
 /// Internal macro: impl AltLogical methods from AltLogicalData
@@ -710,11 +796,27 @@ macro_rules! __impl_altlogical_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altraw_from_data {
-    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw); };
-    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, dataptr(u8)); };
-    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, serialize); };
-    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, dataptr(u8), serialize); };
-    ($ty:ty, serialize, dataptr) => { $crate::impl_altraw_from_data!($ty, dataptr, serialize); };
+    ($ty:ty) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, dataptr(u8));
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, serialize);
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altraw_methods,
+            impl_inferbase_raw,
+            dataptr(u8),
+            serialize
+        );
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altraw_from_data!($ty, dataptr, serialize);
+    };
 }
 
 /// Internal macro for AltRaw method implementations.
@@ -743,10 +845,34 @@ macro_rules! __impl_altraw_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altstring_from_data {
-    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string); };
-    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, string_dataptr); };
-    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, serialize); };
-    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, string_dataptr, serialize); };
+    ($ty:ty) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altstring_methods,
+            impl_inferbase_string,
+            string_dataptr
+        );
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altstring_methods,
+            impl_inferbase_string,
+            serialize
+        );
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altstring_methods,
+            impl_inferbase_string,
+            string_dataptr,
+            serialize
+        );
+    };
 }
 
 /// Internal macro for AltString method implementations.
@@ -821,9 +947,20 @@ macro_rules! __impl_altcomplex_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltComplex for $ty {
-            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltComplexData, $crate::ffi::Rcomplex,
-                $crate::ffi::Rcomplex { r: f64::NAN, i: f64::NAN });
-            $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltComplexData, $crate::ffi::Rcomplex);
+            $crate::__impl_alt_elt!(
+                $ty,
+                $crate::altrep_data::AltComplexData,
+                $crate::ffi::Rcomplex,
+                $crate::ffi::Rcomplex {
+                    r: f64::NAN,
+                    i: f64::NAN
+                }
+            );
+            $crate::__impl_alt_get_region!(
+                $ty,
+                $crate::altrep_data::AltComplexData,
+                $crate::ffi::Rcomplex
+            );
         }
     };
 }
@@ -836,14 +973,57 @@ macro_rules! __impl_altcomplex_methods {
 /// - `subset`: Enable optimized subsetting (requires `AltrepExtractSubset`)
 #[macro_export]
 macro_rules! impl_altcomplex_from_data {
-    ($ty:ty) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex); };
-    ($ty:ty, dataptr) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, dataptr($crate::ffi::Rcomplex)); };
-    ($ty:ty, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, serialize); };
-    ($ty:ty, subset) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, subset); };
-    ($ty:ty, dataptr, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, dataptr($crate::ffi::Rcomplex), serialize); };
-    ($ty:ty, serialize, dataptr) => { $crate::impl_altcomplex_from_data!($ty, dataptr, serialize); };
-    ($ty:ty, subset, serialize) => { $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex, subset, serialize); };
-    ($ty:ty, serialize, subset) => { $crate::impl_altcomplex_from_data!($ty, subset, serialize); };
+    ($ty:ty) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altcomplex_methods, impl_inferbase_complex);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altcomplex_methods,
+            impl_inferbase_complex,
+            dataptr($crate::ffi::Rcomplex)
+        );
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altcomplex_methods,
+            impl_inferbase_complex,
+            serialize
+        );
+    };
+    ($ty:ty, subset) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altcomplex_methods,
+            impl_inferbase_complex,
+            subset
+        );
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altcomplex_methods,
+            impl_inferbase_complex,
+            dataptr($crate::ffi::Rcomplex),
+            serialize
+        );
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altcomplex_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, subset, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altcomplex_methods,
+            impl_inferbase_complex,
+            subset,
+            serialize
+        );
+    };
+    ($ty:ty, serialize, subset) => {
+        $crate::impl_altcomplex_from_data!($ty, subset, serialize);
+    };
 }
 
 // =============================================================================

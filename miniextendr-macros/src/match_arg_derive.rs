@@ -57,7 +57,8 @@ fn parse_match_arg_attrs(attrs: &[syn::Attribute]) -> syn::Result<MatchArgAttrs>
                     }
                     result.rename_all = Some(val);
                 } else {
-                    return Err(meta.error("unknown match_arg attribute; expected `rename` or `rename_all`"));
+                    return Err(meta
+                        .error("unknown match_arg attribute; expected `rename` or `rename_all`"));
                 }
                 Ok(())
             })?;

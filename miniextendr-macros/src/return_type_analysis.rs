@@ -87,13 +87,7 @@ pub(crate) fn analyze_return_type(
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
-                analyze_option_type(
-                    p,
-                    &mut ctx,
-                    &option_none_error_msg,
-                    strict,
-                    error_in_r,
-                )
+                analyze_option_type(p, &mut ctx, &option_none_error_msg, strict, error_in_r)
             }
 
             // -> Result<T, E>
@@ -107,12 +101,7 @@ pub(crate) fn analyze_return_type(
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
-                analyze_result_type(
-                    p,
-                    &mut ctx,
-                    unwrap_in_r,
-                    error_in_r,
-                )
+                analyze_result_type(p, &mut ctx, unwrap_in_r, error_in_r)
             }
 
             // -> T (any other type)

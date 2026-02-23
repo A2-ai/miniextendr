@@ -1057,8 +1057,7 @@ impl TryFromSexp for NamedList {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let list = List::try_from_sexp(sexp)
-            .map_err(|e| SexpError::InvalidValue(e.to_string()))?;
+        let list = List::try_from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))?;
         NamedList::new(list)
             .ok_or_else(|| SexpError::InvalidValue("list has no names attribute".into()))
     }

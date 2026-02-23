@@ -1335,13 +1335,7 @@ fn derive_enum_dataframe(
                 } => {
                     for i in 1..=*len {
                         let name = format!("{}_{}", base_name, i);
-                        registry.register(
-                            &name,
-                            elem_ty,
-                            variant_idx,
-                            &vi.name,
-                            err_span,
-                        )?;
+                        registry.register(&name, elem_ty, variant_idx, &vi.name, err_span)?;
                     }
                 }
                 EnumResolvedField::ExpandedVec {
@@ -1352,13 +1346,7 @@ fn derive_enum_dataframe(
                 } => {
                     for i in 1..=*width {
                         let name = format!("{}_{}", base_name, i);
-                        registry.register(
-                            &name,
-                            elem_ty,
-                            variant_idx,
-                            &vi.name,
-                            err_span,
-                        )?;
+                        registry.register(&name, elem_ty, variant_idx, &vi.name, err_span)?;
                     }
                 }
             }

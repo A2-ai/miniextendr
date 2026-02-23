@@ -47,7 +47,8 @@ impl RAssertion {
             self.message.replacen("must be ", "must be NULL or ", 1)
         } else if self.message.contains("must have ") {
             // "'x' must have length 1" → "'x' must be NULL or have length 1"
-            self.message.replacen("must have ", "must be NULL or have ", 1)
+            self.message
+                .replacen("must have ", "must be NULL or have ", 1)
         } else {
             format!("{} (or NULL)", self.message)
         };
@@ -168,9 +169,7 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
 
     match ident.as_str() {
         // Numeric scalars (accepts numeric, logical, and raw via R coercion)
-        "i32" | "f64" | "f32" | "i8" | "i16" | "i64" | "isize" => {
-            Some(RTypeCheck::ScalarNumeric)
-        }
+        "i32" | "f64" | "f32" | "i8" | "i16" | "i64" | "isize" => Some(RTypeCheck::ScalarNumeric),
 
         // Unsigned numeric scalars (non-negative constraint)
         "u16" | "u32" | "u64" | "usize" => Some(RTypeCheck::ScalarNonNeg),
@@ -360,8 +359,7 @@ pub fn build_precondition_checks(
         };
 
         // Use the R-normalized name for the check (matches the R formal)
-        let r_name =
-            crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
 
         // Skip match_arg params (already validated by match.arg())
         if skip_params.contains(&r_name) {
@@ -567,10 +565,7 @@ mod tests {
         let asserts = assertions_for("Option<String>", "s");
         assert_eq!(asserts.len(), 2);
         assert_eq!(asserts[0].message, "'s' must be NULL or character");
-        assert_eq!(
-            asserts[0].condition,
-            "is.null(s) || is.character(s)"
-        );
+        assert_eq!(asserts[0].condition, "is.null(s) || is.character(s)");
         assert_eq!(asserts[1].message, "'s' must be NULL or have length 1");
     }
 
@@ -659,8 +654,7 @@ mod tests {
 
     #[test]
     fn mixed_known_and_unknown_types() {
-        let sig: syn::Signature =
-            syn::parse_str("fn f(a: i32, b: MyType, c: String)").unwrap();
+        let sig: syn::Signature = syn::parse_str("fn f(a: i32, b: MyType, c: String)").unwrap();
         let output = build_precondition_checks(&sig.inputs, &HashSet::new());
         // a (i32) and c (String) are known → static checks
         let joined = output.static_checks.join("\n");

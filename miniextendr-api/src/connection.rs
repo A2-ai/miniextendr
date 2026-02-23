@@ -116,7 +116,7 @@ pub fn check_connections_version() {
 /// ```
 pub unsafe fn check_connections_runtime() -> Result<(), String> {
     use crate::expression::RCall;
-    use crate::ffi::{Rf_asInteger, Rf_protect, Rf_unprotect, R_BaseEnv};
+    use crate::ffi::{R_BaseEnv, Rf_asInteger, Rf_protect, Rf_unprotect};
 
     unsafe {
         // Evaluate R.Version() in base env
@@ -157,15 +157,17 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
 
         // Parse minor: it's a string like "3.1", we only need the part before the dot
         let minor_int = RCall::new("as.integer")
-            .arg(RCall::new("sub")
-                .arg(crate::ffi::Rf_mkString(c"\\..*".as_ptr()))
-                .arg(crate::ffi::Rf_mkString(c"".as_ptr()))
-                .arg(minor_sexp)
-                .eval(R_BaseEnv)
-                .map_err(|e| {
-                    Rf_unprotect(3);
-                    e
-                })?)
+            .arg(
+                RCall::new("sub")
+                    .arg(crate::ffi::Rf_mkString(c"\\..*".as_ptr()))
+                    .arg(crate::ffi::Rf_mkString(c"".as_ptr()))
+                    .arg(minor_sexp)
+                    .eval(R_BaseEnv)
+                    .map_err(|e| {
+                        Rf_unprotect(3);
+                        e
+                    })?,
+            )
             .eval(R_BaseEnv)
             .map_err(|e| {
                 Rf_unprotect(3);
@@ -296,9 +298,7 @@ pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
     let conn = handle as *const Rconn;
     unsafe {
         let mode_ptr = (*conn).mode.as_ptr();
-        CStr::from_ptr(mode_ptr)
-            .to_string_lossy()
-            .into_owned()
+        CStr::from_ptr(mode_ptr).to_string_lossy().into_owned()
     }
 }
 

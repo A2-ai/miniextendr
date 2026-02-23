@@ -104,9 +104,7 @@ pub fn choices_correlation(
 
 /// Choices on an owned String parameter.
 #[miniextendr_api::miniextendr]
-pub fn choices_color(
-    #[miniextendr(choices("red", "green", "blue"))] color: String,
-) -> String {
+pub fn choices_color(#[miniextendr(choices("red", "green", "blue"))] color: String) -> String {
     format!("color={}", color)
 }
 

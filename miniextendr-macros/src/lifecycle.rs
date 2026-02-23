@@ -212,7 +212,6 @@ impl LifecycleSpec {
             LifecycleStage::Stable => None,
         }
     }
-
 }
 
 /// Collect the `@importFrom lifecycle ...` roxygen tag needed for a set of lifecycle specs.
@@ -593,7 +592,10 @@ mod tests {
         let result = collect_lifecycle_imports(specs.iter());
         let import = result.expect("should produce import tag");
         // BTreeSet gives sorted order: badge, deprecate_warn, signal_stage
-        assert_eq!(import, "@importFrom lifecycle badge deprecate_warn signal_stage");
+        assert_eq!(
+            import,
+            "@importFrom lifecycle badge deprecate_warn signal_stage"
+        );
     }
 
     #[test]

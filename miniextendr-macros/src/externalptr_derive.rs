@@ -985,10 +985,6 @@ NULL
         &pub_slots,
     ));
 
-    // Add cosmetic 2-space indent for Rust source readability.
-    // The document binary strips this prefix when writing the .R file.
-    let r_wrappers = r_wrappers.replace('\n', "\n  ");
-
     let const_name_defs = Ident::new(
         &format!("RDATA_CALL_DEFS_{}", name_upper),
         Span::call_site(),

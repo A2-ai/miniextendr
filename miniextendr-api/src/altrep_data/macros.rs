@@ -35,43 +35,92 @@ macro_rules! __impl_inferbase {
 /// Implement `InferBase` for an integer ALTREP data type.
 #[macro_export]
 macro_rules! impl_inferbase_integer {
-    ($ty:ty) => { $crate::__impl_inferbase!($ty, Int, $crate::ffi::altrep::R_make_altinteger_class, install_int); };
+    ($ty:ty) => {
+        $crate::__impl_inferbase!(
+            $ty,
+            Int,
+            $crate::ffi::altrep::R_make_altinteger_class,
+            install_int
+        );
+    };
 }
 
 /// Implement `InferBase` for a real ALTREP data type.
 #[macro_export]
 macro_rules! impl_inferbase_real {
-    ($ty:ty) => { $crate::__impl_inferbase!($ty, Real, $crate::ffi::altrep::R_make_altreal_class, install_real); };
+    ($ty:ty) => {
+        $crate::__impl_inferbase!(
+            $ty,
+            Real,
+            $crate::ffi::altrep::R_make_altreal_class,
+            install_real
+        );
+    };
 }
 
 /// Implement `InferBase` for a logical ALTREP data type.
 #[macro_export]
 macro_rules! impl_inferbase_logical {
-    ($ty:ty) => { $crate::__impl_inferbase!($ty, Logical, $crate::ffi::altrep::R_make_altlogical_class, install_lgl); };
+    ($ty:ty) => {
+        $crate::__impl_inferbase!(
+            $ty,
+            Logical,
+            $crate::ffi::altrep::R_make_altlogical_class,
+            install_lgl
+        );
+    };
 }
 
 /// Implement `InferBase` for a raw ALTREP data type.
 #[macro_export]
 macro_rules! impl_inferbase_raw {
-    ($ty:ty) => { $crate::__impl_inferbase!($ty, Raw, $crate::ffi::altrep::R_make_altraw_class, install_raw); };
+    ($ty:ty) => {
+        $crate::__impl_inferbase!(
+            $ty,
+            Raw,
+            $crate::ffi::altrep::R_make_altraw_class,
+            install_raw
+        );
+    };
 }
 
 /// Implement `InferBase` for a string ALTREP data type.
 #[macro_export]
 macro_rules! impl_inferbase_string {
-    ($ty:ty) => { $crate::__impl_inferbase!($ty, String, $crate::ffi::altrep::R_make_altstring_class, install_str); };
+    ($ty:ty) => {
+        $crate::__impl_inferbase!(
+            $ty,
+            String,
+            $crate::ffi::altrep::R_make_altstring_class,
+            install_str
+        );
+    };
 }
 
 /// Implement `InferBase` for a complex ALTREP data type.
 #[macro_export]
 macro_rules! impl_inferbase_complex {
-    ($ty:ty) => { $crate::__impl_inferbase!($ty, Complex, $crate::ffi::altrep::R_make_altcomplex_class, install_cplx); };
+    ($ty:ty) => {
+        $crate::__impl_inferbase!(
+            $ty,
+            Complex,
+            $crate::ffi::altrep::R_make_altcomplex_class,
+            install_cplx
+        );
+    };
 }
 
 /// Implement `InferBase` for a list ALTREP data type.
 #[macro_export]
 macro_rules! impl_inferbase_list {
-    ($ty:ty) => { $crate::__impl_inferbase!($ty, List, $crate::ffi::altrep::R_make_altlist_class, install_list); };
+    ($ty:ty) => {
+        $crate::__impl_inferbase!(
+            $ty,
+            List,
+            $crate::ffi::altrep::R_make_altlist_class,
+            install_list
+        );
+    };
 }
 
 // -------------------------------------------------------------------------

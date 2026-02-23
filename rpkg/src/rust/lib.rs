@@ -91,30 +91,58 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules
 mod adapter_traits_tests;
+#[cfg(feature = "aho-corasick")]
+mod aho_corasick_adapter_tests;
 mod as_coerce_tests;
+#[cfg(feature = "num-bigint")]
+mod bigint_adapter_tests;
+#[cfg(feature = "bitflags")]
+mod bitflags_adapter_tests;
+#[cfg(feature = "bitvec")]
+mod bitvec_adapter_tests;
+#[cfg(feature = "bytes")]
+mod bytes_adapter_tests;
 mod class_system_matrix;
 mod coerce_tests;
+#[cfg(feature = "connections")]
+mod connection_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
 mod dataframe_examples;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
+#[cfg(feature = "rust_decimal")]
+mod decimal_adapter_tests;
 mod default_tests;
+mod doc_attr_tests;
 mod dots_tests;
+#[cfg(feature = "either")]
+mod either_adapter_tests;
 mod error_in_r_tests;
+mod export_control_tests;
 mod externalptr_tests;
 mod factor_tests;
 mod gc_protect_tests;
-mod match_arg_tests;
 mod gc_stress_fixtures;
 mod identical_tests;
+#[cfg(feature = "indexmap")]
+mod indexmap_adapter_tests;
 mod interrupt_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
+mod match_arg_tests;
 mod misc_tests;
+#[cfg(feature = "nalgebra")]
+mod nalgebra_adapter_tests;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;
+#[cfg(feature = "num-complex")]
+mod num_complex_adapter_tests;
+#[cfg(feature = "num-traits")]
+mod num_traits_adapter_tests;
+#[cfg(feature = "ordered-float")]
+mod ordered_float_adapter_tests;
 mod panic_tests;
 mod r6_default_tests;
 mod r6_tests;
@@ -122,62 +150,34 @@ mod r6_tests;
 mod rayon_tests;
 mod rdata_sidecar_tests;
 mod receiver_tests;
+#[cfg(feature = "regex")]
+mod regex_adapter_tests;
 mod rng_tests;
 mod s3_tests;
 mod s4_tests;
 mod s7_tests;
-#[cfg(feature = "serde")]
-mod serde_r_tests;
-#[cfg(feature = "uuid")]
-mod uuid_adapter_tests;
-#[cfg(feature = "regex")]
-mod regex_adapter_tests;
-#[cfg(feature = "time")]
-mod time_adapter_tests;
-#[cfg(feature = "ordered-float")]
-mod ordered_float_adapter_tests;
-#[cfg(feature = "num-bigint")]
-mod bigint_adapter_tests;
-#[cfg(feature = "rust_decimal")]
-mod decimal_adapter_tests;
-#[cfg(feature = "indexmap")]
-mod indexmap_adapter_tests;
-#[cfg(feature = "bytes")]
-mod bytes_adapter_tests;
-#[cfg(feature = "bitflags")]
-mod bitflags_adapter_tests;
-#[cfg(feature = "bitvec")]
-mod bitvec_adapter_tests;
-#[cfg(feature = "tinyvec")]
-mod tinyvec_adapter_tests;
-#[cfg(feature = "sha2")]
-mod sha2_adapter_tests;
-#[cfg(feature = "url")]
-mod url_adapter_tests;
-#[cfg(feature = "aho-corasick")]
-mod aho_corasick_adapter_tests;
-#[cfg(feature = "toml")]
-mod toml_adapter_tests;
-#[cfg(feature = "tabled")]
-mod tabled_adapter_tests;
-#[cfg(feature = "nalgebra")]
-mod nalgebra_adapter_tests;
-#[cfg(feature = "either")]
-mod either_adapter_tests;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
-#[cfg(feature = "num-complex")]
-mod num_complex_adapter_tests;
-#[cfg(feature = "num-traits")]
-mod num_traits_adapter_tests;
-#[cfg(feature = "connections")]
-mod connection_tests;
-mod doc_attr_tests;
-mod export_control_tests;
+#[cfg(feature = "serde")]
+mod serde_r_tests;
+#[cfg(feature = "sha2")]
+mod sha2_adapter_tests;
 mod shared_trait_test;
+#[cfg(feature = "tabled")]
+mod tabled_adapter_tests;
 mod thread_tests;
+#[cfg(feature = "time")]
+mod time_adapter_tests;
+#[cfg(feature = "tinyvec")]
+mod tinyvec_adapter_tests;
+#[cfg(feature = "toml")]
+mod toml_adapter_tests;
 mod trait_abi_tests;
 mod unwind_protect_tests;
+#[cfg(feature = "url")]
+mod url_adapter_tests;
+#[cfg(feature = "uuid")]
+mod uuid_adapter_tests;
 mod visibility_tests;
 mod worker_tests;
 
@@ -1618,11 +1618,11 @@ mod nonapi;
 // region: vctrs module (optional vctrs C API support)
 
 #[cfg(feature = "vctrs")]
-mod vctrs_tests;
-#[cfg(feature = "vctrs")]
 mod vctrs_class_example;
 #[cfg(feature = "vctrs")]
 mod vctrs_derive_example;
+#[cfg(feature = "vctrs")]
+mod vctrs_tests;
 
 // endregion
 

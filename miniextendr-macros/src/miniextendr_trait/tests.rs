@@ -358,4 +358,3 @@ fn extract_method_info_extracts_params() {
     assert_eq!(info.param_names[1].to_string(), "b");
     assert_eq!(info.param_types.len(), 2);
 }
-

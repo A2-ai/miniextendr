@@ -24,62 +24,125 @@ const VALID_BASES: &[&str] = &["Int", "Real", "Logical", "Raw", "String", "List"
 ///
 /// Returns `set_if!(...)` statements for conditional methods and unconditional
 /// `unsafe { setter(cls, ...) }` statements for required methods (String/List Elt).
-fn generate_explicit_setters(
-    base_name: &str,
-    tramp_ty: &syn::Type,
-) -> proc_macro2::TokenStream {
+fn generate_explicit_setters(base_name: &str, tramp_ty: &syn::Type) -> proc_macro2::TokenStream {
     let span = proc_macro2::Span::call_site();
 
     // (trait_name, [(has_const, setter_fn, trampoline)], [(always_setter, always_trampoline)])
     type Cond = [(&'static str, &'static str, &'static str)];
     type Always = [(&'static str, &'static str)];
     let (trait_name, cond, always): (&str, &Cond, &Always) = match base_name {
-            "Int" => ("AltInteger", &[
+        "Int" => (
+            "AltInteger",
+            &[
                 ("HAS_ELT", "R_set_altinteger_Elt_method", "t_int_elt"),
-                ("HAS_GET_REGION", "R_set_altinteger_Get_region_method", "t_int_get_region"),
-                ("HAS_IS_SORTED", "R_set_altinteger_Is_sorted_method", "t_int_is_sorted"),
+                (
+                    "HAS_GET_REGION",
+                    "R_set_altinteger_Get_region_method",
+                    "t_int_get_region",
+                ),
+                (
+                    "HAS_IS_SORTED",
+                    "R_set_altinteger_Is_sorted_method",
+                    "t_int_is_sorted",
+                ),
                 ("HAS_NO_NA", "R_set_altinteger_No_NA_method", "t_int_no_na"),
                 ("HAS_SUM", "R_set_altinteger_Sum_method", "t_int_sum"),
                 ("HAS_MIN", "R_set_altinteger_Min_method", "t_int_min"),
                 ("HAS_MAX", "R_set_altinteger_Max_method", "t_int_max"),
-            ][..], &[][..]),
-            "Real" => ("AltReal", &[
+            ][..],
+            &[][..],
+        ),
+        "Real" => (
+            "AltReal",
+            &[
                 ("HAS_ELT", "R_set_altreal_Elt_method", "t_real_elt"),
-                ("HAS_GET_REGION", "R_set_altreal_Get_region_method", "t_real_get_region"),
-                ("HAS_IS_SORTED", "R_set_altreal_Is_sorted_method", "t_real_is_sorted"),
+                (
+                    "HAS_GET_REGION",
+                    "R_set_altreal_Get_region_method",
+                    "t_real_get_region",
+                ),
+                (
+                    "HAS_IS_SORTED",
+                    "R_set_altreal_Is_sorted_method",
+                    "t_real_is_sorted",
+                ),
                 ("HAS_NO_NA", "R_set_altreal_No_NA_method", "t_real_no_na"),
                 ("HAS_SUM", "R_set_altreal_Sum_method", "t_real_sum"),
                 ("HAS_MIN", "R_set_altreal_Min_method", "t_real_min"),
                 ("HAS_MAX", "R_set_altreal_Max_method", "t_real_max"),
-            ][..], &[][..]),
-            "Logical" => ("AltLogical", &[
+            ][..],
+            &[][..],
+        ),
+        "Logical" => (
+            "AltLogical",
+            &[
                 ("HAS_ELT", "R_set_altlogical_Elt_method", "t_lgl_elt"),
-                ("HAS_GET_REGION", "R_set_altlogical_Get_region_method", "t_lgl_get_region"),
-                ("HAS_IS_SORTED", "R_set_altlogical_Is_sorted_method", "t_lgl_is_sorted"),
+                (
+                    "HAS_GET_REGION",
+                    "R_set_altlogical_Get_region_method",
+                    "t_lgl_get_region",
+                ),
+                (
+                    "HAS_IS_SORTED",
+                    "R_set_altlogical_Is_sorted_method",
+                    "t_lgl_is_sorted",
+                ),
                 ("HAS_NO_NA", "R_set_altlogical_No_NA_method", "t_lgl_no_na"),
-            ][..], &[][..]),
-            "Raw" => ("AltRaw", &[
+            ][..],
+            &[][..],
+        ),
+        "Raw" => (
+            "AltRaw",
+            &[
                 ("HAS_ELT", "R_set_altraw_Elt_method", "t_raw_elt"),
-                ("HAS_GET_REGION", "R_set_altraw_Get_region_method", "t_raw_get_region"),
-            ][..], &[][..]),
-            "String" => ("AltString", &[
-                ("HAS_IS_SORTED", "R_set_altstring_Is_sorted_method", "t_str_is_sorted"),
+                (
+                    "HAS_GET_REGION",
+                    "R_set_altraw_Get_region_method",
+                    "t_raw_get_region",
+                ),
+            ][..],
+            &[][..],
+        ),
+        "String" => (
+            "AltString",
+            &[
+                (
+                    "HAS_IS_SORTED",
+                    "R_set_altstring_Is_sorted_method",
+                    "t_str_is_sorted",
+                ),
                 ("HAS_NO_NA", "R_set_altstring_No_NA_method", "t_str_no_na"),
-                ("HAS_SET_ELT", "R_set_altstring_Set_elt_method", "t_str_set_elt"),
-            ][..], &[
-                ("R_set_altstring_Elt_method", "t_str_elt"),
-            ][..]),
-            "List" => ("AltList", &[
-                ("HAS_SET_ELT", "R_set_altlist_Set_elt_method", "t_list_set_elt"),
-            ][..], &[
-                ("R_set_altlist_Elt_method", "t_list_elt"),
-            ][..]),
-            "Complex" => ("AltComplex", &[
+                (
+                    "HAS_SET_ELT",
+                    "R_set_altstring_Set_elt_method",
+                    "t_str_set_elt",
+                ),
+            ][..],
+            &[("R_set_altstring_Elt_method", "t_str_elt")][..],
+        ),
+        "List" => (
+            "AltList",
+            &[(
+                "HAS_SET_ELT",
+                "R_set_altlist_Set_elt_method",
+                "t_list_set_elt",
+            )][..],
+            &[("R_set_altlist_Elt_method", "t_list_elt")][..],
+        ),
+        "Complex" => (
+            "AltComplex",
+            &[
                 ("HAS_ELT", "R_set_altcomplex_Elt_method", "t_cplx_elt"),
-                ("HAS_GET_REGION", "R_set_altcomplex_Get_region_method", "t_cplx_get_region"),
-            ][..], &[][..]),
-            _ => return quote::quote! {},
-        };
+                (
+                    "HAS_GET_REGION",
+                    "R_set_altcomplex_Get_region_method",
+                    "t_cplx_get_region",
+                ),
+            ][..],
+            &[][..],
+        ),
+        _ => return quote::quote! {},
+    };
 
     let trait_ident = syn::Ident::new(trait_name, span);
 
@@ -105,10 +168,7 @@ fn generate_explicit_setters(
 }
 
 /// Generate the `R_make_alt*_class(...)` + `validate_altrep_class(...)` code for an explicit base type.
-fn generate_explicit_make_class(
-    base_name: &str,
-    ident: &syn::Ident,
-) -> proc_macro2::TokenStream {
+fn generate_explicit_make_class(base_name: &str, ident: &syn::Ident) -> proc_macro2::TokenStream {
     let span = proc_macro2::Span::call_site();
 
     let make_fn_name = match base_name {

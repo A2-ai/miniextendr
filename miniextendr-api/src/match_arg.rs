@@ -200,12 +200,10 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
     }
 
     match matches.len() {
-        1 => {
-            T::from_choice(matches[0].1).ok_or(MatchArgError::NoMatch {
-                input,
-                choices: T::CHOICES,
-            })
-        }
+        1 => T::from_choice(matches[0].1).ok_or(MatchArgError::NoMatch {
+            input,
+            choices: T::CHOICES,
+        }),
         0 => Err(MatchArgError::NoMatch {
             input,
             choices: T::CHOICES,
@@ -219,4 +217,3 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
         }
     }
 }
-
