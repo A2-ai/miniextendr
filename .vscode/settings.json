@@ -98,5 +98,6 @@
     "**/*.tar.gz": true,
     "**/background": true
   },
-  "tinymist.formatterMode": "typstyle"
+  "tinymist.formatterMode": "typstyle",
+  "cSpell.enabled": false
 }

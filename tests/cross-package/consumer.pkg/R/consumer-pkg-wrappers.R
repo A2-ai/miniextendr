@@ -6,7 +6,7 @@
 # nolint start
 # nocov start
 
-# Generated from Rust fn `passthrough_ptr` (lib.rs:30:8)
+# Generated from Rust fn `passthrough_ptr` (lib.rs:29:8)
 #' @title Pass an ExternalPtr through consumer without knowing its type
 #' @param ptr An ExternalPtr from any package
 #' @return The same ExternalPtr (pass-through)
@@ -16,7 +16,7 @@ passthrough_ptr <- function(ptr) {
   .Call(C_passthrough_ptr, .call = match.call(), ptr)
 }
 
-# Generated from Rust fn `is_external_ptr` (lib.rs:39:8)
+# Generated from Rust fn `is_external_ptr` (lib.rs:38:8)
 #' @title Check if a SEXP is an ExternalPtr (type-agnostic check)
 #' @param sexp Any R object
 #' @return TRUE if it's an ExternalPtr
@@ -26,7 +26,7 @@ is_external_ptr <- function(sexp) {
   .Call(C_is_external_ptr, .call = match.call(), sexp)
 }
 
-# Generated from Rust fn `consumer_get_class` (lib.rs:49:8)
+# Generated from Rust fn `consumer_get_class` (lib.rs:48:8)
 #' @title Get class of any R object (for cross-package testing)
 #' @param x Any R object
 #' @return Character vector of class names
@@ -36,7 +36,7 @@ consumer_get_class <- function(x) {
   .Call(C_consumer_get_class, .call = match.call(), x)
 }
 
-# Generated from Rust fn `has_class` (lib.rs:59:8)
+# Generated from Rust fn `has_class` (lib.rs:58:8)
 #' @title Check if an object has a specific class
 #' @param x Any R object
 #' @param class_name Class name to check for
@@ -51,7 +51,7 @@ has_class <- function(x, class_name) {
   .Call(C_has_class, .call = match.call(), x, class_name)
 }
 
-# Generated from Rust fn `new_double_counter` (lib.rs:125:8)
+# Generated from Rust fn `new_double_counter` (lib.rs:124:8)
 #' @title Create a new DoubleCounter (consumer's own Counter implementation) DoubleCounter increments by 2, demonstrating a different implementation
 #' @param initial Initial counter value
 #' @return An external pointer to the wrapped DoubleCounter
@@ -65,7 +65,7 @@ new_double_counter <- function(initial) {
   .Call(C_new_double_counter, .call = match.call(), initial)
 }
 
-# Generated from Rust fn `increment_twice` (lib.rs:141:8)
+# Generated from Rust fn `increment_twice` (lib.rs:140:8)
 #' @title Increment a counter twice (generic over Counter trait) This function works with Counter objects from ANY package
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's value after incrementing twice
@@ -75,7 +75,7 @@ increment_twice <- function(counter_sexp) {
   .Call(C_increment_twice, .call = match.call(), counter_sexp)
 }
 
-# Generated from Rust fn `add_and_get` (lib.rs:154:8)
+# Generated from Rust fn `add_and_get` (lib.rs:153:8)
 #' @title Add a value to a counter and return the new value
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @param n Value to add
@@ -90,7 +90,7 @@ add_and_get <- function(counter_sexp, n) {
   .Call(C_add_and_get, .call = match.call(), counter_sexp, n)
 }
 
-# Generated from Rust fn `peek_value` (lib.rs:165:8)
+# Generated from Rust fn `peek_value` (lib.rs:164:8)
 #' @title Get value without modifying (uses immutable reference)
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's current value
@@ -100,7 +100,7 @@ peek_value <- function(counter_sexp) {
   .Call(C_peek_value, .call = match.call(), counter_sexp)
 }
 
-# Generated from Rust fn `is_counter` (lib.rs:175:8)
+# Generated from Rust fn `is_counter` (lib.rs:174:8)
 #' @title Check if an object implements the Counter trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Counter trait
@@ -110,7 +110,7 @@ is_counter <- function(sexp) {
   .Call(C_is_counter, .call = match.call(), sexp)
 }
 
-# Generated from Rust fn `reset_and_check` (lib.rs:189:8)
+# Generated from Rust fn `reset_and_check` (lib.rs:188:8)
 #' @title Reset an object and check if it's in default state This function works with Resettable objects from ANY package
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state after reset
@@ -120,7 +120,7 @@ reset_and_check <- function(sexp) {
   .Call(C_reset_and_check, .call = match.call(), sexp)
 }
 
-# Generated from Rust fn `check_is_default` (lib.rs:200:8)
+# Generated from Rust fn `check_is_default` (lib.rs:199:8)
 #' @title Check if an object is in its default state (without resetting)
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state
@@ -130,7 +130,7 @@ check_is_default <- function(sexp) {
   .Call(C_check_is_default, .call = match.call(), sexp)
 }
 
-# Generated from Rust fn `is_resettable` (lib.rs:210:8)
+# Generated from Rust fn `is_resettable` (lib.rs:209:8)
 #' @title Check if an object implements the Resettable trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Resettable trait
@@ -140,7 +140,7 @@ is_resettable <- function(sexp) {
   .Call(C_is_resettable, .call = match.call(), sexp)
 }
 
-# Generated from Rust fn `increment_then_reset` (lib.rs:224:8)
+# Generated from Rust fn `increment_then_reset` (lib.rs:223:8)
 #' @title Increment a Counter twice, then reset it via Resettable, return is_default Tests combined trait usage on the same object across packages
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return TRUE if the object is in default state after increment+reset
@@ -150,7 +150,7 @@ increment_then_reset <- function(sexp) {
   .Call(C_increment_then_reset, .call = match.call(), sexp)
 }
 
-# Generated from Rust fn `get_reset_get` (lib.rs:242:8)
+# Generated from Rust fn `get_reset_get` (lib.rs:241:8)
 #' @title Get the value of a Counter, reset it, then get the value again Returns the value after reset
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return The counter value after reset
@@ -160,7 +160,7 @@ get_reset_get <- function(sexp) {
   .Call(C_get_reset_get, .call = match.call(), sexp)
 }
 
-# Generated from Rust fn `consumer_greet` (lib.rs:268:8)
+# Generated from Rust fn `consumer_greet` (lib.rs:267:8)
 #' @title Greet with a message demonstrating consumer package is working
 #' @param name Name to greet
 #' @return A greeting string
@@ -174,7 +174,7 @@ consumer_greet <- function(name) {
   .Call(C_consumer_greet, .call = match.call(), name)
 }
 
-# Generated from Rust fn `consumer_magic_number` (lib.rs:276:8)
+# Generated from Rust fn `consumer_magic_number` (lib.rs:275:8)
 #' @title Return a constant to verify the package is loaded
 #' @return The number 42
 #' @export
@@ -183,7 +183,7 @@ consumer_magic_number <- function() {
   .Call(C_consumer_magic_number, .call = match.call())
 }
 
-# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:283:8)
+# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:282:8)
 #' @title Debug: Get TAG_COUNTER as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_counter`
@@ -191,7 +191,7 @@ debug_consumer_tag_counter <- function() {
   .Call(C_debug_consumer_tag_counter, .call = match.call())
 }
 
-# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:255:8)
+# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:254:8)
 #' @title Debug: Get TAG_RESETTABLE as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_resettable`
@@ -201,7 +201,7 @@ debug_consumer_tag_resettable <- function() {
 
 
 
-# Generated from Rust impl `DoubleCounter` (lib.rs:93:6)
+# Generated from Rust impl `DoubleCounter` (lib.rs:92:6)
 #' @title DoubleCounter  Class
 #' @name DoubleCounter
 #' @rdname DoubleCounter
@@ -279,7 +279,7 @@ DoubleCounter$create <- function(initial) {
 #' @export
 `[[.DoubleCounter` <- `$.DoubleCounter`
 
-# Generated from Rust impl `Counter` for `DoubleCounter` (lib.rs:105:18)
+# Generated from Rust impl `Counter` for `DoubleCounter` (lib.rs:104:18)
 # Trait methods and consts for DoubleCounter implementing Counter
 # Generated by #[miniextendr] impl Counter for DoubleCounter
 

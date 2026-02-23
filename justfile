@@ -834,3 +834,15 @@ vendor-sync-diff:
       fi
     done
 
+# ============================================================================
+# mx CLI (miniextendr-cli)
+# ============================================================================
+
+# Build the miniextendr CLI binary (with dev commands)
+cli-build *cargo_flags:
+    cargo build -p miniextendr-cli --features dev {{cargo_flags}}
+
+# Install the miniextendr CLI binary (with dev commands)
+cli-install *cargo_flags:
+    cargo install --path miniextendr-cli --features dev {{cargo_flags}}
+

@@ -6,8 +6,10 @@ Quick reference for common development tasks. See [CLAUDE.md](../CLAUDE.md) for 
 
 - Rust toolchain (stable)
 - R 4.2+ with development headers
-- [just](https://github.com/casey/just) command runner
+- [just](https://github.com/casey/just) command runner (optional if using the CLI)
 - autoconf (for regenerating `configure` from `configure.ac`)
+
+> **Tip:** The `miniextendr` CLI (`miniextendr-cli/`) can replace most `just` recipes. Install with `just cli-install` or `cargo install --path miniextendr-cli --features dev`. See the [CLI README](../miniextendr-cli/README.md) for full usage.
 
 ## Quick Start
 
