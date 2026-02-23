@@ -36,7 +36,7 @@ into vendor/. Also
 patches Cargo.toml files to remove workspace inheritance.
 }
 \details{
-Downloaded archives are cached in \code{rappdirs::user_cache_dir("minirextendr")}
+Downloaded archives are cached in \code{tools::R_user_dir("minirextendr", "cache")}
 to avoid repeated downloads of the same version.
 
 For local development (when GitHub repo is not available), set

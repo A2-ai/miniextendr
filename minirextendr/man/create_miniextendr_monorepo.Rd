@@ -11,7 +11,7 @@ create_miniextendr_monorepo(
   rpkg_name = package,
   local_path = NULL,
   miniextendr_version = "main",
-  open = rlang::is_interactive()
+  open = interactive()
 )
 }
 \arguments{

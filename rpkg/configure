@@ -610,7 +610,6 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
-OPTIONAL_CARGO_DEPS
 CARGO_STATICLIB_NAME
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
@@ -626,17 +625,14 @@ ABS_RPKG_SRC_CARGO
 ROOT_MINIEXTENDR_REPO_CARGO
 CYGPATH
 SED
-RSYNC
 RUSTC
 CARGO
-CARGO_LOCKED_FLAG
 CARGO_OFFLINE_FLAG
 NOT_CRAN
 BUILD_CONTEXT
 ROOT_MINIEXTENDR_REPO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
-CARGO_FEATURE_CPPFLAGS
 CARGO_FEATURES_FLAG
 MINIEXTENDR_FEATURES
 host_os
@@ -2000,21 +1996,9 @@ fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-  # Auto-generate C preprocessor flags from cargo features
-  CARGO_FEATURE_CPPFLAGS=""
-  miniextendr_saved_IFS=$IFS
-  IFS=','
-  for _feature in $MINIEXTENDR_FEATURES; do
-    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
-    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
-  done
-  IFS=$miniextendr_saved_IFS
-  unset miniextendr_saved_IFS
 else
   CARGO_FEATURES_FLAG=""
-  CARGO_FEATURE_CPPFLAGS=""
 fi
-
 
 
 
@@ -2087,14 +2071,11 @@ export NOT_CRAN
 case "$BUILD_CONTEXT" in
   dev-monorepo|dev-detached)
     CARGO_OFFLINE_FLAG=""
-    CARGO_LOCKED_FLAG=""
     ;;
   vendored-install|prepare-cran)
     CARGO_OFFLINE_FLAG="--offline"
-    CARGO_LOCKED_FLAG=""
     ;;
 esac
-
 
 
 if test -n "$ac_tool_prefix"; then
@@ -2317,53 +2298,6 @@ else
   RUSTC="$ac_cv_path_RUSTC"
 fi
 
-# Extract the first word of "rsync", so it can be a program name with args.
-set dummy rsync; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_path_RSYNC+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) case $RSYNC in
-  [\\/]* | ?:[\\/]*)
-  ac_cv_path_RSYNC="$RSYNC" # Let the user override the test with a path.
-  ;;
-  *)
-  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_path_RSYNC="$as_dir$ac_word$ac_exec_ext"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-  test -z "$ac_cv_path_RSYNC" && ac_cv_path_RSYNC="no"
-  ;;
-esac ;;
-esac
-fi
-RSYNC=$ac_cv_path_RSYNC
-if test -n "$RSYNC"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $RSYNC" >&5
-printf "%s\n" "$RSYNC" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
-printf "%s\n" "no" >&6; }
-fi
-
-
 # Extract the first word of "sed", so it can be a program name with args.
 set dummy sed; ac_word=$2
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
@@ -2470,7 +2404,6 @@ if test "x$SED" = "xno"
 then :
   as_fn_error $? "\`sed\` not found" "$LINENO" 5
 fi
-
 
 
 
@@ -2622,22 +2555,6 @@ printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 
 ac_config_files="$ac_config_files src/rust/document.rs"
 
-
-
-OPTIONAL_CARGO_DEPS=
-for f in \
-  "$RUST_SRC_DIR/build.rs" \
-  "$RUST_SRC_DIR/rust-toolchain.toml" \
-  "$RUST_SRC_DIR/rust-toolchain"
-do
-  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-done
-case "$BUILD_CONTEXT" in
-  vendored-install|prepare-cran)
-    f="$RUST_SRC_DIR/.cargo/config.toml"
-    test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-    ;;
-esac
 
 
 VENDOR_OUT="$abs_top_srcdir/vendor"

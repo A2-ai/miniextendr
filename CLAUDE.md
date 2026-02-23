@@ -252,32 +252,19 @@ R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
 For modules that only exist when a feature is enabled (like `rayon`):
 
 ```rust
-// In lib.rs - use #[path] for conditional module inclusion
+// In lib.rs - use #[cfg] on both mod and use
 #[cfg(feature = "my_feature")]
-#[path = "my_module.rs"]
-mod my_module;
-
-#[cfg(not(feature = "my_feature"))]
-#[path = "my_module_disabled.rs"]
 mod my_module;
 
 miniextendr_module! {
     mod rpkg;
-    use my_module;  // Works for both enabled and disabled
+    #[cfg(feature = "my_feature")]
+    use my_module;
 }
 ```
 
-Create a stub module for when feature is disabled:
-
-```rust
-// my_module_disabled.rs
-use miniextendr_api::miniextendr_module;
-
-miniextendr_module! {
-    mod my_module;
-    // Empty - no functions when feature disabled
-}
-```
+The `#[cfg]` must appear in **both** places — on the `mod` declaration and on the `use` entry
+in `miniextendr_module!`. The lint (MXL109) checks for mismatches between the two.
 
 ### What `just devtools-document` does
 

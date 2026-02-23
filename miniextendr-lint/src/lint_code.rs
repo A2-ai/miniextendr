@@ -52,6 +52,8 @@ pub enum LintCode {
     MXL107,
     /// Missing module trait entry for `#[miniextendr] impl Trait for Type`.
     MXL108,
+    /// `#[cfg(...)]` parity mismatch between `mod` declaration and `use` entry.
+    MXL109,
 
     // ── P1: Important ───────────────────────────────────────────────────
     /// Trait tag collision preflight.
@@ -99,7 +101,8 @@ impl LintCode {
             | Self::MXL105
             | Self::MXL106
             | Self::MXL107
-            | Self::MXL108 => Severity::Warning,
+            | Self::MXL108
+            | Self::MXL109 => Severity::Warning,
 
             // P1 rules are warnings.
             Self::MXL200 | Self::MXL201 | Self::MXL202 | Self::MXL203 | Self::MXL204 => {
