@@ -1,9 +1,7 @@
 ## --- filled by configure ----------------------------------------------
 ABS_TOP_SRCDIR = @ABS_TOP_SRCDIR@
 ABS_RPKG_SRCDIR = @ABS_RPKG_SRCDIR@
-ROOT_MINIEXTENDR_REPO = @ROOT_MINIEXTENDR_REPO@
 CARGO = @CARGO@
-RUSTC = @RUSTC@
 RUST_TOOLCHAIN = @RUST_TOOLCHAIN@
 CARGO_TARGET_DIR = @CARGO_TARGET_DIR@
 CARGO_PROFILE = @CARGO_PROFILE@
@@ -13,10 +11,8 @@ CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
 CARGO_LIBDIR = @CARGO_LIBDIR@
 VENDOR_OUT = @VENDOR_OUT@
 CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
-CARGO_LOCKED_FLAG = @CARGO_LOCKED_FLAG@
 NOT_CRAN_FLAG = @NOT_CRAN@
 CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
-OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
@@ -24,11 +20,7 @@ PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
 R_WRAPPERS_GENERATED = $(ABS_RPKG_SRCDIR)/@PACKAGE_TARNAME@-wrappers.R
 R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/@PACKAGE_TARNAME@-wrappers.R
 
-CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
-
-# Pass Cargo feature flags to C compiler so entrypoint.c knows which modules exist
-PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
 ## ----------------------------------------------------------------------
 
 # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
@@ -62,12 +54,12 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
 # Note: Dependencies are resolved via direct path deps in Cargo.toml.
 # You must run `./configure` (or `just cross-configure`) before building.
-$(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS)
+$(CARGO_AR): FORCE_CARGO
 	@set -e; \
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_LOCKED_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 	  --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR); \
@@ -75,12 +67,12 @@ $(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/doc
 
 # Generate R wrappers from proc-macro output
 # FORCE_CARGO ensures the document binary is always run.
-$(R_WRAPPERS_GENERATED): FORCE_CARGO $(CARGO_AR) $(CARGO_TOML) $(CARGO_LOCK)
+$(R_WRAPPERS_GENERATED): FORCE_CARGO $(CARGO_AR)
 	@set -e; \
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_LOCKED_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 	  --bin document --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR); \

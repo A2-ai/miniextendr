@@ -4236,12 +4236,7 @@ pub fn expand_impl(
 
     let original_impl = &parsed.original_impl;
 
-    let r_wrapper_str: TokenStream = {
-        use std::str::FromStr;
-        let indented = r_wrapper_string.replace('\n', "\n  ");
-        let raw = format!("r#\"\n  {}\n\"#", indented);
-        TokenStream::from_str(&raw).expect("valid raw string literal")
-    };
+    let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
 
     // Generate doc comment linking to R wrapper constant
     let r_wrapper_doc = format!(

@@ -1,12 +1,19 @@
 //! cfg attribute parity between items and module entries.
 //!
 //! - MXL104: `#[cfg(...)]` mismatch between `#[miniextendr]` item and module entry.
+//! - MXL109: `#[cfg(...)]` mismatch between `mod` declaration and `use` entry.
 
 use crate::crate_index::CrateIndex;
 use crate::diagnostic::Diagnostic;
 use crate::lint_code::LintCode;
 
 pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
+    check_item_vs_module_entry(index, diagnostics);
+    check_mod_vs_use(index, diagnostics);
+}
+
+/// MXL104: cfg parity between #[miniextendr] items and their module entries.
+fn check_item_vs_module_entry(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
     // Files in cfg-gated modules already have module-level feature gating,
     // so function-level cfg without matching module entry cfg is expected.
     let cfg_gated = index.cfg_gated_module_files();
@@ -87,6 +94,83 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
                     )
                     .with_help("Add matching #[cfg(...)] to the #[miniextendr] item."),
                 );
+            }
+        }
+    }
+}
+
+/// MXL109: cfg parity between `mod` declarations and `use` entries in miniextendr_module!.
+///
+/// If `#[cfg(feature = "X")] mod child;` appears, then `use child;` in the same file's
+/// miniextendr_module! should also have `#[cfg(feature = "X")]`, and vice versa.
+fn check_mod_vs_use(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
+    for (path, data) in &index.file_data {
+        for use_name in &data.module_uses {
+            let mod_cfgs = data.mod_decl_cfgs.get(use_name);
+            let use_cfgs = data.use_entry_cfgs.get(use_name);
+
+            match (mod_cfgs, use_cfgs) {
+                (Some(mod_c), None) => {
+                    diagnostics.push(
+                        Diagnostic::new(
+                            LintCode::MXL109,
+                            path,
+                            0,
+                            format!(
+                                "`mod {};` has cfg [{}] but `use {};` in miniextendr_module! has none",
+                                use_name,
+                                mod_c.join(", "),
+                                use_name,
+                            ),
+                        )
+                        .with_help(format!(
+                            "Add matching #[cfg(...)] before `use {};` in miniextendr_module!.",
+                            use_name,
+                        )),
+                    );
+                }
+                (None, Some(use_c)) => {
+                    diagnostics.push(
+                        Diagnostic::new(
+                            LintCode::MXL109,
+                            path,
+                            0,
+                            format!(
+                                "`use {};` in miniextendr_module! has cfg [{}] but `mod {};` has none",
+                                use_name,
+                                use_c.join(", "),
+                                use_name,
+                            ),
+                        )
+                        .with_help(format!(
+                            "Add matching #[cfg(...)] to the `mod {};` declaration.",
+                            use_name,
+                        )),
+                    );
+                }
+                (Some(mod_c), Some(use_c)) => {
+                    let mut mod_sorted = mod_c.clone();
+                    mod_sorted.sort();
+                    let mut use_sorted = use_c.clone();
+                    use_sorted.sort();
+                    if mod_sorted != use_sorted {
+                        diagnostics.push(
+                            Diagnostic::new(
+                                LintCode::MXL109,
+                                path,
+                                0,
+                                format!(
+                                    "cfg mismatch for module `{}`: `mod` has [{}] but `use` has [{}]",
+                                    use_name,
+                                    mod_c.join(", "),
+                                    use_c.join(", "),
+                                ),
+                            )
+                            .with_help("Ensure #[cfg(...)] on `mod` and `use` entries match."),
+                        );
+                    }
+                }
+                (None, None) => {} // No cfg on either — fine
             }
         }
     }

@@ -7,6 +7,7 @@ Comprehensive documentation for the miniextendr Rust-R interoperability framewor
 | I want to... | Read |
 |---|---|
 | Build my first package | [Getting Started](GETTING_STARTED.md) |
+| Use the CLI tool | [miniextendr CLI](../miniextendr-cli/README.md) |
 | Add a Rust function to R | [Type Conversions](TYPE_CONVERSIONS.md) |
 | Use lazy/compact vectors | [ALTREP](ALTREP.md) |
 | Understand the architecture | [Architecture](ARCHITECTURE.md) |
@@ -95,6 +96,10 @@ Advanced type conversion and coercion details.
 ### Benchmarks
 
 - **[Performance Baseline](BENCHMARKS.md)** -- All subsystems benchmarked (2026-02-18)
+
+### CLI
+
+- **[miniextendr CLI](../miniextendr-cli/README.md)** -- Standalone command-line tool (`miniextendr`) for all build, workflow, vendor, and cargo operations
 
 ### Project Status
 

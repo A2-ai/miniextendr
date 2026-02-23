@@ -157,6 +157,10 @@ pub struct FileData {
     pub declared_child_mods: Vec<String>,
     /// `#[path = "file.rs"] mod name;` declarations: (mod_name, file_path_str).
     pub path_redirected_mods: Vec<(String, String)>,
+    /// cfg attrs on `mod child;` declarations: mod_name -> cfg strings.
+    pub mod_decl_cfgs: HashMap<String, Vec<String>>,
+    /// cfg attrs on `use child;` entries in `miniextendr_module!`: use_name -> cfg strings.
+    pub use_entry_cfgs: HashMap<String, Vec<String>>,
 
     // Export control
     pub export_control: HashMap<String, (bool, bool)>,
@@ -281,6 +285,7 @@ impl CrateIndex {
             }
 
             // For names with 2+ declarations, mark all target files
+            // (old pattern: #[cfg(feat)] mod foo; #[cfg(not(feat))] mod foo;)
             for (mod_name, count) in &name_counts {
                 if *count < 2 {
                     continue;
@@ -300,6 +305,13 @@ impl CrateIndex {
                         result.insert(parent_dir.join(file_path));
                     }
                 }
+            }
+
+            // Also mark modules that have #[cfg] on their mod declaration
+            // (new pattern: #[cfg(feat)] mod foo; — single declaration, no stub)
+            for mod_name in parent_data.mod_decl_cfgs.keys() {
+                result.insert(parent_dir.join(format!("{mod_name}.rs")));
+                result.insert(parent_dir.join(mod_name).join("mod.rs"));
             }
         }
 
@@ -489,7 +501,12 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
 
                         // Uses
                         for use_entry in &parsed.uses {
-                            data.module_uses.push(use_entry.use_name.ident.to_string());
+                            let name = use_entry.use_name.ident.to_string();
+                            let cfgs = extract_cfg_attrs(&use_entry.attrs);
+                            if !cfgs.is_empty() {
+                                data.use_entry_cfgs.insert(name.clone(), cfgs);
+                            }
+                            data.module_uses.push(name);
                         }
 
                         // Functions
@@ -577,6 +594,12 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 } else {
                     // Out-of-line module declaration
                     let mod_name = item_mod.ident.to_string();
+
+                    // Track cfg attrs on the mod declaration
+                    let cfgs = extract_cfg_attrs(&item_mod.attrs);
+                    if !cfgs.is_empty() {
+                        data.mod_decl_cfgs.insert(mod_name.clone(), cfgs);
+                    }
 
                     // Check for #[path = "file.rs"] attribute
                     let path_attr = extract_path_attr(&item_mod.attrs);

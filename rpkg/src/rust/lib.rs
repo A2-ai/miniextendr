@@ -91,220 +91,93 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules
 mod adapter_traits_tests;
+#[cfg(feature = "aho-corasick")]
+mod aho_corasick_adapter_tests;
 mod as_coerce_tests;
+#[cfg(feature = "num-bigint")]
+mod bigint_adapter_tests;
+#[cfg(feature = "bitflags")]
+mod bitflags_adapter_tests;
+#[cfg(feature = "bitvec")]
+mod bitvec_adapter_tests;
+#[cfg(feature = "bytes")]
+mod bytes_adapter_tests;
 mod class_system_matrix;
 mod coerce_tests;
+#[cfg(feature = "connections")]
+mod connection_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
 mod dataframe_examples;
 #[cfg(feature = "rayon")]
-#[path = "dataframe_rayon_tests.rs"]
 mod dataframe_rayon_tests;
-#[cfg(not(feature = "rayon"))]
-#[path = "dataframe_rayon_tests_disabled.rs"]
-mod dataframe_rayon_tests;
+#[cfg(feature = "rust_decimal")]
+mod decimal_adapter_tests;
 mod default_tests;
+mod doc_attr_tests;
 mod dots_tests;
+#[cfg(feature = "either")]
+mod either_adapter_tests;
 mod error_in_r_tests;
+mod export_control_tests;
 mod externalptr_tests;
 mod factor_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
 mod identical_tests;
+#[cfg(feature = "indexmap")]
+mod indexmap_adapter_tests;
 mod interrupt_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
 mod match_arg_tests;
 mod misc_tests;
+#[cfg(feature = "nalgebra")]
+mod nalgebra_adapter_tests;
 #[cfg(feature = "ndarray")]
-#[path = "ndarray_tests.rs"]
 mod ndarray_tests;
-#[cfg(not(feature = "ndarray"))]
-#[path = "ndarray_tests_disabled.rs"]
-mod ndarray_tests;
+#[cfg(feature = "num-complex")]
+mod num_complex_adapter_tests;
+#[cfg(feature = "num-traits")]
+mod num_traits_adapter_tests;
+#[cfg(feature = "ordered-float")]
+mod ordered_float_adapter_tests;
 mod panic_tests;
 mod r6_default_tests;
 mod r6_tests;
 #[cfg(feature = "rayon")]
-#[path = "rayon_tests.rs"]
-mod rayon_tests;
-#[cfg(not(feature = "rayon"))]
-#[path = "rayon_tests_disabled.rs"]
 mod rayon_tests;
 mod rdata_sidecar_tests;
 mod receiver_tests;
+#[cfg(feature = "regex")]
+mod regex_adapter_tests;
 mod rng_tests;
 mod s3_tests;
 mod s4_tests;
 mod s7_tests;
-#[cfg(feature = "serde")]
-#[path = "serde_r_tests.rs"]
-mod serde_r_tests;
-#[cfg(not(feature = "serde"))]
-#[path = "serde_r_tests_disabled.rs"]
-mod serde_r_tests;
-// Feature adapter tests - each feature has its own enabled/disabled module
-#[cfg(feature = "uuid")]
-#[path = "uuid_adapter_tests.rs"]
-mod uuid_adapter_tests;
-#[cfg(not(feature = "uuid"))]
-#[path = "uuid_adapter_tests_disabled.rs"]
-mod uuid_adapter_tests;
-
-#[cfg(feature = "regex")]
-#[path = "regex_adapter_tests.rs"]
-mod regex_adapter_tests;
-#[cfg(not(feature = "regex"))]
-#[path = "regex_adapter_tests_disabled.rs"]
-mod regex_adapter_tests;
-
-#[cfg(feature = "time")]
-#[path = "time_adapter_tests.rs"]
-mod time_adapter_tests;
-#[cfg(not(feature = "time"))]
-#[path = "time_adapter_tests_disabled.rs"]
-mod time_adapter_tests;
-
-#[cfg(feature = "ordered-float")]
-#[path = "ordered_float_adapter_tests.rs"]
-mod ordered_float_adapter_tests;
-#[cfg(not(feature = "ordered-float"))]
-#[path = "ordered_float_adapter_tests_disabled.rs"]
-mod ordered_float_adapter_tests;
-
-#[cfg(feature = "num-bigint")]
-#[path = "bigint_adapter_tests.rs"]
-mod bigint_adapter_tests;
-#[cfg(not(feature = "num-bigint"))]
-#[path = "bigint_adapter_tests_disabled.rs"]
-mod bigint_adapter_tests;
-
-#[cfg(feature = "rust_decimal")]
-#[path = "decimal_adapter_tests.rs"]
-mod decimal_adapter_tests;
-#[cfg(not(feature = "rust_decimal"))]
-#[path = "decimal_adapter_tests_disabled.rs"]
-mod decimal_adapter_tests;
-
-#[cfg(feature = "indexmap")]
-#[path = "indexmap_adapter_tests.rs"]
-mod indexmap_adapter_tests;
-#[cfg(not(feature = "indexmap"))]
-#[path = "indexmap_adapter_tests_disabled.rs"]
-mod indexmap_adapter_tests;
-
-#[cfg(feature = "bytes")]
-#[path = "bytes_adapter_tests.rs"]
-mod bytes_adapter_tests;
-#[cfg(not(feature = "bytes"))]
-#[path = "bytes_adapter_tests_disabled.rs"]
-mod bytes_adapter_tests;
-
-#[cfg(feature = "bitflags")]
-#[path = "bitflags_adapter_tests.rs"]
-mod bitflags_adapter_tests;
-#[cfg(not(feature = "bitflags"))]
-#[path = "bitflags_adapter_tests_disabled.rs"]
-mod bitflags_adapter_tests;
-
-#[cfg(feature = "bitvec")]
-#[path = "bitvec_adapter_tests.rs"]
-mod bitvec_adapter_tests;
-#[cfg(not(feature = "bitvec"))]
-#[path = "bitvec_adapter_tests_disabled.rs"]
-mod bitvec_adapter_tests;
-
-#[cfg(feature = "tinyvec")]
-#[path = "tinyvec_adapter_tests.rs"]
-mod tinyvec_adapter_tests;
-#[cfg(not(feature = "tinyvec"))]
-#[path = "tinyvec_adapter_tests_disabled.rs"]
-mod tinyvec_adapter_tests;
-
-#[cfg(feature = "sha2")]
-#[path = "sha2_adapter_tests.rs"]
-mod sha2_adapter_tests;
-#[cfg(not(feature = "sha2"))]
-#[path = "sha2_adapter_tests_disabled.rs"]
-mod sha2_adapter_tests;
-
-#[cfg(feature = "url")]
-#[path = "url_adapter_tests.rs"]
-mod url_adapter_tests;
-#[cfg(not(feature = "url"))]
-#[path = "url_adapter_tests_disabled.rs"]
-mod url_adapter_tests;
-
-#[cfg(feature = "aho-corasick")]
-#[path = "aho_corasick_adapter_tests.rs"]
-mod aho_corasick_adapter_tests;
-#[cfg(not(feature = "aho-corasick"))]
-#[path = "aho_corasick_adapter_tests_disabled.rs"]
-mod aho_corasick_adapter_tests;
-
-#[cfg(feature = "toml")]
-#[path = "toml_adapter_tests.rs"]
-mod toml_adapter_tests;
-#[cfg(not(feature = "toml"))]
-#[path = "toml_adapter_tests_disabled.rs"]
-mod toml_adapter_tests;
-
-#[cfg(feature = "tabled")]
-#[path = "tabled_adapter_tests.rs"]
-mod tabled_adapter_tests;
-#[cfg(not(feature = "tabled"))]
-#[path = "tabled_adapter_tests_disabled.rs"]
-mod tabled_adapter_tests;
-
-#[cfg(feature = "nalgebra")]
-#[path = "nalgebra_adapter_tests.rs"]
-mod nalgebra_adapter_tests;
-#[cfg(not(feature = "nalgebra"))]
-#[path = "nalgebra_adapter_tests_disabled.rs"]
-mod nalgebra_adapter_tests;
-
-#[cfg(feature = "either")]
-#[path = "either_adapter_tests.rs"]
-mod either_adapter_tests;
-#[cfg(not(feature = "either"))]
-#[path = "either_adapter_tests_disabled.rs"]
-mod either_adapter_tests;
-
 #[cfg(feature = "serde_json")]
-#[path = "serde_json_adapter_tests.rs"]
 mod serde_json_adapter_tests;
-#[cfg(not(feature = "serde_json"))]
-#[path = "serde_json_adapter_tests_disabled.rs"]
-mod serde_json_adapter_tests;
-
-#[cfg(feature = "num-complex")]
-#[path = "num_complex_adapter_tests.rs"]
-mod num_complex_adapter_tests;
-#[cfg(not(feature = "num-complex"))]
-#[path = "num_complex_adapter_tests_disabled.rs"]
-mod num_complex_adapter_tests;
-
-#[cfg(feature = "num-traits")]
-#[path = "num_traits_adapter_tests.rs"]
-mod num_traits_adapter_tests;
-#[cfg(not(feature = "num-traits"))]
-#[path = "num_traits_adapter_tests_disabled.rs"]
-mod num_traits_adapter_tests;
-
-// Connection tests - requires connections feature
-#[cfg(feature = "connections")]
-#[path = "connection_tests.rs"]
-mod connection_tests;
-#[cfg(not(feature = "connections"))]
-#[path = "connection_tests_disabled.rs"]
-mod connection_tests;
-mod doc_attr_tests;
-mod export_control_tests;
+#[cfg(feature = "serde")]
+mod serde_r_tests;
+#[cfg(feature = "sha2")]
+mod sha2_adapter_tests;
 mod shared_trait_test;
+#[cfg(feature = "tabled")]
+mod tabled_adapter_tests;
 mod thread_tests;
+#[cfg(feature = "time")]
+mod time_adapter_tests;
+#[cfg(feature = "tinyvec")]
+mod tinyvec_adapter_tests;
+#[cfg(feature = "toml")]
+mod toml_adapter_tests;
 mod trait_abi_tests;
 mod unwind_protect_tests;
+#[cfg(feature = "url")]
+mod url_adapter_tests;
+#[cfg(feature = "uuid")]
+mod uuid_adapter_tests;
 mod visibility_tests;
 mod worker_tests;
 
@@ -1738,11 +1611,6 @@ pub fn sparse_iter_raw(n: i32) -> SEXP {
 // region: Nonapi module for lean-stack thread tests
 
 #[cfg(feature = "nonapi")]
-#[path = "nonapi_enabled.rs"]
-mod nonapi;
-
-#[cfg(not(feature = "nonapi"))]
-#[path = "nonapi_disabled.rs"]
 mod nonapi;
 
 // endregion
@@ -1750,28 +1618,11 @@ mod nonapi;
 // region: vctrs module (optional vctrs C API support)
 
 #[cfg(feature = "vctrs")]
-#[path = "vctrs_tests_enabled.rs"]
-mod vctrs_tests;
-
-#[cfg(not(feature = "vctrs"))]
-#[path = "vctrs_tests_disabled.rs"]
-mod vctrs_tests;
-
-// vctrs class example: demonstrates implementing a vctrs-compatible S3 class in Rust
-#[cfg(feature = "vctrs")]
 mod vctrs_class_example;
-
-#[cfg(not(feature = "vctrs"))]
-#[path = "vctrs_class_example_disabled.rs"]
-mod vctrs_class_example;
-
-// vctrs derive example: demonstrates using #[derive(Vctrs)] for simpler class creation
 #[cfg(feature = "vctrs")]
 mod vctrs_derive_example;
-
-#[cfg(not(feature = "vctrs"))]
-#[path = "vctrs_derive_example_disabled.rs"]
-mod vctrs_derive_example;
+#[cfg(feature = "vctrs")]
+mod vctrs_tests;
 
 // endregion
 
@@ -1927,38 +1778,68 @@ miniextendr_module! {
     use shared_trait_test;
     use convert_pref_tests;
     use dataframe_examples;
+    #[cfg(feature = "rayon")]
     use dataframe_rayon_tests;
     use rng_tests;
+    #[cfg(feature = "rayon")]
     use rayon_tests;
+    #[cfg(feature = "serde")]
     use serde_r_tests;
+    #[cfg(feature = "ndarray")]
     use ndarray_tests;
+    #[cfg(feature = "uuid")]
     use uuid_adapter_tests;
+    #[cfg(feature = "regex")]
     use regex_adapter_tests;
+    #[cfg(feature = "time")]
     use time_adapter_tests;
+    #[cfg(feature = "ordered-float")]
     use ordered_float_adapter_tests;
+    #[cfg(feature = "num-bigint")]
     use bigint_adapter_tests;
+    #[cfg(feature = "rust_decimal")]
     use decimal_adapter_tests;
+    #[cfg(feature = "indexmap")]
     use indexmap_adapter_tests;
+    #[cfg(feature = "bytes")]
     use bytes_adapter_tests;
+    #[cfg(feature = "bitflags")]
     use bitflags_adapter_tests;
+    #[cfg(feature = "bitvec")]
     use bitvec_adapter_tests;
+    #[cfg(feature = "tinyvec")]
     use tinyvec_adapter_tests;
+    #[cfg(feature = "sha2")]
     use sha2_adapter_tests;
+    #[cfg(feature = "url")]
     use url_adapter_tests;
+    #[cfg(feature = "aho-corasick")]
     use aho_corasick_adapter_tests;
+    #[cfg(feature = "toml")]
     use toml_adapter_tests;
+    #[cfg(feature = "tabled")]
     use tabled_adapter_tests;
+    #[cfg(feature = "nalgebra")]
     use nalgebra_adapter_tests;
+    #[cfg(feature = "either")]
     use either_adapter_tests;
+    #[cfg(feature = "serde_json")]
     use serde_json_adapter_tests;
+    #[cfg(feature = "num-complex")]
     use num_complex_adapter_tests;
+    #[cfg(feature = "num-traits")]
     use num_traits_adapter_tests;
+    #[cfg(feature = "connections")]
     use connection_tests;
+    #[cfg(feature = "nonapi")]
     use nonapi;
     use factor_tests;
     use match_arg_tests;
+    #[cfg(feature = "vctrs")]
     use vctrs_tests;
+    #[cfg(feature = "vctrs")]
     use vctrs_class_example;
+    #[cfg(feature = "vctrs")]
     use vctrs_derive_example;
 
     // ALTREP helper functions
