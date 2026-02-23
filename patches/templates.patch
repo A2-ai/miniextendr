@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-02-19 17:53:50
-+++ b/monorepo/rpkg/configure.ac	2026-02-22 12:04:17
+--- a/monorepo/rpkg/configure.ac	2026-02-22 17:51:29
++++ b/monorepo/rpkg/configure.ac	2026-02-22 17:51:38
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -29,7 +29,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Normalize to "true" or "false" for consistent checks
  : ${NOT_CRAN:=false}
  case "$NOT_CRAN" in
-@@ -49,32 +39,52 @@
+@@ -49,27 +39,42 @@
    *)           NOT_CRAN=false ;;
  esac
 +export NOT_CRAN
@@ -41,15 +41,10 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
 +if test "$NOT_CRAN" = "true"; then
 +  CARGO_OFFLINE_FLAG=""
-+  dnl Dev mode omits --locked so cargo can update source locations for [patch] entries
-+  CARGO_LOCKED_FLAG=""
 +else
 +  CARGO_OFFLINE_FLAG="--offline"
-+  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
-+  CARGO_LOCKED_FLAG=""
 +fi
 +AC_SUBST([CARGO_OFFLINE_FLAG])
-+AC_SUBST([CARGO_LOCKED_FLAG])
 +AC_SUBST([NOT_CRAN])
  
  dnl Set cargo features flag
@@ -88,15 +83,9 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
 +if test -n "${{{features_var}}}"; then
 +  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
-   # Auto-generate C preprocessor flags from cargo features
-   CARGO_FEATURE_CPPFLAGS=""
-   miniextendr_saved_IFS=$IFS
-   IFS=','
--  for _feature in $MINIEXTENDR_FEATURES; do
-+  for _feature in ${{{features_var}}}; do
-     _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
-     CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
-@@ -106,100 +116,14 @@
+ else
+   CARGO_FEATURES_FLAG=""
+@@ -94,84 +99,4 @@
  AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
  
 -dnl Miniextendr crate source paths (in monorepo)
@@ -172,32 +161,16 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -case "$BUILD_CONTEXT" in
 -  dev-monorepo|dev-detached)
 -    CARGO_OFFLINE_FLAG=""
--    CARGO_LOCKED_FLAG=""
 -    ;;
 -  vendored-install|prepare-cran)
 -    CARGO_OFFLINE_FLAG="--offline"
--    CARGO_LOCKED_FLAG=""
 -    ;;
 -esac
 -AC_SUBST([CARGO_OFFLINE_FLAG])
--AC_SUBST([CARGO_LOCKED_FLAG])
 -
  dnl ---- tool discovery ----
  AC_PATH_TOOL([CARGO],[cargo],[no])
- AC_PATH_TOOL([RUSTC],[rustc],[no])
--AC_PATH_PROG([RSYNC],[rsync],[no])
- AC_PATH_PROG([SED],[sed],[no])
- AC_PATH_PROG([CYGPATH],[cygpath],[no])
- AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
- AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
--dnl rsync is only required when syncing from monorepo sources
- AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
- AC_SUBST([CARGO])
- AC_SUBST([RUSTC])
--AC_SUBST([RSYNC])
- AC_SUBST([SED])
- AC_SUBST([CYGPATH])
-@@ -208,15 +132,12 @@
+@@ -190,15 +115,12 @@
  dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
  dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
 -root_miniextendr_repo_cargo="$root_miniextendr_repo"
@@ -213,7 +186,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
  AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
  
-@@ -318,9 +239,6 @@
+@@ -300,9 +222,6 @@
  
  dnl ---- user feedback ----
 -AC_MSG_NOTICE([BUILD_CONTEXT         = $BUILD_CONTEXT])
@@ -224,7 +197,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
  AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
  AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
-@@ -332,6 +250,6 @@
+@@ -314,6 +233,6 @@
        [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
  AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 -AS_IF([test -n "$MINIEXTENDR_FEATURES"],
@@ -233,24 +206,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
-@@ -364,11 +282,9 @@
-   test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
- done
--dnl Only include .cargo/config.toml in vendored modes (dev modes delete it)
--case "$BUILD_CONTEXT" in
--  vendored-install|prepare-cran)
--    f="$RUST_SRC_DIR/.cargo/config.toml"
--    test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
--    ;;
--esac
-+dnl Only include .cargo/config.toml in CRAN mode (dev mode deletes it)
-+if test "$NOT_CRAN" != "true"; then
-+  f="$RUST_SRC_DIR/.cargo/config.toml"
-+  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-+fi
- AC_SUBST([OPTIONAL_CARGO_DEPS])
- 
-@@ -391,8 +307,7 @@
+@@ -355,8 +274,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -261,7 +217,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -405,45 +320,27 @@
+@@ -369,45 +287,27 @@
    src/entrypoint.c:src/entrypoint.c.in
    src/mx_abi.c:src/mx_abi.c.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -319,7 +275,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -463,26 +360,25 @@
+@@ -427,26 +327,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -364,7 +320,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -496,115 +392,104 @@
+@@ -460,115 +359,104 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
@@ -546,7 +502,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-   dnl Ensure Cargo.lock exists (needed by Makevars as a dependency)
+   dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
    if test ! -f "src/rust/Cargo.lock"; then
 -    case "$BUILD_CONTEXT" in
 -      dev-monorepo|dev-detached)
@@ -563,7 +519,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  
-@@ -618,5 +503,5 @@
+@@ -582,5 +470,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
@@ -571,8 +527,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-02-19 17:53:50
-+++ b/rpkg/configure.ac	2026-02-22 12:04:07
+--- a/rpkg/configure.ac	2026-02-22 17:51:29
++++ b/rpkg/configure.ac	2026-02-22 17:51:34
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -601,7 +557,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Normalize to "true" or "false" for consistent checks
  : ${NOT_CRAN:=false}
  case "$NOT_CRAN" in
-@@ -49,32 +39,52 @@
+@@ -49,27 +39,42 @@
    *)           NOT_CRAN=false ;;
  esac
 +export NOT_CRAN
@@ -613,15 +569,10 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
 +if test "$NOT_CRAN" = "true"; then
 +  CARGO_OFFLINE_FLAG=""
-+  dnl Dev mode omits --locked so cargo can update source locations for [patch] entries
-+  CARGO_LOCKED_FLAG=""
 +else
 +  CARGO_OFFLINE_FLAG="--offline"
-+  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
-+  CARGO_LOCKED_FLAG=""
 +fi
 +AC_SUBST([CARGO_OFFLINE_FLAG])
-+AC_SUBST([CARGO_LOCKED_FLAG])
 +AC_SUBST([NOT_CRAN])
  
  dnl Set cargo features flag
@@ -660,15 +611,9 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
 +if test -n "${{{features_var}}}"; then
 +  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
-   # Auto-generate C preprocessor flags from cargo features
-   CARGO_FEATURE_CPPFLAGS=""
-   miniextendr_saved_IFS=$IFS
-   IFS=','
--  for _feature in $MINIEXTENDR_FEATURES; do
-+  for _feature in ${{{features_var}}}; do
-     _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
-     CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
-@@ -106,100 +116,14 @@
+ else
+   CARGO_FEATURES_FLAG=""
+@@ -94,84 +99,4 @@
  AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
  
 -dnl Miniextendr crate source paths (in monorepo)
@@ -744,32 +689,16 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -case "$BUILD_CONTEXT" in
 -  dev-monorepo|dev-detached)
 -    CARGO_OFFLINE_FLAG=""
--    CARGO_LOCKED_FLAG=""
 -    ;;
 -  vendored-install|prepare-cran)
 -    CARGO_OFFLINE_FLAG="--offline"
--    CARGO_LOCKED_FLAG=""
 -    ;;
 -esac
 -AC_SUBST([CARGO_OFFLINE_FLAG])
--AC_SUBST([CARGO_LOCKED_FLAG])
 -
  dnl ---- tool discovery ----
  AC_PATH_TOOL([CARGO],[cargo],[no])
- AC_PATH_TOOL([RUSTC],[rustc],[no])
--AC_PATH_PROG([RSYNC],[rsync],[no])
- AC_PATH_PROG([SED],[sed],[no])
- AC_PATH_PROG([CYGPATH],[cygpath],[no])
- AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
- AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
--dnl rsync is only required when syncing from monorepo sources
- AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
- AC_SUBST([CARGO])
- AC_SUBST([RUSTC])
--AC_SUBST([RSYNC])
- AC_SUBST([SED])
- AC_SUBST([CYGPATH])
-@@ -208,15 +132,12 @@
+@@ -190,15 +115,12 @@
  dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
  dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
 -root_miniextendr_repo_cargo="$root_miniextendr_repo"
@@ -785,7 +714,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
  AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
  
-@@ -318,9 +239,6 @@
+@@ -300,9 +222,6 @@
  
  dnl ---- user feedback ----
 -AC_MSG_NOTICE([BUILD_CONTEXT         = $BUILD_CONTEXT])
@@ -796,7 +725,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
  AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
  AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
-@@ -332,6 +250,6 @@
+@@ -314,6 +233,6 @@
        [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
  AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 -AS_IF([test -n "$MINIEXTENDR_FEATURES"],
@@ -805,24 +734,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
-@@ -364,11 +282,9 @@
-   test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
- done
--dnl Only include .cargo/config.toml in vendored modes (dev modes delete it)
--case "$BUILD_CONTEXT" in
--  vendored-install|prepare-cran)
--    f="$RUST_SRC_DIR/.cargo/config.toml"
--    test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
--    ;;
--esac
-+dnl Only include .cargo/config.toml in CRAN mode (dev mode deletes it)
-+if test "$NOT_CRAN" != "true"; then
-+  f="$RUST_SRC_DIR/.cargo/config.toml"
-+  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-+fi
- AC_SUBST([OPTIONAL_CARGO_DEPS])
- 
-@@ -391,8 +307,7 @@
+@@ -355,8 +274,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -833,7 +745,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -405,45 +320,27 @@
+@@ -369,45 +287,27 @@
    src/entrypoint.c:src/entrypoint.c.in
    src/mx_abi.c:src/mx_abi.c.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -891,7 +803,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -463,26 +360,25 @@
+@@ -427,26 +327,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -936,7 +848,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -496,115 +392,107 @@
+@@ -460,115 +359,107 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
@@ -1121,7 +1033,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-   dnl Ensure Cargo.lock exists (needed by Makevars as a dependency)
+   dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
    if test ! -f "src/rust/Cargo.lock"; then
 -    case "$BUILD_CONTEXT" in
 -      dev-monorepo|dev-detached)
@@ -1138,7 +1050,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  
-@@ -618,5 +506,5 @@
+@@ -582,5 +473,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])

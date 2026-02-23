@@ -45,15 +45,10 @@ dnl - NOT_CRAN=true (dev): no --offline, no --locked (cargo updates lockfile for
 dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  dnl Dev mode omits --locked so cargo can update source locations for [patch] entries
-  CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
-  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
-  CARGO_LOCKED_FLAG=""
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
-AC_SUBST([CARGO_LOCKED_FLAG])
 AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
@@ -81,22 +76,10 @@ fi
 
 if test -n "${{{features_var}}}"; then
   CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
-  # Auto-generate C preprocessor flags from cargo features
-  CARGO_FEATURE_CPPFLAGS=""
-  miniextendr_saved_IFS=$IFS
-  IFS=','
-  for _feature in ${{{features_var}}}; do
-    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
-    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
-  done
-  IFS=$miniextendr_saved_IFS
-  unset miniextendr_saved_IFS
 else
   CARGO_FEATURES_FLAG=""
-  CARGO_FEATURE_CPPFLAGS=""
 fi
 AC_SUBST([CARGO_FEATURES_FLAG])
-AC_SUBST([CARGO_FEATURE_CPPFLAGS])
 
 dnl rust-analyzer configuration: For IDE support, configure rust-analyzer to use
 dnl the standalone workspace, not the vendored rpkg workspace:
@@ -271,22 +254,6 @@ AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
-
-dnl ---- optional cargo deps: include if present ----
-OPTIONAL_CARGO_DEPS=
-for f in \
-  "$RUST_SRC_DIR/build.rs" \
-  "$RUST_SRC_DIR/rust-toolchain.toml" \
-  "$RUST_SRC_DIR/rust-toolchain"
-do
-  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-done
-dnl Only include .cargo/config.toml in CRAN mode (dev mode deletes it)
-if test "$NOT_CRAN" != "true"; then
-  f="$RUST_SRC_DIR/.cargo/config.toml"
-  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-fi
-AC_SUBST([OPTIONAL_CARGO_DEPS])
 
 dnl ---- vendoring (at package root, outside src/) ----
 dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
@@ -484,7 +451,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],
 [
-  dnl Ensure Cargo.lock exists (needed by Makevars as a dependency)
+  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
   if test ! -f "src/rust/Cargo.lock"; then
     if test "$NOT_CRAN" = "true"; then
       $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml

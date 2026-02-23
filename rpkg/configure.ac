@@ -71,22 +71,10 @@ fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-  # Auto-generate C preprocessor flags from cargo features
-  CARGO_FEATURE_CPPFLAGS=""
-  miniextendr_saved_IFS=$IFS
-  IFS=','
-  for _feature in $MINIEXTENDR_FEATURES; do
-    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
-    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
-  done
-  IFS=$miniextendr_saved_IFS
-  unset miniextendr_saved_IFS
 else
   CARGO_FEATURES_FLAG=""
-  CARGO_FEATURE_CPPFLAGS=""
 fi
 AC_SUBST([CARGO_FEATURES_FLAG])
-AC_SUBST([CARGO_FEATURE_CPPFLAGS])
 
 dnl rust-analyzer configuration: For IDE support, configure rust-analyzer to use
 dnl the standalone workspace, not the vendored rpkg workspace:
@@ -178,29 +166,23 @@ dnl Release contexts: --offline (all deps must be vendored)
 case "$BUILD_CONTEXT" in
   dev-monorepo|dev-detached)
     CARGO_OFFLINE_FLAG=""
-    CARGO_LOCKED_FLAG=""
     ;;
   vendored-install|prepare-cran)
     CARGO_OFFLINE_FLAG="--offline"
-    CARGO_LOCKED_FLAG=""
     ;;
 esac
 AC_SUBST([CARGO_OFFLINE_FLAG])
-AC_SUBST([CARGO_LOCKED_FLAG])
 
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
 AC_PATH_TOOL([RUSTC],[rustc],[no])
-AC_PATH_PROG([RSYNC],[rsync],[no])
 AC_PATH_PROG([SED],[sed],[no])
 AC_PATH_PROG([CYGPATH],[cygpath],[no])
 AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
-dnl rsync is only required when syncing from monorepo sources
 AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
 AC_SUBST([RUSTC])
-AC_SUBST([RSYNC])
 AC_SUBST([SED])
 AC_SUBST([CYGPATH])
 
@@ -353,24 +335,6 @@ AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
-
-dnl ---- optional cargo deps: include if present ----
-OPTIONAL_CARGO_DEPS=
-for f in \
-  "$RUST_SRC_DIR/build.rs" \
-  "$RUST_SRC_DIR/rust-toolchain.toml" \
-  "$RUST_SRC_DIR/rust-toolchain"
-do
-  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-done
-dnl Only include .cargo/config.toml in vendored modes (dev modes delete it)
-case "$BUILD_CONTEXT" in
-  vendored-install|prepare-cran)
-    f="$RUST_SRC_DIR/.cargo/config.toml"
-    test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
-    ;;
-esac
-AC_SUBST([OPTIONAL_CARGO_DEPS])
 
 dnl ---- vendoring (at package root, outside src/) ----
 dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
@@ -596,7 +560,7 @@ $_crate = { path = \"../../vendor/$_dirname\" }"
 dnl 2b) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],
 [
-  dnl Ensure Cargo.lock exists (needed by Makevars as a dependency)
+  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
   if test ! -f "src/rust/Cargo.lock"; then
     case "$BUILD_CONTEXT" in
       dev-monorepo|dev-detached)

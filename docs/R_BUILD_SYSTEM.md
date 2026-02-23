@@ -71,7 +71,7 @@ We can set these `PKG_*` variables:
 | Variable | Purpose | Our value |
 |----------|---------|-----------|
 | `PKG_LIBS` | Extra libraries to link | `-L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)` |
-| `PKG_CPPFLAGS` | C preprocessor flags | Feature flags like `-DCARGO_FEATURE_RAYON` |
+| `PKG_CPPFLAGS` | C preprocessor flags | (not used) |
 | `PKG_CFLAGS` | Extra C compiler flags | (not used) |
 
 ### shlib.mk (the link recipe)

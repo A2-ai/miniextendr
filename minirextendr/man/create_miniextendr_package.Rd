@@ -4,11 +4,7 @@
 \alias{create_miniextendr_package}
 \title{Create a new miniextendr package}
 \usage{
-create_miniextendr_package(
-  path,
-  open = rlang::is_interactive(),
-  rstudio = TRUE
-)
+create_miniextendr_package(path, open = interactive(), rstudio = TRUE)
 }
 \arguments{
 \item{path}{Path where to create the package}
