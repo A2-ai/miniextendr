@@ -10,7 +10,7 @@
 use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::refcount_protect::{
-    HashMapArena, RefCountedArena, ThreadLocalArena, ThreadLocalHashArena,
+    HashMapArena, RefCountedArena, ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
 };
 
 fn main() {
@@ -834,7 +834,9 @@ fn hashmap_with_capacity(n: usize) {
 #[cfg(feature = "refcount-fast-hash")]
 mod fast_hash_benches {
     use super::*;
-    use miniextendr_api::refcount_protect::{FastHashMapArena, ThreadLocalFastHashArena};
+    use miniextendr_api::refcount_protect::{
+        FastHashMapArena, ThreadLocalArenaOps, ThreadLocalFastHashArena,
+    };
 
     /// FastHashMapArena: single protect
     #[divan::bench]
