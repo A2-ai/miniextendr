@@ -17,36 +17,16 @@ use crate::ffi::altrep::*;
 use crate::ffi::*;
 use core::ffi::c_void;
 
-/// Catch panics in ALTREP trampolines and convert them to R errors.
-///
-/// Without this, a panic in user ALTREP code would unwind through R/C frames,
-/// which is undefined behavior. This catches the panic and calls `r_stop`
-/// (which invokes `Rf_error` → longjmp back to R's error handler).
-#[inline]
-fn catch_altrep_panic<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
-        Ok(result) => result,
-        Err(payload) => {
-            let msg = if let Some(s) = payload.downcast_ref::<&str>() {
-                format!("panic in ALTREP callback: {s}")
-            } else if let Some(s) = payload.downcast_ref::<String>() {
-                format!("panic in ALTREP callback: {s}")
-            } else {
-                "panic in ALTREP callback".to_string()
-            };
-            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Altrep);
-            crate::error::r_stop(&msg)
-        }
-    }
-}
-
 /// Dispatch an ALTREP callback through the guard mode selected by `T::GUARD`.
 ///
 /// Since `T::GUARD` is a const, the compiler eliminates the unreachable branches
 /// at monomorphization time — zero runtime overhead for the chosen mode.
+///
+/// - `Unsafe`: No protection — the closure runs directly.
+/// - `RustUnwind`: Delegates to [`crate::ffi_guard::guarded_ffi_call`] with
+///   [`GuardMode::CatchUnwind`](crate::ffi_guard::GuardMode::CatchUnwind).
+/// - `RUnwind`: Delegates to [`crate::ffi_guard::guarded_ffi_call`] with
+///   [`GuardMode::RUnwind`](crate::ffi_guard::GuardMode::RUnwind).
 #[inline(always)]
 fn guarded_altrep_call<T: Altrep, F, R>(f: F) -> R
 where
@@ -54,10 +34,14 @@ where
 {
     match T::GUARD {
         AltrepGuard::Unsafe => f(),
-        AltrepGuard::RustUnwind => catch_altrep_panic(f),
-        AltrepGuard::RUnwind => crate::unwind_protect::with_r_unwind_protect_sourced(
+        AltrepGuard::RustUnwind => crate::ffi_guard::guarded_ffi_call(
             f,
-            None,
+            crate::ffi_guard::GuardMode::CatchUnwind,
+            crate::panic_telemetry::PanicSource::Altrep,
+        ),
+        AltrepGuard::RUnwind => crate::ffi_guard::guarded_ffi_call(
+            f,
+            crate::ffi_guard::GuardMode::RUnwind,
             crate::panic_telemetry::PanicSource::Altrep,
         ),
     }
