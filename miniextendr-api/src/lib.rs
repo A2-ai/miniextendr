@@ -400,6 +400,14 @@ pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checkin
 // Panic telemetry hook for structured panic→R-error diagnostics
 pub mod panic_telemetry;
 
+// Unified FFI guard for catching panics at Rust-R boundaries
+pub mod ffi_guard;
+pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback};
+
+// Runtime wrapper for R data.frame objects
+pub mod dataframe;
+pub use dataframe::{DataFrameError, DataFrameView};
+
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
 
@@ -535,7 +543,7 @@ pub use gc_protect::{OwnedProtect, ProtectIndex, ProtectScope, ReprotectSlot, Ro
 pub mod refcount_protect;
 pub use refcount_protect::{
     Arena, ArenaGuard, HashMapArena, MapStorage, RefCountedArena, RefCountedGuard,
-    ThreadLocalArena, ThreadLocalHashArena,
+    ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
 };
 
 pub mod allocator;
