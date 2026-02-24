@@ -2872,35 +2872,36 @@ impl_vec_option_try_from_sexp_numeric!(f32);
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-/// Convert R named list (VECSXP) to HashMap<String, V>.
-///
-/// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
-/// names map to key `""` and may silently overwrite each other).
-impl<V: TryFromSexp> TryFromSexp for HashMap<String, V>
-where
-    V::Error: Into<SexpError>,
-{
-    type Error = SexpError;
+macro_rules! impl_map_try_from_sexp {
+    ($(#[$meta:meta])* $map_ty:ident, $create:expr) => {
+        $(#[$meta])*
+        impl<V: TryFromSexp> TryFromSexp for $map_ty<String, V>
+        where
+            V::Error: Into<SexpError>,
+        {
+            type Error = SexpError;
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        named_list_to_map(sexp, HashMap::with_capacity)
-    }
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                named_list_to_map(sexp, $create)
+            }
+        }
+    };
 }
 
-/// Convert R named list (VECSXP) to BTreeMap<String, V>.
-///
-/// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
-/// names map to key `""` and may silently overwrite each other).
-impl<V: TryFromSexp> TryFromSexp for BTreeMap<String, V>
-where
-    V::Error: Into<SexpError>,
-{
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        named_list_to_map(sexp, |_| BTreeMap::new())
-    }
-}
+impl_map_try_from_sexp!(
+    /// Convert R named list (VECSXP) to HashMap<String, V>.
+    ///
+    /// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
+    /// names map to key `""` and may silently overwrite each other).
+    HashMap, HashMap::with_capacity
+);
+impl_map_try_from_sexp!(
+    /// Convert R named list (VECSXP) to BTreeMap<String, V>.
+    ///
+    /// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
+    /// names map to key `""` and may silently overwrite each other).
+    BTreeMap, |_| BTreeMap::new()
+);
 
 /// Helper to convert R named list to a map type.
 ///
@@ -2987,29 +2988,30 @@ where
     Ok(map)
 }
 
-/// Convert R list of named lists to `Vec<HashMap<String, V>>`.
-impl<V: TryFromSexp> TryFromSexp for Vec<HashMap<String, V>>
-where
-    V::Error: Into<SexpError>,
-{
-    type Error = SexpError;
+macro_rules! impl_vec_map_try_from_sexp {
+    ($(#[$meta:meta])* $map_ty:ident) => {
+        $(#[$meta])*
+        impl<V: TryFromSexp> TryFromSexp for Vec<$map_ty<String, V>>
+        where
+            V::Error: Into<SexpError>,
+        {
+            type Error = SexpError;
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        list_to_vec_of_maps::<HashMap<String, V>>(sexp)
-    }
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                list_to_vec_of_maps::<$map_ty<String, V>>(sexp)
+            }
+        }
+    };
 }
 
-/// Convert R list of named lists to `Vec<BTreeMap<String, V>>`.
-impl<V: TryFromSexp> TryFromSexp for Vec<BTreeMap<String, V>>
-where
-    V::Error: Into<SexpError>,
-{
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        list_to_vec_of_maps::<BTreeMap<String, V>>(sexp)
-    }
-}
+impl_vec_map_try_from_sexp!(
+    /// Convert R list of named lists to `Vec<HashMap<String, V>>`.
+    HashMap
+);
+impl_vec_map_try_from_sexp!(
+    /// Convert R list of named lists to `Vec<BTreeMap<String, V>>`.
+    BTreeMap
+);
 
 /// Helper to convert R list (VECSXP) to `Vec<M>` where each element is
 /// converted via `M: TryFromSexp`.
@@ -3343,192 +3345,163 @@ impl TryFromSexp for Vec<Option<&'static str>> {
     }
 }
 
-/// Convert R character vector to `HashSet<String>`.
-impl TryFromSexp for HashSet<String> {
-    type Error = SexpError;
+macro_rules! impl_set_string_try_from_sexp {
+    ($(#[$meta:meta])* $set_ty:ident) => {
+        $(#[$meta])*
+        impl TryFromSexp for $set_ty<String> {
+            type Error = SexpError;
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().collect())
-    }
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(vec.into_iter().collect())
+            }
+        }
+    };
 }
 
-/// Convert R character vector to `BTreeSet<String>`.
-impl TryFromSexp for BTreeSet<String> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().collect())
-    }
-}
+impl_set_string_try_from_sexp!(
+    /// Convert R character vector to `HashSet<String>`.
+    HashSet
+);
+impl_set_string_try_from_sexp!(
+    /// Convert R character vector to `BTreeSet<String>`.
+    BTreeSet
+);
 
 // =============================================================================
-// PathBuf conversions
-// =============================================================================
-
-use std::path::PathBuf;
-
-/// Convert R character scalar (STRSXP of length 1) to `PathBuf`.
-///
-/// # NA Handling
-///
-/// **Warning:** `NA_character_` is converted to empty path `""`. This is lossy!
-/// If you need to distinguish between NA and empty strings, use `Option<PathBuf>` instead.
-impl TryFromSexp for PathBuf {
-    type Error = SexpError;
-
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(PathBuf::from(s))
-    }
-
-    #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(PathBuf::from(s))
-    }
-}
-
-/// NA-aware PathBuf conversion: returns `None` for `NA_character_` or `NULL`.
-impl TryFromSexp for Option<PathBuf> {
-    type Error = SexpError;
-
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let opt: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(opt.map(PathBuf::from))
-    }
-
-    #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let opt: Option<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(opt.map(PathBuf::from))
-    }
-}
-
-/// Convert R character vector (STRSXP) to `Vec<PathBuf>`.
-///
-/// # NA Handling
-///
-/// **Warning:** `NA_character_` elements are converted to empty paths.
-/// Use `Vec<Option<PathBuf>>` if you need to preserve NA values.
-impl TryFromSexp for Vec<PathBuf> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().map(PathBuf::from).collect())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(vec.into_iter().map(PathBuf::from).collect())
-    }
-}
-
-/// Convert R character vector (STRSXP) to `Vec<Option<PathBuf>>` with NA support.
-///
-/// `NA_character_` elements are converted to `None`.
-impl TryFromSexp for Vec<Option<PathBuf>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().map(|opt| opt.map(PathBuf::from)).collect())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<Option<String>> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(vec.into_iter().map(|opt| opt.map(PathBuf::from)).collect())
-    }
-}
-
-// =============================================================================
-// OsString conversions
+// String-wrapper type conversions (PathBuf, OsString)
 // =============================================================================
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 
-/// Convert R character scalar (STRSXP of length 1) to `OsString`.
-///
-/// Since R strings are converted to UTF-8, the resulting `OsString` contains
-/// valid UTF-8 data.
-///
-/// # NA Handling
-///
-/// **Warning:** `NA_character_` is converted to empty string. This is lossy!
-/// If you need to distinguish between NA and empty strings, use `Option<OsString>` instead.
-impl TryFromSexp for OsString {
-    type Error = SexpError;
+/// Generate TryFromSexp impls for types that are `From<String>` (scalar, Option,
+/// Vec, Vec<Option>). Used for PathBuf and OsString which delegate to String conversion.
+macro_rules! impl_string_wrapper_try_from_sexp {
+    (
+        $(#[$scalar_meta:meta])*
+        scalar: $ty:ty;
+        $(#[$option_meta:meta])*
+        option: $ty2:ty;
+        $(#[$vec_meta:meta])*
+        vec: $ty3:ty;
+        $(#[$vec_option_meta:meta])*
+        vec_option: $ty4:ty;
+    ) => {
+        $(#[$scalar_meta])*
+        impl TryFromSexp for $ty {
+            type Error = SexpError;
 
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(OsString::from(s))
-    }
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let s: String = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(<$ty>::from(s))
+            }
 
-    #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(OsString::from(s))
-    }
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(<$ty>::from(s))
+            }
+        }
+
+        $(#[$option_meta])*
+        impl TryFromSexp for Option<$ty> {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let opt: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(opt.map(<$ty>::from))
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let opt: Option<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(opt.map(<$ty>::from))
+            }
+        }
+
+        $(#[$vec_meta])*
+        impl TryFromSexp for Vec<$ty> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(vec.into_iter().map(<$ty>::from).collect())
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let vec: Vec<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(vec.into_iter().map(<$ty>::from).collect())
+            }
+        }
+
+        $(#[$vec_option_meta])*
+        impl TryFromSexp for Vec<Option<$ty>> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(vec.into_iter().map(|opt| opt.map(<$ty>::from)).collect())
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let vec: Vec<Option<String>> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(vec.into_iter().map(|opt| opt.map(<$ty>::from)).collect())
+            }
+        }
+    };
 }
 
-/// NA-aware OsString conversion: returns `None` for `NA_character_` or `NULL`.
-impl TryFromSexp for Option<OsString> {
-    type Error = SexpError;
+impl_string_wrapper_try_from_sexp!(
+    /// Convert R character scalar (STRSXP of length 1) to `PathBuf`.
+    ///
+    /// # NA Handling
+    ///
+    /// **Warning:** `NA_character_` is converted to empty path `""`. This is lossy!
+    /// If you need to distinguish between NA and empty strings, use `Option<PathBuf>` instead.
+    scalar: PathBuf;
+    /// NA-aware PathBuf conversion: returns `None` for `NA_character_` or `NULL`.
+    option: PathBuf;
+    /// Convert R character vector (STRSXP) to `Vec<PathBuf>`.
+    ///
+    /// # NA Handling
+    ///
+    /// **Warning:** `NA_character_` elements are converted to empty paths.
+    /// Use `Vec<Option<PathBuf>>` if you need to preserve NA values.
+    vec: PathBuf;
+    /// Convert R character vector (STRSXP) to `Vec<Option<PathBuf>>` with NA support.
+    ///
+    /// `NA_character_` elements are converted to `None`.
+    vec_option: PathBuf;
+);
 
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let opt: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(opt.map(OsString::from))
-    }
-
-    #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let opt: Option<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(opt.map(OsString::from))
-    }
-}
-
-/// Convert R character vector (STRSXP) to `Vec<OsString>`.
-///
-/// # NA Handling
-///
-/// **Warning:** `NA_character_` elements are converted to empty strings.
-/// Use `Vec<Option<OsString>>` if you need to preserve NA values.
-impl TryFromSexp for Vec<OsString> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().map(OsString::from).collect())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(vec.into_iter().map(OsString::from).collect())
-    }
-}
-
-/// Convert R character vector (STRSXP) to `Vec<Option<OsString>>` with NA support.
-///
-/// `NA_character_` elements are converted to `None`.
-impl TryFromSexp for Vec<Option<OsString>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().map(|opt| opt.map(OsString::from)).collect())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<Option<String>> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(vec.into_iter().map(|opt| opt.map(OsString::from)).collect())
-    }
-}
+impl_string_wrapper_try_from_sexp!(
+    /// Convert R character scalar (STRSXP of length 1) to `OsString`.
+    ///
+    /// Since R strings are converted to UTF-8, the resulting `OsString` contains
+    /// valid UTF-8 data.
+    ///
+    /// # NA Handling
+    ///
+    /// **Warning:** `NA_character_` is converted to empty string. This is lossy!
+    /// If you need to distinguish between NA and empty strings, use `Option<OsString>` instead.
+    scalar: OsString;
+    /// NA-aware OsString conversion: returns `None` for `NA_character_` or `NULL`.
+    option: OsString;
+    /// Convert R character vector (STRSXP) to `Vec<OsString>`.
+    ///
+    /// # NA Handling
+    ///
+    /// **Warning:** `NA_character_` elements are converted to empty strings.
+    /// Use `Vec<Option<OsString>>` if you need to preserve NA values.
+    vec: OsString;
+    /// Convert R character vector (STRSXP) to `Vec<Option<OsString>>` with NA support.
+    ///
+    /// `NA_character_` elements are converted to `None`.
+    vec_option: OsString;
+);
 
 // =============================================================================
 // Option<Collection> conversions
@@ -3568,79 +3541,68 @@ where
     }
 }
 
-/// Convert R value to `Option<HashMap<String, V>>`: NULL → None, otherwise Some(map).
-impl<V: TryFromSexp> TryFromSexp for Option<HashMap<String, V>>
-where
-    V::Error: Into<SexpError>,
-{
-    type Error = SexpError;
+macro_rules! impl_option_map_try_from_sexp {
+    ($(#[$meta:meta])* $map_ty:ident) => {
+        $(#[$meta])*
+        impl<V: TryFromSexp> TryFromSexp for Option<$map_ty<String, V>>
+        where
+            V::Error: Into<SexpError>,
+        {
+            type Error = SexpError;
 
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            Ok(None)
-        } else {
-            HashMap::<String, V>::try_from_sexp(sexp).map(Some)
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    Ok(None)
+                } else {
+                    $map_ty::<String, V>::try_from_sexp(sexp).map(Some)
+                }
+            }
         }
-    }
+    };
 }
 
-/// Convert R value to `Option<BTreeMap<String, V>>`: NULL → None, otherwise Some(map).
-impl<V: TryFromSexp> TryFromSexp for Option<BTreeMap<String, V>>
-where
-    V::Error: Into<SexpError>,
-{
-    type Error = SexpError;
+impl_option_map_try_from_sexp!(
+    /// Convert R value to `Option<HashMap<String, V>>`: NULL -> None, otherwise Some(map).
+    HashMap
+);
+impl_option_map_try_from_sexp!(
+    /// Convert R value to `Option<BTreeMap<String, V>>`: NULL -> None, otherwise Some(map).
+    BTreeMap
+);
 
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            Ok(None)
-        } else {
-            BTreeMap::<String, V>::try_from_sexp(sexp).map(Some)
+macro_rules! impl_option_set_try_from_sexp {
+    ($(#[$meta:meta])* $set_ty:ident) => {
+        $(#[$meta])*
+        impl<T> TryFromSexp for Option<$set_ty<T>>
+        where
+            $set_ty<T>: TryFromSexp,
+            <$set_ty<T> as TryFromSexp>::Error: Into<SexpError>,
+        {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    Ok(None)
+                } else {
+                    $set_ty::<T>::try_from_sexp(sexp)
+                        .map(Some)
+                        .map_err(Into::into)
+                }
+            }
         }
-    }
+    };
 }
 
-/// Convert R value to `Option<HashSet<T>>`: NULL → None, otherwise Some(set).
-impl<T> TryFromSexp for Option<HashSet<T>>
-where
-    HashSet<T>: TryFromSexp,
-    <HashSet<T> as TryFromSexp>::Error: Into<SexpError>,
-{
-    type Error = SexpError;
-
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            Ok(None)
-        } else {
-            HashSet::<T>::try_from_sexp(sexp)
-                .map(Some)
-                .map_err(Into::into)
-        }
-    }
-}
-
-/// Convert R value to `Option<BTreeSet<T>>`: NULL → None, otherwise Some(set).
-impl<T> TryFromSexp for Option<BTreeSet<T>>
-where
-    BTreeSet<T>: TryFromSexp,
-    <BTreeSet<T> as TryFromSexp>::Error: Into<SexpError>,
-{
-    type Error = SexpError;
-
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            Ok(None)
-        } else {
-            BTreeSet::<T>::try_from_sexp(sexp)
-                .map(Some)
-                .map_err(Into::into)
-        }
-    }
-}
+impl_option_set_try_from_sexp!(
+    /// Convert R value to `Option<HashSet<T>>`: NULL -> None, otherwise Some(set).
+    HashSet
+);
+impl_option_set_try_from_sexp!(
+    /// Convert R value to `Option<BTreeSet<T>>`: NULL -> None, otherwise Some(set).
+    BTreeSet
+);
 
 // =============================================================================
 // Nested vector conversions (list of vectors)
@@ -3864,7 +3826,7 @@ impl TryFromSexp for Vec<bool> {
 }
 
 // =============================================================================
-// Direct HashSet coercion conversions
+// Direct HashSet / BTreeSet coercion conversions
 // =============================================================================
 
 /// Convert numeric/logical/raw vectors to a set type with element-wise coercion.
@@ -3883,9 +3845,9 @@ where
     Ok(vec.into_iter().collect())
 }
 
-macro_rules! impl_hashset_try_from_sexp_numeric {
-    ($target:ty) => {
-        impl TryFromSexp for HashSet<$target> {
+macro_rules! impl_set_try_from_sexp_numeric {
+    ($set_ty:ident, $target:ty) => {
+        impl TryFromSexp for $set_ty<$target> {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -3899,69 +3861,43 @@ macro_rules! impl_hashset_try_from_sexp_numeric {
     };
 }
 
-impl_hashset_try_from_sexp_numeric!(i8);
-impl_hashset_try_from_sexp_numeric!(i16);
-impl_hashset_try_from_sexp_numeric!(i64);
-impl_hashset_try_from_sexp_numeric!(isize);
-impl_hashset_try_from_sexp_numeric!(u16);
-impl_hashset_try_from_sexp_numeric!(u32);
-impl_hashset_try_from_sexp_numeric!(u64);
-impl_hashset_try_from_sexp_numeric!(usize);
+impl_set_try_from_sexp_numeric!(HashSet, i8);
+impl_set_try_from_sexp_numeric!(HashSet, i16);
+impl_set_try_from_sexp_numeric!(HashSet, i64);
+impl_set_try_from_sexp_numeric!(HashSet, isize);
+impl_set_try_from_sexp_numeric!(HashSet, u16);
+impl_set_try_from_sexp_numeric!(HashSet, u32);
+impl_set_try_from_sexp_numeric!(HashSet, u64);
+impl_set_try_from_sexp_numeric!(HashSet, usize);
 
-impl TryFromSexp for HashSet<bool> {
-    type Error = SexpError;
+impl_set_try_from_sexp_numeric!(BTreeSet, i8);
+impl_set_try_from_sexp_numeric!(BTreeSet, i16);
+impl_set_try_from_sexp_numeric!(BTreeSet, i64);
+impl_set_try_from_sexp_numeric!(BTreeSet, isize);
+impl_set_try_from_sexp_numeric!(BTreeSet, u16);
+impl_set_try_from_sexp_numeric!(BTreeSet, u32);
+impl_set_try_from_sexp_numeric!(BTreeSet, u64);
+impl_set_try_from_sexp_numeric!(BTreeSet, usize);
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().collect())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
-    }
-}
-
-// =============================================================================
-// Direct BTreeSet coercion conversions
-// =============================================================================
-
-macro_rules! impl_btreeset_try_from_sexp_numeric {
-    ($target:ty) => {
-        impl TryFromSexp for BTreeSet<$target> {
+macro_rules! impl_set_try_from_sexp_bool {
+    ($set_ty:ident) => {
+        impl TryFromSexp for $set_ty<bool> {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_set(sexp)
+                let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(vec.into_iter().collect())
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_set(sexp)
+                Self::try_from_sexp(sexp)
             }
         }
     };
 }
 
-impl_btreeset_try_from_sexp_numeric!(i8);
-impl_btreeset_try_from_sexp_numeric!(i16);
-impl_btreeset_try_from_sexp_numeric!(i64);
-impl_btreeset_try_from_sexp_numeric!(isize);
-impl_btreeset_try_from_sexp_numeric!(u16);
-impl_btreeset_try_from_sexp_numeric!(u32);
-impl_btreeset_try_from_sexp_numeric!(u64);
-impl_btreeset_try_from_sexp_numeric!(usize);
-
-impl TryFromSexp for BTreeSet<bool> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(vec.into_iter().collect())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
-    }
-}
+impl_set_try_from_sexp_bool!(HashSet);
+impl_set_try_from_sexp_bool!(BTreeSet);
 
 // =============================================================================
 // ExternalPtr conversions
