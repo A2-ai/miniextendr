@@ -634,30 +634,20 @@ unsafe fn get_state<T: RConnectionImpl>(conn: *mut Rconn) -> &'static mut T {
     unsafe { &mut *(private as *mut T) }
 }
 
-/// Catch panics in connection callback trampolines and return a safe fallback.
+/// Convenience alias for the connection panic guard.
 ///
-/// Without this, a panic in user connection code would unwind through R/C frames,
-/// which is undefined behavior. This catches the panic, emits telemetry, and
-/// returns the provided fallback value.
+/// Delegates to [`crate::ffi_guard::guarded_ffi_call_with_fallback`] with
+/// [`PanicSource::Connection`](crate::panic_telemetry::PanicSource::Connection).
 #[inline]
 fn catch_connection_panic<F, R>(fallback: R, f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
-        Ok(result) => result,
-        Err(payload) => {
-            let msg = if let Some(s) = payload.downcast_ref::<&str>() {
-                format!("panic in connection callback: {s}")
-            } else if let Some(s) = payload.downcast_ref::<String>() {
-                format!("panic in connection callback: {s}")
-            } else {
-                "panic in connection callback".to_string()
-            };
-            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Connection);
-            fallback
-        }
-    }
+    crate::ffi_guard::guarded_ffi_call_with_fallback(
+        f,
+        fallback,
+        crate::panic_telemetry::PanicSource::Connection,
+    )
 }
 
 /// Macro to generate simple trampolines that delegate to the trait method,
