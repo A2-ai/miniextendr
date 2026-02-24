@@ -62,7 +62,7 @@ fn factor_class_sexp() -> SEXP {
 ///
 /// Typically implemented via `#[derive(RFactor)]` for C-style enums.
 /// The derive macro also generates `IntoR` and `TryFromSexp` implementations.
-pub trait RFactor: Copy + 'static {
+pub trait RFactor: crate::enum_choices::EnumChoices + Copy + 'static {
     /// Level names for this enum (order matches index values).
     const LEVELS: &'static [&'static str];
 
@@ -529,12 +529,34 @@ impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::enum_choices::EnumChoices;
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     enum TestColor {
         Red,
         Green,
         Blue,
+    }
+
+    impl EnumChoices for TestColor {
+        const CHOICES: &'static [&'static str] = &["Red", "Green", "Blue"];
+
+        fn from_str(s: &str) -> Option<Self> {
+            match s {
+                "Red" => Some(TestColor::Red),
+                "Green" => Some(TestColor::Green),
+                "Blue" => Some(TestColor::Blue),
+                _ => None,
+            }
+        }
+
+        fn to_str(self) -> &'static str {
+            match self {
+                TestColor::Red => "Red",
+                TestColor::Green => "Green",
+                TestColor::Blue => "Blue",
+            }
+        }
     }
 
     impl RFactor for TestColor {
@@ -593,6 +615,25 @@ mod tests {
         Large,
     }
 
+    impl EnumChoices for Size {
+        const CHOICES: &'static [&'static str] = &["Small", "Large"];
+
+        fn from_str(s: &str) -> Option<Self> {
+            match s {
+                "Small" => Some(Size::Small),
+                "Large" => Some(Size::Large),
+                _ => None,
+            }
+        }
+
+        fn to_str(self) -> &'static str {
+            match self {
+                Size::Small => "Small",
+                Size::Large => "Large",
+            }
+        }
+    }
+
     impl RFactor for Size {
         const LEVELS: &'static [&'static str] = &["Small", "Large"];
 
@@ -618,6 +659,29 @@ mod tests {
         Red(Size),
         Green(Size),
         Blue(Size),
+    }
+
+    impl EnumChoices for ColorSize {
+        const CHOICES: &'static [&'static str] = &[
+            "Red.Small",
+            "Red.Large",
+            "Green.Small",
+            "Green.Large",
+            "Blue.Small",
+            "Blue.Large",
+        ];
+
+        fn from_str(s: &str) -> Option<Self> {
+            let idx_1 = Self::CHOICES
+                .iter()
+                .position(|&l| l == s)
+                .map(|i| i as i32 + 1)?;
+            Self::from_level_index(idx_1)
+        }
+
+        fn to_str(self) -> &'static str {
+            Self::CHOICES[(self.to_level_index() - 1) as usize]
+        }
     }
 
     impl RFactor for ColorSize {

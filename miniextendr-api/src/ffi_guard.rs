@@ -68,9 +68,7 @@ where
                 crate::error::r_stop(&msg)
             }
         },
-        GuardMode::RUnwind => {
-            crate::unwind_protect::with_r_unwind_protect_sourced(f, None, source)
-        }
+        GuardMode::RUnwind => crate::unwind_protect::with_r_unwind_protect_sourced(f, None, source),
     }
 }
 
@@ -116,8 +114,7 @@ mod tests {
 
     #[test]
     fn fallback_returns_fallback_on_panic() {
-        let result =
-            guarded_ffi_call_with_fallback(|| panic!("boom"), -1, PanicSource::Connection);
+        let result = guarded_ffi_call_with_fallback(|| panic!("boom"), -1, PanicSource::Connection);
         assert_eq!(result, -1);
     }
 
@@ -134,11 +131,8 @@ mod tests {
             fired_clone.store(true, Ordering::SeqCst);
         });
 
-        let _ = guarded_ffi_call_with_fallback(
-            || panic!("test panic"),
-            0i32,
-            PanicSource::Connection,
-        );
+        let _ =
+            guarded_ffi_call_with_fallback(|| panic!("test panic"), 0i32, PanicSource::Connection);
 
         assert!(fired.load(Ordering::SeqCst), "telemetry hook should fire");
         crate::panic_telemetry::clear_panic_telemetry_hook();

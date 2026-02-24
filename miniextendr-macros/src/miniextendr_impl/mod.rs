@@ -2042,7 +2042,6 @@ fn output_is_result(output: &syn::ReturnType) -> bool {
     }
 }
 
-
 // =============================================================================
 // Class-system R wrapper generators (sub-modules)
 // =============================================================================
@@ -2059,9 +2058,9 @@ pub(crate) use r6_class::generate_r6_r_wrapper;
 pub(crate) use s3_class::generate_s3_r_wrapper;
 pub(crate) use s4_class::generate_s4_r_wrapper;
 pub(crate) use s7_class::generate_s7_r_wrapper;
-pub(crate) use vctrs_class::generate_vctrs_r_wrapper;
 #[cfg(test)]
 use s7_class::rust_type_to_s7_class;
+pub(crate) use vctrs_class::generate_vctrs_r_wrapper;
 
 /// Generate R S3 method wrappers for `as.<class>()` coercion methods.
 ///

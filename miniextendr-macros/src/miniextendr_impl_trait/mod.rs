@@ -299,15 +299,14 @@ fn extract_trait_and_type(impl_item: &ItemImpl) -> syn::Result<(syn::Path, syn::
 // Sub-modules
 // =============================================================================
 
-mod vtable;
 mod r_wrappers;
+mod vtable;
 
-use vtable::generate_vtable_static;
-use vtable::generate_trait_method_c_wrapper;
-use vtable::is_self_ref_type;
-use r_wrappers::generate_trait_r_wrapper;
 use r_wrappers::TraitWrapperOpts;
-
+use r_wrappers::generate_trait_r_wrapper;
+use vtable::generate_trait_method_c_wrapper;
+use vtable::generate_vtable_static;
+use vtable::is_self_ref_type;
 
 /// Generate R function body lines with optional error_in_r checking.
 ///

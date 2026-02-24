@@ -188,4 +188,3 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.join("\n")
 }
-

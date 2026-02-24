@@ -4,10 +4,9 @@ use proc_macro2::TokenStream;
 use quote::format_ident;
 use syn::ItemImpl;
 
-use super::{TraitMethod, TraitConst, type_to_uppercase_name};
-use super::r_wrappers::{generate_trait_r_wrapper, TraitWrapperOpts};
+use super::r_wrappers::{TraitWrapperOpts, generate_trait_r_wrapper};
+use super::{TraitConst, TraitMethod, type_to_uppercase_name};
 use crate::miniextendr_impl::ClassSystem;
-
 
 /// Generate the vtable static and R-callable wrappers for a trait implementation.
 pub(super) fn generate_vtable_static(

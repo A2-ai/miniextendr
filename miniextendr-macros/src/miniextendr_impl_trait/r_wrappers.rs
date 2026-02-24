@@ -1,8 +1,7 @@
 //! R wrapper generation for trait methods across all class systems.
 
-use super::{TraitMethod, TraitConst, trait_method_body_lines};
+use super::{TraitConst, TraitMethod, trait_method_body_lines};
 use crate::miniextendr_impl::ClassSystem;
-
 
 /// Export/documentation control for trait R wrapper generation.
 pub(super) struct TraitWrapperOpts {
