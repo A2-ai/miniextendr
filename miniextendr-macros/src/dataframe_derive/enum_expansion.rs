@@ -7,9 +7,10 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{DeriveInput, Fields};
 
-use super::{DataFrameAttrs, parse_field_attrs, classify_field_type, FieldTypeKind,
-            VariantShape, VariantInfo, EnumResolvedField, ColumnRegistry, ResolvedColumn};
-
+use super::{
+    ColumnRegistry, DataFrameAttrs, EnumResolvedField, FieldTypeKind, ResolvedColumn, VariantInfo,
+    VariantShape, classify_field_type, parse_field_attrs,
+};
 
 /// Derive `DataFrameRow` for an enum with `#[dataframe(align)]`.
 ///

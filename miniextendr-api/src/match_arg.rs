@@ -35,7 +35,7 @@ use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 /// conversion between enum variants and their string representations.
 ///
 /// Use `#[derive(MatchArg)]` to auto-generate this implementation.
-pub trait MatchArg: Sized + Copy + 'static {
+pub trait MatchArg: crate::enum_choices::EnumChoices + Sized + Copy + 'static {
     /// The canonical choice strings, in variant declaration order.
     ///
     /// The first choice is the default when the R argument is `NULL`.
@@ -107,7 +107,7 @@ impl From<MatchArgError> for crate::from_r::SexpError {
 /// This is called by generated choices-helper C wrappers to provide the
 /// choice list to `base::match.arg()` in the R wrapper.
 pub fn choices_sexp<T: MatchArg>() -> SEXP {
-    let choices = T::CHOICES;
+    let choices = <T as MatchArg>::CHOICES;
     unsafe {
         let n = choices.len();
         let vec = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t);
@@ -168,7 +168,7 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
             if level_idx < 0 || level_idx >= levels.len() as ffi::R_xlen_t {
                 return Err(MatchArgError::NoMatch {
                     input: format!("<factor index {}>", idx),
-                    choices: T::CHOICES,
+                    choices: <T as MatchArg>::CHOICES,
                 });
             }
             let charsxp = unsafe { ffi::STRING_ELT(levels, level_idx) };
@@ -178,9 +178,11 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
         }
         SEXPTYPE::NILSXP => {
             // NULL → use first choice (match.arg default behavior)
-            return T::from_choice(T::CHOICES[0]).ok_or_else(|| MatchArgError::NoMatch {
-                input: String::new(),
-                choices: T::CHOICES,
+            return T::from_choice(<T as MatchArg>::CHOICES[0]).ok_or_else(|| {
+                MatchArgError::NoMatch {
+                    input: String::new(),
+                    choices: <T as MatchArg>::CHOICES,
+                }
             });
         }
         _ => return Err(MatchArgError::InvalidType(actual_type)),
@@ -193,7 +195,7 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
 
     // Unique partial match (like R's match.arg)
     let mut matches: Vec<(usize, &'static str)> = Vec::new();
-    for (i, choice) in T::CHOICES.iter().enumerate() {
+    for (i, choice) in <T as MatchArg>::CHOICES.iter().enumerate() {
         if choice.starts_with(&input) {
             matches.push((i, choice));
         }
@@ -202,17 +204,17 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
     match matches.len() {
         1 => T::from_choice(matches[0].1).ok_or(MatchArgError::NoMatch {
             input,
-            choices: T::CHOICES,
+            choices: <T as MatchArg>::CHOICES,
         }),
         0 => Err(MatchArgError::NoMatch {
             input,
-            choices: T::CHOICES,
+            choices: <T as MatchArg>::CHOICES,
         }),
         _ => {
             // Ambiguous — report as no match (R's match.arg would say "ambiguous")
             Err(MatchArgError::NoMatch {
                 input,
-                choices: T::CHOICES,
+                choices: <T as MatchArg>::CHOICES,
             })
         }
     }

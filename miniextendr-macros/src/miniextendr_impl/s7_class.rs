@@ -749,4 +749,3 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.join("\n")
 }
-

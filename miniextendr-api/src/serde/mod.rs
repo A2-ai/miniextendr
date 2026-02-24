@@ -233,6 +233,7 @@
 //! - You want to share data with non-R systems
 //! - You need JSON inspection/manipulation
 
+pub mod columnar;
 mod de;
 mod error;
 mod ser;
@@ -241,6 +242,7 @@ mod traits;
 // Re-export the serde crate for convenience
 pub use ::serde::{Deserialize, Serialize};
 
+pub use columnar::vec_to_dataframe;
 pub use de::RDeserializer;
 pub use error::RSerdeError;
 pub use ser::RSerializer;
