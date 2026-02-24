@@ -360,6 +360,14 @@ impl TypedExternal for () {
 #[repr(C)]
 pub struct ExternalPtr<T: TypedExternal> {
     sexp: SEXP,
+    /// Cached data pointer, set once at construction time.
+    ///
+    /// This avoids the `R_ExternalPtrAddr` FFI call on every `as_ref()`/`as_mut()`.
+    /// The pointer remains valid for the lifetime of the `ExternalPtr` because:
+    /// - R's finalizer only runs after R garbage-collects the SEXP (which cannot
+    ///   happen while a Rust `ExternalPtr` value exists).
+    /// - `R_ClearExternalPtr` is only called in `into_raw`, which consumes `self`.
+    cached_ptr: NonNull<T>,
     _marker: PhantomData<T>,
 }
 
@@ -388,8 +396,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub fn new(x: T) -> Self {
         // Box the value first (this is thread-safe)
         let ptr = Box::into_raw(Box::new(x));
-        // Wrap in SendablePtr so it can be sent across thread boundary
         // SAFETY: Box::into_raw never returns null
+        let cached_ptr = unsafe { NonNull::new_unchecked(ptr) };
+        // Wrap in SendablePtr so it can be sent across thread boundary
         let sendable_ptr = unsafe { sendable_ptr_new_unchecked(ptr) };
 
         // Use with_r_thread to run R API calls on main thread
@@ -402,6 +411,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         Self {
             sexp,
+            cached_ptr,
             _marker: PhantomData,
         }
     }
@@ -425,6 +435,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let sexp = unsafe { Self::create_extptr_sexp_unchecked(ptr) };
         Self {
             sexp,
+            // SAFETY: Box::into_raw never returns null
+            cached_ptr: unsafe { NonNull::new_unchecked(ptr) },
             _marker: PhantomData,
         }
     }
@@ -537,6 +549,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let sexp = unsafe { Self::create_extptr_sexp(raw) };
         Self {
             sexp,
+            // SAFETY: precondition requires raw is non-null
+            cached_ptr: unsafe { NonNull::new_unchecked(raw) },
             _marker: PhantomData,
         }
     }
@@ -554,6 +568,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let sexp = unsafe { Self::create_extptr_sexp_unchecked(raw) };
         Self {
             sexp,
+            // SAFETY: precondition requires raw is non-null
+            cached_ptr: unsafe { NonNull::new_unchecked(raw) },
             _marker: PhantomData,
         }
     }
@@ -566,7 +582,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Equivalent to `Box::into_raw`.
     #[inline]
     pub fn into_raw(this: Self) -> *mut T {
-        let ptr = unsafe { R_ExternalPtrAddr(this.sexp).cast() };
+        let ptr = this.cached_ptr.as_ptr();
 
         // Clear the external pointer so the finalizer becomes a no-op
         unsafe { R_ClearExternalPtr(this.sexp) };
@@ -678,27 +694,35 @@ impl<T: TypedExternal> ExternalPtr<T> {
     // =========================================================================
 
     /// Returns a reference to the underlying value.
+    ///
+    /// Uses the cached pointer set at construction time, avoiding the
+    /// `R_ExternalPtrAddr` FFI call on every access.
     #[inline]
     pub fn as_ref(&self) -> Option<&T> {
-        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_ref() }
+        // SAFETY: cached_ptr is always valid for the lifetime of ExternalPtr
+        Some(unsafe { self.cached_ptr.as_ref() })
     }
 
     /// Returns a mutable reference to the underlying value.
+    ///
+    /// Uses the cached pointer set at construction time, avoiding the
+    /// `R_ExternalPtrAddr` FFI call on every access.
     #[inline]
     pub fn as_mut(&mut self) -> Option<&mut T> {
-        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_mut() }
+        // SAFETY: cached_ptr is always valid for the lifetime of ExternalPtr
+        Some(unsafe { self.cached_ptr.as_mut() })
     }
 
     /// Returns the raw pointer without consuming the ExternalPtr.
     #[inline]
     pub fn as_ptr(&self) -> *const T {
-        unsafe { R_ExternalPtrAddr(self.sexp).cast() }
+        self.cached_ptr.as_ptr() as *const T
     }
 
     /// Returns the raw mutable pointer without consuming the ExternalPtr.
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        unsafe { R_ExternalPtrAddr(self.sexp).cast() }
+        self.cached_ptr.as_ptr()
     }
 
     /// Checks whether two `ExternalPtr`s refer to the same allocation (pointer identity).
@@ -707,9 +731,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// prefer `PartialEq`/`PartialOrd` or `as_ref()` for value comparisons.
     #[inline]
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
-        let a = unsafe { R_ExternalPtrAddr(this.sexp).cast::<()>().cast_const() };
-        let b = unsafe { R_ExternalPtrAddr(other.sexp).cast::<()>().cast_const() };
-        ptr::eq(a, b)
+        ptr::eq(this.cached_ptr.as_ptr().cast_const(), other.cached_ptr.as_ptr().cast_const())
     }
 
     // =========================================================================
@@ -883,6 +905,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         Some(Self {
             sexp,
+            // SAFETY: ptr was checked non-null above
+            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
             _marker: PhantomData,
         })
     }
@@ -930,6 +954,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         Some(Self {
             sexp,
+            // SAFETY: ptr was checked non-null above
+            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
             _marker: PhantomData,
         })
     }
@@ -976,6 +1002,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         Ok(Self {
             sexp,
+            // SAFETY: ptr was checked non-null above
+            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
             _marker: PhantomData,
         })
     }
@@ -988,8 +1016,11 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - The caller must ensure exclusive ownership
     #[inline]
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
+        let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         Self {
             sexp,
+            // SAFETY: caller guarantees sexp contains a valid *mut T
+            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
             _marker: PhantomData,
         }
     }
