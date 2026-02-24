@@ -287,4 +287,3 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.join("\n")
 }
-

@@ -39,6 +39,7 @@ mod core;
 mod iter;
 /// Helper macros for implementing ALTREP data traits.
 pub mod macros;
+mod stream;
 mod traits;
 
 pub(crate) use core::fill_region;
@@ -46,6 +47,7 @@ pub use core::{
     AltrepDataptr, AltrepExtractSubset, AltrepLen, AltrepSerialize, InferBase, Logical, Sortedness,
 };
 pub use iter::*;
+pub use stream::*;
 pub use traits::*;
 
 #[cfg(test)]

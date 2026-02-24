@@ -682,6 +682,8 @@ pub struct ListAccumulator<'a> {
     cap: usize,
     /// Reference to the scope for creating the final Root.
     scope: &'a ProtectScope,
+    /// Per-element names (None = unnamed, Some = named).
+    names: Vec<Option<String>>,
 }
 
 impl<'a> ListAccumulator<'a> {
@@ -704,6 +706,7 @@ impl<'a> ListAccumulator<'a> {
             len: 0,
             cap,
             scope,
+            names: Vec::new(),
         }
     }
 
@@ -729,6 +732,7 @@ impl<'a> ListAccumulator<'a> {
             ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
         }
 
+        self.names.push(None);
         self.len += 1;
     }
 
@@ -750,7 +754,68 @@ impl<'a> ListAccumulator<'a> {
             ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
         }
 
+        self.names.push(None);
         self.len += 1;
+    }
+
+    /// Push a named value onto the accumulator.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn push_named<T: IntoR>(&mut self, name: &str, value: T) {
+        // Grow if needed
+        if self.len >= self.cap {
+            unsafe { self.grow() };
+        }
+
+        let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
+
+        unsafe {
+            ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
+        }
+
+        self.names.push(Some(name.to_string()));
+        self.len += 1;
+    }
+
+    /// Push a value only if the condition is true.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn push_if<T: IntoR>(&mut self, condition: bool, value: T) {
+        if condition {
+            unsafe { self.push(value) };
+        }
+    }
+
+    /// Push a lazily-evaluated value only if the condition is true.
+    ///
+    /// The closure is only called if `condition` is true.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn push_if_with<T: IntoR>(&mut self, condition: bool, f: impl FnOnce() -> T) {
+        if condition {
+            unsafe { self.push(f()) };
+        }
+    }
+
+    /// Push all items from an iterator.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn extend_from<I, T>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = T>,
+        T: IntoR,
+    {
+        for item in iter {
+            unsafe { self.push(item) };
+        }
     }
 
     /// Grow the internal list by 2x.
@@ -806,8 +871,10 @@ impl<'a> ListAccumulator<'a> {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn into_root(self) -> Root<'a> {
+        let has_names = self.names.iter().any(|n| n.is_some());
+
         // If len < cap, we need to shrink the list
-        if self.len < self.cap {
+        let root = if self.len < self.cap {
             unsafe {
                 let shrunk = ffi::Rf_xlengthgets(self.list.get(), self.len as isize);
                 // The shrunk list might be the same or a new allocation
@@ -817,7 +884,27 @@ impl<'a> ListAccumulator<'a> {
         } else {
             // List is already the right size, create a Root without extra protection
             unsafe { self.scope.rooted(self.list.get()) }
+        };
+
+        if has_names {
+            unsafe {
+                // OwnedProtect handles Rf_protect/Rf_unprotect automatically.
+                // Rf_mkCharLenCE can allocate, so names_sexp must be protected.
+                let names_sexp = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, self.len as isize));
+                for (i, name) in self.names.iter().enumerate() {
+                    if let Some(n) = name {
+                        let charsxp =
+                            ffi::Rf_mkCharLenCE(n.as_ptr().cast(), n.len() as i32, ffi::CE_UTF8);
+                        ffi::SET_STRING_ELT(names_sexp.get(), i as isize, charsxp);
+                    } else {
+                        ffi::SET_STRING_ELT(names_sexp.get(), i as isize, ffi::R_BlankString);
+                    }
+                }
+                ffi::Rf_setAttrib(root.get(), ffi::R_NamesSymbol, names_sexp.get());
+            }
         }
+
+        root
     }
 
     /// Finalize and return the raw SEXP.

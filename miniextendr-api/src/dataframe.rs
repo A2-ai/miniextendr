@@ -125,8 +125,7 @@ impl DataFrameView {
         }
 
         // 2. Check it inherits from data.frame
-        let inherits =
-            unsafe { ffi::Rf_inherits(sexp, c"data.frame".as_ptr()) } != Rboolean::FALSE;
+        let inherits = unsafe { ffi::Rf_inherits(sexp, c"data.frame".as_ptr()) } != Rboolean::FALSE;
         if !inherits {
             return Err(DataFrameError::NotDataFrame);
         }
@@ -454,6 +453,164 @@ impl std::fmt::Debug for DataFrameView {
     }
 }
 
+// =============================================================================
+// LazyDataFrame - deferred column materialization
+// =============================================================================
+
+/// A column in a [`LazyDataFrame`] — either an already-materialized SEXP
+/// or a closure that produces one on demand.
+pub enum LazyColumn {
+    /// An already-materialized R vector.
+    ///
+    /// The caller must ensure the SEXP remains GC-protected for the lifetime
+    /// of the `LazyDataFrame` (e.g., via `ProtectScope` or `preserve`).
+    Eager(SEXP),
+    /// A closure that produces an R vector when called.
+    Deferred(Box<dyn Fn() -> SEXP>),
+}
+
+/// A data frame with deferred column materialization.
+///
+/// Columns can be added as either eager (pre-computed SEXP) or deferred
+/// (closure that produces SEXP on demand). All deferred columns are forced
+/// when the data frame is materialized into a [`DataFrameView`] or SEXP.
+///
+/// # Example
+///
+/// ```ignore
+/// let mut ldf = LazyDataFrame::new(100);
+/// ldf.push_eager("x", x_sexp);
+/// ldf.push_deferred("y", move || compute_y());
+/// let df = ldf.materialize();
+/// ```
+pub struct LazyDataFrame {
+    columns: Vec<LazyColumn>,
+    names: Vec<String>,
+    nrow: usize,
+}
+
+impl LazyDataFrame {
+    /// Create a new lazy data frame with the given row count.
+    pub fn new(nrow: usize) -> Self {
+        Self {
+            columns: Vec::new(),
+            names: Vec::new(),
+            nrow,
+        }
+    }
+
+    /// Add an eager (pre-computed) column.
+    pub fn push_eager(&mut self, name: impl Into<String>, sexp: SEXP) {
+        self.names.push(name.into());
+        self.columns.push(LazyColumn::Eager(sexp));
+    }
+
+    /// Add a deferred column that will be computed on materialization.
+    pub fn push_deferred(&mut self, name: impl Into<String>, f: impl Fn() -> SEXP + 'static) {
+        self.names.push(name.into());
+        self.columns.push(LazyColumn::Deferred(Box::new(f)));
+    }
+
+    /// Number of columns.
+    #[inline]
+    pub fn ncol(&self) -> usize {
+        self.columns.len()
+    }
+
+    /// Number of rows.
+    #[inline]
+    pub fn nrow(&self) -> usize {
+        self.nrow
+    }
+
+    /// Column names.
+    #[inline]
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    /// Materialize all columns and return a [`DataFrameView`].
+    ///
+    /// Forces all deferred columns by calling their closures,
+    /// then assembles the result into an R data.frame.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn materialize(self) -> DataFrameView {
+        let sexp = unsafe { self.build_sexp() };
+        // We just built this — it's a valid data.frame
+        DataFrameView::from_sexp(sexp).expect("LazyDataFrame produced invalid data.frame")
+    }
+
+    /// Materialize all columns and return the raw SEXP.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn into_sexp(self) -> SEXP {
+        unsafe { self.build_sexp() }
+    }
+
+    /// Build the data.frame SEXP.
+    unsafe fn build_sexp(self) -> SEXP {
+        let ncol = self.columns.len();
+
+        unsafe {
+            // Allocate the list
+            let list = ffi::Rf_allocVector(SEXPTYPE::VECSXP, ncol as isize);
+            ffi::Rf_protect(list);
+
+            // Force each column
+            for (i, col) in self.columns.into_iter().enumerate() {
+                let col_sexp = match col {
+                    LazyColumn::Eager(sexp) => sexp,
+                    LazyColumn::Deferred(f) => f(),
+                };
+                ffi::SET_VECTOR_ELT(list, i as isize, col_sexp);
+            }
+
+            // Set names
+            let names_sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, ncol as isize);
+            ffi::Rf_protect(names_sexp);
+            for (i, name) in self.names.iter().enumerate() {
+                let charsxp =
+                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
+                ffi::SET_STRING_ELT(names_sexp, i as isize, charsxp);
+            }
+            ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names_sexp);
+
+            // Set class = "data.frame"
+            let class_sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            ffi::Rf_protect(class_sexp);
+            let class_str = ffi::Rf_mkCharLenCE(
+                c"data.frame".as_ptr().cast(),
+                10, // len("data.frame")
+                ffi::CE_UTF8,
+            );
+            ffi::SET_STRING_ELT(class_sexp, 0, class_str);
+            ffi::Rf_setAttrib(list, ffi::R_ClassSymbol, class_sexp);
+
+            // Set compact row.names: c(NA_integer_, -nrow)
+            let row_names = ffi::Rf_allocVector(SEXPTYPE::INTSXP, 2);
+            ffi::Rf_protect(row_names);
+            let rn_ptr = ffi::INTEGER(row_names);
+            *rn_ptr = i32::MIN; // NA_integer_
+            *rn_ptr.add(1) = -(self.nrow as i32);
+            ffi::Rf_setAttrib(list, ffi::R_RowNamesSymbol, row_names);
+
+            ffi::Rf_unprotect(4); // list, names, class, row_names
+            list
+        }
+    }
+}
+
+impl IntoR for LazyDataFrame {
+    fn into_sexp(self) -> SEXP {
+        unsafe { LazyDataFrame::into_sexp(self) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,9 +628,6 @@ mod tests {
             column: "y".to_string(),
             actual: 5,
         };
-        assert_eq!(
-            err.to_string(),
-            "column \"y\" has length 5 (expected 3)"
-        );
+        assert_eq!(err.to_string(), "column \"y\" has length 5 (expected 3)");
     }
 }

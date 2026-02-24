@@ -731,7 +731,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// prefer `PartialEq`/`PartialOrd` or `as_ref()` for value comparisons.
     #[inline]
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
-        ptr::eq(this.cached_ptr.as_ptr().cast_const(), other.cached_ptr.as_ptr().cast_const())
+        ptr::eq(
+            this.cached_ptr.as_ptr().cast_const(),
+            other.cached_ptr.as_ptr().cast_const(),
+        )
     }
 
     // =========================================================================

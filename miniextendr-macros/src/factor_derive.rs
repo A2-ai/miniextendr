@@ -221,6 +221,23 @@ fn derive_simple_factor(
     let level_name_strs: Vec<&str> = level_names.iter().map(|s| s.as_str()).collect();
 
     Ok(quote! {
+        impl #impl_generics ::miniextendr_api::EnumChoices for #name #ty_generics #where_clause {
+            const CHOICES: &'static [&'static str] = &[#(#level_name_strs),*];
+
+            fn from_str(s: &str) -> Option<Self> {
+                match s {
+                    #(#level_name_strs => Some(Self::#variant_idents),)*
+                    _ => None,
+                }
+            }
+
+            fn to_str(self) -> &'static str {
+                match self {
+                    #(Self::#variant_idents => #level_name_strs,)*
+                }
+            }
+        }
+
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
             const LEVELS: &'static [&'static str] = &[#(#level_name_strs),*];
 
@@ -406,6 +423,19 @@ fn derive_interaction_factor(
                 i += 1;
             }
         };
+
+        impl #impl_generics ::miniextendr_api::EnumChoices for #name #ty_generics #where_clause {
+            const CHOICES: &'static [&'static str] = &[#(#combined_level_strs),*];
+
+            fn from_str(s: &str) -> Option<Self> {
+                let idx_1 = Self::CHOICES.iter().position(|&l| l == s).map(|i| i as i32 + 1)?;
+                <Self as ::miniextendr_api::RFactor>::from_level_index(idx_1)
+            }
+
+            fn to_str(self) -> &'static str {
+                Self::CHOICES[(<Self as ::miniextendr_api::RFactor>::to_level_index(self) - 1) as usize]
+            }
+        }
 
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
             const LEVELS: &'static [&'static str] = &[#(#combined_level_strs),*];

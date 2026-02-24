@@ -208,4 +208,3 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.join("\n")
 }
-
