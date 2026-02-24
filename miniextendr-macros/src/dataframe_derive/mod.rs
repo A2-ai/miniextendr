@@ -12,18 +12,18 @@ use syn::{Data, DeriveInput, Fields};
 // =============================================================================
 
 /// Parsed container-level `#[dataframe(...)]` attributes.
-struct DataFrameAttrs {
+pub(super) struct DataFrameAttrs {
     /// Custom companion type name (default: `{TypeName}DataFrame`).
-    name: Option<syn::Ident>,
+    pub(super) name: Option<syn::Ident>,
     /// Enum alignment mode — implicit for enums, accepted but not required.
-    align: bool,
+    pub(super) align: bool,
     /// Tag column name for variant discriminator (also supported on structs).
-    tag: Option<String>,
+    pub(super) tag: Option<String>,
     /// Emit rayon parallel fill path (only effective when `rayon` feature is enabled).
-    parallel: bool,
+    pub(super) parallel: bool,
     /// Conflict resolution mode for type collisions across enum variants.
     /// Currently only "string" is supported: convert conflicting fields via `ToString`.
-    conflicts: Option<String>,
+    pub(super) conflicts: Option<String>,
 }
 
 /// Parse container-level `#[dataframe(...)]` attributes.
@@ -127,21 +127,21 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
 
 /// Parsed field-level `#[dataframe(...)]` attributes.
 #[derive(Default)]
-struct FieldAttrs {
+pub(super) struct FieldAttrs {
     /// Omit this field from the DataFrame.
-    skip: bool,
+    pub(super) skip: bool,
     /// Custom column name.
-    rename: Option<String>,
+    pub(super) rename: Option<String>,
     /// Keep collection as single list column (suppress expansion).
     as_list: bool,
     /// Explicitly expand to suffixed columns.
     expand: bool,
     /// Pin expansion width for variable-length collections.
-    width: Option<usize>,
+    pub(super) width: Option<usize>,
 }
 
 /// Parse field-level `#[dataframe(...)]` attributes from a `syn::Field`.
-fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
+pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
     let mut attrs = FieldAttrs::default();
 
     for attr in &field.attrs {
@@ -203,7 +203,7 @@ fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
 // =============================================================================
 
 /// Classification of a field type for expansion purposes.
-enum FieldTypeKind<'a> {
+pub(super) enum FieldTypeKind<'a> {
     /// Single column (most types).
     Scalar,
     /// `[T; N]` — expands to N columns at compile time.
@@ -213,7 +213,7 @@ enum FieldTypeKind<'a> {
 }
 
 /// Classify a field type for DataFrame expansion.
-fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
+pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
     // Check for [T; N]
     if let syn::Type::Array(arr) = ty
         && let syn::Expr::Lit(syn::ExprLit {
@@ -981,25 +981,25 @@ fn derive_struct_dataframe(
 // =============================================================================
 
 /// A resolved column in the unified schema across all enum variants.
-struct ResolvedColumn {
+pub(super) struct ResolvedColumn {
     /// Column name in the companion struct / data frame.
-    col_name: syn::Ident,
+    pub(super) col_name: syn::Ident,
     /// Element type (used as `Vec<Option<#ty>>`).
     /// When `string_coerced` is true, this is always `String`.
-    ty: syn::Type,
+    pub(super) ty: syn::Type,
     /// Indices of variants that contain this field.
-    present_in: Vec<usize>,
+    pub(super) present_in: Vec<usize>,
     /// Whether this column was coerced to `String` due to type conflicts.
     /// When true, values are converted via `ToString::to_string()` at push time.
-    string_coerced: bool,
+    pub(super) string_coerced: bool,
 }
 
 /// Accumulates unique columns for an enum-to-dataframe schema.
-struct ColumnRegistry<'a> {
-    columns: Vec<ResolvedColumn>,
-    col_index: std::collections::HashMap<String, usize>,
-    coerce_to_string: bool,
-    string_ty: &'a syn::Type,
+pub(super) struct ColumnRegistry<'a> {
+    pub(super) columns: Vec<ResolvedColumn>,
+    pub(super) col_index: std::collections::HashMap<String, usize>,
+    pub(super) coerce_to_string: bool,
+    pub(super) string_ty: &'a syn::Type,
 }
 
 impl<'a> ColumnRegistry<'a> {
@@ -1056,7 +1056,7 @@ impl<'a> ColumnRegistry<'a> {
 
 /// Describes the shape of an enum variant's fields.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum VariantShape {
+pub(super) enum VariantShape {
     /// `Variant { field: Type, ... }`
     Named,
     /// `Variant(Type, ...)`
@@ -1066,7 +1066,7 @@ enum VariantShape {
 }
 
 /// A resolved enum field — either a single column or expanded from an array/Vec.
-enum EnumResolvedField {
+pub(super) enum EnumResolvedField {
     /// Single column contribution.
     Single {
         /// Column name in the schema.
@@ -1107,774 +1107,20 @@ enum EnumResolvedField {
 }
 
 /// Parsed information about an enum variant.
-struct VariantInfo {
+pub(super) struct VariantInfo {
     /// Variant name.
-    name: syn::Ident,
+    pub(super) name: syn::Ident,
     /// Shape of this variant.
-    shape: VariantShape,
+    pub(super) shape: VariantShape,
     /// Resolved fields (after applying field attrs + type classification).
-    fields: Vec<EnumResolvedField>,
+    pub(super) fields: Vec<EnumResolvedField>,
     /// Original Rust field names (for named variants) — needed for skipped fields in destructure.
-    skipped_fields: Vec<syn::Ident>,
-}
-
-/// Derive `DataFrameRow` for an enum with `#[dataframe(align)]`.
-///
-/// Generates a companion struct where every column is `Vec<Option<T>>`, with
-/// `None` fill for fields absent in a given variant.
-fn derive_enum_dataframe(
-    row_name: &syn::Ident,
-    _input: &DeriveInput,
-    data: &syn::DataEnum,
-    df_name: &syn::Ident,
-    attrs: &DataFrameAttrs,
-) -> syn::Result<TokenStream> {
-    // ── Validate variants ────────────────────────────────────────────────
-    if data.variants.is_empty() {
-        return Err(syn::Error::new_spanned(
-            row_name,
-            "DataFrameRow requires at least one variant",
-        ));
-    }
-
-    let mut variant_infos: Vec<VariantInfo> = Vec::new();
-
-    for variant in &data.variants {
-        match &variant.fields {
-            Fields::Named(fields) => {
-                let mut resolved = Vec::new();
-                let mut skipped = Vec::new();
-                for f in &fields.named {
-                    let fa = parse_field_attrs(f)?;
-                    let rust_name = f.ident.as_ref().unwrap().clone();
-                    if fa.skip {
-                        skipped.push(rust_name);
-                        continue;
-                    }
-                    let col_name_str = fa.rename.unwrap_or_else(|| rust_name.to_string());
-                    let binding = format_ident!("__v_{}", rust_name);
-
-                    if fa.as_list {
-                        resolved.push(EnumResolvedField::Single {
-                            col_name: format_ident!("{}", col_name_str),
-                            binding: binding.clone(),
-                            rust_name: rust_name.clone(),
-                            ty: f.ty.clone(),
-                        });
-                    } else {
-                        match classify_field_type(&f.ty) {
-                            FieldTypeKind::FixedArray(elem_ty, len) => {
-                                resolved.push(EnumResolvedField::ExpandedFixed {
-                                    base_name: col_name_str,
-                                    binding: binding.clone(),
-                                    rust_name: rust_name.clone(),
-                                    elem_ty: elem_ty.clone(),
-                                    len,
-                                });
-                            }
-                            FieldTypeKind::VariableVec(elem_ty) => {
-                                if let Some(width) = fa.width {
-                                    resolved.push(EnumResolvedField::ExpandedVec {
-                                        base_name: col_name_str,
-                                        binding: binding.clone(),
-                                        rust_name: rust_name.clone(),
-                                        elem_ty: elem_ty.clone(),
-                                        width,
-                                    });
-                                } else if fa.expand {
-                                    return Err(syn::Error::new_spanned(
-                                        &f.ty,
-                                        "`expand` on Vec<T> requires `width = N`",
-                                    ));
-                                } else {
-                                    resolved.push(EnumResolvedField::Single {
-                                        col_name: format_ident!("{}", col_name_str),
-                                        binding: binding.clone(),
-                                        rust_name: rust_name.clone(),
-                                        ty: f.ty.clone(),
-                                    });
-                                }
-                            }
-                            FieldTypeKind::Scalar => {
-                                if fa.width.is_some() {
-                                    return Err(syn::Error::new_spanned(
-                                        &f.ty,
-                                        "`width` is only valid on `Vec<T>` fields",
-                                    ));
-                                }
-                                if fa.expand {
-                                    return Err(syn::Error::new_spanned(
-                                        &f.ty,
-                                        "`expand` is only valid on `[T; N]` or `Vec<T>` fields",
-                                    ));
-                                }
-                                resolved.push(EnumResolvedField::Single {
-                                    col_name: format_ident!("{}", col_name_str),
-                                    binding: binding.clone(),
-                                    rust_name: rust_name.clone(),
-                                    ty: f.ty.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-                variant_infos.push(VariantInfo {
-                    name: variant.ident.clone(),
-                    shape: VariantShape::Named,
-                    fields: resolved,
-                    skipped_fields: skipped,
-                });
-            }
-            Fields::Unnamed(fields) => {
-                let mut resolved = Vec::new();
-                for (i, f) in fields.unnamed.iter().enumerate() {
-                    let fa = parse_field_attrs(f)?;
-                    let rust_name = format_ident!("_{}", i);
-                    if fa.skip {
-                        continue;
-                    }
-                    let col_name_str = fa.rename.unwrap_or_else(|| rust_name.to_string());
-                    let binding = format_ident!("__v_{}", rust_name);
-
-                    // Tuple enum fields: same expansion logic
-                    if fa.as_list {
-                        resolved.push(EnumResolvedField::Single {
-                            col_name: format_ident!("{}", col_name_str),
-                            binding,
-                            rust_name,
-                            ty: f.ty.clone(),
-                        });
-                    } else {
-                        match classify_field_type(&f.ty) {
-                            FieldTypeKind::FixedArray(elem_ty, len) => {
-                                resolved.push(EnumResolvedField::ExpandedFixed {
-                                    base_name: col_name_str,
-                                    binding,
-                                    rust_name,
-                                    elem_ty: elem_ty.clone(),
-                                    len,
-                                });
-                            }
-                            FieldTypeKind::VariableVec(elem_ty) => {
-                                if let Some(width) = fa.width {
-                                    resolved.push(EnumResolvedField::ExpandedVec {
-                                        base_name: col_name_str,
-                                        binding,
-                                        rust_name,
-                                        elem_ty: elem_ty.clone(),
-                                        width,
-                                    });
-                                } else {
-                                    resolved.push(EnumResolvedField::Single {
-                                        col_name: format_ident!("{}", col_name_str),
-                                        binding,
-                                        rust_name,
-                                        ty: f.ty.clone(),
-                                    });
-                                }
-                            }
-                            FieldTypeKind::Scalar => {
-                                resolved.push(EnumResolvedField::Single {
-                                    col_name: format_ident!("{}", col_name_str),
-                                    binding,
-                                    rust_name,
-                                    ty: f.ty.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-                variant_infos.push(VariantInfo {
-                    name: variant.ident.clone(),
-                    shape: VariantShape::Tuple,
-                    fields: resolved,
-                    skipped_fields: vec![],
-                });
-            }
-            Fields::Unit => {
-                variant_infos.push(VariantInfo {
-                    name: variant.ident.clone(),
-                    shape: VariantShape::Unit,
-                    fields: vec![],
-                    skipped_fields: vec![],
-                });
-            }
-        }
-    }
-
-    // ── Resolve unified schema ───────────────────────────────────────────
-    // Collect all unique column names, check type consistency.
-    // Expanded fields contribute multiple columns to the schema.
-    let coerce_to_string = attrs.conflicts.as_deref() == Some("string");
-    let string_ty: syn::Type = syn::parse_quote!(String);
-    let mut registry = ColumnRegistry::new(coerce_to_string, &string_ty);
-
-    for (variant_idx, vi) in variant_infos.iter().enumerate() {
-        for erf in &vi.fields {
-            // Use the rust_name span for error reporting
-            let err_span = match erf {
-                EnumResolvedField::Single { rust_name, .. }
-                | EnumResolvedField::ExpandedFixed { rust_name, .. }
-                | EnumResolvedField::ExpandedVec { rust_name, .. } => rust_name.span(),
-            };
-            match erf {
-                EnumResolvedField::Single { col_name, ty, .. } => {
-                    registry.register(
-                        &col_name.to_string(),
-                        ty,
-                        variant_idx,
-                        &vi.name,
-                        err_span,
-                    )?;
-                }
-                EnumResolvedField::ExpandedFixed {
-                    base_name,
-                    elem_ty,
-                    len,
-                    ..
-                } => {
-                    for i in 1..=*len {
-                        let name = format!("{}_{}", base_name, i);
-                        registry.register(&name, elem_ty, variant_idx, &vi.name, err_span)?;
-                    }
-                }
-                EnumResolvedField::ExpandedVec {
-                    base_name,
-                    elem_ty,
-                    width,
-                    ..
-                } => {
-                    for i in 1..=*width {
-                        let name = format!("{}_{}", base_name, i);
-                        registry.register(&name, elem_ty, variant_idx, &vi.name, err_span)?;
-                    }
-                }
-            }
-        }
-    }
-    let columns = registry.columns;
-
-    // ── Generate companion struct ────────────────────────────────────────
-    let has_tag = attrs.tag.is_some();
-
-    let tag_field = if has_tag {
-        quote! { pub _tag: Vec<String>, }
-    } else {
-        TokenStream::new()
-    };
-
-    let df_fields: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let ty = &col.ty;
-            quote! { pub #name: Vec<Option<#ty>> }
-        })
-        .collect();
-
-    let dataframe_struct = quote! {
-        #[derive(Debug, Clone)]
-        pub struct #df_name {
-            #tag_field
-            #(#df_fields),*
-        }
-    };
-
-    // ── Generate IntoDataFrame ───────────────────────────────────────────
-    // The first "real" column for length reference. If tag exists, use _tag.
-    let length_ref = if has_tag {
-        quote! { self._tag.len() }
-    } else if let Some(first_col) = columns.first() {
-        let first = &first_col.col_name;
-        quote! { self.#first.len() }
-    } else {
-        // No columns and no tag — degenerate case, length is 0
-        quote! { 0usize }
-    };
-
-    let tag_pair = if let Some(ref tag_name) = attrs.tag {
-        quote! { (#tag_name, ::miniextendr_api::IntoR::into_sexp(self._tag)), }
-    } else {
-        TokenStream::new()
-    };
-
-    let col_pairs: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let name_str = name.to_string();
-            quote! { (#name_str, ::miniextendr_api::IntoR::into_sexp(self.#name)) }
-        })
-        .collect();
-
-    // Length checks for all columns
-    let length_checks: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let name_str = name.to_string();
-            quote! {
-                assert!(
-                    self.#name.len() == _n_rows,
-                    "column length mismatch in {}: column `{}` has length {} but expected {}",
-                    stringify!(#df_name),
-                    #name_str,
-                    self.#name.len(),
-                    _n_rows,
-                );
-            }
-        })
-        .collect();
-
-    let into_dataframe_impl = quote! {
-        impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
-            fn into_data_frame(self) -> ::miniextendr_api::List {
-                let _n_rows = #length_ref;
-                #(#length_checks)*
-                ::miniextendr_api::list::List::from_raw_pairs(vec![
-                    #tag_pair
-                    #(#col_pairs),*
-                ])
-                .set_class_str(&["data.frame"])
-                .set_row_names_int(_n_rows)
-            }
-        }
-    };
-
-    // ── Generate From<Vec<Enum>> ─────────────────────────────────────────
-    let col_vec_inits: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let ty = &col.ty;
-            quote! { let mut #name: Vec<Option<#ty>> = Vec::with_capacity(len); }
-        })
-        .collect();
-
-    let tag_init = if has_tag {
-        quote! { let mut _tag: Vec<String> = Vec::with_capacity(len); }
-    } else {
-        TokenStream::new()
-    };
-
-    // Build match arms for each variant
-    let match_arms: Vec<TokenStream> = variant_infos
-        .iter()
-        .enumerate()
-        .map(|(variant_idx, vi)| {
-            let variant_name = &vi.name;
-            let variant_name_str = variant_name.to_string();
-
-            let tag_push = if has_tag {
-                quote! { _tag.push(#variant_name_str.to_string()); }
-            } else {
-                TokenStream::new()
-            };
-
-            // Build push statements for each schema column.
-            // For present columns: push Some(value), for absent: push None.
-            // Expanded fields contribute multiple columns from one binding.
-
-            // First, build a map of which schema columns this variant contributes to.
-            let col_pushes: Vec<TokenStream> = columns
-                .iter()
-                .map(|col| {
-                    let col_name = &col.col_name;
-                    if col.present_in.contains(&variant_idx) {
-                        // Find the binding for this column.
-                        // For single fields: binding matches col_name directly.
-                        // For expanded fields: binding is the array/vec, index by suffix.
-                        let col_name_str = col_name.to_string();
-
-                        // Search resolved fields for the source of this column
-                        for erf in &vi.fields {
-                            match erf {
-                                EnumResolvedField::Single { col_name: fc, binding, .. }
-                                    if fc == col_name =>
-                                {
-                                    if col.string_coerced {
-                                        return quote! { #col_name.push(Some(ToString::to_string(&#binding))); };
-                                    } else {
-                                        return quote! { #col_name.push(Some(#binding)); };
-                                    }
-                                }
-                                EnumResolvedField::ExpandedFixed { base_name, binding, len, .. } => {
-                                    for i in 1..=*len {
-                                        let expanded_name = format!("{}_{}", base_name, i);
-                                        if expanded_name == col_name_str {
-                                            let idx = syn::Index::from(i - 1);
-                                            return quote! { #col_name.push(Some(#binding[#idx])); };
-                                        }
-                                    }
-                                }
-                                EnumResolvedField::ExpandedVec { base_name, binding, width, .. } => {
-                                    for i in 1..=*width {
-                                        let expanded_name = format!("{}_{}", base_name, i);
-                                        if expanded_name == col_name_str {
-                                            let get_idx = i - 1;
-                                            return quote! { #col_name.push(#binding.get(#get_idx).cloned()); };
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        // Shouldn't reach here if schema is correct
-                        quote! { #col_name.push(None); }
-                    } else {
-                        quote! { #col_name.push(None); }
-                    }
-                })
-                .collect();
-
-            // Generate destructure pattern based on variant shape
-            match vi.shape {
-                VariantShape::Named => {
-                    let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let (rust_name, binding) = match erf {
-                            EnumResolvedField::Single { rust_name, binding, .. }
-                            | EnumResolvedField::ExpandedFixed { rust_name, binding, .. }
-                            | EnumResolvedField::ExpandedVec { rust_name, binding, .. } => {
-                                (rust_name, binding)
-                            }
-                        };
-                        quote! { #rust_name: #binding }
-                    }).collect();
-                    // Add skipped fields as wildcard bindings
-                    for skipped in &vi.skipped_fields {
-                        field_bindings.push(quote! { #skipped: _ });
-                    }
-                    quote! {
-                        #row_name::#variant_name { #(#field_bindings),* } => {
-                            #tag_push
-                            #(#col_pushes)*
-                        }
-                    }
-                }
-                VariantShape::Tuple => {
-                    let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let binding = match erf {
-                            EnumResolvedField::Single { binding, .. }
-                            | EnumResolvedField::ExpandedFixed { binding, .. }
-                            | EnumResolvedField::ExpandedVec { binding, .. } => binding,
-                        };
-                        quote! { #binding }
-                    }).collect();
-                    quote! {
-                        #row_name::#variant_name(#(#field_bindings),*) => {
-                            #tag_push
-                            #(#col_pushes)*
-                        }
-                    }
-                }
-                VariantShape::Unit => {
-                    quote! {
-                        #row_name::#variant_name => {
-                            #tag_push
-                            #(#col_pushes)*
-                        }
-                    }
-                }
-            }
-        })
-        .collect();
-
-    let tag_struct_field = if has_tag {
-        quote! { _tag, }
-    } else {
-        TokenStream::new()
-    };
-
-    let col_struct_fields: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            quote! { #name }
-        })
-        .collect();
-
-    // Skip parallel path when non-named variants or expansion is present
-    let has_non_named = variant_infos
-        .iter()
-        .any(|vi| vi.shape != VariantShape::Named);
-    let has_enum_expansion = variant_infos.iter().any(|vi| {
-        vi.fields
-            .iter()
-            .any(|erf| !matches!(erf, EnumResolvedField::Single { .. }))
-    });
-    let parallel_block = if attrs.parallel && !has_non_named && !has_enum_expansion {
-        // Convert to old-style variant_infos for parallel gen (only named, non-expanded variants)
-        let old_variant_infos: Vec<(&syn::Ident, Vec<(&syn::Ident, &syn::Type)>)> = variant_infos
-            .iter()
-            .map(|vi| {
-                let fields: Vec<_> = vi
-                    .fields
-                    .iter()
-                    .filter_map(|erf| {
-                        if let EnumResolvedField::Single { rust_name, ty, .. } = erf {
-                            Some((rust_name, ty))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                (&vi.name, fields)
-            })
-            .collect();
-        gen_parallel_enum_from(row_name, df_name, &columns, &old_variant_infos, has_tag)
-    } else {
-        TokenStream::new()
-    };
-
-    let from_vec_impl = quote! {
-        impl From<Vec<#row_name>> for #df_name {
-            fn from(rows: Vec<#row_name>) -> Self {
-                let len = rows.len();
-                #parallel_block
-                #tag_init
-                #(#col_vec_inits)*
-                for row in rows {
-                    match row {
-                        #(#match_arms)*
-                    }
-                }
-                #df_name {
-                    #tag_struct_field
-                    #(#col_struct_fields),*
-                }
-            }
-        }
-    };
-
-    // ── Generate associated methods ──────────────────────────────────────
-    let row_methods = quote! {
-        impl #row_name {
-            /// Name of the generated DataFrame companion type.
-            pub const DATAFRAME_TYPE_NAME: &'static str = stringify!(#df_name);
-
-            /// Convert a vector of enum rows into the companion DataFrame type.
-            ///
-            /// Fields present in a variant get `Some(value)`, absent fields get `None` (→ NA in R).
-            pub fn to_dataframe(rows: Vec<Self>) -> #df_name {
-                rows.into()
-            }
-        }
-    };
-
-    // No IntoList assertion for align enums — they go through the companion struct path,
-    // not the `DataFrame<T>` path, so IntoList is not required.
-
-    Ok(quote! {
-        #dataframe_struct
-        #into_dataframe_impl
-        #from_vec_impl
-        #row_methods
-    })
+    pub(super) skipped_fields: Vec<syn::Ident>,
 }
 
 // =============================================================================
-// Parallel fill codegen (rayon feature-gated)
+// Enum-specific expansion (in sub-module)
 // =============================================================================
 
-/// Generate a `#[cfg(feature = "rayon")]` block that does parallel scatter-write
-/// for struct DataFrameRow, returning early if above threshold.
-fn gen_parallel_struct_from(
-    _row_name: &syn::Ident,
-    df_name: &syn::Ident,
-    field_info: &[(&syn::Ident, &syn::Type)],
-) -> TokenStream {
-    // Column declarations: `let mut field: Vec<Type> = Vec::with_capacity(len);`
-    let par_col_decls: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, ty)| {
-            quote! {
-                let mut #name: Vec<#ty> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
-            }
-        })
-        .collect();
-
-    // Writer declarations: `let w_field = unsafe { ColumnWriter::new(&mut field) };`
-    let writer_decls: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, _ty)| {
-            let w_name = format_ident!("__w_{}", name);
-            quote! {
-                let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
-                };
-            }
-        })
-        .collect();
-
-    // Write calls inside for_each: `w_field.write(i, row.field);`
-    let write_calls: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, _ty)| {
-            let w_name = format_ident!("__w_{}", name);
-            quote! { #w_name.write(__i, __row.#name); }
-        })
-        .collect();
-
-    // Struct fields for return
-    let struct_fields: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, _ty)| quote! { #name })
-        .collect();
-
-    quote! {
-        #[cfg(feature = "rayon")]
-        {
-            #[allow(clippy::uninit_vec)]
-            if len >= ::miniextendr_api::rayon_bridge::PARALLEL_FILL_THRESHOLD {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                #(#par_col_decls)*
-                {
-                    #(#writer_decls)*
-                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                        #(#write_calls)*
-                    });
-                }
-                return #df_name { #(#struct_fields),* };
-            }
-        }
-    }
-}
-
-/// Generate a `#[cfg(feature = "rayon")]` block that does parallel scatter-write
-/// for enum DataFrameRow, returning early if above threshold.
-fn gen_parallel_enum_from(
-    row_name: &syn::Ident,
-    df_name: &syn::Ident,
-    columns: &[ResolvedColumn],
-    variant_infos: &[(&syn::Ident, Vec<(&syn::Ident, &syn::Type)>)],
-    has_tag: bool,
-) -> TokenStream {
-    // Tag column declaration
-    let tag_decl = if has_tag {
-        quote! {
-            let mut _tag: Vec<String> = Vec::with_capacity(len);
-            unsafe { _tag.set_len(len); }
-        }
-    } else {
-        TokenStream::new()
-    };
-
-    // Column declarations with Option<T>
-    let par_col_decls: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let ty = &col.ty;
-            quote! {
-                let mut #name: Vec<Option<#ty>> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
-            }
-        })
-        .collect();
-
-    // Tag writer
-    let tag_writer_decl = if has_tag {
-        quote! {
-            let __w_tag = unsafe {
-                ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut _tag)
-            };
-        }
-    } else {
-        TokenStream::new()
-    };
-
-    // Column writers
-    let writer_decls: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let w_name = format_ident!("__w_{}", name);
-            quote! {
-                let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
-                };
-            }
-        })
-        .collect();
-
-    // Match arms for parallel path
-    let par_match_arms: Vec<TokenStream> = variant_infos
-        .iter()
-        .enumerate()
-        .map(|(variant_idx, (variant_name, fields))| {
-            let variant_name_str = variant_name.to_string();
-
-            let field_bindings: Vec<TokenStream> = fields
-                .iter()
-                .map(|(fname, _)| {
-                    let binding = format_ident!("__v_{}", fname);
-                    quote! { #fname: #binding }
-                })
-                .collect();
-
-            let tag_write = if has_tag {
-                quote! { __w_tag.write(__i, #variant_name_str.to_string()); }
-            } else {
-                TokenStream::new()
-            };
-
-            let col_writes: Vec<TokenStream> = columns
-                .iter()
-                .map(|col| {
-                    let w_name = format_ident!("__w_{}", col.col_name);
-                    if col.present_in.contains(&variant_idx) {
-                        let binding = format_ident!("__v_{}", col.col_name);
-                        quote! { #w_name.write(__i, Some(#binding)); }
-                    } else {
-                        quote! { #w_name.write(__i, None); }
-                    }
-                })
-                .collect();
-
-            quote! {
-                #row_name::#variant_name { #(#field_bindings),* } => {
-                    #tag_write
-                    #(#col_writes)*
-                }
-            }
-        })
-        .collect();
-
-    // Return struct fields
-    let tag_field = if has_tag {
-        quote! { _tag, }
-    } else {
-        TokenStream::new()
-    };
-
-    let struct_fields: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            quote! { #name }
-        })
-        .collect();
-
-    quote! {
-        #[cfg(feature = "rayon")]
-        {
-            #[allow(clippy::uninit_vec)]
-            if len >= ::miniextendr_api::rayon_bridge::PARALLEL_FILL_THRESHOLD {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                #tag_decl
-                #(#par_col_decls)*
-                {
-                    #tag_writer_decl
-                    #(#writer_decls)*
-                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                        match __row {
-                            #(#par_match_arms)*
-                        }
-                    });
-                }
-                return #df_name { #tag_field #(#struct_fields),* };
-            }
-        }
-    }
-}
+mod enum_expansion;
+use enum_expansion::{derive_enum_dataframe, gen_parallel_struct_from};
