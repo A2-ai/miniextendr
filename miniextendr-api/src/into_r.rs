@@ -1326,11 +1326,8 @@ fn str_iter_to_strsxp<'a>(iter: impl ExactSizeIterator<Item = &'a str>) -> crate
             n as crate::ffi::R_xlen_t,
         ));
         for (i, s) in iter.enumerate() {
-            let charsxp = crate::ffi::Rf_mkCharLenCE(
-                s.as_ptr().cast(),
-                s.len() as i32,
-                crate::ffi::CE_UTF8,
-            );
+            let charsxp =
+                crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, crate::ffi::CE_UTF8);
             crate::ffi::SET_STRING_ELT(*sexp, i as crate::ffi::R_xlen_t, charsxp);
         }
         *sexp
@@ -2226,7 +2223,8 @@ impl<T: crate::ffi::RNativeType> IntoR for Vec<std::collections::BTreeSet<T>> {
 /// Convert `Vec<HashSet<String>>` to R list of character vectors.
 impl IntoR for Vec<std::collections::HashSet<String>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
-        let converted: Vec<Vec<String>> = self.into_iter().map(|s| s.into_iter().collect()).collect();
+        let converted: Vec<Vec<String>> =
+            self.into_iter().map(|s| s.into_iter().collect()).collect();
         vec_of_into_r_to_list(converted)
     }
 }
@@ -2234,7 +2232,8 @@ impl IntoR for Vec<std::collections::HashSet<String>> {
 /// Convert `Vec<BTreeSet<String>>` to R list of character vectors.
 impl IntoR for Vec<std::collections::BTreeSet<String>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
-        let converted: Vec<Vec<String>> = self.into_iter().map(|s| s.into_iter().collect()).collect();
+        let converted: Vec<Vec<String>> =
+            self.into_iter().map(|s| s.into_iter().collect()).collect();
         vec_of_into_r_to_list(converted)
     }
 }

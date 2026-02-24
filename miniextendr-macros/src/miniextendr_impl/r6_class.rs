@@ -388,4 +388,3 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.join("\n")
 }
-

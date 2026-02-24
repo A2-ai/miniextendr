@@ -253,6 +253,13 @@ pub use altrep_data::{
     IterStringData,
     Logical,
     Sortedness,
+    // Streaming ALTREP types (chunk-cached reader closures)
+    StreamingIntData,
+    StreamingRealData,
+    // Windowed iterator-backed ALTREP types
+    WindowedIterIntData,
+    WindowedIterRealData,
+    WindowedIterState,
 };
 // Re-export RBase enum and AltrepGuard
 pub use altrep::RBase;
@@ -406,7 +413,7 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 
 // Runtime wrapper for R data.frame objects
 pub mod dataframe;
-pub use dataframe::{DataFrameError, DataFrameView};
+pub use dataframe::{DataFrameError, DataFrameView, LazyColumn, LazyDataFrame};
 
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
@@ -891,6 +898,14 @@ pub use raw_conversions::{
     Pod, Raw, RawError, RawHeader, RawSlice, RawSliceTagged, RawTagged, Zeroable, raw_from_bytes,
     raw_slice_from_bytes, raw_slice_to_bytes, raw_to_bytes,
 };
+
+/// Unified trait for enum types with string-based choice sets.
+///
+/// Both [`RFactor`] and [`MatchArg`] represent enums with a fixed set of string
+/// labels. [`EnumChoices`] extracts the common interface so generic code can
+/// operate on either.
+pub mod enum_choices;
+pub use enum_choices::EnumChoices;
 
 /// `match.arg`-style string conversion for enums.
 ///
