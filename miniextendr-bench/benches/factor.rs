@@ -9,7 +9,7 @@
 
 use miniextendr_api::factor::{build_factor, build_levels_sexp};
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{FactorVec, IntoR, RFactor};
+use miniextendr_api::{EnumChoices, FactorVec, IntoR, RFactor};
 
 fn main() {
     miniextendr_bench::init();
@@ -46,6 +46,39 @@ pub enum ColorUncached {
     Magenta,
     White,
     Black,
+}
+
+impl EnumChoices for ColorUncached {
+    const CHOICES: &'static [&'static str] = &[
+        "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta", "White", "Black",
+    ];
+
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "Red" => Some(Self::Red),
+            "Green" => Some(Self::Green),
+            "Blue" => Some(Self::Blue),
+            "Yellow" => Some(Self::Yellow),
+            "Cyan" => Some(Self::Cyan),
+            "Magenta" => Some(Self::Magenta),
+            "White" => Some(Self::White),
+            "Black" => Some(Self::Black),
+            _ => None,
+        }
+    }
+
+    fn to_str(self) -> &'static str {
+        match self {
+            Self::Red => "Red",
+            Self::Green => "Green",
+            Self::Blue => "Blue",
+            Self::Yellow => "Yellow",
+            Self::Cyan => "Cyan",
+            Self::Magenta => "Magenta",
+            Self::White => "White",
+            Self::Black => "Black",
+        }
+    }
 }
 
 impl RFactor for ColorUncached {
