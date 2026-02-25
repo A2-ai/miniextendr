@@ -206,8 +206,8 @@ pub use miniextendr_macros::Vctrs;
 // but they're in different namespaces (derive macros vs types/traits), same as RFactor.
 #[doc(inline)]
 pub use miniextendr_macros::{
-    AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    DataFrameRow, IntoList, MatchArg, PreferDataFrame, PreferExternalPtr, PreferList,
+    Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
+    AltrepString, DataFrameRow, IntoList, MatchArg, PreferDataFrame, PreferExternalPtr, PreferList,
     PreferRNativeType, RFactor, TryFromList,
 };
 

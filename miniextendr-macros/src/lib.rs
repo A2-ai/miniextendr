@@ -232,6 +232,9 @@ mod typed_external_macro;
 mod factor_derive;
 mod match_arg_derive;
 
+// Struct/enum dispatch for #[miniextendr] on structs and enums
+mod struct_enum_dispatch;
+
 // vctrs support
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
@@ -631,8 +634,8 @@ pub fn miniextendr(
         // Delegate to trait ABI generator
         return miniextendr_trait::expand_trait(attr, item);
     } else {
-        // Delegate to ALTREP path (structs/enums)
-        return altrep::expand_altrep_struct(attr, item);
+        // Delegate to struct/enum dispatch (handles ALTREP, ExternalPtr, list, dataframe, factor, match_arg)
+        return struct_enum_dispatch::expand_struct_or_enum(attr, item);
     }
 
     let MiniextendrFnAttrs {
@@ -2925,6 +2928,31 @@ pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::Toke
 pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_list(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive ALTREP class registration for a 1-field wrapper struct.
+///
+/// Generates `AltrepClass`, `RegisterAltrep`, `IntoR`, `TryFromSexp` (Ref/Mut),
+/// and `From` implementations — the same output as `#[miniextendr]` on a 1-field struct.
+///
+/// # Attributes
+///
+/// - `#[altrep_derive_opts(class = "ClassName")]` — custom ALTREP class name (defaults to struct name)
+/// - `#[altrep_derive_opts(base = "Int")]` — explicit base type (Int|Real|Logical|Raw|String|List|Complex)
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(Altrep)]
+/// #[altrep_derive_opts(base = "Int")]
+/// struct MyInts(Vec<i32>);
+/// ```
+#[proc_macro_derive(Altrep, attributes(altrep_derive_opts))]
+pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep::derive_altrep(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
