@@ -264,7 +264,7 @@ fn derive_simple_factor(
                         <Self as ::miniextendr_api::RFactor>::LEVELS
                     )
                 });
-                ::miniextendr_api::build_factor(&[self.to_level_index()], levels)
+                ::miniextendr_api::build_factor(&[<Self as ::miniextendr_api::RFactor>::to_level_index(self)], levels)
             }
         }
 
@@ -463,7 +463,7 @@ fn derive_interaction_factor(
                         <Self as ::miniextendr_api::RFactor>::LEVELS
                     )
                 });
-                ::miniextendr_api::build_factor(&[self.to_level_index()], levels)
+                ::miniextendr_api::build_factor(&[<Self as ::miniextendr_api::RFactor>::to_level_index(self)], levels)
             }
         }
 

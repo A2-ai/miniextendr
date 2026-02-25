@@ -106,6 +106,18 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 - [x] Connection & progress bar guides — `docs/CONNECTIONS.md` + `docs/PROGRESS.md`
 - [x] Intermediate minirextendr vignettes — `adding-rust-functions.Rmd` + `altrep-quick-start.Rmd`
 
+== Macro Consolidation
+
+Make both `#[miniextendr]` and derive paths available for every feature.
+
+- [x] `#[miniextendr]` on multi-field struct → ExternalPtr
+- [x] `#[miniextendr(list)]` on struct → IntoList + TryFromList + PreferList
+- [x] `#[miniextendr(dataframe)]` on struct → IntoList + DataFrameRow + IntoR on companion
+- [x] `#[miniextendr]` on fieldless enum → RFactor
+- [x] `#[miniextendr(match_arg)]` on fieldless enum → MatchArg
+- [x] `#[miniextendr(prefer = "...")]` on struct → Prefer\* markers
+- [x] `#[derive(Altrep)]` on 1-field struct → ALTREP registration
+
 == Low Priority / Nice to Have
 
 - [x] `miniextendr.yml` config file support — `mx_config()` + `mx_config_defaults()`
