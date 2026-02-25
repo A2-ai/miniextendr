@@ -11,9 +11,9 @@ use syn::Item;
 use syn::spanned::Spanned;
 
 use crate::helpers::{
-    extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_external_ptr_derive,
-    has_miniextendr_attr, impl_type_name, is_miniextendr_module_macro,
-    parse_miniextendr_impl_attrs, should_skip_dir,
+    extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_altrep_derive,
+    has_external_ptr_derive, has_miniextendr_attr, impl_type_name, is_altrep_struct,
+    is_miniextendr_module_macro, parse_miniextendr_impl_attrs, should_skip_dir,
 };
 
 // ── Lint item types ─────────────────────────────────────────────────────────
@@ -402,7 +402,15 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 }
             }
             Item::Struct(item_struct) => {
-                if has_miniextendr_attr(&item_struct.attrs) {
+                // Only 1-field structs without explicit mode attrs are ALTREP
+                // (need `struct Name;` in miniextendr_module!). Multi-field structs
+                // and structs with list/dataframe/externalptr attrs generate derives
+                // that don't need module entries.
+                // ALTREP structs via #[miniextendr] or #[derive(Altrep)]
+                let is_miniextendr_altrep =
+                    has_miniextendr_attr(&item_struct.attrs) && is_altrep_struct(item_struct);
+                let is_derive_altrep = has_altrep_derive(&item_struct.attrs);
+                if is_miniextendr_altrep || is_derive_altrep {
                     let line = item_struct.ident.span().start().line;
                     data.miniextendr_items.push(LintItem::new(
                         LintKind::Struct,
