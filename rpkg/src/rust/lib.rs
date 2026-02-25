@@ -131,6 +131,7 @@ mod indexmap_adapter_tests;
 mod interrupt_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
+mod macro_equivalence;
 mod match_arg_tests;
 mod misc_tests;
 #[cfg(feature = "nalgebra")]
@@ -1834,6 +1835,7 @@ miniextendr_module! {
     #[cfg(feature = "nonapi")]
     use nonapi;
     use factor_tests;
+    use macro_equivalence;
     use match_arg_tests;
     #[cfg(feature = "vctrs")]
     use vctrs_tests;

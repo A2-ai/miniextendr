@@ -167,7 +167,7 @@ fn generate_explicit_setters(base_name: &str, tramp_ty: &syn::Type) -> proc_macr
     }
 }
 
-/// Generate the `R_make_alt*_class(...)` + `validate_altrep_class(...)` code for an explicit base type.
+/// Generate the `R_make_alt*_class()` + `validate_altrep_class()` code for an explicit base type.
 fn generate_explicit_make_class(base_name: &str, ident: &syn::Ident) -> proc_macro2::TokenStream {
     let span = proc_macro2::Span::call_site();
 
@@ -199,105 +199,39 @@ fn generate_explicit_make_class(base_name: &str, ident: &syn::Ident) -> proc_mac
     }}
 }
 
-/// Expands `#[miniextendr]` on a one-field wrapper struct into ALTREP plumbing.
-pub fn expand_altrep_struct(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    use syn::spanned::Spanned;
-    let input: syn::ItemStruct = match syn::parse(item) {
-        Ok(it) => it,
-        Err(e) => return e.into_compile_error().into(),
-    };
-
-    let ident = input.ident.clone();
-    let generics = input.generics.clone();
-
-    // Extract the inner type - must be a 1-field struct
-    let data_ty: syn::Type = match &input.fields {
-        syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
-            fields.unnamed.first().unwrap().ty.clone()
-        }
-        syn::Fields::Named(fields) if fields.named.len() == 1 => {
-            fields.named.first().unwrap().ty.clone()
-        }
-        _ => {
-            return syn::Error::new(
-                input.span(),
-                "#[miniextendr] ALTREP requires a 1-field wrapper struct, e.g., `struct MyInts(Vec<i32>);`",
-            )
-            .into_compile_error()
-            .into();
-        }
-    };
-
-    // Parse attr list: class = "..." (optional), base = "..." (optional)
-    // pkg is no longer needed - we use ALTREP_PKG_NAME at runtime
-    use syn::parse::Parser;
-    let parser =
-        syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated;
-    let args = match parser.parse(attr) {
-        Ok(v) => v,
-        Err(e) => return e.into_compile_error().into(),
-    };
-    let mut class_name = None::<String>;
-    let mut base_name = None::<String>;
-    let mut base_lit = None::<syn::LitStr>;
-    for nv in args {
-        let key = nv
-            .path
-            .get_ident()
-            .map(|i| i.to_string())
-            .unwrap_or_default();
-        if let syn::Expr::Lit(syn::ExprLit {
-            lit: syn::Lit::Str(s),
-            ..
-        }) = &nv.value
-        {
-            match key.as_str() {
-                "class" => class_name = Some(s.value()),
-                "base" => {
-                    base_name = Some(s.value());
-                    base_lit = Some(s.clone());
-                }
-                // Silently ignore "pkg" for backwards compatibility, but it's no longer used
-                "pkg" => {}
-                _ => {}
-            }
-        }
-    }
-
-    // Default class name to struct name if not provided
-    let class_name = class_name.unwrap_or_else(|| ident.to_string());
-    // base is now OPTIONAL - inferred from InferBase if not provided
-
+/// Reusable core for generating ALTREP trait implementations.
+///
+/// This is called by both `expand_altrep_struct` (attribute macro path) and
+/// `derive_altrep` (derive macro path). It generates AltrepClass,
+/// RegisterAltrep, IntoR, TryFromSexp, From, and Ref/Mut wrapper types.
+pub(crate) fn generate_altrep_impls(
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+    data_ty: &syn::Type,
+    class_name: &str,
+    base_name: Option<&str>,
+) -> syn::Result<proc_macro2::TokenStream> {
     // Validate base if provided, otherwise use InferBase inference
-    let base_variant: syn::Expr = if let Some(ref base_name) = base_name {
-        if !VALID_BASES.contains(&base_name.as_str()) {
-            return syn::Error::new_spanned(
-                base_lit.expect("base_lit set when base_name is Some"),
+    let base_variant: syn::Expr = if let Some(base_name) = base_name {
+        if !VALID_BASES.contains(&base_name) {
+            return Err(syn::Error::new(
+                ident.span(),
                 "base must be one of Int|Real|Logical|Raw|String|List|Complex",
-            )
-            .into_compile_error()
-            .into();
+            ));
         }
         let base_ident = syn::Ident::new(base_name, proc_macro2::Span::call_site());
         syn::parse_quote!(::miniextendr_api::altrep::RBase::#base_ident)
     } else {
-        // Infer from InferBase trait (auto-implemented via impl_inferbase_* macros)
         syn::parse_quote!(<#data_ty as ::miniextendr_api::altrep_data::InferBase>::BASE)
     };
 
-    // The trampoline type is always the inner data type
     let tramp_ty = data_ty.clone();
 
     // Generate family setters and make_class based on the base type.
-    // If base is explicitly provided, use table-driven helpers.
-    // If base is not provided, use InferBase trait for compile-time dispatch.
     let (family_setters, make_class): (proc_macro2::TokenStream, proc_macro2::TokenStream) =
-        if let Some(ref base_name) = base_name {
+        if let Some(base_name) = base_name {
             let setters = generate_explicit_setters(base_name, &tramp_ty);
-            let make = generate_explicit_make_class(base_name, &ident);
+            let make = generate_explicit_make_class(base_name, ident);
             (setters, make)
         } else {
             let setters = quote::quote! {
@@ -313,22 +247,12 @@ pub fn expand_altrep_struct(
             (setters, make)
         };
 
-    // Registration: per-type; create class handle then install methods via MethodRegistrar
-
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    // Use LitCStr for proper C string literal generation (c"...")
     let class_cstr = syn::LitCStr::new(
-        &std::ffi::CString::new(class_name.as_str()).unwrap(),
+        &std::ffi::CString::new(class_name).unwrap(),
         ident.span(),
     );
-    // pkg_name is now obtained at runtime via AltrepPkgName::as_ptr()
 
-    // No trait forwarding: rely on trampoline type's trait impls.
-    // The ALTREP trait implementations for the data type must already exist.
-    // For standard types like Vec<i32>, Vec<f64>, these are provided by miniextendr_api.
-    // For custom types, users must implement the data traits themselves.
-
-    // Generate From, IntoR, and TryFromSexp wrappers
     let ref_ident = quote::format_ident!("{}Ref", ident);
     let mut_ident = quote::format_ident!("{}Mut", ident);
     let data_helper_impl: proc_macro2::TokenStream = {
@@ -368,8 +292,6 @@ pub fn expand_altrep_struct(
 
                     let ext_ptr = ExternalPtr::new(self.0);
                     let cls = Self::get_or_init_class();
-                    // Protect data1 during R_new_altrep to prevent GC from collecting it.
-                    // R_new_altrep allocates and can trigger GC.
                     let data1 = ext_ptr.as_sexp();
                     unsafe {
                         Rf_protect(data1);
@@ -390,15 +312,13 @@ pub fn expand_altrep_struct(
                 fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
                     use ::miniextendr_api::ffi::SEXPTYPE;
 
-                    // Check if it's an ALTREP object (ALTREP returns c_int, not bool)
                     if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
                         return Err(::miniextendr_api::SexpTypeError {
-                            expected: SEXPTYPE::INTSXP, // placeholder - ALTREP check failed
+                            expected: SEXPTYPE::INTSXP,
                             actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
                         });
                     }
 
-                    // Extract the ExternalPtr from data1
                     match unsafe { ::miniextendr_api::altrep_data1_as::<#data_ty>(sexp) } {
                         Some(ptr) => Ok(#ref_ident(ptr)),
                         None => Err(::miniextendr_api::SexpTypeError {
@@ -427,15 +347,13 @@ pub fn expand_altrep_struct(
                 fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
                     use ::miniextendr_api::ffi::SEXPTYPE;
 
-                    // Check if it's an ALTREP object (ALTREP returns c_int, not bool)
                     if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
                         return Err(::miniextendr_api::SexpTypeError {
-                            expected: SEXPTYPE::INTSXP, // placeholder - ALTREP check failed
+                            expected: SEXPTYPE::INTSXP,
                             actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
                         });
                     }
 
-                    // Extract the ExternalPtr from data1
                     match unsafe { ::miniextendr_api::altrep_data1_as::<#data_ty>(sexp) } {
                         Some(ptr) => Ok(#mut_ident(ptr)),
                         None => Err(::miniextendr_api::SexpTypeError {
@@ -462,9 +380,7 @@ pub fn expand_altrep_struct(
         }
     };
 
-    // Generate doc strings for trait impls
     let base_doc = base_name
-        .as_ref()
         .map(|b| b.to_string())
         .unwrap_or_else(|| "inferred".to_string());
     let altrep_class_doc = format!(
@@ -499,9 +415,7 @@ pub fn expand_altrep_struct(
         quote::quote! { #family_setters }
     };
 
-    let expanded = quote::quote! {
-        #input
-
+    Ok(quote::quote! {
         // Helper methods for creating ALTREP instances
         #data_helper_impl
 
@@ -532,7 +446,6 @@ pub fn expand_altrep_struct(
                         use ::miniextendr_api::altrep_bridge as bridge;
                         #[allow(unused_imports)]
                         use ::miniextendr_api::ffi::altrep::*;
-                        // Local helper to reduce boilerplate
                         #[allow(unused_macros)]
                         macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
                         #method_registrar_install_body
@@ -541,8 +454,159 @@ pub fn expand_altrep_struct(
                 })
             }
         }
+    })
+}
 
+/// Expands `#[miniextendr]` on a one-field wrapper struct into ALTREP plumbing.
+pub fn expand_altrep_struct(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    use syn::spanned::Spanned;
+    let input: syn::ItemStruct = match syn::parse(item) {
+        Ok(it) => it,
+        Err(e) => return e.into_compile_error().into(),
     };
 
-    expanded.into()
+    let ident = input.ident.clone();
+    let generics = input.generics.clone();
+
+    // Extract the inner type - must be a 1-field struct
+    let data_ty: syn::Type = match &input.fields {
+        syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+            fields.unnamed.first().unwrap().ty.clone()
+        }
+        syn::Fields::Named(fields) if fields.named.len() == 1 => {
+            fields.named.first().unwrap().ty.clone()
+        }
+        _ => {
+            return syn::Error::new(
+                input.span(),
+                "#[miniextendr] ALTREP requires a 1-field wrapper struct, e.g., `struct MyInts(Vec<i32>);`",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
+
+    // Parse attr list: class = "..." (optional), base = "..." (optional)
+    use syn::parse::Parser;
+    let parser =
+        syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated;
+    let args = match parser.parse(attr) {
+        Ok(v) => v,
+        Err(e) => return e.into_compile_error().into(),
+    };
+    let mut class_name = None::<String>;
+    let mut base_name = None::<String>;
+    let mut base_lit = None::<syn::LitStr>;
+    for nv in args {
+        let key = nv
+            .path
+            .get_ident()
+            .map(|i| i.to_string())
+            .unwrap_or_default();
+        if let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(s),
+            ..
+        }) = &nv.value
+        {
+            match key.as_str() {
+                "class" => class_name = Some(s.value()),
+                "base" => {
+                    base_name = Some(s.value());
+                    base_lit = Some(s.clone());
+                }
+                // Silently ignore "pkg" for backwards compatibility
+                "pkg" => {}
+                _ => {}
+            }
+        }
+    }
+
+    let class_name = class_name.unwrap_or_else(|| ident.to_string());
+
+    // Validate base early with span if we have the literal
+    if let Some(ref base_name) = base_name
+        && !VALID_BASES.contains(&base_name.as_str())
+    {
+        return syn::Error::new_spanned(
+            base_lit.expect("base_lit set when base_name is Some"),
+            "base must be one of Int|Real|Logical|Raw|String|List|Complex",
+        )
+        .into_compile_error()
+        .into();
+    }
+
+    match generate_altrep_impls(&ident, &generics, &data_ty, &class_name, base_name.as_deref()) {
+        Ok(impls) => {
+            let expanded = quote::quote! {
+                #input
+                #impls
+            };
+            expanded.into()
+        }
+        Err(e) => e.into_compile_error().into(),
+    }
+}
+
+/// Entry point for `#[derive(AltrepClass)]`.
+///
+/// Parses `#[altrep_derive_opts(class = "...", base = "...")]` helper attributes
+/// and generates ALTREP registration using the shared core.
+pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    use syn::spanned::Spanned;
+
+    let ident = &input.ident;
+
+    // Extract the inner type - must be a 1-field struct
+    let data_ty: syn::Type = match &input.data {
+        syn::Data::Struct(data) => match &data.fields {
+            syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                fields.unnamed.first().unwrap().ty.clone()
+            }
+            syn::Fields::Named(fields) if fields.named.len() == 1 => {
+                fields.named.first().unwrap().ty.clone()
+            }
+            _ => {
+                return Err(syn::Error::new(
+                    input.span(),
+                    "#[derive(AltrepClass)] requires a 1-field wrapper struct, e.g., `struct MyInts(Vec<i32>);`",
+                ));
+            }
+        },
+        _ => {
+            return Err(syn::Error::new(
+                input.span(),
+                "#[derive(AltrepClass)] can only be applied to structs",
+            ));
+        }
+    };
+
+    // Parse #[altrep_derive_opts(class = "...", base = "...")] helper attributes
+    let mut class_name = None::<String>;
+    let mut base_name = None::<String>;
+
+    for attr in &input.attrs {
+        if attr.path().is_ident("altrep_derive_opts") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("class") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    class_name = Some(value.value());
+                } else if meta.path.is_ident("base") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    base_name = Some(value.value());
+                } else {
+                    return Err(meta.error(
+                        "unknown altrep_derive_opts attribute; expected `class` or `base`",
+                    ));
+                }
+                Ok(())
+            })?;
+        }
+    }
+
+    let class_name = class_name.unwrap_or_else(|| ident.to_string());
+
+    generate_altrep_impls(ident, &input.generics, &data_ty, &class_name, base_name.as_deref())
 }

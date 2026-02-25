@@ -58,6 +58,29 @@ pub fn has_external_ptr_derive(attrs: &[Attribute]) -> bool {
     })
 }
 
+/// Returns true if the attribute list contains `#[derive(Altrep)]`
+/// or `#[derive(miniextendr_api::Altrep)]`.
+pub fn has_altrep_derive(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if !attr.path().is_ident("derive") {
+            return false;
+        }
+        let syn::Meta::List(meta_list) = &attr.meta else {
+            return false;
+        };
+        let Ok(paths) = meta_list.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+        ) else {
+            return false;
+        };
+        paths.iter().any(|p| {
+            p.segments
+                .last()
+                .is_some_and(|seg| seg.ident == "Altrep")
+        })
+    })
+}
+
 /// Returns whether a directory should be skipped during lint tree traversal.
 pub fn should_skip_dir(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -181,6 +204,48 @@ pub fn extract_roxygen_tags(attrs: &[Attribute]) -> Vec<String> {
         }
     }
     tags
+}
+
+/// Check if a struct with `#[miniextendr]` should be treated as ALTREP (needing `struct Name;` in module).
+///
+/// Returns true only for 1-field structs without explicit mode attrs (list, dataframe, externalptr).
+/// Multi-field structs, structs with explicit mode attrs, and enums don't need module entries.
+pub fn is_altrep_struct(item: &syn::ItemStruct) -> bool {
+    let field_count = match &item.fields {
+        syn::Fields::Named(f) => f.named.len(),
+        syn::Fields::Unnamed(f) => f.unnamed.len(),
+        syn::Fields::Unit => 0,
+    };
+
+    // Only 1-field structs are ALTREP candidates
+    if field_count != 1 {
+        return false;
+    }
+
+    // Check if #[miniextendr(...)] has mode attrs that override ALTREP
+    for attr in &item.attrs {
+        if attr
+            .path()
+            .segments
+            .last()
+            .is_none_or(|seg| seg.ident != "miniextendr")
+        {
+            continue;
+        }
+
+        if let syn::Meta::List(meta_list) = &attr.meta {
+            let tokens = meta_list.tokens.to_string();
+            for part in tokens.split(',') {
+                let part = part.trim();
+                // These mode attrs mean "not ALTREP"
+                if matches!(part, "list" | "dataframe" | "externalptr") {
+                    return false;
+                }
+            }
+        }
+    }
+
+    true
 }
 
 /// Helper trait for converting Meta to a normalized string.
