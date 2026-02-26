@@ -31,7 +31,7 @@ impl Drop for ProtectedConn {
 #[cfg(feature = "connections")]
 unsafe fn open_connection(sexp: ffi::SEXP) {
     unsafe {
-        let handle = get_connection(sexp) as *mut Rconn;
+        let handle = get_connection(sexp).cast::<Rconn>();
         if let Some(open_fn) = (*handle).open {
             open_fn(handle);
         }

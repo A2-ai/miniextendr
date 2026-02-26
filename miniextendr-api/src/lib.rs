@@ -270,7 +270,7 @@ pub use altrep_traits::AltrepGuard;
 // Default: c"unknown" for safety if not set.
 use std::sync::atomic::{AtomicPtr, Ordering};
 static ALTREP_PKG_NAME_PTR: AtomicPtr<std::ffi::c_char> =
-    AtomicPtr::new(c"unknown".as_ptr() as *mut _);
+    AtomicPtr::new(c"unknown".as_ptr().cast_mut());
 
 /// Returns the current ALTREP package name as a C string pointer.
 /// This is set by the C entrypoint before ALTREP registration.
@@ -302,7 +302,7 @@ pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::
     } else {
         name
     };
-    ALTREP_PKG_NAME_PTR.store(name as *mut _, Ordering::Release);
+    ALTREP_PKG_NAME_PTR.store(name.cast_mut(), Ordering::Release);
 }
 
 // Note: SexpExt is pub(crate), imported directly in modules that need it
