@@ -110,7 +110,7 @@ impl RTerm {
                 while offset < bytes.len() {
                     let remaining = bytes.len() - offset;
                     let chunk = remaining.min(i32::MAX as usize);
-                    let ptr = bytes[offset..].as_ptr() as *const c_char;
+                    let ptr = bytes[offset..].as_ptr().cast::<c_char>();
                     write(ptr, chunk as c_int, self.stream.otype());
                     offset += chunk;
                 }

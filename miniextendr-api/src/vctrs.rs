@@ -680,7 +680,7 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
         // Use Rf_mkCharLenCE with UTF-8 encoding since Rust strings are always UTF-8
         let charsxp = unsafe {
             crate::ffi::Rf_mkCharLenCE(
-                class_name.as_ptr() as *const i8,
+                class_name.as_ptr().cast::<i8>(),
                 class_name.len() as i32,
                 crate::ffi::cetype_t::CE_UTF8,
             )
@@ -703,7 +703,7 @@ unsafe fn install_symbol(name: &str) -> SEXP {
     // Create a CHARSXP with proper length
     let charsxp = unsafe {
         crate::ffi::Rf_mkCharLenCE(
-            name.as_ptr() as *const i8,
+            name.as_ptr().cast::<i8>(),
             name.len() as i32,
             crate::ffi::cetype_t::CE_UTF8,
         )

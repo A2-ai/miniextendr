@@ -148,7 +148,7 @@ fn generate_register_altrep(info: &AltrepTypeInfo<'_>) -> TokenStream {
                     const CLASS_NAME: &[u8] = #class_name_bytes;
                     let cls = unsafe {
                         <#ty as ::miniextendr_api::altrep_data::InferBase>::make_class(
-                            CLASS_NAME.as_ptr() as *const std::ffi::c_char,
+                            CLASS_NAME.as_ptr().cast::<std::ffi::c_char>(),
                             // Package name is set globally by C entrypoint
                             ::miniextendr_api::AltrepPkgName::as_ptr(),
                         )

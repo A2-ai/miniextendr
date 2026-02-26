@@ -391,12 +391,12 @@ fn generate_concrete_vtable_shims(
         // be parsed as a comparison operator in expression position.
         let method_call = if method.is_mut {
             quote::quote! {
-                let self_ref = unsafe { &mut *(data as *mut #concrete_type) };
+                let self_ref = unsafe { &mut *data.cast::<#concrete_type>() };
                 <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
             }
         } else {
             quote::quote! {
-                let self_ref = unsafe { &*(data as *const #concrete_type) };
+                let self_ref = unsafe { &*data.cast::<#concrete_type>().cast_const() };
                 <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
             }
         };

@@ -181,7 +181,7 @@ use std::os::raw::c_void;
 ///     unsafe fn from_raw_parts(data: *mut c_void, vtable: *const c_void) -> Self {
 ///         Self {
 ///             data,
-///             vtable: vtable as *const CounterVTable,
+///             vtable: vtable.cast::<CounterVTable>(),
 ///         }
 ///     }
 /// }
@@ -255,7 +255,7 @@ pub trait TraitView: Sized {
             if raw_ptr.is_null() {
                 return None;
             }
-            let erased_ptr = raw_ptr as *mut crate::abi::mx_erased;
+            let erased_ptr = raw_ptr.cast::<crate::abi::mx_erased>();
 
             // The wrapper struct layout is:
             //   #[repr(C)]
@@ -267,7 +267,7 @@ pub trait TraitView: Sized {
             // erased and data. The correct offset is stored in the base vtable.
             let base = (*erased_ptr).base;
             let data_offset = (*base).data_offset;
-            let data = (erased_ptr as *mut u8).add(data_offset) as *mut c_void;
+            let data = erased_ptr.cast::<u8>().add(data_offset).cast::<c_void>();
 
             Some(Self::from_raw_parts(data, vtable))
         }

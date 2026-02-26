@@ -230,7 +230,7 @@ impl ConnectionCapabilities {
     /// - Must be called from the R main thread
     pub unsafe fn from_sexp(conn_sexp: SEXP) -> Self {
         let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
-        let conn = handle as *const Rconn;
+        let conn = handle.cast::<Rconn>().cast_const();
         unsafe {
             ConnectionCapabilities {
                 can_read: (*conn).canread == Rboolean::TRUE,
@@ -249,7 +249,7 @@ impl ConnectionCapabilities {
     ///
     /// - `handle` must be a valid `Rconnection` obtained from `R_GetConnection`
     pub unsafe fn from_handle(handle: Rconnection) -> Self {
-        let conn = handle as *const Rconn;
+        let conn = handle.cast::<Rconn>().cast_const();
         unsafe {
             ConnectionCapabilities {
                 can_read: (*conn).canread == Rboolean::TRUE,
@@ -273,7 +273,7 @@ impl ConnectionCapabilities {
 /// - Must be called from the R main thread
 pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
     let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
-    let conn = handle as *const Rconn;
+    let conn = handle.cast::<Rconn>().cast_const();
     unsafe {
         let mode = &(*conn).mode;
         mode.contains(&(b'b' as c_char))
@@ -290,7 +290,7 @@ pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
 /// - Must be called from the R main thread
 pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
     let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
-    let conn = handle as *const Rconn;
+    let conn = handle.cast::<Rconn>().cast_const();
     unsafe {
         let mode_ptr = (*conn).mode.as_ptr();
         CStr::from_ptr(mode_ptr).to_string_lossy().into_owned()
@@ -307,7 +307,7 @@ pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
 /// - Must be called from the R main thread
 pub unsafe fn connection_description(conn_sexp: SEXP) -> String {
     let handle = unsafe { crate::ffi::R_GetConnection(conn_sexp) };
-    let conn = handle as *const Rconn;
+    let conn = handle.cast::<Rconn>().cast_const();
     unsafe {
         if (*conn).description.is_null() {
             String::new()
@@ -626,7 +626,7 @@ pub trait RConnectionImpl: Sized + 'static {
 unsafe fn get_state<T: RConnectionImpl>(conn: *mut Rconn) -> &'static mut T {
     let private = unsafe { (*conn).private };
     debug_assert!(!private.is_null(), "Connection private pointer is null");
-    unsafe { &mut *(private as *mut T) }
+    unsafe { &mut *private.cast::<T>() }
 }
 
 /// Convenience alias for the connection panic guard.
@@ -698,12 +698,12 @@ unsafe extern "C-unwind" fn destroy_trampoline<T: RConnectionImpl>(conn: *mut Rc
     if !private.is_null() {
         // Give the implementation a chance to do cleanup (panic-safe)
         catch_connection_panic((), || {
-            let state = unsafe { &mut *(private as *mut T) };
+            let state = unsafe { &mut *private.cast::<T>() };
             state.destroy();
         });
 
         // Always drop the boxed state, even if destroy() panicked
-        let _ = unsafe { Box::from_raw(private as *mut T) };
+        let _ = unsafe { Box::from_raw(private.cast::<T>()) };
         unsafe { (*conn).private = std::ptr::null_mut() };
     }
 }
@@ -724,7 +724,7 @@ unsafe extern "C-unwind" fn read_trampoline<T: RConnectionImpl>(
             return 0;
         }
         let state = unsafe { get_state::<T>(conn) };
-        let slice = unsafe { std::slice::from_raw_parts_mut(buf as *mut u8, total_bytes) };
+        let slice = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), total_bytes) };
         let bytes_read = state.read(slice);
         // Return number of items read
         if size > 0 { bytes_read / size } else { 0 }
@@ -747,7 +747,7 @@ unsafe extern "C-unwind" fn write_trampoline<T: RConnectionImpl>(
             return 0;
         }
         let state = unsafe { get_state::<T>(conn) };
-        let slice = unsafe { std::slice::from_raw_parts(buf as *const u8, total_bytes) };
+        let slice = unsafe { std::slice::from_raw_parts(buf.cast::<u8>(), total_bytes) };
         let bytes_written = state.write(slice);
         // Return number of items written
         if size > 0 { bytes_written / size } else { 0 }
@@ -920,7 +920,7 @@ impl RCustomConnection {
         unsafe {
             // Box the state
             let boxed_state = Box::new(state);
-            let state_ptr = Box::into_raw(boxed_state) as *mut c_void;
+            let state_ptr = Box::into_raw(boxed_state).cast::<c_void>();
 
             // Create the R connection object
             let mut conn_ptr: Rconnection = std::ptr::null_mut();
@@ -933,13 +933,13 @@ impl RCustomConnection {
 
             if conn_ptr.is_null() {
                 // Clean up the boxed state
-                let _ = Box::from_raw(state_ptr as *mut T);
+                let _ = Box::from_raw(state_ptr.cast::<T>());
                 // Return R_NilValue on failure (R will have signaled an error)
                 return R_NilValue;
             }
 
             // Cast to our Rconn struct
-            let conn = conn_ptr as *mut Rconn;
+            let conn = conn_ptr.cast::<Rconn>();
 
             // Store state pointer
             (*conn).private = state_ptr;
@@ -1023,7 +1023,7 @@ impl RCustomConnection {
 /// ```
 #[inline]
 pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
-    unsafe { crate::ffi::R_ReadConnection(conn, buf.as_mut_ptr() as *mut c_void, buf.len()) }
+    unsafe { crate::ffi::R_ReadConnection(conn, buf.as_mut_ptr().cast::<c_void>(), buf.len()) }
 }
 
 /// Write data to an R connection.
@@ -1043,7 +1043,7 @@ pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
 /// ```
 #[inline]
 pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
-    unsafe { crate::ffi::R_WriteConnection(conn, buf.as_ptr() as *const c_void, buf.len()) }
+    unsafe { crate::ffi::R_WriteConnection(conn, buf.as_ptr().cast::<c_void>(), buf.len()) }
 }
 
 /// Get a connection handle from an R connection SEXP.
