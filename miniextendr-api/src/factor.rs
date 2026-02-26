@@ -62,10 +62,7 @@ fn factor_class_sexp() -> SEXP {
 ///
 /// Typically implemented via `#[derive(RFactor)]` for C-style enums.
 /// The derive macro also generates `IntoR` and `TryFromSexp` implementations.
-pub trait RFactor: crate::enum_choices::EnumChoices + Copy + 'static {
-    /// Level names for this enum (order matches index values).
-    const LEVELS: &'static [&'static str];
-
+pub trait RFactor: crate::match_arg::MatchArg + Copy + 'static {
     /// Convert variant to 1-based level index.
     fn to_level_index(self) -> i32;
 
@@ -352,7 +349,7 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
 /// Convert an R factor SEXP to a single enum value.
 #[inline]
 pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
-    validate_factor_levels(sexp, T::LEVELS)?;
+    validate_factor_levels(sexp, T::CHOICES)?;
 
     let len = unsafe { Rf_xlength(sexp) };
     if len != 1 {
@@ -373,7 +370,7 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
 /// Convert an R factor SEXP to a Vec of enum values.
 #[inline]
 pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
-    validate_factor_levels(sexp, T::LEVELS)?;
+    validate_factor_levels(sexp, T::CHOICES)?;
 
     let len = unsafe { Rf_xlength(sexp) } as usize;
     let mut result = Vec::with_capacity(len);
@@ -397,7 +394,7 @@ pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, Sex
 pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
     sexp: SEXP,
 ) -> Result<Vec<Option<T>>, SexpError> {
-    validate_factor_levels(sexp, T::LEVELS)?;
+    validate_factor_levels(sexp, T::CHOICES)?;
 
     let len = unsafe { Rf_xlength(sexp) } as usize;
     let mut result = Vec::with_capacity(len);
@@ -458,7 +455,7 @@ impl<T> std::ops::DerefMut for FactorVec<T> {
 impl<T: RFactor> IntoR for FactorVec<T> {
     fn into_sexp(self) -> SEXP {
         let indices: Vec<i32> = self.0.iter().map(|v| v.to_level_index()).collect();
-        build_factor(&indices, build_levels_sexp(T::LEVELS))
+        build_factor(&indices, build_levels_sexp(T::CHOICES))
     }
 }
 
@@ -511,7 +508,7 @@ impl<T: RFactor> IntoR for FactorOptionVec<T> {
             .iter()
             .map(|v| v.map_or(NA_INTEGER, |x| x.to_level_index()))
             .collect();
-        build_factor(&indices, build_levels_sexp(T::LEVELS))
+        build_factor(&indices, build_levels_sexp(T::CHOICES))
     }
 }
 
@@ -529,7 +526,7 @@ impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enum_choices::EnumChoices;
+    use crate::match_arg::MatchArg;
 
     #[derive(Copy, Clone, Debug, PartialEq)]
     enum TestColor {
@@ -538,11 +535,11 @@ mod tests {
         Blue,
     }
 
-    impl EnumChoices for TestColor {
+    impl MatchArg for TestColor {
         const CHOICES: &'static [&'static str] = &["Red", "Green", "Blue"];
 
-        fn from_str(s: &str) -> Option<Self> {
-            match s {
+        fn from_choice(choice: &str) -> Option<Self> {
+            match choice {
                 "Red" => Some(TestColor::Red),
                 "Green" => Some(TestColor::Green),
                 "Blue" => Some(TestColor::Blue),
@@ -550,7 +547,7 @@ mod tests {
             }
         }
 
-        fn to_str(self) -> &'static str {
+        fn to_choice(self) -> &'static str {
             match self {
                 TestColor::Red => "Red",
                 TestColor::Green => "Green",
@@ -560,8 +557,6 @@ mod tests {
     }
 
     impl RFactor for TestColor {
-        const LEVELS: &'static [&'static str] = &["Red", "Green", "Blue"];
-
         fn to_level_index(self) -> i32 {
             match self {
                 TestColor::Red => 1,
@@ -605,7 +600,7 @@ mod tests {
 
     #[test]
     fn test_levels_array() {
-        assert_eq!(TestColor::LEVELS, &["Red", "Green", "Blue"]);
+        assert_eq!(TestColor::CHOICES, &["Red", "Green", "Blue"]);
     }
 
     // Test interaction factor (manual impl to verify logic)
@@ -615,18 +610,18 @@ mod tests {
         Large,
     }
 
-    impl EnumChoices for Size {
+    impl MatchArg for Size {
         const CHOICES: &'static [&'static str] = &["Small", "Large"];
 
-        fn from_str(s: &str) -> Option<Self> {
-            match s {
+        fn from_choice(choice: &str) -> Option<Self> {
+            match choice {
                 "Small" => Some(Size::Small),
                 "Large" => Some(Size::Large),
                 _ => None,
             }
         }
 
-        fn to_str(self) -> &'static str {
+        fn to_choice(self) -> &'static str {
             match self {
                 Size::Small => "Small",
                 Size::Large => "Large",
@@ -635,8 +630,6 @@ mod tests {
     }
 
     impl RFactor for Size {
-        const LEVELS: &'static [&'static str] = &["Small", "Large"];
-
         fn to_level_index(self) -> i32 {
             match self {
                 Size::Small => 1,
@@ -661,7 +654,7 @@ mod tests {
         Blue(Size),
     }
 
-    impl EnumChoices for ColorSize {
+    impl MatchArg for ColorSize {
         const CHOICES: &'static [&'static str] = &[
             "Red.Small",
             "Red.Large",
@@ -671,30 +664,20 @@ mod tests {
             "Blue.Large",
         ];
 
-        fn from_str(s: &str) -> Option<Self> {
+        fn from_choice(choice: &str) -> Option<Self> {
             let idx_1 = Self::CHOICES
                 .iter()
-                .position(|&l| l == s)
+                .position(|&l| l == choice)
                 .map(|i| i as i32 + 1)?;
             Self::from_level_index(idx_1)
         }
 
-        fn to_str(self) -> &'static str {
+        fn to_choice(self) -> &'static str {
             Self::CHOICES[(self.to_level_index() - 1) as usize]
         }
     }
 
     impl RFactor for ColorSize {
-        // Levels: Red.Small, Red.Large, Green.Small, Green.Large, Blue.Small, Blue.Large
-        const LEVELS: &'static [&'static str] = &[
-            "Red.Small",
-            "Red.Large",
-            "Green.Small",
-            "Green.Large",
-            "Blue.Small",
-            "Blue.Large",
-        ];
-
         fn to_level_index(self) -> i32 {
             match self {
                 Self::Red(inner) => {
@@ -734,7 +717,7 @@ mod tests {
     #[test]
     fn test_interaction_levels() {
         assert_eq!(
-            ColorSize::LEVELS,
+            ColorSize::CHOICES,
             &[
                 "Red.Small",
                 "Red.Large",

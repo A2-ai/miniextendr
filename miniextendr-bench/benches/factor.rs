@@ -9,7 +9,7 @@
 
 use miniextendr_api::factor::{build_factor, build_levels_sexp};
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{EnumChoices, FactorVec, IntoR, RFactor};
+use miniextendr_api::{FactorVec, IntoR, MatchArg, RFactor};
 
 fn main() {
     miniextendr_bench::init();
@@ -48,13 +48,13 @@ pub enum ColorUncached {
     Black,
 }
 
-impl EnumChoices for ColorUncached {
+impl MatchArg for ColorUncached {
     const CHOICES: &'static [&'static str] = &[
         "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta", "White", "Black",
     ];
 
-    fn from_str(s: &str) -> Option<Self> {
-        match s {
+    fn from_choice(choice: &str) -> Option<Self> {
+        match choice {
             "Red" => Some(Self::Red),
             "Green" => Some(Self::Green),
             "Blue" => Some(Self::Blue),
@@ -67,7 +67,7 @@ impl EnumChoices for ColorUncached {
         }
     }
 
-    fn to_str(self) -> &'static str {
+    fn to_choice(self) -> &'static str {
         match self {
             Self::Red => "Red",
             Self::Green => "Green",
@@ -82,10 +82,6 @@ impl EnumChoices for ColorUncached {
 }
 
 impl RFactor for ColorUncached {
-    const LEVELS: &'static [&'static str] = &[
-        "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta", "White", "Black",
-    ];
-
     fn to_level_index(self) -> i32 {
         match self {
             Self::Red => 1,
@@ -117,7 +113,7 @@ impl RFactor for ColorUncached {
 impl IntoR for ColorUncached {
     fn into_sexp(self) -> SEXP {
         // No caching - allocates fresh levels STRSXP each time
-        build_factor(&[self.to_level_index()], build_levels_sexp(Self::LEVELS))
+        build_factor(&[self.to_level_index()], build_levels_sexp(Self::CHOICES))
     }
 }
 
