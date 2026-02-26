@@ -2163,6 +2163,91 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
     lines.join("\n")
 }
 
+/// Generate `impl As*` trait impls for methods with `#[miniextendr(as = "...")]`.
+///
+/// For each `as` coercion method, generates a forwarding trait impl:
+/// ```ignore
+/// impl ::miniextendr_api::as_coerce::AsDataFrame for MyType {
+///     fn as_data_frame(&self) -> Result<::miniextendr_api::List, ::miniextendr_api::as_coerce::AsCoerceError> {
+///         self.as_data_frame()  // inherent method preferred over trait method
+///     }
+/// }
+/// ```
+///
+/// Skips methods with extra parameters beyond `&self` (trait methods have fixed signatures)
+/// and skips non-standard targets (like "tibble", "data.table") that don't have corresponding traits.
+pub fn generate_as_coercion_trait_impls(parsed_impl: &ParsedImpl) -> TokenStream {
+    let type_ident = &parsed_impl.type_ident;
+    let cfg_attrs = &parsed_impl.cfg_attrs;
+
+    let mut impls = Vec::new();
+
+    for method in parsed_impl.as_coercion_methods() {
+        let coercion_target = match &method.method_attrs.as_coercion {
+            Some(target) => target.as_str(),
+            None => continue,
+        };
+
+        // Skip methods with extra params beyond &self — trait methods have fixed &self-only signatures.
+        // `sig.inputs` already has self stripped, so non-empty means extra params.
+        if !method.sig.inputs.is_empty() {
+            continue;
+        }
+
+        // Skip non-instance methods (trait requires &self)
+        if method.env != ReceiverKind::Ref {
+            continue;
+        }
+
+        // Map coercion target to (trait name, trait method name, return type tokens).
+        // Only the 15 standard targets that have corresponding traits in as_coerce.
+        let (trait_name, trait_method): (&str, &str) = match coercion_target {
+            "data.frame" => ("AsDataFrame", "as_data_frame"),
+            "list" => ("AsList", "as_list"),
+            "character" => ("AsCharacter", "as_character"),
+            "numeric" | "double" => ("AsNumeric", "as_numeric"),
+            "integer" => ("AsInteger", "as_integer"),
+            "logical" => ("AsLogical", "as_logical"),
+            "matrix" => ("AsMatrix", "as_matrix"),
+            "vector" => ("AsVector", "as_vector"),
+            "factor" => ("AsFactor", "as_factor"),
+            "Date" => ("AsDate", "as_date"),
+            "POSIXct" => ("AsPOSIXct", "as_posixct"),
+            "complex" => ("AsComplex", "as_complex"),
+            "raw" => ("AsRaw", "as_raw"),
+            "environment" => ("AsEnvironment", "as_environment"),
+            "function" => ("AsFunction", "as_function"),
+            _ => continue, // Non-standard targets (tibble, data.table, etc.)
+        };
+
+        let trait_ident = syn::Ident::new(trait_name, proc_macro2::Span::call_site());
+        let trait_method_ident = syn::Ident::new(trait_method, proc_macro2::Span::call_site());
+        let user_method_ident = &method.ident;
+
+        // Return type: data.frame and list return Result<List, AsCoerceError>,
+        // all others return Result<SEXP, AsCoerceError>
+        let return_type = match coercion_target {
+            "data.frame" | "list" => quote! {
+                ::core::result::Result<::miniextendr_api::List, ::miniextendr_api::as_coerce::AsCoerceError>
+            },
+            _ => quote! {
+                ::core::result::Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::as_coerce::AsCoerceError>
+            },
+        };
+
+        impls.push(quote! {
+            #(#cfg_attrs)*
+            impl ::miniextendr_api::as_coerce::#trait_ident for #type_ident {
+                fn #trait_method_ident(&self) -> #return_type {
+                    self.#user_method_ident()
+                }
+            }
+        });
+    }
+
+    quote! { #(#impls)* }
+}
+
 /// Expand a #[miniextendr(env|r6|s7|s3|s4|vctrs)] impl block.
 ///
 /// This handles two cases:
@@ -2236,6 +2321,9 @@ pub fn expand_impl(
 
     let original_impl = &parsed.original_impl;
 
+    // Generate forwarding trait impls for as.<class>() coercion methods
+    let trait_impls = generate_as_coercion_trait_impls(&parsed);
+
     let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
 
     // Generate doc comment linking to R wrapper constant
@@ -2258,6 +2346,9 @@ pub fn expand_impl(
 
         // C wrappers and call method defs
         #(#c_wrappers)*
+
+        // Forwarding trait impls for as.<class>() coercion methods
+        #trait_impls
 
         // R wrapper constant
         #(#cfg_attrs)*
