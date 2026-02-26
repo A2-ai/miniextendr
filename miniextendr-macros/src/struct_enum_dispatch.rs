@@ -177,8 +177,8 @@ fn expand_struct(
     let effective_list = attrs.list || (!has_mode_attr && attrs.prefer.as_deref() == Some("list"));
     let effective_dataframe =
         attrs.dataframe || (!has_mode_attr && attrs.prefer.as_deref() == Some("dataframe"));
-    let effective_externalptr = attrs.externalptr
-        || (!has_mode_attr && attrs.prefer.as_deref() == Some("externalptr"));
+    let effective_externalptr =
+        attrs.externalptr || (!has_mode_attr && attrs.prefer.as_deref() == Some("externalptr"));
     let effective_mode = effective_list || effective_dataframe || effective_externalptr;
 
     // 1-field struct: default to ALTREP unless explicitly overridden
@@ -252,9 +252,7 @@ fn expand_struct(
                 #prefer_list
             })
         })();
-        return result
-            .unwrap_or_else(|e| e.into_compile_error())
-            .into();
+        return result.unwrap_or_else(|e| e.into_compile_error()).into();
     }
 
     if effective_dataframe {
@@ -266,8 +264,7 @@ fn expand_struct(
         let df_ident = quote::format_ident!("{}DataFrame", ident);
         let result = (|| -> syn::Result<proc_macro2::TokenStream> {
             let into_list = crate::list_derive::derive_into_list(derive_input.clone())?;
-            let dataframe_row =
-                crate::dataframe_derive::derive_dataframe_row(derive_input)?;
+            let dataframe_row = crate::dataframe_derive::derive_dataframe_row(derive_input)?;
             Ok(quote::quote! {
                 #item_ts
                 #into_list
@@ -286,9 +283,7 @@ fn expand_struct(
                 }
             })
         })();
-        return result
-            .unwrap_or_else(|e| e.into_compile_error())
-            .into();
+        return result.unwrap_or_else(|e| e.into_compile_error()).into();
     }
 
     // Default for multi-field or explicit externalptr: ExternalPtr

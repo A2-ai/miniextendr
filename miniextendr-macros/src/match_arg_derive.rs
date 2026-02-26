@@ -180,23 +180,6 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
     let choice_strs: Vec<&str> = choice_names.iter().map(|s| s.as_str()).collect();
 
     Ok(quote! {
-        impl #impl_generics ::miniextendr_api::EnumChoices for #name #ty_generics #where_clause {
-            const CHOICES: &'static [&'static str] = &[#(#choice_strs),*];
-
-            fn from_str(s: &str) -> Option<Self> {
-                match s {
-                    #(#choice_strs => Some(Self::#variant_idents),)*
-                    _ => None,
-                }
-            }
-
-            fn to_str(self) -> &'static str {
-                match self {
-                    #(Self::#variant_idents => #choice_strs,)*
-                }
-            }
-        }
-
         impl #impl_generics ::miniextendr_api::match_arg::MatchArg for #name #ty_generics #where_clause {
             const CHOICES: &'static [&'static str] = &[#(#choice_strs),*];
 

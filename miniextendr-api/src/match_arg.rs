@@ -35,7 +35,7 @@ use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 /// conversion between enum variants and their string representations.
 ///
 /// Use `#[derive(MatchArg)]` to auto-generate this implementation.
-pub trait MatchArg: crate::enum_choices::EnumChoices + Sized + Copy + 'static {
+pub trait MatchArg: Sized + Copy + 'static {
     /// The canonical choice strings, in variant declaration order.
     ///
     /// The first choice is the default when the R argument is `NULL`.

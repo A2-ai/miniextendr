@@ -248,10 +248,7 @@ pub(crate) fn generate_altrep_impls(
         };
 
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let class_cstr = syn::LitCStr::new(
-        &std::ffi::CString::new(class_name).unwrap(),
-        ident.span(),
-    );
+    let class_cstr = syn::LitCStr::new(&std::ffi::CString::new(class_name).unwrap(), ident.span());
 
     let ref_ident = quote::format_ident!("{}Ref", ident);
     let mut_ident = quote::format_ident!("{}Mut", ident);
@@ -538,7 +535,13 @@ pub fn expand_altrep_struct(
         .into();
     }
 
-    match generate_altrep_impls(&ident, &generics, &data_ty, &class_name, base_name.as_deref()) {
+    match generate_altrep_impls(
+        &ident,
+        &generics,
+        &data_ty,
+        &class_name,
+        base_name.as_deref(),
+    ) {
         Ok(impls) => {
             let expanded = quote::quote! {
                 #input
@@ -608,5 +611,11 @@ pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenS
 
     let class_name = class_name.unwrap_or_else(|| ident.to_string());
 
-    generate_altrep_impls(ident, &input.generics, &data_ty, &class_name, base_name.as_deref())
+    generate_altrep_impls(
+        ident,
+        &input.generics,
+        &data_ty,
+        &class_name,
+        base_name.as_deref(),
+    )
 }

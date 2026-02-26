@@ -2,13 +2,12 @@
 
 How to map Rust enums to R factors and character strings.
 
-miniextendr provides three complementary systems for enum-like types:
+miniextendr provides two complementary systems for enum-like types:
 
 | System | R Representation | Partial Match | Default | Use Case |
 |--------|-----------------|---------------|---------|----------|
 | `RFactor` | Factor (integer + levels) | No | — | Categorical data for `table()`, `lm()`, etc. |
 | `MatchArg` | Character scalar | Yes | First choice | Parameter validation (`match.arg()` style) |
-| `EnumChoices` | — (trait only) | — | — | Generic code over both RFactor and MatchArg |
 
 ## RFactor — Enum as R Factor
 
@@ -224,30 +223,21 @@ pub fn correlate(
 
 ---
 
-## EnumChoices — Generic Trait
+## MatchArg as Base Trait
 
-Both `RFactor` and `MatchArg` require `EnumChoices` as a supertrait. Use it for
-code that works with either:
+`MatchArg` is the base trait for all enum-like types. `RFactor` requires `MatchArg`
+as a supertrait, so any `RFactor` type also has `MatchArg::CHOICES`, `from_choice()`,
+and `to_choice()`. Use `MatchArg` as a bound for generic code over both systems:
 
 ```rust
-use miniextendr_api::EnumChoices;
+use miniextendr_api::MatchArg;
 
-fn describe_choices<T: EnumChoices>() -> String {
+fn describe_choices<T: MatchArg>() -> String {
     T::CHOICES.join(", ")
 }
 
-fn lookup<T: EnumChoices>(name: &str) -> Option<T> {
-    T::from_str(name)
-}
-```
-
-The trait:
-
-```rust
-pub trait EnumChoices: Copy + 'static {
-    const CHOICES: &'static [&'static str];
-    fn from_str(s: &str) -> Option<Self>;
-    fn to_str(self) -> &'static str;
+fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
+    T::from_choice(choice)
 }
 ```
 

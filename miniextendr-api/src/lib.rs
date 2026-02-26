@@ -899,14 +899,6 @@ pub use raw_conversions::{
     raw_slice_from_bytes, raw_slice_to_bytes, raw_to_bytes,
 };
 
-/// Unified trait for enum types with string-based choice sets.
-///
-/// Both [`RFactor`] and [`MatchArg`] represent enums with a fixed set of string
-/// labels. [`EnumChoices`] extracts the common interface so generic code can
-/// operate on either.
-pub mod enum_choices;
-pub use enum_choices::EnumChoices;
-
 /// `match.arg`-style string conversion for enums.
 ///
 /// Provides the [`MatchArg`] trait for converting Rust enums to/from R character
