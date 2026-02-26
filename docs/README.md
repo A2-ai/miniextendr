@@ -33,11 +33,16 @@ How miniextendr works under the hood.
 - **[Safety](SAFETY.md)** -- Safety invariants and what miniextendr guarantees
 - **[Threads](THREADS.md)** -- Worker thread architecture, batching, main thread safety
 
+### Macro Reference
+
+- **[`#[miniextendr]` Attribute](MINIEXTENDR_ATTRIBUTE.md)** -- Complete reference: what `#[miniextendr]` does on fn, impl, trait, struct, enum
+
 ### Class Systems
 
 Generate R class wrappers from Rust structs.
 
 - **[Class Systems](CLASS_SYSTEMS.md)** -- Env (default), R6, S3, S4, S7 generation + S4 helpers
+- **[S3 Methods](S3_METHODS.md)** -- Implementing print, format, and dots with S3
 
 ### Features
 
@@ -45,16 +50,19 @@ Optional capabilities enabled via Cargo feature flags or proc-macro attributes.
 
 | Feature | Guide | What it does |
 |---|---|---|
-| ALTREP | [ALTREP](ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
+| ALTREP | [ALTREP](ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md), [Guards](ALTREP_GUARDS.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
+| Enums & Factors | [Enums & Factors](ENUMS_AND_FACTORS.md) | RFactor, MatchArg, EnumChoices, FactorVec |
 | Connections | [Connections](CONNECTIONS.md) | Custom R connections from Rust |
 | Progress bars | [Progress](PROGRESS.md) | indicatif progress bars routed through R console |
 | rayon | [Rayon](RAYON.md) | Parallel iteration with data-race safety |
 | vctrs | [Vctrs](VCTRS.md) | vctrs integration with `#[derive(Vctrs)]` |
 | serde | [Serde](SERDE_R.md) | Direct Rust-R serialization |
-| DataFrames | [DataFrames](DATAFRAME.md) | `#[derive(DataFrameRow)]` for struct-to-data.frame |
+| DataFrames | [DataFrames](DATAFRAME.md) | `#[derive(DataFrameRow)]` + parallel fill + serde columnar |
 | Dots | [Dots](DOTS_TYPED_LIST.md) | R's `...` args + `typed_list!` validation |
 | Adapters | [Adapter Traits](ADAPTER_TRAITS.md), [Cookbook](ADAPTER_COOKBOOK.md) | Export external crate traits to R |
 | Lifecycle | [Lifecycle](LIFECYCLE.md) | Deprecation badges and runtime warnings |
+| Prefer derives | [Prefer Derives](PREFER_DERIVES.md) | Control IntoR routing (list, ExternalPtr, native) |
+| Strict mode | [Strict Mode](STRICT_MODE.md) | Reject lossy i64/u64 conversions |
 | Feature defaults | [Feature Defaults](FEATURE_DEFAULTS.md) | Project-wide defaults (strict, coerce, class system) |
 | All flags | [Features](FEATURES.md) | Complete feature flag reference |
 
