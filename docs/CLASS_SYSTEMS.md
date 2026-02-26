@@ -279,9 +279,9 @@ impl Person {
         Person { name, age }
     }
 
-    /// Implements print.Person
+    /// Implements print.Person — &mut self triggers invisible(x) return
     #[miniextendr(generic = "print")]
-    pub fn show(&self) {
+    pub fn show(&mut self) {
         println!("Person: {}, age {}", self.name, self.age);
     }
 

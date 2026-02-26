@@ -8,6 +8,16 @@ R uses a protection stack to prevent garbage collection of objects that are
 still in use. miniextendr provides ergonomic Rust wrappers that automatically
 balance `PROTECT`/`UNPROTECT` calls.
 
+### Protection Strategies
+
+| Strategy | Scope | Max Size | Release Order | Use Case |
+|----------|-------|----------|---------------|----------|
+| [PROTECT stack](#protectscope) | Within `.Call` | ~50k (ppsize) | LIFO | Temporary allocations |
+| [Preserve list](#preserve-list) | Cross-`.Call` | Unlimited | Any order | Long-lived R objects |
+| [Refcount arenas](#refcount-arenas) | Flexible | Unlimited | Any order | Many SEXPs, hot loops |
+
+### PROTECT Stack Types
+
 | Type | Purpose |
 |------|---------|
 | [`ProtectScope`](#protectscope) | Batch protection with automatic `UNPROTECT(n)` on drop |
@@ -249,3 +259,76 @@ for i in 0..n {
 
 R's default `--max-ppsize` is 50000. Unbounded patterns can overflow this limit
 with large inputs. Bounded patterns handle any size.
+
+## Preserve List
+
+For objects that must survive across multiple `.Call` invocations:
+
+```rust
+use miniextendr_api::preserve;
+
+// Protect an object (any-order release, not limited by ppsize)
+let cell = unsafe { preserve::insert(my_sexp) };
+
+// Later, release it (no LIFO constraint)
+unsafe { preserve::release(cell); }
+```
+
+Uses a circular doubly-linked cons list internally, itself protected via
+`R_PreserveObject`. Each SEXP is stored as the TAG of a cell node.
+
+Use `preserve` when you need to keep a small number of R objects alive across
+function calls (e.g., cached lookup tables).
+
+## Refcount Arenas
+
+For scenarios involving many SEXPs (hundreds to millions), the PROTECT stack
+is too limited (~50k) and `R_PreserveObject`/`R_ReleaseObject` has O(n)
+release cost. Refcount arenas provide O(1) protect/unprotect with reference
+counting backed by a VECSXP:
+
+```rust
+use miniextendr_api::refcount_protect::ThreadLocalArena;
+
+unsafe {
+    ThreadLocalArena::init();
+
+    // Protect (O(1) amortized)
+    let sexp = ThreadLocalArena::protect(my_sexp);
+
+    // RAII guard alternative
+    // let guard = arena.guard(my_sexp);
+
+    // Unprotect (O(1))
+    ThreadLocalArena::unprotect(sexp);
+}
+```
+
+### Arena Variants
+
+| Type | Backing | Thread-Local | Feature |
+|------|---------|-------------|---------|
+| `RefCountedArena` | BTreeMap + RefCell | No | — |
+| `HashMapArena` | HashMap + RefCell | No | — |
+| `ThreadLocalArena` | BTreeMap + thread_local | Yes | — |
+| `ThreadLocalHashArena` | HashMap + thread_local | Yes | — |
+| `FastHashMapArena` | ahash HashMap + RefCell | No | `refcount-fast-hash` |
+| `ThreadLocalFastHashArena` | ahash HashMap + thread_local | Yes | `refcount-fast-hash` |
+
+Thread-local variants avoid RefCell borrow overhead and are fastest for hot loops.
+HashMap variants are faster than BTreeMap for large collections (O(1) vs O(log n)).
+
+### Choosing a Strategy
+
+```
+Need GC protection?
+├─ Within a single .Call?
+│  ├─ 1 value → OwnedProtect
+│  ├─ Few values (< 100) → ProtectScope
+│  └─ Accumulator loop → ReprotectSlot
+├─ Across .Call invocations?
+│  ├─ Small number (< 10) → preserve::insert
+│  └─ Many values (100+) → ThreadLocalArena / ThreadLocalHashArena
+└─ Hot loop with many SEXPs?
+   └─ ThreadLocalFastHashArena (requires refcount-fast-hash feature)
+```
