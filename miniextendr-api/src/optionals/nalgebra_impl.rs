@@ -169,7 +169,7 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Return the SEXP - guard drops and unprotects
@@ -285,7 +285,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, R as i32, C as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(self.as_slice().as_ptr(), ptr, R * C);
 
             guard.get()

@@ -68,7 +68,7 @@ mod ffi {
 /// ```ignore
 /// // In constructor
 /// let obj = Box::into_raw(Box::new(MyErasedWrapper::new(data)));
-/// let sexp = unsafe { mx_wrap(obj as *mut mx_erased) };
+/// let sexp = unsafe { mx_wrap(obj.cast::<mx_erased>()) };
 /// ```
 #[inline]
 pub unsafe fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
@@ -130,7 +130,7 @@ pub unsafe fn mx_get(sexp: SEXP) -> *mut mx_erased {
 /// ```ignore
 /// let vtable = unsafe { mx_query(obj, TAG_FOO) };
 /// if !vtable.is_null() {
-///     let foo_vtable = vtable as *const FooVTable;
+///     let foo_vtable = vtable.cast::<FooVTable>();
 ///     // Call method through vtable...
 /// }
 /// ```
@@ -180,6 +180,6 @@ pub unsafe fn mx_query_as<V>(sexp: SEXP, tag: mx_tag) -> Option<&'static V> {
     if vtable.is_null() {
         None
     } else {
-        Some(unsafe { &*(vtable as *const V) })
+        Some(unsafe { &*vtable.cast::<V>() })
     }
 }

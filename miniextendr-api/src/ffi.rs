@@ -1892,7 +1892,7 @@ pub mod nonapi_stack {
     #[inline]
     pub unsafe fn set_r_cstack_limit(value: usize) {
         unsafe {
-            let ptr = &raw const R_CStackLimit as *mut usize;
+            let ptr = (&raw const R_CStackLimit).cast_mut();
             ptr.write(value);
         }
     }

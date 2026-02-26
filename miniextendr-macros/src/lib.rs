@@ -2353,7 +2353,7 @@ fn generate_trait_impl_wrapper(
 
             quote::quote! {
                 if trait_tag == #trait_tag_path {
-                    return &#vtable_name as *const _ as *const ::std::os::raw::c_void;
+                    return std::ptr::from_ref(&#vtable_name).cast::<::std::os::raw::c_void>();
                 }
             }
         })
@@ -2400,7 +2400,7 @@ fn generate_trait_impl_wrapper(
             if ptr.is_null() {
                 return;
             }
-            let wrapper = ptr as *mut #wrapper_name;
+            let wrapper = ptr.cast::<#wrapper_name>();
             unsafe { drop(Box::from_raw(wrapper)); }
         }
 
@@ -2451,7 +2451,7 @@ fn generate_trait_impl_wrapper(
                 },
                 data,
             });
-            Box::into_raw(wrapper) as *mut ::miniextendr_api::abi::mx_erased
+            Box::into_raw(wrapper).cast::<::miniextendr_api::abi::mx_erased>()
         }
     }
 }

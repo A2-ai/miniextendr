@@ -1646,7 +1646,7 @@ macro_rules! impl_ref_conversions_for {
                 for i in 0..len {
                     let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
                     let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
-                    let ptr = value as *mut $t;
+                    let ptr = std::ptr::from_mut(value);
                     if ptrs.iter().any(|&p| p == ptr) {
                         return Err(SexpError::InvalidValue(
                             "list contains duplicate elements; cannot create multiple mutable references"
@@ -1685,7 +1685,7 @@ macro_rules! impl_ref_conversions_for {
                         continue;
                     }
                     let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
-                    let ptr = value as *mut $t;
+                    let ptr = std::ptr::from_mut(value);
                     if ptrs.iter().any(|&p| p == ptr) {
                         return Err(SexpError::InvalidValue(
                             "list contains duplicate elements; cannot create multiple mutable references"
@@ -3108,7 +3108,7 @@ where
         // Safe because T: Copy and length is verified
         let mut arr = std::mem::MaybeUninit::<[T; N]>::uninit();
         unsafe {
-            std::ptr::copy_nonoverlapping(slice.as_ptr(), arr.as_mut_ptr() as *mut T, N);
+            std::ptr::copy_nonoverlapping(slice.as_ptr(), arr.as_mut_ptr().cast::<T>(), N);
             Ok(arr.assume_init())
         }
     }

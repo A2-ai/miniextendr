@@ -306,7 +306,7 @@ unsafe fn realloc_main_thread(
         Err(_) => return sendable_data_ptr_null(),
     };
 
-    let used = unsafe { (old as *const u8).offset_from(raw_base as *const u8) };
+    let used = unsafe { old.cast_const().offset_from(raw_base.cast_const()) };
     if used < 0 {
         // Should be impossible if `old` came from this allocator, but don't UB.
         return sendable_data_ptr_null();

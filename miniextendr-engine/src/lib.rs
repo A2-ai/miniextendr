@@ -222,7 +222,7 @@ impl REngineBuilder {
             .collect();
 
         let mut c_ptrs: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
+            c_args.iter().map(|s| s.as_ptr().cast_mut()).collect();
 
         let argc = c_ptrs.len() as c_int;
         let argv = c_ptrs.as_mut_ptr();

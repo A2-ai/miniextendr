@@ -81,7 +81,7 @@ impl ErasedCounter {
         // padding between mx_erased and the data field in the wrapper struct.
         let base = unsafe { (*self.ptr).base };
         let data_offset = unsafe { (*base).data_offset };
-        unsafe { (self.ptr as *mut u8).add(data_offset) as *mut c_void }
+        unsafe { self.ptr.cast::<u8>().add(data_offset).cast::<c_void>() }
     }
 }
 
