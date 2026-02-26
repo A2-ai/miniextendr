@@ -127,7 +127,7 @@ pub extern "C-unwind" fn miniextendr_encoding_init() {
                 }
             }
 
-            return info;
+            info
         }
 
         #[cfg(not(feature = "nonapi"))]
