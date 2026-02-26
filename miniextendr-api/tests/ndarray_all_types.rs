@@ -82,9 +82,9 @@ fn array0_scalar_all_types() {
             assert_eq!(arr[()], 42);
 
             // f64 scalar
-            let sexp_real = Rf_ScalarReal(3.14);
+            let sexp_real = Rf_ScalarReal(3.125);
             let arr: Array0<f64> = TryFromSexp::try_from_sexp(sexp_real).unwrap();
-            assert_eq!(arr[()], 3.14);
+            assert_eq!(arr[()], 3.125);
 
             // RLogical scalar
             let sexp_lgl = Rf_ScalarLogical(1);

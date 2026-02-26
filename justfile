@@ -819,6 +819,10 @@ vendor-sync-check:
       echo "Vendor sync check passed: all miniextendr crates match."
     fi
 
+# Verify lint crate compiles against current macros-core parser
+lint-sync-check:
+    cargo check --manifest-path=miniextendr-lint/Cargo.toml
+
 # Show diff between workspace and vendored crates
 vendor-sync-diff:
     #!/usr/bin/env bash
