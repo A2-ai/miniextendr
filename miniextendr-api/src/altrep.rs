@@ -12,7 +12,6 @@
 //!   - Installs methods based on trait bounds and HAS_* consts
 
 use crate::ffi::altrep::*;
-use crate::ffi::{R_xlen_t, SEXP};
 use std::ffi::CStr;
 
 /// Base type for ALTREP vectors.
@@ -43,12 +42,6 @@ pub trait AltrepClass {
     const CLASS_NAME: &'static std::ffi::CStr;
     /// The base R type (Int, Real, Logical, etc.).
     const BASE: RBase;
-
-    /// Returns the length of the ALTREP object.
-    ///
-    /// # Safety
-    /// Caller must ensure `x` is a valid SEXP from R.
-    unsafe fn length(x: SEXP) -> R_xlen_t;
 }
 
 /// Registration trait: implemented per type by the macro on struct items.

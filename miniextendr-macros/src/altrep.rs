@@ -423,9 +423,6 @@ pub(crate) fn generate_altrep_impls(
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
             const BASE: ::miniextendr_api::altrep::RBase = #base_variant;
-            unsafe fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t {
-                <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::length(x)
-            }
         }
 
         #[doc = #register_altrep_doc]
