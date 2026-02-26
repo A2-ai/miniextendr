@@ -426,7 +426,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 ) -> Self {
                     Self {
                         data,
-                        vtable: vtable as *const #vtable_name,
+                        vtable: vtable.cast::<#vtable_name>(),
                     }
                 }
             }
@@ -735,12 +735,12 @@ fn generate_method_shim(
     let param_names = &method.param_names;
     let method_call = if method.is_mut {
         quote::quote! {
-            let self_ref = unsafe { &mut *(data as *mut #impl_t) };
+            let self_ref = unsafe { &mut *data.cast::<#impl_t>() };
             self_ref.#method_name(#(#param_names),*)
         }
     } else {
         quote::quote! {
-            let self_ref = unsafe { &*(data as *const #impl_t) };
+            let self_ref = unsafe { &*data.cast::<#impl_t>().cast_const() };
             self_ref.#method_name(#(#param_names),*)
         }
     };

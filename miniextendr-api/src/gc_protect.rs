@@ -288,7 +288,7 @@ impl ProtectScope {
     #[inline]
     pub unsafe fn protect_with_index<'a>(&'a self, x: SEXP) -> ReprotectSlot<'a> {
         let mut idx: ProtectIndex = 0;
-        unsafe { R_ProtectWithIndex(x, &mut idx as *mut ProtectIndex) };
+        unsafe { R_ProtectWithIndex(x, std::ptr::from_mut(&mut idx)) };
         self.n.set(self.n.get() + 1);
         ReprotectSlot {
             idx,

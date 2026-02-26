@@ -711,7 +711,7 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Return the SEXP - guard drops and unprotects
@@ -754,7 +754,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
                 data.len() as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Set dim attribute
@@ -796,7 +796,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 4));
@@ -838,7 +838,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 5));
@@ -879,7 +879,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 6));
@@ -927,7 +927,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Set dim attribute if ndim > 1
@@ -1051,7 +1051,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Return the SEXP - guard drops and unprotects
@@ -1087,7 +1087,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
                 data.len() as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Set dim attribute
@@ -1127,7 +1127,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Set dim attribute if ndim > 1

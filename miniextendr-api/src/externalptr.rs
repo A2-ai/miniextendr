@@ -716,7 +716,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Returns the raw pointer without consuming the ExternalPtr.
     #[inline]
     pub fn as_ptr(&self) -> *const T {
-        self.cached_ptr.as_ptr() as *const T
+        self.cached_ptr.as_ptr().cast_const()
     }
 
     /// Returns the raw mutable pointer without consuming the ExternalPtr.

@@ -200,7 +200,7 @@ fn raw_expensive_reference() {
         // Protect-with-index + reprotect (replace-in-place)
         let mut idx: ProtectIndex = 0;
         let slot_value = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-        ffi::R_ProtectWithIndex(slot_value, &mut idx as *mut ProtectIndex);
+        ffi::R_ProtectWithIndex(slot_value, std::ptr::from_mut(&mut idx));
 
         // Protect new value temporarily to avoid GC gap before reprotect
         let replaced = Rf_allocVector(SEXPTYPE::INTSXP, 1);

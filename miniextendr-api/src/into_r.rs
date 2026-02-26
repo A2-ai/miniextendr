@@ -632,7 +632,7 @@ unsafe fn vec_to_sexp<T: crate::ffi::RNativeType>(slice: &[T]) -> crate::ffi::SE
     unsafe {
         let n = slice.len();
         let vec = crate::ffi::Rf_allocVector(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
-        let ptr = crate::ffi::DATAPTR_RO(vec) as *mut T;
+        let ptr = crate::ffi::DATAPTR_RO(vec).cast_mut().cast::<T>();
         std::ptr::copy_nonoverlapping(slice.as_ptr(), ptr, n);
         vec
     }
@@ -644,7 +644,7 @@ unsafe fn vec_to_sexp_unchecked<T: crate::ffi::RNativeType>(slice: &[T]) -> crat
     unsafe {
         let n = slice.len();
         let vec = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
-        let ptr = crate::ffi::DATAPTR_RO_unchecked(vec) as *mut T;
+        let ptr = crate::ffi::DATAPTR_RO_unchecked(vec).cast_mut().cast::<T>();
         std::ptr::copy_nonoverlapping(slice.as_ptr(), ptr, n);
         vec
     }

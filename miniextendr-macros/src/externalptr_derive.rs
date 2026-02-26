@@ -110,7 +110,7 @@
 //!     trait_tag: mx_tag,
 //! ) -> *const c_void {
 //!     if trait_tag == TAG_COUNTER {
-//!         return &__VTABLE_COUNTER_FOR_MYCOUNTER as *const _ as *const c_void;
+//!         return std::ptr::from_ref(&__VTABLE_COUNTER_FOR_MYCOUNTER).cast::<c_void>();
 //!     }
 //!     std::ptr::null()
 //! }
@@ -328,7 +328,7 @@ fn generate_getter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
                     if ptr.is_null() {
                         return R_NilValue;
                     }
@@ -341,7 +341,7 @@ fn generate_getter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarInteger};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
                     if ptr.is_null() {
                         return R_NilValue;
                     }
@@ -354,7 +354,7 @@ fn generate_getter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarReal};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
                     if ptr.is_null() {
                         return R_NilValue;
                     }
@@ -367,7 +367,7 @@ fn generate_getter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarLogical, Rboolean};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
                     if ptr.is_null() {
                         return R_NilValue;
                     }
@@ -381,7 +381,7 @@ fn generate_getter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarRaw};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
                     if ptr.is_null() {
                         return R_NilValue;
                     }
@@ -396,7 +396,7 @@ fn generate_getter_body(
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 use ::miniextendr_api::into_r::IntoR;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
                     if ptr.is_null() {
                         return R_NilValue;
                     }
@@ -425,7 +425,7 @@ fn generate_setter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
                     if !ptr.is_null() {
                         (*ptr).#field_name = value;
                     }
@@ -438,7 +438,7 @@ fn generate_setter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asInteger};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
                     if !ptr.is_null() {
                         (*ptr).#field_name = Rf_asInteger(value);
                     }
@@ -451,7 +451,7 @@ fn generate_setter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asReal};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
                     if !ptr.is_null() {
                         (*ptr).#field_name = Rf_asReal(value);
                     }
@@ -464,7 +464,7 @@ fn generate_setter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asLogical, Rboolean};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
                     if !ptr.is_null() {
                         (*ptr).#field_name = Rf_asLogical(value) == Rboolean::TRUE as i32;
                     }
@@ -477,7 +477,7 @@ fn generate_setter_body(
             quote::quote! {
                 use ::miniextendr_api::ffi::{R_ExternalPtrAddr, RAW, Rf_coerceVector, SEXPTYPE};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
                     if !ptr.is_null() {
                         let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
                         (*ptr).#field_name = *RAW(raw_vec);
@@ -493,7 +493,7 @@ fn generate_setter_body(
                 use ::miniextendr_api::ffi::R_ExternalPtrAddr;
                 use ::miniextendr_api::TryFromSexp;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
                     if !ptr.is_null() {
                         if let Ok(val) = <#ty as TryFromSexp>::try_from_sexp(value) {
                             (*ptr).#field_name = val;

@@ -253,7 +253,7 @@ macro_rules! __impl_altvec_dataptr {
                     .and_then(|d| {
                         <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, writable)
                     })
-                    .map(|p| p as *mut core::ffi::c_void)
+                    .map(|p| p.cast::<core::ffi::c_void>())
                     .unwrap_or(core::ptr::null_mut())
             }
 
@@ -264,7 +264,7 @@ macro_rules! __impl_altvec_dataptr {
                     .and_then(|d| {
                         <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d)
                     })
-                    .map(|p| p as *const core::ffi::c_void)
+                    .map(|p| p.cast::<core::ffi::c_void>())
                     .unwrap_or(core::ptr::null())
             }
         }
@@ -300,7 +300,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     {
                         // DATAPTR_RO on a standard (non-ALTREP) STRSXP gives the SEXP* array.
                         // Cast to mutable: safe because we own the materialized vector.
-                        return $crate::ffi::DATAPTR_RO(data2) as *mut core::ffi::c_void;
+                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
                     }
 
                     // Materialize: create a native STRSXP from the Rust strings
@@ -320,7 +320,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     $crate::ffi::R_set_altrep_data2(x, strsxp);
                     $crate::ffi::Rf_unprotect(1);
 
-                    $crate::ffi::DATAPTR_RO(strsxp) as *mut core::ffi::c_void
+                    $crate::ffi::DATAPTR_RO(strsxp).cast_mut()
                 }
             }
 
@@ -1092,7 +1092,7 @@ impl<const N: usize> crate::altrep_traits::AltVec for [i32; N] {
         unsafe { crate::altrep_data1_as::<[i32; N]>(x) }
             .and_then(|d| {
                 <[i32; N] as crate::altrep_data::AltIntegerData>::as_slice(&*d)
-                    .map(|s| s.as_ptr() as *mut std::ffi::c_void)
+                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
             })
             .unwrap_or(std::ptr::null_mut())
     }
@@ -1158,7 +1158,7 @@ impl<const N: usize> crate::altrep_traits::AltVec for [f64; N] {
         unsafe { crate::altrep_data1_as::<[f64; N]>(x) }
             .and_then(|d| {
                 <[f64; N] as crate::altrep_data::AltRealData>::as_slice(&*d)
-                    .map(|s| s.as_ptr() as *mut std::ffi::c_void)
+                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
             })
             .unwrap_or(std::ptr::null_mut())
     }
@@ -1257,7 +1257,7 @@ impl<const N: usize> crate::altrep_traits::AltVec for [u8; N] {
         unsafe { crate::altrep_data1_as::<[u8; N]>(x) }
             .and_then(|d| {
                 <[u8; N] as crate::altrep_data::AltRawData>::as_slice(&*d)
-                    .map(|s| s.as_ptr() as *mut std::ffi::c_void)
+                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
             })
             .unwrap_or(std::ptr::null_mut())
     }
@@ -1342,7 +1342,7 @@ impl<const N: usize> crate::altrep_traits::AltVec for [crate::ffi::Rcomplex; N] 
         unsafe { crate::altrep_data1_as::<[crate::ffi::Rcomplex; N]>(x) }
             .and_then(|d| {
                 <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::as_slice(&*d)
-                    .map(|s| s.as_ptr() as *mut std::ffi::c_void)
+                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
             })
             .unwrap_or(std::ptr::null_mut())
     }
@@ -1562,7 +1562,7 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
         // For read-only access, return pointer to static data.
         // Use (*d).as_ptr() to get the slice's data pointer, not ExternalPtr::as_ptr()
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
-            .map(|d| (*d).as_ptr() as *mut std::ffi::c_void)
+            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
     }
 
@@ -1570,7 +1570,7 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
-            .map(|d| (*d).as_ptr() as *const std::ffi::c_void)
+            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>())
             .unwrap_or(std::ptr::null())
     }
 }
@@ -1672,7 +1672,7 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
             }
         }
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
-            .map(|d| (*d).as_ptr() as *mut std::ffi::c_void)
+            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
     }
 
@@ -1680,7 +1680,7 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
-            .map(|d| (*d).as_ptr() as *const std::ffi::c_void)
+            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>())
             .unwrap_or(std::ptr::null())
     }
 }
@@ -1823,7 +1823,7 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
             }
         }
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
-            .map(|d| (*d).as_ptr() as *mut std::ffi::c_void)
+            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
     }
 
@@ -1831,7 +1831,7 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
-            .map(|d| (*d).as_ptr() as *const std::ffi::c_void)
+            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>())
             .unwrap_or(std::ptr::null())
     }
 }
@@ -1967,7 +1967,7 @@ macro_rules! impl_register_altrep_builtin {
                     const CLASS_NAME: &[u8] = concat!($class_name, "\0").as_bytes();
                     let cls = unsafe {
                         <$ty as crate::altrep_data::InferBase>::make_class(
-                            CLASS_NAME.as_ptr() as *const std::ffi::c_char,
+                            CLASS_NAME.as_ptr().cast::<std::ffi::c_char>(),
                             crate::AltrepPkgName::as_ptr(),
                         )
                     };
