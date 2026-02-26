@@ -179,7 +179,11 @@ pub(crate) fn format_roxygen_tags(tags: &[String]) -> String {
 ///
 /// Multiline tags (containing '\n') are split into separate `#'` lines.
 pub(crate) fn push_roxygen_tags(lines: &mut Vec<String>, tags: &[String]) {
-    push_roxygen_tags_str(lines, &tags.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+    for tag in tags {
+        for line in tag.lines() {
+            lines.push(format!("#' {}", line));
+        }
+    }
 }
 
 /// Like [`push_roxygen_tags`] but takes `&[&str]` for filtered tag slices.
@@ -247,12 +251,16 @@ pub(crate) fn find_tag_value<'a>(tags: &'a [String], tag_name: &str) -> Option<&
 /// Normalize text for comparison: lowercase, collapse whitespace, strip trailing punctuation.
 #[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
 fn normalize_for_comparison(s: &str) -> String {
-    s.to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim_end_matches(|c: char| c.is_ascii_punctuation())
-        .to_string()
+    let lower = s.to_lowercase();
+    let mut result = String::new();
+    for word in lower.split_whitespace() {
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(word);
+    }
+    result.truncate(result.trim_end_matches(|c: char| c.is_ascii_punctuation()).len());
+    result
 }
 
 /// Extract the implicit title from doc attributes (first sentence, up to first `.` or newline).
