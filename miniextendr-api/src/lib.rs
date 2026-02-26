@@ -467,8 +467,6 @@ pub use as_coerce::{
     AsCharacter,
     // Error type
     AsCoerceError,
-    // Marker trait
-    AsCoercible,
     AsComplex,
     AsDataFrame,
     AsDate,
