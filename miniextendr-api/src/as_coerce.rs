@@ -160,25 +160,6 @@ impl From<&str> for AsCoerceError {
 }
 
 // =============================================================================
-// Marker Trait
-// =============================================================================
-
-/// Marker trait for types that can potentially be coerced via `as.<class>()`.
-///
-/// This trait is automatically implemented for all types implementing
-/// [`TypedExternal`](crate::TypedExternal), enabling them to participate
-/// in the coercion system.
-///
-/// You don't need to implement this trait directly - just implement the
-/// specific coercion traits (like [`AsDataFrame`], [`AsList`], etc.) for
-/// your type.
-pub trait AsCoercible: crate::TypedExternal {}
-
-/// Blanket implementation: all [`TypedExternal`](crate::TypedExternal) types
-/// are potentially coercible.
-impl<T: crate::TypedExternal> AsCoercible for T {}
-
-// =============================================================================
 // Coercion Traits
 // =============================================================================
 
@@ -201,7 +182,7 @@ impl<T: crate::TypedExternal> AsCoercible for T {}
 ///     }
 /// }
 /// ```
-pub trait AsDataFrame: AsCoercible {
+pub trait AsDataFrame {
     /// Convert to an R data.frame.
     ///
     /// The returned List should have:
@@ -225,7 +206,7 @@ pub trait AsDataFrame: AsCoercible {
 ///     }
 /// }
 /// ```
-pub trait AsList: AsCoercible {
+pub trait AsList {
     /// Convert to an R list.
     fn as_list(&self) -> Result<crate::List, AsCoerceError>;
 }
@@ -235,7 +216,7 @@ pub trait AsList: AsCoercible {
 /// This typically produces a string representation of the object.
 /// For single values, return a single-element vector; for collections,
 /// return a vector with one element per item.
-pub trait AsCharacter: AsCoercible {
+pub trait AsCharacter {
     /// Convert to an R character vector.
     fn as_character(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -243,7 +224,7 @@ pub trait AsCharacter: AsCoercible {
 /// Trait for types that can be coerced to `numeric`/`double` via `as.numeric()`.
 ///
 /// The result should be an R numeric vector (REALSXP).
-pub trait AsNumeric: AsCoercible {
+pub trait AsNumeric {
     /// Convert to an R numeric vector.
     fn as_numeric(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -251,7 +232,7 @@ pub trait AsNumeric: AsCoercible {
 /// Trait for types that can be coerced to `integer` via `as.integer()`.
 ///
 /// The result should be an R integer vector (INTSXP).
-pub trait AsInteger: AsCoercible {
+pub trait AsInteger {
     /// Convert to an R integer vector.
     fn as_integer(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -259,7 +240,7 @@ pub trait AsInteger: AsCoercible {
 /// Trait for types that can be coerced to `logical` via `as.logical()`.
 ///
 /// The result should be an R logical vector (LGLSXP).
-pub trait AsLogical: AsCoercible {
+pub trait AsLogical {
     /// Convert to an R logical vector.
     fn as_logical(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -267,7 +248,7 @@ pub trait AsLogical: AsCoercible {
 /// Trait for types that can be coerced to `matrix` via `as.matrix()`.
 ///
 /// The result should be an R matrix with appropriate dimensions.
-pub trait AsMatrix: AsCoercible {
+pub trait AsMatrix {
     /// Convert to an R matrix.
     fn as_matrix(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -275,7 +256,7 @@ pub trait AsMatrix: AsCoercible {
 /// Trait for types that can be coerced to a generic `vector` via `as.vector()`.
 ///
 /// This is the most general vector coercion, typically stripping attributes.
-pub trait AsVector: AsCoercible {
+pub trait AsVector {
     /// Convert to an R vector.
     fn as_vector(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -283,7 +264,7 @@ pub trait AsVector: AsCoercible {
 /// Trait for types that can be coerced to `factor` via `as.factor()`.
 ///
 /// The result should be an R factor (integer vector with levels attribute).
-pub trait AsFactor: AsCoercible {
+pub trait AsFactor {
     /// Convert to an R factor.
     fn as_factor(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -291,7 +272,7 @@ pub trait AsFactor: AsCoercible {
 /// Trait for types that can be coerced to `Date` via `as.Date()`.
 ///
 /// The result should be an R Date object (numeric with "Date" class).
-pub trait AsDate: AsCoercible {
+pub trait AsDate {
     /// Convert to an R Date.
     fn as_date(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -299,7 +280,7 @@ pub trait AsDate: AsCoercible {
 /// Trait for types that can be coerced to `POSIXct` via `as.POSIXct()`.
 ///
 /// The result should be an R POSIXct object (numeric with "POSIXct", "POSIXt" class).
-pub trait AsPOSIXct: AsCoercible {
+pub trait AsPOSIXct {
     /// Convert to an R POSIXct.
     fn as_posixct(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -307,7 +288,7 @@ pub trait AsPOSIXct: AsCoercible {
 /// Trait for types that can be coerced to `complex` via `as.complex()`.
 ///
 /// The result should be an R complex vector (CPLXSXP).
-pub trait AsComplex: AsCoercible {
+pub trait AsComplex {
     /// Convert to an R complex vector.
     fn as_complex(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -315,7 +296,7 @@ pub trait AsComplex: AsCoercible {
 /// Trait for types that can be coerced to `raw` via `as.raw()`.
 ///
 /// The result should be an R raw vector (RAWSXP).
-pub trait AsRaw: AsCoercible {
+pub trait AsRaw {
     /// Convert to an R raw vector.
     fn as_raw(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -323,7 +304,7 @@ pub trait AsRaw: AsCoercible {
 /// Trait for types that can be coerced to `environment` via `as.environment()`.
 ///
 /// The result should be an R environment.
-pub trait AsEnvironment: AsCoercible {
+pub trait AsEnvironment {
     /// Convert to an R environment.
     fn as_environment(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
@@ -331,7 +312,7 @@ pub trait AsEnvironment: AsCoercible {
 /// Trait for types that can be coerced to `function` via `as.function()`.
 ///
 /// The result should be an R function (closure).
-pub trait AsFunction: AsCoercible {
+pub trait AsFunction {
     /// Convert to an R function.
     fn as_function(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
