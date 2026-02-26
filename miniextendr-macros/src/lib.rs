@@ -741,9 +741,7 @@ pub fn miniextendr(
         func_ptr_def.push(syn::parse_quote!(::miniextendr_api::ffi::SEXP));
     }
     func_ptr_def.extend(
-        (0..inputs.len())
-            .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
-            .collect::<Vec<_>>(),
+        (0..inputs.len()).map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP)),
     );
 
     // calling the rust function with
