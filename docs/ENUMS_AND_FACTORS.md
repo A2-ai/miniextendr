@@ -1,0 +1,285 @@
+# Enums and Factors Guide
+
+How to map Rust enums to R factors and character strings.
+
+miniextendr provides three complementary systems for enum-like types:
+
+| System | R Representation | Partial Match | Default | Use Case |
+|--------|-----------------|---------------|---------|----------|
+| `RFactor` | Factor (integer + levels) | No | — | Categorical data for `table()`, `lm()`, etc. |
+| `MatchArg` | Character scalar | Yes | First choice | Parameter validation (`match.arg()` style) |
+| `EnumChoices` | — (trait only) | — | — | Generic code over both RFactor and MatchArg |
+
+## RFactor — Enum as R Factor
+
+Maps a Rust enum to an R factor with levels. Each variant becomes a level.
+
+```rust
+#[derive(Copy, Clone, RFactor)]
+pub enum Color {
+    Red,    // level index 1
+    Green,  // level index 2
+    Blue,   // level index 3
+}
+```
+
+Use in functions:
+
+```rust
+#[miniextendr]
+pub fn describe(color: Color) -> &'static str {
+    match color {
+        Color::Red => "warm",
+        Color::Green => "cool",
+        Color::Blue => "cool",
+    }
+}
+
+#[miniextendr]
+pub fn favorite() -> Color {
+    Color::Blue
+}
+```
+
+From R:
+
+```r
+describe(factor("Red", levels = c("Red", "Green", "Blue")))
+# [1] "warm"
+
+favorite()
+# [1] Blue
+# Levels: Red Green Blue
+```
+
+### Rename Variants
+
+```rust
+#[derive(Copy, Clone, RFactor)]
+#[r_factor(rename_all = "snake_case")]
+pub enum Status {
+    InProgress,   // level: "in_progress"
+    Completed,    // level: "completed"
+    NotStarted,   // level: "not_started"
+}
+
+#[derive(Copy, Clone, RFactor)]
+pub enum Priority {
+    #[r_factor(rename = "lo")]
+    Low,
+    #[r_factor(rename = "med")]
+    Medium,
+    #[r_factor(rename = "hi")]
+    High,
+}
+```
+
+Supported `rename_all` values: `snake_case`, `kebab-case`, `lower`, `upper`.
+
+### Factor Vectors
+
+Use `FactorVec<T>` for vectors and `FactorOptionVec<T>` for vectors with NA:
+
+```rust
+use miniextendr_api::{FactorVec, FactorOptionVec};
+
+#[miniextendr]
+pub fn all_colors() -> FactorVec<Color> {
+    FactorVec(vec![Color::Red, Color::Green, Color::Blue])
+}
+
+#[miniextendr]
+pub fn parse_colors(input: FactorOptionVec<Color>) -> Vec<&'static str> {
+    input.0.iter().map(|c| match c {
+        Some(Color::Red) => "red",
+        Some(Color::Green) => "green",
+        Some(Color::Blue) => "blue",
+        None => "NA",
+    }).collect()
+}
+```
+
+From R:
+
+```r
+all_colors()
+# [1] Red   Green Blue
+# Levels: Red Green Blue
+
+x <- factor(c("Red", NA, "Blue"), levels = c("Red", "Green", "Blue"))
+parse_colors(x)
+# [1] "red" "NA"  "blue"
+```
+
+### Caching
+
+The `#[derive(RFactor)]` macro generates a `OnceLock`-cached levels STRSXP. The
+levels string vector is allocated once and reused for all subsequent conversions,
+giving ~4x speedup for single-value conversions.
+
+### Via `#[miniextendr]`
+
+Instead of `#[derive(RFactor)]`, you can use the attribute macro:
+
+```rust
+#[miniextendr]
+#[derive(Copy, Clone)]
+pub enum Color { Red, Green, Blue }
+```
+
+This is equivalent — `#[miniextendr]` on a fieldless enum dispatches to the same
+RFactor derive internally.
+
+---
+
+## MatchArg — Enum as String Parameter
+
+Maps a Rust enum to R character strings with `match.arg()` validation. Supports
+partial matching and defaults to the first variant when `NULL` is passed.
+
+```rust
+#[derive(Copy, Clone, MatchArg)]
+pub enum Mode {
+    Fast,    // choice: "Fast"
+    Safe,    // choice: "Safe"
+    Debug,   // choice: "Debug"
+}
+```
+
+Use in functions:
+
+```rust
+#[miniextendr]
+pub fn run(mode: Mode) -> String {
+    match mode {
+        Mode::Fast => "running fast".into(),
+        Mode::Safe => "running safe".into(),
+        Mode::Debug => "running debug".into(),
+    }
+}
+```
+
+The generated R wrapper includes `match.arg()` validation:
+
+```r
+run <- function(mode = NULL) {
+  .__mx_choices_mode <- .Call(C_run__match_arg_choices__mode)
+  mode <- if (is.factor(mode)) as.character(mode) else mode
+  mode <- base::match.arg(mode, .__mx_choices_mode)
+  .Call(C_run, mode)
+}
+```
+
+From R:
+
+```r
+run("Fast")       # exact match
+run("F")          # partial match → "Fast"
+run()             # NULL → default (first choice: "Fast")
+run("Saf")        # partial match → "Safe"
+run("X")          # Error: 'arg' should be one of "Fast", "Safe", "Debug"
+```
+
+### Rename Variants
+
+Same syntax as RFactor but with `#[match_arg(...)]`:
+
+```rust
+#[derive(Copy, Clone, MatchArg)]
+#[match_arg(rename_all = "snake_case")]
+pub enum BuildStatus {
+    InProgress,    // choice: "in_progress"
+    Completed,     // choice: "completed"
+}
+
+#[derive(Copy, Clone, MatchArg)]
+pub enum Priority {
+    #[match_arg(rename = "lo")]  Low,
+    #[match_arg(rename = "med")] Medium,
+    #[match_arg(rename = "hi")]  High,
+}
+```
+
+### Via `#[miniextendr]`
+
+```rust
+#[miniextendr(match_arg)]
+#[derive(Copy, Clone)]
+pub enum Mode { Fast, Safe, Debug }
+```
+
+### Inline String Choices
+
+For simple cases where you don't need an enum, use `choices(...)` on a `&str` parameter:
+
+```rust
+#[miniextendr]
+pub fn correlate(
+    x: f64, y: f64,
+    #[miniextendr(choices("pearson", "kendall", "spearman"))] method: &str,
+) -> String {
+    format!("method={}, cor={}", method, x * y)
+}
+```
+
+---
+
+## EnumChoices — Generic Trait
+
+Both `RFactor` and `MatchArg` require `EnumChoices` as a supertrait. Use it for
+code that works with either:
+
+```rust
+use miniextendr_api::EnumChoices;
+
+fn describe_choices<T: EnumChoices>() -> String {
+    T::CHOICES.join(", ")
+}
+
+fn lookup<T: EnumChoices>(name: &str) -> Option<T> {
+    T::from_str(name)
+}
+```
+
+The trait:
+
+```rust
+pub trait EnumChoices: Copy + 'static {
+    const CHOICES: &'static [&'static str];
+    fn from_str(s: &str) -> Option<Self>;
+    fn to_str(self) -> &'static str;
+}
+```
+
+---
+
+## Comparison Table
+
+| Feature | RFactor | MatchArg |
+|---------|---------|----------|
+| R storage | `factor(1, levels=c(...))` | `"Fast"` (character) |
+| Validation | Type check (is factor with correct levels) | `match.arg()` with partial matching |
+| Default on NULL | Error | First choice |
+| Vec support | `FactorVec<T>`, `FactorOptionVec<T>` | Single values only |
+| Partial matching | No | Yes (`"F"` → `"Fast"`) |
+| Factor input | Native | Converted to character first |
+| Use case | Categorical data | Parameter selection |
+
+## When to Use Which
+
+**RFactor** when:
+- Data is categorical (colors, species, status codes)
+- Working with R functions expecting factors (`table()`, `lm()`, `ggplot2`)
+- Need vector support with NA handling
+- Factor level ordering matters
+
+**MatchArg** when:
+- Building an API with string-based options
+- Want R's `match.arg()` partial matching and error messages
+- Want a default value when the argument is omitted
+- Validating user input parameters
+
+## See Also
+
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) — `#[miniextendr]` on enums
+- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) — Full type conversion reference
