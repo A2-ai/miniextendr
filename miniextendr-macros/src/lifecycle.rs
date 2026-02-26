@@ -234,10 +234,12 @@ pub fn collect_lifecycle_imports<'a>(
     if fns.is_empty() {
         None
     } else {
-        Some(format!(
-            "@importFrom lifecycle {}",
-            fns.into_iter().collect::<Vec<_>>().join(" ")
-        ))
+        let mut import = String::from("@importFrom lifecycle");
+        for f in fns {
+            import.push(' ');
+            import.push_str(f);
+        }
+        Some(import)
     }
 }
 
