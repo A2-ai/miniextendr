@@ -128,9 +128,8 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
             .arg(version_list)
             .arg(crate::ffi::Rf_mkString(c"major".as_ptr()))
             .eval(R_BaseEnv)
-            .map_err(|e| {
+            .inspect_err(|_| {
                 Rf_unprotect(1);
-                e
             })?;
         Rf_protect(major_sexp);
 
@@ -139,9 +138,8 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
             .arg(version_list)
             .arg(crate::ffi::Rf_mkString(c"minor".as_ptr()))
             .eval(R_BaseEnv)
-            .map_err(|e| {
+            .inspect_err(|_| {
                 Rf_unprotect(2);
-                e
             })?;
         Rf_protect(minor_sexp);
 
@@ -149,9 +147,8 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
         let major_int = RCall::new("as.integer")
             .arg(major_sexp)
             .eval(R_BaseEnv)
-            .map_err(|e| {
+            .inspect_err(|_| {
                 Rf_unprotect(3);
-                e
             })?;
         let major = Rf_asInteger(major_int);
 
@@ -163,15 +160,13 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
                     .arg(crate::ffi::Rf_mkString(c"".as_ptr()))
                     .arg(minor_sexp)
                     .eval(R_BaseEnv)
-                    .map_err(|e| {
+                    .inspect_err(|_| {
                         Rf_unprotect(3);
-                        e
                     })?,
             )
             .eval(R_BaseEnv)
-            .map_err(|e| {
+            .inspect_err(|_| {
                 Rf_unprotect(3);
-                e
             })?;
         let minor = Rf_asInteger(minor_int);
 
@@ -281,7 +276,7 @@ pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
     let conn = handle as *const Rconn;
     unsafe {
         let mode = &(*conn).mode;
-        mode.iter().any(|&c| c == b'b' as c_char)
+        mode.contains(&(b'b' as c_char))
     }
 }
 

@@ -366,6 +366,143 @@ pub trait RBufMut {
     fn clear(&self) {}
 }
 
+// =============================================================================
+// IntoR and TryFromSexp conversions for Bytes and BytesMut
+// =============================================================================
+
+use crate::from_r::TryFromSexp;
+use crate::into_r::IntoR;
+
+/// Convert `Bytes` to R raw vector (RAWSXP).
+impl IntoR for Bytes {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        // Convert to Vec<u8> for efficient bulk copy
+        Vec::from(self.as_ref()).into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { Vec::from(self.as_ref()).into_sexp_unchecked() }
+    }
+}
+
+/// Convert R raw vector (RAWSXP) to `Bytes`.
+impl TryFromSexp for Bytes {
+    type Error = crate::from_r::SexpTypeError;
+
+    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<u8> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(Bytes::from(vec))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<u8> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(Bytes::from(vec))
+    }
+}
+
+/// Convert `BytesMut` to R raw vector (RAWSXP).
+impl IntoR for BytesMut {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        // Convert to Vec<u8> for efficient bulk copy
+        self.to_vec().into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.to_vec().into_sexp_unchecked() }
+    }
+}
+
+/// Convert R raw vector (RAWSXP) to `BytesMut`.
+impl TryFromSexp for BytesMut {
+    type Error = crate::from_r::SexpTypeError;
+
+    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<u8> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(BytesMut::from(vec.as_slice()))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<u8> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(BytesMut::from(vec.as_slice()))
+    }
+}
+
+/// Convert R to `Option<Bytes>`: NULL → None, raw vector → Some.
+impl TryFromSexp for Option<Bytes> {
+    type Error = crate::from_r::SexpTypeError;
+
+    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{SEXPTYPE, SexpExt};
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        Bytes::try_from_sexp(sexp).map(Some)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{SEXPTYPE, SexpExt};
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        unsafe { Bytes::try_from_sexp_unchecked(sexp).map(Some) }
+    }
+}
+
+/// Convert R to `Option<BytesMut>`: NULL → None, raw vector → Some.
+impl TryFromSexp for Option<BytesMut> {
+    type Error = crate::from_r::SexpTypeError;
+
+    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{SEXPTYPE, SexpExt};
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        BytesMut::try_from_sexp(sexp).map(Some)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{SEXPTYPE, SexpExt};
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        unsafe { BytesMut::try_from_sexp_unchecked(sexp).map(Some) }
+    }
+}
+
+/// Convert `Option<Bytes>` to R: Some → raw vector, None → NULL.
+impl IntoR for Option<Bytes> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(b) => b.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(b) => unsafe { b.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<BytesMut>` to R: Some → raw vector, None → NULL.
+impl IntoR for Option<BytesMut> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(b) => b.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(b) => unsafe { b.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -726,142 +863,5 @@ mod tests {
         // so let's just check that we can write to the buffer.
         buf.put_u8(1);
         assert_eq!(buf.len(), 1);
-    }
-}
-
-// =============================================================================
-// IntoR and TryFromSexp conversions for Bytes and BytesMut
-// =============================================================================
-
-use crate::from_r::TryFromSexp;
-use crate::into_r::IntoR;
-
-/// Convert `Bytes` to R raw vector (RAWSXP).
-impl IntoR for Bytes {
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        // Convert to Vec<u8> for efficient bulk copy
-        Vec::from(self.as_ref()).into_sexp()
-    }
-
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { Vec::from(self.as_ref()).into_sexp_unchecked() }
-    }
-}
-
-/// Convert R raw vector (RAWSXP) to `Bytes`.
-impl TryFromSexp for Bytes {
-    type Error = crate::from_r::SexpTypeError;
-
-    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<u8> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(Bytes::from(vec))
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<u8> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(Bytes::from(vec))
-    }
-}
-
-/// Convert `BytesMut` to R raw vector (RAWSXP).
-impl IntoR for BytesMut {
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        // Convert to Vec<u8> for efficient bulk copy
-        self.to_vec().into_sexp()
-    }
-
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { self.to_vec().into_sexp_unchecked() }
-    }
-}
-
-/// Convert R raw vector (RAWSXP) to `BytesMut`.
-impl TryFromSexp for BytesMut {
-    type Error = crate::from_r::SexpTypeError;
-
-    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<u8> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(BytesMut::from(vec.as_slice()))
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        let vec: Vec<u8> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(BytesMut::from(vec.as_slice()))
-    }
-}
-
-/// Convert R to `Option<Bytes>`: NULL → None, raw vector → Some.
-impl TryFromSexp for Option<Bytes> {
-    type Error = crate::from_r::SexpTypeError;
-
-    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SEXPTYPE, SexpExt};
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        Bytes::try_from_sexp(sexp).map(Some)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SEXPTYPE, SexpExt};
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        unsafe { Bytes::try_from_sexp_unchecked(sexp).map(Some) }
-    }
-}
-
-/// Convert R to `Option<BytesMut>`: NULL → None, raw vector → Some.
-impl TryFromSexp for Option<BytesMut> {
-    type Error = crate::from_r::SexpTypeError;
-
-    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SEXPTYPE, SexpExt};
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        BytesMut::try_from_sexp(sexp).map(Some)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{SEXPTYPE, SexpExt};
-        if sexp.type_of() == SEXPTYPE::NILSXP {
-            return Ok(None);
-        }
-        unsafe { BytesMut::try_from_sexp_unchecked(sexp).map(Some) }
-    }
-}
-
-/// Convert `Option<Bytes>` to R: Some → raw vector, None → NULL.
-impl IntoR for Option<Bytes> {
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        match self {
-            Some(b) => b.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
-        }
-    }
-
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        match self {
-            Some(b) => unsafe { b.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
-        }
-    }
-}
-
-/// Convert `Option<BytesMut>` to R: Some → raw vector, None → NULL.
-impl IntoR for Option<BytesMut> {
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        match self {
-            Some(b) => b.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
-        }
-    }
-
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        match self {
-            Some(b) => unsafe { b.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
-        }
     }
 }
