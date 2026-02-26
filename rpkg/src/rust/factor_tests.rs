@@ -3,7 +3,7 @@
 //! RFactor types can be used directly as function parameters since they implement
 //! TryFromSexp. The derive macro also generates IntoR for returning factors.
 
-use miniextendr_api::{RFactor, miniextendr_module};
+use miniextendr_api::{MatchArg, RFactor, miniextendr_module};
 
 /// Color enum demonstrating basic RFactor usage.
 #[derive(Copy, Clone, Debug, PartialEq, RFactor)]
@@ -87,19 +87,19 @@ pub fn factor_describe_priority(priority: Priority) -> &'static str {
 /// @noRd
 #[miniextendr_api::miniextendr]
 pub fn factor_color_levels() -> Vec<&'static str> {
-    Color::LEVELS.to_vec()
+    Color::CHOICES.to_vec()
 }
 
 /// @noRd
 #[miniextendr_api::miniextendr]
 pub fn factor_status_levels() -> Vec<&'static str> {
-    Status::LEVELS.to_vec()
+    Status::CHOICES.to_vec()
 }
 
 /// @noRd
 #[miniextendr_api::miniextendr]
 pub fn factor_priority_levels() -> Vec<&'static str> {
-    Priority::LEVELS.to_vec()
+    Priority::CHOICES.to_vec()
 }
 
 /// @noRd

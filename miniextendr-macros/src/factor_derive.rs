@@ -221,17 +221,17 @@ fn derive_simple_factor(
     let level_name_strs: Vec<&str> = level_names.iter().map(|s| s.as_str()).collect();
 
     Ok(quote! {
-        impl #impl_generics ::miniextendr_api::EnumChoices for #name #ty_generics #where_clause {
+        impl #impl_generics ::miniextendr_api::match_arg::MatchArg for #name #ty_generics #where_clause {
             const CHOICES: &'static [&'static str] = &[#(#level_name_strs),*];
 
-            fn from_str(s: &str) -> Option<Self> {
-                match s {
+            fn from_choice(choice: &str) -> Option<Self> {
+                match choice {
                     #(#level_name_strs => Some(Self::#variant_idents),)*
                     _ => None,
                 }
             }
 
-            fn to_str(self) -> &'static str {
+            fn to_choice(self) -> &'static str {
                 match self {
                     #(Self::#variant_idents => #level_name_strs,)*
                 }
@@ -239,8 +239,6 @@ fn derive_simple_factor(
         }
 
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
-            const LEVELS: &'static [&'static str] = &[#(#level_name_strs),*];
-
             fn to_level_index(self) -> i32 {
                 match self {
                     #(Self::#variant_idents => #indices,)*
@@ -261,7 +259,7 @@ fn derive_simple_factor(
                     ::std::sync::OnceLock::new();
                 let levels = *LEVELS_CACHE.get_or_init(|| {
                     ::miniextendr_api::build_levels_sexp_cached(
-                        <Self as ::miniextendr_api::RFactor>::LEVELS
+                        <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES
                     )
                 });
                 ::miniextendr_api::build_factor(&[<Self as ::miniextendr_api::RFactor>::to_level_index(self)], levels)
@@ -391,10 +389,10 @@ fn derive_interaction_factor(
     let inner_level_strs: Vec<&str> = inner_levels.iter().map(|s| s.as_str()).collect();
 
     Ok(quote! {
-        // Compile-time assertion: verify specified inner levels match the actual inner type's LEVELS.
+        // Compile-time assertion: verify specified inner levels match the actual inner type's CHOICES.
         // This catches mismatches between the `interaction = [...]` attribute and the inner type.
         const _: () = {
-            const ACTUAL: &[&str] = <#inner_type as ::miniextendr_api::RFactor>::LEVELS;
+            const ACTUAL: &[&str] = <#inner_type as ::miniextendr_api::match_arg::MatchArg>::CHOICES;
             const EXPECTED: &[&str] = &[#(#inner_level_strs),*];
 
             // Check level count
@@ -424,22 +422,20 @@ fn derive_interaction_factor(
             }
         };
 
-        impl #impl_generics ::miniextendr_api::EnumChoices for #name #ty_generics #where_clause {
+        impl #impl_generics ::miniextendr_api::match_arg::MatchArg for #name #ty_generics #where_clause {
             const CHOICES: &'static [&'static str] = &[#(#combined_level_strs),*];
 
-            fn from_str(s: &str) -> Option<Self> {
-                let idx_1 = Self::CHOICES.iter().position(|&l| l == s).map(|i| i as i32 + 1)?;
+            fn from_choice(choice: &str) -> Option<Self> {
+                let idx_1 = Self::CHOICES.iter().position(|&l| l == choice).map(|i| i as i32 + 1)?;
                 <Self as ::miniextendr_api::RFactor>::from_level_index(idx_1)
             }
 
-            fn to_str(self) -> &'static str {
+            fn to_choice(self) -> &'static str {
                 Self::CHOICES[(<Self as ::miniextendr_api::RFactor>::to_level_index(self) - 1) as usize]
             }
         }
 
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
-            const LEVELS: &'static [&'static str] = &[#(#combined_level_strs),*];
-
             fn to_level_index(self) -> i32 {
                 match self {
                     #(#to_index_arms)*
@@ -460,7 +456,7 @@ fn derive_interaction_factor(
                     ::std::sync::OnceLock::new();
                 let levels = *LEVELS_CACHE.get_or_init(|| {
                     ::miniextendr_api::build_levels_sexp_cached(
-                        <Self as ::miniextendr_api::RFactor>::LEVELS
+                        <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES
                     )
                 });
                 ::miniextendr_api::build_factor(&[<Self as ::miniextendr_api::RFactor>::to_level_index(self)], levels)
