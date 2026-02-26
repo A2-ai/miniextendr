@@ -51,7 +51,7 @@ Optional capabilities enabled via Cargo feature flags or proc-macro attributes.
 | Feature | Guide | What it does |
 |---|---|---|
 | ALTREP | [ALTREP](ALTREP.md), [Examples](ALTREP_EXAMPLES.md), [Quick Ref](ALTREP_QUICKREF.md), [Guards](ALTREP_GUARDS.md) | Lazy/compact vectors via `#[derive(Altrep)]` |
-| Enums & Factors | [Enums & Factors](ENUMS_AND_FACTORS.md) | RFactor, MatchArg, EnumChoices, FactorVec |
+| Enums & Factors | [Enums & Factors](ENUMS_AND_FACTORS.md) | RFactor, MatchArg, FactorVec |
 | Connections | [Connections](CONNECTIONS.md) | Custom R connections from Rust |
 | Progress bars | [Progress](PROGRESS.md) | indicatif progress bars routed through R console |
 | rayon | [Rayon](RAYON.md) | Parallel iteration with data-race safety |

@@ -73,11 +73,9 @@ pub fn has_altrep_derive(attrs: &[Attribute]) -> bool {
         ) else {
             return false;
         };
-        paths.iter().any(|p| {
-            p.segments
-                .last()
-                .is_some_and(|seg| seg.ident == "Altrep")
-        })
+        paths
+            .iter()
+            .any(|p| p.segments.last().is_some_and(|seg| seg.ident == "Altrep"))
     })
 }
 

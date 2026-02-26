@@ -484,7 +484,7 @@ pub enum Season {
 }
 ```
 
-Generates `EnumChoices` + `RFactor` + `IntoR` + `TryFromSexp`. The enum maps to
+Generates `MatchArg` + `RFactor` + `IntoR` + `TryFromSexp`. The enum maps to
 an R factor with levels matching variant names.
 
 ```r
