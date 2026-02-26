@@ -295,6 +295,100 @@ The row type must implement `IntoList`:
 struct Measurement { /* ... */ }
 ```
 
+### Parallel Fill with Rayon
+
+The `parallel` container attribute enables rayon-based parallel column filling for
+large data frames. Requires the `rayon` feature.
+
+```toml
+# Cargo.toml
+[dependencies]
+miniextendr-api = { version = "0.1", features = ["rayon"] }
+```
+
+```rust
+#[derive(Clone, IntoList, DataFrameRow)]
+#[dataframe(parallel)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+    pub label: String,
+}
+
+#[miniextendr]
+pub fn big_points() -> PointDataFrame {
+    let points: Vec<Point> = (0..100_000)
+        .map(|i| Point { x: i as f64, y: (i * 2) as f64, label: format!("p{}", i) })
+        .collect();
+    Point::to_dataframe(points)
+}
+```
+
+**How it works:**
+
+- Below 4096 rows: sequential fill (same as without `parallel`)
+- At 4096+ rows: parallel fill using `rayon::par_iter()` with scatter-write
+- Pre-allocates column vectors to exact size, then fills indices in parallel
+- Uses `ColumnWriter<T>` for safe concurrent writes to disjoint indices
+
+**Enum support:** Parallel fill also works with enum DataFrameRow types:
+
+```rust
+#[derive(Clone, DataFrameRow)]
+#[dataframe(parallel, tag = "_kind")]
+pub enum Event {
+    Click { id: i32, x: f64, y: f64 },
+    Impression { id: i32, slot: String },
+}
+```
+
+**Performance:** Parallel fill is most beneficial for:
+- Large row counts (10k+)
+- Structs with many fields (wide data frames)
+- Expensive `Clone`/conversion per field
+
+For small data frames, the sequential path avoids rayon overhead.
+
+### Columnar Serialization via Serde
+
+When you have types that already implement `serde::Serialize`, you can convert them
+directly to R data frames without deriving `DataFrameRow`:
+
+```rust
+use serde::Serialize;
+use miniextendr_api::serde::vec_to_dataframe;
+
+#[derive(Serialize)]
+struct LogEntry {
+    timestamp: f64,
+    level: String,
+    message: String,
+}
+
+#[miniextendr]
+fn get_logs() -> miniextendr_api::ffi::SEXP {
+    let logs = vec![
+        LogEntry { timestamp: 1.0, level: "INFO".into(), message: "started".into() },
+        LogEntry { timestamp: 2.0, level: "ERROR".into(), message: "failed".into() },
+    ];
+    vec_to_dataframe(&logs).expect("serialization failed")
+}
+```
+
+Requires the `serde` feature. Column types are inferred from serde field types:
+
+| Rust Type | R Column |
+|-----------|----------|
+| `bool` | logical |
+| `i8`/`i16`/`i32` | integer |
+| `i64`/`u64`/`f32`/`f64` | numeric |
+| `String`/`&str` | character |
+| `Option<T>` | Same type with `NA` for `None` |
+
+This is useful when you already have serde-serializable types and don't want to
+add `IntoList` + `DataFrameRow` derives. For new types, prefer `#[derive(DataFrameRow)]`
+which gives you a typed companion type and better ergonomics.
+
 ---
 
 ## Approach 2: `DataFrame<T>`
