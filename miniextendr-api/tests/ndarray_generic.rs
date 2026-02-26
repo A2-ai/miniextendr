@@ -90,6 +90,44 @@ fn array2_i32_blanket_impl() {
 
 #[cfg(feature = "ndarray")]
 #[test]
+fn array3_i32_blanket_impl() {
+    // Verify blanket impl works for 3D arrays
+    r_test_utils::with_r_thread(|| {
+        use miniextendr_api::ffi::{
+            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect,
+            SEXPTYPE,
+        };
+
+        unsafe {
+            // Create 2x3x2 = 12 element 3D array
+            let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 12));
+            let ptr = INTEGER(sexp);
+            for i in 0..12 {
+                *ptr.add(i) = i as i32 + 1;
+            }
+
+            // Set dimensions
+            let dims = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
+            let dims_ptr = INTEGER(dims);
+            *dims_ptr.add(0) = 2;
+            *dims_ptr.add(1) = 3;
+            *dims_ptr.add(2) = 2;
+            Rf_setAttrib(sexp, R_DimSymbol, dims);
+
+            let arr: Array3<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+            assert_eq!(arr.shape(), &[2, 3, 2]);
+            // Column-major: arr[[row, col, slice]]
+            assert_eq!(arr[[0, 0, 0]], 1);
+            assert_eq!(arr[[1, 0, 0]], 2);
+            assert_eq!(arr[[0, 1, 0]], 3);
+
+            Rf_unprotect(2);
+        }
+    });
+}
+
+#[cfg(feature = "ndarray")]
+#[test]
 fn array0_scalar_blanket_impl() {
     // Verify Array0 (scalar) blanket impl works
     r_test_utils::with_r_thread(|| {
@@ -126,8 +164,8 @@ fn arrayd_dynamic_dims() {
     // Test ArrayD with dynamic number of dimensions
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            INTEGER, R_DimSymbol, Rf_allocArray, Rf_allocVector, Rf_protect, Rf_setAttrib,
-            Rf_unprotect, SETCAR, SEXPTYPE,
+            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect,
+            SEXPTYPE,
         };
 
         unsafe {
@@ -164,8 +202,7 @@ fn array_blanket_coverage_all_rnative_types() {
     // Verify blanket impl works for all RNativeType: i32, f64, u8, RLogical
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            INTEGER, LOGICAL, RAW, REAL, RLogical, Rf_allocVector, Rf_protect, Rf_unprotect,
-            SEXPTYPE,
+            RLogical, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE,
         };
         use ndarray::Array1;
 
