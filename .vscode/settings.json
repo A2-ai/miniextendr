@@ -56,7 +56,7 @@
   // scanning generated .rs files in target/build/.../out/ which causes
   // unnecessary recompilation on every devtools::load_all()
   "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/ra-target",
-  "rust-analyzer.files.excludeDirs": [
+  "rust-analyzer.files.exclude": [
     "rpkg/vendor",
     "rpkg/src/rust/target",
     "rpkg/rust-target",
