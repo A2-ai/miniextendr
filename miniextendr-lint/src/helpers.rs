@@ -79,6 +79,27 @@ pub fn has_altrep_derive(attrs: &[Attribute]) -> bool {
     })
 }
 
+/// Returns true if the attribute list contains `#[derive(Vctrs)]`
+/// or `#[derive(miniextendr_api::Vctrs)]`.
+pub fn has_vctrs_derive(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if !attr.path().is_ident("derive") {
+            return false;
+        }
+        let syn::Meta::List(meta_list) = &attr.meta else {
+            return false;
+        };
+        let Ok(paths) = meta_list.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+        ) else {
+            return false;
+        };
+        paths
+            .iter()
+            .any(|p| p.segments.last().is_some_and(|seg| seg.ident == "Vctrs"))
+    })
+}
+
 /// Returns whether a directory should be skipped during lint tree traversal.
 pub fn should_skip_dir(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {

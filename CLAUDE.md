@@ -373,14 +373,15 @@ The `miniextendr-lint` crate is a build-time static analysis tool that checks co
 
 ### What it checks
 
-- **Missing module entries**: `#[miniextendr]` items not listed in `miniextendr_module!`
-- **Missing attributes**: Items in `miniextendr_module!` without `#[miniextendr]` attribute
+- **Missing module entries**: `#[miniextendr]` / `#[derive(Altrep)]` / `#[derive(Vctrs)]` items not listed in `miniextendr_module!`
+- **Missing attributes**: Items in `miniextendr_module!` without matching `#[miniextendr]` or derive attribute
+- **Missing `use submodule;`**: Child modules with `miniextendr_module!` not wired into the parent (MXL006)
 - **Multiple impl blocks**: When a type has 2+ impl blocks, all must have distinct labels
 - **Class system compatibility**: Trait impls must be compatible with inherent impl class systems
-
-### What it does NOT check
-
-- **Missing `use submodule;`** in parent module - if a sub-module has its own `miniextendr_module!` with all functions listed, the lint passes even if the parent forgets to `use` it. You'll only discover this at runtime when R can't find the functions.
+- **Cfg parity**: `#[cfg(...)]` mismatches between items and module entries, or between `mod` and `use` declarations
+- **Trait ABI registration**: Missing `TypedExternal` for trait dispatch, generic types in trait entries
+- **Function visibility**: Registered top-level functions that aren't `pub`
+- **Module graph**: Unreachable modules, duplicate entrypoint symbols, multiple root macros
 
 ### Running the lint
 
