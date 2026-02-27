@@ -5,7 +5,7 @@ use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
-use miniextendr_api::rayon_bridge::{with_r_matrix, with_r_vec};
+use miniextendr_api::rayon_bridge::{par_map, par_map2, par_map3, with_r_matrix, with_r_vec, with_r_vec_map};
 #[cfg(feature = "rayon")]
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -47,31 +47,64 @@ pub fn rayon_vec_collect(n: i32) -> Vec<f64> {
 }
 
 /// @noRd
-/// Test with_r_vec for zero-copy parallel fill.
+/// Test with_r_vec for chunk-based parallel fill.
 #[cfg(feature = "rayon")]
 /// @noRd
 #[miniextendr]
 pub fn rayon_with_r_vec(n: i32) -> SEXP {
-    with_r_vec(n as usize, |output: &mut [f64]| {
-        output
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(i, slot)| *slot = (i as f64).sqrt());
+    with_r_vec(n as usize, |chunk: &mut [f64], offset: usize| {
+        for (i, slot) in chunk.iter_mut().enumerate() {
+            *slot = ((offset + i) as f64).sqrt();
+        }
     })
 }
 
 /// @noRd
-/// Test with_r_matrix for parallel matrix fill.
+/// Test with_r_vec_map for element-wise parallel fill.
+#[cfg(feature = "rayon")]
+/// @noRd
+#[miniextendr]
+pub fn rayon_with_r_vec_map(n: i32) -> SEXP {
+    with_r_vec_map(n as usize, |i: usize| (i as f64).sqrt())
+}
+
+/// @noRd
+/// Test par_map: transform input slice → R vector.
+#[cfg(feature = "rayon")]
+/// @noRd
+#[miniextendr]
+pub fn rayon_par_map(x: &[f64]) -> SEXP {
+    par_map(x, |&v| v.sqrt())
+}
+
+/// @noRd
+/// Test par_map2: two-input element-wise parallel map.
+#[cfg(feature = "rayon")]
+/// @noRd
+#[miniextendr]
+pub fn rayon_par_map2(a: &[f64], b: &[f64]) -> SEXP {
+    par_map2(a, b, |&x, &y| x + y)
+}
+
+/// @noRd
+/// Test par_map3: three-input element-wise parallel map (fused multiply-add).
+#[cfg(feature = "rayon")]
+/// @noRd
+#[miniextendr]
+pub fn rayon_par_map3(a: &[f64], b: &[f64], c: &[f64]) -> SEXP {
+    par_map3(a, b, c, |&x, &y, &z| x * y + z)
+}
+
+/// @noRd
+/// Test with_r_matrix for parallel column-wise fill.
 #[cfg(feature = "rayon")]
 /// @noRd
 #[miniextendr]
 pub fn rayon_with_r_matrix(nrow: i32, ncol: i32) -> SEXP {
-    with_r_matrix(nrow as usize, ncol as usize, |slice, nrow, _ncol| {
-        slice.par_iter_mut().enumerate().for_each(|(i, slot)| {
-            let row = i % nrow;
-            let col = i / nrow;
-            *slot = (row * col) as f64;
-        });
+    with_r_matrix(nrow as usize, ncol as usize, |col, col_idx| {
+        for (row, slot) in col.iter_mut().enumerate() {
+            *slot = (row * col_idx) as f64;
+        }
     })
 }
 
@@ -134,6 +167,10 @@ miniextendr_module! {
     fn rayon_parallel_filter_positive;
     fn rayon_vec_collect;
     fn rayon_with_r_vec;
+    fn rayon_with_r_vec_map;
+    fn rayon_par_map;
+    fn rayon_par_map2;
+    fn rayon_par_map3;
     fn rayon_with_r_matrix;
     fn rayon_parallel_stats;
     fn rayon_parallel_sum_int;

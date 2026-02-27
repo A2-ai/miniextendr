@@ -54,6 +54,45 @@ test_that("rayon_with_r_vec returns correct R vector", {
   expect_equal(result[5], 2) # sqrt(4) = 2
 })
 
+test_that("rayon_with_r_vec_map returns correct R vector", {
+  result <- rayon_with_r_vec_map(100L)
+  expect_type(result, "double")
+  expect_length(result, 100)
+  expect_equal(result, sqrt(as.numeric(0:99)))
+})
+
+test_that("rayon_par_map computes element-wise sqrt", {
+  x <- as.numeric(1:1000)
+  result <- rayon_par_map(x)
+  expect_type(result, "double")
+  expect_length(result, 1000)
+  expect_equal(result, sqrt(x))
+})
+
+test_that("rayon_par_map handles empty vector", {
+  result <- rayon_par_map(numeric(0))
+  expect_length(result, 0)
+})
+
+test_that("rayon_par_map2 computes element-wise addition", {
+  a <- as.numeric(1:500)
+  b <- as.numeric(501:1000)
+  result <- rayon_par_map2(a, b)
+  expect_type(result, "double")
+  expect_length(result, 500)
+  expect_equal(result, a + b)
+})
+
+test_that("rayon_par_map3 computes fused multiply-add", {
+  a <- c(1, 2, 3, 4, 5)
+  b <- c(10, 20, 30, 40, 50)
+  c_vec <- c(100, 200, 300, 400, 500)
+  result <- rayon_par_map3(a, b, c_vec)
+  expect_type(result, "double")
+  expect_length(result, 5)
+  expect_equal(result, a * b + c_vec)
+})
+
 test_that("rayon_with_r_matrix returns correct matrix", {
   result <- rayon_with_r_matrix(3L, 4L)
   expect_true(is.matrix(result))

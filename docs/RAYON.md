@@ -8,6 +8,7 @@ Miniextendr provides seamless integration with [Rayon](https://docs.rs/rayon) fo
 - [Architecture](#architecture)
 - [API Overview](#api-overview)
 - [Patterns](#patterns)
+- [RNG Reproducibility](#rng-reproducibility)
 - [Performance](#performance)
 - [Safety](#safety)
 - [Examples](#examples)
@@ -37,15 +38,10 @@ fn parallel_sqrt(x: &[f64]) -> Vec<f64> {
 
 ```rust
 use miniextendr_api::rayon_bridge::*;
-use rayon::prelude::*;
 
 #[miniextendr]
 fn parallel_sqrt_fast(x: &[f64]) -> SEXP {
-    with_r_vec::<f64, _>(x.len(), |output| {
-        output.par_iter_mut()
-            .zip(x.par_iter())
-            .for_each(|(out, &inp)| *out = inp.sqrt());
-    })
+    par_map(x, |&v| v.sqrt())
 }
 ```
 
@@ -56,6 +52,9 @@ fn parallel_sqrt_fast(x: &[f64]) -> SEXP {
 **Rust computation: Parallel on Rayon threads (normal 2MB stacks)**
 **R API calls: Serial on main thread (via `with_r_thread`)**
 
+The framework handles all parallelism internally. User closures receive **chunks**
+of data and never need to call `par_iter()` or manage thread dispatch.
+
 ### Thread Model
 
 ```text
@@ -64,79 +63,130 @@ fn parallel_sqrt_fast(x: &[f64]) -> SEXP {
 │                                         │
 │   Thread 1   Thread 2   Thread 3        │
 │      ↓          ↓          ↓            │
-│   [Rust]    [Rust]    [Rust]            │ ← Parallel computation
+│   chunk[0]  chunk[1]  chunk[2]          │ ← Parallel computation
 │      ↓          ↓          ↓            │
-│   with_r    with_r    with_r            │ ← Need R API?
+│   f(chunk,0) f(chunk,n) f(chunk,2n)     │ ← User closure per chunk
 └──────┬──────────┬──────────┬────────────┘
        │          │          │
        └──────────┴──────────┘
                   ↓
        ┌──────────────────────┐
        │  Main R Thread       │
-       │  (channel based)     │ ← Sequential R operations
-       │                      │
-       │  Rf_allocVector()    │
-       │  Rf_ScalarReal()     │
-       │  R_eval()            │
-       └──────────┬───────────┘
-                  ↓
-       Results sent back to Rayon threads
+       │  (allocates before,  │ ← R memory alloc/dealloc
+       │   returns after)     │
+       └──────────────────────┘
 ```
 
 ### Key Insights
 
-1. **Normal Stacks**: Rayon threads use Rust's default 2MB stacks, not R's large stacks
-2. **No Stack Checking Disabled**: R's stack checking remains enabled on the main thread
-3. **Channel-Based**: Uses the existing `with_r_thread` channel infrastructure
-4. **Zero Copy**: Pre-allocation patterns write directly into R memory
+1. **Framework-managed parallelism**: `with_r_vec`, `par_map`, etc. split data into chunks internally
+2. **Deterministic chunks**: Same `(length, thread_count)` always produces the same chunk boundaries
+3. **Zero copy**: Pre-allocation writes directly into R memory
+4. **No R calls in closures**: Pure Rust only inside parallel sections
 
 ## API Overview
 
-### Core Functions
+### Chunk-Based Fill
 
-#### `with_r_thread` - Execute R Code on Main Thread
+#### `with_r_vec(len, f)` — Chunk-based parallel fill
 
-Routes R API calls from Rayon threads to the main thread.
+Allocates an R vector of `len` elements, splits into chunks, calls `f(chunk, offset)`
+in parallel. The closure receives a mutable slice and the starting index.
 
 ```rust
-let sexp = with_r_thread(|| unsafe {
-    ffi::Rf_ScalarInteger(42)
+pub fn with_r_vec<T, F>(len: usize, f: F) -> SEXP
+where
+    T: RNativeType + Send + Sync,
+    F: Fn(&mut [T], usize) + Send + Sync,
+```
+
+```rust
+with_r_vec(1000, |chunk: &mut [f64], offset: usize| {
+    for (i, slot) in chunk.iter_mut().enumerate() {
+        *slot = ((offset + i) as f64).sqrt();
+    }
 });
 ```
 
-### Pre-Allocation Functions (Zero-Copy)
+#### `with_r_vec_map(len, f)` — Index-based fill (sugar)
 
-#### `with_r_vec<T>` - Pre-allocate Vector
+Each element depends only on its index. Sugar over `with_r_vec`.
 
 ```rust
-pub fn with_r_vec<T: RNativeType, F>(len: usize, f: F) -> SEXP
-where F: FnOnce(&mut [T])
+with_r_vec_map(1000, |i: usize| (i as f64).sqrt());
 ```
 
-**Example:**
+### Parallel Map
+
+#### `par_map(input, f)` — Transform slice → R vector
+
+Element-wise parallel transform. Writes directly into R memory (zero intermediate allocation).
+
 ```rust
-let r_vec = with_r_vec::<f64, _>(1000, |output| {
-    output.par_iter_mut()
-        .enumerate()
-        .for_each(|(i, slot)| *slot = (i as f64).sqrt());
+pub fn par_map<T, U, F>(input: &[T], f: F) -> SEXP
+where
+    T: Send + Sync,
+    U: RNativeType + Send + Sync,
+    F: Fn(&T) -> U + Send + Sync,
+```
+
+```rust
+// Parallel sqrt
+par_map(x, |&v| v.sqrt())
+
+// Type conversion: i32 → f64
+par_map(ints, |&v| v as f64)
+```
+
+#### `par_map2(a, b, f)` — Two-input parallel map
+
+```rust
+// Element-wise addition
+par_map2(a, b, |&x, &y| x + y)
+```
+
+#### `par_map3(a, b, c, f)` — Three-input parallel map
+
+```rust
+// Fused multiply-add: a * b + c
+par_map3(a, b, c, |&x, &y, &z| x * y + z)
+```
+
+### Matrix and Array
+
+#### `with_r_matrix(nrow, ncol, f)` — Column-wise parallel fill
+
+Each column is a natural chunk (contiguous in R's column-major layout).
+The closure receives `(column_slice, col_idx)`.
+
+```rust
+with_r_matrix(100, 50, |col: &mut [f64], col_idx: usize| {
+    for (row, slot) in col.iter_mut().enumerate() {
+        *slot = (row + col_idx * 1000) as f64;
+    }
 });
 ```
 
-### Parallel Collection (Vec<T>)
+#### `with_r_array(dims, f)` — Slab-wise parallel fill
 
-Rayon implements `FromParallelIterator` for `Vec<T>`, so you can collect in
-parallel and return a `Vec<T>` directly (converted to R via `IntoR`).
+For dims `[d0, d1, ..., dN]`, each slab has `d0 * d1 * ... * d(N-1)` elements.
+The closure receives `(slab_slice, slab_idx)` where `slab_idx` is the index along
+the last dimension.
 
 ```rust
-let results: Vec<f64> = (0..1000)
-    .into_par_iter()
-    .map(|i| (i as f64).sqrt())
-    .collect();  // Parallel collection
-
-let r_vec = results.into_sexp();  // Convert to R on main thread
+// 2×3×4 array: 4 slabs of 6 elements each
+with_r_array([2, 3, 4], |slab: &mut [f64], slab_idx: usize| {
+    for (i, val) in slab.iter_mut().enumerate() {
+        *val = (slab_idx * 100 + i) as f64;
+    }
+});
 ```
 
-### Reduction Functions
+#### Typed wrappers: `new_r_matrix`, `new_r_array`
+
+Same as above but return `RMatrix<T>` / `RArray<T, NDIM>` instead of raw SEXP.
+
+### Reduction
 
 ```rust
 use miniextendr_api::rayon_bridge::reduce;
@@ -158,42 +208,70 @@ perf::in_rayon_thread()  // Are we in a Rayon thread?
 perf::thread_index()     // Current thread index (if in pool)
 ```
 
-## Patterns
+### Parallel Collection (Vec\<T\>)
 
-### Pattern 1: Zero-Copy Parallel Fill (Maximum Performance)
-
-**Use when:** Transforming R vector element-wise
-
-**Performance:** Best - no intermediate allocation
-
-```rust
-#[miniextendr]
-fn parallel_sqrt(x: &[f64]) -> SEXP {
-    with_r_vec::<f64, _>(x.len(), |output| {
-        output.par_iter_mut()
-            .zip(x.par_iter())
-            .for_each(|(out, &inp)| *out = inp.sqrt());
-    })
-}
-```
-
-### Pattern 2: Collect to Vec (Flexible)
-
-**Use when:** Complex transformations or multiple steps
-
-**Performance:** Moderate - one extra allocation
+For operations that don't fit the chunk model (filtering, variable-length output),
+collect into `Vec<T>` and let miniextendr convert to R:
 
 ```rust
 #[miniextendr]
 fn parallel_pipeline(x: &[f64]) -> Vec<f64> {
     x.par_iter()
-        .filter(|&&v| v > 0.0)      // Filter
-        .map(|&v| v.log2())          // Transform
-        .collect()                    // Collect
+        .filter(|&&v| v > 0.0)
+        .map(|&v| v.log2())
+        .collect()
 }
 ```
 
-### Pattern 3: Parallel Reduction (Fast)
+## Patterns
+
+### Pattern 1: par_map (Best for Transforms)
+
+**Use when:** Transforming input data element-wise
+
+**Performance:** Best — zero intermediate allocation, framework-managed parallelism
+
+```rust
+#[miniextendr]
+fn parallel_sqrt(x: &[f64]) -> SEXP {
+    par_map(x, |&v| v.sqrt())
+}
+```
+
+### Pattern 2: with_r_vec (Best for Generation)
+
+**Use when:** Generating data from indices or with per-chunk state (e.g., RNG)
+
+**Performance:** Best — zero copy, deterministic chunk boundaries
+
+```rust
+#[miniextendr]
+fn generate_sequence(n: i32) -> SEXP {
+    with_r_vec(n as usize, |chunk: &mut [f64], offset| {
+        for (i, slot) in chunk.iter_mut().enumerate() {
+            *slot = ((offset + i) as f64).sin();
+        }
+    })
+}
+```
+
+### Pattern 3: Collect to Vec (Flexible)
+
+**Use when:** Variable-length output (filtering), multi-step pipelines
+
+**Performance:** Moderate — one extra allocation
+
+```rust
+#[miniextendr]
+fn parallel_filter(x: &[f64]) -> Vec<f64> {
+    x.par_iter()
+        .filter(|&&v| v > 0.0)
+        .map(|&v| v.log2())
+        .collect()
+}
+```
+
+### Pattern 4: Parallel Reduction
 
 **Use when:** Computing aggregates (sum, mean, min, max)
 
@@ -203,34 +281,98 @@ fn parallel_pipeline(x: &[f64]) -> Vec<f64> {
 use miniextendr_api::rayon_bridge::reduce;
 
 #[miniextendr]
-fn parallel_stats(x: &[f64]) -> Vec<f64> {
-    vec![
-        reduce::sum(x),
-        reduce::mean(x),
-        reduce::min(x),
-        reduce::max(x),
-    ]
+fn fast_sum(x: &[f64]) -> SEXP {
+    reduce::sum(x)
 }
 ```
 
-### Pattern 4: Chunked Processing (Best Cache Locality)
+## RNG Reproducibility
 
-**Use when:** Processing large datasets with complex per-chunk logic
+Chunk boundaries are **deterministic** for a given `(length, thread_count)`. This means
+you can seed per-chunk RNG from the `offset` parameter and get reproducible results
+regardless of thread scheduling.
 
-**Performance:** Good - reduces synchronization, better cache usage
+### How It Works
+
+`with_r_vec` splits the output into `len / (num_threads * 4)` sized chunks using
+Rayon's `par_chunks_mut`. The chunk boundaries are fixed — chunk 0 always starts at
+index 0, chunk 1 always starts at `chunk_size`, etc. Only the **scheduling order**
+varies between runs, not the boundaries.
+
+This means: if you derive each chunk's RNG seed from its `offset`, the same chunk
+always gets the same seed, producing the same random values in those positions.
+
+### Pattern: Seed-per-chunk
 
 ```rust
+use rand::SeedableRng;
+use rand_chacha::ChaChaRng;
+use rand::Rng;
+
 #[miniextendr]
-fn parallel_chunked(x: &[f64]) -> Vec<f64> {
-    x.par_chunks(1000)
-        .flat_map(|chunk| {
-            // Pure Rust processing of chunk (no R calls!)
-            chunk.iter()
-                .filter(|&&v| v.is_finite())
-                .map(|&v| v.powi(2))
-        })
-        .collect()
+fn reproducible_random(len: i32, seed: i64) -> SEXP {
+    with_r_vec(len as usize, |chunk: &mut [f64], offset| {
+        // Deterministic seed derived from base seed + chunk offset
+        let mut rng = ChaChaRng::seed_from_u64(seed as u64 + offset as u64);
+        for slot in chunk.iter_mut() {
+            *slot = rng.gen();
+        }
+    })
 }
+```
+
+### Why This Works
+
+```text
+Thread count = 4, length = 1000, chunk_size = 62
+
+Run 1 (scheduling order: T2, T0, T3, T1):
+  T2 fills chunk[2] (offset=124) with seed=42+124  ← same values
+  T0 fills chunk[0] (offset=0)   with seed=42+0    ← same values
+  T3 fills chunk[3] (offset=186) with seed=42+186  ← same values
+  T1 fills chunk[1] (offset=62)  with seed=42+62   ← same values
+
+Run 2 (scheduling order: T0, T1, T2, T3):
+  T0 fills chunk[0] (offset=0)   with seed=42+0    ← same values ✓
+  T1 fills chunk[1] (offset=62)  with seed=42+62   ← same values ✓
+  T2 fills chunk[2] (offset=124) with seed=42+124  ← same values ✓
+  T3 fills chunk[3] (offset=186) with seed=42+186  ← same values ✓
+```
+
+The output vector is bitwise identical between runs (given same length and thread count).
+
+### Important: Thread Count Sensitivity
+
+Chunk boundaries depend on `rayon::current_num_threads()`. Different machines with
+different core counts will produce different chunk boundaries and therefore different
+random sequences. This is fine for most use cases (simulation, Monte Carlo), but if
+you need cross-machine reproducibility, pin the thread pool size:
+
+```rust
+// Pin to exactly 4 threads regardless of machine
+rayon::ThreadPoolBuilder::new()
+    .num_threads(4)
+    .build_global()
+    .unwrap();
+```
+
+### Do NOT Use R's RNG in Parallel
+
+R's RNG (`RRng`, `Rf_runif`, etc.) calls R APIs, which **panic** on Rayon threads.
+Use a Rust RNG crate (`rand`, `rand_chacha`) instead:
+
+```rust
+// WRONG: R's RNG calls R APIs — panics in parallel
+with_r_vec(len, |chunk, _| {
+    let mut rng = RRng::new();  // PANICS!
+    for slot in chunk { *slot = rng.uniform_f64(); }
+});
+
+// CORRECT: Rust RNG is thread-safe
+with_r_vec(len, |chunk, offset| {
+    let mut rng = ChaChaRng::seed_from_u64(seed + offset as u64);
+    for slot in chunk { *slot = rng.gen(); }
+});
 ```
 
 ## Performance
@@ -246,7 +388,7 @@ fn parallel_chunked(x: &[f64]) -> Vec<f64> {
 
 **Be Careful:**
 - Frequent R API calls (each call has channel overhead)
-- Small datasets (<1,000 elements - overhead > gains)
+- Small datasets (<1,000 elements — overhead > gains)
 - Operations R can vectorize efficiently
 
 **Avoid:**
@@ -254,19 +396,11 @@ fn parallel_chunked(x: &[f64]) -> Vec<f64> {
 - Parallel evaluation of R code (R is single-threaded!)
 - Simple operations R handles well (addition, multiplication)
 
-### Typical Performance
-
-| Operation | Sequential | Parallel (4 cores) | Speedup |
-|-----------|------------|-------------------|---------|
-| `sqrt(x)` (1M elements) | 5ms | 1.5ms | 3.3x |
-| `sum(x)` (10M elements) | 10ms | 3ms | 3.3x |
-| `x^2 + y^2` (1M each) | 12ms | 3.5ms | 3.4x |
-
 ### Optimization Tips
 
-1. **Minimize R Calls**: Batch processing, compute in Rust, convert once
-2. **Use Zero-Copy**: `with_r_vec<T>` avoids extra allocations
-3. **Chunk Wisely**: 100-10,000 elements per chunk depending on cost
+1. **Use `par_map`** for input→output transforms (simplest, fastest)
+2. **Use `with_r_vec`** when you need per-chunk state (RNG, accumulators)
+3. **Collect to `Vec<T>`** only when output length differs from input
 4. **Profile First**: Measure before assuming parallelism helps
 5. **Consider R Alternatives**: Vectorized R operations are fast
 
@@ -276,48 +410,46 @@ fn parallel_chunked(x: &[f64]) -> Vec<f64> {
 
 **Safe Patterns:**
 ```rust
-// Compute in parallel, create R object once
-let result: Vec<f64> = data.par_iter().map(|x| x.sqrt()).collect();
-let r_vec = with_r_thread(move || create_r_vector(&result));
+// par_map: framework handles everything
+par_map(x, |&v| v.sqrt());
 
-// Write directly to pre-allocated R memory
-with_r_vec::<f64, _>(n, |output| {
-    output.par_iter_mut().for_each(|slot| *slot = compute());
+// with_r_vec: chunk-based, pure Rust in closure
+with_r_vec(n, |chunk, offset| {
+    for (i, slot) in chunk.iter_mut().enumerate() {
+        *slot = ((offset + i) as f64).sqrt();
+    }
 });
 ```
 
 **Unsafe Patterns:**
 ```rust
-// WRONG: Direct R call from Rayon thread
-data.par_iter().map(|x| unsafe {
-    ffi::Rf_ScalarInteger(*x)  // CRASH! Wrong thread!
+// WRONG: R API in closure — PANICS
+with_r_vec(n, |chunk, _| {
+    let sexp = unsafe { ffi::Rf_ScalarReal(1.0) };  // CRASH!
 });
 
-// WRONG: Concurrent R access
-let sexp = create_once();
-data.par_iter().for_each(|x| unsafe {
-    ffi::INTEGER_ELT(sexp, *x)  // DATA RACE!
+// WRONG: with_r_thread inside closure — PANICS
+with_r_vec(n, |chunk, _| {
+    with_r_thread(|| { ... });  // PANICS! Not on worker thread
 });
 ```
 
 ### Memory Safety
 
-- **GC Protection**: Pre-allocated SEXPs remain valid during parallel writes
-- **No Concurrent R Access**: All R operations serialized via `with_r_thread`
-- **Ownership**: `with_r_thread` enforces proper ownership transfer
+- **GC Protection**: Pre-allocated SEXPs are `Rf_protect`ed during parallel writes
+- **No Concurrent R Access**: All R operations happen before/after parallel section
+- **RAII Guards**: `UnprotectGuard` ensures cleanup even on panic
 
 ## Examples
 
-### Example 1: Parallel Vector Transformation
+### Example 1: Parallel Normalization
 
 ```rust
-use miniextendr_api::prelude::*;
 use miniextendr_api::rayon_bridge::*;
 use rayon::prelude::*;
 
 #[miniextendr]
 fn parallel_normalize(x: &[f64]) -> SEXP {
-    // Compute mean and SD in parallel
     let (sum, sum_sq, count) = x.par_iter().fold(
         || (0.0, 0.0, 0usize),
         |(s, sq, c), &val| (s + val, sq + val * val, c + 1)
@@ -327,37 +459,21 @@ fn parallel_normalize(x: &[f64]) -> SEXP {
     );
 
     let mean = sum / count as f64;
-    let variance = (sum_sq / count as f64) - mean * mean;
-    let sd = variance.sqrt();
+    let sd = ((sum_sq / count as f64) - mean * mean).sqrt();
 
-    // Normalize in parallel, write to R vector
-    with_r_vec::<f64, _>(x.len(), |output| {
-        output.par_iter_mut()
-            .zip(x.par_iter())
-            .for_each(|(out, &inp)| *out = (inp - mean) / sd);
-    })
+    par_map(x, |&v| (v - mean) / sd)
 }
 ```
 
-### Example 2: Parallel Matrix Operations
+### Example 2: Matrix Fill by Column
 
 ```rust
 #[miniextendr]
-fn parallel_matrix_multiply(a: &[f64], b: &[f64], n: i32) -> SEXP {
+fn identity_matrix(n: i32) -> SEXP {
     let n = n as usize;
-
-    with_r_vec::<f64, _>(n * n, |output| {
-        output.par_chunks_mut(n)
-            .enumerate()
-            .for_each(|(i, row)| {
-                for j in 0..n {
-                    let mut sum = 0.0;
-                    for k in 0..n {
-                        sum += a[i * n + k] * b[k * n + j];
-                    }
-                    row[j] = sum;
-                }
-            });
+    with_r_matrix(n, n, |col: &mut [f64], col_idx| {
+        // Each column gets a 1.0 at the diagonal position
+        col[col_idx] = 1.0;
     })
 }
 ```
@@ -374,31 +490,14 @@ fn parallel_filter_positive(x: &[f64]) -> Vec<f64> {
 }
 ```
 
-### Example 4: Parallel String Processing
+### Example 4: Two-Input Operations
 
 ```rust
 #[miniextendr]
-fn parallel_uppercase(x: Vec<String>) -> Vec<String> {
-    x.into_par_iter()
-        .map(|s| s.to_uppercase())
-        .collect()
+fn euclidean_distance(x: &[f64], y: &[f64]) -> SEXP {
+    par_map2(x, y, |&a, &b| (a - b).powi(2))
 }
 ```
-
-## Chunk Size Selection
-
-```rust
-// Good: Large enough to amortize overhead
-data.par_chunks(1000).for_each(|chunk| { ... });
-
-// Bad: Too small, too much overhead
-data.par_chunks(10).for_each(|chunk| { ... });
-
-// Bad: Too large, not enough parallelism
-data.par_chunks(1_000_000).for_each(|chunk| { ... });
-```
-
-**Rule of thumb:** Chunk size should result in 10-1000 chunks total.
 
 ## Troubleshooting
 
@@ -411,9 +510,8 @@ data.par_chunks(1_000_000).for_each(|chunk| { ... });
 
 **Check:**
 1. Dataset size (< 10K elements might not benefit)
-2. Chunk size (adjust with `.par_chunks`)
-3. R call frequency (minimize calls to `with_r_thread`)
-4. Number of threads (`rayon::current_num_threads()`)
+2. Number of threads (`perf::num_threads()`)
+3. Computation cost per element (must justify thread overhead)
 
 ### Debugging
 
@@ -425,21 +523,8 @@ eprintln!("In Rayon thread: {}", perf::in_rayon_thread());
 eprintln!("Thread index: {:?}", perf::thread_index());
 ```
 
-## Summary
-
-Miniextendr's Rayon integration provides:
-
-- **Zero configuration** - Just enable the feature
-- **Safe** - Compiler prevents R calls from wrong threads
-- **Fast** - Zero-copy pre-allocation patterns
-- **Flexible** - Multiple APIs for different use cases
-- **Idiomatic** - Feels like standard Rayon code
-
-The key rule: **Do not call R APIs inside parallel iterators.** Do R work
-before or after the parallel section.
-
 ## See Also
 
-- [SAFETY.md](SAFETY.md) - Thread safety invariants
-- [ENTRYPOINT.md](ENTRYPOINT.md) - Worker initialization requirements
-- `miniextendr-bench/benches/rayon.rs` - Performance benchmarks
+- [SAFETY.md](SAFETY.md) — Thread safety invariants
+- [ENTRYPOINT.md](ENTRYPOINT.md) — Worker initialization requirements
+- `miniextendr-bench/benches/rayon.rs` — Performance benchmarks
