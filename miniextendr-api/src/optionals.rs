@@ -41,8 +41,13 @@
 /// Rayon integration for parallel computation with R interop.
 ///
 /// Provides:
-/// - [`with_r_vec`][rayon_bridge::with_r_vec] - Zero-copy parallel fill into R vectors
-/// - [`with_r_matrix`][rayon_bridge::with_r_matrix] - Parallel matrix fill
+/// - [`with_r_vec`][rayon_bridge::with_r_vec] - Chunk-based parallel fill into R vectors
+/// - [`with_r_vec_map`][rayon_bridge::with_r_vec_map] - Element-wise parallel fill
+/// - [`par_map`][rayon_bridge::par_map] - Transform input slice → R vector
+/// - [`par_map2`][rayon_bridge::par_map2] - Two-input parallel map → R vector
+/// - [`par_map3`][rayon_bridge::par_map3] - Three-input parallel map → R vector
+/// - [`with_r_matrix`][rayon_bridge::with_r_matrix] - Column-wise parallel matrix fill
+/// - [`with_r_array`][rayon_bridge::with_r_array] - Slab-wise parallel array fill
 /// - [`reduce`][rayon_bridge::reduce] - Parallel reductions returning R scalars
 /// - [`RParallelIterator`][rayon_bridge::RParallelIterator] - Adapter trait for R
 ///
