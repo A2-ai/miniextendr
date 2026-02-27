@@ -19,11 +19,10 @@ fn main() {}
 #[cfg(feature = "rayon")]
 #[divan::bench(args = miniextendr_bench::SIZES)]
 fn rayon_with_r_vec(len: usize) {
-    let sexp = with_r_vec::<f64, _>(len, |slice| {
-        slice
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(i, slot)| *slot = i as f64);
+    let sexp = with_r_vec::<f64, _>(len, |chunk, offset| {
+        for (i, slot) in chunk.iter_mut().enumerate() {
+            *slot = (offset + i) as f64;
+        }
     });
     divan::black_box(sexp);
 }
