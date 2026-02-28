@@ -8,7 +8,7 @@ use quote::{format_ident, quote};
 use syn::{DeriveInput, Fields};
 
 use super::{
-    ColumnRegistry, DataFrameAttrs, EnumResolvedField, FieldTypeKind, ResolvedColumn, VariantInfo,
+    ColumnRegistry, DataFrameAttrs, EnumResolvedField, FieldTypeKind, VariantInfo,
     VariantShape, classify_field_type, parse_field_attrs,
 };
 use std::collections::HashMap;
@@ -702,35 +702,237 @@ pub(super) fn derive_enum_dataframe(
         col_struct_fields.push(quote! { #name });
     }
 
-    // Skip parallel path when non-named variants or expansion is present
-    let has_non_named = variant_infos
-        .iter()
-        .any(|vi| vi.shape != VariantShape::Named);
-    let has_enum_expansion = variant_infos.iter().any(|vi| {
-        vi.fields
+    // Generate parallel scatter-write block using ColumnWriter for all field types.
+    let parallel_block = if attrs.parallel && (!columns.is_empty() || !auto_expand_cols.is_empty() || has_tag) {
+        // Column declarations
+        let mut par_col_decls = Vec::new();
+        if has_tag {
+            par_col_decls.push(quote! {
+                let mut _tag: Vec<String> = Vec::with_capacity(len);
+                unsafe { _tag.set_len(len); }
+            });
+        }
+        for col in &columns {
+            let name = &col.col_name;
+            let ty = &col.ty;
+            par_col_decls.push(quote! {
+                let mut #name: Vec<Option<#ty>> = Vec::with_capacity(len);
+                unsafe { #name.set_len(len); }
+            });
+        }
+        for ac in &auto_expand_cols {
+            let name = &ac.df_field;
+            let cty = &ac.container_ty;
+            par_col_decls.push(quote! {
+                let mut #name: Vec<Option<#cty>> = Vec::with_capacity(len);
+                unsafe { #name.set_len(len); }
+            });
+        }
+
+        // Writer declarations
+        let mut writer_decls = Vec::new();
+        if has_tag {
+            writer_decls.push(quote! {
+                let __w_tag = unsafe {
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut _tag)
+                };
+            });
+        }
+        for col in &columns {
+            let name = &col.col_name;
+            let w_name = format_ident!("__w_{}", name);
+            writer_decls.push(quote! {
+                let #w_name = unsafe {
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
+                };
+            });
+        }
+        for ac in &auto_expand_cols {
+            let name = &ac.df_field;
+            let w_name = format_ident!("__w_{}", name);
+            writer_decls.push(quote! {
+                let #w_name = unsafe {
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
+                };
+            });
+        }
+
+        // Match arms for parallel path
+        let par_match_arms: Vec<TokenStream> = variant_infos
             .iter()
-            .any(|erf| !matches!(erf, EnumResolvedField::Single { .. }))
-    });
-    let parallel_block = if attrs.parallel && !has_non_named && !has_enum_expansion {
-        // Convert to old-style variant_infos for parallel gen (only named, non-expanded variants)
-        let old_variant_infos: Vec<(&syn::Ident, Vec<(&syn::Ident, &syn::Type)>)> = variant_infos
-            .iter()
-            .map(|vi| {
-                let fields: Vec<_> = vi
-                    .fields
+            .enumerate()
+            .map(|(variant_idx, vi)| {
+                let variant_name = &vi.name;
+                let variant_name_str = variant_name.to_string();
+
+                let tag_write = if has_tag {
+                    quote! { __w_tag.write(__i, #variant_name_str.to_string()); }
+                } else {
+                    TokenStream::new()
+                };
+
+                // Write calls for schema columns
+                let col_writes: Vec<TokenStream> = columns
                     .iter()
-                    .filter_map(|erf| {
-                        if let EnumResolvedField::Single { rust_name, ty, .. } = erf {
-                            Some((rust_name, ty))
+                    .map(|col| {
+                        let col_name = &col.col_name;
+                        let w_name = format_ident!("__w_{}", col_name);
+                        if col.present_in.contains(&variant_idx) {
+                            let col_name_str = col_name.to_string();
+                            for erf in &vi.fields {
+                                match erf {
+                                    EnumResolvedField::Single { col_name: fc, binding, .. }
+                                        if fc == col_name =>
+                                    {
+                                        if col.string_coerced {
+                                            return quote! { #w_name.write(__i, Some(ToString::to_string(&#binding))); };
+                                        } else {
+                                            return quote! { #w_name.write(__i, Some(#binding)); };
+                                        }
+                                    }
+                                    EnumResolvedField::ExpandedFixed { base_name, binding, len, .. } => {
+                                        for i in 1..=*len {
+                                            let expanded_name = format!("{}_{}", base_name, i);
+                                            if expanded_name == col_name_str {
+                                                let idx = syn::Index::from(i - 1);
+                                                return quote! { #w_name.write(__i, Some(#binding[#idx])); };
+                                            }
+                                        }
+                                    }
+                                    EnumResolvedField::ExpandedVec { base_name, binding, width, .. } => {
+                                        for i in 1..=*width {
+                                            let expanded_name = format!("{}_{}", base_name, i);
+                                            if expanded_name == col_name_str {
+                                                let get_idx = i - 1;
+                                                return quote! { #w_name.write(__i, #binding.get(#get_idx).cloned()); };
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            quote! { #w_name.write(__i, None); }
                         } else {
-                            None
+                            quote! { #w_name.write(__i, None); }
                         }
                     })
                     .collect();
-                (&vi.name, fields)
+
+                // Auto-expand write calls
+                let auto_expand_writes: Vec<TokenStream> = auto_expand_cols
+                    .iter()
+                    .map(|ac| {
+                        let w_name = format_ident!("__w_{}", ac.df_field);
+                        if ac.present_in.contains(&variant_idx) {
+                            for erf in &vi.fields {
+                                if let EnumResolvedField::AutoExpandVec {
+                                    base_name, binding, ..
+                                } = erf
+                                    && base_name == &ac.base_name
+                                {
+                                    return quote! { #w_name.write(__i, Some(#binding)); };
+                                }
+                            }
+                            quote! { #w_name.write(__i, None); }
+                        } else {
+                            quote! { #w_name.write(__i, None); }
+                        }
+                    })
+                    .collect();
+
+                // Generate destructure pattern based on variant shape
+                match vi.shape {
+                    VariantShape::Named => {
+                        let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
+                            let (rust_name, binding) = match erf {
+                                EnumResolvedField::Single { rust_name, binding, .. }
+                                | EnumResolvedField::ExpandedFixed { rust_name, binding, .. }
+                                | EnumResolvedField::ExpandedVec { rust_name, binding, .. }
+                                | EnumResolvedField::AutoExpandVec { rust_name, binding, .. } => {
+                                    (rust_name, binding)
+                                }
+                            };
+                            quote! { #rust_name: #binding }
+                        }).collect();
+                        for skipped in &vi.skipped_fields {
+                            field_bindings.push(quote! { #skipped: _ });
+                        }
+                        quote! {
+                            #row_name::#variant_name { #(#field_bindings),* } => {
+                                #tag_write
+                                #(#col_writes)*
+                                #(#auto_expand_writes)*
+                            }
+                        }
+                    }
+                    VariantShape::Tuple => {
+                        let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
+                            let binding = match erf {
+                                EnumResolvedField::Single { binding, .. }
+                                | EnumResolvedField::ExpandedFixed { binding, .. }
+                                | EnumResolvedField::ExpandedVec { binding, .. }
+                                | EnumResolvedField::AutoExpandVec { binding, .. } => binding,
+                            };
+                            quote! { #binding }
+                        }).collect();
+                        quote! {
+                            #row_name::#variant_name(#(#field_bindings),*) => {
+                                #tag_write
+                                #(#col_writes)*
+                                #(#auto_expand_writes)*
+                            }
+                        }
+                    }
+                    VariantShape::Unit => {
+                        quote! {
+                            #row_name::#variant_name => {
+                                #tag_write
+                                #(#col_writes)*
+                                #(#auto_expand_writes)*
+                            }
+                        }
+                    }
+                }
             })
             .collect();
-        gen_parallel_enum_from(row_name, df_name, &columns, &old_variant_infos, has_tag)
+
+        // Return struct fields
+        let par_tag_field = if has_tag {
+            quote! { _tag, }
+        } else {
+            TokenStream::new()
+        };
+        let mut par_struct_fields: Vec<TokenStream> = columns
+            .iter()
+            .map(|col| {
+                let name = &col.col_name;
+                quote! { #name }
+            })
+            .collect();
+        for ac in &auto_expand_cols {
+            let name = &ac.df_field;
+            par_struct_fields.push(quote! { #name });
+        }
+
+        quote! {
+            #[cfg(feature = "rayon")]
+            {
+                #[allow(clippy::uninit_vec)]
+                if len >= ::miniextendr_api::rayon_bridge::PARALLEL_FILL_THRESHOLD {
+                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                    #(#par_col_decls)*
+                    {
+                        #(#writer_decls)*
+                        rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
+                            match __row {
+                                #(#par_match_arms)*
+                            }
+                        });
+                    }
+                    return #df_name { #par_tag_field #(#par_struct_fields),* };
+                }
+            }
+        }
     } else {
         TokenStream::new()
     };
@@ -781,209 +983,3 @@ pub(super) fn derive_enum_dataframe(
     })
 }
 
-// =============================================================================
-// Parallel fill codegen (rayon feature-gated)
-// =============================================================================
-
-/// Generate a `#[cfg(feature = "rayon")]` block that does parallel scatter-write
-/// for struct DataFrameRow, returning early if above threshold.
-pub(super) fn gen_parallel_struct_from(
-    _row_name: &syn::Ident,
-    df_name: &syn::Ident,
-    field_info: &[(&syn::Ident, &syn::Type)],
-) -> TokenStream {
-    // Column declarations: `let mut field: Vec<Type> = Vec::with_capacity(len);`
-    let par_col_decls: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, ty)| {
-            quote! {
-                let mut #name: Vec<#ty> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
-            }
-        })
-        .collect();
-
-    // Writer declarations: `let w_field = unsafe { ColumnWriter::new(&mut field) };`
-    let writer_decls: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, _ty)| {
-            let w_name = format_ident!("__w_{}", name);
-            quote! {
-                let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
-                };
-            }
-        })
-        .collect();
-
-    // Write calls inside for_each: `w_field.write(i, row.field);`
-    let write_calls: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, _ty)| {
-            let w_name = format_ident!("__w_{}", name);
-            quote! { #w_name.write(__i, __row.#name); }
-        })
-        .collect();
-
-    // Struct fields for return
-    let struct_fields: Vec<TokenStream> = field_info
-        .iter()
-        .map(|(name, _ty)| quote! { #name })
-        .collect();
-
-    quote! {
-        #[cfg(feature = "rayon")]
-        {
-            #[allow(clippy::uninit_vec)]
-            if len >= ::miniextendr_api::rayon_bridge::PARALLEL_FILL_THRESHOLD {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                #(#par_col_decls)*
-                {
-                    #(#writer_decls)*
-                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                        #(#write_calls)*
-                    });
-                }
-                return #df_name { #(#struct_fields),* };
-            }
-        }
-    }
-}
-
-/// Generate a `#[cfg(feature = "rayon")]` block that does parallel scatter-write
-/// for enum DataFrameRow, returning early if above threshold.
-fn gen_parallel_enum_from(
-    row_name: &syn::Ident,
-    df_name: &syn::Ident,
-    columns: &[ResolvedColumn],
-    variant_infos: &[(&syn::Ident, Vec<(&syn::Ident, &syn::Type)>)],
-    has_tag: bool,
-) -> TokenStream {
-    // Tag column declaration
-    let tag_decl = if has_tag {
-        quote! {
-            let mut _tag: Vec<String> = Vec::with_capacity(len);
-            unsafe { _tag.set_len(len); }
-        }
-    } else {
-        TokenStream::new()
-    };
-
-    // Column declarations with Option<T>
-    let par_col_decls: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let ty = &col.ty;
-            quote! {
-                let mut #name: Vec<Option<#ty>> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
-            }
-        })
-        .collect();
-
-    // Tag writer
-    let tag_writer_decl = if has_tag {
-        quote! {
-            let __w_tag = unsafe {
-                ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut _tag)
-            };
-        }
-    } else {
-        TokenStream::new()
-    };
-
-    // Column writers
-    let writer_decls: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let w_name = format_ident!("__w_{}", name);
-            quote! {
-                let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
-                };
-            }
-        })
-        .collect();
-
-    // Match arms for parallel path
-    let par_match_arms: Vec<TokenStream> = variant_infos
-        .iter()
-        .enumerate()
-        .map(|(variant_idx, (variant_name, fields))| {
-            let variant_name_str = variant_name.to_string();
-
-            let field_bindings: Vec<TokenStream> = fields
-                .iter()
-                .map(|(fname, _)| {
-                    let binding = format_ident!("__v_{}", fname);
-                    quote! { #fname: #binding }
-                })
-                .collect();
-
-            let tag_write = if has_tag {
-                quote! { __w_tag.write(__i, #variant_name_str.to_string()); }
-            } else {
-                TokenStream::new()
-            };
-
-            let col_writes: Vec<TokenStream> = columns
-                .iter()
-                .map(|col| {
-                    let w_name = format_ident!("__w_{}", col.col_name);
-                    if col.present_in.contains(&variant_idx) {
-                        let binding = format_ident!("__v_{}", col.col_name);
-                        quote! { #w_name.write(__i, Some(#binding)); }
-                    } else {
-                        quote! { #w_name.write(__i, None); }
-                    }
-                })
-                .collect();
-
-            quote! {
-                #row_name::#variant_name { #(#field_bindings),* } => {
-                    #tag_write
-                    #(#col_writes)*
-                }
-            }
-        })
-        .collect();
-
-    // Return struct fields
-    let tag_field = if has_tag {
-        quote! { _tag, }
-    } else {
-        TokenStream::new()
-    };
-
-    let struct_fields: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            quote! { #name }
-        })
-        .collect();
-
-    quote! {
-        #[cfg(feature = "rayon")]
-        {
-            #[allow(clippy::uninit_vec)]
-            if len >= ::miniextendr_api::rayon_bridge::PARALLEL_FILL_THRESHOLD {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                #tag_decl
-                #(#par_col_decls)*
-                {
-                    #tag_writer_decl
-                    #(#writer_decls)*
-                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                        match __row {
-                            #(#par_match_arms)*
-                        }
-                    });
-                }
-                return #df_name { #tag_field #(#struct_fields),* };
-            }
-        }
-    }
-}
