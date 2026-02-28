@@ -30,6 +30,7 @@ How miniextendr works under the hood.
 - **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`, `REnv` for calling R from Rust
 - **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`, and error propagation
 - **[GC Protection](GC_PROTECT.md)** -- RAII-based protect/unprotect (`OwnedProtect`, `ProtectScope`)
+- **[R Allocator](ALLOCATOR.md)** -- R-backed `GlobalAlloc` using RAWSXP + preserve list
 - **[Safety](SAFETY.md)** -- Safety invariants and what miniextendr guarantees
 - **[Threads](THREADS.md)** -- Worker thread architecture, batching, main thread safety
 
