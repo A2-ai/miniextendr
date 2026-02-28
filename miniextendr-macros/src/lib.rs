@@ -740,9 +740,7 @@ pub fn miniextendr(
     if uses_internal_c_wrapper {
         func_ptr_def.push(syn::parse_quote!(::miniextendr_api::ffi::SEXP));
     }
-    func_ptr_def.extend(
-        (0..inputs.len()).map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP)),
-    );
+    func_ptr_def.extend((0..inputs.len()).map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP)));
 
     // calling the rust function with
     let rust_inputs: Vec<syn::Ident> = inputs

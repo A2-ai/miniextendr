@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 
-use crate::bridge::{run_command, rscript_eval};
+use crate::bridge::{rscript_eval, run_command};
 use crate::cli::{FeatureCmd, FeatureDetectCmd, FeatureRuleCmd};
 use crate::project::ProjectContext;
 

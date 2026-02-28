@@ -797,6 +797,8 @@ pub use optionals::{IndexMap, RIndexMapOps};
 pub use optionals::time_impl;
 #[cfg(feature = "time")]
 pub use optionals::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
+#[cfg(feature = "time")]
+pub use time;
 
 #[cfg(feature = "serde_json")]
 pub use optionals::serde_impl;
@@ -830,6 +832,8 @@ pub use optionals::{Borsh, RBorshOps, borsh_from_raw, borsh_to_raw};
 pub use optionals::bitflags_impl;
 #[cfg(feature = "bitflags")]
 pub use optionals::{Flags, RFlags};
+#[cfg(feature = "bitflags")]
+pub use bitflags;
 
 #[cfg(feature = "bitvec")]
 pub use optionals::bitvec_impl;
@@ -865,6 +869,12 @@ pub use rarray::{RArray, RArray3D, RMatrix, RVector};
 /// See the [`serde`] module documentation for type mappings and examples.
 #[cfg(feature = "serde")]
 pub mod serde;
+/// Re-export the upstream `serde` crate (aliased to avoid conflict with [`mod serde`]).
+///
+/// Downstream crates can use `miniextendr_api::serde_crate::{Serialize, Deserialize}`
+/// and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde` dep.
+#[cfg(feature = "serde")]
+pub use ::serde as serde_crate;
 
 /// Integration with the `bytemuck` crate for POD type conversions.
 ///
