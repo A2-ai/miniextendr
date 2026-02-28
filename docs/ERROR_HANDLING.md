@@ -228,6 +228,270 @@ pub fn verbose_function() {
 
 ---
 
+## Error-in-R Mode (`error_in_r`)
+
+By default, Rust-origin failures (panics, `Result::Err`, `Option::None`) are converted to
+immediate R errors via `Rf_error`/`Rf_errorcall`. This means the R error is raised while
+Rust stack frames are still active. `R_UnwindProtect` ensures destructors run, but the
+error propagation is immediate and not inspectable from R code.
+
+`error_in_r` mode changes this: failures are transported as a **tagged SEXP value** back to
+R, and the generated R wrapper inspects the value and raises a structured R condition. This
+ensures all Rust destructors have fully completed before R sees the error, and gives R code
+a typed condition class to catch.
+
+### Enabling error_in_r
+
+Per-function:
+
+```rust
+#[miniextendr(error_in_r)]
+pub fn parse_data(s: String) -> Result<i32, String> {
+    s.parse::<i32>().map_err(|e| e.to_string())
+}
+```
+
+Per-method on an impl block:
+
+```rust
+#[miniextendr]
+impl MyType {
+    #[miniextendr(error_in_r)]
+    fn risky(&self) -> Result<i32, String> { /* ... */ }
+}
+```
+
+Project-wide via Cargo feature (opt out with `no_error_in_r`):
+
+```toml
+[features]
+default = ["miniextendr-api/default-error-in-r"]
+```
+
+```rust
+// Uses error_in_r from feature default
+#[miniextendr]
+pub fn add(a: i32, b: i32) -> i32 { a + b }
+
+// Opt out for this specific function
+#[miniextendr(no_error_in_r)]
+pub fn fast_path(x: i32) -> i32 { x }
+```
+
+### What Gets Caught
+
+`error_in_r` intercepts three failure modes:
+
+| Failure | Error kind | Example |
+|---------|-----------|---------|
+| Rust panic | `"panic"` | `panic!("oops")` |
+| `Result::Err` | `"result_err"` | `Err("bad input".to_string())` |
+| `Option::None` | `"none_err"` | Returning `None` from `-> Option<T>` |
+
+**Not affected**: `Result<T, ()>` (unit error type) always returns `NULL` on `Err(())` regardless
+of `error_in_r`, since a unit error is a deliberate sentinel, not a failure.
+
+### The Error Value (Rust Side)
+
+When a failure occurs, the generated C wrapper calls `make_rust_error_value(message, kind)` from
+`miniextendr_api::error_value`. This builds a tagged SEXP -- a named list with:
+
+- `$error`: the error message (character scalar)
+- `$kind`: machine-readable kind (`"panic"`, `"result_err"`, `"none_err"`)
+- class attribute: `"rust_error_value"`
+- `__rust_error__` attribute: `TRUE`
+
+This value is returned as a normal SEXP from the `.Call()` interface. No R error is raised
+at this point -- all Rust stack frames have already unwound.
+
+### The R Wrapper (R Side)
+
+The generated R wrapper checks the return value:
+
+```r
+my_function <- function(x) {
+  .val <- .Call(C_my_function, x, .call = match.call())
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+```
+
+The R condition has class `c("rust_error", "simpleError", "error", "condition")`, so it
+can be caught at any level of the hierarchy.
+
+### Catching Errors in R
+
+Catch by the specific `rust_error` class:
+
+```r
+tryCatch(
+  parse_data("not a number"),
+  rust_error = function(e) {
+    message("Rust error (", e$kind, "): ", e$message)
+  }
+)
+```
+
+Or with `tryCatch`/`withCallingHandlers` using the generic `error` class:
+
+```r
+tryCatch(
+  parse_data("bad"),
+  error = function(e) {
+    if (inherits(e, "rust_error")) {
+      # Structured Rust error with e$kind
+    } else {
+      # Other R error
+    }
+  }
+)
+```
+
+The condition object has these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | character | Human-readable error message |
+| `call` | call | The R call that triggered the error |
+| `kind` | character | `"panic"`, `"result_err"`, or `"none_err"` |
+
+### Works with All Class Systems
+
+`error_in_r` can be applied to methods in any class system:
+
+```rust
+#[miniextendr]            // env class (default)
+impl Counter {
+    #[miniextendr(error_in_r)]
+    fn get(&self) -> i32 { self.value }
+}
+
+#[miniextendr(r6)]        // R6 class
+impl Widget {
+    #[miniextendr(error_in_r)]
+    pub fn name(&self) -> String { self.name.clone() }
+}
+
+#[miniextendr(s7)]        // S7 class
+impl Gauge {
+    #[miniextendr(error_in_r)]
+    pub fn read(&self) -> f64 { self.level }
+}
+```
+
+It also works on trait impl methods:
+
+```rust
+#[miniextendr]
+impl Fallible for MyType {
+    #[miniextendr(error_in_r)]
+    fn get_value(&self) -> i32 { self.value }
+}
+```
+
+### Object Survival After Errors
+
+Objects remain valid after an `error_in_r` error. Since the error is transported as a value
+(not a longjmp), the object's internal state is never corrupted:
+
+```r
+counter <- Counter$new()
+counter$inc()
+
+# Error does not corrupt the object
+tryCatch(counter$panic_method(), error = function(e) NULL)
+
+counter$get()  # Still returns 1
+```
+
+### error_in_r vs unwrap_in_r
+
+`error_in_r` and `unwrap_in_r` are mutually exclusive. Both transport errors past the Rust
+boundary, but differ in the R-side representation:
+
+| | `error_in_r` | `unwrap_in_r` |
+|---|---|---|
+| R-side error | Structured condition (`rust_error` class) | Plain `stop()` message |
+| Catchable by class | Yes (`tryCatch(..., rust_error = ...)`) | No (generic `error` only) |
+| Error kind field | `e$kind` available | Not available |
+| Use case | Libraries that need typed error handling | Simple scripts |
+
+---
+
+## Panic Hook and Backtraces
+
+### The Panic Hook
+
+miniextendr installs a custom panic hook at package load time via `miniextendr_panic_hook()`,
+which is called from `R_init_<pkg>()` in the C entrypoint. The hook is registered once using
+`std::sync::Once` and controls whether Rust backtraces are printed to stderr on panic.
+
+By default, **backtraces are suppressed**. Panic messages are still captured and forwarded to
+R as error messages, but the noisy default Rust backtrace output is hidden. This keeps R
+console output clean for end users.
+
+### Enabling Backtraces
+
+Set the `MINIEXTENDR_BACKTRACE` environment variable to see full Rust backtraces on panic:
+
+```r
+Sys.setenv(MINIEXTENDR_BACKTRACE = "1")
+my_function_that_panics()
+# thread 'main' panicked at 'something went wrong', src/lib.rs:42:5
+# stack backtrace:
+#    0: std::panicking::begin_panic
+#    1: mypackage::my_function
+#    ...
+```
+
+Accepted values: `"1"` or `"true"` (case-insensitive). Any other value or unset = backtraces
+suppressed.
+
+To disable again:
+
+```r
+Sys.unsetenv("MINIEXTENDR_BACKTRACE")
+```
+
+This variable is read at panic time, not at hook registration time, so it can be toggled
+during a session without restarting R.
+
+### How It Works
+
+The hook replaces Rust's default panic hook with a wrapper that checks `MINIEXTENDR_BACKTRACE`
+on every panic:
+
+```default
+Panic occurs
+  -> Custom hook runs
+  -> Reads MINIEXTENDR_BACKTRACE env var
+  -> If "true" or "1": delegates to default hook (prints backtrace to stderr)
+  -> Otherwise: suppresses output (panic message still captured for R error)
+```
+
+The panic message itself is always captured by `catch_unwind` in the generated C wrapper and
+forwarded to R -- the hook only controls whether the backtrace is additionally printed to
+stderr.
+
+### Poisoning Recovery
+
+If the panic hook installation itself panics (e.g., `take_hook` fails), `Once` marks the
+state as poisoned. On the next call, the hook retries via `call_once_force` and prints a
+warning:
+
+```default
+warning: miniextendr panic hook is retrying after a previous failed attempt
+```
+
+This is a defensive measure -- in practice, hook installation should not fail.
+
+---
+
 ## Thread Safety
 
 ### Main Thread Requirement
@@ -498,7 +762,7 @@ pub fn transactional_write(path: &str, data: &[u8]) -> Result<(), String> {
 
 ### Enable Backtraces
 
-Set environment variable for detailed panic info:
+See [Panic Hook and Backtraces](#panic-hook-and-backtraces) above for full details.
 
 ```r
 Sys.setenv(MINIEXTENDR_BACKTRACE = "1")
@@ -620,6 +884,9 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 
 ## See Also
 
+- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide `default-error-in-r` feature
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) -- Complete `#[miniextendr]` option reference
+- [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) -- `MINIEXTENDR_BACKTRACE` and other env vars
 - [THREADS.md](THREADS.md) -- Worker thread architecture and thread safety
 - [SAFETY.md](SAFETY.md) -- Safety invariants (R_UnwindProtect, GC protection)
 - [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#error-cases) -- Type conversion error messages

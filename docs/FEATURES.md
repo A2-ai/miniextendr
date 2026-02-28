@@ -234,6 +234,32 @@ Arbitrary-precision integers via character string representation.
 
 **Adapter traits:** `RBigIntOps`, `RBigIntBitOps`, `RBigUintOps`, `RBigUintBitOps`
 
+#### Example
+
+```rust
+use num_bigint::BigInt;
+
+#[miniextendr]
+fn factorial_big(n: i32) -> BigInt {
+    (1..=n).fold(BigInt::from(1), |acc, x| acc * BigInt::from(x))
+}
+
+#[miniextendr]
+fn bigint_add(a: BigInt, b: BigInt) -> BigInt {
+    a + b
+}
+```
+
+In R:
+
+```r
+factorial_big(50)
+#> [1] "30414093201713378043612608166979581188299763898377..."
+
+bigint_add("12345678901234567890", "98765432109876543210")
+#> [1] "111111111011111111100"
+```
+
 ### `rust_decimal`
 
 Fixed-point decimal numbers via character string representation.
@@ -243,6 +269,34 @@ Fixed-point decimal numbers via character string representation.
 | `Decimal` | `character(1)` | String parsing |
 
 **Adapter trait:** `RDecimalOps`
+
+#### Example
+
+```rust
+use rust_decimal::Decimal;
+use std::str::FromStr;
+
+/// Lossless addition -- pass values as strings to avoid f64 rounding.
+#[miniextendr]
+fn decimal_add(a: Decimal, b: Decimal) -> Decimal {
+    a + b
+}
+
+#[miniextendr]
+fn decimal_round(value: Decimal, dp: i32) -> Decimal {
+    value.round_dp(dp.max(0) as u32)
+}
+```
+
+In R:
+
+```r
+decimal_add("0.1", "0.2")
+#> [1] "0.3"
+
+decimal_round("3.14159", 2L)
+#> [1] "3.14"
+```
 
 ### `ordered-float`
 
@@ -254,6 +308,36 @@ NaN-orderable floating-point wrapper.
 
 **Adapter trait:** `ROrderedFloatOps`
 
+#### Example
+
+```rust
+use ordered_float::OrderedFloat;
+
+/// Sort floats with total ordering (NaN sorts last).
+#[miniextendr]
+fn sort_floats(x: Vec<OrderedFloat<f64>>) -> Vec<OrderedFloat<f64>> {
+    let mut v = x;
+    v.sort();
+    v
+}
+
+/// Find the minimum value (NaN-safe).
+#[miniextendr]
+fn safe_min(x: Vec<OrderedFloat<f64>>) -> OrderedFloat<f64> {
+    x.into_iter().min().unwrap_or(OrderedFloat(f64::NAN))
+}
+```
+
+In R:
+
+```r
+sort_floats(c(3.1, 1.4, 2.7))
+#> [1] 1.4 2.7 3.1
+
+safe_min(c(5.0, 2.0, 8.0))
+#> [1] 2
+```
+
 ### `num-complex`
 
 Complex number support using R's native `CPLXSXP`.
@@ -263,6 +347,32 @@ Complex number support using R's native `CPLXSXP`.
 | `Complex<f64>` | `complex` | Native R complex type |
 
 **Adapter trait:** `RComplexOps`
+
+#### Example
+
+```rust
+use num_complex::Complex;
+
+#[miniextendr]
+fn complex_magnitude(z: Complex<f64>) -> f64 {
+    z.norm()
+}
+
+#[miniextendr]
+fn complex_multiply(a: Complex<f64>, b: Complex<f64>) -> Complex<f64> {
+    a * b
+}
+```
+
+In R:
+
+```r
+complex_magnitude(3+4i)
+#> [1] 5
+
+complex_multiply(1+2i, 3+4i)
+#> [1] -5+10i
+```
 
 ---
 
@@ -277,6 +387,35 @@ Generic numeric operations via blanket implementations over `num_traits` traits.
 - `RSigned` -- signed number operations (abs, signum)
 - `RFloat` -- floating-point operations (floor, ceil, round, sqrt, etc.)
 
+#### Example
+
+```rust
+use miniextendr_api::num_traits_impl::RFloat;
+
+/// Clamp a value to [0, 1] and return its square root.
+#[miniextendr]
+fn safe_sqrt(x: f64) -> f64 {
+    let clamped = if x < 0.0 { 0.0 } else { x };
+    RFloat::sqrt(&clamped)
+}
+
+/// Check if a number is a normal finite value (not zero, subnormal, inf, or NaN).
+#[miniextendr]
+fn is_normal(x: f64) -> bool {
+    RFloat::is_normal(&x)
+}
+```
+
+In R:
+
+```r
+safe_sqrt(2.0)
+#> [1] 1.414214
+
+is_normal(0.0)
+#> [1] FALSE
+```
+
 ### `bytes`
 
 Byte buffer operations via the `bytes` crate.
@@ -285,6 +424,36 @@ Byte buffer operations via the `bytes` crate.
 - `RBuf` -- read-only buffer adapter (wraps `Bytes`)
 - `RBufMut` -- mutable buffer adapter (wraps `BytesMut`)
 - Re-exports: `Buf`, `BufMut`, `Bytes`, `BytesMut`
+
+#### Example
+
+```rust
+use bytes::Bytes;
+
+/// Accept a raw vector and return its length.
+#[miniextendr]
+fn byte_length(data: Bytes) -> i32 {
+    data.len() as i32
+}
+
+/// Concatenate two raw vectors.
+#[miniextendr]
+fn concat_bytes(a: Vec<u8>, b: Vec<u8>) -> Bytes {
+    let mut combined = a;
+    combined.extend_from_slice(&b);
+    Bytes::from(combined)
+}
+```
+
+In R:
+
+```r
+byte_length(charToRaw("hello"))
+#> [1] 5
+
+concat_bytes(as.raw(1:3), as.raw(4:6))
+#> [1] 01 02 03 04 05 06
+```
 
 ---
 
@@ -303,6 +472,40 @@ generation.
 **Adapter trait:** `RUuidOps`
 **Helpers:** `uuid_helpers` module
 
+#### Example
+
+```rust
+use uuid::Uuid;
+
+#[miniextendr]
+fn generate_id() -> Uuid {
+    Uuid::new_v4()
+}
+
+#[miniextendr]
+fn batch_ids(n: i32) -> Vec<Uuid> {
+    (0..n).map(|_| Uuid::new_v4()).collect()
+}
+
+#[miniextendr]
+fn parse_uuid(s: String) -> Option<Uuid> {
+    Uuid::parse_str(&s).ok()
+}
+```
+
+In R:
+
+```r
+generate_id()
+#> [1] "550e8400-e29b-41d4-a716-446655440000"
+
+batch_ids(3)
+#> [1] "a1b2c3d4-..." "e5f6a7b8-..." "c9d0e1f2-..."
+
+parse_uuid("not-a-uuid")
+#> [1] NA
+```
+
 ### `regex`
 
 Compiled regular expressions from R character patterns.
@@ -313,6 +516,38 @@ Compiled regular expressions from R character patterns.
 
 **Adapter traits:** `RRegexOps`, `RCaptureGroups`
 **Types:** `CaptureGroups`
+
+#### Example
+
+```rust
+use regex::Regex;
+
+/// Pattern is compiled automatically from an R string.
+#[miniextendr]
+fn extract_numbers(pattern: Regex, text: String) -> Vec<String> {
+    pattern.find_iter(&text).map(|m| m.as_str().to_string()).collect()
+}
+
+/// Split text on whitespace runs.
+#[miniextendr]
+fn split_whitespace(text: String) -> Vec<String> {
+    let re = Regex::new(r"\s+").unwrap();
+    re.split(&text).map(|s| s.to_string()).collect()
+}
+```
+
+In R:
+
+```r
+extract_numbers("\\d+", "abc123def456")
+#> [1] "123" "456"
+
+split_whitespace("hello   world  test")
+#> [1] "hello" "world" "test"
+```
+
+**Note:** `Regex` does not implement `IntoR` -- it is input-only. If you need to
+reuse a compiled regex across calls, wrap it in an `ExternalPtr<Regex>`.
 
 ### `url`
 
@@ -326,6 +561,43 @@ Validated URL parsing via the `url` crate.
 **Adapter trait:** `RUrlOps`
 **Helpers:** `url_helpers` module
 
+#### Example
+
+```rust
+use url::Url;
+
+/// Extract the host from a URL, validating the input.
+#[miniextendr]
+fn get_host(url: Url) -> Option<String> {
+    url.host_str().map(|s| s.to_string())
+}
+
+/// Filter a vector of URLs to only HTTPS.
+#[miniextendr]
+fn keep_https(urls: Vec<Url>) -> Vec<Url> {
+    urls.into_iter().filter(|u| u.scheme() == "https").collect()
+}
+
+/// Join a relative path onto a base URL.
+#[miniextendr]
+fn join_path(base: Url, path: String) -> Result<Url, String> {
+    base.join(&path).map_err(|e| e.to_string())
+}
+```
+
+In R:
+
+```r
+get_host("https://example.com:8080/path")
+#> [1] "example.com"
+
+keep_https(c("https://a.com", "http://b.com", "https://c.com"))
+#> [1] "https://a.com/" "https://c.com/"
+
+join_path("https://example.com/api/", "v2/users")
+#> [1] "https://example.com/api/v2/users"
+```
+
 ### `aho-corasick`
 
 Fast multi-pattern string search via the Aho-Corasick algorithm.
@@ -337,6 +609,34 @@ Fast multi-pattern string search via the Aho-Corasick algorithm.
 - `aho_count_matches()`, `aho_replace_all()`
 
 **Adapter trait:** `RAhoCorasickOps`
+
+#### Example
+
+```rust
+use miniextendr_api::aho_corasick_impl::{aho_compile, aho_is_match, aho_replace_all};
+
+#[miniextendr]
+fn contains_any(patterns: Vec<String>, text: String) -> bool {
+    let ac = aho_compile(&patterns).unwrap();
+    aho_is_match(&ac, &text)
+}
+
+#[miniextendr]
+fn censor_words(words: Vec<String>, text: String) -> String {
+    let ac = aho_compile(&words).unwrap();
+    aho_replace_all(&ac, &text, "***")
+}
+```
+
+In R:
+
+```r
+contains_any(c("foo", "bar"), "hello foobar")
+#> [1] TRUE
+
+censor_words(c("bad", "ugly"), "the bad and the ugly")
+#> [1] "the *** and the ***"
+```
 
 ---
 
@@ -475,6 +775,32 @@ Cryptographic hashing helpers.
 - `sha512_str(data) -> String` -- SHA-512 as hex string
 - `sha512_bytes(data) -> Vec<u8>` -- SHA-512 as bytes
 
+#### Example
+
+```rust
+use miniextendr_api::sha2_impl::{sha256_str, sha256_bytes};
+
+#[miniextendr]
+fn hash_string(s: String) -> String {
+    sha256_str(&s)
+}
+
+#[miniextendr]
+fn hash_raw(data: Vec<u8>) -> String {
+    sha256_bytes(&data)
+}
+```
+
+In R:
+
+```r
+hash_string("hello world")
+#> [1] "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+
+hash_raw(charToRaw("hello world"))
+#> [1] "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+```
+
 ---
 
 ## Formatting Features
@@ -487,6 +813,34 @@ Table formatting for producing ASCII/Unicode tables from data.
 - `table_to_string()`, `table_to_string_styled()`, `table_to_string_opts()`
 - `table_from_vecs()`, `builder_to_string()`
 - Re-exports: `Table`, `Tabled`, `Builder`
+
+#### Example
+
+```rust
+use tabled::Tabled;
+use miniextendr_api::tabled_impl::table_to_string_styled;
+
+#[derive(Tabled)]
+struct Record { name: String, score: i32 }
+
+#[miniextendr]
+fn format_scores(names: Vec<String>, scores: Vec<i32>) -> String {
+    let rows: Vec<Record> = names.into_iter().zip(scores)
+        .map(|(name, score)| Record { name, score })
+        .collect();
+    table_to_string_styled(&rows, "markdown")
+}
+```
+
+In R:
+
+```r
+cat(format_scores(c("Alice", "Bob"), c(95, 87)))
+#> | name  | score |
+#> |-------|-------|
+#> | Alice | 95    |
+#> | Bob   | 87    |
+```
 
 ---
 
@@ -549,6 +903,28 @@ To disable default features:
 ```toml
 [dependencies]
 miniextendr-api = { version = "0.1", default-features = false, features = ["rayon"] }
+```
+
+### Prelude and crate re-exports
+
+The prelude (`use miniextendr_api::prelude::*`) re-exports both the miniextendr
+adapter types **and** the upstream dependency crates for every enabled feature.
+You do **not** need to add optional crates as direct dependencies:
+
+```toml
+[dependencies]
+# This is enough — no need for uuid = "1" or ndarray = "0.17"
+miniextendr-api = { version = "0.1", features = ["uuid", "ndarray"] }
+```
+
+```rust
+use miniextendr_api::prelude::*;
+
+// Uuid type is available directly
+let id = Uuid::new_v4();
+
+// Full upstream crate is also accessible for advanced usage
+let parsed = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
 ```
 
 Feature implications (automatically enabled):
