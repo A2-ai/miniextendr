@@ -243,7 +243,6 @@ pub enum EventWithSkip {
 
 // Test parallel fill with expansion (struct)
 #[derive(Clone, Debug, DataFrameRow)]
-#[dataframe(parallel)]
 pub struct ParallelExpanded {
     pub id: i32,
     pub coords: [f64; 3],
@@ -255,7 +254,7 @@ pub struct ParallelExpanded {
 
 // Test parallel fill with expansion (enum)
 #[derive(Clone, Debug, DataFrameRow)]
-#[dataframe(align, tag = "_type", parallel)]
+#[dataframe(align, tag = "_type")]
 pub enum ParallelExpandedEvent {
     Measurement {
         sensor: String,
@@ -777,8 +776,28 @@ mod tests {
     }
 
     #[test]
-    fn test_parallel_expanded_struct() {
-        // Create enough rows to exceed PARALLEL_FILL_THRESHOLD (4096)
+    fn test_from_rows_struct() {
+        // Test explicit from_rows (sequential)
+        let rows: Vec<ParallelExpanded> = (0..10)
+            .map(|i| ParallelExpanded {
+                id: i,
+                coords: [i as f64, 0.0, 0.0],
+                tags: vec![format!("a{}", i)],
+                values: vec![i as f64],
+            })
+            .collect();
+
+        let df = ParallelExpandedDataFrame::from_rows(rows);
+        assert_eq!(df.id.len(), 10);
+        assert_eq!(df.coords_1[0], 0.0);
+        assert_eq!(df.tags_1[5], Some("a5".to_string()));
+        assert_eq!(df.tags_2[5], None);
+    }
+
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn test_from_rows_par_struct() {
+        // Test explicit from_rows_par (parallel)
         let rows: Vec<ParallelExpanded> = (0..5000)
             .map(|i| ParallelExpanded {
                 id: i,
@@ -788,7 +807,7 @@ mod tests {
             })
             .collect();
 
-        let df = ParallelExpanded::to_dataframe(rows);
+        let df = ParallelExpandedDataFrame::from_rows_par(rows);
         assert_eq!(df.id.len(), 5000);
         assert_eq!(df.coords_1.len(), 5000);
         assert_eq!(df.coords_2.len(), 5000);
@@ -808,28 +827,59 @@ mod tests {
         assert_eq!(df.values[10], vec![1.0, 2.0]);
     }
 
+    #[cfg(feature = "rayon")]
     #[test]
-    fn test_parallel_expanded_struct_small() {
-        // Below threshold — exercises serial path
-        let rows: Vec<ParallelExpanded> = (0..10)
-            .map(|i| ParallelExpanded {
-                id: i,
-                coords: [i as f64, 0.0, 0.0],
-                tags: vec![format!("a{}", i)],
-                values: vec![i as f64],
-            })
-            .collect();
+    fn test_from_rows_par_struct_matches_sequential() {
+        // Verify both paths produce identical results
+        let make_rows = || -> Vec<ParallelExpanded> {
+            (0..100)
+                .map(|i| ParallelExpanded {
+                    id: i,
+                    coords: [i as f64, (i * 2) as f64, (i * 3) as f64],
+                    tags: vec![format!("t{}", i)],
+                    values: vec![(i as f64) * 0.1],
+                })
+                .collect()
+        };
 
-        let df = ParallelExpanded::to_dataframe(rows);
-        assert_eq!(df.id.len(), 10);
-        assert_eq!(df.coords_1[0], 0.0);
-        assert_eq!(df.tags_1[5], Some("a5".to_string()));
-        assert_eq!(df.tags_2[5], None);
+        let df_seq = ParallelExpandedDataFrame::from_rows(make_rows());
+        let df_par = ParallelExpandedDataFrame::from_rows_par(make_rows());
+
+        assert_eq!(df_seq.id, df_par.id);
+        assert_eq!(df_seq.coords_1, df_par.coords_1);
+        assert_eq!(df_seq.coords_2, df_par.coords_2);
+        assert_eq!(df_seq.coords_3, df_par.coords_3);
+        assert_eq!(df_seq.tags_1, df_par.tags_1);
+        assert_eq!(df_seq.tags_2, df_par.tags_2);
+        assert_eq!(df_seq.values, df_par.values);
     }
 
     #[test]
-    fn test_parallel_expanded_enum() {
-        // Create enough rows to exceed PARALLEL_FILL_THRESHOLD
+    fn test_from_rows_enum() {
+        // Test explicit from_rows (sequential) for enum
+        let rows = vec![
+            ParallelExpandedEvent::Measurement {
+                sensor: "temp".into(),
+                readings: [22.5, 23.0],
+            },
+            ParallelExpandedEvent::Status {
+                sensor: "temp".into(),
+                code: 200,
+            },
+        ];
+
+        let df = ParallelExpandedEventDataFrame::from_rows(rows);
+        assert_eq!(df._tag, vec!["Measurement", "Status"]);
+        assert_eq!(df.sensor, vec![Some("temp".to_string()), Some("temp".to_string())]);
+        assert_eq!(df.readings_1, vec![Some(22.5), None]);
+        assert_eq!(df.readings_2, vec![Some(23.0), None]);
+        assert_eq!(df.code, vec![None, Some(200)]);
+    }
+
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn test_from_rows_par_enum() {
+        // Test explicit from_rows_par (parallel) for enum
         let rows: Vec<ParallelExpandedEvent> = (0..5000)
             .map(|i| {
                 if i % 2 == 0 {
@@ -846,7 +896,7 @@ mod tests {
             })
             .collect();
 
-        let df = ParallelExpandedEvent::to_dataframe(rows);
+        let df = ParallelExpandedEventDataFrame::from_rows_par(rows);
         assert_eq!(df._tag.len(), 5000);
         assert_eq!(df.sensor.len(), 5000);
         assert_eq!(df.readings_1.len(), 5000);
@@ -862,27 +912,5 @@ mod tests {
         assert_eq!(df.code[0], None);
         assert_eq!(df.code[1], Some(1));
         assert_eq!(df.readings_1[1], None);
-    }
-
-    #[test]
-    fn test_parallel_expanded_enum_small() {
-        // Below threshold — serial path
-        let rows = vec![
-            ParallelExpandedEvent::Measurement {
-                sensor: "temp".into(),
-                readings: [22.5, 23.0],
-            },
-            ParallelExpandedEvent::Status {
-                sensor: "temp".into(),
-                code: 200,
-            },
-        ];
-
-        let df = ParallelExpandedEvent::to_dataframe(rows);
-        assert_eq!(df._tag, vec!["Measurement", "Status"]);
-        assert_eq!(df.sensor, vec![Some("temp".to_string()), Some("temp".to_string())]);
-        assert_eq!(df.readings_1, vec![Some(22.5), None]);
-        assert_eq!(df.readings_2, vec![Some(23.0), None]);
-        assert_eq!(df.code, vec![None, Some(200)]);
     }
 }

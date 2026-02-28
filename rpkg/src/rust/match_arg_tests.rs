@@ -92,7 +92,6 @@ pub fn match_arg_return_mode(#[miniextendr(match_arg)] mode: Mode) -> Mode {
 // Test functions using #[miniextendr(choices(...))] for string parameters
 // ============================================================================
 
-/// Idiomatic choices on a string parameter.
 #[miniextendr_api::miniextendr]
 pub fn choices_correlation(
     x: f64,
@@ -102,13 +101,11 @@ pub fn choices_correlation(
     format!("method={}, x={}, y={}", method, x, y)
 }
 
-/// Choices on an owned String parameter.
 #[miniextendr_api::miniextendr]
 pub fn choices_color(#[miniextendr(choices("red", "green", "blue"))] color: String) -> String {
     format!("color={}", color)
 }
 
-/// Choices mixed with regular params.
 #[miniextendr_api::miniextendr]
 pub fn choices_mixed(
     n: i32,

@@ -19,8 +19,6 @@ pub(super) struct DataFrameAttrs {
     pub(super) align: bool,
     /// Tag column name for variant discriminator (also supported on structs).
     pub(super) tag: Option<String>,
-    /// Emit rayon parallel fill path (only effective when `rayon` feature is enabled).
-    pub(super) parallel: bool,
     /// Conflict resolution mode for type collisions across enum variants.
     /// Currently only "string" is supported: convert conflicting fields via `ToString`.
     pub(super) conflicts: Option<String>,
@@ -37,7 +35,6 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
         name: None,
         align: false,
         tag: None,
-        parallel: false,
         conflicts: None,
     };
 
@@ -105,13 +102,10 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
                 syn::Meta::Path(path) if path.is_ident("align") => {
                     attrs.align = true;
                 }
-                syn::Meta::Path(path) if path.is_ident("parallel") => {
-                    attrs.parallel = true;
-                }
                 other => {
                     return Err(syn::Error::new_spanned(
                         other,
-                        "unknown dataframe attribute; expected `name`, `align`, `tag`, `parallel`, or `conflicts`",
+                        "unknown dataframe attribute; expected `name`, `align`, `tag`, or `conflicts`",
                     ));
                 }
             }
@@ -471,8 +465,9 @@ fn resolve_struct_field(
 /// - `#[dataframe(name = "CustomName")]` — Custom companion type name
 /// - `#[dataframe(align)]` — Enum alignment mode (accepted but implicit)
 /// - `#[dataframe(tag = "col")]` — Add variant discriminator column
-/// - `#[dataframe(parallel)]` — Enable rayon parallel fill for large inputs
-///   (requires `rayon` feature; uses threshold-based fallback to sequential)
+///
+/// Both struct and enum companion types get `from_rows()` (sequential) and
+/// `from_rows_par()` (parallel, `#[cfg(feature = "rayon")]`) methods automatically.
 pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let row_name = &input.ident;
 
@@ -522,7 +517,6 @@ fn derive_struct_dataframe(
     df_name: &syn::Ident,
     attrs: &DataFrameAttrs,
 ) -> syn::Result<TokenStream> {
-    let parallel = attrs.parallel;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let is_tuple_struct = matches!(&data.fields, Fields::Unnamed(_));
@@ -1005,8 +999,34 @@ fn derive_struct_dataframe(
         col_struct_fields.push(quote! { #name });
     }
 
-    // Generate parallel scatter-write block using ColumnWriter for all field types.
-    let parallel_block = if parallel && (!flat_cols.is_empty() || !auto_expand_cols.is_empty() || has_tag) {
+    // For skipped fields in destructure: bind to `_`
+    let skip_bindings: Vec<TokenStream> = skipped_fields
+        .iter()
+        .map(|name| quote! { let _ = row.#name; })
+        .collect();
+
+    let from_vec_impl = quote! {
+        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
+            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
+                let len = rows.len();
+                #tag_init
+                #(#col_vec_inits)*
+                for row in rows {
+                    #tag_push
+                    #(#skip_bindings)*
+                    #(#col_pushes)*
+                }
+                #df_name {
+                    #tag_struct_field
+                    #len_struct_field
+                    #(#col_struct_fields),*
+                }
+            }
+        }
+    };
+
+    // ── Generate from_rows_par (parallel scatter-write via ColumnWriter) ──
+    let from_rows_par_method = if !flat_cols.is_empty() || !auto_expand_cols.is_empty() || has_tag {
         // Column declarations: Vec::with_capacity(len) + set_len(len)
         let mut par_col_decls = Vec::new();
         if has_tag {
@@ -1179,53 +1199,29 @@ fn derive_struct_dataframe(
         }
 
         quote! {
+            /// Parallel row→column transposition using rayon scatter-write.
+            ///
+            /// Always uses rayon — no threshold check. Use `from_rows` for the
+            /// sequential path.
             #[cfg(feature = "rayon")]
-            {
-                #[allow(clippy::uninit_vec)]
-                if len >= ::miniextendr_api::rayon_bridge::PARALLEL_FILL_THRESHOLD {
-                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                    #(#par_col_decls)*
-                    {
-                        #(#writer_decls)*
-                        rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                            #tag_write
-                            #(#par_write_calls)*
-                            #(#par_skip_bindings)*
-                        });
-                    }
-                    return #df_name { #par_tag_field #par_len_field #(#par_struct_fields),* };
+            #[allow(clippy::uninit_vec)]
+            pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
+                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                let len = rows.len();
+                #(#par_col_decls)*
+                {
+                    #(#writer_decls)*
+                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
+                        #tag_write
+                        #(#par_write_calls)*
+                        #(#par_skip_bindings)*
+                    });
                 }
+                #df_name { #par_tag_field #par_len_field #(#par_struct_fields),* }
             }
         }
     } else {
         TokenStream::new()
-    };
-
-    // For skipped fields in destructure: bind to `_`
-    let skip_bindings: Vec<TokenStream> = skipped_fields
-        .iter()
-        .map(|name| quote! { let _ = row.#name; })
-        .collect();
-
-    let from_vec_impl = quote! {
-        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
-            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
-                let len = rows.len();
-                #parallel_block
-                #tag_init
-                #(#col_vec_inits)*
-                for row in rows {
-                    #tag_push
-                    #(#skip_bindings)*
-                    #(#col_pushes)*
-                }
-                #df_name {
-                    #tag_struct_field
-                    #len_struct_field
-                    #(#col_struct_fields),*
-                }
-            }
-        }
     };
 
     // ── IntoIterator (only for named non-empty structs without expansion) ─
@@ -1335,6 +1331,18 @@ fn derive_struct_dataframe(
         TokenStream::new()
     };
 
+    // ── DataFrame type methods (from_rows, from_rows_par) ────────────────
+    let df_methods = quote! {
+        impl #impl_generics #df_name #ty_generics #where_clause {
+            /// Sequential row→column transposition.
+            pub fn from_rows(rows: Vec<#row_name #ty_generics>) -> Self {
+                rows.into()
+            }
+
+            #from_rows_par_method
+        }
+    };
+
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             /// Name of the generated DataFrame companion type.
@@ -1371,6 +1379,7 @@ fn derive_struct_dataframe(
         #dataframe_struct
         #into_dataframe_impl
         #from_vec_impl
+        #df_methods
         #into_iterator_impl
         #row_methods
         #trait_check
