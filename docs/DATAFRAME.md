@@ -88,7 +88,9 @@ struct Person {
 
 ### Collection Expansion
 
-Fixed-size arrays `[T; N]` are **automatically expanded** into N suffixed columns:
+Fixed-size arrays `[T; N]` are **automatically expanded** into N suffixed columns.
+Use `#[dataframe(expand)]` or `#[dataframe(unnest)]` explicitly if desired,
+though arrays expand by default.
 
 ```rust
 #[derive(Clone, DataFrameRow)]
@@ -106,7 +108,9 @@ struct Point3D {
 // }
 ```
 
-For `Vec<T>`, use `#[dataframe(width = N)]` to expand with pinned width:
+For `Vec<T>`, two expansion modes are available:
+
+**Fixed width** (`width = N`): Expands into exactly N columns at compile time.
 
 ```rust
 #[derive(Clone, DataFrameRow)]
@@ -115,10 +119,28 @@ struct Scored {
     #[dataframe(width = 3)]
     scores: Vec<f64>,  // → scores_1, scores_2, scores_3 as Option<f64>
 }
-// Shorter vecs get trailing None (→ NA in R), longer vecs are truncated.
 ```
 
-Without `width`, `Vec<T>` stays as an opaque single column (list column in R).
+- Shorter vecs: padded with `NA`
+- **Longer vecs: truncated to N** (extra elements silently dropped)
+
+**Auto-expand** (`expand` or `unnest`): Column count determined at runtime
+from the maximum length across all rows.
+
+```rust
+#[derive(Clone, DataFrameRow)]
+struct Measured {
+    name: String,
+    #[dataframe(expand)]       // or: #[dataframe(unnest)]
+    readings: Vec<f64>,        // → readings_1, readings_2, ... (as many as needed)
+}
+```
+
+- Shorter vecs: padded with `NA`
+- All elements preserved (no truncation)
+- If all vecs are empty: no expansion columns produced
+
+Without `width` or `expand`/`unnest`, `Vec<T>` stays as an opaque single column (list column in R).
 
 ### Field-Level Attributes
 
@@ -144,10 +166,11 @@ struct Row {
 | `skip` | Omit field from DataFrame | Any field |
 | `rename = "name"` | Custom column name | Any field |
 | `as_list` | Suppress expansion | `[T; N]`, `Vec<T>` |
-| `expand` | Explicit expansion (default for `[T; N]`) | `[T; N]`, `Vec<T>` |
-| `width = N` | Pin expansion width | `Vec<T>` only |
+| `expand` | Explicit expansion (default for `[T; N]`; auto-expand for `Vec<T>`) | `[T; N]`, `Vec<T>` |
+| `unnest` | Alias for `expand` | `[T; N]`, `Vec<T>` |
+| `width = N` | Pin expansion width (truncates longer vecs) | `Vec<T>` only |
 
-**Conflicts:** `as_list + expand`, `as_list + width` are compile errors. `expand` on `Vec<T>` requires `width = N`.
+**Conflicts:** `as_list + expand`/`unnest`, `as_list + width` are compile errors.
 
 **Note on round-tripping:** Structs with expanded fields don't generate `IntoIterator` or `from_dataframe()`, since the companion struct shape differs from the original. Use `to_dataframe()` only.
 
