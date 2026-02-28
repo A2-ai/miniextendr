@@ -49,122 +49,12 @@
 
 use std::any::Any;
 use std::cell::RefCell;
-use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::OnceLock;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 
 use crate::ffi::{self, Rboolean, SEXP};
-
-// ---------------------------------------------------------------------------
-// PanicError: structured panic payload wrapper
-// ---------------------------------------------------------------------------
-
-/// A structured representation of a Rust panic payload with diagnostics.
-///
-/// Wraps the raw `Box<dyn Any + Send>` panic payload and extracts a human-readable
-/// message. Also records the [`PanicSource`] (worker, ALTREP, unwind_protect, or
-/// connection) so callers can distinguish where the panic originated.
-///
-/// # Examples
-///
-/// ```ignore
-/// use miniextendr_api::worker::PanicError;
-/// use miniextendr_api::panic_telemetry::PanicSource;
-///
-/// let err = PanicError::from_panic_payload(
-///     Box::new("something went wrong"),
-///     PanicSource::Worker,
-/// );
-/// assert_eq!(err.message(), "something went wrong");
-/// assert_eq!(err.source(), PanicSource::Worker);
-/// ```
-pub struct PanicError {
-    message: String,
-    source: crate::panic_telemetry::PanicSource,
-    /// The original type name of the panic payload (for diagnostics).
-    payload_type: &'static str,
-}
-
-impl PanicError {
-    /// Create a `PanicError` from a raw panic payload.
-    ///
-    /// Extracts the message from `&str`, `String`, and `&String` payloads.
-    /// For unrecognised types, falls back to `"unknown panic"`.
-    pub fn from_panic_payload(
-        payload: Box<dyn Any + Send>,
-        source: crate::panic_telemetry::PanicSource,
-    ) -> Self {
-        let payload_type = payload_type_name(payload.as_ref());
-        let message = crate::unwind_protect::panic_payload_to_string(payload.as_ref());
-        Self {
-            message,
-            source,
-            payload_type,
-        }
-    }
-
-    /// Create a `PanicError` from a string message directly.
-    pub fn from_message(message: String, source: crate::panic_telemetry::PanicSource) -> Self {
-        Self {
-            message,
-            source,
-            payload_type: "String",
-        }
-    }
-
-    /// The human-readable panic message.
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// Which panic→R-error boundary caught this panic.
-    pub fn source(&self) -> crate::panic_telemetry::PanicSource {
-        self.source
-    }
-
-    /// The Rust type name of the original panic payload (e.g., `"&str"`, `"String"`).
-    pub fn payload_type(&self) -> &'static str {
-        self.payload_type
-    }
-
-    /// Consume into the inner message string.
-    pub fn into_message(self) -> String {
-        self.message
-    }
-}
-
-impl fmt::Display for PanicError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{:?}] {}", self.source, self.message)
-    }
-}
-
-impl fmt::Debug for PanicError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PanicError")
-            .field("message", &self.message)
-            .field("source", &self.source)
-            .field("payload_type", &self.payload_type)
-            .finish()
-    }
-}
-
-impl std::error::Error for PanicError {}
-
-/// Identify the type name of a panic payload for diagnostics.
-fn payload_type_name(payload: &(dyn Any + Send)) -> &'static str {
-    if payload.downcast_ref::<&str>().is_some() {
-        "&str"
-    } else if payload.downcast_ref::<String>().is_some() {
-        "String"
-    } else if payload.downcast_ref::<&String>().is_some() {
-        "&String"
-    } else {
-        "unknown"
-    }
-}
 
 static R_MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 
@@ -236,47 +126,18 @@ pub fn is_r_main_thread() -> bool {
         .unwrap_or(false) // Safe default: assume NOT main thread until initialized
 }
 
-/// Assert that the current thread is R's main thread.
-///
-/// In debug builds this is always active. In release builds it is a no-op
-/// unless the `release-thread-check` feature is enabled.
-///
-/// Use this at the top of functions that MUST run on the main thread
-/// (e.g., raw pointer accessors like `INTEGER`, `REAL`).
-///
-/// # Panics
-///
-/// Panics with a descriptive message if called from a non-main thread.
-#[inline(always)]
-pub fn assert_r_main_thread(fn_name: &str) {
-    if (cfg!(debug_assertions) || cfg!(feature = "release-thread-check")) && !is_r_main_thread() {
-        panic!(
-            "{fn_name} must be called on R's main thread (current: {:?})",
-            std::thread::current().id()
-        );
-    }
-}
-
-/// Extract a message from a panic payload.
-pub fn panic_payload_to_string(payload: &Box<dyn Any + Send>) -> String {
-    crate::unwind_protect::panic_payload_to_string(payload.as_ref())
-}
-
 /// Raise an R error from a panic message. Does not return.
-pub fn panic_message_to_r_error(msg: String) -> ! {
+///
+/// If `call` is `Some(sexp)`, uses `Rf_errorcall` to include call context
+/// in the error. Otherwise uses `Rf_error`.
+pub fn panic_message_to_r_error(msg: String, call: Option<SEXP>) -> ! {
     let c_msg = std::ffi::CString::new(msg)
         .unwrap_or_else(|_| std::ffi::CString::new("Rust panic (invalid message)").unwrap());
     unsafe {
-        ffi::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
-    }
-}
-
-/// Raise an R error (with call context) from a panic message. Does not return.
-pub fn panic_message_to_r_errorcall(msg: String, call: ffi::SEXP) -> ! {
-    let c_msg = std::ffi::CString::new(msg)
-        .unwrap_or_else(|_| std::ffi::CString::new("Rust panic (invalid message)").unwrap());
-    unsafe {
-        ffi::Rf_errorcall_unchecked(call, c"%s".as_ptr(), c_msg.as_ptr());
+        match call {
+            Some(call) => ffi::Rf_errorcall_unchecked(call, c"%s".as_ptr(), c_msg.as_ptr()),
+            None => ffi::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr()),
+        }
     }
 }
 
@@ -375,7 +236,7 @@ where
         Ok(val) => val,
         Err(msg) => {
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Worker);
-            panic_message_to_r_error(msg)
+            panic_message_to_r_error(msg, None)
         }
     }
 }
@@ -446,7 +307,7 @@ where
         // the loop (e.g., after an R longjmp consumed the last WorkRequest).
         let to_send: Result<Box<dyn Any + Send>, String> = match result {
             Ok(val) => Ok(Box::new(val)),
-            Err(payload) => Err(panic_payload_to_string(&payload)),
+            Err(payload) => Err(crate::unwind_protect::panic_payload_to_string(&*payload)),
         };
         let _ = worker_tx.send(WorkerMessage::Done(to_send));
     });
@@ -555,7 +416,7 @@ where
                         Ok(_) => {
                             // Check if trampoline caught a panic
                             if let Some(payload) = data.panic_payload.take() {
-                                Err(panic_payload_to_string(&payload))
+                                Err(crate::unwind_protect::panic_payload_to_string(&*payload))
                             } else {
                                 // Normal completion - return the result
                                 Ok(data
@@ -573,7 +434,7 @@ where
                                 ffi::R_ContinueUnwind(token);
                             }
                             // Rust panic - return as error response
-                            Err(panic_payload_to_string(&payload))
+                            Err(crate::unwind_protect::panic_payload_to_string(&*payload))
                         }
                     }
                 };
@@ -594,109 +455,6 @@ where
                 };
             }
         }
-    }
-}
-
-/// Execute multiple closures on the R main thread in a single round-trip.
-///
-/// Each closure runs sequentially on the main thread. Results are collected
-/// into a `Vec`. If any closure panics, remaining closures are skipped and
-/// the panic propagates.
-///
-/// This amortizes the ~440us channel overhead across N calls instead of
-/// paying it N times.
-///
-/// # Panics
-///
-/// Panics if the worker hasn't been initialized (see [`miniextendr_worker_init`]).
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::worker::with_r_thread_batch;
-///
-/// let results = with_r_thread_batch(vec![
-///     Box::new(|| 1 + 1),
-///     Box::new(|| 2 + 2),
-///     Box::new(|| 3 + 3),
-/// ]);
-/// assert_eq!(results, vec![2, 4, 6]);
-/// ```
-pub fn with_r_thread_batch<F, T>(work_items: Vec<F>) -> Vec<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    with_r_thread(move || work_items.into_iter().map(|f| f()).collect())
-}
-
-/// A scope for batching multiple R thread calls into a single round-trip.
-///
-/// Instead of one channel round-trip per call, `RThreadScope` collects
-/// closures and executes them all in a single `with_r_thread` call when
-/// [`execute`](RThreadScope::execute) is invoked.
-///
-/// Results are returned as `Vec<Box<dyn Any + Send>>` because each closure
-/// may return a different type. Use [`downcast`](Box::downcast) to recover
-/// the concrete type.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::worker::RThreadScope;
-///
-/// let mut scope = RThreadScope::new();
-/// let idx_a = scope.push(|| 42i32);
-/// let idx_b = scope.push(|| String::from("hello"));
-///
-/// let results = scope.execute();
-/// let a: i32 = *results[idx_a].downcast().unwrap();
-/// let b: String = *results[idx_b].downcast().unwrap();
-/// assert_eq!(a, 42);
-/// assert_eq!(b, "hello");
-/// ```
-pub struct RThreadScope {
-    work_items: Vec<Box<dyn FnOnce() -> Box<dyn Any + Send> + Send>>,
-}
-
-impl RThreadScope {
-    /// Create a new empty scope.
-    pub fn new() -> Self {
-        Self {
-            work_items: Vec::new(),
-        }
-    }
-
-    /// Queue a closure to run on the R main thread.
-    ///
-    /// Returns an index that can be used to retrieve the result from the
-    /// `Vec` returned by [`execute`](RThreadScope::execute).
-    pub fn push<F, T>(&mut self, f: F) -> usize
-    where
-        F: FnOnce() -> T + Send + 'static,
-        T: Send + 'static,
-    {
-        let idx = self.work_items.len();
-        self.work_items
-            .push(Box::new(move || Box::new(f()) as Box<dyn Any + Send>));
-        idx
-    }
-
-    /// Execute all queued closures in a single round-trip to the R main thread.
-    ///
-    /// Returns results in the order they were pushed. Each result is a
-    /// `Box<dyn Any + Send>` that can be downcast to the original return type.
-    ///
-    /// If any closure panics, remaining closures are skipped and the panic
-    /// propagates.
-    pub fn execute(self) -> Vec<Box<dyn Any + Send>> {
-        with_r_thread(move || self.work_items.into_iter().map(|f| f()).collect())
-    }
-}
-
-impl Default for RThreadScope {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -768,139 +526,6 @@ pub extern "C-unwind" fn miniextendr_worker_init() {
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // PanicError tests
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn panic_error_from_str_payload() {
-        let payload: Box<dyn Any + Send> = Box::new("something broke");
-        let err =
-            PanicError::from_panic_payload(payload, crate::panic_telemetry::PanicSource::Worker);
-        assert_eq!(err.message(), "something broke");
-        assert_eq!(err.source(), crate::panic_telemetry::PanicSource::Worker);
-        assert_eq!(err.payload_type(), "&str");
-        assert_eq!(err.to_string(), "[Worker] something broke");
-    }
-
-    #[test]
-    fn panic_error_from_string_payload() {
-        let payload: Box<dyn Any + Send> = Box::new(String::from("owned message"));
-        let err =
-            PanicError::from_panic_payload(payload, crate::panic_telemetry::PanicSource::Altrep);
-        assert_eq!(err.message(), "owned message");
-        assert_eq!(err.source(), crate::panic_telemetry::PanicSource::Altrep);
-        assert_eq!(err.payload_type(), "String");
-    }
-
-    #[test]
-    fn panic_error_from_unknown_payload() {
-        let payload: Box<dyn Any + Send> = Box::new(42i32);
-        let err = PanicError::from_panic_payload(
-            payload,
-            crate::panic_telemetry::PanicSource::UnwindProtect,
-        );
-        assert_eq!(err.message(), "unknown panic");
-        assert_eq!(err.payload_type(), "unknown");
-    }
-
-    #[test]
-    fn panic_error_from_message() {
-        let err = PanicError::from_message(
-            "direct message".to_string(),
-            crate::panic_telemetry::PanicSource::Connection,
-        );
-        assert_eq!(err.message(), "direct message");
-        assert_eq!(
-            err.source(),
-            crate::panic_telemetry::PanicSource::Connection
-        );
-        assert_eq!(err.into_message(), "direct message");
-    }
-
-    #[test]
-    fn panic_error_debug_format() {
-        let err = PanicError::from_message(
-            "test".to_string(),
-            crate::panic_telemetry::PanicSource::Worker,
-        );
-        let debug = format!("{:?}", err);
-        assert!(debug.contains("PanicError"));
-        assert!(debug.contains("test"));
-        assert!(debug.contains("Worker"));
-    }
-
-    #[test]
-    fn panic_error_implements_error_trait() {
-        let err = PanicError::from_message(
-            "trait check".to_string(),
-            crate::panic_telemetry::PanicSource::Worker,
-        );
-        // Verify it can be used as &dyn std::error::Error
-        let _: &dyn std::error::Error = &err;
-    }
-
-    // -----------------------------------------------------------------------
-    // payload_type_name tests
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn payload_type_name_str() {
-        let p: Box<dyn Any + Send> = Box::new("hello");
-        assert_eq!(payload_type_name(p.as_ref()), "&str");
-    }
-
-    #[test]
-    fn payload_type_name_string() {
-        let p: Box<dyn Any + Send> = Box::new(String::from("hello"));
-        assert_eq!(payload_type_name(p.as_ref()), "String");
-    }
-
-    #[test]
-    fn payload_type_name_other() {
-        let p: Box<dyn Any + Send> = Box::new(1.234f64);
-        assert_eq!(payload_type_name(p.as_ref()), "unknown");
-    }
-
-    // -----------------------------------------------------------------------
-    // assert_r_main_thread tests
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn assert_r_main_thread_panics_when_uninitialized() {
-        // R_MAIN_THREAD_ID hasn't been set, so is_r_main_thread() returns false.
-        // In debug builds (which test runs are), this should panic.
-        let result = std::panic::catch_unwind(|| {
-            assert_r_main_thread("test_fn");
-        });
-        // In debug builds, this must panic
-        if cfg!(debug_assertions) {
-            assert!(result.is_err(), "should panic in debug mode");
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Worker channel / failure path tests (no R required)
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn panic_payload_to_string_handles_str() {
-        let payload: Box<dyn Any + Send> = Box::new("test message");
-        assert_eq!(panic_payload_to_string(&payload), "test message");
-    }
-
-    #[test]
-    fn panic_payload_to_string_handles_string() {
-        let payload: Box<dyn Any + Send> = Box::new(String::from("owned"));
-        assert_eq!(panic_payload_to_string(&payload), "owned");
-    }
-
-    #[test]
-    fn panic_payload_to_string_handles_unknown() {
-        let payload: Box<dyn Any + Send> = Box::new(42u64);
-        assert_eq!(panic_payload_to_string(&payload), "unknown panic");
-    }
-
     #[test]
     fn with_r_thread_panics_before_init() {
         // Calling with_r_thread before miniextendr_worker_init should panic
@@ -960,64 +585,5 @@ mod tests {
         let job: AnyJob = Box::new(|| {});
         let result = tx.send(job);
         assert!(result.is_err(), "send should fail when worker is dead");
-    }
-
-    // -----------------------------------------------------------------------
-    // Batching API tests (no R required)
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn with_r_thread_batch_panics_before_init() {
-        // Like with_r_thread, batch should panic before worker init
-        let result = std::panic::catch_unwind(|| {
-            with_r_thread_batch(vec![Box::new(|| 42) as Box<dyn FnOnce() -> i32 + Send>]);
-        });
-        assert!(result.is_err());
-        let payload = result.unwrap_err();
-        let msg = crate::unwind_protect::panic_payload_to_string(payload.as_ref());
-        assert!(
-            msg.contains("miniextendr_worker_init"),
-            "expected init error message, got: {msg}"
-        );
-    }
-
-    #[test]
-    fn with_r_thread_batch_empty_vec() {
-        // Empty batch should also panic before init (goes through with_r_thread)
-        let result = std::panic::catch_unwind(|| {
-            with_r_thread_batch::<Box<dyn FnOnce() -> i32 + Send>, i32>(vec![]);
-        });
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn r_thread_scope_new_is_empty() {
-        let scope = RThreadScope::new();
-        // Execute an empty scope — still panics before init, but validates construction
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            scope.execute();
-        }));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn r_thread_scope_push_returns_sequential_indices() {
-        let mut scope = RThreadScope::new();
-        let idx0 = scope.push(|| 1);
-        let idx1 = scope.push(|| 2);
-        let idx2 = scope.push(|| 3);
-        assert_eq!(idx0, 0);
-        assert_eq!(idx1, 1);
-        assert_eq!(idx2, 2);
-    }
-
-    #[test]
-    fn r_thread_scope_default_trait() {
-        let scope = RThreadScope::default();
-        // Just verifies Default is implemented
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            scope.execute();
-        }));
-        assert!(result.is_err()); // panics before init, expected
     }
 }
