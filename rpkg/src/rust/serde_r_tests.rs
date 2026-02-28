@@ -13,7 +13,7 @@
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::serde::{RSerdeError, from_r, to_r};
 use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
-use serde::{Deserialize, Serialize};
+use crate::serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
 // =============================================================================
@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, HashMap};
 
 /// Simple 2D point for serde_r testing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct SerdeRPoint {
     pub x: f64,
     pub y: f64,
@@ -46,6 +47,7 @@ impl SerdeRPoint {
 
 /// 3D point with optional label for serde_r testing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct SerdeRPoint3D {
     pub x: f64,
     pub y: f64,
@@ -74,6 +76,7 @@ impl SerdeRPoint3D {
 
 /// Rectangle defined by two points.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct Rectangle {
     pub top_left: SerdeRPoint,
     pub bottom_right: SerdeRPoint,
@@ -109,23 +112,27 @@ impl Rectangle {
 
 /// Deeply nested structure for stress testing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct DeepNest {
     pub level1: Level1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
 pub struct Level1 {
     pub level2: Level2,
     pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
 pub struct Level2 {
     pub level3: Level3,
     pub values: Vec<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
 pub struct Level3 {
     pub data: Vec<f64>,
     pub flag: bool,
@@ -163,6 +170,7 @@ impl DeepNest {
 
 /// Struct containing various collection types.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct Collections {
     pub integers: Vec<i32>,
     pub floats: Vec<f64>,
@@ -211,6 +219,7 @@ impl Collections {
 
 /// Struct containing HashMap and BTreeMap.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct Maps {
     pub string_to_int: HashMap<String, i32>,
     pub string_to_float: BTreeMap<String, f64>,
@@ -255,6 +264,7 @@ impl Maps {
 
 /// Simple unit enum (like R factor).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
 pub enum Status {
     Active,
     Inactive,
@@ -263,6 +273,7 @@ pub enum Status {
 
 /// Enum with data variants.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
 pub enum Shape {
     Circle { radius: f64 },
     Rectangle { width: f64, height: f64 },
@@ -271,6 +282,7 @@ pub enum Shape {
 
 /// Struct containing enums.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct WithEnums {
     pub status: Status,
     pub shape: Shape,
@@ -310,6 +322,7 @@ impl WithEnums {
 
 /// Struct with optional fields for NA testing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
+#[serde(crate = "crate::serde")]
 pub struct WithOptionals {
     pub required_int: i32,
     pub optional_int: Option<i32>,
@@ -542,6 +555,7 @@ pub fn serde_r_serialize_tuple() -> SEXP {
 
 /// Tuple struct for testing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
 pub struct Pair(pub i32, pub String);
 
 /// @noRd
@@ -559,6 +573,7 @@ pub fn serde_r_serialize_tuple_struct() -> SEXP {
 #[miniextendr]
 pub fn serde_r_complex_nested() -> SEXP {
     #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
     struct Complex {
         points: Vec<SerdeRPoint>,
         rectangles: Vec<Rectangle>,
@@ -593,6 +608,7 @@ pub fn serde_r_complex_nested() -> SEXP {
 #[miniextendr]
 pub fn serde_r_deserialize_complex(sexp: SEXP) -> String {
     #[derive(Deserialize, Debug)]
+    #[serde(crate = "crate::serde")]
     struct Complex {
         points: Vec<SerdeRPoint>,
         rectangles: Vec<Rectangle>,

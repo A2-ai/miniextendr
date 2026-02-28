@@ -27,21 +27,21 @@ rand_distr = ["miniextendr-api/rand_distr"]
 either = ["miniextendr-api/either"]
 ndarray = ["miniextendr-api/ndarray"]
 nalgebra = ["miniextendr-api/nalgebra"]
-serde = ["miniextendr-api/serde", "dep:serde"]
-serde_json = ["miniextendr-api/serde_json", "dep:serde"]
+serde = ["miniextendr-api/serde"]
+serde_json = ["miniextendr-api/serde_json"]
 num-bigint = ["miniextendr-api/num-bigint"]
 rust_decimal = ["miniextendr-api/rust_decimal"]
 ordered-float = ["miniextendr-api/ordered-float"]
 uuid = ["miniextendr-api/uuid"]
 regex = ["miniextendr-api/regex"]
 indexmap = ["miniextendr-api/indexmap"]
-time = ["miniextendr-api/time", "dep:time"]
+time = ["miniextendr-api/time"]
 num-traits = ["miniextendr-api/num-traits"]
 bytes = ["miniextendr-api/bytes"]
 num-complex = ["miniextendr-api/num-complex"]
 url = ["miniextendr-api/url"]
 sha2 = ["miniextendr-api/sha2"]
-bitflags = ["miniextendr-api/bitflags", "dep:bitflags"]
+bitflags = ["miniextendr-api/bitflags"]
 bitvec = ["miniextendr-api/bitvec"]
 aho-corasick = ["miniextendr-api/aho-corasick"]
 toml = ["miniextendr-api/toml"]
@@ -68,9 +68,6 @@ default-main-thread = ["miniextendr-api/default-main-thread"]
 
 [dependencies]
 miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
-serde = { version = "1", optional = true, features = ["derive"] }
-bitflags = { version = "2", optional = true }
-time = { version = "0.3", optional = true, features = ["macros", "formatting"] }
 
 [build-dependencies]
 miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }

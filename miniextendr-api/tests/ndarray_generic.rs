@@ -94,8 +94,7 @@ fn array3_i32_blanket_impl() {
     // Verify blanket impl works for 3D arrays
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect,
-            SEXPTYPE,
+            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect, SEXPTYPE,
         };
 
         unsafe {
@@ -164,8 +163,7 @@ fn arrayd_dynamic_dims() {
     // Test ArrayD with dynamic number of dimensions
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect,
-            SEXPTYPE,
+            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect, SEXPTYPE,
         };
 
         unsafe {
@@ -201,9 +199,7 @@ fn arrayd_dynamic_dims() {
 fn array_blanket_coverage_all_rnative_types() {
     // Verify blanket impl works for all RNativeType: i32, f64, u8, RLogical
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{
-            RLogical, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE,
-        };
+        use miniextendr_api::ffi::{RLogical, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
         use ndarray::Array1;
 
         unsafe {

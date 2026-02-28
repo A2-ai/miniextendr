@@ -50,8 +50,12 @@
     "raw_conversions",
     "borsh",
     "indicatif",
+    "nonapi",
     "macro-coverage",
-    "materialization-tracking"
+    "materialization-tracking",
+    "debug-preserve",
+    "growth-debug",
+    "release-thread-check"
   ],
   "rust-analyzer.check.command": "clippy",
   // IMPORTANT: target directories MUST be outside rpkg/src/ to avoid pkgbuild
