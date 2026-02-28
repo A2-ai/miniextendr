@@ -1,4 +1,4 @@
-error: unknown field attribute; expected `skip`, `rename`, `as_list`, `expand`, or `width`
+error: unknown field attribute; expected `skip`, `rename`, `as_list`, `expand`, `unnest`, or `width`
  --> tests/ui/derive_dataframe_field_unknown_attr.rs:7:17
   |
 7 |     #[dataframe(bogus)]

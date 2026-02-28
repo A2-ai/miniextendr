@@ -1,5 +1,5 @@
-error: `expand` on Vec<T> requires `width = N`; use `#[dataframe(expand, width = N)]` or `#[dataframe(width = N)]`
- --> tests/ui/derive_dataframe_field_expand_vec_no_width.rs:8:13
+error: `expand`/`unnest` is only valid on `[T; N]` or `Vec<T>` fields
+ --> tests/ui/derive_dataframe_field_expand_vec_no_width.rs:8:12
   |
-8 |     scores: Vec<f64>,
-  |             ^^^^^^^^
+8 |     score: f64,
+  |            ^^^
