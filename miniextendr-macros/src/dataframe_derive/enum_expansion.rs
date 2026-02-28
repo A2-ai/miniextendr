@@ -19,11 +19,13 @@ use std::collections::HashMap;
 /// `None` fill for fields absent in a given variant.
 pub(super) fn derive_enum_dataframe(
     row_name: &syn::Ident,
-    _input: &DeriveInput,
+    input: &DeriveInput,
     data: &syn::DataEnum,
     df_name: &syn::Ident,
     attrs: &DataFrameAttrs,
 ) -> syn::Result<TokenStream> {
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
     // ── Validate variants ────────────────────────────────────────────────
     if data.variants.is_empty() {
         return Err(syn::Error::new_spanned(
@@ -67,7 +69,9 @@ pub(super) fn derive_enum_dataframe(
                                     len,
                                 });
                             }
-                            FieldTypeKind::VariableVec(elem_ty) => {
+                            FieldTypeKind::VariableVec(elem_ty)
+                            | FieldTypeKind::BoxedSlice(elem_ty)
+                            | FieldTypeKind::BorrowedSlice(elem_ty) => {
                                 if let Some(width) = fa.width {
                                     resolved.push(EnumResolvedField::ExpandedVec {
                                         base_name: col_name_str,
@@ -82,6 +86,7 @@ pub(super) fn derive_enum_dataframe(
                                         binding: binding.clone(),
                                         rust_name: rust_name.clone(),
                                         elem_ty: elem_ty.clone(),
+                                        container_ty: f.ty.clone(),
                                     });
                                 } else {
                                     resolved.push(EnumResolvedField::Single {
@@ -96,13 +101,13 @@ pub(super) fn derive_enum_dataframe(
                                 if fa.width.is_some() {
                                     return Err(syn::Error::new_spanned(
                                         &f.ty,
-                                        "`width` is only valid on `Vec<T>` fields",
+                                        "`width` is only valid on `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                                     ));
                                 }
                                 if fa.expand {
                                     return Err(syn::Error::new_spanned(
                                         &f.ty,
-                                        "`expand`/`unnest` is only valid on `[T; N]` or `Vec<T>` fields",
+                                        "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                                     ));
                                 }
                                 resolved.push(EnumResolvedField::Single {
@@ -152,7 +157,9 @@ pub(super) fn derive_enum_dataframe(
                                     len,
                                 });
                             }
-                            FieldTypeKind::VariableVec(elem_ty) => {
+                            FieldTypeKind::VariableVec(elem_ty)
+                            | FieldTypeKind::BoxedSlice(elem_ty)
+                            | FieldTypeKind::BorrowedSlice(elem_ty) => {
                                 if let Some(width) = fa.width {
                                     resolved.push(EnumResolvedField::ExpandedVec {
                                         base_name: col_name_str,
@@ -167,6 +174,7 @@ pub(super) fn derive_enum_dataframe(
                                         binding,
                                         rust_name,
                                         elem_ty: elem_ty.clone(),
+                                        container_ty: f.ty.clone(),
                                     });
                                 } else {
                                     resolved.push(EnumResolvedField::Single {
@@ -267,6 +275,7 @@ pub(super) fn derive_enum_dataframe(
         df_field: syn::Ident,
         base_name: String,
         elem_ty: syn::Type,
+        container_ty: syn::Type,
         present_in: Vec<usize>,
     }
 
@@ -278,13 +287,15 @@ pub(super) fn derive_enum_dataframe(
             if let EnumResolvedField::AutoExpandVec {
                 base_name,
                 elem_ty,
+                container_ty,
                 rust_name,
                 ..
             } = erf
             {
                 if let Some(&idx) = auto_expand_index.get(base_name) {
-                    let existing = &auto_expand_cols[idx];
-                    if existing.elem_ty != *elem_ty {
+                    let elem_match = auto_expand_cols[idx].elem_ty == *elem_ty;
+                    let container_match = auto_expand_cols[idx].container_ty == *container_ty;
+                    if !elem_match {
                         if coerce_to_string {
                             auto_expand_cols[idx].elem_ty = string_ty.clone();
                         } else {
@@ -299,6 +310,17 @@ pub(super) fn derive_enum_dataframe(
                             ));
                         }
                     }
+                    if !container_match {
+                        return Err(syn::Error::new(
+                            rust_name.span(),
+                            format!(
+                                "container type mismatch for auto-expand field `{}`: \
+                                 all variants must use the same container type \
+                                 (`Vec<T>`, `Box<[T]>`, or `&[T]`)",
+                                base_name,
+                            ),
+                        ));
+                    }
                     auto_expand_cols[idx].present_in.push(variant_idx);
                 } else {
                     let idx = auto_expand_cols.len();
@@ -306,6 +328,7 @@ pub(super) fn derive_enum_dataframe(
                         df_field: format_ident!("{}", base_name),
                         base_name: base_name.clone(),
                         elem_ty: elem_ty.clone(),
+                        container_ty: container_ty.clone(),
                         present_in: vec![variant_idx],
                     });
                     auto_expand_index.insert(base_name.clone(), idx);
@@ -332,16 +355,16 @@ pub(super) fn derive_enum_dataframe(
             quote! { pub #name: Vec<Option<#ty>> }
         })
         .collect();
-    // Auto-expand fields: Vec<Option<Vec<T>>>
+    // Auto-expand fields: Vec<Option<ContainerType>>
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
-        let ty = &ac.elem_ty;
-        df_fields.push(quote! { pub #name: Vec<Option<Vec<#ty>>> });
+        let cty = &ac.container_ty;
+        df_fields.push(quote! { pub #name: Vec<Option<#cty>> });
     }
 
     let dataframe_struct = quote! {
         #[derive(Debug, Clone)]
-        pub struct #df_name {
+        pub struct #df_name #impl_generics #where_clause {
             #tag_field
             #(#df_fields),*
         }
@@ -459,7 +482,7 @@ pub(super) fn derive_enum_dataframe(
             .collect();
 
         quote! {
-            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
@@ -478,7 +501,7 @@ pub(super) fn derive_enum_dataframe(
         }
     } else {
         quote! {
-            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
@@ -504,10 +527,8 @@ pub(super) fn derive_enum_dataframe(
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
-        let ty = &ac.elem_ty;
-        col_vec_inits.push(
-            quote! { let mut #name: Vec<Option<Vec<#ty>>> = Vec::with_capacity(len); },
-        );
+        let cty = &ac.container_ty;
+        col_vec_inits.push(quote! { let mut #name: Vec<Option<#cty>> = Vec::with_capacity(len); });
     }
 
     let tag_init = if has_tag {
@@ -715,8 +736,8 @@ pub(super) fn derive_enum_dataframe(
     };
 
     let from_vec_impl = quote! {
-        impl From<Vec<#row_name>> for #df_name {
-            fn from(rows: Vec<#row_name>) -> Self {
+        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
+            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
                 let len = rows.len();
                 #parallel_block
                 #tag_init
@@ -736,14 +757,14 @@ pub(super) fn derive_enum_dataframe(
 
     // ── Generate associated methods ──────────────────────────────────────
     let row_methods = quote! {
-        impl #row_name {
+        impl #impl_generics #row_name #ty_generics #where_clause {
             /// Name of the generated DataFrame companion type.
             pub const DATAFRAME_TYPE_NAME: &'static str = stringify!(#df_name);
 
             /// Convert a vector of enum rows into the companion DataFrame type.
             ///
             /// Fields present in a variant get `Some(value)`, absent fields get `None` (→ NA in R).
-            pub fn to_dataframe(rows: Vec<Self>) -> #df_name {
+            pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
             }
         }
