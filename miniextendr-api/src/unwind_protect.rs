@@ -46,7 +46,7 @@ pub(crate) fn get_continuation_token() -> SEXP {
 ///
 /// Handles `&str`, `String`, and `&String` payloads consistently.
 /// Returns a descriptive fallback for unrecognised payload types.
-pub(crate) fn panic_payload_to_string(payload: &(dyn Any + Send)) -> String {
+pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> String {
     if let Some(&s) = payload.downcast_ref::<&str>() {
         s.to_string()
     } else if let Some(s) = payload.downcast_ref::<String>() {
