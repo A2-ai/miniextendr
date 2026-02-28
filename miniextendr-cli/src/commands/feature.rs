@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 
-use crate::bridge::run_command;
+use crate::bridge::{run_command, rscript_eval};
 use crate::cli::{FeatureCmd, FeatureDetectCmd, FeatureRuleCmd};
 use crate::project::ProjectContext;
 
@@ -231,13 +231,11 @@ add_rule <- function(features, name, detect_expr) {
     Ok(())
 }
 
-/// Update feature detection (placeholder — would regenerate R feature query functions).
-fn feature_detect_update(_ctx: &ProjectContext, quiet: bool) -> Result<()> {
+/// Update feature detection by calling the R helper.
+fn feature_detect_update(ctx: &ProjectContext, quiet: bool) -> Result<()> {
+    rscript_eval("minirextendr::update_feature_detection()", &ctx.root, quiet)?;
     if !quiet {
-        println!("Feature detection update: scan Cargo.toml features and regenerate R helpers.");
-        println!(
-            "(For full functionality, use `Rscript -e 'minirextendr::update_feature_detection()'`)"
-        );
+        println!("Updated feature detection helpers.");
     }
     Ok(())
 }
