@@ -241,6 +241,32 @@ pub enum EventWithSkip {
     },
 }
 
+// Test parallel fill with expansion (struct)
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(parallel)]
+pub struct ParallelExpanded {
+    pub id: i32,
+    pub coords: [f64; 3],
+    #[dataframe(width = 2)]
+    pub tags: Vec<String>,
+    #[dataframe(expand)]
+    pub values: Vec<f64>,
+}
+
+// Test parallel fill with expansion (enum)
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type", parallel)]
+pub enum ParallelExpandedEvent {
+    Measurement {
+        sensor: String,
+        readings: [f64; 2],
+    },
+    Status {
+        sensor: String,
+        code: i32,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -748,5 +774,115 @@ mod tests {
         assert_eq!(df.coords_1, vec![Some(10.0), Some(30.0)]);
         assert_eq!(df.coords_2, vec![Some(20.0), Some(40.0)]);
         // Third element of coords_b (50.0) is truncated
+    }
+
+    #[test]
+    fn test_parallel_expanded_struct() {
+        // Create enough rows to exceed PARALLEL_FILL_THRESHOLD (4096)
+        let rows: Vec<ParallelExpanded> = (0..5000)
+            .map(|i| ParallelExpanded {
+                id: i,
+                coords: [i as f64, (i * 2) as f64, (i * 3) as f64],
+                tags: vec![format!("t{}", i), format!("u{}", i)],
+                values: vec![(i as f64) * 0.1, (i as f64) * 0.2],
+            })
+            .collect();
+
+        let df = ParallelExpanded::to_dataframe(rows);
+        assert_eq!(df.id.len(), 5000);
+        assert_eq!(df.coords_1.len(), 5000);
+        assert_eq!(df.coords_2.len(), 5000);
+        assert_eq!(df.coords_3.len(), 5000);
+        assert_eq!(df.tags_1.len(), 5000);
+        assert_eq!(df.tags_2.len(), 5000);
+        assert_eq!(df.values.len(), 5000);
+
+        // Verify values
+        assert_eq!(df.id[0], 0);
+        assert_eq!(df.id[4999], 4999);
+        assert_eq!(df.coords_1[100], 100.0);
+        assert_eq!(df.coords_2[100], 200.0);
+        assert_eq!(df.coords_3[100], 300.0);
+        assert_eq!(df.tags_1[42], Some("t42".to_string()));
+        assert_eq!(df.tags_2[42], Some("u42".to_string()));
+        assert_eq!(df.values[10], vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn test_parallel_expanded_struct_small() {
+        // Below threshold — exercises serial path
+        let rows: Vec<ParallelExpanded> = (0..10)
+            .map(|i| ParallelExpanded {
+                id: i,
+                coords: [i as f64, 0.0, 0.0],
+                tags: vec![format!("a{}", i)],
+                values: vec![i as f64],
+            })
+            .collect();
+
+        let df = ParallelExpanded::to_dataframe(rows);
+        assert_eq!(df.id.len(), 10);
+        assert_eq!(df.coords_1[0], 0.0);
+        assert_eq!(df.tags_1[5], Some("a5".to_string()));
+        assert_eq!(df.tags_2[5], None);
+    }
+
+    #[test]
+    fn test_parallel_expanded_enum() {
+        // Create enough rows to exceed PARALLEL_FILL_THRESHOLD
+        let rows: Vec<ParallelExpandedEvent> = (0..5000)
+            .map(|i| {
+                if i % 2 == 0 {
+                    ParallelExpandedEvent::Measurement {
+                        sensor: format!("s{}", i),
+                        readings: [i as f64, (i + 1) as f64],
+                    }
+                } else {
+                    ParallelExpandedEvent::Status {
+                        sensor: format!("s{}", i),
+                        code: i,
+                    }
+                }
+            })
+            .collect();
+
+        let df = ParallelExpandedEvent::to_dataframe(rows);
+        assert_eq!(df._tag.len(), 5000);
+        assert_eq!(df.sensor.len(), 5000);
+        assert_eq!(df.readings_1.len(), 5000);
+        assert_eq!(df.readings_2.len(), 5000);
+        assert_eq!(df.code.len(), 5000);
+
+        // Verify values
+        assert_eq!(df._tag[0], "Measurement");
+        assert_eq!(df._tag[1], "Status");
+        assert_eq!(df.sensor[0], Some("s0".to_string()));
+        assert_eq!(df.readings_1[0], Some(0.0));
+        assert_eq!(df.readings_2[0], Some(1.0));
+        assert_eq!(df.code[0], None);
+        assert_eq!(df.code[1], Some(1));
+        assert_eq!(df.readings_1[1], None);
+    }
+
+    #[test]
+    fn test_parallel_expanded_enum_small() {
+        // Below threshold — serial path
+        let rows = vec![
+            ParallelExpandedEvent::Measurement {
+                sensor: "temp".into(),
+                readings: [22.5, 23.0],
+            },
+            ParallelExpandedEvent::Status {
+                sensor: "temp".into(),
+                code: 200,
+            },
+        ];
+
+        let df = ParallelExpandedEvent::to_dataframe(rows);
+        assert_eq!(df._tag, vec!["Measurement", "Status"]);
+        assert_eq!(df.sensor, vec![Some("temp".to_string()), Some("temp".to_string())]);
+        assert_eq!(df.readings_1, vec![Some(22.5), None]);
+        assert_eq!(df.readings_2, vec![Some(23.0), None]);
+        assert_eq!(df.code, vec![None, Some(200)]);
     }
 }

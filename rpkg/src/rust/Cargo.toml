@@ -49,6 +49,22 @@ tabled = ["miniextendr-api/tabled"]
 raw_conversions = ["miniextendr-api/raw_conversions"]
 vctrs = ["miniextendr-api/vctrs"]
 tinyvec = ["miniextendr-api/tinyvec"]
+borsh = ["miniextendr-api/borsh"]
+indicatif = ["miniextendr-api/indicatif"]
+# Diagnostic / development features (shallow pass-through)
+macro-coverage = ["miniextendr-api/macro-coverage"]
+materialization-tracking = ["miniextendr-api/materialization-tracking"]
+debug-preserve = ["miniextendr-api/debug-preserve"]
+growth-debug = ["miniextendr-api/growth-debug"]
+release-thread-check = ["miniextendr-api/release-thread-check"]
+# Project-wide defaults for #[miniextendr] options
+default-strict = ["miniextendr-api/default-strict"]
+default-coerce = ["miniextendr-api/default-coerce"]
+default-error-in-r = ["miniextendr-api/default-error-in-r"]
+default-r6 = ["miniextendr-api/default-r6"]
+default-s7 = ["miniextendr-api/default-s7"]
+default-worker = ["miniextendr-api/default-worker"]
+default-main-thread = ["miniextendr-api/default-main-thread"]
 
 [dependencies]
 miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
