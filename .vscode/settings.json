@@ -52,7 +52,6 @@
     "indicatif",
     "nonapi",
     "macro-coverage",
-    "materialization-tracking",
     "debug-preserve",
     "growth-debug",
     "release-thread-check"

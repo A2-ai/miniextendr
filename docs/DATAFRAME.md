@@ -328,8 +328,8 @@ struct Measurement { /* ... */ }
 
 ### Parallel Fill with Rayon
 
-The `parallel` container attribute enables rayon-based parallel column filling for
-large data frames. Requires the `rayon` feature.
+Every `DataFrameRow` companion type gets explicit sequential and parallel constructors.
+The parallel path requires the `rayon` feature.
 
 ```toml
 # Cargo.toml
@@ -339,7 +339,6 @@ miniextendr-api = { version = "0.1", features = ["rayon"] }
 
 ```rust
 #[derive(Clone, IntoList, DataFrameRow)]
-#[dataframe(parallel)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -351,26 +350,35 @@ pub fn big_points() -> PointDataFrame {
     let points: Vec<Point> = (0..100_000)
         .map(|i| Point { x: i as f64, y: (i * 2) as f64, label: format!("p{}", i) })
         .collect();
-    Point::to_dataframe(points)
+    // Explicit parallel — always uses rayon, no threshold check
+    PointDataFrame::from_rows_par(points)
 }
 ```
 
-**How it works:**
+**Generated methods on every companion type:**
 
-- Below 4096 rows: sequential fill (same as without `parallel`)
-- At 4096+ rows: parallel fill using `rayon::par_iter()` with scatter-write
+- `DfType::from_rows(rows)` — sequential push-based fill (always available)
+- `DfType::from_rows_par(rows)` — parallel scatter-write via `ColumnWriter` (`#[cfg(feature = "rayon")]`)
+- `From<Vec<Row>>` / `RowType::to_dataframe(rows)` — sequential (unchanged)
+
+**How `from_rows_par` works:**
+
 - Pre-allocates column vectors to exact size, then fills indices in parallel
-- Uses `ColumnWriter<T>` for safe concurrent writes to disjoint indices
+- Uses `rayon::par_iter()` with `ColumnWriter<T>` for safe concurrent writes to disjoint indices
+- No threshold — the caller explicitly opts in to parallelism
 
 **Enum support:** Parallel fill also works with enum DataFrameRow types:
 
 ```rust
 #[derive(Clone, DataFrameRow)]
-#[dataframe(parallel, tag = "_kind")]
+#[dataframe(tag = "_kind")]
 pub enum Event {
     Click { id: i32, x: f64, y: f64 },
     Impression { id: i32, slot: String },
 }
+
+// Use the parallel path:
+let df = EventDataFrame::from_rows_par(events);
 ```
 
 **Performance:** Parallel fill is most beneficial for:
@@ -378,7 +386,7 @@ pub enum Event {
 - Structs with many fields (wide data frames)
 - Expensive `Clone`/conversion per field
 
-For small data frames, the sequential path avoids rayon overhead.
+For small data frames, use `from_rows` to avoid rayon overhead.
 
 ### Columnar Serialization via Serde
 

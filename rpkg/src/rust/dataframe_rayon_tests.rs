@@ -2,7 +2,6 @@ use miniextendr_api::convert::ToDataFrame;
 use miniextendr_api::{DataFrameRow, IntoList, miniextendr, miniextendr_module};
 
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
-#[dataframe(parallel)]
 pub struct ParPoint {
     pub x: f64,
     pub y: f64,
@@ -22,7 +21,7 @@ pub fn create_large_par_points(n: i32) -> ToDataFrame<ParPointDataFrame> {
 }
 
 #[derive(Clone, Debug, DataFrameRow)]
-#[dataframe(parallel, tag = "_kind")]
+#[dataframe(tag = "_kind")]
 pub enum ParEvent {
     A { id: i32, value: f64 },
     B { id: i32, name: String },
