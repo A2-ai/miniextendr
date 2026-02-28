@@ -53,7 +53,6 @@ borsh = ["miniextendr-api/borsh"]
 indicatif = ["miniextendr-api/indicatif"]
 # Diagnostic / development features (shallow pass-through)
 macro-coverage = ["miniextendr-api/macro-coverage"]
-materialization-tracking = ["miniextendr-api/materialization-tracking"]
 debug-preserve = ["miniextendr-api/debug-preserve"]
 growth-debug = ["miniextendr-api/growth-debug"]
 release-thread-check = ["miniextendr-api/release-thread-check"]

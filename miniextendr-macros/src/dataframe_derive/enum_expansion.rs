@@ -702,8 +702,27 @@ pub(super) fn derive_enum_dataframe(
         col_struct_fields.push(quote! { #name });
     }
 
-    // Generate parallel scatter-write block using ColumnWriter for all field types.
-    let parallel_block = if attrs.parallel && (!columns.is_empty() || !auto_expand_cols.is_empty() || has_tag) {
+    let from_vec_impl = quote! {
+        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
+            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
+                let len = rows.len();
+                #tag_init
+                #(#col_vec_inits)*
+                for row in rows {
+                    match row {
+                        #(#match_arms)*
+                    }
+                }
+                #df_name {
+                    #tag_struct_field
+                    #(#col_struct_fields),*
+                }
+            }
+        }
+    };
+
+    // ── Generate from_rows_par (parallel scatter-write via ColumnWriter) ──
+    let from_rows_par_method = if !columns.is_empty() || !auto_expand_cols.is_empty() || has_tag {
         // Column declarations
         let mut par_col_decls = Vec::new();
         if has_tag {
@@ -915,45 +934,40 @@ pub(super) fn derive_enum_dataframe(
         }
 
         quote! {
+            /// Parallel row→column transposition using rayon scatter-write.
+            ///
+            /// Always uses rayon — no threshold check. Use `from_rows` for the
+            /// sequential path.
             #[cfg(feature = "rayon")]
-            {
-                #[allow(clippy::uninit_vec)]
-                if len >= ::miniextendr_api::rayon_bridge::PARALLEL_FILL_THRESHOLD {
-                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                    #(#par_col_decls)*
-                    {
-                        #(#writer_decls)*
-                        rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                            match __row {
-                                #(#par_match_arms)*
-                            }
-                        });
-                    }
-                    return #df_name { #par_tag_field #(#par_struct_fields),* };
+            #[allow(clippy::uninit_vec)]
+            pub fn from_rows_par(rows: Vec<#row_name #ty_generics>) -> Self {
+                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                let len = rows.len();
+                #(#par_col_decls)*
+                {
+                    #(#writer_decls)*
+                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
+                        match __row {
+                            #(#par_match_arms)*
+                        }
+                    });
                 }
+                #df_name { #par_tag_field #(#par_struct_fields),* }
             }
         }
     } else {
         TokenStream::new()
     };
 
-    let from_vec_impl = quote! {
-        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
-            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
-                let len = rows.len();
-                #parallel_block
-                #tag_init
-                #(#col_vec_inits)*
-                for row in rows {
-                    match row {
-                        #(#match_arms)*
-                    }
-                }
-                #df_name {
-                    #tag_struct_field
-                    #(#col_struct_fields),*
-                }
+    // ── Generate DataFrame type methods (from_rows, from_rows_par) ────────
+    let df_methods = quote! {
+        impl #impl_generics #df_name #ty_generics #where_clause {
+            /// Sequential row→column transposition.
+            pub fn from_rows(rows: Vec<#row_name #ty_generics>) -> Self {
+                rows.into()
             }
+
+            #from_rows_par_method
         }
     };
 
@@ -979,6 +993,7 @@ pub(super) fn derive_enum_dataframe(
         #dataframe_struct
         #into_dataframe_impl
         #from_vec_impl
+        #df_methods
         #row_methods
     })
 }
