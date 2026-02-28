@@ -9,6 +9,9 @@ Comprehensive documentation for the miniextendr Rust-R interoperability framewor
 | Build my first package | [Getting Started](GETTING_STARTED.md) |
 | Use the CLI tool | [miniextendr CLI](../miniextendr-cli/README.md) |
 | Add a Rust function to R | [Type Conversions](TYPE_CONVERSIONS.md) |
+| Expose a Rust struct to R | [ExternalPtr](EXTERNALPTR.md) |
+| Work with R matrices/arrays | [RArray](RARRAY.md) |
+| Generate random numbers | [RNG](RNG.md) |
 | Use lazy/compact vectors | [ALTREP](ALTREP.md) |
 | Understand the architecture | [Architecture](ARCHITECTURE.md) |
 | See what features exist | [Features](FEATURES.md) |
@@ -28,9 +31,14 @@ How miniextendr works under the hood.
 - **[Architecture](ARCHITECTURE.md)** -- Crate structure, call flow, how Rust talks to R
 - **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp`/`IntoR` system, `NamedList`, `CopySliceMut`
 - **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`, `REnv` for calling R from Rust
-- **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`, and error propagation
+- **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`, `error_in_r` mode, backtrace control
+- **[ExternalPtr](EXTERNALPTR.md)** -- Box-like owned pointer wrapping R's EXTPTRSXP (`TypedExternal`, `ExternalSlice`, ALTREP helpers)
 - **[GC Protection](GC_PROTECT.md)** -- RAII-based protect/unprotect (`OwnedProtect`, `ProtectScope`)
 - **[R Allocator](ALLOCATOR.md)** -- R-backed `GlobalAlloc` using RAWSXP + preserve list
+- **[FFI Guard & Panic Telemetry](FFI_GUARD.md)** -- Panic boundaries (`GuardMode`), telemetry hooks (`PanicSource`)
+- **[Encoding](ENCODING.md)** -- UTF-8 locale requirement and encoding probing utilities
+- **[RNG](RNG.md)** -- R random number generation from Rust (`RngGuard`, `with_rng`, `#[miniextendr(rng)]`)
+- **[RArray](RARRAY.md)** -- N-dimensional R arrays (`RArray`, `RMatrix`, `RVector`, `RArray3D`)
 - **[Safety](SAFETY.md)** -- Safety invariants and what miniextendr guarantees
 - **[Threads](THREADS.md)** -- Worker thread architecture, batching, main thread safety
 
@@ -64,6 +72,7 @@ Optional capabilities enabled via Cargo feature flags or proc-macro attributes.
 | Lifecycle | [Lifecycle](LIFECYCLE.md) | Deprecation badges and runtime warnings |
 | Prefer derives | [Prefer Derives](PREFER_DERIVES.md) | Control IntoR routing (list, ExternalPtr, native) |
 | Strict mode | [Strict Mode](STRICT_MODE.md) | Reject lossy i64/u64 conversions |
+| Raw conversions | [Raw Conversions](RAW_CONVERSIONS.md) | POD types to/from R raw vectors via bytemuck |
 | Feature defaults | [Feature Defaults](FEATURE_DEFAULTS.md) | Project-wide defaults (strict, coerce, class system) |
 | All flags | [Features](FEATURES.md) | Complete feature flag reference |
 
