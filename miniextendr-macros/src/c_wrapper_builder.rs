@@ -267,7 +267,7 @@ impl CWrapperContext {
             let rng_panic_handler = if self.error_in_r {
                 quote! {
                     ::miniextendr_api::error_value::make_rust_error_value(
-                        &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                        &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
                         "panic",
                     )
                 }
@@ -358,15 +358,15 @@ impl CWrapperContext {
         let panic_error_handling = if self.error_in_r {
             quote! {
                 ::miniextendr_api::error_value::make_rust_error_value(
-                    &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
                     "panic",
                 )
             }
         } else {
             quote! {
-                ::miniextendr_api::worker::panic_message_to_r_errorcall(
-                    ::miniextendr_api::worker::panic_payload_to_string(&payload),
-                    __miniextendr_call,
+                ::miniextendr_api::worker::panic_message_to_r_error(
+                    ::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    Some(__miniextendr_call),
                 )
             }
         };

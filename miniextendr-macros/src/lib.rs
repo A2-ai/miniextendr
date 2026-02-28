@@ -985,7 +985,7 @@ pub fn miniextendr(
             let rng_panic_handler = if error_in_r {
                 quote::quote! {
                     ::miniextendr_api::error_value::make_rust_error_value(
-                        &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                        &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
                         "panic",
                     )
                 }
@@ -1051,14 +1051,15 @@ pub fn miniextendr(
         let worker_panic_handler = if error_in_r {
             quote::quote! {
                 ::miniextendr_api::error_value::make_rust_error_value(
-                    &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
                     "panic",
                 )
             }
         } else {
             quote::quote! {
                 ::miniextendr_api::worker::panic_message_to_r_error(
-                    ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                    ::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    None,
                 )
             }
         };

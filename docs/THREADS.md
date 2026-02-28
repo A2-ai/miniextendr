@@ -189,13 +189,12 @@ Rust's default thread stack is only **2 MiB**, which may be insufficient for:
 ### Available Constants
 
 ```rust
-// Requires feature = "nonapi"
-
 /// 8 MiB - conservative default, matches Unix R
+/// (Always available, no feature gate required)
 pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 /// 64 MiB - matches Windows R for heavy workloads
-/// Only available on Windows (gated with #[cfg(windows)])
+/// Only available on Windows (#[cfg(windows)])
 pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 ```
 
@@ -232,39 +231,6 @@ spawn_with_r(move || {
 // Main thread receives R object
 let sexp = rx.recv().unwrap();
 ```
-
-### Worker Batching
-
-The default `with_r_thread` sends one closure per round-trip (~440us overhead). For multiple R API calls, use batching to amortize that cost:
-
-**Homogeneous batching** -- all closures return the same type:
-
-```rust
-use miniextendr_api::with_r_thread_batch;
-
-let results = with_r_thread_batch(vec![
-    Box::new(|| 1 + 1),
-    Box::new(|| 2 + 2),
-    Box::new(|| 3 + 3),
-]);
-// results == vec![2, 4, 6] -- single round-trip
-```
-
-**Heterogeneous batching** -- closures return different types:
-
-```rust
-use miniextendr_api::RThreadScope;
-
-let mut scope = RThreadScope::new();
-let idx_a = scope.push(|| 42i32);
-let idx_b = scope.push(|| String::from("hello"));
-
-let results = scope.execute(); // single round-trip
-let a: i32 = *results[idx_a].downcast().unwrap();
-let b: String = *results[idx_b].downcast().unwrap();
-```
-
-`RThreadScope` returns `Vec<Box<dyn Any + Send>>` -- use `downcast()` to recover concrete types.
 
 ### ALTREP Callbacks
 

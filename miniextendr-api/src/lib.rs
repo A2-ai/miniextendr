@@ -315,7 +315,7 @@ pub mod unwind_protect;
 pub mod worker;
 
 // Re-export commonly used worker items at root for convenience
-pub use worker::{RThreadScope, Sendable, is_r_main_thread, with_r_thread, with_r_thread_batch};
+pub use worker::{Sendable, is_r_main_thread, with_r_thread};
 
 // Required exports for generated code and initialization
 pub use worker::miniextendr_worker_init;
@@ -323,10 +323,8 @@ pub use worker::miniextendr_worker_init;
 // Advanced/internal worker items remain under worker:: namespace:
 // - has_worker_context()
 // - assert_r_main_thread_for_pointer_api()
-// - panic_payload_to_string()
 // - panic_message_to_r_error()
-// - panic_message_to_r_errorcall()
-// - run_on_worker() (used by macro-generated code, but kept namespaced)
+// - run_on_worker() / run_on_worker_result() (used by macro-generated code)
 
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
