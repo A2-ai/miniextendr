@@ -259,7 +259,11 @@ fn normalize_for_comparison(s: &str) -> String {
         }
         result.push_str(word);
     }
-    result.truncate(result.trim_end_matches(|c: char| c.is_ascii_punctuation()).len());
+    result.truncate(
+        result
+            .trim_end_matches(|c: char| c.is_ascii_punctuation())
+            .len(),
+    );
     result
 }
 

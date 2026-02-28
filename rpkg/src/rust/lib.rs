@@ -89,6 +89,12 @@ use miniextendr_api::IntoR;
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
+// Re-export the serde crate from miniextendr-api so test modules can derive
+// Serialize/Deserialize without a direct serde dependency.
+// Use `#[serde(crate = "crate::serde")]` on derived types.
+#[cfg(feature = "serde")]
+pub use miniextendr_api::serde_crate as serde;
+
 // Test modules
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]

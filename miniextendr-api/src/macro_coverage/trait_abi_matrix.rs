@@ -94,7 +94,13 @@ mod tests {
         assert_eq!(data_offset, std::mem::size_of::<crate::abi::mx_erased>());
 
         // Verify we can read the data correctly through the offset
-        let data_ptr = unsafe { wrapped.cast::<u8>().add(data_offset).cast::<CovEnv>().cast_const() };
+        let data_ptr = unsafe {
+            wrapped
+                .cast::<u8>()
+                .add(data_offset)
+                .cast::<CovEnv>()
+                .cast_const()
+        };
         let value = unsafe { (*data_ptr).v };
         assert_eq!(value, 42);
 
@@ -123,7 +129,13 @@ mod tests {
         );
 
         // Verify we can read the data correctly
-        let data_ptr = unsafe { wrapped.cast::<u8>().add(data_offset).cast::<Aligned32Counter>().cast_const() };
+        let data_ptr = unsafe {
+            wrapped
+                .cast::<u8>()
+                .add(data_offset)
+                .cast::<Aligned32Counter>()
+                .cast_const()
+        };
         let value = unsafe { (*data_ptr).value };
         assert_eq!(value, 99);
 
@@ -149,7 +161,13 @@ mod tests {
         assert_eq!(data_offset, 64);
 
         // Verify we can read the data correctly
-        let data_ptr = unsafe { wrapped.cast::<u8>().add(data_offset).cast::<Aligned64Counter>().cast_const() };
+        let data_ptr = unsafe {
+            wrapped
+                .cast::<u8>()
+                .add(data_offset)
+                .cast::<Aligned64Counter>()
+                .cast_const()
+        };
         let value = unsafe { (*data_ptr).value };
         assert_eq!(value, 77);
 
