@@ -1194,3 +1194,74 @@ test_that("float_powi computes integer power", {
   expect_equal(float_powi(2, 3L), 8)
   expect_equal(float_powi(3, 2L), 9)
 })
+
+# =============================================================================
+# Borsh feature tests
+# =============================================================================
+
+test_that("borsh_roundtrip_doubles preserves numeric vector", {
+  skip_if_missing_feature("borsh")
+  result <- borsh_roundtrip_doubles(c(1.5, 2.5, 3.5))
+  expect_equal(result, c(1.5, 2.5, 3.5))
+})
+
+test_that("borsh_roundtrip_doubles handles empty vector", {
+  skip_if_missing_feature("borsh")
+  result <- borsh_roundtrip_doubles(numeric(0))
+  expect_equal(result, numeric(0))
+})
+
+test_that("borsh_roundtrip_string preserves string", {
+  skip_if_missing_feature("borsh")
+  expect_equal(borsh_roundtrip_string("hello borsh"), "hello borsh")
+  expect_equal(borsh_roundtrip_string(""), "")
+})
+
+test_that("borsh_tuple_size returns correct byte count", {
+  skip_if_missing_feature("borsh")
+  # (i32=4, String="hello"=4+5=9, bool=1) = 14 bytes
+  expect_equal(borsh_tuple_size(), 14L)
+})
+
+test_that("borsh_nested_roundtrip succeeds", {
+  skip_if_missing_feature("borsh")
+  expect_true(borsh_nested_roundtrip())
+})
+
+test_that("borsh_invalid_data returns error message", {
+  skip_if_missing_feature("borsh")
+  result <- borsh_invalid_data()
+  expect_true(grepl("borsh deserialization failed", result))
+})
+
+test_that("borsh_option_roundtrip succeeds", {
+  skip_if_missing_feature("borsh")
+  expect_true(borsh_option_roundtrip())
+})
+
+# =============================================================================
+# Indicatif feature tests
+# =============================================================================
+
+test_that("indicatif_rterm_debug returns debug string", {
+  skip_if_missing_feature("indicatif")
+  result <- indicatif_rterm_debug()
+  expect_true(grepl("RTerm", result))
+  expect_true(grepl("Stderr", result))
+  expect_true(grepl("80", result))
+})
+
+test_that("indicatif_factories_compile succeeds", {
+  skip_if_missing_feature("indicatif")
+  expect_true(indicatif_factories_compile())
+})
+
+test_that("indicatif_hidden_bar runs without error", {
+  skip_if_missing_feature("indicatif")
+  expect_true(indicatif_hidden_bar())
+})
+
+test_that("indicatif_short_bar renders and finishes", {
+  skip_if_missing_feature("indicatif")
+  expect_equal(indicatif_short_bar(), "done")
+})
