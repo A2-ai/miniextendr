@@ -166,6 +166,36 @@ pub enum EventWithScores {
     },
 }
 
+// Test Vec with auto-expand (runtime column count)
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct WithAutoExpand {
+    pub name: String,
+    #[dataframe(expand)]
+    pub values: Vec<f64>,
+}
+
+// Test Vec with unnest alias
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct WithUnnest {
+    pub label: String,
+    #[dataframe(unnest)]
+    pub items: Vec<i32>,
+}
+
+// Test enum with auto-expand
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(tag = "_type")]
+pub enum EventWithAutoExpand {
+    Scores {
+        label: String,
+        #[dataframe(expand)]
+        vals: Vec<f64>,
+    },
+    Empty {
+        label: String,
+    },
+}
+
 // Test enum with skip
 #[derive(Clone, Debug, DataFrameRow)]
 pub enum EventWithSkip {
@@ -489,5 +519,105 @@ mod tests {
         let df = EventWithSkip::to_dataframe(rows);
         assert_eq!(df.value, vec![Some(1.0), Some(2.0)]);
         // No `internal` column
+    }
+
+    #[test]
+    fn test_auto_expand_varying_lengths() {
+        // Auto-expand stores Vec<Vec<T>> in companion struct.
+        // The individual values_1, values_2, ... columns are generated
+        // at runtime by IntoDataFrame (tested from R side).
+        let rows = vec![
+            WithAutoExpand {
+                name: "a".into(),
+                values: vec![1.0, 2.0, 3.0],
+            },
+            WithAutoExpand {
+                name: "b".into(),
+                values: vec![4.0],
+            },
+            WithAutoExpand {
+                name: "c".into(),
+                values: vec![5.0, 6.0],
+            },
+        ];
+
+        let df = WithAutoExpand::to_dataframe(rows);
+        assert_eq!(df.name.len(), 3);
+        assert_eq!(df.values.len(), 3);
+        assert_eq!(df.values[0], vec![1.0, 2.0, 3.0]);
+        assert_eq!(df.values[1], vec![4.0]);
+        assert_eq!(df.values[2], vec![5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_auto_expand_all_empty() {
+        let rows = vec![
+            WithAutoExpand {
+                name: "a".into(),
+                values: vec![],
+            },
+            WithAutoExpand {
+                name: "b".into(),
+                values: vec![],
+            },
+        ];
+
+        let df = WithAutoExpand::to_dataframe(rows);
+        assert_eq!(df.name.len(), 2);
+        assert_eq!(df.values.len(), 2);
+        assert!(df.values[0].is_empty());
+        assert!(df.values[1].is_empty());
+    }
+
+    #[test]
+    fn test_unnest_alias() {
+        // `unnest` is an alias for `expand` — same auto-expand behavior.
+        let rows = vec![
+            WithUnnest {
+                label: "x".into(),
+                items: vec![10, 20],
+            },
+            WithUnnest {
+                label: "y".into(),
+                items: vec![30],
+            },
+        ];
+
+        let df = WithUnnest::to_dataframe(rows);
+        assert_eq!(df.label.len(), 2);
+        assert_eq!(df.items.len(), 2);
+        assert_eq!(df.items[0], vec![10, 20]);
+        assert_eq!(df.items[1], vec![30]);
+    }
+
+    #[test]
+    fn test_enum_auto_expand() {
+        let rows = vec![
+            EventWithAutoExpand::Scores {
+                label: "a".into(),
+                vals: vec![1.0, 2.0],
+            },
+            EventWithAutoExpand::Empty { label: "b".into() },
+            EventWithAutoExpand::Scores {
+                label: "c".into(),
+                vals: vec![3.0],
+            },
+        ];
+
+        let df = EventWithAutoExpand::to_dataframe(rows);
+        assert_eq!(df._tag, vec!["Scores", "Empty", "Scores"]);
+        assert_eq!(
+            df.label,
+            vec![
+                Some("a".to_string()),
+                Some("b".to_string()),
+                Some("c".to_string()),
+            ]
+        );
+        // vals is Vec<Option<Vec<f64>>> in companion struct
+        assert_eq!(df.vals.len(), 3);
+        assert_eq!(df.vals[0], Some(vec![1.0, 2.0]));
+        assert_eq!(df.vals[1], None);
+        assert_eq!(df.vals[2], Some(vec![3.0]));
     }
 }

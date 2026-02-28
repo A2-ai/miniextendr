@@ -161,7 +161,7 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
             } else if meta.path.is_ident("as_list") {
                 attrs.as_list = true;
                 Ok(())
-            } else if meta.path.is_ident("expand") {
+            } else if meta.path.is_ident("expand") || meta.path.is_ident("unnest") {
                 attrs.expand = true;
                 Ok(())
             } else if meta.path.is_ident("width") {
@@ -175,7 +175,7 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
                 Ok(())
             } else {
                 Err(meta.error(
-                    "unknown field attribute; expected `skip`, `rename`, `as_list`, `expand`, or `width`",
+                    "unknown field attribute; expected `skip`, `rename`, `as_list`, `expand`, `unnest`, or `width`",
                 ))
             }
         })?;
@@ -185,7 +185,7 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
     if attrs.as_list && attrs.expand {
         return Err(syn::Error::new(
             field.ident.as_ref().map_or(Span::call_site(), |i| i.span()),
-            "`as_list` and `expand` are mutually exclusive",
+            "`as_list` and `expand`/`unnest` are mutually exclusive",
         ));
     }
     if attrs.as_list && attrs.width.is_some() {
@@ -283,6 +283,19 @@ enum ResolvedField {
         /// Index in tuple struct.
         tuple_index: Option<syn::Index>,
     },
+    /// Auto-expanded Vec<T>: column count determined at runtime from max row length.
+    AutoExpandVec {
+        /// Rust field name (for row access).
+        rust_name: syn::Ident,
+        /// Companion struct field name (ident).
+        col_name: syn::Ident,
+        /// Column name base string (for suffixed column names).
+        col_name_str: String,
+        /// Element type T.
+        elem_ty: syn::Type,
+        /// Index in tuple struct.
+        tuple_index: Option<syn::Index>,
+    },
 }
 
 /// Resolve a struct field into a `ResolvedField`, applying field attrs.
@@ -347,11 +360,13 @@ fn resolve_struct_field(
                     tuple_index,
                 }))
             } else if field_attrs.expand {
-                Err(syn::Error::new_spanned(
-                    ty,
-                    "`expand` on Vec<T> requires `width = N`; \
-                     use `#[dataframe(expand, width = N)]` or `#[dataframe(width = N)]`",
-                ))
+                Ok(Some(ResolvedField::AutoExpandVec {
+                    rust_name,
+                    col_name,
+                    col_name_str,
+                    elem_ty: elem_ty.clone(),
+                    tuple_index,
+                }))
             } else {
                 // No expansion — keep as opaque single column
                 Ok(Some(ResolvedField::Single {
@@ -373,7 +388,7 @@ fn resolve_struct_field(
             if field_attrs.expand {
                 return Err(syn::Error::new_spanned(
                     ty,
-                    "`expand` is only valid on `[T; N]` or `Vec<T>` fields",
+                    "`expand`/`unnest` is only valid on `[T; N]` or `Vec<T>` fields",
                 ));
             }
             Ok(Some(ResolvedField::Single {
@@ -582,8 +597,38 @@ fn derive_struct_dataframe(
                     });
                 }
             }
+            // AutoExpandVec does not produce FlatCols — handled separately.
+            ResolvedField::AutoExpandVec { .. } => {}
         }
     }
+
+    // ── Collect auto-expand fields ──────────────────────────────────────
+    struct AutoExpandCol {
+        /// Companion struct field name.
+        df_field: syn::Ident,
+        /// Element type T.
+        elem_ty: syn::Type,
+    }
+
+    let auto_expand_cols: Vec<AutoExpandCol> = resolved
+        .iter()
+        .filter_map(|rf| {
+            if let ResolvedField::AutoExpandVec {
+                col_name_str,
+                elem_ty,
+                ..
+            } = rf
+            {
+                Some(AutoExpandCol {
+                    df_field: format_ident!("{}", col_name_str),
+                    elem_ty: elem_ty.clone(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    let has_auto_expand = !auto_expand_cols.is_empty();
 
     // ── Companion struct ────────────────────────────────────────────────
     let tag_field_decl = if has_tag {
@@ -592,7 +637,7 @@ fn derive_struct_dataframe(
         TokenStream::new()
     };
 
-    let df_fields_tokens: Vec<TokenStream> = flat_cols
+    let mut df_fields_tokens: Vec<TokenStream> = flat_cols
         .iter()
         .map(|fc| {
             let name = &fc.df_field;
@@ -600,8 +645,13 @@ fn derive_struct_dataframe(
             quote! { pub #name: Vec<#ty> }
         })
         .collect();
+    for ac in &auto_expand_cols {
+        let name = &ac.df_field;
+        let ty = &ac.elem_ty;
+        df_fields_tokens.push(quote! { pub #name: Vec<Vec<#ty>> });
+    }
 
-    let len_field_decl = if flat_cols.is_empty() && !has_tag {
+    let len_field_decl = if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
         quote! { pub _len: usize, }
     } else {
         TokenStream::new()
@@ -619,11 +669,14 @@ fn derive_struct_dataframe(
     // ── IntoDataFrame ───────────────────────────────────────────────────
     let length_ref = if has_tag {
         quote! { self._tag.len() }
-    } else if flat_cols.is_empty() {
-        quote! { self._len }
-    } else {
+    } else if !flat_cols.is_empty() {
         let first = &flat_cols[0].df_field;
         quote! { self.#first.len() }
+    } else if !auto_expand_cols.is_empty() {
+        let first = &auto_expand_cols[0].df_field;
+        quote! { self.#first.len() }
+    } else {
+        quote! { self._len }
     };
 
     let tag_pair = if let Some(ref tag_name) = attrs.tag {
@@ -659,23 +712,133 @@ fn derive_struct_dataframe(
         })
         .collect();
 
-    let into_dataframe_impl = quote! {
-        impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
-            fn into_data_frame(self) -> ::miniextendr_api::List {
-                let _n_rows = #length_ref;
-                #(#length_checks)*
-                ::miniextendr_api::list::List::from_raw_pairs(vec![
-                    #tag_pair
-                    #(#df_pairs),*
-                ])
-                .set_class_str(&["data.frame"])
-                .set_row_names_int(_n_rows)
+    let into_dataframe_impl = if has_auto_expand {
+        // Dynamic pair building: iterate resolved fields in order,
+        // emitting static pairs for flat columns and runtime-expanded
+        // pairs for auto-expand fields.
+        let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
+            quote! {
+                __df_pairs.push((#tag_name.to_string(), ::miniextendr_api::IntoR::into_sexp(self._tag)));
+            }
+        } else {
+            TokenStream::new()
+        };
+
+        let pair_pushes: Vec<TokenStream> = resolved
+            .iter()
+            .map(|rf| match rf {
+                ResolvedField::Single {
+                    col_name,
+                    col_name_str,
+                    ..
+                } => {
+                    quote! {
+                        __df_pairs.push((
+                            #col_name_str.to_string(),
+                            ::miniextendr_api::IntoR::into_sexp(self.#col_name),
+                        ));
+                    }
+                }
+                ResolvedField::ExpandedFixed {
+                    base_name, len, ..
+                } => {
+                    let pushes: Vec<TokenStream> = (1..=*len)
+                        .map(|i| {
+                            let name = format!("{}_{}", base_name, i);
+                            let ident = format_ident!("{}_{}", base_name, i);
+                            quote! {
+                                __df_pairs.push((
+                                    #name.to_string(),
+                                    ::miniextendr_api::IntoR::into_sexp(self.#ident),
+                                ));
+                            }
+                        })
+                        .collect();
+                    quote! { #(#pushes)* }
+                }
+                ResolvedField::ExpandedVec {
+                    base_name, width, ..
+                } => {
+                    let pushes: Vec<TokenStream> = (1..=*width)
+                        .map(|i| {
+                            let name = format!("{}_{}", base_name, i);
+                            let ident = format_ident!("{}_{}", base_name, i);
+                            quote! {
+                                __df_pairs.push((
+                                    #name.to_string(),
+                                    ::miniextendr_api::IntoR::into_sexp(self.#ident),
+                                ));
+                            }
+                        })
+                        .collect();
+                    quote! { #(#pushes)* }
+                }
+                ResolvedField::AutoExpandVec {
+                    col_name,
+                    col_name_str,
+                    elem_ty,
+                    ..
+                } => {
+                    quote! {
+                        {
+                            let __auto = self.#col_name;
+                            let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
+                            let mut __cols: Vec<Vec<Option<#elem_ty>>> = (0..__max)
+                                .map(|_| Vec::with_capacity(_n_rows))
+                                .collect();
+                            for __row_vec in &__auto {
+                                for (__i, __col) in __cols.iter_mut().enumerate() {
+                                    __col.push(__row_vec.get(__i).cloned());
+                                }
+                            }
+                            for (__i, __col) in __cols.into_iter().enumerate() {
+                                __df_pairs.push((
+                                    format!("{}_{}", #col_name_str, __i + 1),
+                                    ::miniextendr_api::IntoR::into_sexp(__col),
+                                ));
+                            }
+                        }
+                    }
+                }
+            })
+            .collect();
+
+        quote! {
+            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+                fn into_data_frame(self) -> ::miniextendr_api::List {
+                    let _n_rows = #length_ref;
+                    #(#length_checks)*
+                    let mut __df_pairs: Vec<(
+                        String,
+                        ::miniextendr_api::ffi::SEXP,
+                    )> = Vec::new();
+                    #tag_push_pair
+                    #(#pair_pushes)*
+                    ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
+                        .set_class_str(&["data.frame"])
+                        .set_row_names_int(_n_rows)
+                }
+            }
+        }
+    } else {
+        quote! {
+            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+                fn into_data_frame(self) -> ::miniextendr_api::List {
+                    let _n_rows = #length_ref;
+                    #(#length_checks)*
+                    ::miniextendr_api::list::List::from_raw_pairs(vec![
+                        #tag_pair
+                        #(#df_pairs),*
+                    ])
+                    .set_class_str(&["data.frame"])
+                    .set_row_names_int(_n_rows)
+                }
             }
         }
     };
 
     // ── From<Vec<RowType>> ──────────────────────────────────────────────
-    let col_vec_inits: Vec<TokenStream> = flat_cols
+    let mut col_vec_inits: Vec<TokenStream> = flat_cols
         .iter()
         .map(|fc| {
             let name = &fc.df_field;
@@ -683,6 +846,13 @@ fn derive_struct_dataframe(
             quote! { let mut #name: Vec<#ty> = Vec::with_capacity(len); }
         })
         .collect();
+    for ac in &auto_expand_cols {
+        let name = &ac.df_field;
+        let ty = &ac.elem_ty;
+        col_vec_inits.push(
+            quote! { let mut #name: Vec<Vec<#ty>> = Vec::with_capacity(len); },
+        );
+    }
 
     let tag_init = if has_tag {
         quote! { let mut _tag: Vec<String> = Vec::with_capacity(len); }
@@ -762,6 +932,19 @@ fn derive_struct_dataframe(
                     #(#pushes)*
                 }
             }
+            ResolvedField::AutoExpandVec {
+                rust_name,
+                col_name,
+                tuple_index,
+                ..
+            } => {
+                let access = if let Some(idx) = tuple_index {
+                    quote! { row.#idx }
+                } else {
+                    quote! { row.#rust_name }
+                };
+                quote! { #col_name.push(#access); }
+            }
         })
         .collect();
 
@@ -771,19 +954,24 @@ fn derive_struct_dataframe(
         TokenStream::new()
     };
 
-    let len_struct_field = if flat_cols.is_empty() && !has_tag {
-        quote! { _len: len, }
-    } else {
-        TokenStream::new()
-    };
+    let len_struct_field =
+        if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
+            quote! { _len: len, }
+        } else {
+            TokenStream::new()
+        };
 
-    let col_struct_fields: Vec<TokenStream> = flat_cols
+    let mut col_struct_fields: Vec<TokenStream> = flat_cols
         .iter()
         .map(|fc| {
             let name = &fc.df_field;
             quote! { #name }
         })
         .collect();
+    for ac in &auto_expand_cols {
+        let name = &ac.df_field;
+        col_struct_fields.push(quote! { #name });
+    }
 
     // Skip parallel path when expansion is used (would need rewrite of ColumnWriter logic)
     let field_info_for_parallel: Vec<(&syn::Ident, &syn::Type)> = if !has_expansion {
@@ -1103,6 +1291,17 @@ pub(super) enum EnumResolvedField {
         elem_ty: syn::Type,
         /// Pinned width.
         width: usize,
+    },
+    /// Auto-expanded Vec<T>: column count determined at runtime.
+    AutoExpandVec {
+        /// Base column name.
+        base_name: String,
+        /// Binding name.
+        binding: syn::Ident,
+        /// Original Rust field name.
+        rust_name: syn::Ident,
+        /// Element type.
+        elem_ty: syn::Type,
     },
 }
 
