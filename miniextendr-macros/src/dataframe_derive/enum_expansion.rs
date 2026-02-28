@@ -11,6 +11,7 @@ use super::{
     ColumnRegistry, DataFrameAttrs, EnumResolvedField, FieldTypeKind, ResolvedColumn, VariantInfo,
     VariantShape, classify_field_type, parse_field_attrs,
 };
+use std::collections::HashMap;
 
 /// Derive `DataFrameRow` for an enum with `#[dataframe(align)]`.
 ///
@@ -76,10 +77,12 @@ pub(super) fn derive_enum_dataframe(
                                         width,
                                     });
                                 } else if fa.expand {
-                                    return Err(syn::Error::new_spanned(
-                                        &f.ty,
-                                        "`expand` on Vec<T> requires `width = N`",
-                                    ));
+                                    resolved.push(EnumResolvedField::AutoExpandVec {
+                                        base_name: col_name_str,
+                                        binding: binding.clone(),
+                                        rust_name: rust_name.clone(),
+                                        elem_ty: elem_ty.clone(),
+                                    });
                                 } else {
                                     resolved.push(EnumResolvedField::Single {
                                         col_name: format_ident!("{}", col_name_str),
@@ -99,7 +102,7 @@ pub(super) fn derive_enum_dataframe(
                                 if fa.expand {
                                     return Err(syn::Error::new_spanned(
                                         &f.ty,
-                                        "`expand` is only valid on `[T; N]` or `Vec<T>` fields",
+                                        "`expand`/`unnest` is only valid on `[T; N]` or `Vec<T>` fields",
                                     ));
                                 }
                                 resolved.push(EnumResolvedField::Single {
@@ -158,6 +161,13 @@ pub(super) fn derive_enum_dataframe(
                                         elem_ty: elem_ty.clone(),
                                         width,
                                     });
+                                } else if fa.expand {
+                                    resolved.push(EnumResolvedField::AutoExpandVec {
+                                        base_name: col_name_str,
+                                        binding,
+                                        rust_name,
+                                        elem_ty: elem_ty.clone(),
+                                    });
                                 } else {
                                     resolved.push(EnumResolvedField::Single {
                                         col_name: format_ident!("{}", col_name_str),
@@ -209,7 +219,8 @@ pub(super) fn derive_enum_dataframe(
             let err_span = match erf {
                 EnumResolvedField::Single { rust_name, .. }
                 | EnumResolvedField::ExpandedFixed { rust_name, .. }
-                | EnumResolvedField::ExpandedVec { rust_name, .. } => rust_name.span(),
+                | EnumResolvedField::ExpandedVec { rust_name, .. }
+                | EnumResolvedField::AutoExpandVec { rust_name, .. } => rust_name.span(),
             };
             match erf {
                 EnumResolvedField::Single { col_name, ty, .. } => {
@@ -243,10 +254,66 @@ pub(super) fn derive_enum_dataframe(
                         registry.register(&name, elem_ty, variant_idx, &vi.name, err_span)?;
                     }
                 }
+                // AutoExpandVec: not registered in ColumnRegistry (width is dynamic).
+                // Collected separately below.
+                EnumResolvedField::AutoExpandVec { .. } => {}
             }
         }
     }
     let columns = registry.columns;
+
+    // ── Collect auto-expand fields ──────────────────────────────────────
+    struct EnumAutoExpandCol {
+        df_field: syn::Ident,
+        base_name: String,
+        elem_ty: syn::Type,
+        present_in: Vec<usize>,
+    }
+
+    let mut auto_expand_cols: Vec<EnumAutoExpandCol> = Vec::new();
+    let mut auto_expand_index: HashMap<String, usize> = HashMap::new();
+
+    for (variant_idx, vi) in variant_infos.iter().enumerate() {
+        for erf in &vi.fields {
+            if let EnumResolvedField::AutoExpandVec {
+                base_name,
+                elem_ty,
+                rust_name,
+                ..
+            } = erf
+            {
+                if let Some(&idx) = auto_expand_index.get(base_name) {
+                    let existing = &auto_expand_cols[idx];
+                    if existing.elem_ty != *elem_ty {
+                        if coerce_to_string {
+                            auto_expand_cols[idx].elem_ty = string_ty.clone();
+                        } else {
+                            return Err(syn::Error::new(
+                                rust_name.span(),
+                                format!(
+                                    "type conflict for auto-expand field `{}`: different element type \
+                                     than a previous variant; \
+                                     use `#[dataframe(conflicts = \"string\")]` to coerce",
+                                    base_name,
+                                ),
+                            ));
+                        }
+                    }
+                    auto_expand_cols[idx].present_in.push(variant_idx);
+                } else {
+                    let idx = auto_expand_cols.len();
+                    auto_expand_cols.push(EnumAutoExpandCol {
+                        df_field: format_ident!("{}", base_name),
+                        base_name: base_name.clone(),
+                        elem_ty: elem_ty.clone(),
+                        present_in: vec![variant_idx],
+                    });
+                    auto_expand_index.insert(base_name.clone(), idx);
+                }
+            }
+        }
+    }
+    let has_enum_auto_expand = !auto_expand_cols.is_empty();
 
     // ── Generate companion struct ────────────────────────────────────────
     let has_tag = attrs.tag.is_some();
@@ -257,7 +324,7 @@ pub(super) fn derive_enum_dataframe(
         TokenStream::new()
     };
 
-    let df_fields: Vec<TokenStream> = columns
+    let mut df_fields: Vec<TokenStream> = columns
         .iter()
         .map(|col| {
             let name = &col.col_name;
@@ -265,6 +332,12 @@ pub(super) fn derive_enum_dataframe(
             quote! { pub #name: Vec<Option<#ty>> }
         })
         .collect();
+    // Auto-expand fields: Vec<Option<Vec<T>>>
+    for ac in &auto_expand_cols {
+        let name = &ac.df_field;
+        let ty = &ac.elem_ty;
+        df_fields.push(quote! { pub #name: Vec<Option<Vec<#ty>>> });
+    }
 
     let dataframe_struct = quote! {
         #[derive(Debug, Clone)]
@@ -280,6 +353,9 @@ pub(super) fn derive_enum_dataframe(
         quote! { self._tag.len() }
     } else if let Some(first_col) = columns.first() {
         let first = &first_col.col_name;
+        quote! { self.#first.len() }
+    } else if let Some(first_ac) = auto_expand_cols.first() {
+        let first = &first_ac.df_field;
         quote! { self.#first.len() }
     } else {
         // No columns and no tag — degenerate case, length is 0
@@ -320,23 +396,105 @@ pub(super) fn derive_enum_dataframe(
         })
         .collect();
 
-    let into_dataframe_impl = quote! {
-        impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
-            fn into_data_frame(self) -> ::miniextendr_api::List {
-                let _n_rows = #length_ref;
-                #(#length_checks)*
-                ::miniextendr_api::list::List::from_raw_pairs(vec![
-                    #tag_pair
-                    #(#col_pairs),*
-                ])
-                .set_class_str(&["data.frame"])
-                .set_row_names_int(_n_rows)
+    let into_dataframe_impl = if has_enum_auto_expand {
+        // Dynamic pair building for auto-expand fields.
+        let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
+            quote! {
+                __df_pairs.push((
+                    #tag_name.to_string(),
+                    ::miniextendr_api::IntoR::into_sexp(self._tag),
+                ));
+            }
+        } else {
+            TokenStream::new()
+        };
+
+        let static_pair_pushes: Vec<TokenStream> = columns
+            .iter()
+            .map(|col| {
+                let name = &col.col_name;
+                let name_str = name.to_string();
+                quote! {
+                    __df_pairs.push((
+                        #name_str.to_string(),
+                        ::miniextendr_api::IntoR::into_sexp(self.#name),
+                    ));
+                }
+            })
+            .collect();
+
+        let auto_expand_pair_pushes: Vec<TokenStream> = auto_expand_cols
+            .iter()
+            .map(|ac| {
+                let df_field = &ac.df_field;
+                let base_name_str = &ac.base_name;
+                let elem_ty = &ac.elem_ty;
+                quote! {
+                    {
+                        let __auto = self.#df_field;
+                        let __max = __auto.iter()
+                            .filter_map(|v| v.as_ref())
+                            .map(|v| v.len())
+                            .max()
+                            .unwrap_or(0);
+                        let mut __cols: Vec<Vec<Option<#elem_ty>>> = (0..__max)
+                            .map(|_| Vec::with_capacity(_n_rows))
+                            .collect();
+                        for __opt_vec in &__auto {
+                            for (__i, __col) in __cols.iter_mut().enumerate() {
+                                __col.push(
+                                    __opt_vec.as_ref().and_then(|v| v.get(__i).cloned()),
+                                );
+                            }
+                        }
+                        for (__i, __col) in __cols.into_iter().enumerate() {
+                            __df_pairs.push((
+                                format!("{}_{}", #base_name_str, __i + 1),
+                                ::miniextendr_api::IntoR::into_sexp(__col),
+                            ));
+                        }
+                    }
+                }
+            })
+            .collect();
+
+        quote! {
+            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+                fn into_data_frame(self) -> ::miniextendr_api::List {
+                    let _n_rows = #length_ref;
+                    #(#length_checks)*
+                    let mut __df_pairs: Vec<(
+                        String,
+                        ::miniextendr_api::ffi::SEXP,
+                    )> = Vec::new();
+                    #tag_push_pair
+                    #(#static_pair_pushes)*
+                    #(#auto_expand_pair_pushes)*
+                    ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
+                        .set_class_str(&["data.frame"])
+                        .set_row_names_int(_n_rows)
+                }
+            }
+        }
+    } else {
+        quote! {
+            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+                fn into_data_frame(self) -> ::miniextendr_api::List {
+                    let _n_rows = #length_ref;
+                    #(#length_checks)*
+                    ::miniextendr_api::list::List::from_raw_pairs(vec![
+                        #tag_pair
+                        #(#col_pairs),*
+                    ])
+                    .set_class_str(&["data.frame"])
+                    .set_row_names_int(_n_rows)
+                }
             }
         }
     };
 
     // ── Generate From<Vec<Enum>> ─────────────────────────────────────────
-    let col_vec_inits: Vec<TokenStream> = columns
+    let mut col_vec_inits: Vec<TokenStream> = columns
         .iter()
         .map(|col| {
             let name = &col.col_name;
@@ -344,6 +502,13 @@ pub(super) fn derive_enum_dataframe(
             quote! { let mut #name: Vec<Option<#ty>> = Vec::with_capacity(len); }
         })
         .collect();
+    for ac in &auto_expand_cols {
+        let name = &ac.df_field;
+        let ty = &ac.elem_ty;
+        col_vec_inits.push(
+            quote! { let mut #name: Vec<Option<Vec<#ty>>> = Vec::with_capacity(len); },
+        );
+    }
 
     let tag_init = if has_tag {
         quote! { let mut _tag: Vec<String> = Vec::with_capacity(len); }
@@ -375,12 +540,8 @@ pub(super) fn derive_enum_dataframe(
                 .map(|col| {
                     let col_name = &col.col_name;
                     if col.present_in.contains(&variant_idx) {
-                        // Find the binding for this column.
-                        // For single fields: binding matches col_name directly.
-                        // For expanded fields: binding is the array/vec, index by suffix.
                         let col_name_str = col_name.to_string();
 
-                        // Search resolved fields for the source of this column
                         for erf in &vi.fields {
                             match erf {
                                 EnumResolvedField::Single { col_name: fc, binding, .. }
@@ -410,13 +571,37 @@ pub(super) fn derive_enum_dataframe(
                                         }
                                     }
                                 }
+                                // AutoExpandVec doesn't contribute to static columns
                                 _ => {}
                             }
                         }
-                        // Shouldn't reach here if schema is correct
                         quote! { #col_name.push(None); }
                     } else {
                         quote! { #col_name.push(None); }
+                    }
+                })
+                .collect();
+
+            // Auto-expand push statements
+            let auto_expand_pushes: Vec<TokenStream> = auto_expand_cols
+                .iter()
+                .map(|ac| {
+                    let ac_field = &ac.df_field;
+                    if ac.present_in.contains(&variant_idx) {
+                        // Find the binding for this auto-expand field
+                        for erf in &vi.fields {
+                            if let EnumResolvedField::AutoExpandVec {
+                                base_name, binding, ..
+                            } = erf
+                                && base_name == &ac.base_name
+                            {
+                                return quote! { #ac_field.push(Some(#binding)); };
+                            }
+                        }
+                        // shouldn't reach here
+                        quote! { #ac_field.push(None); }
+                    } else {
+                        quote! { #ac_field.push(None); }
                     }
                 })
                 .collect();
@@ -428,7 +613,8 @@ pub(super) fn derive_enum_dataframe(
                         let (rust_name, binding) = match erf {
                             EnumResolvedField::Single { rust_name, binding, .. }
                             | EnumResolvedField::ExpandedFixed { rust_name, binding, .. }
-                            | EnumResolvedField::ExpandedVec { rust_name, binding, .. } => {
+                            | EnumResolvedField::ExpandedVec { rust_name, binding, .. }
+                            | EnumResolvedField::AutoExpandVec { rust_name, binding, .. } => {
                                 (rust_name, binding)
                             }
                         };
@@ -442,6 +628,7 @@ pub(super) fn derive_enum_dataframe(
                         #row_name::#variant_name { #(#field_bindings),* } => {
                             #tag_push
                             #(#col_pushes)*
+                            #(#auto_expand_pushes)*
                         }
                     }
                 }
@@ -450,7 +637,8 @@ pub(super) fn derive_enum_dataframe(
                         let binding = match erf {
                             EnumResolvedField::Single { binding, .. }
                             | EnumResolvedField::ExpandedFixed { binding, .. }
-                            | EnumResolvedField::ExpandedVec { binding, .. } => binding,
+                            | EnumResolvedField::ExpandedVec { binding, .. }
+                            | EnumResolvedField::AutoExpandVec { binding, .. } => binding,
                         };
                         quote! { #binding }
                     }).collect();
@@ -458,6 +646,7 @@ pub(super) fn derive_enum_dataframe(
                         #row_name::#variant_name(#(#field_bindings),*) => {
                             #tag_push
                             #(#col_pushes)*
+                            #(#auto_expand_pushes)*
                         }
                     }
                 }
@@ -466,6 +655,7 @@ pub(super) fn derive_enum_dataframe(
                         #row_name::#variant_name => {
                             #tag_push
                             #(#col_pushes)*
+                            #(#auto_expand_pushes)*
                         }
                     }
                 }
@@ -479,13 +669,17 @@ pub(super) fn derive_enum_dataframe(
         TokenStream::new()
     };
 
-    let col_struct_fields: Vec<TokenStream> = columns
+    let mut col_struct_fields: Vec<TokenStream> = columns
         .iter()
         .map(|col| {
             let name = &col.col_name;
             quote! { #name }
         })
         .collect();
+    for ac in &auto_expand_cols {
+        let name = &ac.df_field;
+        col_struct_fields.push(quote! { #name });
+    }
 
     // Skip parallel path when non-named variants or expansion is present
     let has_non_named = variant_infos

@@ -1,11 +1,11 @@
-//! Test: expand on Vec<T> without width is rejected.
+//! Test: unnest on scalar field is rejected.
 
 use miniextendr_macros::DataFrameRow;
 
 #[derive(DataFrameRow)]
 struct Foo {
-    #[dataframe(expand)]
-    scores: Vec<f64>,
+    #[dataframe(unnest)]
+    score: f64,
 }
 
 fn main() {}
