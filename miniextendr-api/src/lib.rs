@@ -932,3 +932,9 @@ pub use factor::{
     Factor, FactorMut, FactorOptionVec, FactorVec, RFactor, build_factor, build_levels_sexp,
     build_levels_sexp_cached, factor_from_sexp,
 };
+
+/// Convenience re-exports for common miniextendr items.
+///
+/// A single `use miniextendr_api::prelude::*;` brings into scope the most
+/// commonly used macros, traits, types, and helpers.
+pub mod prelude;
