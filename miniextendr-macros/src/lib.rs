@@ -1423,6 +1423,18 @@ pub fn miniextendr(
         }
     }
 
+    // Ensure a @title exists when we have auto-generated tags (e.g., @param from choices)
+    // but the auto-title logic in roxygen_tags_from_attrs didn't fire (because has_any_tags
+    // was false at that point — choices @param tags are added after extraction).
+    // Prefer the implicit title from doc comments; fall back to the function name.
+    if !roxygen_tags.is_empty()
+        && !crate::roxygen::has_roxygen_tag(&roxygen_tags, "title")
+    {
+        let title = crate::roxygen::implicit_title_from_attrs(attrs)
+            .unwrap_or_else(|| rust_ident.to_string().replace('_', " "));
+        roxygen_tags.insert(0, format!("@title {}", title));
+    }
+
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
     let has_no_rd_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "noRd");

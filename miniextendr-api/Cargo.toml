@@ -99,9 +99,6 @@ default-main-thread = ["miniextendr-macros/default-main-thread"]
 ## Enable preserve::count() / count_unchecked() diagnostic helpers.
 ## Only needed in tests and benchmarks; excluded from production builds.
 debug-preserve = []
-## Enable ALTREP materialization tracking. Logs when ALTREP vectors materialize
-## (Dataptr called) and provides a counter for diagnostics. Zero-cost when disabled.
-materialization-tracking = []
 ## Enable debug instrumentation for tracking collection growth events.
 ## Provides track_growth! and report_growth! macros for diagnosing unexpected
 ## Vec/arena reallocations. Zero-cost (no-ops) when disabled.

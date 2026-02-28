@@ -1213,9 +1213,6 @@ pub trait RParallelExtend<T: Send> {
 
 // region: ColumnWriter for parallel DataFrame fill
 
-/// Minimum row count before DataFrameRow switches to parallel fill.
-pub const PARALLEL_FILL_THRESHOLD: usize = 4096;
-
 /// Send+Sync wrapper for scatter-writing into pre-allocated Vec columns.
 ///
 /// Used by the `DataFrameRow` derive macro. Not intended for direct use.

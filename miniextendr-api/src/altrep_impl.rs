@@ -238,17 +238,11 @@ macro_rules! __impl_altrep_base_with_serialize {
 #[doc(hidden)]
 macro_rules! __impl_altvec_dataptr {
     ($ty:ty, $elem:ty) => {
-        // Allow: materialization-tracking cfg expands in downstream crate context
-        #[allow(clippy::not_unsafe_ptr_arg_deref, unexpected_cfgs)]
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltVec for $ty {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::ffi::SEXP, writable: bool) -> *mut core::ffi::c_void {
-                #[cfg(feature = "materialization-tracking")]
-                $crate::altrep_tracking::record_materialization(
-                    core::any::type_name::<$ty>(),
-                    writable,
-                );
                 unsafe { $crate::altrep_data1_mut::<$ty>(x) }
                     .and_then(|d| {
                         <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, writable)
@@ -280,18 +274,11 @@ macro_rules! __impl_altvec_dataptr {
 #[doc(hidden)]
 macro_rules! __impl_altvec_string_dataptr {
     ($ty:ty) => {
-        // Allow: materialization-tracking cfg expands in downstream crate context
-        #[allow(clippy::not_unsafe_ptr_arg_deref, unexpected_cfgs)]
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltVec for $ty {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                #[cfg(feature = "materialization-tracking")]
-                $crate::altrep_tracking::record_materialization(
-                    core::any::type_name::<$ty>(),
-                    _writable,
-                );
-
                 unsafe {
                     // Check for cached materialized STRSXP in data2 slot
                     let data2 = $crate::ffi::R_altrep_data2(x);
