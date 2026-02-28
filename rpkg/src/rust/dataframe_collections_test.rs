@@ -196,6 +196,38 @@ pub enum EventWithAutoExpand {
     },
 }
 
+// Test Box<[T]> with auto-expand (runtime column count)
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct WithBoxedSliceExpand {
+    pub name: String,
+    #[dataframe(expand)]
+    pub scores: Box<[f64]>,
+}
+
+// Test Box<[T]> with pinned width
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct WithBoxedSlicePinned {
+    pub name: String,
+    #[dataframe(width = 3)]
+    pub coords: Box<[f64]>,
+}
+
+// Test &[T] with auto-expand (runtime column count)
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct WithSliceExpand<'a> {
+    pub name: &'a str,
+    #[dataframe(expand)]
+    pub values: &'a [f64],
+}
+
+// Test &[T] with pinned width
+#[derive(Clone, Debug, DataFrameRow)]
+pub struct WithSlicePinned<'a> {
+    pub label: &'a str,
+    #[dataframe(width = 2)]
+    pub coords: &'a [f64],
+}
+
 // Test enum with skip
 #[derive(Clone, Debug, DataFrameRow)]
 pub enum EventWithSkip {
@@ -619,5 +651,102 @@ mod tests {
         assert_eq!(df.vals[0], Some(vec![1.0, 2.0]));
         assert_eq!(df.vals[1], None);
         assert_eq!(df.vals[2], Some(vec![3.0]));
+    }
+
+    #[test]
+    fn test_boxed_slice_auto_expand() {
+        let rows = vec![
+            WithBoxedSliceExpand {
+                name: "alice".into(),
+                scores: vec![1.0, 2.0, 3.0].into_boxed_slice(),
+            },
+            WithBoxedSliceExpand {
+                name: "bob".into(),
+                scores: vec![4.0].into_boxed_slice(),
+            },
+            WithBoxedSliceExpand {
+                name: "carol".into(),
+                scores: vec![].into_boxed_slice(),
+            },
+        ];
+        let df = WithBoxedSliceExpand::to_dataframe(rows);
+        assert_eq!(df.name, vec!["alice", "bob", "carol"]);
+        // Auto-expand stores Box<[f64]> in companion struct
+        assert_eq!(df.scores.len(), 3);
+        assert_eq!(&*df.scores[0], &[1.0, 2.0, 3.0]);
+        assert_eq!(&*df.scores[1], &[4.0]);
+        assert_eq!(&*df.scores[2], &[] as &[f64]);
+    }
+
+    #[test]
+    fn test_boxed_slice_pinned_width() {
+        let rows = vec![
+            WithBoxedSlicePinned {
+                name: "origin".into(),
+                coords: vec![0.0, 0.0, 0.0].into_boxed_slice(),
+            },
+            WithBoxedSlicePinned {
+                name: "unit".into(),
+                coords: vec![1.0, 1.0].into_boxed_slice(),
+            },
+        ];
+        let df = WithBoxedSlicePinned::to_dataframe(rows);
+        assert_eq!(df.name, vec!["origin", "unit"]);
+        // Pinned width = 3: coords_1, coords_2, coords_3
+        assert_eq!(df.coords_1, vec![Some(0.0), Some(1.0)]);
+        assert_eq!(df.coords_2, vec![Some(0.0), Some(1.0)]);
+        assert_eq!(df.coords_3, vec![Some(0.0), None]);
+    }
+
+    #[test]
+    fn test_slice_auto_expand() {
+        let data_a = [1.0, 2.0, 3.0];
+        let data_b = [4.0];
+        let data_c = [5.0, 6.0];
+        let rows = vec![
+            WithSliceExpand {
+                name: "a",
+                values: &data_a,
+            },
+            WithSliceExpand {
+                name: "b",
+                values: &data_b,
+            },
+            WithSliceExpand {
+                name: "c",
+                values: &data_c,
+            },
+        ];
+
+        let df = WithSliceExpand::to_dataframe(rows);
+        assert_eq!(df.name.len(), 3);
+        assert_eq!(df.values.len(), 3);
+        // Companion stores Vec<&[f64]> — verify slice contents
+        assert_eq!(df.values[0], &[1.0, 2.0, 3.0]);
+        assert_eq!(df.values[1], &[4.0]);
+        assert_eq!(df.values[2], &[5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_slice_pinned_width() {
+        let coords_a = [10.0, 20.0];
+        let coords_b = [30.0, 40.0, 50.0];
+        let rows = vec![
+            WithSlicePinned {
+                label: "origin",
+                coords: &coords_a,
+            },
+            WithSlicePinned {
+                label: "far",
+                coords: &coords_b,
+            },
+        ];
+
+        let df = WithSlicePinned::to_dataframe(rows);
+        assert_eq!(df.label, vec!["origin", "far"]);
+        // Pinned width = 2: coords_1, coords_2
+        assert_eq!(df.coords_1, vec![Some(10.0), Some(30.0)]);
+        assert_eq!(df.coords_2, vec![Some(20.0), Some(40.0)]);
+        // Third element of coords_b (50.0) is truncated
     }
 }

@@ -1,4 +1,4 @@
-error: DataFrameRow does not support generic types
+error: DataFrameRow does not support type or const generic parameters
  --> tests/ui/derive_dataframe_generic_enum.rs:6:11
   |
 6 | enum Event<T> {
