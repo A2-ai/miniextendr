@@ -48,6 +48,8 @@
     "tinyvec",
     "vctrs",
     "raw_conversions",
+    "borsh",
+    "indicatif",
     "macro-coverage",
     "materialization-tracking"
   ],

@@ -392,6 +392,8 @@ macro_rules! report_growth {
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]
 pub mod progress;
+#[cfg(feature = "indicatif")]
+pub use indicatif;
 
 // Stack size constants and builder (always available)
 #[cfg(windows)]
