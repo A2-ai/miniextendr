@@ -10,14 +10,16 @@ R has a fixed set of native scalar types that can appear in vectors:
 |--------|-----------|----------|
 | integer | `i32` | `INTSXP` |
 | numeric/double | `f64` | `REALSXP` |
-| logical | `Rboolean` | `LGLSXP` |
+| logical | `RLogical` | `LGLSXP` |
 | raw | `u8` | `RAWSXP` |
 | complex | `Rcomplex` | `CPLXSXP` |
 
-The `RNative` marker trait identifies these types:
+Note: `RLogical` is a newtype over `i32` that safely represents R's logical values (TRUE/FALSE/NA). The coercion traits also work with `Rboolean` (an enum for the TRUE/FALSE case without NA).
+
+The `RNativeType` marker trait identifies these types:
 
 ```rust
-pub trait RNative: Copy + 'static {
+pub trait RNativeType: Sized + Copy + 'static {
     const SEXP_TYPE: SEXPTYPE;
 }
 ```
@@ -48,10 +50,18 @@ pub trait Coerce<R> {
 | `u8` | `u16`, `i16`, `u32` | Widening |
 | `i8` | `i16` | Widening |
 | `u16` | `u32` | Widening |
+| `i32` | `i64`, `isize` | Widening |
+| `u8` | `i64`, `isize`, `u64`, `usize`, `f32` | Widening |
+| `i32` | `f32` | Lossy (f32 has 24-bit mantissa) |
+| `f64` | `f32` | Lossy narrowing |
 | `bool` | `Rboolean` | `true` → `TRUE`, `false` → `FALSE` |
 | `bool` | `i32` | `true` → `1`, `false` → `0` |
 | `bool` | `f64` | `true` → `1.0`, `false` → `0.0` |
 | `Rboolean` | `i32` | Direct cast |
+| `Option<f64>` | `f64` | `None` → `NA_real_` |
+| `Option<i32>` | `i32` | `None` → `NA_integer_` |
+| `Option<bool>` | `i32` | `None` → `NA_LOGICAL` |
+| `Option<Rboolean>` | `i32` | `None` → `NA_LOGICAL` |
 
 **Slice/Vec implementations (element-wise):**
 
@@ -82,6 +92,7 @@ pub enum CoerceError {
     Overflow,       // Value out of range
     PrecisionLoss,  // Would lose significant digits
     NaN,            // NaN cannot be converted to integer
+    Zero,           // Zero is not allowed (for NonZero* types)
 }
 ```
 
@@ -97,6 +108,19 @@ pub enum CoerceError {
 | `i32`, `i64`, `u16`, `u32`, `u64`, `usize`, `isize` | `i16` | Value outside `i16` range |
 | `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `usize`, `isize` | `i8` | Value outside `i8` range |
 | `f64` | `u16`, `i16`, `i8` | NaN, out of range, or has fractional part |
+| `f64` | `u32`, `u64`, `isize`, `usize` | NaN, out of range, or has fractional part |
+| `i32` | `u32`, `u64`, `usize` | Negative value |
+| `i32`, `Rboolean`, `RLogical` | `bool` | NA or invalid value (`LogicalCoerceError`) |
+
+**NonZero conversions** (error: `CoerceError::Zero` or `CoerceError::Overflow`):
+
+| From | To | Failure Condition |
+|------|----|-------------------|
+| Same base type | `NonZero{I8,I16,...,Usize}` | Value is zero |
+| `i32` | `NonZeroI64`, `NonZeroIsize` | Value is zero |
+| `i32` | `NonZeroU32`, `NonZeroU64`, `NonZeroUsize` | Negative or zero |
+| `i32` | `NonZeroI8`, `NonZeroI16` | Out of range or zero |
+| `i32` | `NonZeroU8`, `NonZeroU16` | Out of range or zero |
 
 **Blanket impl:** `Coerce<R>` automatically implements `TryCoerce<R>` with `Error = Infallible`.
 
@@ -124,19 +148,10 @@ let result: Result<Vec<u16>, _> = bad
 
 ## Trait Bounds
 
-For use in `where` clauses:
+Use `Coerce<R>` directly in `where` clauses:
 
 ```rust
-pub trait CanCoerceToInteger: Coerce<i32> {}
-pub trait CanCoerceToReal: Coerce<f64> {}
-pub trait CanCoerceToLogical: Coerce<Rboolean> {}
-pub trait CanCoerceToRaw: Coerce<u8> {}
-```
-
-Example:
-
-```rust
-fn process_as_integer<T: CanCoerceToInteger>(value: T) -> i32 {
+fn process_as_integer<T: Coerce<i32>>(value: T) -> i32 {
     value.coerce()
 }
 
@@ -264,7 +279,7 @@ fn try_narrow(x: f64) -> i32 {
 **Helper functions with generic bounds:**
 
 ```rust
-fn internal_helper<T: CanCoerceToInteger>(x: T) -> i32 {
+fn internal_helper<T: Coerce<i32>>(x: T) -> i32 {
     x.coerce()
 }
 
@@ -333,32 +348,32 @@ double_first(x_int)
 x_int[1]  # 2L - the copy was modified
 ```
 
-## Newtype Wrappers with `#[derive(RNative)]`
+## Newtype Wrappers with `#[derive(RNativeType)]`
 
-For newtype wrappers around R native types, use the `RNative` derive macro.
+For newtype wrappers around R native types, use the `RNativeType` derive macro.
 
 ### Supported Struct Forms
 
 Both tuple structs and single-field named structs are supported:
 
 ```rust
-use miniextendr_api::RNative;
+use miniextendr_api::RNativeType;
 
 // Tuple struct (most common)
-#[derive(Clone, Copy, RNative)]
+#[derive(Clone, Copy, RNativeType)]
 struct UserId(i32);
 
-#[derive(Clone, Copy, RNative)]
+#[derive(Clone, Copy, RNativeType)]
 struct Score(f64);
 
 // Named single-field struct
-#[derive(Clone, Copy, RNative)]
+#[derive(Clone, Copy, RNativeType)]
 struct Temperature { celsius: f64 }
 ```
 
 ### Using with Coerce
 
-The derive forwards the inner type's `SEXP_TYPE`. The newtype can then participate in coercion as a target type:
+The derive forwards the inner type's `SEXP_TYPE` and `dataptr_mut`. The newtype can then participate in coercion as a target type:
 
 ```rust
 impl Coerce<UserId> for i32 {
@@ -373,13 +388,13 @@ let id: UserId = 42.coerce();
 ### Requirements
 
 - Must be a newtype struct (exactly one field, tuple or named)
-- The inner type must implement `RNative` (`i32`, `f64`, `Rboolean`, `u8`, `Rcomplex`, or another derived type)
-- Should also derive `Copy` (required by `RNative: Copy`)
+- The inner type must implement `RNativeType` (`i32`, `f64`, `RLogical`, `u8`, `Rcomplex`, or another derived type)
+- Should also derive `Copy` (required by `RNativeType: Copy`)
 
 ## Implementing Coerce for Custom Types
 
 ```rust
-use miniextendr_api::{Coerce, TryCoerce, CoerceError, RNative};
+use miniextendr_api::{Coerce, TryCoerce, CoerceError, RNativeType};
 
 // Infallible coercion
 impl Coerce<i32> for MyType {
@@ -452,7 +467,7 @@ fn r_style_to_int(x: f64) -> i32 {
 | Use Case | Solution |
 |----------|----------|
 | Convert Rust types internally | `Coerce<R>` / `TryCoerce<R>` |
-| Generic helper functions | Trait bounds (`CanCoerceToInteger`, etc.) |
+| Generic helper functions | Trait bounds (`Coerce<i32>`, `Coerce<f64>`, etc.) |
 | R → Rust at boundary | Explicit types, no auto-coercion |
 | Rust → R return values | `Coerce<R>` works fine |
 | R `i32` slice → Rust `u16` vec | `slice.iter().copied().map(TryCoerce::try_coerce).collect()` |
