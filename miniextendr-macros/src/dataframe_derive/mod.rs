@@ -210,6 +210,10 @@ pub(super) enum FieldTypeKind<'a> {
     FixedArray(&'a syn::Type, usize),
     /// `Vec<T>` — variable length, needs `width` for expansion.
     VariableVec(&'a syn::Type),
+    /// `Box<[T]>` — owned slice, treated like `Vec<T>` for expansion.
+    BoxedSlice(&'a syn::Type),
+    /// `&[T]` — borrowed slice, treated like `Vec<T>` for expansion.
+    BorrowedSlice(&'a syn::Type),
 }
 
 /// Classify a field type for DataFrame expansion.
@@ -225,14 +229,40 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
         return FieldTypeKind::FixedArray(&arr.elem, n);
     }
 
-    // Check for Vec<T>
+    // Check for &[T] and &[T; N]
+    if let syn::Type::Reference(ref_ty) = ty {
+        // &[T] → BorrowedSlice
+        if let syn::Type::Slice(slice) = &*ref_ty.elem {
+            return FieldTypeKind::BorrowedSlice(&slice.elem);
+        }
+        // &[T; N] → FixedArray (same as owned)
+        if let syn::Type::Array(arr) = &*ref_ty.elem
+            && let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Int(lit_int),
+                ..
+            }) = &arr.len
+            && let Ok(n) = lit_int.base10_parse::<usize>()
+        {
+            return FieldTypeKind::FixedArray(&arr.elem, n);
+        }
+    }
+
     if let syn::Type::Path(type_path) = ty
         && let Some(seg) = type_path.path.segments.last()
-        && seg.ident == "Vec"
         && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
         && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
     {
-        return FieldTypeKind::VariableVec(inner);
+        // Check for Vec<T>
+        if seg.ident == "Vec" {
+            return FieldTypeKind::VariableVec(inner);
+        }
+
+        // Check for Box<[T]>
+        if seg.ident == "Box"
+            && let syn::Type::Slice(slice) = inner
+        {
+            return FieldTypeKind::BoxedSlice(&slice.elem);
+        }
     }
 
     FieldTypeKind::Scalar
@@ -283,7 +313,7 @@ enum ResolvedField {
         /// Index in tuple struct.
         tuple_index: Option<syn::Index>,
     },
-    /// Auto-expanded Vec<T>: column count determined at runtime from max row length.
+    /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime from max row length.
     AutoExpandVec {
         /// Rust field name (for row access).
         rust_name: syn::Ident,
@@ -293,6 +323,8 @@ enum ResolvedField {
         col_name_str: String,
         /// Element type T.
         elem_ty: syn::Type,
+        /// Container type for companion struct (Vec<T> or Box<[T]>).
+        container_ty: syn::Type,
         /// Index in tuple struct.
         tuple_index: Option<syn::Index>,
     },
@@ -350,7 +382,9 @@ fn resolve_struct_field(
             len,
             tuple_index,
         })),
-        FieldTypeKind::VariableVec(elem_ty) => {
+        FieldTypeKind::VariableVec(elem_ty)
+        | FieldTypeKind::BoxedSlice(elem_ty)
+        | FieldTypeKind::BorrowedSlice(elem_ty) => {
             if let Some(width) = field_attrs.width {
                 Ok(Some(ResolvedField::ExpandedVec {
                     rust_name,
@@ -365,6 +399,7 @@ fn resolve_struct_field(
                     col_name,
                     col_name_str,
                     elem_ty: elem_ty.clone(),
+                    container_ty: ty.clone(),
                     tuple_index,
                 }))
             } else {
@@ -382,13 +417,13 @@ fn resolve_struct_field(
             if field_attrs.width.is_some() {
                 return Err(syn::Error::new_spanned(
                     ty,
-                    "`width` is only valid on `Vec<T>` fields",
+                    "`width` is only valid on `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                 ));
             }
             if field_attrs.expand {
                 return Err(syn::Error::new_spanned(
                     ty,
-                    "`expand`/`unnest` is only valid on `[T; N]` or `Vec<T>` fields",
+                    "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                 ));
             }
             Ok(Some(ResolvedField::Single {
@@ -441,12 +476,14 @@ fn resolve_struct_field(
 pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let row_name = &input.ident;
 
-    // Reject generic types — the generated companion type and impls cannot
-    // propagate generics correctly, so fail early with a clear message.
-    if !input.generics.params.is_empty() {
+    // Allow lifetime parameters (needed for &[T] borrowed slice fields).
+    // Reject type and const parameters — these can't be propagated correctly.
+    let has_type_params = input.generics.type_params().next().is_some();
+    let has_const_params = input.generics.const_params().next().is_some();
+    if has_type_params || has_const_params {
         return Err(syn::Error::new_spanned(
             &input.generics,
-            "DataFrameRow does not support generic types",
+            "DataFrameRow does not support type or const generic parameters",
         ));
     }
 
@@ -606,8 +643,8 @@ fn derive_struct_dataframe(
     struct AutoExpandCol {
         /// Companion struct field name.
         df_field: syn::Ident,
-        /// Element type T.
-        elem_ty: syn::Type,
+        /// Container type (Vec<T> or Box<[T]>).
+        container_ty: syn::Type,
     }
 
     let auto_expand_cols: Vec<AutoExpandCol> = resolved
@@ -615,13 +652,13 @@ fn derive_struct_dataframe(
         .filter_map(|rf| {
             if let ResolvedField::AutoExpandVec {
                 col_name_str,
-                elem_ty,
+                container_ty,
                 ..
             } = rf
             {
                 Some(AutoExpandCol {
                     df_field: format_ident!("{}", col_name_str),
-                    elem_ty: elem_ty.clone(),
+                    container_ty: container_ty.clone(),
                 })
             } else {
                 None
@@ -647,8 +684,8 @@ fn derive_struct_dataframe(
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
-        let ty = &ac.elem_ty;
-        df_fields_tokens.push(quote! { pub #name: Vec<Vec<#ty>> });
+        let cty = &ac.container_ty;
+        df_fields_tokens.push(quote! { pub #name: Vec<#cty> });
     }
 
     let len_field_decl = if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
@@ -659,7 +696,7 @@ fn derive_struct_dataframe(
 
     let dataframe_struct = quote! {
         #[derive(Debug, Clone)]
-        pub struct #df_name {
+        pub struct #df_name #impl_generics #where_clause {
             #tag_field_decl
             #len_field_decl
             #(#df_fields_tokens),*
@@ -739,9 +776,7 @@ fn derive_struct_dataframe(
                         ));
                     }
                 }
-                ResolvedField::ExpandedFixed {
-                    base_name, len, ..
-                } => {
+                ResolvedField::ExpandedFixed { base_name, len, .. } => {
                     let pushes: Vec<TokenStream> = (1..=*len)
                         .map(|i| {
                             let name = format!("{}_{}", base_name, i);
@@ -804,7 +839,7 @@ fn derive_struct_dataframe(
             .collect();
 
         quote! {
-            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
@@ -822,7 +857,7 @@ fn derive_struct_dataframe(
         }
     } else {
         quote! {
-            impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
+            impl #impl_generics ::miniextendr_api::convert::IntoDataFrame for #df_name #ty_generics #where_clause {
                 fn into_data_frame(self) -> ::miniextendr_api::List {
                     let _n_rows = #length_ref;
                     #(#length_checks)*
@@ -848,10 +883,8 @@ fn derive_struct_dataframe(
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
-        let ty = &ac.elem_ty;
-        col_vec_inits.push(
-            quote! { let mut #name: Vec<Vec<#ty>> = Vec::with_capacity(len); },
-        );
+        let cty = &ac.container_ty;
+        col_vec_inits.push(quote! { let mut #name: Vec<#cty> = Vec::with_capacity(len); });
     }
 
     let tag_init = if has_tag {
@@ -954,12 +987,11 @@ fn derive_struct_dataframe(
         TokenStream::new()
     };
 
-    let len_struct_field =
-        if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
-            quote! { _len: len, }
-        } else {
-            TokenStream::new()
-        };
+    let len_struct_field = if flat_cols.is_empty() && auto_expand_cols.is_empty() && !has_tag {
+        quote! { _len: len, }
+    } else {
+        TokenStream::new()
+    };
 
     let mut col_struct_fields: Vec<TokenStream> = flat_cols
         .iter()
@@ -995,8 +1027,8 @@ fn derive_struct_dataframe(
         .collect();
 
     let from_vec_impl = quote! {
-        impl From<Vec<#row_name>> for #df_name {
-            fn from(rows: Vec<#row_name>) -> Self {
+        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
+            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
                 let len = rows.len();
                 #parallel_block
                 #tag_init
@@ -1077,13 +1109,13 @@ fn derive_struct_dataframe(
             .collect();
 
         quote! {
-            pub struct #iterator_name {
+            pub struct #iterator_name #impl_generics #where_clause {
                 #(#iter_field_decls),*
             }
 
-            impl IntoIterator for #df_name {
-                type Item = #row_name;
-                type IntoIter = #iterator_name;
+            impl #impl_generics IntoIterator for #df_name #ty_generics #where_clause {
+                type Item = #row_name #ty_generics;
+                type IntoIter = #iterator_name #ty_generics;
 
                 fn into_iter(self) -> Self::IntoIter {
                     let #df_name { #ignore_tag #(#destruct_pattern),* } = self;
@@ -1093,8 +1125,8 @@ fn derive_struct_dataframe(
                 }
             }
 
-            impl Iterator for #iterator_name {
-                type Item = #row_name;
+            impl #impl_generics Iterator for #iterator_name #ty_generics #where_clause {
+                type Item = #row_name #ty_generics;
 
                 fn next(&mut self) -> Option<Self::Item> {
                     Some(#row_name {
@@ -1114,7 +1146,7 @@ fn derive_struct_dataframe(
             /// Convert a DataFrame back into a vector of rows.
             ///
             /// This transposes column-oriented data back into row-oriented format.
-            pub fn from_dataframe(df: #df_name) -> Vec<Self> {
+            pub fn from_dataframe(df: #df_name #ty_generics) -> Vec<Self> {
                 df.into_iter().collect()
             }
         }
@@ -1130,7 +1162,7 @@ fn derive_struct_dataframe(
             /// Convert a vector of rows into the companion DataFrame type.
             ///
             /// This transposes row-oriented data into column-oriented format.
-            pub fn to_dataframe(rows: Vec<Self>) -> #df_name {
+            pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
             }
 
@@ -1292,7 +1324,7 @@ pub(super) enum EnumResolvedField {
         /// Pinned width.
         width: usize,
     },
-    /// Auto-expanded Vec<T>: column count determined at runtime.
+    /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime.
     AutoExpandVec {
         /// Base column name.
         base_name: String,
@@ -1302,6 +1334,8 @@ pub(super) enum EnumResolvedField {
         rust_name: syn::Ident,
         /// Element type.
         elem_ty: syn::Type,
+        /// Container type for companion struct (Vec<T> or Box<[T]>).
+        container_ty: syn::Type,
     },
 }
 

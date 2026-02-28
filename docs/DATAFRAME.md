@@ -108,7 +108,7 @@ struct Point3D {
 // }
 ```
 
-For `Vec<T>`, two expansion modes are available:
+For `Vec<T>`, `Box<[T]>`, and `&[T]`, two expansion modes are available:
 
 **Fixed width** (`width = N`): Expands into exactly N columns at compile time.
 
@@ -140,7 +140,15 @@ struct Measured {
 - All elements preserved (no truncation)
 - If all vecs are empty: no expansion columns produced
 
-Without `width` or `expand`/`unnest`, `Vec<T>` stays as an opaque single column (list column in R).
+`Box<[T]>` and `&[T]` work identically to `Vec<T>` for all expansion modes — they
+share the same `.get()`, `.len()`, and indexing behavior.
+
+**Note:** Using `&[T]` introduces a lifetime parameter on both the row struct and
+the generated companion struct (e.g., `FooDataFrame<'a>`). This is zero-cost: `&[T]`
+is `Copy` (just a fat pointer), so pushing into the companion struct copies only the
+pointer, not the data.
+
+Without `width` or `expand`/`unnest`, `Vec<T>`, `Box<[T]>`, and `&[T]` stay as opaque single columns (list columns in R).
 
 ### Field-Level Attributes
 
@@ -165,10 +173,10 @@ struct Row {
 |-----------|--------|----------|
 | `skip` | Omit field from DataFrame | Any field |
 | `rename = "name"` | Custom column name | Any field |
-| `as_list` | Suppress expansion | `[T; N]`, `Vec<T>` |
-| `expand` | Explicit expansion (default for `[T; N]`; auto-expand for `Vec<T>`) | `[T; N]`, `Vec<T>` |
-| `unnest` | Alias for `expand` | `[T; N]`, `Vec<T>` |
-| `width = N` | Pin expansion width (truncates longer vecs) | `Vec<T>` only |
+| `as_list` | Suppress expansion | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
+| `expand` | Explicit expansion (default for `[T; N]`; auto-expand for `Vec<T>`/`Box<[T]>`/`&[T]`) | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
+| `unnest` | Alias for `expand` | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
+| `width = N` | Pin expansion width (truncates longer vecs/slices) | `Vec<T>`, `Box<[T]>`, `&[T]` |
 
 **Conflicts:** `as_list + expand`/`unnest`, `as_list + width` are compile errors.
 
