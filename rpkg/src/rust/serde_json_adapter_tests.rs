@@ -1,9 +1,10 @@
 //! serde_json adapter tests
 use miniextendr_api::serde_impl::{JsonValue, RJsonValueOps, RSerialize};
 use miniextendr_api::{miniextendr, miniextendr_module};
-use serde::{Deserialize, Serialize};
+use crate::serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
 struct Point {
     x: f64,
     y: f64,

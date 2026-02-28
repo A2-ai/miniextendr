@@ -1240,28 +1240,30 @@ test_that("borsh_option_roundtrip succeeds", {
 })
 
 # =============================================================================
-# Indicatif feature tests
+# Indicatif feature tests (snapshot-based)
 # =============================================================================
 
-test_that("indicatif_rterm_debug returns debug string", {
+# Helper: strip ANSI escape codes from snapshot output
+strip_ansi <- function(x) {
+  gsub("\033\\[[0-9;]*[A-Za-z]", "", x)
+}
+
+test_that("indicatif_rterm_debug snapshot", {
   skip_if_missing_feature("indicatif")
-  result <- indicatif_rterm_debug()
-  expect_true(grepl("RTerm", result))
-  expect_true(grepl("Stderr", result))
-  expect_true(grepl("80", result))
+  expect_snapshot(indicatif_rterm_debug(), cnd_class = TRUE)
 })
 
-test_that("indicatif_factories_compile succeeds", {
+test_that("indicatif_factories_compile snapshot", {
   skip_if_missing_feature("indicatif")
-  expect_true(indicatif_factories_compile())
+  expect_snapshot(indicatif_factories_compile(), cnd_class = TRUE)
 })
 
-test_that("indicatif_hidden_bar runs without error", {
+test_that("indicatif_hidden_bar snapshot", {
   skip_if_missing_feature("indicatif")
-  expect_true(indicatif_hidden_bar())
+  expect_snapshot(indicatif_hidden_bar(), cnd_class = TRUE, transform = strip_ansi)
 })
 
-test_that("indicatif_short_bar renders and finishes", {
+test_that("indicatif_short_bar snapshot", {
   skip_if_missing_feature("indicatif")
-  expect_equal(indicatif_short_bar(), "done")
+  expect_snapshot(indicatif_short_bar(), cnd_class = TRUE, transform = strip_ansi)
 })

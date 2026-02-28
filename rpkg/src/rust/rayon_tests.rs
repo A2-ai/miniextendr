@@ -5,7 +5,9 @@ use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
-use miniextendr_api::rayon_bridge::{par_map, par_map2, par_map3, with_r_matrix, with_r_vec, with_r_vec_map};
+use miniextendr_api::rayon_bridge::{
+    par_map, par_map2, par_map3, with_r_matrix, with_r_vec, with_r_vec_map,
+};
 #[cfg(feature = "rayon")]
 use miniextendr_api::{miniextendr, miniextendr_module};
 

@@ -221,8 +221,7 @@ impl REngineBuilder {
             .map(|s| CString::new(s.as_str()).unwrap())
             .collect();
 
-        let mut c_ptrs: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr().cast_mut()).collect();
+        let mut c_ptrs: Vec<*mut c_char> = c_args.iter().map(|s| s.as_ptr().cast_mut()).collect();
 
         let argc = c_ptrs.len() as c_int;
         let argv = c_ptrs.as_mut_ptr();

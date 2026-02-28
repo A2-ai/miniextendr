@@ -1,4 +1,5 @@
 //! Time adapter tests
+use miniextendr_api::time;
 use miniextendr_api::time_impl::{Date, OffsetDateTime};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -36,21 +37,21 @@ pub fn time_get_day(date: Date) -> i32 {
 /// @noRd
 #[miniextendr]
 pub fn time_epoch_date() -> Date {
-    time::macros::date!(1970 - 01 - 01)
+    Date::from_calendar_date(1970, time::Month::January, 1).unwrap()
 }
 
 /// Epoch datetime (1970-01-01 00:00:00 UTC) roundtrip
 /// @noRd
 #[miniextendr]
 pub fn time_epoch_posixct() -> OffsetDateTime {
-    time::macros::datetime!(1970-01-01 0:00 UTC)
+    OffsetDateTime::from_unix_timestamp(0).unwrap()
 }
 
 /// Date in distant past (1900-01-01)
 /// @noRd
 #[miniextendr]
 pub fn time_distant_past() -> Date {
-    time::macros::date!(1900 - 01 - 01)
+    Date::from_calendar_date(1900, time::Month::January, 1).unwrap()
 }
 
 /// Format a date as YYYY-MM-DD

@@ -4,7 +4,7 @@ use miniextendr_api::bitflags_impl::{
 };
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-bitflags::bitflags! {
+miniextendr_api::bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Perms: u32 {
         const READ    = 0b001;
