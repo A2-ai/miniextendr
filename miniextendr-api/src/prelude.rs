@@ -261,6 +261,12 @@ pub use crate::{ArrayVec, TinyVec};
 #[cfg(feature = "tinyvec")]
 pub use tinyvec;
 
+// --- indicatif ---
+#[cfg(feature = "indicatif")]
+pub use crate::progress;
+#[cfg(feature = "indicatif")]
+pub use indicatif;
+
 // --- vctrs ---
 #[cfg(feature = "vctrs")]
 pub use crate::{IntoVctrs, VctrsClass, init_vctrs};

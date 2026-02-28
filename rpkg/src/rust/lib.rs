@@ -100,6 +100,8 @@ mod bigint_adapter_tests;
 mod bitflags_adapter_tests;
 #[cfg(feature = "bitvec")]
 mod bitvec_adapter_tests;
+#[cfg(feature = "borsh")]
+mod borsh_adapter_tests;
 #[cfg(feature = "bytes")]
 mod bytes_adapter_tests;
 mod class_system_matrix;
@@ -126,6 +128,8 @@ mod factor_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
 mod identical_tests;
+#[cfg(feature = "indicatif")]
+mod indicatif_adapter_tests;
 #[cfg(feature = "indexmap")]
 mod indexmap_adapter_tests;
 mod interrupt_tests;
@@ -1732,6 +1736,12 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "vctrs") {
         features.push("vctrs");
     }
+    if cfg!(feature = "borsh") {
+        features.push("borsh");
+    }
+    if cfg!(feature = "indicatif") {
+        features.push("indicatif");
+    }
 
     // Class systems (always available, not feature-gated)
     features.push("s7");
@@ -1808,6 +1818,8 @@ miniextendr_module! {
     use bitflags_adapter_tests;
     #[cfg(feature = "bitvec")]
     use bitvec_adapter_tests;
+    #[cfg(feature = "borsh")]
+    use borsh_adapter_tests;
     #[cfg(feature = "tinyvec")]
     use tinyvec_adapter_tests;
     #[cfg(feature = "sha2")]
@@ -1830,6 +1842,8 @@ miniextendr_module! {
     use num_complex_adapter_tests;
     #[cfg(feature = "num-traits")]
     use num_traits_adapter_tests;
+    #[cfg(feature = "indicatif")]
+    use indicatif_adapter_tests;
     #[cfg(feature = "connections")]
     use connection_tests;
     #[cfg(feature = "nonapi")]
