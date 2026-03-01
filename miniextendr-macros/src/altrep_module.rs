@@ -176,7 +176,7 @@ fn generate_into_r(info: &AltrepTypeInfo<'_>) -> TokenStream {
             }
 
             unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
-                self.try_into_sexp()
+                Ok(unsafe { self.into_sexp_unchecked() })
             }
 
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
@@ -184,6 +184,18 @@ fn generate_into_r(info: &AltrepTypeInfo<'_>) -> TokenStream {
                 let data1 = <#ty as ::miniextendr_api::externalptr::TypedExternal>::wrap(self);
                 unsafe {
                     ::miniextendr_api::ffi::altrep::R_new_altrep(
+                        cls,
+                        data1,
+                        ::miniextendr_api::ffi::SEXP::null(),
+                    )
+                }
+            }
+
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
+                let cls = <#ty as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
+                let data1 = <#ty as ::miniextendr_api::externalptr::TypedExternal>::wrap(self);
+                unsafe {
+                    ::miniextendr_api::ffi::altrep::R_new_altrep_unchecked(
                         cls,
                         data1,
                         ::miniextendr_api::ffi::SEXP::null(),
