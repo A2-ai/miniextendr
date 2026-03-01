@@ -1218,7 +1218,9 @@ cargo_new <- function(path = ".",
 
 #' Find the root of a Cargo workspace
 #'
-#' Walks up the directory tree to find a Cargo.toml that contains [workspace].
+#' Tries `git rev-parse --show-toplevel` first (fast, accurate when in a git repo),
+#' then falls back to walking up the directory tree looking for a Cargo.toml with
+#' `[workspace]`.
 #'
 #' @param path Path to start searching from
 #' @return Path to workspace root, or NULL if not in a workspace
@@ -1226,6 +1228,24 @@ cargo_new <- function(path = ".",
 find_workspace_root <- function(path) {
   path <- normalizePath(path, mustWork = FALSE)
 
+  # Try git first — fast and handles deeply nested paths
+  git_root <- tryCatch({
+    out <- system2("git", c("rev-parse", "--show-toplevel"),
+                   stdout = TRUE, stderr = TRUE)
+    if (!is.null(attr(out, "status"))) NULL else trimws(out)
+  }, error = function(e) NULL, warning = function(w) NULL)
+
+  if (!is.null(git_root) && nzchar(git_root)) {
+    cargo_toml <- file.path(git_root, "Cargo.toml")
+    if (file.exists(cargo_toml)) {
+      content <- readLines(cargo_toml, warn = FALSE)
+      if (any(grepl("^\\[workspace\\]", content))) {
+        return(normalizePath(git_root))
+      }
+    }
+  }
+
+  # Fallback: walk up the directory tree
   while (path != dirname(path)) {  # Stop at filesystem root
     cargo_toml <- file.path(path, "Cargo.toml")
     if (file.exists(cargo_toml)) {

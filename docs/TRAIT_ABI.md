@@ -208,7 +208,7 @@ mx_abi.c (compiled into each package's .so)
 ```c
 void R_init_mypkg(DllInfo *dll) {
     miniextendr_panic_hook();
-    miniextendr_worker_init();
+    miniextendr_runtime_init();
     mx_abi_register();  // Required for trait ABI
     // ...
 }

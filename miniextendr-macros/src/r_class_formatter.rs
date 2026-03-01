@@ -158,6 +158,16 @@ impl<'a> MethodContext<'a> {
         )
         .static_checks
     }
+
+    /// Build `if (missing(param)) param <- quote(expr=)` prelude lines for Missing<T> parameters.
+    ///
+    /// Skips params that have a user-specified default (they get the default in formals instead).
+    pub fn missing_prelude(&self) -> Vec<String> {
+        crate::r_wrapper_builder::build_missing_prelude(
+            &self.method.sig.inputs,
+            &self.method.param_defaults,
+        )
+    }
 }
 
 /// Builder for class-level roxygen documentation header.

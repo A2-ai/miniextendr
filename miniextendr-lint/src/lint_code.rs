@@ -55,6 +55,12 @@ pub enum LintCode {
     /// `#[cfg(...)]` parity mismatch between `mod` declaration and `use` entry.
     MXL109,
 
+    // ── P2: Safety ────────────────────────────────────────────────────
+    /// Direct `Rf_error`/`Rf_errorcall` call in user code.
+    MXL300,
+    /// `_unchecked` FFI call outside guard context.
+    MXL301,
+
     // ── P1: Important ───────────────────────────────────────────────────
     /// Trait tag collision preflight.
     MXL200,
@@ -103,6 +109,9 @@ impl LintCode {
             | Self::MXL107
             | Self::MXL108
             | Self::MXL109 => Severity::Warning,
+
+            // P2 rules are warnings.
+            Self::MXL300 | Self::MXL301 => Severity::Warning,
 
             // P1 rules are warnings.
             Self::MXL200 | Self::MXL201 | Self::MXL202 | Self::MXL203 | Self::MXL204 => {

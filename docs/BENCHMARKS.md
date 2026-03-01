@@ -7,8 +7,8 @@ Run date: 2026-02-18.
 
 | Subsystem | Operation | Median | Notes |
 |-----------|-----------|--------|-------|
-| **Worker thread** | round-trip | 5 us | `run_on_worker` channel hop |
-| **Worker thread** | `with_r_thread` (main) | 14 ns | already on main thread |
+| **Worker thread** (requires `worker-thread` feature) | round-trip | 5 us | `run_on_worker` channel hop |
+| **Worker thread** (requires `worker-thread` feature) | `with_r_thread` (main) | 14 ns | already on main thread |
 | **Unwind protect** | `with_r_unwind_protect` | 32 ns | overhead vs direct call |
 | **Unwind protect** | nested 5 layers | 169 ns | linear scaling |
 | **catch_unwind** | success path | 0.5 ns | no panic |

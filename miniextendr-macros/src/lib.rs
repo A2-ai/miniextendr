@@ -246,8 +246,8 @@ pub(crate) use miniextendr_macros_core::{
 // Feature default mutual exclusivity guards
 #[cfg(all(feature = "default-r6", feature = "default-s7"))]
 compile_error!("`default-r6` and `default-s7` are mutually exclusive");
-#[cfg(all(feature = "default-worker", feature = "default-main-thread"))]
-compile_error!("`default-worker` and `default-main-thread` are mutually exclusive");
+// Note: default-main-thread was removed — main thread is now the hardcoded default.
+// default-worker still opts into worker thread execution.
 
 // normalize_r_arg_ident is now provided by r_wrapper_builder module
 
@@ -909,45 +909,37 @@ pub fn miniextendr(
     //
     // miniextendr supports two execution strategies:
     //
-    // 1. **Main Thread Strategy** (with_r_unwind_protect)
+    // 1. **Main Thread Strategy** (with_r_unwind_protect) — DEFAULT
     //    - All code runs on R's main thread
     //    - Required when SEXP types are involved (not Send)
     //    - Required for R API calls (Rf_*, R_*)
     //    - Panic handling via R_UnwindProtect (Rust destructors run correctly)
-    //    - Use cases:
-    //      * Functions returning SEXP
-    //      * Functions taking SEXP parameters
-    //      * Functions using Dots (variadic args)
-    //      * Functions with #[miniextendr(unsafe(main_thread))]
-    //      * Functions with check_interrupt (R_CheckUserInterrupt)
+    //    - Combined with error_in_r: errors returned as tagged SEXP values,
+    //      R wrapper raises structured condition objects
+    //    - Simpler execution model, better R integration
     //
-    // 2. **Worker Thread Strategy** (run_on_worker + catch_unwind)
+    // 2. **Worker Thread Strategy** (run_on_worker + catch_unwind) — OPT-IN
     //    - Argument conversion on main thread (SEXP → Rust types)
     //    - Function execution on dedicated worker thread (clean panic isolation)
     //    - Result conversion on main thread (Rust types → SEXP)
     //    - Panic handling via catch_unwind (prevents unwinding across FFI boundary)
-    //    - Benefits:
-    //      * Clean panic handling with proper destructors
-    //      * Isolates user code from R's execution context
-    //      * Catches panics from both user code and conversions
+    //    - Opt in with #[miniextendr(worker)]
     //    - ExternalPtr<T> is Send: can be returned from worker thread functions
     //    - R API calls from worker use with_r_thread (serialized to main thread)
     //
-    // Default: Worker thread (safer, cleaner panic handling)
-    // Override: Use main thread when SEXP types are in the signature
-    //
-    // Note: Functions that call R API directly (not through with_r_thread) and
-    // don't have SEXP in their signature need #[miniextendr(unsafe(main_thread))].
+    // Default: Main thread (safer with error_in_r, simpler execution model)
+    // Override: Use worker thread with #[miniextendr(worker)]
     //
     // Thread strategy:
-    // - force_worker overrides the default, but cannot override hard requirements
-    // - Hard requirements for main thread: returns_sexp, has_sexp_inputs, has_dots, check_interrupt
-    // - force_main_thread is a user request (can be combined with force_worker, but main_thread wins)
+    // - Main thread is always used unless force_worker is set
+    // - force_worker cannot override hard requirements for main thread
+    // - Hard requirements: returns_sexp, has_sexp_inputs, has_dots, check_interrupt
     let requires_main_thread = returns_sexp || has_sexp_inputs || has_dots || check_interrupt;
-    let use_main_thread = requires_main_thread || (force_main_thread && !force_worker);
+    let use_main_thread = !force_worker || requires_main_thread;
 
-    // Suppress unused variable warning when force_worker doesn't affect strategy
-    let _ = force_worker;
+    // Suppress unused variable warnings — force_main_thread is now the default,
+    // and force_worker is consumed in use_main_thread above.
+    let _ = (force_main_thread, force_worker);
     // RNG state management tokens
     let (rng_get, rng_put) = if rng {
         (
@@ -1295,9 +1287,8 @@ pub fn miniextendr(
     if has_dots {
         arg_builder = arg_builder.with_dots(named_dots.clone().map(|id| id.to_string()));
     }
-    // Add user-specified parameter defaults, merged with auto-defaults for Missing<T> params
-    let mut merged_defaults =
-        r_wrapper_builder::merge_missing_defaults(inputs, parsed.param_defaults());
+    // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
+    let mut merged_defaults = parsed.param_defaults().clone();
     // Add NULL default for match_arg params that don't already have an explicit default
     for match_arg_param in parsed.match_arg_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
@@ -1427,9 +1418,7 @@ pub fn miniextendr(
     // but the auto-title logic in roxygen_tags_from_attrs didn't fire (because has_any_tags
     // was false at that point — choices @param tags are added after extraction).
     // Prefer the implicit title from doc comments; fall back to the function name.
-    if !roxygen_tags.is_empty()
-        && !crate::roxygen::has_roxygen_tag(&roxygen_tags, "title")
-    {
+    if !roxygen_tags.is_empty() && !crate::roxygen::has_roxygen_tag(&roxygen_tags, "title") {
         let title = crate::roxygen::implicit_title_from_attrs(attrs)
             .unwrap_or_else(|| rust_ident.to_string().replace('_', " "));
         roxygen_tags.insert(0, format!("@title {}", title));
@@ -1558,9 +1547,22 @@ pub fn miniextendr(
         precondition_output.static_checks.join("\n  ")
     };
 
-    // Combine all preludes: lifecycle, static preconditions, match.arg (enum), choices match.arg
+    // Generate Missing<T> prelude: `if (missing(param)) param <- quote(expr=)`
+    let missing_prelude = {
+        let lines = r_wrapper_builder::build_missing_prelude(inputs, parsed.param_defaults());
+        if lines.is_empty() {
+            String::new()
+        } else {
+            lines.join("\n  ")
+        }
+    };
+
+    // Combine all preludes: missing defaults, lifecycle, static preconditions, match.arg, choices
     let combined_prelude = {
         let mut parts = Vec::new();
+        if !missing_prelude.is_empty() {
+            parts.push(missing_prelude.as_str());
+        }
         if let Some(ref lc) = lifecycle_prelude {
             parts.push(lc.as_str());
         }
@@ -2490,7 +2492,7 @@ fn generate_trait_impl_wrapper(
 ///
 /// # Initialization Requirement
 ///
-/// `miniextendr_worker_init()` must be called before using any wrapped function.
+/// `miniextendr_runtime_init()` must be called before using any wrapped function.
 /// Calling before initialization will panic with a descriptive error message.
 ///
 /// # Limitations

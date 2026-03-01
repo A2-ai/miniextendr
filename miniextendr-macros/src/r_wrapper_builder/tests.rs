@@ -194,36 +194,32 @@ fn test_collect_multiple_missing_params() {
 }
 
 #[test]
-fn test_merge_missing_defaults() {
+fn test_build_missing_prelude() {
     let inputs = parse_inputs("x: i32, y: Missing<f64>, z: String");
     let user_defaults = std::collections::HashMap::new();
-    let merged = merge_missing_defaults(&inputs, &user_defaults);
+    let prelude = build_missing_prelude(&inputs, &user_defaults);
 
-    assert_eq!(merged.len(), 1);
-    assert_eq!(merged.get("y"), Some(&"quote(expr=)".to_string()));
+    assert_eq!(prelude, vec!["if (missing(y)) y <- quote(expr=)"]);
 }
 
 #[test]
-fn test_merge_missing_defaults_preserves_user_defaults() {
-    let inputs = parse_inputs("x: i32, y: Missing<f64>, z: String");
+fn test_build_missing_prelude_skips_user_defaults() {
+    let inputs = parse_inputs("x: i32, y: Missing<f64>, z: Missing<String>");
     let mut user_defaults = std::collections::HashMap::new();
-    user_defaults.insert("x".to_string(), "42".to_string());
-    user_defaults.insert("y".to_string(), "custom_default".to_string());
+    user_defaults.insert("y".to_string(), "0.0".to_string());
 
-    let merged = merge_missing_defaults(&inputs, &user_defaults);
+    let prelude = build_missing_prelude(&inputs, &user_defaults);
 
-    assert_eq!(merged.len(), 2);
-    assert_eq!(merged.get("x"), Some(&"42".to_string()));
-    // User's explicit default takes precedence over auto-generated quote(expr=)
-    assert_eq!(merged.get("y"), Some(&"custom_default".to_string()));
+    // y has a user default, so only z gets the prelude
+    assert_eq!(prelude, vec!["if (missing(z)) z <- quote(expr=)"]);
 }
 
 #[test]
-fn test_missing_type_formals_with_defaults() {
+fn test_missing_type_formals_clean_signature() {
+    // Missing<T> params without user defaults appear as bare formals
     let inputs = parse_inputs("x: i32, y: Missing<f64>");
-    let merged = merge_missing_defaults(&inputs, &std::collections::HashMap::new());
-    let builder = RArgumentBuilder::new(&inputs).with_defaults(merged);
-    assert_eq!(builder.build_formals(), "x, y = quote(expr=)");
+    let builder = RArgumentBuilder::new(&inputs);
+    assert_eq!(builder.build_formals(), "x, y");
 }
 
 // =============================================================================
@@ -351,13 +347,14 @@ fn snapshot_formals_and_call_args() {
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
 
-    // Missing<T> with auto-defaults
-    output.push_str("\n# Missing<T> auto-defaults\n");
+    // Missing<T> - clean formals (no quote(expr=) in signature)
+    output.push_str("\n# Missing<T> clean formals\n");
     let inputs = parse_inputs("x: i32, y: Missing<f64>, z: Missing<String>");
-    let merged = merge_missing_defaults(&inputs, &std::collections::HashMap::new());
-    let builder = RArgumentBuilder::new(&inputs).with_defaults(merged);
+    let builder = RArgumentBuilder::new(&inputs);
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
+    let prelude = build_missing_prelude(&inputs, &std::collections::HashMap::new());
+    output.push_str(&format!("missing_prelude: {}\n", prelude.join("; ")));
 
     insta::assert_snapshot!(output);
 }

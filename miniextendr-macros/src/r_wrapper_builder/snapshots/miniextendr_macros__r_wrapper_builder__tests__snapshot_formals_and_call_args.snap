@@ -22,6 +22,7 @@ call_args: x, y
 formals: x, step = 1L, verbose = FALSE
 call_args: x, step, verbose
 
-# Missing<T> auto-defaults
-formals: x, y = quote(expr=), z = quote(expr=)
+# Missing<T> clean formals
+formals: x, y, z
 call_args: x, y, z
+missing_prelude: if (missing(y)) y <- quote(expr=); if (missing(z)) z <- quote(expr=)

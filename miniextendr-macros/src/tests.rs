@@ -153,9 +153,11 @@ fn miniextendr_attr_accepts_multiple_flags() {
 
 #[test]
 fn miniextendr_attr_accepts_unwrap_in_r() {
-    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(unwrap_in_r))
-        .expect("should parse unwrap_in_r");
+    // error_in_r is now the default, so unwrap_in_r needs no_error_in_r to avoid conflict
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(unwrap_in_r, no_error_in_r))
+        .expect("should parse unwrap_in_r with no_error_in_r");
     assert!(attrs.unwrap_in_r);
+    assert!(!attrs.error_in_r);
 }
 
 #[test]
