@@ -2565,6 +2565,18 @@ pub trait IntoRAltrep {
     /// and explicit about the zero-copy intent.
     fn into_sexp_altrep(self) -> crate::ffi::SEXP;
 
+    /// Convert to R SEXP using ALTREP, skipping debug thread assertions.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure they are on R's main thread.
+    unsafe fn into_sexp_altrep_unchecked(self) -> crate::ffi::SEXP
+    where
+        Self: Sized,
+    {
+        self.into_sexp_altrep()
+    }
+
     /// Create an `Altrep<Self>` wrapper.
     ///
     /// This returns the wrapper explicitly, allowing you to store it or
@@ -2583,6 +2595,10 @@ where
 {
     fn into_sexp_altrep(self) -> crate::ffi::SEXP {
         Altrep(self).into_sexp()
+    }
+
+    unsafe fn into_sexp_altrep_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { Altrep(self).into_sexp_unchecked() }
     }
 }
 
@@ -2684,7 +2700,7 @@ where
         Ok(self.into_sexp())
     }
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        self.try_into_sexp()
+        Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
@@ -2694,6 +2710,18 @@ where
         unsafe {
             crate::ffi::Rf_protect_unchecked(data1);
             let out = crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null());
+            crate::ffi::Rf_unprotect_unchecked(1);
+            out
+        }
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
+        let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
+        let data1 = ext_ptr.as_sexp();
+        unsafe {
+            crate::ffi::Rf_protect_unchecked(data1);
+            let out =
+                crate::ffi::altrep::R_new_altrep_unchecked(cls, data1, crate::ffi::SEXP::null());
             crate::ffi::Rf_unprotect_unchecked(1);
             out
         }
