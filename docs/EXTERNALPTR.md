@@ -132,6 +132,36 @@ impl TypedExternal for MyData {
 }
 ```
 
+### Built-in TypedExternal Implementations
+
+**Source**: `miniextendr-api/src/externalptr_std.rs`
+
+The following standard library types have built-in `TypedExternal` impls, so they can be stored in `ExternalPtr<T>` without any manual implementation:
+
+| Category | Types |
+|----------|-------|
+| **Primitives** | `bool`, `char`, `i8`–`i128`, `isize`, `u8`–`u128`, `usize`, `f32`, `f64` |
+| **Strings** | `String`, `CString`, `OsString`, `PathBuf` |
+| **Collections** | `Vec<T>`, `VecDeque<T>`, `LinkedList<T>`, `BinaryHeap<T>`, `HashMap<K,V>`, `BTreeMap<K,V>`, `HashSet<T>`, `BTreeSet<T>` |
+| **Smart pointers** | `Box<T>`, `Box<[T]>`, `Rc<T>`, `Arc<T>`, `Cell<T>`, `RefCell<T>`, `UnsafeCell<T>`, `Mutex<T>`, `RwLock<T>`, `OnceLock<T>`, `Pin<T>`, `ManuallyDrop<T>`, `MaybeUninit<T>`, `PhantomData<T>` |
+| **Option/Result** | `Option<T>`, `Result<T, E>` |
+| **Ranges** | `Range<T>`, `RangeInclusive<T>`, `RangeFrom<T>`, `RangeTo<T>`, `RangeToInclusive<T>`, `RangeFull` |
+| **I/O** | `File`, `BufReader<R>`, `BufWriter<W>`, `Cursor<T>` |
+| **Time** | `Duration`, `Instant`, `SystemTime` |
+| **Networking** | `TcpStream`, `TcpListener`, `UdpSocket`, `IpAddr`, `Ipv4Addr`, `Ipv6Addr`, `SocketAddr`, `SocketAddrV4`, `SocketAddrV6` |
+| **Threading** | `Thread`, `JoinHandle<T>`, `Sender<T>`, `SyncSender<T>`, `Receiver<T>`, `Barrier`, `BarrierWaitResult` |
+| **Atomics** | `AtomicBool`, `AtomicI8`–`AtomicI64`, `AtomicIsize`, `AtomicU8`–`AtomicU64`, `AtomicUsize` |
+| **Numeric wrappers** | `NonZeroI8`–`NonZeroI128`, `NonZeroIsize`, `NonZeroU8`–`NonZeroU128`, `NonZeroUsize`, `Wrapping<T>`, `Saturating<T>` |
+| **Tuples** | `(A,)` through `(A, B, C, D, E, F, G, H, I, J, K, L)` (1–12 elements) |
+| **Arrays** | `[T; N]` (const generic, any size) |
+| **Static slices** | `&'static [T]`, `&'static mut [T]` |
+
+**Note on generic types**: For generic types like `Vec<T>`, the type name does not include the type parameter (e.g., `Vec<i32>` and `Vec<String>` both have type name `"Vec"`). R-level type checking won't distinguish between different instantiations. For stricter type safety, create a newtype wrapper and derive `ExternalPtr`.
+
+**Note on `ManuallyDrop<T>`**: Shares `T`'s type symbols, allowing `ExternalPtr<ManuallyDrop<T>>` to interoperate with `ExternalPtr<T>`. This is safe because `ManuallyDrop<T>` is `#[repr(transparent)]`.
+
+**Note on static slices**: `&'static [T]` and `&'static mut [T]` are fat pointers (ptr + len) that satisfy `'static + Sized`, so they can be stored directly in `ExternalPtr`. Use cases include const arrays (`&DATA`), leaked data (`Box::leak`), and memory-mapped files.
+
 ### IntoExternalPtr
 
 The `IntoExternalPtr` marker trait triggers a blanket `IntoR` implementation that wraps the value in `ExternalPtr<T>` when returning from `#[miniextendr]` functions. `#[derive(ExternalPtr)]` implements both `TypedExternal` and `IntoExternalPtr`.
