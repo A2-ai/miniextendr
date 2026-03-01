@@ -10,7 +10,7 @@ extern void R_init_miniextendr_miniextendr(DllInfo *dll);
 // extern void miniextendr_encoding_init(void);
 extern void miniextendr_assert_utf8_locale(void);
 extern void miniextendr_panic_hook(void);
-extern void miniextendr_worker_init(void);
+extern void miniextendr_runtime_init(void);
 
 // Set ALTREP package name before ALTREP registration
 extern void miniextendr_set_altrep_pkg_name(const char* name);
@@ -28,7 +28,7 @@ extern void mx_abi_register(void);
 // module uses miniextendr (lowercase with underscores).
 void R_init_miniextendr(DllInfo *dll) {
     miniextendr_panic_hook();
-    miniextendr_worker_init();
+    miniextendr_runtime_init();
     miniextendr_assert_utf8_locale();
 
     // Set ALTREP package name before ALTREP registration

@@ -150,7 +150,7 @@ pub(crate) fn cov_fn_attr_rng(x: i32) -> i32 {
     x
 }
 
-#[miniextendr(unwrap_in_r)]
+#[miniextendr(unwrap_in_r, no_error_in_r)]
 pub(crate) fn cov_fn_attr_unwrap_in_r(x: i32) -> Result<i32, &'static str> {
     Ok(x)
 }
@@ -192,7 +192,7 @@ pub(crate) fn cov_combo_worker_rng(x: i32) -> i32 {
     x
 }
 
-#[miniextendr(worker, unwrap_in_r)]
+#[miniextendr(worker, unwrap_in_r, no_error_in_r)]
 pub(crate) fn cov_combo_worker_unwrap(x: i32) -> Result<i32, &'static str> {
     Ok(x)
 }

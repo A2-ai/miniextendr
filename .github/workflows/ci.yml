@@ -298,12 +298,11 @@ jobs:
         id: clippy_all
         if: matrix.r == 'release'
         continue-on-error: true
-        # NOTE: Can't use --all-features because default-r6/default-s7 and
-        # default-worker/default-main-thread are mutually exclusive pairs.
-        # List all non-conflicting features explicitly instead.
+        # NOTE: Can't use --all-features because default-r6/default-s7 are
+        # mutually exclusive. List all non-conflicting features explicitly instead.
         run: >-
           cargo clippy --workspace --all-targets --locked
-          --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,default-strict,default-coerce,default-error-in-r,default-r6,default-worker
+          --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,default-strict,default-coerce,default-r6,default-worker
           -- -D warnings
 
       # NOTE: Cargo tests are disabled due to stack overflow issues on Linux CI.

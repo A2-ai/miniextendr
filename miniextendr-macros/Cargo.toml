@@ -21,11 +21,9 @@ vctrs = []
 ## Individual items can opt out with no_strict, no_coerce, etc.
 default-strict = []
 default-coerce = []
-default-error-in-r = []
 default-r6 = []
 default-s7 = []
 default-worker = []
-default-main-thread = []
 
 [dependencies]
 miniextendr-macros-core = { workspace = true }

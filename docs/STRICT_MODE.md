@@ -121,7 +121,7 @@ strict conversion failed: i64 value 1099511627776 is outside R integer range
 strict conversion failed for parameter 'count': expected integer or double, got LGLSXP
 ```
 
-These panics are caught by the worker thread and converted to R errors.
+These panics are caught and converted to R errors.
 
 ## When to Use Strict Mode
 

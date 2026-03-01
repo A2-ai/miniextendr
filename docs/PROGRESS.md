@@ -152,11 +152,14 @@ fn write_console(&self, bytes: &[u8]) -> io::Result<()> {
 ```
 
 This means:
-- Progress bars drawn from the **worker thread** produce no output.
-- Progress bars drawn from **rayon threads** produce no output.
-- Only code running on the **main R thread** (or via `with_r_thread`) can display progress.
+- Progress bars drawn from **non-main threads** (worker thread, rayon threads) produce no output.
+- Only code running on the **main R thread** can display progress.
 
-For `#[miniextendr]` functions, this works naturally -- your function runs on the worker thread, but operations that need R console access should use `unsafe(main_thread)` or run the progress bar update on the main thread. In practice, since indicatif batches draws, the simplest approach is to create the progress bar and call `pb.inc()` from your function directly -- indicatif will internally batch and the draw calls happen from the thread that created the bar.
+For `#[miniextendr]` functions, this works naturally -- by default your function runs on the
+main thread, so progress bar output works directly. If using the `worker-thread` feature,
+operations that need R console access should use `unsafe(main_thread)` or run the progress
+bar update on the main thread. In practice, since indicatif batches draws, the simplest
+approach is to create the progress bar and call `pb.inc()` from your function directly.
 
 See [THREADS.md](THREADS.md) for details on the worker thread model.
 

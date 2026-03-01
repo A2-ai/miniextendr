@@ -44,24 +44,25 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 |---------|--------|-------|-----------------|
 | `default-strict` | Strict checked conversions for lossy types (i64, u64, isize, usize) | fns + impl blocks | `no_strict` |
 | `default-coerce` | Auto-coerce parameters (e.g., `f32` from `f64`) | fns + methods | `no_coerce` |
-| `default-error-in-r` | Transport Rust errors as R conditions | fns + methods | `no_error_in_r` |
 | `default-r6` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `default-s7` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
-| `default-worker` | Force worker thread execution | fns + methods | `no_worker` |
-| `default-main-thread` | Force main thread execution | methods | `no_main_thread` (standalone fns use `unsafe(main_thread)` syntax instead) |
+| `default-worker` | Force worker thread execution (implies `worker-thread`) | fns + methods | `no_worker` |
+
+### Hardcoded Defaults (No Longer Feature-Controlled)
+
+The following were previously opt-in features but are now **always enabled by default**.
+Use the corresponding opt-out keyword to disable per-function/method:
+
+| Default | Effect | Opt-out keyword |
+|---------|--------|-----------------|
+| `error_in_r` | Transport Rust errors as R conditions | `no_error_in_r` |
+| Main thread | All code runs on R's main thread | `worker` (to opt into worker thread) |
 
 ### Mutual Exclusivity
 
 These feature pairs cannot be enabled simultaneously (compile error):
 
 - `default-r6` + `default-s7`
-- `default-worker` + `default-main-thread`
-
-### When No Feature Is Enabled
-
-With no `default-*` features enabled, behavior is identical to before: all options
-default to off/env, exactly as if the features didn't exist. This is a zero-cost,
-backwards-compatible addition.
 
 ## Feature Forwarding
 
@@ -140,12 +141,12 @@ impl MyType {
 
 ### error_in_r + unwrap_in_r Conflict
 
-`error_in_r` and `unwrap_in_r` are mutually exclusive. When `default-error-in-r` is
-enabled and a function specifies `unwrap_in_r`, the compiler emits a helpful error:
+`error_in_r` and `unwrap_in_r` are mutually exclusive. Since `error_in_r` is now the
+default, specifying `unwrap_in_r` without `no_error_in_r` produces a helpful error:
 
 ```
-error: `error_in_r` (from `default-error-in-r` feature) and `unwrap_in_r` are
-       mutually exclusive; use `no_error_in_r` to opt out
+error: `error_in_r` (default) and `unwrap_in_r` are mutually exclusive;
+       use `no_error_in_r` to opt out
 ```
 
 Fix by adding `no_error_in_r`:
@@ -160,10 +161,10 @@ fn fallible() -> Result<i32, String> { Ok(42) }
 For each option, the resolution is:
 
 1. **Explicit attribute** -- `strict` or `no_strict` on the item → uses that value
-2. **Feature default** -- `cfg!(feature = "default-strict")` → uses the feature setting
-3. **Built-in default** -- `false` (off) for all boolean options, `Env` for class system
+2. **Feature default** -- `cfg!(feature = "default-strict")` → uses the feature setting (for feature-controlled options)
+3. **Built-in default** -- `error_in_r=true`, `main_thread=true`, `false` for other boolean options, `Env` for class system
 
-Explicit attributes always win over feature defaults.
+Explicit attributes always win over feature/built-in defaults.
 
 ## Example: Strict-by-Default Package
 
@@ -212,7 +213,7 @@ impl LightWrapper { ... }  // env (overridden)
 |---------|-------|---------|
 | `no_strict` | `#[miniextendr(no_strict)]` on fn, `#[miniextendr(no_strict)]` on impl | `default-strict` feature |
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `default-coerce` feature |
-| `no_error_in_r` | `#[miniextendr(no_error_in_r)]` on fn, `#[miniextendr(r6(no_error_in_r))]` on method | `default-error-in-r` feature |
+| `no_error_in_r` | `#[miniextendr(no_error_in_r)]` on fn, `#[miniextendr(r6(no_error_in_r))]` on method | Built-in `error_in_r` default |
+| `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
 | `no_worker` | `#[miniextendr(no_worker)]` on fn, `#[miniextendr(r6(no_worker))]` on method | `default-worker` feature |
-| `no_main_thread` | `#[miniextendr(r6(no_main_thread))]` on method | `default-main-thread` feature |
 | `env` / `r6` / `s7` / `s3` / `s4` | `#[miniextendr(env)]` on impl | `default-r6` or `default-s7` feature |

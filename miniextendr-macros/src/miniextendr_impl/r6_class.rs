@@ -97,6 +97,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Precondition checks for constructor parameters
         let ctor_preconditions = ctx.precondition_checks();
 
+        // Missing param prelude for constructor
+        let ctor_missing = ctx.missing_prelude();
+
         if has_self_returning_methods {
             let full_params = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -104,9 +107,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("    initialize = function({}) {{", full_params));
-            // Only check preconditions when not using .ptr shortcut
-            if !ctor_preconditions.is_empty() {
+            // Missing defaults + preconditions only when not using .ptr shortcut
+            if !ctor_missing.is_empty() || !ctor_preconditions.is_empty() {
                 lines.push("      if (is.null(.ptr)) {".to_string());
+                for line in &ctor_missing {
+                    lines.push(format!("        {}", line));
+                }
                 for check in &ctor_preconditions {
                     lines.push(format!("        {}", check));
                 }
@@ -115,15 +121,38 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("      if (!is.null(.ptr)) {".to_string());
             lines.push("        private$.ptr <- .ptr".to_string());
             lines.push("      } else {".to_string());
-            lines.push(format!("        private$.ptr <- {}", ctx.static_call()));
+            lines.push(format!("        .val <- {}", ctx.static_call()));
+            lines.push(
+                "        if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {"
+                    .to_string(),
+            );
+            lines.push("          stop(structure(".to_string());
+            lines.push(
+                "            class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),"
+                    .to_string(),
+            );
+            lines.push(
+                "            list(message = .val$error, call = sys.call(), kind = .val$kind)"
+                    .to_string(),
+            );
+            lines.push("          ))".to_string());
+            lines.push("        }".to_string());
+            lines.push("        private$.ptr <- .val".to_string());
             lines.push("      }".to_string());
             lines.push(format!("    }}{}", comma));
         } else {
             lines.push(format!("    initialize = function({}) {{", ctx.params));
+            for line in &ctor_missing {
+                lines.push(format!("      {}", line));
+            }
             for check in &ctor_preconditions {
                 lines.push(format!("      {}", check));
             }
-            lines.push(format!("      private$.ptr <- {}", ctx.static_call()));
+            lines.push(format!("      .val <- {}", ctx.static_call()));
+            lines.extend(crate::method_return_builder::error_in_r_check_lines(
+                "      ",
+            ));
+            lines.push("      private$.ptr <- .val".to_string());
             lines.push(format!("    }}{}", comma));
         }
     }
@@ -154,6 +183,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ctx.method.ident, ctx.params
         ));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("      {}", line));
+        }
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, ctx.method.ident);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
@@ -187,6 +220,11 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             "    {} = function({}) {{",
             ctx.method.ident, ctx.params
         ));
+
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("      {}", line));
+        }
 
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -366,6 +404,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             static_method_name, ctx.params
         ));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {

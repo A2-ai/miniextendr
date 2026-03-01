@@ -70,14 +70,15 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         lines.push(format!("{} <- function({}) {{", class_name, ctx.params));
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
         }
-        lines.push(format!(
-            "  methods::new(\"{}\", ptr = {})",
-            class_name,
-            ctx.static_call()
-        ));
+        lines.push(format!("  .val <- {}", ctx.static_call()));
+        lines.extend(crate::method_return_builder::error_in_r_check_lines("  "));
+        lines.push(format!("  methods::new(\"{}\", ptr = .val)", class_name));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -136,7 +137,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_error_in_r(method.method_attrs.error_in_r)
             .build_s4_inline();
 
-        // Inject lifecycle prelude and precondition checks if present
+        // Inject missing param defaults, lifecycle prelude, and precondition checks if present
+        let missing = crate::r_wrapper_builder::build_missing_prelude(
+            &method.sig.inputs,
+            &method.param_defaults,
+        );
         let what = format!("{}.{}", method_name, class_name);
         let lifecycle = method.lifecycle_prelude(&what);
         let preconditions = crate::r_preconditions::build_precondition_checks(
@@ -144,11 +149,14 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             &std::collections::HashSet::new(),
         )
         .static_checks;
-        if lifecycle.is_some() || !preconditions.is_empty() {
+        if !missing.is_empty() || lifecycle.is_some() || !preconditions.is_empty() {
             lines.push(format!(
                 "methods::setMethod(\"{}\", \"{}\", function({}) {{",
                 method_name, class_name, full_params
             ));
+            for line in &missing {
+                lines.push(format!("  {}", line));
+            }
             if let Some(prelude) = lifecycle {
                 lines.push(format!("  {}", prelude));
             }
@@ -185,6 +193,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
             lines.push(format!("  {}", prelude));

@@ -13,6 +13,7 @@ Only `default` features are enabled automatically.
 | **Core / R Integration** | | |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
+| `worker-thread` | Dedicated worker thread for Rust code execution | (none) |
 | `connections` | Experimental custom R connection framework | (none) |
 | `indicatif` | Progress bars via R console | indicatif (implies `nonapi`) |
 | `vctrs` | vctrs C API + `#[derive(Vctrs)]` macro | (forwarded to miniextendr-macros) |
@@ -94,6 +95,25 @@ symbols may change between R versions and will cause `R CMD check` warnings.
 - `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` -- thread safety utilities
 
 See [NONAPI.md](NONAPI.md) for the full tracking list.
+
+### `worker-thread`
+
+Enables the dedicated worker thread infrastructure. Without this feature, `run_on_worker()`,
+`with_r_thread()`, and related APIs are lightweight inline stubs that execute closures
+directly on the calling thread (no thread dispatch).
+
+**With the feature enabled:**
+- `miniextendr_runtime_init()` spawns a dedicated worker thread with bidirectional channels
+- `run_on_worker(f)` dispatches `f` to the worker thread, catches panics
+- `with_r_thread(f)` routes `f` back to R's main thread from the worker
+
+**Without the feature (the default):**
+- `miniextendr_runtime_init()` only records the main thread ID
+- `run_on_worker(f)` → `f()` (inline)
+- `with_r_thread(f)` → `f()` (inline, with init check)
+- `has_worker_context()` → `false`
+
+The `default-worker` feature implies `worker-thread`.
 
 ### `rayon`
 
@@ -878,14 +898,14 @@ See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
 |---------|--------|---------|
 | `default-strict` | Strict checked conversions for lossy types | `no_strict` |
 | `default-coerce` | Auto-coerce parameters | `no_coerce` |
-| `default-error-in-r` | Transport Rust errors as R conditions | `no_error_in_r` |
 | `default-r6` | R6 class system for impl blocks | `env`, `s7`, etc. |
 | `default-s7` | S7 class system for impl blocks | `env`, `r6`, etc. |
-| `default-worker` | Force worker thread execution | `no_worker` |
-| `default-main-thread` | Force main thread execution | `no_main_thread` |
+| `default-worker` | Force worker thread execution (implies `worker-thread`) | `no_worker` |
 
-**Mutual exclusivity:** `default-r6`/`default-s7` and `default-worker`/`default-main-thread`
-cannot be enabled simultaneously.
+**Note:** `error_in_r` and main thread execution are now **hardcoded defaults** (no feature
+needed). Opt out per-function with `no_error_in_r` or `worker` respectively.
+
+**Mutual exclusivity:** `default-r6`/`default-s7` cannot be enabled simultaneously.
 
 ---
 

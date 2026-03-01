@@ -23,7 +23,14 @@ Counter <- S7::new_class("Counter",
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
-      S7::new_object(S7::S7_object(), .ptr = .Call(C_Counter__new, .call = match.call(), value))
+      .val <- .Call(C_Counter__new, .call = match.call(), value)
+      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+        stop(structure(
+          class = c("rust_error", "simpleError", "error", "condition"),
+          list(message = .val$error, call = sys.call(), kind = .val$kind)
+        ))
+      }
+      S7::new_object(S7::S7_object(), .ptr = .val)
     }
   }
 )
@@ -35,7 +42,16 @@ Counter <- S7::new_class("Counter",
 if (!exists("get", mode = "function")) {
   get <- S7::new_generic("get", "x", function(x, ...) S7::S7_dispatch())
 }
-S7::method(get, Counter) <- function(x, ...) .Call(C_Counter__get, .call = match.call(), x@.ptr)
+S7::method(get, Counter) <- function(x, ...) {
+    .val <- .Call(C_Counter__get, .call = match.call(), x@.ptr)
+    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+      stop(structure(
+        class = c("rust_error", "simpleError", "error", "condition"),
+        list(message = .val$error, call = sys.call(), kind = .val$kind)
+      ))
+    }
+    .val
+  }
 
 #' @name increment
 #' @rdname Counter
@@ -44,7 +60,16 @@ S7::method(get, Counter) <- function(x, ...) .Call(C_Counter__get, .call = match
 if (!exists("increment", mode = "function")) {
   increment <- S7::new_generic("increment", "x", function(x, ...) S7::S7_dispatch())
 }
-S7::method(increment, Counter) <- function(x, ...) { .Call(C_Counter__increment, .call = match.call(), x@.ptr); x }
+S7::method(increment, Counter) <- function(x, ...) {
+    .val <- .Call(C_Counter__increment, .call = match.call(), x@.ptr)
+    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+      stop(structure(
+        class = c("rust_error", "simpleError", "error", "condition"),
+        list(message = .val$error, call = sys.call(), kind = .val$kind)
+      ))
+    }
+    x
+  }
 
 #' @name Counter_from_parts
 #' @rdname Counter
@@ -57,5 +82,14 @@ Counter_from_parts <- function(a, b) {
     "'b' must be numeric, logical, or raw" = is.numeric(b) || is.logical(b) || is.raw(b),
     "'b' must have length 1" = length(b) == 1L
   )
-  Counter(.ptr = .Call(C_Counter__from_parts, .call = match.call(), a, b))
+  {
+    .val <- .Call(C_Counter__from_parts, .call = match.call(), a, b)
+    if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+      stop(structure(
+        class = c("rust_error", "simpleError", "error", "condition"),
+        list(message = .val$error, call = sys.call(), kind = .val$kind)
+      ))
+    }
+    Counter(.ptr = .val)
+  }
 }

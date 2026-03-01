@@ -1187,6 +1187,57 @@ pub mod tls {
 }
 
 // =============================================================================
+// WorkerUnprotectGuard — Send-safe unprotect for worker threads
+// =============================================================================
+
+/// A `Send`-safe guard that calls `Rf_unprotect(n)` on drop via [`with_r_thread`].
+///
+/// Use this when you `Rf_protect` on the R main thread, then need the unprotect
+/// to happen when a guard drops on a **worker thread** (e.g., rayon parallel code).
+///
+/// [`OwnedProtect`] and [`ProtectScope`] are `!Send` — they can only be used on
+/// the R main thread. `WorkerUnprotectGuard` fills the gap for cross-thread patterns
+/// where allocation + protect happen on the R thread but the guard lives on a worker.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::gc_protect::WorkerUnprotectGuard;
+///
+/// let sexp = with_r_thread(|| unsafe {
+///     let sexp = Rf_allocVector(REALSXP, n);
+///     Rf_protect(sexp);
+///     sexp
+/// });
+/// let _guard = WorkerUnprotectGuard::new(1);
+///
+/// // ... parallel work on sexp's data ...
+/// // _guard drops here, dispatching Rf_unprotect(1) back to R thread
+/// ```
+pub struct WorkerUnprotectGuard(i32);
+
+impl WorkerUnprotectGuard {
+    /// Create a guard that will unprotect `n` entries on drop.
+    #[inline]
+    pub fn new(n: i32) -> Self {
+        Self(n)
+    }
+}
+
+impl Drop for WorkerUnprotectGuard {
+    fn drop(&mut self) {
+        let n = self.0;
+        crate::worker::with_r_thread(move || unsafe {
+            crate::ffi::Rf_unprotect_unchecked(n);
+        });
+    }
+}
+
+// Safety: no SEXP field, just an integer count. The actual Rf_unprotect call
+// is dispatched to the R main thread via with_r_thread.
+unsafe impl Send for WorkerUnprotectGuard {}
+
+// =============================================================================
 // Typed Vector Collection
 // =============================================================================
 

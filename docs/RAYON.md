@@ -26,22 +26,30 @@ miniextendr-api = { path = "../miniextendr-api", features = ["rayon"] }
 
 ```rust
 use miniextendr_api::prelude::*;
-use miniextendr_api::rayon_bridge::rayon::prelude::*;
+use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};
 
 #[miniextendr]
-fn parallel_sqrt(x: &[f64]) -> Vec<f64> {
-    x.par_iter().map(|&val| val.sqrt()).collect()
+fn parallel_sqrt(x: &[f64]) -> SEXP {
+    // .collect_r() writes directly into R memory — zero intermediate allocation
+    x.par_iter().map(|&val| val.sqrt()).collect_r()
 }
 ```
 
-### Zero-Copy Example (Maximum Performance)
+### Alternative Styles
 
 ```rust
 use miniextendr_api::rayon_bridge::*;
 
+// par_map: same zero-copy performance, closure style
 #[miniextendr]
-fn parallel_sqrt_fast(x: &[f64]) -> SEXP {
+fn parallel_sqrt_map(x: &[f64]) -> SEXP {
     par_map(x, |&v| v.sqrt())
+}
+
+// Vec<T> return: simplest (one extra allocation, miniextendr converts to R)
+#[miniextendr]
+fn parallel_sqrt_vec(x: &[f64]) -> Vec<f64> {
+    x.par_iter().map(|&val| val.sqrt()).collect()
 }
 ```
 
@@ -50,7 +58,7 @@ fn parallel_sqrt_fast(x: &[f64]) -> SEXP {
 ### Design Philosophy
 
 **Rust computation: Parallel on Rayon threads (normal 2MB stacks)**
-**R API calls: Serial on main thread (via `with_r_thread`)**
+**R API calls: Serial on main thread**
 
 The framework handles all parallelism internally. User closures receive **chunks**
 of data and never need to call `par_iter()` or manage thread dispatch.
@@ -208,10 +216,88 @@ perf::in_rayon_thread()  // Are we in a Rayon thread?
 perf::thread_index()     // Current thread index (if in pool)
 ```
 
+### `.collect_r()` — Parallel Iterator → R Vector
+
+The `ParCollectR` extension trait adds `.collect_r()` to every indexed parallel
+iterator. It allocates an R vector on the main thread, then fills it in parallel
+using Rayon's `zip` — zero intermediate allocation.
+
+```rust
+use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};
+
+#[miniextendr]
+fn parallel_sqrt(x: &[f64]) -> SEXP {
+    x.par_iter().map(|&v| v.sqrt()).collect_r()
+}
+
+#[miniextendr]
+fn index_fill(n: i32) -> SEXP {
+    (0..n).into_par_iter().map(|i| (i as f64).sin()).collect_r()
+}
+```
+
+**Which iterators are indexed?** Most of them:
+
+| Pattern | Indexed? | `.collect_r()` works? |
+|---------|----------|-----------------------|
+| `slice.par_iter().map(...)` | Yes | Yes |
+| `vec.into_par_iter().map(...)` | Yes | Yes |
+| `(0..n).into_par_iter()` | Yes | Yes |
+| `.enumerate()`, `.zip()`, `.take()`, `.skip()` | Yes | Yes |
+| `.filter(...)` | **No** | No — use `par_collect_sexp` |
+| `.flat_map(...)` | **No** | No — use `par_collect_sexp` |
+
+### `par_collect_sexp()` — Non-Indexed Fallback
+
+For iterators that lose their index (`.filter()`, `.flat_map()`, `.par_bridge()`),
+use this function. It collects to an intermediate `Vec<T>` then converts to R.
+
+```rust
+use miniextendr_api::rayon_bridge;
+
+#[miniextendr]
+fn parallel_filter(x: &[f64]) -> SEXP {
+    // .filter() loses index — can't use .collect_r()
+    rayon_bridge::par_collect_sexp(
+        x.par_iter().filter(|&&v| v > 0.0).copied()
+    )
+}
+```
+
+### `.collect()` with `Sendable<SEXP>` Return Type
+
+If you prefer standard `.collect()` syntax, return `Sendable<SEXP>` from your function.
+The return type drives type inference so no turbofish is needed:
+
+```rust
+use miniextendr_api::worker::Sendable;
+
+#[miniextendr]
+fn parallel_sqrt(x: &[f64]) -> Sendable<SEXP> {
+    x.par_iter().map(|&v| v.sqrt()).collect()
+}
+```
+
+`Sendable<SEXP>` implements both `IntoR` (works as `#[miniextendr]` return type) and
+`From<Sendable<SEXP>> for SEXP` (for manual unwrapping with `.into()`).
+
+This path collects to an intermediate `Vec<T>` before converting to R.
+For zero-copy performance, use `.collect_r()`.
+
+### Choosing a Collection Strategy
+
+| Strategy | Allocation | Requires | Best For |
+|----------|-----------|----------|----------|
+| `.collect_r()` | Zero-copy into R | Indexed iterator | Max performance |
+| `-> Sendable<SEXP>` + `.collect()` | Vec + copy to R | Any par iterator | Standard rayon idiom |
+| `par_map(x, f)` | Zero-copy into R | Input slice | Simple 1:1 transforms |
+| `par_collect_sexp(iter)` | Vec + copy to R | Any par iterator | Filters, flat maps |
+| `-> Vec<T>` return | Vec + copy to R | Nothing special | Simplest code |
+
 ### Parallel Collection (Vec\<T\>)
 
 For operations that don't fit the chunk model (filtering, variable-length output),
-collect into `Vec<T>` and let miniextendr convert to R:
+you can also just return `Vec<T>` and let miniextendr convert to R:
 
 ```rust
 #[miniextendr]
@@ -225,49 +311,68 @@ fn parallel_pipeline(x: &[f64]) -> Vec<f64> {
 
 ## Patterns
 
-### Pattern 1: par_map (Best for Transforms)
+### Pattern 1: `.collect_r()` (Best Default)
 
-**Use when:** Transforming input data element-wise
+**Use when:** Any parallel transform where output length equals input length
 
-**Performance:** Best — zero intermediate allocation, framework-managed parallelism
+**Performance:** Best — zero intermediate allocation, writes directly into R memory
 
 ```rust
+use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};
+
+#[miniextendr]
+fn parallel_sqrt(x: &[f64]) -> SEXP {
+    x.par_iter().map(|&v| v.sqrt()).collect_r()
+}
+
+#[miniextendr]
+fn generate_sequence(n: i32) -> SEXP {
+    (0..n).into_par_iter().map(|i| (i as f64).sin()).collect_r()
+}
+```
+
+### Pattern 2: `par_map` / `with_r_vec` (Closure Style)
+
+**Use when:** You prefer a closure-based API, or need per-chunk state (e.g., RNG)
+
+**Performance:** Same as `.collect_r()` — zero copy, deterministic chunks
+
+```rust
+// par_map: one-liner for element-wise transforms
 #[miniextendr]
 fn parallel_sqrt(x: &[f64]) -> SEXP {
     par_map(x, |&v| v.sqrt())
 }
-```
 
-### Pattern 2: with_r_vec (Best for Generation)
-
-**Use when:** Generating data from indices or with per-chunk state (e.g., RNG)
-
-**Performance:** Best — zero copy, deterministic chunk boundaries
-
-```rust
+// with_r_vec: access to chunk offset for per-chunk state
 #[miniextendr]
-fn generate_sequence(n: i32) -> SEXP {
+fn generate_random(n: i32, seed: i64) -> SEXP {
     with_r_vec(n as usize, |chunk: &mut [f64], offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = ((offset + i) as f64).sin();
-        }
+        let mut rng = ChaChaRng::seed_from_u64(seed as u64 + offset as u64);
+        for slot in chunk.iter_mut() { *slot = rng.gen(); }
     })
 }
 ```
 
-### Pattern 3: Collect to Vec (Flexible)
+### Pattern 3: `par_collect_sexp` / `Vec<T>` (Flexible)
 
-**Use when:** Variable-length output (filtering), multi-step pipelines
+**Use when:** Variable-length output (filtering, flat-mapping)
 
-**Performance:** Moderate — one extra allocation
+**Performance:** Moderate — one extra allocation (intermediate `Vec<T>`)
 
 ```rust
+// par_collect_sexp: returns SEXP directly
 #[miniextendr]
-fn parallel_filter(x: &[f64]) -> Vec<f64> {
-    x.par_iter()
-        .filter(|&&v| v > 0.0)
-        .map(|&v| v.log2())
-        .collect()
+fn parallel_filter(x: &[f64]) -> SEXP {
+    rayon_bridge::par_collect_sexp(
+        x.par_iter().filter(|&&v| v > 0.0).copied()
+    )
+}
+
+// Or just return Vec<T> — miniextendr converts automatically
+#[miniextendr]
+fn parallel_filter_vec(x: &[f64]) -> Vec<f64> {
+    x.par_iter().filter(|&&v| v > 0.0).map(|&v| v.log2()).collect()
 }
 ```
 
@@ -398,11 +503,12 @@ with_r_vec(len, |chunk, offset| {
 
 ### Optimization Tips
 
-1. **Use `par_map`** for input→output transforms (simplest, fastest)
-2. **Use `with_r_vec`** when you need per-chunk state (RNG, accumulators)
-3. **Collect to `Vec<T>`** only when output length differs from input
-4. **Profile First**: Measure before assuming parallelism helps
-5. **Consider R Alternatives**: Vectorized R operations are fast
+1. **Use `.collect_r()`** for par iterator chains — zero-copy into R memory
+2. **Use `par_map`** for simple element-wise transforms (same performance, closure style)
+3. **Use `with_r_vec`** when you need per-chunk state (RNG, accumulators)
+4. **Use `par_collect_sexp`** only for non-indexed iterators (`.filter()`, `.flat_map()`)
+5. **Profile First**: Measure before assuming parallelism helps
+6. **Consider R Alternatives**: Vectorized R operations are fast
 
 ## Safety
 
@@ -438,7 +544,7 @@ with_r_vec(n, |chunk, _| {
 
 - **GC Protection**: Pre-allocated SEXPs are `Rf_protect`ed during parallel writes
 - **No Concurrent R Access**: All R operations happen before/after parallel section
-- **RAII Guards**: `UnprotectGuard` ensures cleanup even on panic
+- **RAII Guards**: `WorkerUnprotectGuard` ensures cleanup even on panic
 
 ## Examples
 
@@ -503,8 +609,10 @@ fn euclidean_distance(x: &[f64], y: &[f64]) -> SEXP {
 
 ### Error: "with_r_thread called outside of run_on_worker context"
 
-**Solution:** Rayon integration only works inside `#[miniextendr]` functions
-(which use `run_on_worker`).
+**Solution:** With the `worker-thread` feature, Rayon integration only works
+inside `#[miniextendr]` functions (which use `run_on_worker`). Without the
+feature, `with_r_thread` is an inline stub that requires `miniextendr_runtime_init()`
+to have been called.
 
 ### Slow Performance
 

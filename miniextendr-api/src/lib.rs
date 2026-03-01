@@ -318,7 +318,7 @@ pub mod worker;
 pub use worker::{Sendable, is_r_main_thread, with_r_thread};
 
 // Required exports for generated code and initialization
-pub use worker::miniextendr_worker_init;
+pub use worker::miniextendr_runtime_init;
 
 // Advanced/internal worker items remain under worker:: namespace:
 // - has_worker_context()
@@ -825,11 +825,11 @@ pub use optionals::borsh_impl;
 pub use optionals::{Borsh, RBorshOps, borsh_from_raw, borsh_to_raw};
 
 #[cfg(feature = "bitflags")]
+pub use bitflags;
+#[cfg(feature = "bitflags")]
 pub use optionals::bitflags_impl;
 #[cfg(feature = "bitflags")]
 pub use optionals::{Flags, RFlags};
-#[cfg(feature = "bitflags")]
-pub use bitflags;
 
 #[cfg(feature = "bitvec")]
 pub use optionals::bitvec_impl;

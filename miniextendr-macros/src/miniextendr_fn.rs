@@ -786,8 +786,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         if input.is_empty() {
             return Ok(Self {
-                force_main_thread: force_main_thread
-                    .unwrap_or(cfg!(feature = "default-main-thread")),
+                force_main_thread: force_main_thread.unwrap_or(true),
                 force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
                 force_invisible,
                 check_interrupt,
@@ -801,7 +800,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 dots_span,
                 lifecycle,
                 strict: strict.unwrap_or(cfg!(feature = "default-strict")),
-                error_in_r: error_in_r.unwrap_or(cfg!(feature = "default-error-in-r")),
+                error_in_r: error_in_r.unwrap_or(true),
                 internal,
                 noexport,
                 doc,
@@ -1217,17 +1216,17 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         }
 
         // Resolve feature defaults for fields not explicitly set
-        let resolved_error_in_r = error_in_r.unwrap_or(cfg!(feature = "default-error-in-r"));
+        let resolved_error_in_r = error_in_r.unwrap_or(true);
         if resolved_error_in_r && unwrap_in_r {
-            // This can happen when error_in_r comes from feature default and unwrap_in_r is explicit
+            // This can happen when error_in_r is the default and unwrap_in_r is explicit
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "`error_in_r` (from `default-error-in-r` feature) and `unwrap_in_r` are mutually exclusive; use `no_error_in_r` to opt out",
+                "`error_in_r` (default) and `unwrap_in_r` are mutually exclusive; use `no_error_in_r` to opt out",
             ));
         }
 
         Ok(Self {
-            force_main_thread: force_main_thread.unwrap_or(cfg!(feature = "default-main-thread")),
+            force_main_thread: force_main_thread.unwrap_or(true),
             force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
             force_invisible,
             check_interrupt,

@@ -6,10 +6,12 @@
 
 pub mod cfg_parity;
 pub mod export_attrs;
+pub mod ffi_unchecked;
 pub mod fn_visibility;
 pub mod impl_validation;
 pub mod module_graph;
 pub mod module_items;
+pub mod rf_error;
 pub mod submodule_wiring;
 pub mod tag_collision;
 pub mod trait_registration;
@@ -51,6 +53,12 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: export attr redundancy (MXL203)
     export_attrs::check(index, &mut diagnostics);
+
+    // Per-file: direct Rf_error/Rf_errorcall usage (MXL300)
+    rf_error::check(index, &mut diagnostics);
+
+    // Per-file: ffi::*_unchecked() usage (MXL301)
+    ffi_unchecked::check(index, &mut diagnostics);
 
     // Sort by path and line for deterministic output
     diagnostics.sort_by(|a, b| {
