@@ -290,6 +290,137 @@ NOT_CRAN=true just devtools-test # Run R tests
 - **Dots (`...`)**: R's variadic args become `_dots: &Dots`. Use `name @ ...` for custom name. See `docs/DOTS_TYPED_LIST.md`
 - **typed_list!**: Validate dots structure with `#[miniextendr(dots = typed_list!(...))]`. Creates `dots_typed` variable.
 
+## FFI Thread Checking (`#[r_ffi_checked]`)
+
+The `#[r_ffi_checked]` proc-macro attribute on `unsafe extern` blocks generates **both** checked and `*_unchecked` variants of every declared function and static. Checked wrappers route through `with_r_thread()` (debug thread assertion); `*_unchecked` variants bypass thread checking entirely.
+
+### How it works
+
+```rust
+// In ffi.rs:
+#[r_ffi_checked]
+unsafe extern "C-unwind" {
+    pub fn Rf_allocVector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP;
+}
+
+// Generates:
+// pub unsafe fn Rf_allocVector(...)       → debug thread-assert, then calls real symbol
+// pub unsafe fn Rf_allocVector_unchecked(...) → calls real symbol directly
+```
+
+Use `_unchecked` variants when you are **certain** you are on the R main thread (e.g., inside ALTREP callbacks, `with_r_unwind_protect` closures, or `with_r_thread` blocks) and want to eliminate the debug-mode assertion overhead.
+
+### Complete list of `_unchecked` variants
+
+All **functions** below have a corresponding `*_unchecked` variant (e.g., `Rf_protect` → `Rf_protect_unchecked`). **Statics** (like `R_NilValue`, `R_NaString`) are passed through unchanged — they don't get `_unchecked` variants.
+
+**Statics (no unchecked variant)** (`ffi.rs`):
+`R_NilValue`, `R_NaString`, `R_BlankString`, `R_NamesSymbol`, `R_DimSymbol`, `R_DimNamesSymbol`, `R_ClassSymbol`, `R_RowNamesSymbol`, `R_LevelsSymbol`, `R_TspSymbol`, `R_GlobalEnv`, `R_BaseEnv`, `R_EmptyEnv`, `R_MissingArg`, `R_TrueValue`^nonapi^, `R_FalseValue`^nonapi^, `R_LogicalNAValue`^nonapi^
+
+**String/character** (`ffi.rs`):
+`Rf_mkChar`, `Rf_mkCharLen`, `Rf_mkCharLenCE`, `Rf_mkCharCE`, `Rf_xlength`, `Rf_translateCharUTF8`, `Rf_getCharCE`, `Rf_charIsASCII`, `Rf_charIsUTF8`, `Rf_charIsLatin1`, `R_nchar`, `Rf_type2char`, `R_CHAR`
+
+**Unwind protect** (`ffi.rs`):
+`R_MakeUnwindCont`, `R_ContinueUnwind`, `R_UnwindProtect`, `R_UnwindProtect_C_unwind`
+
+**External pointers** (`ffi.rs`):
+`R_MakeExternalPtr`, `R_ExternalPtrAddr`, `R_ExternalPtrTag`, `R_ExternalPtrProtected`, `R_ClearExternalPtr`, `R_SetExternalPtrAddr`, `R_SetExternalPtrTag`, `R_SetExternalPtrProtected`, `R_MakeExternalPtrFn`, `R_ExternalPtrAddrFn`, `R_RegisterFinalizer`, `R_RegisterCFinalizer`, `R_RegisterFinalizerEx`, `R_RegisterCFinalizerEx`
+
+**C-callable interface** (`ffi.rs`):
+`R_RegisterCCallable`, `R_GetCCallable`
+
+**GC protection** (`ffi.rs`):
+`R_PreserveObject`, `R_ReleaseObject`, `Rf_protect`, `Rf_unprotect`, `Rf_unprotect_ptr`, `R_ProtectWithIndex`, `R_Reprotect`
+
+**Vector allocation** (`ffi.rs`):
+`Rf_allocVector`, `Rf_allocMatrix`, `Rf_allocArray`, `Rf_alloc3DArray`, `Rf_allocList`, `Rf_allocLang`, `Rf_allocS4Object`, `Rf_allocSExp`
+
+**Pairlist construction** (`ffi.rs`):
+`Rf_cons`, `Rf_lcons`
+
+**Attribute manipulation** (`ffi.rs`):
+`Rf_setAttrib`, `Rf_getAttrib`, `Rf_namesgets`, `Rf_dimgets`, `Rf_classgets`, `Rf_dimnamesgets`, `Rf_GetRowNames`, `Rf_GetColNames`, `SET_ATTRIB`, `ATTRIB`
+
+**Scalar constructors** (`ffi.rs`):
+`Rf_ScalarComplex`, `Rf_ScalarInteger`, `Rf_ScalarLogical`, `Rf_ScalarRaw`, `Rf_ScalarReal`, `Rf_ScalarString`
+
+**Data pointers** (`ffi.rs`):
+`DATAPTR`^nonapi^, `DATAPTR_RO`, `DATAPTR_OR_NULL`, `LOGICAL`, `INTEGER`, `REAL`, `COMPLEX`, `RAW`
+
+**Cons cell (pairlist) accessors** (`ffi.rs`):
+`CAR`, `CDR`, `CAAR`, `CDAR`, `CADR`, `CDDR`, `CADDR`, `CADDDR`, `CAD4R`, `TAG`, `SET_TAG`, `SETCAR`, `SETCDR`, `SETCADR`, `SETCADDR`, `SETCADDDR`, `SETCAD4R`
+
+**Nullable data pointers** (`ffi.rs`):
+`LOGICAL_OR_NULL`, `INTEGER_OR_NULL`, `REAL_OR_NULL`, `COMPLEX_OR_NULL`, `RAW_OR_NULL`
+
+**Element-wise accessors (ALTREP-aware)** (`ffi.rs`):
+`INTEGER_ELT`, `REAL_ELT`, `LOGICAL_ELT`, `COMPLEX_ELT`, `RAW_ELT`, `VECTOR_ELT`, `STRING_ELT`, `SET_STRING_ELT`, `SET_LOGICAL_ELT`, `SET_INTEGER_ELT`, `SET_REAL_ELT`, `SET_COMPLEX_ELT`, `SET_RAW_ELT`, `SET_VECTOR_ELT`
+
+**SEXP metadata** (`ffi.rs`):
+`LENGTH`, `XLENGTH`, `TRUELENGTH`, `OBJECT`, `SET_OBJECT`, `LEVELS`, `SETLEVELS`, `TYPEOF`, `ALTREP`
+
+**ALTREP support** (`ffi.rs`):
+`ALTREP_CLASS`, `R_altrep_data1`, `R_altrep_data2`, `R_set_altrep_data1`, `R_set_altrep_data2`
+
+**Symbol and duplication** (`ffi.rs`):
+`Rf_install`, `Rf_installChar`, `PRINTNAME`, `Rf_duplicate`, `Rf_shallow_duplicate`, `Rf_copyMostAttrib`, `Rf_any_duplicated`, `R_compute_identical`, `Rf_PrintValue`
+
+**Type coercion** (`ffi.rs`):
+`Rf_asLogical`, `Rf_asInteger`, `Rf_asReal`, `Rf_asChar`, `Rf_coerceVector`
+
+**Matrix utilities** (`ffi.rs`):
+`Rf_nrows`, `Rf_ncols`
+
+**Type checking predicates** (`ffi.rs`):
+`Rf_inherits`, `Rf_isNull`, `Rf_isSymbol`, `Rf_isLogical`, `Rf_isReal`, `Rf_isComplex`, `Rf_isExpression`, `Rf_isEnvironment`, `Rf_isString`, `Rf_isArray`, `Rf_isMatrix`, `Rf_isList`, `Rf_isNewList`, `Rf_isPairList`, `Rf_isFunction`, `Rf_isPrimitive`, `Rf_isLanguage`, `Rf_isDataFrame`, `Rf_isFactor`, `Rf_isInteger`, `Rf_isObject`, `Rf_isOrdered`, `Rf_isUnordered`, `Rf_isUnsorted`
+
+**Pairlist utilities** (`ffi.rs`):
+`Rf_elt`, `Rf_lastElt`, `Rf_nthcdr`, `Rf_listAppend`, `Rf_PairToVectorList`, `Rf_VectorToPairList`
+
+**Environment operations** (`ffi.rs`):
+`Rf_findVar`, `Rf_findVarInFrame`, `Rf_findVarInFrame3`, `Rf_defineVar`, `Rf_setVar`, `Rf_findFun`, `R_NewEnv`, `R_existsVarInFrame`, `R_removeVarFromFrame`, `Rf_topenv`
+
+**Evaluation** (`ffi.rs`):
+`Rf_eval`, `Rf_applyClosure`, `R_tryEval`, `R_tryEvalSilent`, `R_forceAndCall`
+
+**Matching and factors** (`ffi.rs`):
+`Rf_match`, `Rf_asS4`, `Rf_S3Class`, `Rf_substitute`, `Rf_lengthgets`, `Rf_xlengthgets`
+
+**Options** (`ffi.rs`):
+`Rf_GetOption1`, `Rf_GetOptionDigits`, `Rf_GetOptionWidth`
+
+**Weak references** (`ffi.rs`):
+`R_MakeWeakRef`, `R_MakeWeakRefC`, `R_WeakRefKey`, `R_WeakRefValue`, `R_RunPendingFinalizers`
+
+**User interrupt** (`ffi.rs`):
+`R_CheckUserInterrupt`, `R_FlushConsole`
+
+**Connections API** (`ffi.rs`, `#[cfg(feature = "connections")]`):
+`R_new_custom_connection`, `R_ReadConnection`, `R_WriteConnection`, `R_GetConnection`
+
+**Routine registration** (`ffi.rs`):
+`R_registerRoutines`, `R_useDynamicSymbols`, `R_forceSymbols`
+
+**Legacy C ABI** (`ffi.rs`, `legacy_c` module):
+`R_RegisterCFinalizer_C`, `R_RegisterCFinalizerEx_C`, `R_MakeExternalPtrFn_C`, `R_ExternalPtrAddrFn_C`, `R_registerRoutines_C`
+
+**Non-API encoding** (`ffi.rs`, `#[cfg(feature = "nonapi")]`):
+`R_nativeEncoding` (function → `_unchecked`); `utf8locale`, `latin1locale`, `known_to_be_utf8` (statics, no unchecked)
+
+**RNG** (`ffi.rs`):
+`GetRNGstate`, `PutRNGstate`, `unif_rand`, `norm_rand`, `exp_rand`, `R_unif_index`, `R_sample_kind`
+
+**Memory allocation** (`ffi.rs`):
+`vmaxget`, `vmaxset`, `R_gc`, `R_gc_running`, `R_alloc`, `R_allocLD`, `S_alloc`, `S_realloc`, `R_malloc_gc`, `R_calloc_gc`, `R_realloc_gc`
+
+**Sorting and utility** (`ffi.rs`):
+`R_isort`, `R_rsort`, `R_csort`, `revsort`, `rsort_with_index`, `iPsort`, `rPsort`, `cPsort`, `R_qsort`, `R_qsort_I`, `R_qsort_int`, `R_qsort_int_I`, `R_ExpandFileName`, `R_atof`, `R_strtod`, `R_tmpnam`, `R_tmpnam2`, `R_free_tmpnam`, `R_CheckStack`, `R_CheckStack2`, `findInterval`, `findInterval2`, `R_max_col`, `StringFalse`, `StringTrue`, `isBlankString`
+
+**ALTREP class construction and method registration** (`ffi/altrep.rs`):
+`R_new_altrep`, `R_make_altstring_class`, `R_make_altinteger_class`, `R_make_altreal_class`, `R_make_altlogical_class`, `R_make_altraw_class`, `R_make_altcomplex_class`, `R_make_altlist_class`, `R_altrep_inherits`, `R_set_altrep_UnserializeEX_method`, `R_set_altrep_Unserialize_method`, `R_set_altrep_Serialized_state_method`, `R_set_altrep_DuplicateEX_method`, `R_set_altrep_Duplicate_method`, `R_set_altrep_Coerce_method`, `R_set_altrep_Inspect_method`, `R_set_altrep_Length_method`, `R_set_altvec_Dataptr_method`, `R_set_altvec_Dataptr_or_null_method`, `R_set_altvec_Extract_subset_method`, `R_set_altinteger_Elt_method`, `R_set_altinteger_Get_region_method`, `R_set_altinteger_Is_sorted_method`, `R_set_altinteger_No_NA_method`, `R_set_altinteger_Sum_method`, `R_set_altinteger_Min_method`, `R_set_altinteger_Max_method`, `R_set_altreal_Elt_method`, `R_set_altreal_Get_region_method`, `R_set_altreal_Is_sorted_method`, `R_set_altreal_No_NA_method`, `R_set_altreal_Sum_method`, `R_set_altreal_Min_method`, `R_set_altreal_Max_method`, `R_set_altlogical_Elt_method`, `R_set_altlogical_Get_region_method`, `R_set_altlogical_Is_sorted_method`, `R_set_altlogical_No_NA_method`, `R_set_altlogical_Sum_method`, `R_set_altraw_Elt_method`, `R_set_altraw_Get_region_method`, `R_set_altcomplex_Elt_method`, `R_set_altcomplex_Get_region_method`, `R_set_altstring_Elt_method`, `R_set_altstring_Set_elt_method`, `R_set_altstring_Is_sorted_method`, `R_set_altstring_No_NA_method`, `R_set_altlist_Elt_method`, `R_set_altlist_Set_elt_method`
+
+^nonapi^ = requires `#[cfg(feature = "nonapi")]`
+
 ## Reference Documentation
 
 The `background/` folder (gitignored) contains reference documentation.
