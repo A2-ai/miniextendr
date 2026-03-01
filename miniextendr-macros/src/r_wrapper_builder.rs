@@ -64,14 +64,20 @@ pub fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
 /// - Dots (`...`) with optional naming
 /// - Consistent formatting across function and method wrappers
 pub struct RArgumentBuilder<'a> {
+    /// The function's input parameters from the parsed Rust signature.
     inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-    /// If true, last parameter is treated as dots (`...`)
+    /// If true, last parameter is treated as dots (`...`).
     has_dots: bool,
-    /// Optional named binding for dots (e.g., `args = ...`)
+    /// Optional named binding for dots (e.g., `args @ ...` in Rust becomes a named dots param).
+    /// The name is normalized (leading underscores stripped) but only used on the Rust side;
+    /// R formals always emit plain `...`.
     named_dots: Option<String>,
-    /// If true, skip the first parameter (used for `self` in method wrappers)
+    /// If true, skip the first parameter (used for `self`/`&self` in method wrappers,
+    /// since the self argument is handled separately by [`DotCallBuilder::with_self`]).
     skip_first: bool,
-    /// Parameter default values from `#[miniextendr(default = "...")]`
+    /// Parameter default values from `#[miniextendr(default = "...")]` attributes.
+    /// Keys are normalized R parameter names, values are R expressions emitted verbatim
+    /// (e.g., `"1L"`, `"c(1, 2, 3)"`, `"NULL"`).
     defaults: std::collections::HashMap<String, String>,
 }
 
@@ -88,12 +94,19 @@ impl<'a> RArgumentBuilder<'a> {
     }
 
     /// Add parameter defaults from `#[miniextendr(default = "...")]` attributes.
+    ///
+    /// Keys are normalized R parameter names (after underscore stripping),
+    /// values are R expression strings emitted verbatim into formals.
     pub fn with_defaults(mut self, defaults: std::collections::HashMap<String, String>) -> Self {
         self.defaults = defaults;
         self
     }
 
     /// Mark the last parameter as dots (`...`).
+    ///
+    /// If `named_dots` is `Some("name")`, the dots have a Rust-side binding
+    /// (from `name @ ...` syntax). The name is normalized but only affects the
+    /// Rust side -- R formals always emit plain `...`.
     pub fn with_dots(mut self, named_dots: Option<String>) -> Self {
         self.has_dots = true;
         self.named_dots = named_dots.map(|s| {
@@ -174,7 +187,10 @@ impl<'a> RArgumentBuilder<'a> {
         self.build_call_args_vec().join(", ")
     }
 
-    /// Build R call arguments as `Vec<String>`.
+    /// Build R call arguments as a `Vec<String>`.
+    ///
+    /// Each element is a single argument expression. Dots parameters become
+    /// `"list(...)"` to capture variadic args as an R list for the `.Call()` interface.
     pub fn build_call_args_vec(&self) -> Vec<String> {
         let mut call_args = Vec::new();
         let last_idx = self.inputs.len().saturating_sub(1);
@@ -209,10 +225,13 @@ impl<'a> RArgumentBuilder<'a> {
     }
 }
 
-/// Build R formal parameters from a Rust signature, with optional defaults.
+/// Build R formal parameters from a Rust function signature, with optional defaults.
 ///
-/// Missing<T> parameters without user defaults appear as bare formals (no default).
-/// The `if (missing())` prelude is generated separately via [`build_missing_prelude`].
+/// Automatically skips `self`/`&self` receivers. `Missing<T>` parameters without
+/// user-provided defaults appear as bare formals (no default value); the
+/// `if (missing())` prelude is generated separately via [`build_missing_prelude`].
+///
+/// Returns a comma-separated string of R formals, e.g., `"x, y = NULL, ..."`.
 pub(crate) fn build_r_formals_from_sig(
     sig: &syn::Signature,
     defaults: &std::collections::HashMap<String, String>,
@@ -225,7 +244,12 @@ pub(crate) fn build_r_formals_from_sig(
     builder.build_formals()
 }
 
-/// Build R .Call arguments from a Rust signature.
+/// Build R `.Call()` arguments from a Rust function signature.
+///
+/// Automatically skips `self`/`&self` receivers (those are passed separately
+/// via [`DotCallBuilder::with_self`]). Dots become `list(...)`.
+///
+/// Returns a comma-separated string of R call arguments, e.g., `"x, y, list(...)"`.
 pub(crate) fn build_r_call_args_from_sig(sig: &syn::Signature) -> String {
     let mut builder = RArgumentBuilder::new(&sig.inputs);
     if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
@@ -236,8 +260,12 @@ pub(crate) fn build_r_call_args_from_sig(sig: &syn::Signature) -> String {
 
 /// Collect parameter identifiers from a function signature.
 ///
-/// Skips receivers and optionally the first argument. Optionally normalizes
-/// identifiers for R-friendly names.
+/// Skips `self`/`&self` receivers unconditionally. When `skip_first` is true,
+/// also skips the first `FnArg::Typed` parameter (used for methods where the
+/// first typed argument is the self external pointer). When `normalize` is true,
+/// applies [`normalize_r_arg_ident`] to strip leading underscores.
+///
+/// Returns parameter names in declaration order.
 pub(crate) fn collect_param_idents(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
     skip_first: bool,
@@ -267,7 +295,10 @@ pub(crate) fn collect_param_idents(
 // Missing<T> detection for automatic defaults
 // =============================================================================
 
-/// Check if a type is `Missing<T>`.
+/// Check if a type is `Missing<T>` by examining the last path segment.
+///
+/// `Missing<T>` is the miniextendr wrapper for R's "missing argument" concept,
+/// allowing Rust functions to accept optional arguments that R callers can omit.
 fn is_missing_type(ty: &syn::Type) -> bool {
     match ty {
         syn::Type::Path(tp) => tp
@@ -284,6 +315,9 @@ fn is_missing_type(ty: &syn::Type) -> bool {
 ///
 /// These parameters need an automatic R default of `quote(expr=)` which
 /// evaluates to `R_MissingArg` (the "missing argument" sentinel).
+/// Names are normalized via [`normalize_r_arg_ident`].
+///
+/// Returns normalized parameter names in declaration order.
 pub fn collect_missing_params(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
 ) -> Vec<String> {
@@ -305,14 +339,17 @@ pub fn collect_missing_params(
     missing_params
 }
 
-/// Build `if (missing(param)) param <- quote(expr=)` prelude lines for Missing<T> parameters.
+/// Build `if (missing(param)) param <- quote(expr=)` prelude lines for `Missing<T>` parameters.
 ///
-/// These lines go in the function body BEFORE the .Call(), keeping the R function
+/// These lines go in the R function body BEFORE the `.Call()`, keeping the R function
 /// signature clean (no `quote(expr=)` in formals) while still passing the
-/// R_MissingArg sentinel through to Rust.
+/// `R_MissingArg` sentinel through to Rust when the caller omits the argument.
 ///
-/// Skips parameters that already have a user-specified default (they appear in
-/// formals with that default, so `missing()` would never be true).
+/// Skips parameters that already have a user-specified default (from
+/// `#[miniextendr(default = "...")]`), since those appear in formals with that
+/// default and `missing()` would never be true for them.
+///
+/// Returns a vector of R code lines, one per `Missing<T>` parameter.
 pub fn build_missing_prelude(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
     user_defaults: &std::collections::HashMap<String, String>,
@@ -347,8 +384,13 @@ pub fn build_missing_prelude(
 /// // => ".Call(C_Counter__add, .call = match.call(), x, n)"
 /// ```
 pub struct DotCallBuilder {
+    /// The C entry point symbol name (e.g., `"C_Counter__increment"`).
+    /// This is the first argument to `.Call()`.
     c_ident: String,
+    /// Optional self/receiver variable name (e.g., `"self"`, `"x"`).
+    /// When present, prepended before other arguments in the `.Call()` invocation.
     self_var: Option<String>,
+    /// Additional argument names passed after self (if any) in the `.Call()` invocation.
     args: Vec<String>,
 }
 
@@ -415,14 +457,27 @@ impl DotCallBuilder {
 /// // => vec!["#' @name Counter$increment", "#' @rdname Counter", "#' @export"]
 /// ```
 pub struct RoxygenBuilder {
+    /// Value for `@name` tag. Identifies the documented topic (e.g., `"Counter$increment"`).
     name: Option<String>,
+    /// Value for `@rdname` tag. Groups multiple entries onto a single help page
+    /// (e.g., all methods of `"Counter"` share one Rd file).
     rdname: Option<String>,
+    /// Value for `@title` tag. The one-line title shown in help page headers.
     title: Option<String>,
+    /// Value for `@description` tag. Longer description text below the title.
     description: Option<String>,
+    /// Value for `@source` tag. Typically `"Generated by miniextendr"` provenance info.
     source: Option<String>,
+    /// Whether to emit `@export`. When true, the item is exported from the package NAMESPACE.
     export: bool,
+    /// Value for `@exportMethod` tag. Used for S4 method exports (e.g., `"show"`).
     export_method: Option<String>,
-    method: Option<(String, String)>, // (generic, class)
+    /// Values for `@method` tag as `(generic, class)`. Used for S3 method dispatch
+    /// (e.g., `("print", "Counter")` emits `@method print Counter`).
+    method: Option<(String, String)>,
+    /// Additional custom tag lines emitted verbatim (without the `#' ` prefix,
+    /// which is added during [`build`](Self::build)). Used for tags like
+    /// `@keywords internal` or `@param` entries.
     custom_tags: Vec<String>,
 }
 
@@ -534,6 +589,7 @@ impl RoxygenBuilder {
     }
 }
 
+/// Delegates to [`RoxygenBuilder::new`], creating an empty builder with no tags set.
 impl Default for RoxygenBuilder {
     fn default() -> Self {
         Self::new()

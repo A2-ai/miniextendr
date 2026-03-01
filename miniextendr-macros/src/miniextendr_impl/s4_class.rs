@@ -2,12 +2,21 @@
 
 use super::ParsedImpl;
 
-/// Generate R wrapper string for S4-style class.
+/// Generates the complete R wrapper string for an S4-style class.
 ///
-/// Creates:
-/// - setClass with ptr slot
-/// - Constructor function
-/// - setMethod for each instance method
+/// Produces the following R code:
+/// - Class definition: `methods::setClass("<class>", slots = c(ptr = "externalptr"))`
+///   with a single `ptr` slot holding the `ExternalPtr` to the Rust struct
+/// - Constructor function: `ClassName(...)` that calls the Rust `new` constructor
+///   and wraps the result with `methods::new("<class>", ptr = .val)`
+/// - S4 generics: `methods::setGeneric(...)` for each instance method (idempotent,
+///   always emitted rather than using conditional `isGeneric()` checks)
+/// - S4 methods: `methods::setMethod("<generic>", "<class>", function(x, ...) ...)`
+///   dispatching to the Rust `.Call()` wrapper, extracting the ptr via `x@ptr`
+/// - Static methods: regular functions named `<class>_<method>(...)`
+///
+/// Roxygen2 `@exportMethod`, `@importFrom methods`, and `@slot` tags are generated
+/// as appropriate.
 pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
 

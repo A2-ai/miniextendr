@@ -40,78 +40,106 @@ pub enum ThreadStrategy {
 
 impl ThreadStrategy {}
 
-/// Return value handling strategy.
+/// Strategy for converting a Rust return value into an R `SEXP`.
+///
+/// Determined automatically by [`detect_return_handling`] from the function's return type,
+/// or set explicitly via [`CWrapperContextBuilder::return_handling`]. Each variant
+/// handles a different return type pattern, controlling how the C wrapper converts
+/// the Rust value back to R and how errors/None values are surfaced.
 #[derive(Debug, Clone)]
 pub enum ReturnHandling {
-    /// Returns unit type () - use R_NilValue
+    /// Returns unit type `()` -- emits `R_NilValue`.
     Unit,
-    /// Returns raw SEXP - pass through
+    /// Returns raw `SEXP` -- passes the value through unchanged (no conversion).
     RawSexp,
-    /// Returns Self - wrap in ExternalPtr
+    /// Returns `Self` -- wraps the value in an `ExternalPtr` via `ExternalPtr::new`.
     ExternalPtr,
-    /// Returns other type - use IntoR::into_sexp
+    /// Returns an arbitrary type `T: IntoR` -- converts via `IntoR::into_sexp`.
     IntoR,
-    /// Returns Option<()> - check for None, return R_NilValue
+    /// Returns `Option<()>` -- raises an error on `None`, otherwise emits `R_NilValue`.
     OptionUnit,
-    /// Returns `Option<SEXP>` - check for None, pass through
+    /// Returns `Option<SEXP>` -- raises an error on `None`, otherwise passes through.
     OptionSexp,
-    /// Returns `Option<T>` - check for None, use IntoR
+    /// Returns `Option<T>` -- raises an error on `None`, otherwise converts via `IntoR::into_sexp`.
     OptionIntoR,
-    /// Returns Result<(), E> - check for Err, return R_NilValue
+    /// Returns `Result<(), E>` -- raises an error on `Err`, otherwise emits `R_NilValue`.
     ResultUnit,
-    /// Returns Result<SEXP, E> - check for Err, pass through
+    /// Returns `Result<SEXP, E>` -- raises an error on `Err`, otherwise passes through.
     ResultSexp,
-    /// Returns Result<T, E> - check for Err, use IntoR
+    /// Returns `Result<T, E>` -- raises an error on `Err`, otherwise converts via `IntoR::into_sexp`.
     ResultIntoR,
 }
 
-/// Context for generating a C wrapper function.
+/// All information needed to generate a C wrapper function for an R-exported Rust item.
 ///
-/// This struct holds all the information needed to generate a C wrapper,
-/// abstracting over differences between standalone functions and impl methods.
+/// This struct abstracts over the differences between standalone `#[miniextendr]` functions
+/// and `impl` block methods (R6, S3, S4, S7, Env). It is constructed via
+/// [`CWrapperContextBuilder`] and consumed by [`CWrapperContext::generate`], which emits
+/// both the `extern "C-unwind"` wrapper and the corresponding `R_CallMethodDef` constant.
 pub struct CWrapperContext {
-    /// Rust function/method identifier
+    /// Identifier of the original Rust function or method being wrapped.
     pub fn_ident: syn::Ident,
-    /// C wrapper identifier (e.g., `C_foo` or `C_Type__method`)
+    /// Identifier for the generated C wrapper (e.g., `C_foo` or `C_Type__method`).
     pub c_ident: syn::Ident,
-    /// R wrapper const identifier for doc links
+    /// Identifier of the `R_WRAPPER_*` or `R_WRAPPERS_IMPL_*` const that holds the
+    /// generated R wrapper code string. Used for rustdoc cross-references.
     pub r_wrapper_const: syn::Ident,
-    /// Function inputs (without self receiver)
+    /// Function parameters (excluding the `self` receiver for methods).
+    /// Each parameter becomes a `SEXP` argument in the C wrapper signature.
     pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    /// Return type (used for strict-mode type inspection)
+    /// The original Rust return type. Used by strict-mode to inspect whether the inner
+    /// type is lossy (e.g., `i64`, `u64`) and needs checked conversion.
     pub output: syn::ReturnType,
-    /// Pre-call statements (e.g., self extraction for methods)
+    /// Statements emitted before the call expression. For instance methods, this
+    /// includes extracting `self` from the `ExternalPtr` SEXP.
     pub pre_call: Vec<TokenStream>,
-    /// The call expression (e.g., `my_func(args)` or `self_ref.method(args)`)
+    /// The actual Rust call expression (e.g., `my_func(arg0, arg1)` or
+    /// `self_ref.method(arg0)`). Inserted into the wrapper body after conversions.
     pub call_expr: TokenStream,
-    /// Thread strategy
+    /// Whether to run on the main R thread or dispatch to the worker thread.
     pub thread_strategy: ThreadStrategy,
-    /// Return handling strategy
+    /// How to convert the Rust return value into a `SEXP` for R.
     pub return_handling: ReturnHandling,
-    /// Enable coercion for all parameters
+    /// When `true`, all parameters use coercing conversion (`Rf_coerceVector`) instead
+    /// of strict type-matching. Set by `#[miniextendr(coerce)]`.
     pub coerce_all: bool,
-    /// Parameters with individual coercion enabled
+    /// Names of individual parameters that use coercing conversion.
+    /// Set by `#[miniextendr(coerce = "param_name")]`.
     pub coerce_params: Vec<String>,
-    /// Check interrupt before call
+    /// When `true`, emits `R_CheckUserInterrupt()` before the call expression.
+    /// Set by `#[miniextendr(check_interrupt)]`.
     pub check_interrupt: bool,
-    /// Use RNG state management (GetRNGstate/PutRNGstate)
+    /// When `true`, wraps the call in `GetRNGstate()`/`PutRNGstate()` for R's
+    /// random number generator state management. Set by `#[miniextendr(rng)]`.
     pub rng: bool,
-    /// cfg attributes to propagate
+    /// `#[cfg(...)]` attributes from the original item, propagated to the C wrapper
+    /// and `call_method_def` constant so they are conditionally compiled.
     pub cfg_attrs: Vec<syn::Attribute>,
-    /// Type identifier for method context (for doc generation)
+    /// For methods: the type identifier (e.g., `MyStruct`). Used in doc comments
+    /// and default `call_method_def` naming. `None` for standalone functions.
     pub type_context: Option<syn::Ident>,
-    /// Whether this is an instance method (has self parameter)
+    /// Whether the original method has a `self` receiver. When `true`, the C wrapper
+    /// includes a `self_sexp` parameter before the regular arguments.
     pub has_self: bool,
-    /// Custom call_method_def identifier (if None, uses default naming)
+    /// Override for the `call_method_def` constant name. If `None`, defaults to
+    /// `call_method_def_{type}_{method}` (methods) or `call_method_def_{fn}` (standalone).
     pub call_method_def_ident: Option<syn::Ident>,
-    /// Strict conversion mode: use checked conversions for lossy return types.
+    /// When `true`, uses `checked_into_sexp_*` for lossy return types (`i64`, `u64`,
+    /// `isize`, `usize` and their `Vec` variants) instead of regular `IntoR::into_sexp`.
+    /// Set by `#[miniextendr(strict)]`.
     pub strict: bool,
-    /// error_in_r mode: return tagged error values instead of calling r_stop.
+    /// When `true`, Rust panics and errors return tagged `SEXP` error values
+    /// (via `make_rust_error_value`) instead of calling `r_stop`/`Rf_errorcall`.
+    /// The R wrapper then raises a structured condition object.
+    /// This is the default for standalone functions.
     pub error_in_r: bool,
 }
 
 impl CWrapperContext {
-    /// Create a new builder for constructing CWrapperContext.
+    /// Creates a new [`CWrapperContextBuilder`] with the given function and C wrapper identifiers.
+    ///
+    /// All other fields start at their defaults (empty/false/None). Use the builder methods
+    /// to configure the context, then call [`CWrapperContextBuilder::build`] to finalize.
     pub fn builder(fn_ident: syn::Ident, c_ident: syn::Ident) -> CWrapperContextBuilder {
         CWrapperContextBuilder {
             fn_ident,
@@ -136,7 +164,13 @@ impl CWrapperContext {
         }
     }
 
-    /// Generate the C wrapper function and call_method_def.
+    /// Generates the complete output for this wrapper: an `extern "C-unwind"` function
+    /// and an `R_CallMethodDef` constant, both decorated with `#[cfg(...)]` attributes
+    /// if present.
+    ///
+    /// Dispatches to [`generate_main_thread_wrapper`](Self::generate_main_thread_wrapper) or
+    /// [`generate_worker_thread_wrapper`](Self::generate_worker_thread_wrapper) based on
+    /// [`thread_strategy`](Self::thread_strategy).
     pub fn generate(&self) -> TokenStream {
         let c_wrapper = match self.thread_strategy {
             ThreadStrategy::MainThread => self.generate_main_thread_wrapper(),
@@ -156,7 +190,14 @@ impl CWrapperContext {
         }
     }
 
-    /// Build C wrapper parameter list.
+    /// Builds the C wrapper's parameter list from the Rust function signature.
+    ///
+    /// Returns a tuple of:
+    /// - `c_params`: `SEXP` parameter declarations for the C wrapper signature. Always
+    ///   starts with `__miniextendr_call` (the R call object for error context), followed
+    ///   by `self_sexp` for instance methods, then `arg_0`, `arg_1`, ... for each input.
+    /// - `rust_args`: The original Rust parameter identifiers (used in the call expression).
+    /// - `sexp_idents`: The generated `arg_N` identifiers (used in SEXP-to-Rust conversions).
     fn build_c_params(&self) -> (Vec<TokenStream>, Vec<syn::Ident>, Vec<syn::Ident>) {
         let mut c_params: Vec<TokenStream> = Vec::new();
         let mut rust_args: Vec<syn::Ident> = Vec::new();
@@ -187,7 +228,12 @@ impl CWrapperContext {
         (c_params, rust_args, sexp_idents)
     }
 
-    /// Generate conversion statements for parameters.
+    /// Generates `TryFromSexp` conversion statements for each parameter.
+    ///
+    /// Each statement converts an `arg_N: SEXP` into the corresponding Rust type
+    /// declared in the original function signature. Respects `strict` and `coerce` settings.
+    ///
+    /// Used by the main-thread wrapper where all conversions happen inline.
     fn build_conversion_stmts(&self, sexp_idents: &[syn::Ident]) -> Vec<TokenStream> {
         let mut builder = crate::RustConversionBuilder::new();
         if self.strict {
@@ -236,7 +282,11 @@ impl CWrapperContext {
         (all_pre, all_in)
     }
 
-    /// Generate the main thread wrapper body.
+    /// Generates an `extern "C-unwind"` wrapper that runs entirely on the R main thread.
+    ///
+    /// The wrapper body is enclosed in `with_r_unwind_protect` (or its `_error_in_r` variant),
+    /// which catches both Rust panics and R longjmps. When `rng` is enabled, the call is
+    /// additionally wrapped in `catch_unwind` so that `PutRNGstate()` runs even on panic.
     fn generate_main_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
         let (c_params, _, sexp_idents) = self.build_c_params();
@@ -324,7 +374,17 @@ impl CWrapperContext {
         }
     }
 
-    /// Generate the worker thread wrapper body.
+    /// Generates an `extern "C-unwind"` wrapper that dispatches to the worker thread.
+    ///
+    /// Structure:
+    /// 1. `GetRNGstate()` (if `rng` enabled)
+    /// 2. `catch_unwind` around the entire body
+    /// 3. Pre-closure conversions on the main thread (produces owned values)
+    /// 4. `run_on_worker` (or `run_on_worker_result` in `error_in_r` mode) with a
+    ///    `move` closure containing in-closure conversions and the call expression
+    /// 5. Return conversion back on the main thread via `with_r_unwind_protect`
+    /// 6. `PutRNGstate()` (if `rng` enabled)
+    /// 7. Panic handling: either tagged error value or `Rf_errorcall`
     fn generate_worker_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
         let (c_params, _, sexp_idents) = self.build_c_params();
@@ -442,7 +502,11 @@ impl CWrapperContext {
         }
     }
 
-    /// Generate return handling for main thread strategy.
+    /// Generates the inline return-handling code for the main-thread wrapper.
+    ///
+    /// Emits the call expression followed by conversion logic based on [`ReturnHandling`].
+    /// For `Option`/`Result` variants, also emits error-path code: either a tagged error
+    /// value (`error_in_r`) or a call to `r_stop`.
     fn generate_return_handling(&self, call_expr: &TokenStream) -> TokenStream {
         let fn_ident = &self.fn_ident;
 
@@ -614,8 +678,16 @@ impl CWrapperContext {
         }
     }
 
-    /// Generate return handling for worker thread strategy.
-    /// Returns (worker_body, return_conversion).
+    /// Generates return-handling code split between worker and main threads.
+    ///
+    /// Returns `(worker_body, return_conversion)`:
+    /// - `worker_body`: Runs inside the `run_on_worker` closure. Contains the call
+    ///   expression and, for non-`error_in_r` mode, error checking (`Option::None` /
+    ///   `Result::Err` handling).
+    /// - `return_conversion`: Runs back on the main thread after the worker returns.
+    ///   Converts the Rust value to SEXP (via `with_r_unwind_protect`). In `error_in_r`
+    ///   mode, error checking also happens here since the worker returns the raw
+    ///   `Option`/`Result` for the main thread to inspect.
     fn generate_worker_return_handling(
         &self,
         call_expr: &TokenStream,
@@ -906,7 +978,11 @@ impl CWrapperContext {
         quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#result_ident) }
     }
 
-    /// Generate call_method_def constant.
+    /// Generates the `R_CallMethodDef` constant for R's `.Call` interface registration.
+    ///
+    /// The constant contains the C symbol name, a `DL_FUNC` pointer to the wrapper
+    /// (obtained via `transmute`), and the argument count. R uses this at package load
+    /// time (via `R_registerRoutines`) to register the native routine.
     fn generate_call_method_def(&self) -> TokenStream {
         let fn_ident = &self.fn_ident;
         let c_ident = &self.c_ident;
@@ -970,7 +1046,10 @@ impl CWrapperContext {
         }
     }
 
-    /// Generate doc comment for the C wrapper.
+    /// Generates a rustdoc comment string for the C wrapper function.
+    ///
+    /// Includes the original function/method name, thread strategy label, and a
+    /// cross-reference to the R wrapper constant.
     fn generate_doc_comment(&self, thread_info: &str) -> String {
         if let Some(ref type_ident) = self.type_context {
             format!(
@@ -986,40 +1065,65 @@ impl CWrapperContext {
     }
 }
 
-/// Builder for CWrapperContext.
+/// Builder for [`CWrapperContext`].
+///
+/// Created via [`CWrapperContext::builder`]. All fields except `fn_ident` and `c_ident`
+/// (provided at construction) default to empty/false/None. Required fields (`call_expr`,
+/// `r_wrapper_const`) must be set before calling [`build`](Self::build) or it will panic.
+///
+/// Optional fields like `thread_strategy` and `return_handling` are auto-detected from
+/// the function signature if not explicitly set.
 pub struct CWrapperContextBuilder {
+    /// Rust function/method identifier (set at construction).
     fn_ident: syn::Ident,
+    /// C wrapper function identifier (set at construction).
     c_ident: syn::Ident,
+    /// R wrapper constant identifier for doc cross-references. **Required.**
     r_wrapper_const: Option<syn::Ident>,
+    /// Function parameters (excluding `self`). Defaults to empty.
     inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    /// Rust return type. Defaults to `()` (no return type annotation).
     output: syn::ReturnType,
+    /// Pre-call statements emitted before the call expression. Defaults to empty.
     pre_call: Vec<TokenStream>,
+    /// The Rust call expression. **Required.**
     call_expr: Option<TokenStream>,
+    /// Thread strategy override. If `None`, defaults to [`ThreadStrategy::MainThread`].
     thread_strategy: Option<ThreadStrategy>,
+    /// Return handling override. If `None`, auto-detected from `output` via [`detect_return_handling`].
     return_handling: Option<ReturnHandling>,
+    /// Enable coercing conversion for all parameters.
     coerce_all: bool,
+    /// Names of individual parameters with coercing conversion enabled.
     coerce_params: Vec<String>,
+    /// Emit `R_CheckUserInterrupt()` before the call.
     check_interrupt: bool,
+    /// Wrap call in `GetRNGstate()`/`PutRNGstate()`.
     rng: bool,
+    /// `#[cfg(...)]` attributes to propagate to generated items.
     cfg_attrs: Vec<syn::Attribute>,
+    /// Type identifier for method context (e.g., `MyStruct`). `None` for standalone functions.
     type_context: Option<syn::Ident>,
+    /// Whether the original method has a `self` receiver.
     has_self: bool,
-    /// Custom call_method_def identifier (if not set, uses default naming)
+    /// Custom `call_method_def` constant name override.
     call_method_def_ident: Option<syn::Ident>,
-    /// Strict conversion mode.
+    /// Enable strict checked conversions for lossy return types.
     strict: bool,
-    /// error_in_r mode.
+    /// Enable error_in_r mode (tagged error values instead of `r_stop`).
     error_in_r: bool,
 }
 
 impl CWrapperContextBuilder {
-    /// Set the R wrapper constant identifier.
+    /// Sets the R wrapper constant identifier (e.g., `R_WRAPPER_my_func`).
+    /// **Required** -- [`build`](Self::build) panics if not set.
     pub fn r_wrapper_const(mut self, ident: syn::Ident) -> Self {
         self.r_wrapper_const = Some(ident);
         self
     }
 
-    /// Set the function inputs.
+    /// Sets the function parameters (excluding `self` receiver).
+    /// Each input becomes a `SEXP` argument in the C wrapper.
     pub fn inputs(
         mut self,
         inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
@@ -1028,43 +1132,47 @@ impl CWrapperContextBuilder {
         self
     }
 
-    /// Set the return type.
+    /// Sets the Rust return type. Used for auto-detecting [`ReturnHandling`]
+    /// and for strict-mode type inspection.
     pub fn output(mut self, output: syn::ReturnType) -> Self {
         self.output = output;
         self
     }
 
-    /// Add pre-call statements.
+    /// Sets pre-call statements emitted before the call expression.
+    /// Typically used for self-extraction in instance methods.
     pub fn pre_call(mut self, stmts: Vec<TokenStream>) -> Self {
         self.pre_call = stmts;
         self
     }
 
-    /// Set the call expression.
+    /// Sets the Rust call expression (e.g., `my_func(arg0)` or `self_ref.method(arg0)`).
+    /// **Required** -- [`build`](Self::build) panics if not set.
     pub fn call_expr(mut self, expr: TokenStream) -> Self {
         self.call_expr = Some(expr);
         self
     }
 
-    /// Set the thread strategy explicitly.
+    /// Overrides the thread strategy. If not called, defaults to [`ThreadStrategy::MainThread`].
     pub fn thread_strategy(mut self, strategy: ThreadStrategy) -> Self {
         self.thread_strategy = Some(strategy);
         self
     }
 
-    /// Set the return handling strategy explicitly.
+    /// Overrides the return handling strategy. If not called, auto-detected from `output`
+    /// via [`detect_return_handling`].
     pub fn return_handling(mut self, handling: ReturnHandling) -> Self {
         self.return_handling = Some(handling);
         self
     }
 
-    /// Enable coercion for all parameters.
+    /// Enables coercing conversion for all parameters via `Rf_coerceVector`.
     pub fn coerce_all(mut self) -> Self {
         self.coerce_all = true;
         self
     }
 
-    /// Enable interrupt checking.
+    /// Enables `R_CheckUserInterrupt()` before the call expression.
     pub fn check_interrupt(mut self) -> Self {
         self.check_interrupt = true;
         self
@@ -1076,31 +1184,35 @@ impl CWrapperContextBuilder {
         self
     }
 
-    /// Set cfg attributes.
+    /// Sets `#[cfg(...)]` attributes to propagate to the C wrapper and `call_method_def`.
     pub fn cfg_attrs(mut self, attrs: Vec<syn::Attribute>) -> Self {
         self.cfg_attrs = attrs;
         self
     }
 
-    /// Set type context for methods.
+    /// Sets the type context for methods (e.g., `MyStruct`). Used in doc comments
+    /// and default `call_method_def` naming.
     pub fn type_context(mut self, type_ident: syn::Ident) -> Self {
         self.type_context = Some(type_ident);
         self
     }
 
-    /// Mark this as an instance method (has self parameter).
+    /// Marks this as an instance method with a `self` receiver.
+    /// Causes the C wrapper to include a `self_sexp` parameter.
     pub fn has_self(mut self) -> Self {
         self.has_self = true;
         self
     }
 
-    /// Enable strict conversion mode for lossy return types.
+    /// Enables strict checked conversions for lossy return types (`i64`, `u64`, `isize`,
+    /// `usize` and their `Vec` variants).
     pub fn strict(mut self) -> Self {
         self.strict = true;
         self
     }
 
-    /// Enable error_in_r mode: return tagged error values instead of r_stop.
+    /// Enables error_in_r mode: panics and errors return tagged `SEXP` values
+    /// (via `make_rust_error_value`) instead of calling `r_stop`/`Rf_errorcall`.
     pub fn error_in_r(mut self) -> Self {
         self.error_in_r = true;
         self
@@ -1116,10 +1228,15 @@ impl CWrapperContextBuilder {
         self
     }
 
-    /// Build the CWrapperContext.
+    /// Consumes the builder and returns a fully configured [`CWrapperContext`].
+    ///
+    /// If `thread_strategy` was not set, defaults to [`ThreadStrategy::MainThread`].
+    /// If `return_handling` was not set, auto-detects from the `output` type via
+    /// [`detect_return_handling`].
     ///
     /// # Panics
-    /// Panics if required fields (call_expr, r_wrapper_const) are not set.
+    ///
+    /// Panics if `call_expr` or `r_wrapper_const` was not set.
     pub fn build(self) -> CWrapperContext {
         let call_expr = self
             .call_expr
@@ -1161,7 +1278,11 @@ impl CWrapperContextBuilder {
     }
 }
 
-/// Detect return handling strategy from return type.
+/// Detects the appropriate [`ReturnHandling`] strategy from a function's return type.
+///
+/// Inspects the `syn::ReturnType`:
+/// - No return type annotation (`Default`) maps to [`ReturnHandling::Unit`].
+/// - An explicit type is analyzed by [`detect_return_handling_from_type`].
 pub fn detect_return_handling(output: &syn::ReturnType) -> ReturnHandling {
     match output {
         syn::ReturnType::Default => ReturnHandling::Unit,
@@ -1169,7 +1290,15 @@ pub fn detect_return_handling(output: &syn::ReturnType) -> ReturnHandling {
     }
 }
 
-/// Detect return handling from a concrete return type.
+/// Determines the [`ReturnHandling`] variant for a concrete `syn::Type`.
+///
+/// Recognition rules:
+/// - `()` -> [`Unit`](ReturnHandling::Unit)
+/// - `Self` -> [`ExternalPtr`](ReturnHandling::ExternalPtr)
+/// - `SEXP` -> [`RawSexp`](ReturnHandling::RawSexp)
+/// - `Option<T>` -> recurses into `T` for `OptionUnit`, `OptionSexp`, or `OptionIntoR`
+/// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, or `ResultIntoR`
+/// - Anything else -> [`IntoR`](ReturnHandling::IntoR)
 fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
     match ty {
         // Unit tuple ()
@@ -1258,7 +1387,10 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
     }
 }
 
-/// Returns the first generic type argument from a path segment, if any.
+/// Extracts the first generic type argument from a path segment's angle-bracketed arguments.
+///
+/// For example, given `Option<String>`, returns `Some(&String)`.
+/// Returns `None` if the segment has no angle-bracketed arguments or no type arguments.
 fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
         for arg in ab.args.iter() {

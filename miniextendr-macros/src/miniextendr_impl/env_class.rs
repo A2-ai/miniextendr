@@ -2,7 +2,26 @@
 
 use super::ParsedImpl;
 
-/// Generate R wrapper string for env-style class.
+/// Generates the complete R wrapper string for an environment-based class.
+///
+/// Produces an R environment object (`new.env(parent = emptyenv())`) that serves as a
+/// class namespace, with methods attached as `ClassName$method_name`. This pattern
+/// supports both inherent methods and trait namespace dispatch via `$`/`[[`.
+///
+/// The generated code includes:
+/// - Class environment: `ClassName <- new.env(parent = emptyenv())`
+/// - Constructor: `ClassName$new(...)` that calls the Rust `new` function, sets
+///   `class(self) <- "ClassName"`, and returns the ExternalPtr as `self`
+/// - Instance methods: `ClassName$method(x = self, ...)` using default-arg binding
+///   so that `$` dispatch re-parents the environment to make `self` visible
+/// - Static methods: `ClassName$method(...)` that call Rust directly
+/// - `$.ClassName` S3 method: dispatches `obj$method(...)` by looking up the method
+///   in the class environment, binding `self` for instance methods, and supporting
+///   trait namespace environments (nested envs with `.__mx_instance__` attributes)
+/// - `[[.ClassName` alias: delegates to `$.ClassName`
+///
+/// Roxygen2 documentation is generated for the class, each method, and the
+/// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
 pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
 

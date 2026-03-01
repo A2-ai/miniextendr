@@ -20,21 +20,32 @@ use crate::miniextendr_module::{AltrepBase, MiniextendrModuleTraitImpl};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 
-/// Information about an ALTREP type to generate code for.
+/// Collected information about a single ALTREP type to generate registration code for.
+///
+/// Extracted from `impl Alt*Data for Type;` entries in `miniextendr_module!` by
+/// [`extract_altrep_impls`].
 pub(crate) struct AltrepTypeInfo<'a> {
-    /// The concrete type implementing the ALTREP traits.
-    /// This can be a simple type (`MyType`) or generic (`Vec<i32>`).
+    /// The concrete type implementing the ALTREP data traits.
+    /// This can be a simple type (`MyType`) or a generic type (`Vec<i32>`, `Range<i32>`).
     pub impl_type: &'a syn::Type,
-    /// The ALTREP base type (Integer, Real, etc.).
+    /// The ALTREP base type family, determined by which `Alt*Data` trait is declared
+    /// (e.g., `AltIntegerData` maps to `AltrepBase::Integer`).
     pub base: AltrepBase,
-    /// cfg attributes from the module declaration.
+    /// Any `#[cfg(...)]` attributes from the module entry, propagated to all generated
+    /// items so they are conditionally compiled in sync with the declaration.
     pub cfg_attrs: Vec<&'a syn::Attribute>,
 }
 
 impl<'a> AltrepTypeInfo<'a> {
-    /// Returns a sanitized class name for this ALTREP type.
+    /// Returns a sanitized ALTREP class name derived from the Rust type.
     ///
-    /// Converts generic types like `Vec<i32>` to `Vec_i32` for use as the ALTREP class name.
+    /// Generic types are normalized into valid C identifier-like strings by replacing
+    /// angle brackets, colons, commas, and spaces with underscores. For example:
+    /// - `MyType` stays `MyType`
+    /// - `Vec<i32>` becomes `Vec_i32`
+    /// - `std::ops::Range<i32>` becomes `std__ops__Range_i32`
+    ///
+    /// Consecutive underscores are collapsed and leading/trailing underscores are trimmed.
     pub(crate) fn class_name(&self) -> String {
         let type_str = self.impl_type.to_token_stream().to_string();
         // Replace special characters with underscores for valid class names
@@ -47,11 +58,27 @@ impl<'a> AltrepTypeInfo<'a> {
     }
 }
 
-/// Generate all ALTREP-related code for the module.
+/// Generates all ALTREP-related code for a `miniextendr_module!` expansion.
 ///
-/// Returns a tuple of:
-/// - Token stream with macro invocations and registration code
-/// - List of registration expressions to call at init time
+/// For each ALTREP type, this produces:
+/// 1. A `impl_alt*_from_data!` macro invocation for the low-level trait implementations
+///    (`Altrep`, `AltVec`, family-specific traits, and `InferBase`).
+/// 2. An `impl RegisterAltrep` block with a `OnceLock`-based lazy class initializer
+///    that calls `InferBase::make_class()` and `InferBase::install_methods()`.
+/// 3. An `impl IntoR` block for converting the Rust type into an R ALTREP SEXP.
+///
+/// All generated items inherit `#[cfg(...)]` attributes from the module declaration.
+///
+/// # Arguments
+///
+/// * `altrep_impls` -- Slice of [`AltrepTypeInfo`] extracted from the module's trait impls.
+///
+/// # Returns
+///
+/// A tuple of:
+/// - A [`TokenStream`] containing all macro invocations, `RegisterAltrep`, and `IntoR` impls.
+/// - A `Vec<syn::Expr>` of registration expressions (`T::get_or_init_class()`) to call
+///   during R package initialization.
 pub(crate) fn generate_altrep_code(
     altrep_impls: &[AltrepTypeInfo<'_>],
 ) -> (TokenStream, Vec<syn::Expr>) {
@@ -93,11 +120,19 @@ pub(crate) fn generate_altrep_code(
     (all_code, registration_exprs)
 }
 
-/// Generate the macro invocation for trait implementations.
+/// Generates the `impl_alt*_from_data!` macro invocation for a single ALTREP type.
 ///
-/// This delegates to the existing `impl_alt*_from_data!` macros which handle:
-/// - Low-level trait impls (Altrep, AltVec, Alt*)
-/// - InferBase impl (make_class, install_methods)
+/// Selects the correct macro based on [`AltrepBase`]:
+/// - `Integer` -- `impl_altinteger_from_data!`
+/// - `Real` -- `impl_altreal_from_data!`
+/// - `Logical` -- `impl_altlogical_from_data!`
+/// - `Raw` -- `impl_altraw_from_data!`
+/// - `String` -- `impl_altstring_from_data!`
+/// - `Complex` -- `impl_altcomplex_from_data!`
+/// - `List` -- `impl_altlist_from_data!`
+///
+/// These runtime macros generate `Altrep`, `AltVec`, family-specific trait impls,
+/// and `InferBase` (for class creation and method installation).
 fn generate_macro_invocation(info: &AltrepTypeInfo<'_>) -> TokenStream {
     let ty = info.impl_type;
 
@@ -126,10 +161,17 @@ fn generate_macro_invocation(info: &AltrepTypeInfo<'_>) -> TokenStream {
     }
 }
 
-/// Generate RegisterAltrep implementation.
+/// Generates the `impl RegisterAltrep for T` block for a single ALTREP type.
 ///
-/// This uses `InferBase::make_class()` and `InferBase::install_methods()` which are
-/// provided by the `impl_inferbase_*!` macros (called by `impl_alt*_from_data!`).
+/// The implementation uses a `static OnceLock<R_altrep_class_t>` to lazily create and
+/// cache the R ALTREP class handle. On first access it calls:
+/// 1. `InferBase::make_class()` -- creates the `R_altrep_class_t` via the appropriate
+///    `R_make_alt*_class` C function.
+/// 2. `InferBase::install_methods()` -- registers all ALTREP method trampolines
+///    (Length, Elt, Dataptr, etc.) on the class handle.
+///
+/// The class name is derived from the Rust type via [`AltrepTypeInfo::class_name`]
+/// and stored as a null-terminated byte string constant.
 fn generate_register_altrep(info: &AltrepTypeInfo<'_>) -> TokenStream {
     let ty = info.impl_type;
     // Use sanitized class name for generic types (e.g., "Vec_i32" for "Vec<i32>")
@@ -163,7 +205,16 @@ fn generate_register_altrep(info: &AltrepTypeInfo<'_>) -> TokenStream {
     }
 }
 
-/// Generate IntoR implementation for ALTREP type.
+/// Generates the `impl IntoR for T` block for a single ALTREP type.
+///
+/// The conversion wraps the Rust value in a `TypedExternal` external pointer (stored
+/// in the ALTREP data1 slot) and creates an ALTREP SEXP via `R_new_altrep`.
+///
+/// Both checked (`into_sexp`) and unchecked (`into_sexp_unchecked`) variants are
+/// generated. The checked variant uses thread-checked FFI calls; the unchecked variant
+/// bypasses thread assertions for use in contexts known to be on the R main thread.
+///
+/// The `Error` associated type is `Infallible` since ALTREP creation cannot fail.
 fn generate_into_r(info: &AltrepTypeInfo<'_>) -> TokenStream {
     let ty = info.impl_type;
 
@@ -206,7 +257,22 @@ fn generate_into_r(info: &AltrepTypeInfo<'_>) -> TokenStream {
     }
 }
 
-/// Extract ALTREP trait impls from the module's trait_impls.
+/// Partitions the module's `impl Trait for Type;` entries into ALTREP and non-ALTREP groups.
+///
+/// An entry is classified as ALTREP if its trait name matches one of the `Alt*Data` traits
+/// (determined by [`MiniextendrModuleTraitImpl::altrep_base`]). All other trait impls
+/// (e.g., cross-package trait ABI entries) are returned in the `other_impls` vector.
+///
+/// # Arguments
+///
+/// * `trait_impls` -- All `impl Trait for Type;` entries from the module.
+///
+/// # Returns
+///
+/// A tuple of:
+/// - `Vec<AltrepTypeInfo>` -- ALTREP entries with their base type and cfg attributes.
+/// - `Vec<&MiniextendrModuleTraitImpl>` -- Non-ALTREP trait impl entries, passed through
+///   unchanged for further processing by the module expansion.
 pub(crate) fn extract_altrep_impls<'a>(
     trait_impls: &'a [MiniextendrModuleTraitImpl],
 ) -> (Vec<AltrepTypeInfo<'a>>, Vec<&'a MiniextendrModuleTraitImpl>) {

@@ -77,6 +77,17 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
     roxygen_tags_from_attrs_impl(attrs, true)
 }
 
+/// Core implementation of roxygen tag extraction from `#[doc = "..."]` attributes.
+///
+/// Walks through doc attributes line by line. Lines starting with `@` begin a new tag.
+/// Continuation lines are appended only if the current tag is multiline-capable.
+///
+/// When `auto_description` is true and no `@tag` lines are found, the first paragraph
+/// of regular doc comments is auto-converted to `@description`.
+///
+/// Also auto-generates `@title` from the implicit title (first sentence) when tags
+/// are present but `@title` is missing, and `@description` when `@name` is present
+/// but `@description` is missing.
 fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool) -> Vec<String> {
     let mut tags = Vec::new();
     let mut regular_docs = Vec::new();
@@ -214,6 +225,10 @@ pub(crate) fn has_roxygen_tag(tags: &[String], tag: &str) -> bool {
     }
 }
 
+/// Extract the set of tag names from a list of roxygen tag strings.
+///
+/// Each tag string is expected to start with `@tagname`. Returns a set of
+/// the tag names (without the `@` prefix).
 fn tag_names(tags: &[String]) -> HashSet<&str> {
     let mut names = HashSet::new();
     for tag in tags {
@@ -249,6 +264,10 @@ pub(crate) fn find_tag_value<'a>(tags: &'a [String], tag_name: &str) -> Option<&
 }
 
 /// Normalize text for comparison: lowercase, collapse whitespace, strip trailing punctuation.
+///
+/// Used by `doc_conflict_warnings` to compare explicit `@title`/`@description` values
+/// with implicit values derived from the doc comment structure. Normalization ensures
+/// minor formatting differences (extra spaces, trailing periods) don't trigger false warnings.
 #[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
 fn normalize_for_comparison(s: &str) -> String {
     let lower = s.to_lowercase();
