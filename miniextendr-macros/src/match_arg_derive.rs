@@ -26,14 +26,21 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields};
 
-/// Parsed match_arg attributes.
+/// Parsed `#[match_arg(...)]` attributes from an enum or variant.
 #[derive(Default)]
 struct MatchArgAttrs {
+    /// Per-variant rename: `#[match_arg(rename = "custom")]`.
     rename: Option<String>,
+    /// Enum-level rename-all: `#[match_arg(rename_all = "snake_case")]`.
+    /// Applied to all variants that don't have an explicit `rename`.
     rename_all: Option<String>,
 }
 
-/// Parse match_arg attributes from an enum or variant.
+/// Parse `#[match_arg(...)]` attributes from a list of `syn::Attribute`.
+///
+/// Extracts `rename` and `rename_all` keys. Validates that `rename_all` uses
+/// one of the supported modes: `snake_case`, `kebab-case`, `lower`, `upper`.
+/// Returns `Err` for unknown attribute keys or unsupported `rename_all` values.
 fn parse_match_arg_attrs(attrs: &[syn::Attribute]) -> syn::Result<MatchArgAttrs> {
     let mut result = MatchArgAttrs::default();
 
@@ -68,7 +75,7 @@ fn parse_match_arg_attrs(attrs: &[syn::Attribute]) -> syn::Result<MatchArgAttrs>
     Ok(result)
 }
 
-// Reuse the case conversion from factor_derive (same logic).
+/// Convert a PascalCase string to snake_case (same logic as `factor_derive`).
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
     for (i, c) in s.chars().enumerate() {
@@ -84,10 +91,15 @@ fn to_snake_case(s: &str) -> String {
     result
 }
 
+/// Convert a PascalCase string to kebab-case (same logic as `factor_derive`).
 fn to_kebab_case(s: &str) -> String {
     to_snake_case(s).replace('_', "-")
 }
 
+/// Apply a `rename_all` transformation to a variant name.
+///
+/// Supports `"snake_case"`, `"kebab-case"`, `"lower"`, `"upper"`.
+/// Returns the name unchanged if `rename_all` is `None`.
 fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
     match rename_all {
         Some("snake_case") => to_snake_case(name),
@@ -98,7 +110,23 @@ fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
     }
 }
 
-/// Generate the MatchArg derive implementation.
+/// Main entry point for `#[derive(MatchArg)]`.
+///
+/// Generates three trait implementations:
+/// - `impl MatchArg` -- provides `CHOICES` (static string slice), `from_choice`, `to_choice`
+/// - `impl TryFromSexp` -- converts R character scalar to enum variant via `match_arg_from_sexp`
+/// - `impl IntoR` -- converts enum variant to R character scalar via `to_choice().into_sexp()`
+///
+/// Validates:
+/// - Only enums are accepted (not structs or unions)
+/// - Generic enums are rejected
+/// - At least one variant is required
+/// - Only fieldless (C-style) variants are allowed
+/// - No duplicate choice names after renaming
+///
+/// Choice names default to variant identifiers, optionally transformed by
+/// `#[match_arg(rename_all = "...")]` or overridden per-variant with
+/// `#[match_arg(rename = "...")]`.
 pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();

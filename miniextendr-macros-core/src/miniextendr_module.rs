@@ -95,17 +95,26 @@ impl syn::parse::Parse for MiniextendrModuleFunction {
 }
 
 impl MiniextendrModuleFunction {
-    /// Identifier for the generated `R_CallMethodDef` entry for this function.
+    /// Returns the identifier for the generated `R_CallMethodDef` entry for this function.
+    ///
+    /// Delegates to [`call_method_def_ident_for`](crate::call_method_def_ident_for),
+    /// producing `call_method_def_{ident}`.
     pub fn call_method_def_ident(&self) -> syn::Ident {
         call_method_def_ident_for(&self.ident)
     }
 
-    /// Identifier for the generated R wrapper source string const.
+    /// Returns the identifier for the generated `const &str` holding R wrapper source.
+    ///
+    /// Delegates to [`r_wrapper_const_ident_for`](crate::r_wrapper_const_ident_for),
+    /// producing `R_WRAPPER_{IDENT}` (uppercased).
     pub fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(&self.ident)
     }
 
-    /// Identifier for the match_arg choices helper call defs array.
+    /// Returns the identifier for the match_arg choices helper call defs array.
+    ///
+    /// Delegates to [`match_arg_call_defs_ident_for`](crate::match_arg_call_defs_ident_for),
+    /// producing `MATCH_ARG_CALL_DEFS_{IDENT}` (uppercased).
     pub fn match_arg_call_defs_ident(&self) -> syn::Ident {
         match_arg_call_defs_ident_for(&self.ident)
     }
@@ -265,9 +274,17 @@ pub enum AltrepBase {
 }
 
 impl MiniextendrModuleTraitImpl {
-    /// Returns a sanitized string name for the type, suitable for identifier generation.
+    /// Returns a sanitized string name for the implementing type, suitable for use in
+    /// generated Rust identifiers.
     ///
-    /// Converts generic types like `Vec<i32>` to `Vec_i32`, `Range<i32>` to `Range_i32`, etc.
+    /// Replaces angle brackets, spaces, colons, and commas with underscores, then
+    /// collapses runs of underscores and trims leading/trailing underscores.
+    ///
+    /// # Examples
+    ///
+    /// - `Vec<i32>` becomes `"Vec_i32"`
+    /// - `Range<i32>` becomes `"Range_i32"`
+    /// - `MyType` becomes `"MyType"`
     pub fn type_name_sanitized(&self) -> String {
         use quote::ToTokens;
         let type_str = self.impl_type.to_token_stream().to_string();
@@ -280,8 +297,10 @@ impl MiniextendrModuleTraitImpl {
             .to_string()
     }
 
-    /// Returns the identifier for the call defs const.
-    /// Format: `{TYPE}_{TRAIT}_CALL_DEFS`
+    /// Returns the identifier for the `R_CallMethodDef` array const for this trait impl.
+    ///
+    /// Format: `{TYPE}_{TRAIT}_CALL_DEFS` (both uppercased). Used by the module macro to
+    /// collect all `.Call` entry points for R routine registration.
     pub fn call_defs_const_ident(&self) -> syn::Ident {
         let type_upper = self.type_name_sanitized().to_uppercase();
         let trait_name = self
@@ -293,8 +312,10 @@ impl MiniextendrModuleTraitImpl {
         quote::format_ident!("{}_{}_CALL_DEFS", type_upper, trait_name)
     }
 
-    /// Returns the identifier for the R wrappers const.
-    /// Format: `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
+    /// Returns the identifier for the `const &str` holding the R wrapper source for this trait impl.
+    ///
+    /// Format: `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL` (both uppercased). The module macro
+    /// concatenates these fragments to produce the final R wrapper file.
     pub fn r_wrappers_const_ident(&self) -> syn::Ident {
         let type_upper = self.type_name_sanitized().to_uppercase();
         let trait_name = self
@@ -306,7 +327,10 @@ impl MiniextendrModuleTraitImpl {
         quote::format_ident!("R_WRAPPERS_{}_{}_IMPL", type_upper, trait_name)
     }
 
-    /// Returns the trait name (last segment of the path).
+    /// Returns the trait name as a string (last path segment only).
+    ///
+    /// For `crate::MyTrait`, returns `"MyTrait"`. Returns an empty string if the
+    /// path has no segments (which should not happen in practice).
     pub fn trait_name(&self) -> String {
         self.trait_path
             .segments
@@ -315,8 +339,11 @@ impl MiniextendrModuleTraitImpl {
             .unwrap_or_default()
     }
 
-    /// Checks if this trait impl is for an ALTREP data trait.
-    /// Returns the ALTREP base type if so.
+    /// Checks if this trait impl is for one of the built-in ALTREP data traits.
+    ///
+    /// Returns `Some(AltrepBase)` if the trait name matches an ALTREP data trait
+    /// (e.g., `AltIntegerData`, `AltRealData`), or `None` for non-ALTREP traits.
+    /// Used to determine whether the module macro should invoke `impl_alt*_from_data!`.
     pub fn altrep_base(&self) -> Option<AltrepBase> {
         match self.trait_name().as_str() {
             "AltIntegerData" => Some(AltrepBase::Integer),
@@ -351,9 +378,10 @@ impl MiniextendrModuleTraitImpl {
 }
 
 impl MiniextendrModuleImpl {
-    /// Returns the identifier for the call defs const.
+    /// Returns the identifier for the `R_CallMethodDef` array const for this impl block.
     ///
-    /// Format: `{TYPE}_CALL_DEFS` or `{TYPE}_{LABEL}_CALL_DEFS` if labeled.
+    /// Format: `{TYPE}_CALL_DEFS` (unlabeled) or `{TYPE}_{LABEL}_CALL_DEFS` (labeled),
+    /// all uppercased. Used by the module macro to collect `.Call` entry points.
     pub fn call_defs_const_ident(&self) -> syn::Ident {
         let type_upper = self.ident.to_string().to_uppercase();
         if let Some(ref label) = self.label {
@@ -364,9 +392,10 @@ impl MiniextendrModuleImpl {
         }
     }
 
-    /// Returns the identifier for the R wrappers const.
+    /// Returns the identifier for the `const &str` holding R wrapper source for this impl block.
     ///
-    /// Format: `R_WRAPPERS_IMPL_{TYPE}` or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` if labeled.
+    /// Format: `R_WRAPPERS_IMPL_{TYPE}` (unlabeled) or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` (labeled),
+    /// all uppercased. The module macro concatenates these to produce the final R wrapper file.
     pub fn r_wrappers_const_ident(&self) -> syn::Ident {
         let type_upper = self.ident.to_string().to_uppercase();
         if let Some(ref label) = self.label {
@@ -377,7 +406,7 @@ impl MiniextendrModuleImpl {
         }
     }
 
-    /// Returns the label if present.
+    /// Returns the label string if this is a labeled impl block, or `None` for unlabeled.
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
@@ -435,9 +464,10 @@ impl syn::parse::Parse for MiniextendrModuleVctrs {
 }
 
 impl MiniextendrModuleVctrs {
-    /// Returns the identifier for the R wrappers const.
+    /// Returns the identifier for the `const &str` holding R wrapper source (S3 method wrappers).
     ///
-    /// Format: `R_WRAPPERS_VCTRS_{TYPE}`
+    /// Format: `R_WRAPPERS_VCTRS_{TYPE}` (uppercased). The module macro concatenates
+    /// these fragments to produce the final R wrapper file.
     pub fn r_wrappers_const_ident(&self) -> syn::Ident {
         let type_upper = self.ident.to_string().to_uppercase();
         quote::format_ident!("R_WRAPPERS_VCTRS_{}", type_upper)
@@ -546,18 +576,29 @@ pub struct MiniextendrModule {
 }
 
 /// Internal: one semicolon-terminated item in a `miniextendr_module!` body.
+///
+/// Used as an intermediate representation during parsing. The [`MiniextendrModule`]
+/// parser collects these items, then sorts them into typed vectors.
 enum MiniextendrModuleItem {
+    /// `mod <name>;` — the required module name header.
     Module(MiniextendrModuleName),
+    /// `use <submodule>;` — re-export from a child module.
     Use(MiniextendrModuleUse),
+    /// `struct <Name>;` — ALTREP class registration.
     Struct(MiniextendrModuleStruct),
+    /// `fn <name>;` — `#[miniextendr]` function registration.
     Func(MiniextendrModuleFunction),
+    /// `impl <Type>;` or `impl <Type> as "label";` — impl block registration.
     Impl(MiniextendrModuleImpl),
+    /// `impl <Trait> for <Type>;` — trait impl registration (boxed due to larger size).
     TraitImpl(Box<MiniextendrModuleTraitImpl>),
+    /// `vctrs <Type>;` — vctrs S3 type registration.
     Vctrs(MiniextendrModuleVctrs),
 }
 
 impl MiniextendrModuleItem {
-    /// Get a representative span for this item (for error reporting).
+    /// Returns a representative [`Span`](proc_macro2::Span) for this item, used to
+    /// attach error messages to the correct source location (e.g., for "missing `mod`" errors).
     fn span(&self) -> proc_macro2::Span {
         use syn::spanned::Spanned;
         match self {

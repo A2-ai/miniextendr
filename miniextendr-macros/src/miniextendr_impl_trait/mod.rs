@@ -113,53 +113,66 @@ use syn::ItemImpl;
 use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 
 /// Parsed method from a trait impl block.
+///
+/// Stores everything needed to generate C wrappers, R wrappers, and vtable
+/// shims for a single method in an `impl Trait for Type` block.
 #[derive(Debug, Clone)]
 struct TraitMethod {
-    /// Method identifier
+    /// Rust method identifier (e.g., `value`, `increment`).
     ident: syn::Ident,
-    /// Method signature (including self)
+    /// Full method signature including self receiver and all parameters.
     sig: syn::Signature,
-    /// Does this method have a receiver (&self, &mut self, self)?
+    /// Whether the method has a receiver (`&self`, `&mut self`).
+    /// False for static/associated methods.
     has_self: bool,
-    /// Is this &mut self (vs &self)? Only meaningful if has_self is true.
+    /// Whether receiver is `&mut self` (vs `&self`). Only meaningful if `has_self` is true.
     is_mut: bool,
+    /// When true, forces execution on R's main thread via `unsafe(main_thread)`.
     unsafe_main_thread: bool,
-    /// Enable automatic type coercion for all parameters
+    /// Enable automatic type coercion for all parameters via `Rf_coerceVector`.
     coerce: bool,
-    /// Check for R user interrupts before calling the method
+    /// Check for R user interrupts (`R_CheckUserInterrupt`) before calling the method.
     check_interrupt: bool,
-    /// Enable RNG state management (GetRNGstate/PutRNGstate)
+    /// Enable RNG state management (`GetRNGstate`/`PutRNGstate`) around the call.
     rng: bool,
-    /// Return `Result<T, E>` to R without unwrapping.
+    /// Return `Result<T, E>` to R without unwrapping -- R wrapper receives the result variant.
     unwrap_in_r: bool,
-    /// Transport Rust-origin errors as tagged values; R wrapper raises condition.
+    /// Transport Rust-origin errors as tagged SEXP values; R wrapper raises a condition.
     error_in_r: bool,
-    /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`
+    /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`.
+    /// Keys are parameter names, values are R expressions used as default values.
     param_defaults: std::collections::HashMap<String, String>,
-    /// Roxygen @param tags extracted from method doc comments
+    /// Roxygen `@param` tags extracted from method doc comments.
     param_tags: Vec<String>,
     /// When true, this method is excluded from C wrappers, R wrappers, and vtable shims.
     /// The method is still kept in the emitted impl block (it's a real trait method).
     skip: bool,
     /// Override the R-facing method name. When set, the R wrapper uses this name
-    /// instead of the Rust method name (e.g., `next` → `next_item` to avoid R reserved words).
+    /// instead of the Rust method name (e.g., `next` -> `next_item` to avoid R reserved words).
     r_name: Option<String>,
 }
 
 impl TraitMethod {
-    /// The R-facing method name (uses `r_name` if set, otherwise the Rust ident).
+    /// Returns the R-facing method name.
+    ///
+    /// Uses `r_name` override if set, otherwise falls back to the Rust identifier string.
     fn r_method_name(&self) -> String {
         self.r_name
             .clone()
             .unwrap_or_else(|| self.ident.to_string())
     }
 
-    /// C wrapper identifier: `C_{Type}__{Trait}__{method}`
+    /// Generates the C wrapper function identifier: `C_{Type}__{Trait}__{method}`.
+    ///
+    /// This is the symbol name registered with R via `R_CallMethodDef` for `.Call()` access.
     fn c_wrapper_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
         format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
     }
 
     /// Returns true if this method has no return type (returns unit `()`).
+    ///
+    /// Used to decide whether the R wrapper should emit `invisible(x)` for
+    /// void instance methods (pipe-friendly chaining).
     fn returns_unit(&self) -> bool {
         match &self.sig.output {
             syn::ReturnType::Default => true,
@@ -169,7 +182,9 @@ impl TraitMethod {
         }
     }
 
-    /// R_CallMethodDef identifier
+    /// Generates the `R_CallMethodDef` static identifier: `call_method_def_{Type}__{Trait}_{method}`.
+    ///
+    /// This constant holds the C function pointer and arity used by R's `.Call()` registration.
     fn call_method_def_ident(
         &self,
         type_ident: &syn::Ident,
@@ -184,22 +199,27 @@ impl TraitMethod {
     }
 }
 
-/// Parsed const from a trait impl block.
+/// Parsed associated constant from a trait impl block.
+///
+/// Trait constants are exposed to R as zero-argument `.Call()` wrappers
+/// that simply return the constant value.
 #[derive(Debug)]
 struct TraitConst {
-    /// Const identifier
+    /// Constant identifier (e.g., `MAX_SIZE`).
     ident: syn::Ident,
-    /// Const type
+    /// Constant type (e.g., `i32`, `&str`). Used to determine SEXP conversion.
     ty: syn::Type,
 }
 
 impl TraitConst {
-    /// C wrapper identifier: `C_{Type}__{Trait}__{CONST}`
+    /// Generates the C wrapper function identifier: `C_{Type}__{Trait}__{CONST}`.
+    ///
+    /// This is the symbol name registered with R for `.Call()` access to the constant.
     fn c_wrapper_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
         format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
     }
 
-    /// R_CallMethodDef identifier
+    /// Generates the `R_CallMethodDef` static identifier: `call_method_def_{Type}__{Trait}_{CONST}`.
     fn call_method_def_ident(
         &self,
         type_ident: &syn::Ident,
@@ -350,6 +370,10 @@ fn type_to_uppercase_name(ty: &syn::Type) -> String {
 
 /// Input to the `__mx_trait_impl_expand!` proc macro.
 ///
+/// TPIE (Trait-Provided Impl Expansion) allows empty `#[miniextendr] impl Trait for Type {}`
+/// blocks to auto-expand C/R wrappers using metadata embedded in a `macro_rules!` helper
+/// generated at the trait definition site.
+///
 /// Parsed from tokens like:
 /// ```text
 /// concrete_type = Point;
@@ -359,18 +383,29 @@ fn type_to_uppercase_name(ty: &syn::Type) -> String {
 /// method { r_name = debug_str_pretty; fn debug_str_pretty(&self) -> String; }
 /// ```
 struct TpieInput {
+    /// The concrete type implementing the trait (e.g., `Point`).
     concrete_type: syn::Type,
+    /// Fully qualified path to the trait (e.g., `miniextendr_api::adapter_traits::RDebug`).
     trait_path: syn::Path,
+    /// Which R class system to generate wrappers for (env, r6, s3, s4, s7).
     class_system: ClassSystem,
+    /// Whether the impl block has `@noRd`, suppressing roxygen documentation.
     no_rd: bool,
+    /// Whether the impl block has `#[miniextendr(internal)]`, adding `@keywords internal`.
     internal: bool,
+    /// Whether the impl block has `#[miniextendr(noexport)]`, suppressing `@export`.
     noexport: bool,
+    /// Method signatures and R-facing names from the trait definition.
     methods: Vec<TpieMethod>,
 }
 
-/// A single method in TPIE metadata.
+/// A single method entry in TPIE metadata.
+///
+/// Contains the R-facing name and the method signature as declared in the trait.
 struct TpieMethod {
+    /// The R-facing method name (may differ from the Rust ident via `r_name`).
     r_name: String,
+    /// The method signature (parameters and return type) from the trait definition.
     sig: syn::Signature,
 }
 
@@ -728,6 +763,13 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 /// Generate vtable static + TPIE macro invocation for an empty trait impl.
+///
+/// When `#[miniextendr] impl Trait for Type {}` has no method bodies, this
+/// generates the vtable static and delegates to the `__mx_impl_{Trait}!` macro
+/// (generated at the trait definition site) to expand C/R wrappers.
+///
+/// Requires a fully qualified trait path (at least 2 segments) so the TPIE macro
+/// can be resolved from the trait's crate root.
 fn generate_tpie_invocation(
     trait_path: &syn::Path,
     concrete_type: &syn::Type,

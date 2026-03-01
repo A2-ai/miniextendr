@@ -172,6 +172,9 @@ fn has_r_data_attr(field: &Field) -> bool {
 }
 
 /// Check if a field type is `RSidecar`.
+///
+/// Returns `true` if the last path segment of the field's type is `RSidecar`,
+/// which acts as the selector marker enabling R sidecar accessor generation.
 fn is_rsidecar_type(field: &Field) -> bool {
     if let syn::Type::Path(type_path) = &field.ty {
         type_path
@@ -190,48 +193,68 @@ fn is_pub(field: &Field) -> bool {
     matches!(field.vis, Visibility::Public(_))
 }
 
-/// The kind of sidecar slot, determining how getters/setters are generated.
+/// The kind of sidecar slot, determining how getter/setter FFI functions are generated.
+///
+/// Each kind maps to a different codegen strategy for reading from and writing to
+/// the Rust struct through R's `.Call` interface:
+/// - Raw SEXP: no conversion, direct pass-through.
+/// - Zero-overhead scalars: use R's `Rf_Scalar*`/`Rf_as*` for single-element coercion.
+/// - Conversion: use the `IntoR`/`TryFromSexp` traits for arbitrary types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SlotKind {
-    /// SEXP type - raw SEXP access (getter returns SEXP, setter takes SEXP)
+    /// SEXP type -- raw SEXP access (getter returns SEXP, setter takes SEXP).
     RawSexp,
-    /// Zero-overhead scalar: i32 stored as INTEGER(1)
+    /// Zero-overhead scalar: `i32` (or `i16`/`i8`) stored as `INTEGER(1)`.
     ScalarInt,
-    /// Zero-overhead scalar: f64 stored as REAL(1)
+    /// Zero-overhead scalar: `f64` (or `f32`) stored as `REAL(1)`.
     ScalarReal,
-    /// Zero-overhead scalar: bool stored as LOGICAL(1)
+    /// Zero-overhead scalar: `bool` (or `Rbool`) stored as `LOGICAL(1)`.
     ScalarLogical,
-    /// Zero-overhead scalar: u8 stored as RAW(1)
+    /// Zero-overhead scalar: `u8` stored as `RAW(1)`.
     ScalarRaw,
-    /// Conversion type - uses IntoR/TryFromR
+    /// Conversion type -- uses `IntoR`/`TryFromSexp` traits for arbitrary Rust types.
     Conversion,
 }
 
-/// Information about a sidecar slot field.
+/// Information about a single `#[r_data]`-annotated sidecar slot field.
+///
+/// Collected during struct field parsing and used to generate FFI getter/setter
+/// functions and R wrapper code for each public slot.
 struct SidecarSlot {
-    /// Field name
+    /// Rust identifier of the field (e.g., `count`, `name`).
     name: Ident,
-    /// Field type (for conversion slots)
+    /// Rust type of the field, used in conversion-based getter/setter codegen.
     ty: syn::Type,
-    /// Index in the prot VECSXP (after base slots)
+    /// Zero-based index of this slot in the protection VECSXP
+    /// (offset from `PROT_BASE_LEN`, which reserves slots for type ID and user data).
     index: usize,
-    /// Whether the field is public (determines if R accessors are generated)
+    /// Whether the field is `pub`. Only public fields get R accessor functions.
     is_public: bool,
-    /// What kind of slot this is
+    /// Determines the codegen strategy for reading/writing this slot.
     kind: SlotKind,
 }
 
-/// Parsed sidecar information from struct fields.
+/// Aggregated sidecar information extracted from struct field analysis.
+///
+/// Contains everything needed to generate sidecar accessor code: the
+/// selector presence, the list of typed slots, and the target class system.
 struct SidecarInfo {
-    /// Has an RSidecar selector field
+    /// Whether the struct contains an `RSidecar`-typed field marked with `#[r_data]`.
+    /// At most one selector is allowed per struct.
     has_selector: bool,
-    /// RData slot fields (with their indices)
+    /// The `#[r_data]` slot fields (excluding the RSidecar selector itself),
+    /// each carrying its index, kind, and visibility.
     slots: Vec<SidecarSlot>,
-    /// Class system for R wrapper generation
+    /// The R class system chosen via `#[externalptr(...)]`, controlling the
+    /// style of generated R wrapper code.
     class_system: ClassSystem,
 }
 
-/// Determine the SlotKind for a field type.
+/// Determine the [`SlotKind`] for a field type by inspecting its last path segment.
+///
+/// Recognizes `SEXP`, scalar numerics (`i32`, `i16`, `i8`, `f64`, `f32`),
+/// booleans (`bool`, `Rbool`), and raw bytes (`u8`). Everything else falls
+/// through to [`SlotKind::Conversion`].
 fn slot_kind_for_type(ty: &syn::Type) -> SlotKind {
     if let syn::Type::Path(type_path) = ty
         && let Some(seg) = type_path.path.segments.last()
@@ -260,6 +283,13 @@ fn slot_kind_for_type(ty: &syn::Type) -> SlotKind {
 }
 
 /// Parse struct fields for sidecar information.
+///
+/// Iterates over all fields, identifying `#[r_data]` markers. Fields with
+/// `RSidecar` type are tracked as selector markers (at most one allowed);
+/// all other `#[r_data]` fields become [`SidecarSlot`] entries with their
+/// slot kind inferred from the field type.
+///
+/// Returns `Err` if more than one `RSidecar` field is found.
 fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Result<SidecarInfo> {
     let fields = match &input.data {
         syn::Data::Struct(data) => &data.fields,
@@ -313,8 +343,16 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
     })
 }
 
-/// Generate getter body based on slot kind.
-/// Reads from the Rust struct field and converts to R SEXP.
+/// Generate the token stream for a sidecar getter function body.
+///
+/// Reads the field value from the Rust struct (accessed via the external
+/// pointer address) and converts it to an R SEXP. The conversion strategy
+/// depends on the slot kind:
+/// - `RawSexp`: returns the SEXP field directly.
+/// - Scalar kinds: wraps in `Rf_Scalar*` for zero-overhead conversion.
+/// - `Conversion`: clones the value and calls `IntoR::into_sexp`.
+///
+/// Returns `R_NilValue` if the external pointer address is null.
 fn generate_getter_body(
     struct_name: &syn::Ident,
     slot: &SidecarSlot,
@@ -410,8 +448,16 @@ fn generate_getter_body(
     }
 }
 
-/// Generate setter body based on slot kind.
-/// Converts from R SEXP and writes to the Rust struct field.
+/// Generate the token stream for a sidecar setter function body.
+///
+/// Converts the incoming R SEXP `value` and writes it to the corresponding
+/// Rust struct field. The conversion strategy depends on the slot kind:
+/// - `RawSexp`: stores the SEXP directly.
+/// - Scalar kinds: uses `Rf_as*` or coercion for single-element extraction.
+/// - `Conversion`: uses `TryFromSexp::try_from_sexp`, silently ignoring errors.
+///
+/// Always returns the external pointer `x` (for R's invisible return convention).
+/// No-op if the external pointer address is null.
 fn generate_setter_body(
     struct_name: &syn::Ident,
     slot: &SidecarSlot,
@@ -506,7 +552,16 @@ fn generate_setter_body(
     }
 }
 
-/// Generate R wrapper code for a single slot based on class system.
+/// Generate R wrapper code (roxygen-annotated R functions) for a single sidecar slot.
+///
+/// Produces getter and setter R functions that call the corresponding C entry
+/// points via `.Call`. The generated R code includes roxygen tags (`@rdname`,
+/// `@param`, `@return`, `@export`) for documentation.
+///
+/// All class systems currently generate the same standalone function pattern
+/// (`Type_get_field` / `Type_set_field`). Class-specific integration (e.g.,
+/// R6 active bindings, S7 properties) is handled separately by
+/// [`generate_class_integration_r_code`].
 fn generate_r_wrapper_for_slot(
     class_system: ClassSystem,
     type_name: &str,
@@ -805,9 +860,21 @@ fn generate_class_integration_r_code(
     }
 }
 
-/// Generate sidecar accessor constants and functions.
+/// Generate sidecar accessor constants and `extern "C-unwind"` functions.
 ///
-/// Generates code for pub #[r_data] fields based on their SlotKind and ClassSystem.
+/// For each public `#[r_data]` field, generates:
+/// - A getter FFI function (`C__mx_rdata_get_Type_field`)
+/// - A setter FFI function (`C__mx_rdata_set_Type_field`)
+/// - `R_CallMethodDef` entries for routine registration
+/// - R wrapper function code (roxygen-documented)
+/// - Class-integration code for R6 / S7 (active bindings / properties)
+///
+/// The generated constants are:
+/// - `RDATA_CALL_DEFS_{TYPE}`: slice of `R_CallMethodDef` for registration
+/// - `R_WRAPPERS_RDATA_{TYPE}`: string literal of R wrapper code
+///
+/// Returns `Err` if the struct has generic type parameters (`.Call` entrypoints
+/// cannot be generic).
 fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::Result<TokenStream> {
     // Reject generic structs — .Call entrypoints cannot be generic
     if !input.generics.params.is_empty() {
@@ -1014,7 +1081,16 @@ NULL
     })
 }
 
-/// Generate the basic `TypedExternal` implementation.
+/// Generate the `TypedExternal` trait implementation for the derive target.
+///
+/// Produces three associated constants:
+/// - `TYPE_NAME`: the struct name as a `&'static str`
+/// - `TYPE_NAME_CSTR`: null-terminated byte string of the struct name
+/// - `TYPE_ID_CSTR`: globally unique ID in the format
+///   `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`,
+///   using `CARGO_PKG_NAME`, `CARGO_PKG_VERSION`, and `module_path!()`.
+///
+/// Supports generic structs (generics are forwarded to the impl).
 fn generate_typed_external(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -1058,6 +1134,15 @@ fn generate_into_external_ptr(input: &DeriveInput) -> TokenStream {
 }
 
 /// Main entry point for `#[derive(ExternalPtr)]`.
+///
+/// Orchestrates the full derive expansion:
+/// 1. Parses `#[externalptr(...)]` attributes for class system selection.
+/// 2. Analyzes struct fields for `#[r_data]` sidecar slots.
+/// 3. Generates `TypedExternal` impl (type identity for `ExternalPtr<T>`).
+/// 4. Generates `IntoExternalPtr` marker impl (enables `IntoR` blanket impl).
+/// 5. Generates sidecar accessor FFI functions, registration constants, and R wrappers.
+///
+/// Returns the combined token stream of all generated items.
 pub fn derive_external_ptr(input: DeriveInput) -> syn::Result<TokenStream> {
     // Parse class system from #[externalptr(...)] attribute
     let class_system = parse_externalptr_attrs(&input)?;

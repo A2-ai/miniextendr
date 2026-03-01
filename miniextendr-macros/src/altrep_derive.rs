@@ -7,32 +7,82 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
 
-/// Per-family configuration for ALTREP lowlevel codegen.
+/// Per-family configuration controlling low-level code generation for an ALTREP type family.
+///
+/// Each ALTREP family (integer, real, logical, raw, string, complex, list) has a distinct
+/// set of runtime macros for trait implementations and different capabilities (e.g., only
+/// some families support `dataptr` or `subset`). This struct captures those differences
+/// so [`AltrepAttrs::generate_lowlevel`] can emit the correct code.
 struct AltrepFamilyConfig<'a> {
+    /// Name of the `impl_alt*_from_data!` runtime macro used on the simple (non-expanded) path.
+    /// For example, `"impl_altinteger_from_data"` for the integer family.
     macro_base: &'a str,
+    /// If this family supports a typed `dataptr` materialization macro, the tuple contains:
+    /// - The macro name (e.g., `"__impl_altvec_dataptr"`)
+    /// - An optional element type token stream (e.g., `i32` for integer, `f64` for real)
+    ///
+    /// `None` means this family does not have a typed dataptr macro (e.g., list).
     dataptr_macro: Option<(&'a str, Option<TokenStream>)>,
+    /// Whether this family supports the string-specific dataptr materialization macro
+    /// (`__impl_altvec_string_dataptr`). Only `true` for the String family.
     string_dataptr: bool,
+    /// Whether this family supports the `subset` option for `Extract_subset` method
+    /// registration. `false` for List (which rejects `subset` and `dataptr`).
     subset: bool,
+    /// Name of the internal macro for type-specific method implementations
+    /// (e.g., `"__impl_altinteger_methods"` for integer).
     methods_macro: &'a str,
+    /// Name of the `impl_inferbase_*!` macro that provides `InferBase` for this family
+    /// (e.g., `"impl_inferbase_integer"`).
     inferbase_macro: &'a str,
 }
 
-/// Common attributes for ALTREP derives.
+/// Parsed `#[altrep(...)]` attributes controlling ALTREP derive code generation.
+///
+/// These attributes are placed on the struct and parsed by all ALTREP derive macros
+/// (`AltrepInteger`, `AltrepReal`, etc.) to customize the generated trait implementations.
+///
+/// # Supported `#[altrep(...)]` keys
+///
+/// | Key | Type | Description |
+/// |-----|------|-------------|
+/// | `len = "field"` | `String` | Name of the struct field that holds the vector length. Auto-detected if a field is named `len` or `length`. |
+/// | `elt = "field"` | `String` | Name of the struct field to return as the element value (produces a constant-value vector). If omitted, the default `elt()` returns `NA` / `NaN` / `0` / `None` depending on the family. |
+/// | `no_lowlevel` | Flag | Suppress automatic `impl_alt*_from_data!` macro invocation. Use this when you want to provide your own `Altrep`, `AltVec`, and family-specific trait implementations. |
+/// | `dataptr` | Flag | Enable `Dataptr` method registration, allowing R to get a direct pointer to the underlying data. Mutually exclusive with `subset`. Not supported for List. |
+/// | `serialize` | Flag | Enable `Serialized_state` and `Unserialize` method registration for ALTREP serialization support. |
+/// | `subset` | Flag | Enable `Extract_subset` method registration. Mutually exclusive with `dataptr`. Only supported for integer and complex families. Not supported for List. |
+/// | `unsafe` | Flag | Set guard mode to `Unsafe` -- no panic protection on ALTREP callbacks. |
+/// | `rust_unwind` | Flag | Set guard mode to `RustUnwind` (default) -- uses `catch_unwind` for panic safety. |
+/// | `r_unwind` | Flag | Set guard mode to `RUnwind` -- uses `with_r_unwind_protect` for callbacks that call R API functions. |
 struct AltrepAttrs {
-    /// Field name containing the length
+    /// Field name containing the vector length, set via `#[altrep(len = "field")]`.
+    /// If `None`, auto-detection looks for fields named `len` or `length`.
     len_field: Option<syn::Ident>,
-    /// Field name containing the element value (for constant vectors)
+    /// Field name for constant-value element access, set via `#[altrep(elt = "field")]`.
+    /// When set, `elt()` returns `self.{field}` for every index.
     elt_field: Option<syn::Ident>,
-    /// Whether to generate impl_alt*_from_data! call
+    /// Whether to generate the `impl_alt*_from_data!` macro call. Defaults to `true`.
+    /// Set to `false` by `#[altrep(no_lowlevel)]`.
     generate_lowlevel: bool,
-    /// Options for impl_alt*_from_data! (dataptr, serialize, subset)
+    /// Collected option flags (`dataptr`, `serialize`, `subset`) passed to the runtime macro.
     lowlevel_options: Vec<syn::Ident>,
-    /// Guard mode override: "unsafe" | "rust_unwind" | "r_unwind"
+    /// Guard mode override for ALTREP trampoline callbacks. Maps to [`AltrepGuard`] variants:
+    /// - `Unsafe` -- no protection
+    /// - `RustUnwind` -- `catch_unwind` (default)
+    /// - `RUnwind` -- `with_r_unwind_protect`
     guard: Option<syn::Ident>,
 }
 
 impl AltrepAttrs {
-    /// Parse #[altrep(...)] attributes from a struct.
+    /// Parses all `#[altrep(...)]` attributes from a derive input struct.
+    ///
+    /// Multiple `#[altrep(...)]` attributes are supported and their contents are merged.
+    /// Unknown keys are silently ignored.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if an `#[altrep(...)]` attribute has malformed syntax.
     fn parse(input: &syn::DeriveInput) -> syn::Result<Self> {
         let mut len_field = None;
         let mut elt_field = None;
@@ -82,7 +132,13 @@ impl AltrepAttrs {
         })
     }
 
-    /// Get the length field or try to auto-detect it.
+    /// Returns the length field identifier, either from the explicit `len = "..."` attribute
+    /// or by auto-detecting a field named `len` or `length` on the struct.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the input is not a struct, or if no length field was specified
+    /// and auto-detection fails.
     fn get_len_field(&self, input: &syn::DeriveInput) -> syn::Result<syn::Ident> {
         if let Some(ref field) = self.len_field {
             return Ok(field.clone());
@@ -113,7 +169,11 @@ impl AltrepAttrs {
         ))
     }
 
-    /// Returns true if a non-default guard mode is set (i.e. not RustUnwind).
+    /// Returns `true` if a non-default guard mode is set (i.e., `Unsafe` or `RUnwind`).
+    ///
+    /// The default guard is `RustUnwind`, which uses the simple `impl_alt*_from_data!`
+    /// macro path. Non-default guards require the expanded code generation path that
+    /// emits individual internal macros with an explicit guard parameter.
     fn has_non_default_guard(&self) -> bool {
         match &self.guard {
             Some(g) => g != "RustUnwind",
@@ -121,7 +181,21 @@ impl AltrepAttrs {
         }
     }
 
-    /// Validate option combinations for a given ALTREP type family.
+    /// Validates that the requested `#[altrep(...)]` option flags are compatible with
+    /// the given ALTREP type family.
+    ///
+    /// Enforces two rules:
+    /// 1. `subset` is only valid for families where `supports_subset` is `true`.
+    /// 2. `dataptr` and `subset` are mutually exclusive.
+    ///
+    /// # Arguments
+    ///
+    /// * `family` -- A human-readable family name used in error messages (e.g., `"AltrepList"`).
+    /// * `supports_subset` -- Whether this family supports the `Extract_subset` method.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` with a span pointing to the offending option identifier.
     fn validate_options(&self, family: &str, supports_subset: bool) -> syn::Result<()> {
         let has_dataptr = self.lowlevel_options.iter().any(|o| o == "dataptr");
         let has_subset = self.lowlevel_options.iter().any(|o| o == "subset");
@@ -151,7 +225,31 @@ impl AltrepAttrs {
         Ok(())
     }
 
-    /// Generate lowlevel impl code for a given ALTREP type family.
+    /// Generates low-level ALTREP trait implementation code for a given type family.
+    ///
+    /// There are two code generation paths:
+    ///
+    /// 1. **Simple path** -- When using the default `RustUnwind` guard and no `subset` option,
+    ///    delegates to the `impl_alt*_from_data!` runtime macro which bundles `Altrep`,
+    ///    `AltVec`, family-specific methods, and `InferBase` in a single expansion.
+    ///
+    /// 2. **Expanded path** -- When a non-default guard mode or `subset` is requested,
+    ///    emits individual internal macros (`__impl_altrep_base!`, `__impl_altvec_*!`,
+    ///    `__impl_alt*_methods!`, `impl_inferbase_*!`) with explicit guard parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` -- The struct identifier.
+    /// * `family` -- The family-specific configuration controlling which macros to emit.
+    ///
+    /// # Returns
+    ///
+    /// A token stream containing the macro invocations, or an empty stream if
+    /// `no_lowlevel` was specified.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if option validation fails (e.g., `subset` on an unsupported family).
     fn generate_lowlevel(
         &self,
         name: &syn::Ident,
@@ -250,7 +348,16 @@ impl AltrepAttrs {
     }
 }
 
-/// Generate impl AltrepLen for a struct.
+/// Generates an `impl AltrepLen for T` block that delegates to a named struct field.
+///
+/// The generated implementation returns `self.{len_field}` cast to `usize` as the
+/// ALTREP vector length.
+///
+/// # Arguments
+///
+/// * `name` -- The struct identifier.
+/// * `generics` -- Generic parameters for the struct.
+/// * `len_field` -- The identifier of the field that holds the length value.
 fn generate_altrep_len(
     name: &syn::Ident,
     generics: &syn::Generics,
@@ -269,8 +376,26 @@ fn generate_altrep_len(
 
 /// Shared implementation for all non-list ALTREP derive macros.
 ///
-/// The `gen_elt_impl` closure receives `elt_field` (if specified via `#[altrep(elt = "...")]`)
-/// and returns the `fn elt(...)` method body for the data trait implementation.
+/// Generates three items:
+/// 1. `impl AltrepLen` -- delegates to the detected/specified length field
+/// 2. `impl Alt*Data` -- the family-specific data trait with an `elt()` method
+/// 3. Low-level trait impls via [`AltrepAttrs::generate_lowlevel`]
+///
+/// # Arguments
+///
+/// * `input` -- The `DeriveInput` from the proc-macro.
+/// * `data_trait_path` -- The fully qualified path to the data trait
+///   (e.g., `::miniextendr_api::altrep_data::AltIntegerData`).
+/// * `gen_elt_impl` -- A closure that receives the optional `elt_field` and returns
+///   a token stream for the `fn elt(...)` method body. If `elt_field` is `Some`, the
+///   closure typically returns `self.{field}`; if `None`, it returns a family-appropriate
+///   default (`NA_INTEGER`, `f64::NAN`, `0u8`, `Logical::Na`, `None`, or `Rcomplex { NAN, NAN }`).
+/// * `family` -- The [`AltrepFamilyConfig`] for this type family.
+///
+/// # Errors
+///
+/// Returns `Err` if attribute parsing fails, no length field can be found, or
+/// option validation fails.
 fn derive_altrep_generic(
     input: syn::DeriveInput,
     data_trait_path: TokenStream,
@@ -302,7 +427,14 @@ fn derive_altrep_generic(
     })
 }
 
-/// Derive AltrepInteger - auto-implements AltrepLen and AltIntegerData.
+/// Derive macro entry point for `AltrepInteger`.
+///
+/// Auto-implements `AltrepLen` and `AltIntegerData` for a struct with a length field.
+/// The `elt()` method returns `self.{elt_field}` as `i32` if `#[altrep(elt = "...")]`
+/// is specified, or `NA_INTEGER` by default.
+///
+/// Supports `#[altrep(dataptr)]` for direct `i32` data pointer access and
+/// `#[altrep(subset)]` for `Extract_subset`.
 pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
@@ -325,7 +457,14 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
     )
 }
 
-/// Derive AltrepReal - auto-implements AltrepLen and AltRealData.
+/// Derive macro entry point for `AltrepReal`.
+///
+/// Auto-implements `AltrepLen` and `AltRealData` for a struct with a length field.
+/// The `elt()` method returns `self.{elt_field}` as `f64` if `#[altrep(elt = "...")]`
+/// is specified, or `f64::NAN` (R's `NA_real_`) by default.
+///
+/// Supports `#[altrep(dataptr)]` for direct `f64` data pointer access and
+/// `#[altrep(subset)]` for `Extract_subset`.
 pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
@@ -348,7 +487,14 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     )
 }
 
-/// Derive AltrepLogical - auto-implements AltrepLen and AltLogicalData.
+/// Derive macro entry point for `AltrepLogical`.
+///
+/// Auto-implements `AltrepLen` and `AltLogicalData` for a struct with a length field.
+/// The `elt()` method returns `self.{elt_field}.into()` as `Logical` if
+/// `#[altrep(elt = "...")]` is specified, or `Logical::Na` by default.
+///
+/// Supports `#[altrep(dataptr)]` for direct `i32` data pointer access (logicals are
+/// stored as `i32` in R) and `#[altrep(subset)]` for `Extract_subset`.
 pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
@@ -371,7 +517,14 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
     )
 }
 
-/// Derive AltrepRaw - auto-implements AltrepLen and AltRawData.
+/// Derive macro entry point for `AltrepRaw`.
+///
+/// Auto-implements `AltrepLen` and `AltRawData` for a struct with a length field.
+/// The `elt()` method returns `self.{elt_field}` as `u8` if `#[altrep(elt = "...")]`
+/// is specified, or `0u8` by default.
+///
+/// Supports `#[altrep(dataptr)]` for direct `u8` data pointer access and
+/// `#[altrep(subset)]` for `Extract_subset`.
 pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
@@ -394,7 +547,16 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     )
 }
 
-/// Derive AltrepString - auto-implements AltrepLen and AltStringData.
+/// Derive macro entry point for `AltrepString`.
+///
+/// Auto-implements `AltrepLen` and `AltStringData` for a struct with a length field.
+/// The `elt()` method returns `Some(self.{elt_field}.as_ref())` as `Option<&str>` if
+/// `#[altrep(elt = "...")]` is specified, or `None` (R's `NA_character_`) by default.
+///
+/// String ALTREP supports `#[altrep(dataptr)]` for materialized `STRSXP` dataptr
+/// (via `__impl_altvec_string_dataptr`) and `#[altrep(subset)]` for `Extract_subset`.
+/// Note: String dataptr materializes the entire vector into a cached `STRSXP` in the
+/// data2 slot.
 pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
@@ -417,7 +579,14 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
     )
 }
 
-/// Derive AltrepComplex - auto-implements AltrepLen and AltComplexData.
+/// Derive macro entry point for `AltrepComplex`.
+///
+/// Auto-implements `AltrepLen` and `AltComplexData` for a struct with a length field.
+/// The `elt()` method returns `self.{elt_field}` as `Rcomplex` if
+/// `#[altrep(elt = "...")]` is specified, or `Rcomplex { r: NAN, i: NAN }` by default.
+///
+/// Supports `#[altrep(dataptr)]` for direct `Rcomplex` data pointer access and
+/// `#[altrep(subset)]` for `Extract_subset`.
 pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
@@ -447,7 +616,16 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
     )
 }
 
-/// Derive AltrepList - auto-implements AltrepLen and AltListData.
+/// Derive macro entry point for `AltrepList`.
+///
+/// Auto-implements `AltrepLen` and `AltListData` for a struct with a length field.
+/// The `elt()` method returns `self.{elt_field}[i]` as `SEXP` if
+/// `#[altrep(elt = "...")]` is specified (the field should be indexable and return `SEXP`),
+/// or `R_NilValue` by default.
+///
+/// List ALTREP does **not** support `#[altrep(dataptr)]` or `#[altrep(subset)]` -- both
+/// are rejected at compile time. `#[altrep(serialize)]` is supported but requires the
+/// expanded code generation path with individual internal macros.
 pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let generics = &input.generics;

@@ -2,11 +2,21 @@
 
 use super::ParsedImpl;
 
-/// Generate R wrapper string for S3-style class.
+/// Generates the complete R wrapper string for an S3-style class.
 ///
-/// Creates:
-/// - Constructor function `new_<class>()` that returns an ExternalPtr with class attribute
-/// - S3 generic methods `<method>.<class>` for each instance method
+/// Produces the following R code:
+/// - Constructor: `new_<class>(...)` function that calls the Rust `new` constructor
+///   and wraps the result with `structure(.val, class = "<class>")`
+/// - S3 generics: for each instance method, a `UseMethod()` generic is created
+///   (unless overriding an existing generic via `#[miniextendr(generic = "...")]`)
+/// - S3 methods: `<generic>.<class>` functions dispatching to the Rust `.Call()` wrapper,
+///   with the ExternalPtr extracted from `x`
+/// - Static methods: regular functions named `<class>_<method>(...)`
+/// - Class environment: `ClassName <- new.env(parent = emptyenv())` for `Class$new()`
+///   syntax and trait namespace compatibility
+///
+/// Custom double-dispatch patterns (e.g., `vec_ptype2.a.b`) are supported via
+/// `#[miniextendr(generic = "...", class = "...")]` attributes.
 pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
 

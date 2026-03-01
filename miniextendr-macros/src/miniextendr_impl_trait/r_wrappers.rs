@@ -1,17 +1,38 @@
 //! R wrapper generation for trait methods across all class systems.
+//!
+//! Each class system (Env, S3, S4, S7, R6, Vctrs) has its own generator that
+//! produces R code strings for instance methods, static methods, and associated
+//! constants. The top-level [`generate_trait_r_wrapper`] dispatches to the
+//! appropriate generator and applies post-processing for export/documentation control.
 
 use super::{TraitConst, TraitMethod, trait_method_body_lines};
 use crate::miniextendr_impl::ClassSystem;
 
-/// Export/documentation control for trait R wrapper generation.
+/// Options controlling export visibility and documentation for trait R wrapper generation.
 pub(super) struct TraitWrapperOpts {
+    /// Which R class system to generate wrappers for (env, r6, s3, s4, s7, vctrs).
     pub(super) class_system: ClassSystem,
+    /// Whether the impl block has `@noRd`, suppressing roxygen documentation output.
+    /// For S3/vctrs, method registration tags are preserved even when this is true.
     pub(super) class_has_no_rd: bool,
+    /// Whether `#[miniextendr(internal)]` is set, adding `@keywords internal` and
+    /// suppressing `@export`/`@exportMethod`.
     pub(super) internal: bool,
+    /// Whether `#[miniextendr(noexport)]` is set, suppressing `@export`/`@exportMethod`
+    /// without adding `@keywords internal`.
     pub(super) noexport: bool,
 }
 
-/// Generate R wrapper code for trait methods and consts (dispatch by class system).
+/// Generate R wrapper code for trait methods and consts, dispatching by class system.
+///
+/// Delegates to the appropriate class-system-specific generator (env, s3, s4, s7, r6),
+/// then applies post-processing for `@noRd`, `internal`, and `noexport` options:
+///
+/// - `class_has_no_rd`: Strips roxygen blocks (for S3/vctrs, keeps `@method`/`@export` tags)
+/// - `internal`: Replaces `@export`/`@exportMethod` with `@keywords internal`
+/// - `noexport`: Removes `@export`/`@exportMethod` entirely
+///
+/// Returns the complete R wrapper code as a string ready for embedding in a `const`.
 pub(super) fn generate_trait_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -116,7 +137,17 @@ pub(super) fn generate_trait_r_wrapper(
     }
 }
 
-/// Generate Env-style R wrapper code (Type$Trait$method).
+/// Generate Env-style R wrapper code for trait methods.
+///
+/// Env-class trait methods use a namespace hierarchy: `Type$Trait$method(x, ...)`.
+/// Instance methods take `x` as the first parameter (the self object) and are
+/// stamped with `.__mx_instance__` attribute for `$` dispatch detection.
+/// Void instance methods return `invisible(x)` for pipe-friendly chaining.
+///
+/// Static methods and constants also live under `Type$Trait$name`.
+///
+/// Returns an error if an instance method has a parameter named `x` (collides
+/// with the self parameter in env-class dispatch).
 fn generate_trait_env_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -256,8 +287,14 @@ fn generate_trait_env_r_wrapper(
 /// Generate S3-style R wrapper code (generic + method.Type).
 ///
 /// For `impl Counter for SimpleCounter`, generates:
-/// - S3 generic `value(x, ...)` (if not exists)
-/// - S3 method `value.SimpleCounter`
+/// - S3 generic `value(x, ...)` (if not already defined)
+/// - S3 method `value.SimpleCounter <- function(x, ...) { .Call(...) }`
+/// - S7 method registration if the generic is an S7 generic
+///
+/// Static methods and constants use `Type$Trait$name` namespace (env-style).
+/// Void instance methods return `invisible(x)` for pipe-friendly chaining.
+///
+/// Also used for `ClassSystem::Vctrs` since vctrs uses S3 under the hood.
 fn generate_trait_s3_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -445,8 +482,13 @@ fn generate_trait_s3_r_wrapper(
 /// Generate S4-style R wrapper code.
 ///
 /// For `impl Counter for SimpleCounter`, generates:
-/// - S4 generic `value(x, ...)` (if not exists)
-/// - S4 method `setMethod("value", "SimpleCounter", ...)`
+/// - `setOldClass("SimpleCounter")` to register the S3 class for S4 dispatch
+/// - S4 generic `s4_trait_Counter_value(x, ...)` via `setGeneric()`
+/// - S4 method via `setMethod("s4_trait_Counter_value", "SimpleCounter", ...)`
+///
+/// Generic names are prefixed with `s4_trait_{Trait}_` to avoid collisions
+/// with user-defined S4 generics. Static methods and constants are generated
+/// as standalone exported functions: `{Type}_{Trait}_{method}()`.
 fn generate_trait_s4_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -611,8 +653,12 @@ fn generate_trait_s4_r_wrapper(
 /// Generate S7-style R wrapper code.
 ///
 /// For `impl Counter for SimpleCounter`, generates:
-/// - S7 generic `s7_trait_Counter_value` (if not exists)
-/// - S7 method `S7::method(s7_trait_Counter_value, SimpleCounter) <- ...`
+/// - S7 S3-class wrapper: `.s7_class_SimpleCounter <- S7::new_S3_class("SimpleCounter")`
+/// - S7 generic: `s7_trait_Counter_value <- S7::new_generic(...)` (if not exists)
+/// - S7 method registration: `S7::method(s7_trait_Counter_value, .s7_class_SimpleCounter) <- ...`
+///
+/// Generic names are prefixed with `s7_trait_{Trait}_` to avoid collisions.
+/// Static methods and constants use `Type$Trait$name` namespace (env-style).
 fn generate_trait_s7_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -788,13 +834,16 @@ fn generate_trait_s7_r_wrapper(
 
 /// Generate R6-style R wrapper code.
 ///
-/// R6 classes are defined monolithically, so trait methods are generated as
-/// standalone functions that accept the R6 object and extract its private `.ptr`.
+/// R6 classes are defined monolithically (all methods in `R6Class()`), so trait
+/// methods cannot be injected into the class definition. Instead, they are
+/// generated as standalone exported functions that accept the R6 object.
 ///
 /// For `impl Counter for SimpleCounter`, generates:
-/// - `r6_trait_Counter_value(x)` function
-/// - `r6_trait_Counter_increment(x)` function
-/// - etc.
+/// - `r6_trait_Counter_value(x)` -- exported standalone function
+/// - `r6_trait_Counter_increment(x)` -- exported standalone function
+///
+/// Instance method names are prefixed with `r6_trait_{Trait}_` to avoid collisions.
+/// Static methods and constants use `Type$Trait$name` namespace (env-style).
 fn generate_trait_r6_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,

@@ -1,7 +1,37 @@
+//! # List and Preference Derive Macros
+//!
+//! This module implements derive macros for bidirectional Rust struct <-> R list
+//! conversion, plus "preference" derives that control how a type is converted to R
+//! when returned from `#[miniextendr]` functions.
+//!
+//! ## List Derives
+//!
+//! - `#[derive(IntoList)]` -- Rust struct -> R named/unnamed list
+//! - `#[derive(TryFromList)]` -- R list -> Rust struct
+//!
+//! ## Preference Derives
+//!
+//! These marker derives select the `IntoR` strategy for a type. Only one
+//! preference derive should be applied to a given type:
+//!
+//! - `#[derive(PreferList)]` -- convert via `IntoList::into_list`
+//! - `#[derive(PreferExternalPtr)]` -- wrap in `ExternalPtr::new`
+//! - `#[derive(PreferDataFrame)]` -- convert via `IntoDataFrame::into_data_frame`
+//! - `#[derive(PreferRNativeType)]` -- convert via `AsRNative` wrapper
+//!
+//! ## Field Attributes
+//!
+//! - `#[into_list(ignore)]` -- skip this field during IntoList/TryFromList conversion.
+//!   For `TryFromList`, ignored fields are filled with `Default::default()`.
+
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Fields, parse_quote, spanned::Spanned};
 
+/// Check whether a struct field has the `#[into_list(ignore)]` attribute.
+///
+/// Returns `Ok(true)` if the field should be excluded from list conversion,
+/// or `Err` if an unknown option is found inside `#[into_list(...)]`.
 fn field_is_ignored(field: &syn::Field) -> syn::Result<bool> {
     let mut ignored = false;
 
@@ -23,11 +53,17 @@ fn field_is_ignored(field: &syn::Field) -> syn::Result<bool> {
     Ok(ignored)
 }
 
-/// Derive `IntoList` for structs (Rust → R).
+/// Derive `IntoList` for structs (Rust -> R).
 ///
-/// - Named structs (`struct Foo { x: i32 }`) → named R list: `list(x = 1L)`
-/// - Tuple structs (`struct Foo(i32, i32)`) → unnamed R list: `list(1L, 2L)`
-/// - Unit structs (`struct Foo`) → empty R list: `list()`
+/// Generates an `impl IntoList for T` that converts the struct into an R list:
+/// - Named structs (`struct Foo { x: i32 }`) produce a named R list: `list(x = 1L)`
+/// - Tuple structs (`struct Foo(i32, i32)`) produce an unnamed R list: `list(1L, 2L)`
+/// - Unit structs (`struct Foo`) produce an empty R list: `list()`
+///
+/// Fields marked with `#[into_list(ignore)]` are excluded from the list.
+/// Each non-ignored field's type must implement `IntoR` (enforced via where-clause bounds).
+///
+/// Returns `Err` if applied to a non-struct type or if an unknown field attribute is found.
 pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let struct_data = match input.data {
         syn::Data::Struct(data) => data,
@@ -129,11 +165,17 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(expand)
 }
 
-/// Derive `TryFromList` for structs (R → Rust).
+/// Derive `TryFromList` for structs (R -> Rust).
 ///
-/// - Named structs: extract by field name from named R list
+/// Generates an `impl TryFromList for T` that extracts struct fields from an R list:
+/// - Named structs: extract by field name from a named R list
 /// - Tuple structs: extract by position (index 0, 1, 2, ...)
 /// - Unit structs: accept any list (no extraction needed)
+///
+/// Fields marked with `#[into_list(ignore)]` are filled with `Default::default()`.
+/// Each non-ignored field's type must implement `TryFromSexp` (enforced via where-clause bounds).
+///
+/// Returns `Err` if applied to a non-struct type or if an unknown field attribute is found.
 pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let struct_data = match input.data {
         syn::Data::Struct(data) => data,
@@ -253,7 +295,11 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(expand)
 }
 
-/// Derive `PrefersList`: add the marker and IntoR impl that routes through IntoList.
+/// Derive `PreferList`: adds the `PrefersList` marker trait and an `IntoR` impl
+/// that converts to R by first calling `IntoList::into_list`, then `into_sexp`.
+///
+/// The type must also derive `IntoList` for this to compile. The generated
+/// `IntoR::Error` is `Infallible` (list conversion is infallible for valid structs).
 pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -289,7 +335,11 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(expand)
 }
 
-/// Derive `PrefersExternalPtr`: marker and IntoR impl that routes through ExternalPtr.
+/// Derive `PreferExternalPtr`: adds the `PrefersExternalPtr` marker trait and an
+/// `IntoR` impl that wraps the value in `ExternalPtr::new` before converting to SEXP.
+///
+/// The type must implement `TypedExternal` (typically via `#[derive(ExternalPtr)]`).
+/// The generated `IntoR::Error` is `Infallible`.
 pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -325,7 +375,11 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
     Ok(expand)
 }
 
-/// Derive `PreferDataFrame`: marker and IntoR impl that routes through IntoDataFrame.
+/// Derive `PreferDataFrame`: adds the `PrefersDataFrame` marker trait and an
+/// `IntoR` impl that converts to R via `IntoDataFrame::into_data_frame`, then `into_sexp`.
+///
+/// The type must implement `IntoDataFrame` (typically the companion struct generated
+/// by `#[derive(DataFrameRow)]`). The generated `IntoR::Error` is `Infallible`.
 pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -361,9 +415,12 @@ pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> 
     Ok(expand)
 }
 
-/// Derive `PreferRNativeType`: marker and IntoR impl that routes through native R vector allocation.
+/// Derive `PreferRNativeType`: adds the `PrefersRNativeType` marker trait and an
+/// `IntoR` impl that wraps the value in `AsRNative(self)` before calling `IntoR::into_sexp`.
 ///
-/// The type must also derive `RNativeType` for this to work.
+/// This routes conversion through native R vector allocation, bypassing list/ExternalPtr
+/// paths. The type must also implement `RNativeType` for the `AsRNative` wrapper to compile.
+/// The generated `IntoR::Error` is `Infallible`.
 pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();

@@ -21,12 +21,18 @@
 use std::collections::HashSet;
 
 /// A single `stopifnot()` assertion: `"message" = condition`.
+///
+/// When formatted, produces a named argument for R's `stopifnot()`:
+/// `"'x' must be numeric" = is.numeric(x)`.
 struct RAssertion {
+    /// Human-readable error message shown when the assertion fails.
     message: String,
+    /// R expression that must evaluate to `TRUE` for the check to pass.
     condition: String,
 }
 
 impl RAssertion {
+    /// Create a new assertion with the given error message and R condition expression.
     fn new(message: impl Into<String>, condition: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -59,30 +65,41 @@ impl RAssertion {
     }
 }
 
-/// Classification of an R-side type check.
+/// Classification of an R-side type check for a function parameter.
 ///
-/// Numeric checks use a broad predicate: `is.numeric || is.logical || is.raw`.
-/// R coerces logical→numeric freely, and raw→integer is valid for byte-sized types.
-/// Borderline cases (e.g., raw→i64 in strict mode) pass the precondition and reach
-/// Rust's strict checker, which produces better contextual error messages.
+/// Each variant maps to a specific set of `stopifnot()` assertions. Numeric checks
+/// use a broad predicate (`is.numeric || is.logical || is.raw`) because R coerces
+/// logical to numeric freely and raw to integer is valid for byte-sized types.
+/// Borderline cases (e.g., raw to i64 in strict mode) pass the precondition and
+/// reach Rust's strict checker, which produces better contextual error messages.
 enum RTypeCheck {
-    /// Numeric scalar: type check + length check (2 assertions)
+    /// Numeric scalar: type check + length-1 check (2 assertions).
+    /// Used for `i32`, `f64`, `f32`, `i8`, `i16`, `i64`, `isize`.
     ScalarNumeric,
-    /// Non-negative numeric scalar: type + length + non-negative (3 assertions)
+    /// Non-negative numeric scalar: type + length-1 + `>= 0` (3 assertions).
+    /// Used for `u16`, `u32`, `u64`, `usize`.
     ScalarNonNeg,
-    /// Non-numeric scalar: `is.<type>(x)` + length check (2 assertions)
+    /// Non-numeric scalar: `is.<type>(x)` + length-1 check (2 assertions).
+    /// The string is the R type predicate name (e.g., `"logical"`, `"character"`).
     Scalar(&'static str),
-    /// Numeric vector: type check only (1 assertion)
+    /// Numeric vector: type check only, no length constraint (1 assertion).
     VectorNumeric,
-    /// Non-numeric vector: `is.<type>(x)` only (1 assertion)
+    /// Non-numeric vector: `is.<type>(x)` only (1 assertion).
+    /// The string is the R type predicate name.
     Vector(&'static str),
-    /// Nullable wrapper: inner assertions with `is.null(x) ||` guard
+    /// Nullable wrapper around an inner check: prepends `is.null(x) ||` to each assertion
+    /// and adjusts messages to mention NULL.
     Nullable(Box<RTypeCheck>),
-    /// List check: `is.list(x)` (1 assertion)
+    /// List check: `is.list(x)` (1 assertion).
+    /// Used for `HashMap`, `BTreeMap`, `NamedList`, `List`, `ListMut`.
     List,
 }
 
-/// The numeric type predicate accepted by R's coercion layer.
+/// Build the R expression for the numeric type predicate.
+///
+/// Returns `"is.numeric(p) || is.logical(p) || is.raw(p)"` for a given parameter `p`.
+/// This broad predicate matches R's coercion rules: logical coerces to numeric freely,
+/// and raw is accepted because it represents byte-level data.
 fn numeric_type_check(param: &str) -> String {
     format!(
         "is.numeric({p}) || is.logical({p}) || is.raw({p})",
@@ -91,7 +108,11 @@ fn numeric_type_check(param: &str) -> String {
 }
 
 impl RTypeCheck {
-    /// Produce the individual assertions for this type check.
+    /// Produce the individual `stopifnot()` assertions for this type check.
+    ///
+    /// Returns one or more `RAssertion` values, each representing a single
+    /// `"message" = condition` entry in the `stopifnot()` call. The `param`
+    /// argument is the R parameter name to use in messages and conditions.
     fn assertions(&self, param: &str) -> Vec<RAssertion> {
         match self {
             RTypeCheck::ScalarNumeric => vec![
@@ -162,7 +183,11 @@ fn r_check_for_type(ty: &syn::Type) -> Option<RTypeCheck> {
     }
 }
 
-/// Handle `syn::TypePath` — the most common case (e.g., `i32`, `Vec<f64>`, `Option<String>`).
+/// Map a `syn::TypePath` to its R-side type check.
+///
+/// Handles the most common case: simple types (`i32`, `String`, `bool`),
+/// generic wrappers (`Vec<T>`, `Option<T>`), map types, and skip types.
+/// Returns `None` for types that cannot be prechecked from R.
 fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
     let segment = type_path.path.segments.last()?;
     let ident = segment.ident.to_string();
@@ -212,7 +237,10 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
     }
 }
 
-/// Handle reference types like `&str`, `&[u8]`, `&Path`, `&Dots`.
+/// Map a reference type to its R-side type check.
+///
+/// Handles `&str` and `&Path` (character scalar), `&[T]` (vector based on element type),
+/// and `&Dots` (skipped). Returns `None` for unrecognized reference types.
 fn r_check_for_reference(type_ref: &syn::TypeReference) -> Option<RTypeCheck> {
     match type_ref.elem.as_ref() {
         // &str → character scalar
@@ -231,7 +259,11 @@ fn r_check_for_reference(type_ref: &syn::TypeReference) -> Option<RTypeCheck> {
     }
 }
 
-/// Map a Vec/slice element type to the appropriate vector check.
+/// Map a `Vec<T>` or `&[T]` element type to the appropriate vector type check.
+///
+/// Numeric elements produce `VectorNumeric`, `bool` produces `Vector("logical")`,
+/// `String` produces `Vector("character")`, etc. Handles nested `Option<T>` for
+/// nullable element types (e.g., `Vec<Option<String>>` becomes character vector).
 fn r_check_for_vec_element(elem_ty: &syn::Type) -> Option<RTypeCheck> {
     let syn::Type::Path(tp) = elem_ty else {
         return None;
@@ -279,26 +311,43 @@ fn extract_single_generic_arg(segment: &syn::PathSegment) -> Option<&syn::Type> 
     None
 }
 
-/// A parameter that needs a fallback precheck (unknown to the static table).
+/// A parameter whose Rust type is not in the static type table and may need
+/// a fallback precheck in the future.
+///
+/// Currently, fallback params are recorded but no R-side validation is generated
+/// for them -- the Rust-side conversion handles type errors with its own messages.
 #[allow(dead_code)]
 pub struct FallbackParam {
-    /// R-normalized parameter name.
+    /// R-normalized parameter name (e.g., `_dots` becomes `.dots`).
     pub r_name: String,
-    /// The Rust type (for generating type-aware validation).
+    /// The original Rust type, preserved for potential future type-aware validation.
     pub rust_type: syn::Type,
 }
 
-/// Output of precondition analysis: static checks + fallback params.
+/// Output of precondition analysis for a function's parameters.
+///
+/// Contains both the generated R `stopifnot()` code for known types and a list
+/// of parameters with unknown types that were not statically prechecked.
 pub struct PreconditionOutput {
     /// Lines forming a `stopifnot(...)` call for known types.
+    ///
+    /// Empty if no parameters have known type checks. For a single assertion,
+    /// contains one line (`stopifnot(...)`). For multiple assertions, contains
+    /// `stopifnot(`, indented assertion lines, and `)`.
     pub static_checks: Vec<String>,
-    /// Parameters needing fallback validation (unknown custom types).
+    /// Parameters with unknown custom types that were not prechecked.
+    ///
+    /// These are recorded for potential future use but currently no R-side
+    /// validation is generated for them.
     #[allow(dead_code)]
     pub fallback_params: Vec<FallbackParam>,
 }
 
-/// Types that should never get a fallback precheck (they're handled specially
-/// or can't be meaningfully prechecked from R).
+/// Returns `true` for types that should never get a fallback precheck.
+///
+/// These types are either handled specially by the FFI layer (`SEXP`),
+/// consumed by the macro infrastructure (`Dots`, `Missing`), or managed
+/// internally (`ExternalPtr`, `OwnedProtect`).
 fn is_skip_type(ident: &str) -> bool {
     matches!(
         ident,
@@ -306,8 +355,11 @@ fn is_skip_type(ident: &str) -> bool {
     )
 }
 
-/// Check if a type should get a fallback precheck (unknown to static table,
-/// not a skip type, not a reference).
+/// Returns `true` if a type is unknown to the static type table and should
+/// be recorded as a fallback parameter.
+///
+/// Returns `false` for skip types (SEXP, Dots, etc.) and reference types
+/// (which are handled by the static table or skipped).
 fn needs_fallback(ty: &syn::Type) -> bool {
     match ty {
         syn::Type::Path(tp) => {

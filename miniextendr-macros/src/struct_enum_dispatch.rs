@@ -23,21 +23,35 @@
 //! | `#[miniextendr(match_arg)]` on fieldless enum | MatchArg |
 
 /// Parsed attributes for `#[miniextendr]` on structs/enums.
+///
+/// These attributes control which derive path is taken when `#[miniextendr]`
+/// is applied to a struct or enum.
 struct StructEnumAttrs {
-    // ALTREP options (forwarded to altrep path)
+    /// ALTREP class name override (forwarded to the ALTREP derive path).
     class: Option<String>,
+    /// ALTREP base type override (forwarded to the ALTREP derive path).
     base: Option<String>,
-    // Mode selectors
+    /// Derive `IntoList` + `TryFromList` + `PreferList` for struct-to-list round-tripping.
     list: bool,
+    /// Derive `DataFrameRow` for struct-to-data-frame conversion.
     dataframe: bool,
+    /// Force `ExternalPtr` derive even on single-field structs (which default to ALTREP).
     externalptr: bool,
+    /// Derive `MatchArg` for enum (single-selection from R character scalar).
     match_arg: bool,
+    /// Derive `RFactor` for enum (R factor representation).
     factor: bool,
-    // Preference marker
+    /// Preference marker string: `"externalptr"`, `"list"`, `"dataframe"`, or `"native"`.
+    /// Acts as a soft mode selector when no explicit mode attribute is set.
     prefer: Option<String>,
 }
 
-/// Parse `#[miniextendr(...)]` attributes for struct/enum dispatch.
+/// Parses the attribute arguments of `#[miniextendr(...)]` when applied to a struct or enum.
+///
+/// Supports path-style flags (`list`, `dataframe`, `externalptr`, `match_arg`, `factor`)
+/// and key-value pairs (`class = "..."`, `base = "..."`, `prefer = "..."`).
+///
+/// Returns a [`StructEnumAttrs`] on success, or a compile error if an unknown attribute is found.
 fn parse_attrs(attr: proc_macro::TokenStream) -> syn::Result<StructEnumAttrs> {
     use syn::parse::Parser;
 
@@ -119,7 +133,7 @@ fn parse_attrs(attr: proc_macro::TokenStream) -> syn::Result<StructEnumAttrs> {
     Ok(attrs)
 }
 
-/// Count the number of fields on a struct.
+/// Returns the number of fields on a struct (named, unnamed, or unit).
 fn field_count(item: &syn::ItemStruct) -> usize {
     match &item.fields {
         syn::Fields::Named(f) => f.named.len(),
@@ -128,14 +142,20 @@ fn field_count(item: &syn::ItemStruct) -> usize {
     }
 }
 
-/// Check if an enum has only fieldless (unit) variants.
+/// Returns `true` if every variant of the enum is a unit variant (no fields).
 fn is_fieldless_enum(item: &syn::ItemEnum) -> bool {
     item.variants
         .iter()
         .all(|v| matches!(v.fields, syn::Fields::Unit))
 }
 
-/// Main dispatch: `#[miniextendr]` on struct or enum.
+/// Main dispatch entry point for `#[miniextendr]` on a struct or enum.
+///
+/// Attempts to parse the item as a struct first, then as an enum.
+/// Dispatches to the appropriate derive path based on the parsed attributes
+/// and item shape (field count, variant structure).
+///
+/// Returns the original item plus any generated trait implementations as a combined token stream.
 pub fn expand_struct_or_enum(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -158,7 +178,14 @@ pub fn expand_struct_or_enum(
     .into()
 }
 
-/// Dispatch for structs.
+/// Dispatches `#[miniextendr]` on a struct to the correct derive path.
+///
+/// Decision logic:
+/// - 1-field struct with no explicit mode: ALTREP (backwards compatibility)
+/// - Explicit `list` mode: `IntoList` + `TryFromList` + `PreferList`
+/// - Explicit `dataframe` mode: `IntoList` + `DataFrameRow` + companion `IntoR`
+/// - Default multi-field or explicit `externalptr`: `ExternalPtr`
+/// - `prefer = "native"`: `ExternalPtr` + `PreferRNative` marker
 fn expand_struct(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -319,7 +346,11 @@ fn expand_struct(
     result.unwrap_or_else(|e| e.into_compile_error()).into()
 }
 
-/// Dispatch for enums.
+/// Dispatches `#[miniextendr]` on a fieldless enum to the correct derive path.
+///
+/// Only C-style (fieldless) enums are supported. Dispatches to:
+/// - `match_arg` mode: `MatchArg` derive (single-selection from R character scalar)
+/// - `factor` mode or default: `RFactor` derive (R factor representation)
 fn expand_enum(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,

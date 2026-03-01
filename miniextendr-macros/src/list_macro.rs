@@ -23,8 +23,9 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Expr, Ident, LitStr, Token};
 
-/// Parsed list! macro input.
+/// Parsed `list!` macro input containing zero or more entries.
 pub struct ListInput {
+    /// The list entries, which may be named, unnamed, or a mix.
     pub entries: Vec<ListEntry>,
 }
 
@@ -36,13 +37,20 @@ pub struct ListEntry {
     pub value: Expr,
 }
 
-/// Name for a list entry - either an identifier or a string literal.
+/// Name for a list entry -- either a Rust identifier or a string literal.
+///
+/// Identifiers are used for simple names (e.g., `alpha = 1`), while string
+/// literals allow names that are not valid Rust identifiers (e.g., `"my-name" = 1`).
 pub enum ListName {
+    /// A bare Rust identifier used as the entry name (e.g., `alpha`).
     Ident(Ident),
+    /// A string literal used as the entry name (e.g., `"my-name"`).
     Str(LitStr),
 }
 
 impl ListName {
+    /// Returns the name as a plain `String`, extracting the identifier text
+    /// or the string literal value.
     fn to_string_value(&self) -> String {
         match self {
             ListName::Ident(ident) => ident.to_string(),
@@ -99,7 +107,13 @@ impl Parse for ListEntry {
     }
 }
 
-/// Generate tokens for the list! macro.
+/// Expands a parsed `list!` invocation into a `List` constructor token stream.
+///
+/// For fully unnamed lists, generates `List::from_raw_values(...)`.
+/// For named or mixed lists, generates `List::from_raw_pairs(...)` where
+/// unnamed entries receive empty-string names.
+///
+/// Each entry value is converted via `IntoR::into_sexp()`.
 pub fn expand_list(input: ListInput) -> TokenStream {
     if input.entries.is_empty() {
         // Empty list
