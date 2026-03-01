@@ -1686,7 +1686,8 @@ mod tests {
         // (compile-time test: if this compiles, the blanket impl works)
         fn _assert_has_collect_r<T: ParCollectR>() {}
         fn _assert_par_iter_has_it() {
-            _assert_has_collect_r::<rayon::iter::Map<rayon::slice::Iter<'_, f64>, fn(&f64) -> f64>>();
+            _assert_has_collect_r::<rayon::iter::Map<rayon::slice::Iter<'_, f64>, fn(&f64) -> f64>>(
+            );
         }
     }
 

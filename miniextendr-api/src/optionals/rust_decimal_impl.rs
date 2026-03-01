@@ -287,18 +287,39 @@ impl TryFromSexp for Vec<Option<Decimal>> {
 }
 
 impl IntoR for Decimal {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.to_string().into_sexp()
     }
 }
 
 impl IntoR for Option<Decimal> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.map(|v| v.to_string()).into_sexp()
     }
 }
 
 impl IntoR for Vec<Decimal> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.into_iter()
             .map(|v| v.to_string())
@@ -308,6 +329,13 @@ impl IntoR for Vec<Decimal> {
 }
 
 impl IntoR for Vec<Option<Decimal>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.into_iter()
             .map(|v| v.map(|val| val.to_string()))

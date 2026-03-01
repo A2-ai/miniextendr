@@ -1,7 +1,7 @@
 //! serde_json adapter tests
+use crate::serde::{Deserialize, Serialize};
 use miniextendr_api::serde_impl::{JsonValue, RJsonValueOps, RSerialize};
 use miniextendr_api::{miniextendr, miniextendr_module};
-use crate::serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "crate::serde")]

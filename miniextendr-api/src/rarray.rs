@@ -811,6 +811,13 @@ impl_rarray_try_from_sexp_coerce!(RLogical => bool);
 // =============================================================================
 
 impl<T: RNativeType, const NDIM: usize> IntoR for RArray<T, NDIM> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
     fn into_sexp(self) -> SEXP {
         self.sexp
     }

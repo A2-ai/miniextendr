@@ -86,6 +86,13 @@ impl TryFromSexp for Url {
 }
 
 impl IntoR for Url {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.as_str().into_sexp()
     }
@@ -136,6 +143,13 @@ impl TryFromSexp for Option<Url> {
 }
 
 impl IntoR for Option<Url> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         // Leverage Option<String>'s IntoR which handles NA correctly
         self.map(|u| u.as_str().to_string()).into_sexp()
@@ -189,6 +203,13 @@ impl TryFromSexp for Vec<Url> {
 }
 
 impl IntoR for Vec<Url> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         // Convert to Vec<String> and use its IntoR
         let strings: Vec<String> = self.into_iter().map(|u| u.as_str().to_string()).collect();
@@ -241,6 +262,13 @@ impl TryFromSexp for Vec<Option<Url>> {
 }
 
 impl IntoR for Vec<Option<Url>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         // Convert to Vec<Option<String>> and use its IntoR
         let strings: Vec<Option<String>> = self

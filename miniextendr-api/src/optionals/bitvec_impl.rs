@@ -101,6 +101,13 @@ impl_option_try_from_sexp!(RBitVec);
 // =============================================================================
 
 impl IntoR for RBitVec {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         use crate::ffi::{Rf_allocVector, SET_LOGICAL_ELT};
 
@@ -117,6 +124,13 @@ impl IntoR for RBitVec {
 }
 
 impl IntoR for Option<RBitVec> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         match self {
             Some(bits) => bits.into_sexp(),
@@ -165,6 +179,13 @@ impl TryFromSexp for BitVec<u8, Msb0> {
 impl_option_try_from_sexp!(BitVec<u8, Msb0>);
 
 impl IntoR for BitVec<u8, Msb0> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         use crate::ffi::{Rf_allocVector, SET_LOGICAL_ELT};
 
@@ -181,6 +202,13 @@ impl IntoR for BitVec<u8, Msb0> {
 }
 
 impl IntoR for Option<BitVec<u8, Msb0>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         match self {
             Some(bits) => bits.into_sexp(),

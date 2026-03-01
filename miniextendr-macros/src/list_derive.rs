@@ -262,6 +262,18 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::markers::PrefersList for #name #ty_generics #where_clause {}
 
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            #[inline]
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
@@ -286,6 +298,18 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
         impl #impl_generics ::miniextendr_api::markers::PrefersExternalPtr for #name #ty_generics #where_clause {}
 
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            #[inline]
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
@@ -310,6 +334,18 @@ pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> 
         impl #impl_generics ::miniextendr_api::markers::PrefersDataFrame for #name #ty_generics #where_clause {}
 
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            #[inline]
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
@@ -336,6 +372,18 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::markers::PrefersRNativeType for #name #ty_generics #where_clause {}
 
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            #[inline]
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 ::miniextendr_api::into_r::IntoR::into_sexp(

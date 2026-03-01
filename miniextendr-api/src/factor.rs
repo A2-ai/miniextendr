@@ -453,6 +453,13 @@ impl<T> std::ops::DerefMut for FactorVec<T> {
 }
 
 impl<T: RFactor> IntoR for FactorVec<T> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         let indices: Vec<i32> = self.0.iter().map(|v| v.to_level_index()).collect();
         build_factor(&indices, build_levels_sexp(T::CHOICES))
@@ -502,6 +509,13 @@ impl<T> std::ops::DerefMut for FactorOptionVec<T> {
 }
 
 impl<T: RFactor> IntoR for FactorOptionVec<T> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         let indices: Vec<i32> = self
             .0
