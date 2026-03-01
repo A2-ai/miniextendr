@@ -104,7 +104,7 @@ fn with_r_thread_or_inline<R: Send + 'static, F: FnOnce() -> R + Send + 'static>
     } else {
         panic!(
             "RAllocator: cannot allocate from non-main thread without worker context. \
-             Ensure miniextendr_worker_init() was called and you're within run_on_worker()."
+             Ensure miniextendr_runtime_init() was called and you're within run_on_worker()."
         )
     }
 }

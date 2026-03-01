@@ -44,14 +44,15 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.insert(insert_pos, format!("#' {}", lc_import));
         }
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
         }
-        lines.push(format!(
-            "  structure({}, class = \"{}\")",
-            ctx.static_call(),
-            class_name
-        ));
+        lines.push(format!("  .val <- {}", ctx.static_call()));
+        lines.extend(crate::method_return_builder::error_in_r_check_lines("  "));
+        lines.push(format!("  structure(.val, class = \"{}\")", class_name));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -105,6 +106,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             s3_method_name, full_params
         ));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject lifecycle prelude if present
         let what = format!("{}.{}", generic_name, class_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
@@ -143,6 +148,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
             lines.push(format!("  {}", prelude));

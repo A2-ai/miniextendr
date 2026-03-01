@@ -11,7 +11,7 @@ R has no native way to hold arbitrary Rust data. `EXTPTRSXP` is R's mechanism fo
 - **Type-safe access** via `TypedExternal` trait and R symbol comparison
 - **Automatic cleanup** via R GC finalizer that calls `Drop`
 - **Box-like API** (`Deref`, `DerefMut`, `Clone`, `into_inner`, `into_raw`, `pin`, etc.)
-- **Worker thread support** -- `new()` automatically routes R API calls to the main thread
+- **Thread-safe construction** -- `new()` routes R API calls to the main thread when called off-thread (e.g., with the `worker-thread` feature)
 
 ## When to Use ExternalPtr
 
@@ -47,7 +47,7 @@ pub fn create_data(v: f64) -> MyData {
 let ptr = ExternalPtr::new(MyData { value: 3.14 });
 ```
 
-`new()` works from any thread -- if called from the worker thread, R API calls are automatically dispatched to the main thread via `with_r_thread`.
+`new()` works from any thread -- if called off the main thread (e.g., from the worker thread with the `worker-thread` feature), R API calls are automatically dispatched to the main thread via `with_r_thread`.
 
 ### Unchecked construction (ALTREP callbacks, main-thread-only code)
 
@@ -268,7 +268,7 @@ The `prot` slot holds a two-element list. Slot 0 is the namespaced type ID symbo
 
 ## Thread Safety
 
-`ExternalPtr` is `Send` when `T: Send`, allowing it to be returned from worker thread functions. All R API calls are serialized through the main thread. Concurrent access is not supported -- R's runtime is single-threaded.
+`ExternalPtr` is `Send` when `T: Send`, allowing it to be transferred between threads. All R API calls are serialized through the main thread. Concurrent access is not supported -- R's runtime is single-threaded.
 
 ## Trait Implementations
 

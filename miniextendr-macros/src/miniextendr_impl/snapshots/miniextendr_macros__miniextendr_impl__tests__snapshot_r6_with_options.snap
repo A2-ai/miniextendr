@@ -15,11 +15,25 @@ Child <- R6::R6Class("Child", inherit = ParentClass,
       if (!is.null(.ptr)) {
         private$.ptr <- .ptr
       } else {
-        private$.ptr <- .Call(C_Child__new, .call = match.call())
+        .val <- .Call(C_Child__new, .call = match.call())
+        if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+          stop(structure(
+            class = c("rust_error", "simpleError", "error", "condition"),
+            list(message = .val$error, call = sys.call(), kind = .val$kind)
+          ))
+        }
+        private$.ptr <- .val
       }
     },
     greet = function() {
-      .Call(C_Child__greet, .call = match.call(), private$.ptr)
+      .val <- .Call(C_Child__greet, .call = match.call(), private$.ptr)
+      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+        stop(structure(
+          class = c("rust_error", "simpleError", "error", "condition"),
+          list(message = .val$error, call = sys.call(), kind = .val$kind)
+        ))
+      }
+      .val
     }
   ),
   private = list(

@@ -408,6 +408,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     if let Some(ctx) = parsed_impl.constructor_context() {
         let ctor_preconditions = ctx.precondition_checks();
+        let ctor_missing = ctx.missing_prelude();
         if has_self_returning_methods {
             let params_with_ptr = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -415,9 +416,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("  constructor = function({}) {{", params_with_ptr));
-            // Only check preconditions when not using .ptr shortcut
-            if !ctor_preconditions.is_empty() {
+            // Missing defaults + preconditions only when not using .ptr shortcut
+            if !ctor_missing.is_empty() || !ctor_preconditions.is_empty() {
                 lines.push("    if (is.null(.ptr)) {".to_string());
+                for line in &ctor_missing {
+                    lines.push(format!("      {}", line));
+                }
                 for check in &ctor_preconditions {
                     lines.push(format!("      {}", check));
                 }
@@ -426,21 +430,24 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("    if (!is.null(.ptr)) {".to_string());
             lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
             lines.push("    } else {".to_string());
-            lines.push(format!(
-                "      S7::new_object(S7::S7_object(), .ptr = {})",
-                ctx.static_call()
+            lines.push(format!("      .val <- {}", ctx.static_call()));
+            lines.extend(crate::method_return_builder::error_in_r_check_lines(
+                "      ",
             ));
+            lines.push("      S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
             lines.push("    }".to_string());
             lines.push("  }".to_string());
         } else {
             lines.push(format!("  constructor = function({}) {{", ctx.params));
+            for line in &ctor_missing {
+                lines.push(format!("    {}", line));
+            }
             for check in &ctor_preconditions {
                 lines.push(format!("    {}", check));
             }
-            lines.push(format!(
-                "    S7::new_object(S7::S7_object(), .ptr = {})",
-                ctx.static_call()
-            ));
+            lines.push(format!("    .val <- {}", ctx.static_call()));
+            lines.extend(crate::method_return_builder::error_in_r_check_lines("    "));
+            lines.push("    S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
             lines.push("  }".to_string());
         }
     }
@@ -508,14 +515,18 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_inline();
 
-            // Inject lifecycle prelude and precondition checks if present
+            // Inject missing param defaults, lifecycle prelude, and precondition checks
             let what = format!("{}.{}", generic_name, class_name);
+            let missing = ctx.missing_prelude();
             let lifecycle = ctx.method.lifecycle_prelude(&what);
             let preconditions = ctx.precondition_checks();
-            if lifecycle.is_some() || !preconditions.is_empty() {
+            if !missing.is_empty() || lifecycle.is_some() || !preconditions.is_empty() {
                 lines.push(format!(
                     "S7::method({gen_name}, {method_class}) <- function({full_params}) {{"
                 ));
+                for line in &missing {
+                    lines.push(format!("  {line}"));
+                }
                 if let Some(prelude) = lifecycle {
                     lines.push(format!("  {prelude}"));
                 }
@@ -593,14 +604,18 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
 
-            // Inject lifecycle prelude and precondition checks if present
+            // Inject missing param defaults, lifecycle prelude, and precondition checks
             let what = format!("{}.{}", generic_name, class_name);
+            let missing = ctx.missing_prelude();
             let lifecycle = ctx.method.lifecycle_prelude(&what);
             let preconditions = ctx.precondition_checks();
-            if lifecycle.is_some() || !preconditions.is_empty() {
+            if !missing.is_empty() || lifecycle.is_some() || !preconditions.is_empty() {
                 lines.push(format!(
                     "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{"
                 ));
+                for line in &missing {
+                    lines.push(format!("  {line}"));
+                }
                 if let Some(prelude) = lifecycle {
                     lines.push(format!("  {prelude}"));
                 }
@@ -637,6 +652,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
             lines.push(format!("  {}", prelude));

@@ -42,7 +42,7 @@ fn initialize_r_with_small_ppsize() {
             .expect("Failed to initialize R with small ppsize");
 
         miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_worker_init();
+        miniextendr_api::worker::miniextendr_runtime_init();
         disable_r_stack_checking();
 
         assert!(

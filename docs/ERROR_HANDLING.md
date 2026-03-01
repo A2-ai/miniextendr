@@ -228,27 +228,26 @@ pub fn verbose_function() {
 
 ---
 
-## Error-in-R Mode (`error_in_r`)
+## Error-in-R Mode (`error_in_r`) — Default
 
-By default, Rust-origin failures (panics, `Result::Err`, `Option::None`) are converted to
-immediate R errors via `Rf_error`/`Rf_errorcall`. This means the R error is raised while
-Rust stack frames are still active. `R_UnwindProtect` ensures destructors run, but the
-error propagation is immediate and not inspectable from R code.
+By default, Rust-origin failures (panics, `Result::Err`, `Option::None`) are transported as
+**tagged SEXP values** back to R, and the generated R wrapper inspects the value and raises a
+structured R condition. This ensures all Rust destructors have fully completed before R sees
+the error, and gives R code a typed condition class to catch.
 
-`error_in_r` mode changes this: failures are transported as a **tagged SEXP value** back to
-R, and the generated R wrapper inspects the value and raises a structured R condition. This
-ensures all Rust destructors have fully completed before R sees the error, and gives R code
-a typed condition class to catch.
+This is the `error_in_r` mode, which is **enabled by default** for all `#[miniextendr]`
+functions and methods. Opt out with `no_error_in_r` if you need the legacy behavior where
+`Rf_error`/`Rf_errorcall` raises the R error immediately (while Rust stack frames are still
+active).
 
-### Enabling error_in_r
+### Opting Out
 
 Per-function:
 
 ```rust
-#[miniextendr(error_in_r)]
-pub fn parse_data(s: String) -> Result<i32, String> {
-    s.parse::<i32>().map_err(|e| e.to_string())
-}
+// Opt out: use legacy Rf_error behavior
+#[miniextendr(no_error_in_r)]
+pub fn fast_path(x: i32) -> i32 { x }
 ```
 
 Per-method on an impl block:
@@ -256,26 +255,9 @@ Per-method on an impl block:
 ```rust
 #[miniextendr]
 impl MyType {
-    #[miniextendr(error_in_r)]
-    fn risky(&self) -> Result<i32, String> { /* ... */ }
+    #[miniextendr(no_error_in_r)]
+    fn legacy_method(&self) -> i32 { 42 }
 }
-```
-
-Project-wide via Cargo feature (opt out with `no_error_in_r`):
-
-```toml
-[features]
-default = ["miniextendr-api/default-error-in-r"]
-```
-
-```rust
-// Uses error_in_r from feature default
-#[miniextendr]
-pub fn add(a: i32, b: i32) -> i32 { a + b }
-
-// Opt out for this specific function
-#[miniextendr(no_error_in_r)]
-pub fn fast_path(x: i32) -> i32 { x }
 ```
 
 ### What Gets Caught
@@ -503,22 +485,6 @@ R API calls must happen on R's main thread. miniextendr enforces this in debug b
 pub fn my_function() {
     // In debug builds, this panics if not on main thread
     r_println("Hello from R!");
-}
-```
-
-### Worker Thread Pattern
-
-For background computation, use the worker thread:
-
-```rust
-use miniextendr_api::worker::spawn_on_worker;
-
-#[miniextendr]
-pub fn expensive_compute(data: Vec<f64>) -> f64 {
-    // Computation runs on worker thread
-    spawn_on_worker(|| {
-        data.iter().sum()
-    })
 }
 ```
 
@@ -884,7 +850,7 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 
 ## See Also
 
-- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide `default-error-in-r` feature
+- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide feature defaults
 - [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) -- Complete `#[miniextendr]` option reference
 - [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) -- `MINIEXTENDR_BACKTRACE` and other env vars
 - [THREADS.md](THREADS.md) -- Worker thread architecture and thread safety

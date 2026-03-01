@@ -21,7 +21,7 @@
 //! ```ignore
 //! #[unsafe(no_mangle)]
 //! pub extern "C" fn R_init_mypackage(info: *mut DllInfo) {
-//!     miniextendr_worker_init();
+//!     miniextendr_runtime_init();
 //!
 //!     // Optional: initialize vctrs support
 //!     if let Err(e) = init_vctrs() {
@@ -519,7 +519,7 @@ impl VctrsSexpExt for SEXP {
 /// extern int miniextendr_init_vctrs(void);
 ///
 /// void R_init_mypackage(DllInfo *info) {
-///     miniextendr_worker_init();
+///     miniextendr_runtime_init();
 ///     int status = miniextendr_init_vctrs();
 ///     if (status == 1) {
 ///         // vctrs not available - OK if optional

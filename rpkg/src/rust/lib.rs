@@ -190,6 +190,7 @@ mod url_adapter_tests;
 #[cfg(feature = "uuid")]
 mod uuid_adapter_tests;
 mod visibility_tests;
+#[cfg(feature = "worker-thread")]
 mod worker_tests;
 
 // region: proc-macro ALTREP test
@@ -1782,6 +1783,7 @@ miniextendr_module! {
     use s3_tests;
     use s7_tests;
     use s4_tests;
+    #[cfg(feature = "worker-thread")]
     use worker_tests;
     use coerce_tests;
     use visibility_tests;

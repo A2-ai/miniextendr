@@ -164,7 +164,8 @@ fn r6_wrapper_full_snapshot() {
     assert!(wrapper.contains("initialize = function(value, .ptr = NULL)"));
     assert!(wrapper.contains("if (!is.null(.ptr))"));
     assert!(wrapper.contains("private$.ptr <- .ptr"));
-    assert!(wrapper.contains("private$.ptr <- .Call(C_Counter__new"));
+    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains("private$.ptr <- .val"));
 
     // Verify public instance methods
     assert!(wrapper.contains("get = function()"));
@@ -314,8 +315,8 @@ fn s3_wrapper_full_snapshot() {
 
     // Verify constructor (lowercase convention)
     assert!(wrapper.contains("new_counter <- function(value)"));
-    assert!(wrapper.contains("structure(.Call(C_Counter__new"));
-    assert!(wrapper.contains("class = \"Counter\""));
+    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains("structure(.val, class = \"Counter\")"));
 
     // Verify S3 generics are created
     assert!(wrapper.contains("get <- function(x, ...) UseMethod(\"get\")"));
@@ -393,7 +394,8 @@ fn s4_wrapper_full_snapshot() {
 
     // Verify constructor
     assert!(wrapper.contains("Counter <- function(value)"));
-    assert!(wrapper.contains("methods::new(\"Counter\", ptr = .Call(C_Counter__new"));
+    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains("methods::new(\"Counter\", ptr = .val)"));
 
     // Verify S4 generics (unconditional - setGeneric is idempotent)
     assert!(
@@ -468,7 +470,8 @@ fn s7_wrapper_full_snapshot() {
     assert!(wrapper.contains("constructor = function(value, .ptr = NULL)"));
     assert!(wrapper.contains("if (!is.null(.ptr))"));
     assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .ptr)"));
-    assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .Call(C_Counter__new"));
+    assert!(wrapper.contains(".val <- .Call(C_Counter__new"));
+    assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .val)"));
 
     // Verify S7 generics (now multi-line braced form)
     assert!(wrapper.contains("if (!exists(\"get\", mode = \"function\")) {"));
@@ -682,7 +685,8 @@ fn vctrs_wrapper_vctr_full_snapshot() {
 
     // Verify constructor (vctrs convention: new_<class>)
     assert!(wrapper.contains("new_percent <- function(x)"));
-    assert!(wrapper.contains("data <- .Call(C_Percent__new"));
+    assert!(wrapper.contains(".val <- .Call(C_Percent__new"));
+    assert!(wrapper.contains("data <- .val"));
     assert!(
         wrapper.contains("vctrs::new_vctr(data, class = \"Percent\", inherit_base_type = FALSE)")
     );

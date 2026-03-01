@@ -264,16 +264,6 @@ where
         len
     );
 
-    struct UnprotectGuard;
-
-    impl Drop for UnprotectGuard {
-        fn drop(&mut self) {
-            with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect_unchecked(1);
-            });
-        }
-    }
-
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
@@ -282,7 +272,7 @@ where
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
     });
-    let _guard = UnprotectGuard;
+    let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
 
     // Create slice and dispatch chunks in parallel
     let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
@@ -504,16 +494,6 @@ where
         len
     );
 
-    struct UnprotectGuard;
-
-    impl Drop for UnprotectGuard {
-        fn drop(&mut self) {
-            with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect_unchecked(1);
-            });
-        }
-    }
-
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
@@ -522,7 +502,7 @@ where
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
     });
-    let _guard = UnprotectGuard;
+    let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
 
     // Split into columns and dispatch in parallel
     let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
@@ -601,17 +581,6 @@ where
 
     use crate::ffi::SEXPTYPE;
 
-    struct UnprotectGuard(i32);
-
-    impl Drop for UnprotectGuard {
-        fn drop(&mut self) {
-            let n = self.0;
-            with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect_unchecked(n);
-            });
-        }
-    }
-
     // Allocate, set dims, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
@@ -634,7 +603,7 @@ where
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
     });
-    let _guard = UnprotectGuard(1);
+    let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
 
     // Calculate slab size (product of all dims except the last)
     let slab_size: usize = if NDIM <= 1 {
@@ -1263,6 +1232,152 @@ impl<T> ColumnWriter<T> {
 
 // endregion
 
+// region: Standard rayon trait extensions
+
+/// Extension trait for collecting indexed parallel iterators directly into R memory.
+///
+/// This is the primary bridge between Rayon's parallel computation and R's data
+/// structures. It extends every `IndexedParallelIterator` with a `.collect_r()`
+/// method that writes directly into pre-allocated R memory — zero intermediate
+/// allocation.
+///
+/// Most parallel iterator chains are indexed (known length):
+/// - `slice.par_iter().map(...)` — indexed
+/// - `(0..n).into_par_iter().map(...)` — indexed
+/// - `vec.into_par_iter().map(...)` — indexed
+/// - `.enumerate()`, `.zip()`, `.take()`, `.skip()` — indexed
+///
+/// For non-indexed iterators (`.filter()`, `.flat_map()`), use
+/// [`par_collect_sexp()`] which collects via an intermediate `Vec<T>`.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};
+///
+/// #[miniextendr]
+/// fn parallel_sqrt(x: &[f64]) -> SEXP {
+///     // Zero-copy: writes sqrt values directly into R memory
+///     x.par_iter().map(|&v| v.sqrt()).collect_r()
+/// }
+/// ```
+///
+/// # Thread Safety
+///
+/// `.collect_r()` must be called from the worker thread or main thread, NOT
+/// from inside a Rayon parallel context. The R vector allocation uses
+/// `with_r_thread()`, which only works from those threads.
+#[cfg(feature = "rayon")]
+pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
+    /// Collect this indexed parallel iterator directly into an R SEXP vector.
+    ///
+    /// Allocates the R vector on the main thread, then fills it in parallel
+    /// using Rayon's `zip` (each output slot is paired with an iterator item).
+    /// Zero intermediate allocation.
+    fn collect_r(self) -> SEXP
+    where
+        Self::Item: RNativeType + Send + Sync,
+    {
+        let len = self.len();
+
+        // Allocate, protect, and get data pointer on the R main thread
+        use crate::worker::Sendable;
+        let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
+            let sexp = crate::ffi::Rf_allocVector_unchecked(
+                Self::Item::SEXP_TYPE,
+                len as crate::ffi::R_xlen_t,
+            );
+            crate::ffi::Rf_protect_unchecked(sexp);
+            let ptr = Self::Item::dataptr_mut(sexp);
+            (sexp, Sendable(ptr))
+        });
+        let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
+
+        // Parallel zip: iterator items → output slots (zero intermediate allocation)
+        if len > 0 {
+            let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
+            slice.par_iter_mut().zip(self).for_each(|(slot, item)| {
+                *slot = item;
+            });
+        }
+
+        sexp
+    }
+}
+
+// Blanket implementation: every IndexedParallelIterator gets .collect_r()
+#[cfg(feature = "rayon")]
+impl<T: rayon::iter::IndexedParallelIterator> ParCollectR for T {}
+
+/// `FromParallelIterator` implementation for `Sendable<SEXP>`.
+///
+/// Enables standard `.collect()` syntax when the return type is `Sendable<SEXP>`:
+///
+/// ```ignore
+/// use miniextendr_api::worker::Sendable;
+///
+/// #[miniextendr]
+/// fn parallel_sqrt(x: &[f64]) -> Sendable<SEXP> {
+///     x.par_iter().map(|&v| v.sqrt()).collect()
+/// }
+/// ```
+///
+/// The return type `Sendable<SEXP>` drives type inference so `.collect()` works
+/// without a turbofish. `Sendable<SEXP>` implements `IntoR`, so it works as a
+/// `#[miniextendr]` return type.
+///
+/// # Performance
+///
+/// This collects to an intermediate `Vec<T>` then converts to R. For zero-copy
+/// performance on indexed iterators, use [`.collect_r()`][ParCollectR::collect_r]
+/// instead.
+#[cfg(feature = "rayon")]
+impl<T> rayon::iter::FromParallelIterator<T> for crate::worker::Sendable<SEXP>
+where
+    T: Send + crate::IntoR + 'static,
+    Vec<T>: crate::IntoR,
+{
+    fn from_par_iter<I>(pi: I) -> Self
+    where
+        I: rayon::iter::IntoParallelIterator<Item = T>,
+    {
+        let vec: Vec<T> = pi.into_par_iter().collect();
+        let sexp = with_r_thread(|| vec.into_sexp());
+        crate::worker::Sendable(sexp)
+    }
+}
+
+/// Collect a non-indexed parallel iterator into an R vector (SEXP).
+///
+/// For iterators that lose their index (`.filter()`, `.flat_map()`, `.par_bridge()`),
+/// this function collects to an intermediate `Vec<T>` then converts to R.
+///
+/// For indexed iterators (the common case), prefer [`ParCollectR::collect_r()`]
+/// which writes directly into R memory with zero intermediate allocation.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge;
+///
+/// // filter() loses index — must use par_collect_sexp
+/// let sexp = rayon_bridge::par_collect_sexp(
+///     data.par_iter().filter(|&&x| x > 0.0).copied()
+/// );
+/// ```
+#[cfg(feature = "rayon")]
+pub fn par_collect_sexp<T, I>(iter: I) -> SEXP
+where
+    T: Send + IntoR + 'static,
+    Vec<T>: IntoR,
+    I: rayon::iter::IntoParallelIterator<Item = T>,
+{
+    let vec: Vec<T> = iter.into_par_iter().collect();
+    with_r_thread(|| vec.into_sexp())
+}
+
+// endregion
+
 #[cfg(all(test, feature = "rayon"))]
 mod tests {
     use super::*;
@@ -1559,5 +1674,58 @@ mod tests {
         }
         assert_eq!(col[0], Some(0.0));
         assert_eq!(col[1], None);
+    }
+
+    // =========================================================================
+    // ParCollectR / ParCollectRIndexed tests
+    // =========================================================================
+
+    #[test]
+    fn test_par_collect_r_trait_exists() {
+        // Verify that ParCollectR is available on indexed parallel iterators
+        // (compile-time test: if this compiles, the blanket impl works)
+        fn _assert_has_collect_r<T: ParCollectR>() {}
+        fn _assert_par_iter_has_it() {
+            _assert_has_collect_r::<rayon::iter::Map<rayon::slice::Iter<'_, f64>, fn(&f64) -> f64>>();
+        }
+    }
+
+    #[test]
+    fn test_par_collect_vec_roundtrip() {
+        // Verify standard rayon traits work for Vec<T> (already provided by rayon)
+        let data = vec![1.0_f64, 2.0, 3.0, 4.0];
+        let doubled: Vec<f64> = data.par_iter().map(|&x| x * 2.0).collect();
+        assert_eq!(doubled, vec![2.0, 4.0, 6.0, 8.0]);
+
+        // IntoParallelIterator for Vec<T>
+        let data = vec![1, 2, 3, 4, 5];
+        let result: Vec<i32> = data.into_par_iter().map(|x| x * x).collect();
+        assert_eq!(result, vec![1, 4, 9, 16, 25]);
+    }
+
+    #[test]
+    fn test_par_iter_ref_and_mut() {
+        // IntoParallelRefIterator for &[T]
+        let data = vec![1.0, 4.0, 9.0, 16.0];
+        let sqrts: Vec<f64> = data.par_iter().map(|&x: &f64| x.sqrt()).collect();
+        assert_eq!(sqrts, vec![1.0, 2.0, 3.0, 4.0]);
+
+        // IntoParallelRefMutIterator for &mut [T]
+        let mut data = vec![1.0, 2.0, 3.0, 4.0];
+        data.par_iter_mut().for_each(|x| *x *= 2.0);
+        assert_eq!(data, vec![2.0, 4.0, 6.0, 8.0]);
+    }
+
+    #[test]
+    fn test_from_par_iter_vec() {
+        // FromParallelIterator<T> for Vec<T> (rayon-provided)
+        let result: Vec<f64> = (0..100)
+            .into_par_iter()
+            .map(|i| (i as f64).sqrt())
+            .collect();
+        assert_eq!(result.len(), 100);
+        assert!((result[0] - 0.0).abs() < 1e-10);
+        assert!((result[1] - 1.0).abs() < 1e-10);
+        assert!((result[4] - 2.0).abs() < 1e-10);
     }
 }

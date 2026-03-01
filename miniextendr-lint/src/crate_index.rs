@@ -13,7 +13,7 @@ use syn::spanned::Spanned;
 use crate::helpers::{
     extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_altrep_derive,
     has_external_ptr_derive, has_miniextendr_attr, has_vctrs_derive, impl_type_name,
-    is_altrep_struct, is_miniextendr_module_macro, parse_miniextendr_impl_attrs, should_skip_dir,
+    is_altrep_struct, is_miniextendr_module_macro, parse_miniextendr_impl_attrs,
 };
 
 // ── Lint item types ─────────────────────────────────────────────────────────
@@ -171,6 +171,12 @@ pub struct FileData {
     // Doc-comment roxygen tags per function/impl name
     /// Known roxygen tags: "@noRd", "@export", "@keywords internal"
     pub fn_doc_tags: HashMap<String, Vec<String>>,
+
+    // Safety lint data
+    /// Lines containing direct Rf_error/Rf_errorcall calls: (function_name, line_number).
+    pub rf_error_calls: Vec<(String, usize)>,
+    /// Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
+    pub ffi_unchecked_calls: Vec<(String, usize)>,
 }
 
 impl FileData {
@@ -217,8 +223,7 @@ impl CrateIndex {
         }
 
         let mut rs_files = Vec::new();
-        collect_rs_files(&src_dir, &mut rs_files)
-            .map_err(|err| format!("miniextendr-lint: failed to read src: {err}"))?;
+        collect_rs_files_from_module_tree(&src_dir, &mut rs_files)?;
         rs_files.sort();
 
         let mut file_data = HashMap::new();
@@ -332,22 +337,184 @@ impl CrateIndex {
     }
 }
 
-// ── File collection ─────────────────────────────────────────────────────────
+// ── File collection (module-tree walker) ────────────────────────────────────
 
-fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if should_skip_dir(&path) {
-                continue;
+/// Collect Rust source files by walking the module tree from `lib.rs`,
+/// following `mod child;` declarations and respecting `#[cfg(feature = "...")]`
+/// gates via `CARGO_FEATURE_*` environment variables.
+fn collect_rs_files_from_module_tree(src_dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let lib_rs = src_dir.join("lib.rs");
+    if !lib_rs.is_file() {
+        return Err(format!(
+            "miniextendr-lint: cannot find lib.rs in {}",
+            src_dir.display()
+        ));
+    }
+
+    let active_features = collect_active_cargo_features();
+    walk_module_file(&lib_rs, &active_features, out);
+    Ok(())
+}
+
+/// Collect the set of active Cargo features from `CARGO_FEATURE_*` env vars.
+/// Feature names are normalized: `CARGO_FEATURE_FOO_BAR` → `"foo-bar"`.
+fn collect_active_cargo_features() -> HashSet<String> {
+    std::env::vars()
+        .filter_map(|(key, _)| {
+            key.strip_prefix("CARGO_FEATURE_")
+                .map(|suffix| suffix.to_lowercase().replace('_', "-"))
+        })
+        .collect()
+}
+
+/// Recursively walk a module file, following `mod` declarations.
+fn walk_module_file(file: &Path, active_features: &HashSet<String>, out: &mut Vec<PathBuf>) {
+    if !file.is_file() {
+        return;
+    }
+
+    // Avoid duplicates (e.g., mod.rs referenced multiple ways)
+    let file_buf = file.to_path_buf();
+    if out.contains(&file_buf) {
+        return;
+    }
+
+    out.push(file.to_path_buf());
+
+    // Parse the file to discover mod declarations
+    let Ok(src) = fs::read_to_string(file) else {
+        return;
+    };
+    let Ok(parsed) = syn::parse_file(&src) else {
+        return;
+    };
+
+    let parent_dir = match file.parent() {
+        Some(dir) => dir,
+        None => return,
+    };
+
+    // Determine the stem-based subdirectory for non-lib/mod files.
+    // For `foo.rs`, child modules live in `foo/`.
+    // For `lib.rs` or `mod.rs`, child modules live in the same directory.
+    let child_dir = {
+        let stem = file.file_stem().and_then(|s| s.to_str());
+        match stem {
+            Some("lib" | "mod") => parent_dir.to_path_buf(),
+            Some(name) => parent_dir.join(name),
+            None => parent_dir.to_path_buf(),
+        }
+    };
+
+    discover_mod_declarations(&parsed.items, &child_dir, active_features, out);
+}
+
+/// Walk parsed items looking for `mod child;` declarations and recurse.
+fn discover_mod_declarations(
+    items: &[Item],
+    child_dir: &Path,
+    active_features: &HashSet<String>,
+    out: &mut Vec<PathBuf>,
+) {
+    for item in items {
+        let Item::Mod(item_mod) = item else {
+            continue;
+        };
+
+        if let Some((_, child_items)) = &item_mod.content {
+            // Inline module — recurse into its items (same file)
+            discover_mod_declarations(child_items, child_dir, active_features, out);
+        } else {
+            // Out-of-line module declaration: `mod child;`
+            // Check if cfg-gated and whether the gate is active
+            let cfgs = extract_cfg_attrs(&item_mod.attrs);
+            if !cfgs.is_empty() && !is_cfg_active(&cfgs, active_features) {
+                continue; // Feature not enabled, skip this module
             }
-            collect_rs_files(&path, out)?;
-        } else if path.extension().is_some_and(|ext| ext == "rs") {
-            out.push(path);
+
+            let mod_name = item_mod.ident.to_string();
+
+            // Check for #[path = "file.rs"] attribute
+            let path_attr = extract_path_attr(&item_mod.attrs);
+
+            if let Some(file_path) = path_attr {
+                let target = child_dir.join(&file_path);
+                walk_module_file(&target, active_features, out);
+            } else {
+                // Try child.rs first, then child/mod.rs
+                let sibling = child_dir.join(format!("{mod_name}.rs"));
+                if sibling.is_file() {
+                    walk_module_file(&sibling, active_features, out);
+                } else {
+                    let subdir_mod = child_dir.join(&mod_name).join("mod.rs");
+                    walk_module_file(&subdir_mod, active_features, out);
+                }
+            }
         }
     }
-    Ok(())
+}
+
+/// Evaluate whether a set of `#[cfg(...)]` attributes is active given the current features.
+///
+/// Handles:
+/// - `#[cfg(feature = "foo")]` → true if "foo" is in active_features
+/// - `#[cfg(not(feature = "foo"))]` → true if "foo" is NOT in active_features
+/// - Multiple cfg attrs → all must be satisfied (AND semantics, matching rustc)
+///
+/// Unknown cfg predicates (e.g., `cfg(target_os = "linux")`) are treated as active
+/// (conservative: include the module rather than exclude it).
+fn is_cfg_active(cfgs: &[String], active_features: &HashSet<String>) -> bool {
+    for cfg_str in cfgs {
+        if let Some(result) = eval_cfg_str(cfg_str, active_features)
+            && !result
+        {
+            return false;
+        }
+        // Unknown cfg → treat as active (conservative)
+    }
+    true
+}
+
+/// Try to evaluate a single cfg string like `cfg(feature = "foo")` or `cfg(not(feature = "foo"))`.
+/// The string comes from `syn::Meta::to_token_stream().to_string()` which may insert spaces
+/// (e.g., `cfg (feature = "foo")` with a space after `cfg`).
+/// Returns `Some(bool)` if it can evaluate, `None` if it can't parse the predicate.
+fn eval_cfg_str(cfg_str: &str, active_features: &HashSet<String>) -> Option<bool> {
+    // Normalize: remove all spaces to handle varying token stream formatting
+    let normalized: String = cfg_str.chars().filter(|c| !c.is_whitespace()).collect();
+
+    // Extract the inner content of cfg(...)
+    let inner = normalized
+        .strip_prefix("cfg(")
+        .and_then(|s| s.strip_suffix(')'))?;
+
+    // Handle `not(feature="foo")`
+    if let Some(not_inner) = inner.strip_prefix("not(").and_then(|s| s.strip_suffix(')')) {
+        if let Some(feat) = extract_feature_name(not_inner) {
+            return Some(!active_features.contains(&feat));
+        }
+        return None; // Can't evaluate complex not()
+    }
+
+    // Handle `feature="foo"`
+    if let Some(feat) = extract_feature_name(inner) {
+        return Some(active_features.contains(&feat));
+    }
+
+    None // Unknown predicate
+}
+
+/// Extract the feature name from a string like `feature="foo"` (already whitespace-normalized).
+fn extract_feature_name(s: &str) -> Option<String> {
+    let rest = s.strip_prefix("feature")?;
+    let rest = rest.strip_prefix('=')?;
+    // Strip quotes: "foo" or \"foo\"
+    let name = rest.trim_matches('"').trim_matches('\\');
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }
 
 // ── Single-file parsing ─────────────────────────────────────────────────────
@@ -361,6 +528,13 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
 
     let mut data = FileData::default();
     collect_items_recursive(&parsed.items, &mut data);
+
+    // Scan raw source for direct Rf_error/Rf_errorcall calls (MXL300)
+    scan_rf_error_calls(&src, &mut data);
+
+    // Scan for ffi::*_unchecked() calls (MXL301)
+    scan_ffi_unchecked_calls(&src, &mut data);
+
     Ok(data)
 }
 
@@ -640,6 +814,64 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 }
             }
             _ => {}
+        }
+    }
+}
+
+/// Patterns that indicate direct Rf_error/Rf_errorcall calls in user code.
+const RF_ERROR_PATTERNS: &[&str] = &[
+    "Rf_error(",
+    "Rf_error_unchecked(",
+    "Rf_errorcall(",
+    "Rf_errorcall_unchecked(",
+];
+
+/// Scan raw source text for `ffi::*_unchecked()` calls.
+fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
+    for (line_idx, line) in src.lines().enumerate() {
+        let trimmed = line.trim();
+        // Skip comment lines
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        // Skip #[link_name] attributes (generated by #[r_ffi_checked])
+        if trimmed.starts_with("#[") {
+            continue;
+        }
+        // Find ffi::*_unchecked( patterns
+        let mut search_from = 0;
+        while let Some(ffi_pos) = trimmed[search_from..].find("ffi::") {
+            let abs_pos = search_from + ffi_pos;
+            let after_ffi = &trimmed[abs_pos + 5..];
+            // Extract identifier after "ffi::"
+            let ident_end = after_ffi
+                .find(|c: char| !c.is_alphanumeric() && c != '_')
+                .unwrap_or(after_ffi.len());
+            let ident = &after_ffi[..ident_end];
+            if ident.ends_with("_unchecked") && after_ffi[ident_end..].starts_with('(') {
+                data.ffi_unchecked_calls
+                    .push((ident.to_string(), line_idx + 1));
+            }
+            search_from = abs_pos + 5 + ident_end;
+        }
+    }
+}
+
+/// Scan raw source text for direct Rf_error/Rf_errorcall calls.
+fn scan_rf_error_calls(src: &str, data: &mut FileData) {
+    for (line_idx, line) in src.lines().enumerate() {
+        let trimmed = line.trim();
+        // Skip comment lines
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        for pattern in RF_ERROR_PATTERNS {
+            if trimmed.contains(pattern) {
+                // Extract the function name (without the trailing paren)
+                let fn_name = &pattern[..pattern.len() - 1];
+                data.rf_error_calls
+                    .push((fn_name.to_string(), line_idx + 1));
+            }
         }
     }
 }

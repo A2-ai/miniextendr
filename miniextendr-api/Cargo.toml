@@ -91,11 +91,12 @@ macro-coverage = []
 ## Project-wide defaults for #[miniextendr] options (forwarded to miniextendr-macros).
 default-strict = ["miniextendr-macros/default-strict"]
 default-coerce = ["miniextendr-macros/default-coerce"]
-default-error-in-r = ["miniextendr-macros/default-error-in-r"]
 default-r6 = ["miniextendr-macros/default-r6"]
 default-s7 = ["miniextendr-macros/default-s7"]
-default-worker = ["miniextendr-macros/default-worker"]
-default-main-thread = ["miniextendr-macros/default-main-thread"]
+## Enable worker thread infrastructure (run_on_worker, with_r_thread bidirectional dispatch).
+## Without this feature, worker APIs are lightweight inline stubs.
+worker-thread = []
+default-worker = ["miniextendr-macros/default-worker", "worker-thread"]
 ## Enable preserve::count() / count_unchecked() diagnostic helpers.
 ## Only needed in tests and benchmarks; excluded from production builds.
 debug-preserve = []

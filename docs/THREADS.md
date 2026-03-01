@@ -65,8 +65,10 @@ miniextendr-api = { version = "...", features = ["nonapi"] }
 
 ### Checked vs Unchecked R FFI
 
-Most `miniextendr_api::ffi::*` functions are **main-thread routed** (via `#[r_ffi_checked]`).
-If called from a non-main thread with a worker context, they execute on R's main thread.
+Most `miniextendr_api::ffi::*` functions are **checked** (via `#[r_ffi_checked]`).
+By default, they verify you're on the main thread and panic otherwise. With the
+`worker-thread` feature, if called from the worker thread, they route to the main
+thread via `with_r_thread`.
 
 When you intentionally call R from a non-main thread using this module, use the `*_unchecked`
 variants if you want to bypass routing and you are certain you're on the main thread already.

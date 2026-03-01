@@ -43,10 +43,15 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
         lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
         }
-        lines.push(format!("  self <- {}", ctx.static_call()));
+        lines.push(format!("  .val <- {}", ctx.static_call()));
+        lines.extend(crate::method_return_builder::error_in_r_check_lines("  "));
+        lines.push("  self <- .val".to_string());
         lines.push(format!("  class(self) <- \"{}\"", class_name));
         lines.push("  self".to_string());
         lines.push("}".to_string());
@@ -70,6 +75,10 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name, method_name, ctx.params
         ));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
@@ -109,6 +118,10 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name, method_name, ctx.params
         ));
 
+        // Inject missing param defaults
+        for line in ctx.missing_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
