@@ -16,7 +16,32 @@ use std::collections::HashMap;
 /// Derive `DataFrameRow` for an enum with `#[dataframe(align)]`.
 ///
 /// Generates a companion struct where every column is `Vec<Option<T>>`, with
-/// `None` fill for fields absent in a given variant.
+/// `None` fill for fields absent in a given variant. This is the enum counterpart
+/// of [`super::derive_struct_dataframe`].
+///
+/// # Generated items
+///
+/// - Companion struct `{Name}DataFrame` with `Vec<Option<T>>` columns (field-name union)
+/// - Optional `_tag: Vec<String>` column for variant discrimination
+/// - `impl IntoDataFrame` (converts companion struct to R data.frame)
+/// - `impl From<Vec<Enum>>` (sequential row->column transposition)
+/// - `from_rows()` / `from_rows_par()` methods on the companion struct
+/// - `to_dataframe()` / `DATAFRAME_TYPE_NAME` associated items on the enum
+///
+/// # Variant support
+///
+/// - Named variants (`{ field: T }`): fields contribute by name to the unified schema
+/// - Tuple variants (`(T, U)`): fields are named `_0`, `_1`, etc.
+/// - Unit variants: contribute no columns (only tag if present)
+///
+/// # Auto-expand fields
+///
+/// Fields with `#[dataframe(expand)]` on `Vec<T>` types get dynamic column counts
+/// determined at runtime from the maximum row length across all rows. These are
+/// tracked separately from the static [`ColumnRegistry`](super::ColumnRegistry).
+///
+/// Returns `Err` if the enum has no variants or if type conflicts arise without
+/// `#[dataframe(conflicts = "string")]`.
 pub(super) fn derive_enum_dataframe(
     row_name: &syn::Ident,
     input: &DeriveInput,

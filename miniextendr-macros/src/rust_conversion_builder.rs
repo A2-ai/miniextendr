@@ -43,7 +43,10 @@ impl RustConversionBuilder {
         self
     }
 
-    /// Add a parameter name that should use coercion.
+    /// Add a single parameter name that should use coercion.
+    ///
+    /// `param_name` is matched against the identifier in the function signature.
+    /// Can be called multiple times to add several parameters.
     pub fn with_coerce_param(mut self, param_name: String) -> Self {
         self.coerce_params.push(param_name);
         self
@@ -56,13 +59,23 @@ impl RustConversionBuilder {
     }
 
     /// Check if a parameter should use coercion.
+    ///
+    /// Returns `true` if `coerce_all` is set or `param_name` appears in the per-parameter list.
     fn should_coerce(&self, param_name: &str) -> bool {
         self.coerce_all || self.coerce_params.contains(&param_name.to_string())
     }
 
     /// Generate conversion statement for a single parameter.
     ///
-    /// Returns all statements flattened (for main-thread execution).
+    /// This is the non-split variant: owned conversions and borrow statements are
+    /// concatenated into a single list, suitable for main-thread execution where
+    /// everything runs in the same scope.
+    ///
+    /// - `pat_type`: the typed pattern from the function signature (e.g., `x: i32`).
+    /// - `sexp_ident`: the identifier of the raw SEXP variable holding the R argument.
+    ///
+    /// Returns a flat list of `let` binding statements that convert `sexp_ident` into
+    /// the Rust type declared in `pat_type`.
     pub fn build_conversion(
         &self,
         pat_type: &syn::PatType,
@@ -72,13 +85,21 @@ impl RustConversionBuilder {
         owned.into_iter().chain(borrowed).collect()
     }
 
-    /// Generate conversion statements split for worker thread execution.
+    /// Generate conversion statements split into two phases for worker thread execution.
     ///
     /// For reference types like `&str`, we need to:
-    /// 1. Convert SEXP to owned type (String) - runs before closure, gets moved in
-    /// 2. Borrow from owned type (&str) - runs inside closure
+    /// 1. Convert SEXP to owned type (String) -- runs on the main thread before the
+    ///    worker closure, so the owned value can be moved into the closure.
+    /// 2. Borrow from the owned type (`&str`) -- runs inside the worker closure.
     ///
-    /// Returns: (owned_conversions, borrow_statements)
+    /// For non-reference types (scalars, `Vec`, etc.) everything goes into the first
+    /// phase and the second vec is empty.
+    ///
+    /// - `pat_type`: the typed pattern from the function signature (e.g., `s: &str`).
+    /// - `sexp_ident`: the identifier of the raw SEXP variable holding the R argument.
+    ///
+    /// Returns `(owned_conversions, borrow_statements)` where each element is a list
+    /// of `let` binding token streams.
     pub fn build_conversion_split(
         &self,
         pat_type: &syn::PatType,
@@ -259,6 +280,12 @@ impl RustConversionBuilder {
     }
 
     /// Generate conversion statements for all parameters in a function signature.
+    ///
+    /// Iterates over `inputs` (the function's parameter list) paired with `sexp_idents`
+    /// (the corresponding SEXP variable names), calling [`build_conversion`](Self::build_conversion)
+    /// for each typed parameter. Receiver parameters (`self`) are silently skipped.
+    ///
+    /// Returns a flat list of all conversion statements, in parameter order.
     pub fn build_conversions(
         &self,
         inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,

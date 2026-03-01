@@ -9,36 +9,70 @@
 use crate::is_sexp_type;
 use syn::spanned::Spanned;
 
-/// Mutable context threaded through Option/Result analysis helpers.
+/// Mutable context threaded through `analyze_option_type` and `analyze_result_type`.
+///
+/// Collects analysis results that are determined while recursively inspecting
+/// the inner types of `Option<T>` and `Result<T, E>`.
 struct AnalysisCtx<'a> {
+    /// Identifier for the variable holding the Rust function's return value.
     rust_result_ident: &'a syn::Ident,
+    /// Set to `true` if the return type contains SEXP, meaning the function must
+    /// run on R's main thread (SEXP is not `Send`).
     returns_sexp: &'a mut bool,
+    /// Set to `true` if the R wrapper should return invisibly (e.g., `()` or `Option<()>`).
     is_invisible: &'a mut bool,
+    /// Statements to execute after calling the Rust function but before converting
+    /// the result to SEXP (e.g., unwrapping `Result::Err` via `r_stop`).
     post_call_statements: &'a mut Vec<proc_macro2::TokenStream>,
 }
 
-/// Analysis result for a function's return type.
+/// Complete analysis result for a `#[miniextendr]` function's return type.
+///
+/// Captures everything needed to generate the C wrapper's return handling:
+/// which thread strategy to use, whether the R wrapper returns invisibly,
+/// how to convert the Rust value to SEXP, and any intermediate unwrapping steps.
 pub(crate) struct ReturnTypeAnalysis {
     /// Whether the return type contains SEXP (affects thread strategy).
+    ///
+    /// When `true`, the generated wrapper runs on R's main thread because
+    /// SEXP is not `Send`.
     pub returns_sexp: bool,
 
-    /// Whether the R function should return invisible (e.g., for () or Option<()>).
+    /// Whether the R wrapper function should return its result invisibly.
+    ///
+    /// Set to `true` for `()`, `Option<()>`, and `Result<(), E>` return types.
     pub is_invisible: bool,
 
-    /// TokenStream converting `rust_result_ident` to SEXP.
+    /// TokenStream that converts the Rust result variable to a SEXP value.
+    ///
+    /// This expression references `rust_result_ident` and produces the final
+    /// SEXP to return to R, using `IntoR::into_sexp`, strict checked conversion,
+    /// or direct passthrough depending on the type.
     pub return_expression: proc_macro2::TokenStream,
 
-    /// Statements to run after calling the Rust function (e.g., unwrap Option/Result).
+    /// Statements inserted between the Rust function call and the return expression.
+    ///
+    /// Used for unwrapping `Result::Err` (via `r_stop`) or checking `Option::None`
+    /// before the conversion to SEXP occurs.
     pub post_call_statements: Vec<proc_macro2::TokenStream>,
 }
 
 /// Analyze a function's return type and generate conversion code.
 ///
+/// This is the main entry point for return type analysis. It pattern-matches on the
+/// return type to determine how to convert the Rust result into a SEXP for R.
+///
 /// # Parameters
 /// - `output`: The function's return type from `syn::Signature`
 /// - `rust_result_ident`: Identifier for the variable holding the Rust function result
-/// - `rust_ident`: Function name (for error messages)
-/// - `strict`: If true, generate strict (panicking) conversions for lossy integer types
+/// - `rust_ident`: Function name (used in error messages for `Option::None`)
+/// - `return_pref`: How to convert non-primitive return types (Auto, List, ExternalPtr, Native)
+/// - `unwrap_in_r`: When `true`, `Result<T, E>` is passed to R as-is via `IntoR` (list with error field)
+///   rather than unwrapped in Rust via `r_stop`
+/// - `strict`: When `true`, lossy integer types (i64, u64, isize, usize) use checked
+///   conversions that panic on overflow instead of silent truncation
+/// - `error_in_r`: When `true`, errors are returned as tagged SEXP values (checked in R)
+///   instead of calling `r_stop` directly in Rust
 pub(crate) fn analyze_return_type(
     output: &syn::ReturnType,
     rust_result_ident: &syn::Ident,
@@ -159,7 +193,14 @@ pub(crate) fn analyze_return_type(
     }
 }
 
-/// Analyze `Option<T>` return type.
+/// Analyze `Option<T>` return type and generate conversion code.
+///
+/// Handles three cases:
+/// - `Option<()>`: invisible, errors on `None`
+/// - `Option<SEXP>`: returns the SEXP or `R_NilValue` for `None`
+/// - `Option<T>`: delegates to `IntoR` (which maps `None` to `NA` for supported types)
+///
+/// In `error_in_r` mode, `None` returns a tagged error SEXP instead of calling `r_stop`.
 fn analyze_option_type(
     type_path: &syn::TypePath,
     ctx: &mut AnalysisCtx,
@@ -219,7 +260,14 @@ fn analyze_option_type(
     }
 }
 
-/// Analyze Result<T, E> return type.
+/// Analyze `Result<T, E>` return type and generate conversion code.
+///
+/// Handles several combinations of `T` and `E`:
+/// - `Result<T, ()>`: unit error is a deliberate sentinel; `Err(())` returns `NULL` to R
+/// - `Result<(), E>`: invisible, `Err` triggers `r_stop` (or tagged error in `error_in_r` mode)
+/// - `Result<SEXP, E>`: returns the SEXP directly on `Ok`
+/// - `Result<T, E>` with `unwrap_in_r`: passes the full `Result` to R as a list
+/// - `Result<T, E>` default: unwraps in Rust, calling `r_stop` on `Err`
 fn analyze_result_type(
     type_path: &syn::TypePath,
     ctx: &mut AnalysisCtx,
@@ -335,7 +383,11 @@ fn analyze_result_type(
     }
 }
 
-/// Lossy scalar types that have strict conversion helpers.
+/// Scalar types whose conversion between R and Rust is potentially lossy.
+///
+/// R represents all integers as 32-bit and all reals as 64-bit doubles,
+/// so types wider than `i32` (or unsigned) may overflow or lose precision.
+/// In strict mode, these types use checked conversions that panic on overflow.
 pub(crate) const LOSSY_SCALARS: &[&str] = &["i64", "u64", "isize", "usize"];
 
 /// Try to generate a strict conversion expression for a lossy return type.
@@ -403,6 +455,11 @@ pub(crate) fn strict_conversion_for_type(
 ///
 /// Returns `Some(TokenStream)` if the type is a lossy scalar or `Vec<lossy>`,
 /// otherwise `None` (falls through to standard `TryFromSexp`).
+///
+/// # Parameters
+/// - `ty`: The Rust parameter type to check
+/// - `sexp_ident`: Identifier for the SEXP variable holding the R value
+/// - `param_name`: Parameter name string (used in error messages)
 pub(crate) fn strict_input_conversion_for_type(
     ty: &syn::Type,
     sexp_ident: &syn::Ident,

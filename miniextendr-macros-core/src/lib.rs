@@ -10,6 +10,8 @@ pub mod miniextendr_module;
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
 /// and the module macro (which references it).
+///
+/// Returns `call_method_def_{rust_ident}` as a new [`syn::Ident`].
 pub fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("call_method_def_{rust_ident}")
 }
@@ -18,6 +20,8 @@ pub fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
 /// and the module macro (which references it).
+///
+/// Returns `R_WRAPPER_{RUST_IDENT}` (uppercased) as a new [`syn::Ident`].
 pub fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
@@ -28,6 +32,8 @@ pub fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
 ///
 /// Every `#[miniextendr]` function generates this array (empty if no match_arg params).
 /// The module macro references it for registration.
+///
+/// Returns `MATCH_ARG_CALL_DEFS_{RUST_IDENT}` (uppercased) as a new [`syn::Ident`].
 pub fn match_arg_call_defs_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("MATCH_ARG_CALL_DEFS_{rust_ident_upper}")

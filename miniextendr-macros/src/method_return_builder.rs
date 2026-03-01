@@ -9,9 +9,12 @@ use crate::miniextendr_impl::{ParsedMethod, ReceiverKind};
 // Shared R error-check code for error_in_r mode
 // =============================================================================
 
-/// The R `if` block that checks for a tagged error value and raises a condition.
+/// Generate the R `if` block that checks for a tagged error value and raises a condition.
 ///
-/// Expects `.val` to already be assigned. Each line is indented by `indent`.
+/// Expects `.val` to already be assigned (e.g., `.val <- .Call(...)`). Each line
+/// is indented by `indent`. The check tests `inherits(.val, "rust_error_value")`
+/// and `isTRUE(attr(.val, "__rust_error__"))`, then calls `stop()` with a
+/// structured condition of class `c("rust_error", "simpleError", "error", "condition")`.
 pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
     vec![
         format!(
@@ -32,9 +35,14 @@ pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
     ]
 }
 
-/// Inline R error-check block for single-expression contexts (S7, S4).
+/// Generate an inline R error-check block for single-expression contexts (S7, S4).
 ///
-/// Returns a `{ .val <- <call>; if (...) stop(...); <inner> }` block string.
+/// Returns a multi-line block string: `{ .val <- <call_expr>; if (...) stop(...); <inner> }`.
+/// Used where the class system requires a single expression rather than separate lines
+/// (e.g., S7 property definitions, S4 method bodies).
+///
+/// - `call_expr`: The `.Call()` expression to evaluate
+/// - `inner`: The final expression to return after the error check passes
 pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
     format!(
         "{{\n    .val <- {call_expr}\n    \
@@ -49,9 +57,13 @@ pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
     )
 }
 
-/// Standalone-function R wrapper body for error_in_r mode.
+/// Generate a standalone-function R wrapper body for error_in_r mode.
 ///
-/// Returns the full body string: `.val <- .Call(...); if (...) stop(...); .val`
+/// Returns the full body string: `.val <- <call_expr>; if (...) stop(...); <final_return>`.
+/// Used for top-level `#[miniextendr]` functions (not class methods).
+///
+/// - `call_expr`: The `.Call()` expression to evaluate
+/// - `final_return`: The expression to return (typically `".val"` or `"invisible(.val)"`)
 pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String {
     format!(
         ".val <- {call_expr}\n  \
@@ -69,19 +81,30 @@ pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String
 // Return strategy
 // =============================================================================
 
-/// Return handling strategy for methods.
+/// Return handling strategy for class methods.
+///
+/// Determines how the R wrapper function processes and returns the `.Call()` result.
+/// Each class system generator uses this to produce idiomatic R return code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReturnStrategy {
-    /// Return Self: wrap result with class attribute or create new object
+    /// The method returns `Self`. The wrapper wraps the raw pointer result with
+    /// the appropriate class attribute or creates a new class object (e.g.,
+    /// `R6Class$new(.ptr = result)` or `structure(result, class = "...")`).
     ReturnSelf,
-    /// Mutable method returning unit: return self/x for chaining
+    /// The method is a `&mut self` method returning `()`. The wrapper calls the
+    /// `.Call()` for its side effect and returns the receiver (`self`/`x`) for
+    /// method chaining (e.g., `invisible(self)` for R6).
     ChainableMutation,
-    /// Default: return result directly
+    /// Default strategy: return the `.Call()` result directly without wrapping.
     Direct,
 }
 
 impl ReturnStrategy {
-    /// Determine the return strategy for a method.
+    /// Determine the return strategy for a parsed method.
+    ///
+    /// - Methods that return `Self` use `ReturnSelf`
+    /// - `&mut self` methods returning `()` use `ChainableMutation`
+    /// - All other methods use `Direct`
     pub fn for_method(method: &ParsedMethod) -> Self {
         if method.returns_self() {
             ReturnStrategy::ReturnSelf
@@ -93,19 +116,27 @@ impl ReturnStrategy {
     }
 }
 
-/// Builder for generating R method body with appropriate return handling.
+/// Builder for generating R method body lines with appropriate return handling.
+///
+/// Produces lines of R code for a method body, combining the `.Call()` expression
+/// with the return strategy and optional error checking. Each class system has
+/// specialized builder methods (`build_r6_body`, `build_s3_body`, etc.) that
+/// produce idiomatic R code for that system.
 pub struct MethodReturnBuilder {
-    /// The .Call expression (e.g., ".Call(C_Counter__inc, self)")
+    /// The `.Call()` expression string (e.g., `".Call(C_Counter__inc, .call = match.call(), self)"`).
     call_expr: String,
-    /// Return handling strategy
+    /// How to handle the return value (direct, chaining, or Self wrapping).
     strategy: ReturnStrategy,
-    /// Class name (for wrapping Self returns)
+    /// R class name, required when `strategy` is `ReturnSelf` to construct
+    /// the class wrapper (e.g., `"Counter"` for `Counter$new(.ptr = result)`).
     class_name: Option<String>,
-    /// Variable name to return for chaining (e.g., "self" or "x")
+    /// Variable name to return for `ChainableMutation` strategy (e.g., `"self"` for R6,
+    /// `"x"` for S3). Defaults to `"self"` if not set.
     chain_var: Option<String>,
-    /// Indentation level (number of spaces)
+    /// Number of leading spaces for each generated line.
     indent: usize,
-    /// Whether to add error_in_r checking (capture result, check for rust_error_value)
+    /// When `true`, generates error_in_r checking: captures the `.Call()` result in `.val`,
+    /// checks for `rust_error_value` class, and raises an R condition on error.
     error_in_r: bool,
 }
 
@@ -153,7 +184,9 @@ impl MethodReturnBuilder {
         self
     }
 
-    /// Generate error check lines for error_in_r mode.
+    /// Generate the `if (inherits(.val, "rust_error_value") ...)` check lines.
+    ///
+    /// Delegates to [`error_in_r_check_lines`] with the current indentation.
     fn error_check_lines(&self, indent: &str) -> Vec<String> {
         error_in_r_check_lines(indent)
     }

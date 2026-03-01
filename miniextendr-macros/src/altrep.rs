@@ -17,13 +17,40 @@
 //! pub struct MyInts(Vec<i32>);
 //! ```
 
-/// Valid ALTREP base type names (RBase variants).
+/// Valid ALTREP base type names corresponding to [`miniextendr_api::altrep::RBase`] variants.
+///
+/// These are the short names accepted by the `base = "..."` attribute on `#[miniextendr]`
+/// ALTREP structs and `#[altrep_derive_opts(base = "...")]`:
+/// - `"Int"` -- integer vector (`INTSXP`)
+/// - `"Real"` -- double vector (`REALSXP`)
+/// - `"Logical"` -- logical vector (`LGLSXP`)
+/// - `"Raw"` -- raw/byte vector (`RAWSXP`)
+/// - `"String"` -- character vector (`STRSXP`)
+/// - `"List"` -- generic list (`VECSXP`)
+/// - `"Complex"` -- complex vector (`CPLXSXP`)
 const VALID_BASES: &[&str] = &["Int", "Real", "Logical", "Raw", "String", "List", "Complex"];
 
-/// Generate family-specific method setter code for an explicit base type.
+/// Generates family-specific ALTREP method setter code for an explicit base type.
 ///
-/// Returns `set_if!(...)` statements for conditional methods and unconditional
-/// `unsafe { setter(cls, ...) }` statements for required methods (String/List Elt).
+/// Each ALTREP family (Int, Real, Logical, etc.) has a set of R C API setter functions
+/// that register trampolines for optional and required callbacks. This function produces:
+///
+/// - `set_if!(...)` statements for **conditional** methods -- only registered if the
+///   user's type sets the corresponding `HAS_*` associated constant to `true` on the
+///   relevant trait (e.g., `AltInteger::HAS_ELT`).
+/// - `unsafe { setter(cls, ...) }` statements for **always-required** methods --
+///   currently `Elt` for String and List families, which have no `HAS_ELT` guard.
+///
+/// # Arguments
+///
+/// * `base_name` -- One of the [`VALID_BASES`] names (e.g., `"Int"`, `"String"`).
+/// * `tramp_ty` -- The inner data type of the ALTREP wrapper struct, used as the type
+///   parameter for the bridge trampoline functions (e.g., `Vec<i32>`).
+///
+/// # Returns
+///
+/// A [`TokenStream`](proc_macro2::TokenStream) containing the setter invocations,
+/// or an empty stream if `base_name` is not recognized.
 fn generate_explicit_setters(base_name: &str, tramp_ty: &syn::Type) -> proc_macro2::TokenStream {
     let span = proc_macro2::Span::call_site();
 
@@ -167,7 +194,22 @@ fn generate_explicit_setters(base_name: &str, tramp_ty: &syn::Type) -> proc_macr
     }
 }
 
-/// Generate the `R_make_alt*_class()` + `validate_altrep_class()` code for an explicit base type.
+/// Generates the `R_make_alt*_class()` call and `validate_altrep_class()` assertion
+/// for an explicit base type.
+///
+/// The returned expression creates the R ALTREP class handle via the appropriate
+/// `R_make_alt*_class` C API function and immediately validates that the returned
+/// handle is non-null (panics at registration time if R fails to create the class).
+///
+/// # Arguments
+///
+/// * `base_name` -- One of the [`VALID_BASES`] names (e.g., `"Real"`, `"List"`).
+/// * `ident` -- The Rust struct identifier for the ALTREP wrapper type.
+///
+/// # Returns
+///
+/// A [`TokenStream`](proc_macro2::TokenStream) containing a block expression that
+/// evaluates to an `R_altrep_class_t`.
 fn generate_explicit_make_class(base_name: &str, ident: &syn::Ident) -> proc_macro2::TokenStream {
     let span = proc_macro2::Span::call_site();
 
@@ -201,9 +243,30 @@ fn generate_explicit_make_class(base_name: &str, ident: &syn::Ident) -> proc_mac
 
 /// Reusable core for generating ALTREP trait implementations.
 ///
-/// This is called by both `expand_altrep_struct` (attribute macro path) and
-/// `derive_altrep` (derive macro path). It generates AltrepClass,
-/// RegisterAltrep, IntoR, TryFromSexp, From, and Ref/Mut wrapper types.
+/// This is the shared code-generation backend called by both:
+/// - [`expand_altrep_struct`] (the `#[miniextendr]` attribute macro path)
+/// - [`derive_altrep`] (the `#[derive(AltrepClass)]` derive macro path)
+///
+/// It generates the following items for the wrapper struct:
+/// - `impl AltrepClass` -- class name and base type constants
+/// - `impl RegisterAltrep` -- lazy `OnceLock`-based class registration with method installation
+/// - `impl IntoR` -- conversion from Rust to R ALTREP SEXP (both checked and unchecked)
+/// - `impl From<DataTy>` -- construction from the inner data type
+/// - `impl TryFromSexp` for `{Ident}Ref` -- immutable borrow wrapper with `Deref`
+/// - `impl TryFromSexp` for `{Ident}Mut` -- mutable borrow wrapper with `Deref` + `DerefMut`
+///
+/// # Arguments
+///
+/// * `ident` -- The name of the ALTREP wrapper struct (e.g., `MyInts`).
+/// * `generics` -- Any generic parameters on the struct.
+/// * `data_ty` -- The inner data type (the single field's type, e.g., `Vec<i32>`).
+/// * `class_name` -- The ALTREP class name string registered with R.
+/// * `base_name` -- If `Some`, an explicit base type from [`VALID_BASES`]. If `None`,
+///   the base is inferred at compile time via `InferBase`.
+///
+/// # Errors
+///
+/// Returns `Err` if `base_name` is `Some` but not one of the [`VALID_BASES`].
 pub(crate) fn generate_altrep_impls(
     ident: &syn::Ident,
     generics: &syn::Generics,
@@ -483,6 +546,30 @@ pub(crate) fn generate_altrep_impls(
 }
 
 /// Expands `#[miniextendr]` on a one-field wrapper struct into ALTREP plumbing.
+///
+/// This is the attribute macro entry point for ALTREP structs. The struct must have
+/// exactly one field whose type is the ALTREP data container (e.g., `Vec<i32>`).
+///
+/// # Supported attributes
+///
+/// ```ignore
+/// #[miniextendr]                              // class name = struct name, base inferred
+/// #[miniextendr(class = "CustomName")]        // explicit ALTREP class name
+/// #[miniextendr(base = "Int")]                // explicit base type (Int|Real|Logical|Raw|String|List|Complex)
+/// #[miniextendr(class = "Name", base = "Real")] // both
+/// ```
+///
+/// The `pkg` attribute is silently ignored for backwards compatibility.
+///
+/// # Arguments
+///
+/// * `attr` -- The attribute arguments (e.g., `class = "...", base = "..."`).
+/// * `item` -- The struct definition token stream.
+///
+/// # Returns
+///
+/// The original struct definition followed by all generated ALTREP trait implementations.
+/// On error, returns a compile error token stream.
 pub fn expand_altrep_struct(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -583,8 +670,24 @@ pub fn expand_altrep_struct(
 
 /// Entry point for `#[derive(AltrepClass)]`.
 ///
-/// Parses `#[altrep_derive_opts(class = "...", base = "...")]` helper attributes
-/// and generates ALTREP registration using the shared core.
+/// Parses optional `#[altrep_derive_opts(...)]` helper attributes and generates
+/// ALTREP registration, `IntoR`, `TryFromSexp`, and Ref/Mut wrappers using the
+/// shared [`generate_altrep_impls`] core.
+///
+/// # Helper attributes
+///
+/// ```ignore
+/// #[altrep_derive_opts(class = "CustomName")]  // override the ALTREP class name (default: struct name)
+/// #[altrep_derive_opts(base = "Real")]         // explicit base type (default: inferred via InferBase)
+/// ```
+///
+/// The struct must have exactly one field. Both tuple structs (`struct X(T)`) and
+/// named-field structs (`struct X { data: T }`) are accepted.
+///
+/// # Errors
+///
+/// Returns `Err` if the input is not a single-field struct or if an unknown
+/// `altrep_derive_opts` key is provided.
 pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     use syn::spanned::Spanned;
 

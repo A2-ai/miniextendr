@@ -2,13 +2,25 @@
 
 use super::{ParsedImpl, VctrsKind};
 
-/// Generate R wrapper string for vctrs-style class.
+/// Generates the complete R wrapper string for a vctrs-compatible S3 class.
 ///
-/// Creates a vctrs-compatible S3 class with:
-/// - Constructor using `vctrs::new_vctr()`, `vctrs::new_rcrd()`, or `vctrs::new_list_of()`
-/// - `vec_ptype2.<class>.<class>` and `vec_cast.<class>.<class>` for same-type coercion
-/// - `vec_ptype_abbr.<class>` for compact printing (if `abbr` is specified)
-/// - Instance methods as regular S3 methods
+/// This is used when an `impl` block is annotated with `#[miniextendr(vctrs)]`.
+/// Unlike the `#[derive(Vctrs)]` macro (which generates standalone S3 methods from
+/// struct attributes), this generator produces class wrappers from `impl` block methods.
+///
+/// Produces the following R code:
+/// - Constructor: `new_<class>(...)` that calls the Rust `new` constructor, then wraps
+///   the result with `vctrs::new_vctr()`, `vctrs::new_rcrd()`, or `vctrs::new_list_of()`
+///   depending on the `VctrsKind`
+/// - `vec_ptype_abbr.<class>`: compact abbreviation for printing (if `abbr` is specified)
+/// - `vec_ptype2.<class>.<class>`: self-coercion prototype (returns empty typed vector)
+/// - `vec_cast.<class>.<class>`: identity cast (returns `x` unchanged)
+/// - Instance methods: S3 generics + `<generic>.<class>` methods, with support for
+///   vctrs protocol overrides via `#[miniextendr(vctrs_protocol = "...")]` and
+///   double-dispatch class suffixes via `#[miniextendr(class = "...")]`
+/// - Static methods: regular functions named `<class>_<method>(...)`
+///
+/// Roxygen2 documentation and `@importFrom vctrs ...` tags are generated automatically.
 pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
 

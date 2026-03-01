@@ -2,12 +2,22 @@
 
 use super::ParsedImpl;
 
-/// Generate R wrapper string for R6-style class.
+/// Generates the complete R wrapper string for an R6-style class.
 ///
-/// Creates an R6::R6Class with:
-/// - `initialize` method that calls the Rust `new` function (or accepts `.ptr` directly)
-/// - Public methods for all instance methods
-/// - Private `.ptr` field holding the ExternalPtr
+/// Produces an `R6::R6Class(...)` definition that includes:
+/// - `initialize` method: calls the Rust `new` constructor, or accepts a pre-made `.ptr`
+///   when static methods return `Self` (factory pattern)
+/// - Public methods: one R function per `&self`/`&mut self` instance method
+/// - Private methods: methods marked with `#[miniextendr(private)]`
+/// - Active bindings: getter/setter properties via `#[miniextendr(r6(prop = "..."))]`
+/// - Private `.ptr` field: holds the `ExternalPtr` to the Rust struct
+/// - Finalizer: optional destructor called when the R6 object is garbage-collected
+/// - Deep clone: optional custom clone logic via `#[miniextendr(r6(deep_clone))]`
+/// - Static methods: emitted as `ClassName$method_name <- function(...)` outside the class
+/// - Class options: `lock_objects`, `lock_class`, `cloneable`, `portable`, `inherit`
+///
+/// Also generates roxygen2 documentation blocks for the class, its methods,
+/// and active bindings.
 pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
 

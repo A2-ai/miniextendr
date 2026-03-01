@@ -47,7 +47,10 @@ pub enum LifecycleStage {
 }
 
 impl LifecycleStage {
-    /// Parse stage from string.
+    /// Parse a lifecycle stage from a string.
+    ///
+    /// Accepts lowercase stage names. Both `"soft-deprecated"` and `"soft_deprecated"`
+    /// are recognized. Returns `None` for unrecognized strings.
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "experimental" => Some(Self::Experimental),
@@ -60,7 +63,11 @@ impl LifecycleStage {
         }
     }
 
-    /// Get the lifecycle badge text for roxygen.
+    /// Get the inline R roxygen expression for the lifecycle badge.
+    ///
+    /// Returns an R inline code expression like `` `r lifecycle::badge("experimental")` ``
+    /// that roxygen2 evaluates to render a colored badge. Returns `None` for `Stable`
+    /// (no badge needed).
     pub fn badge(&self) -> Option<&'static str> {
         match self {
             Self::Experimental => Some(r#"`r lifecycle::badge("experimental")`"#),
@@ -73,7 +80,11 @@ impl LifecycleStage {
         }
     }
 
-    /// Get the lifecycle signal function name.
+    /// Get the fully-qualified lifecycle signal function name.
+    ///
+    /// Returns the R function to call at the start of the wrapper body to emit
+    /// the lifecycle signal (e.g., `"lifecycle::deprecate_warn"`). Returns `None`
+    /// for `Stable` (no signal needed).
     pub fn signal_fn(&self) -> Option<&'static str> {
         match self {
             Self::Experimental => Some("lifecycle::signal_stage"),
@@ -98,7 +109,10 @@ impl LifecycleStage {
         }
     }
 
-    /// Get the roxygen @keywords value (if needed).
+    /// Get the roxygen `@keywords` value, if this stage needs one.
+    ///
+    /// Only `Experimental` adds `@keywords internal` to keep the function
+    /// off the main package index. Returns `None` for all other stages.
     pub fn keywords(&self) -> Option<&'static str> {
         match self {
             Self::Experimental => Some("internal"),
@@ -141,7 +155,7 @@ pub struct LifecycleSpec {
 }
 
 impl LifecycleSpec {
-    /// Create a new lifecycle spec with a stage.
+    /// Create a new lifecycle spec with the given stage and no additional metadata.
     pub fn new(stage: LifecycleStage) -> Self {
         Self {
             stage,
@@ -149,7 +163,11 @@ impl LifecycleSpec {
         }
     }
 
-    /// Create from a Rust `#[deprecated]` attribute.
+    /// Create a lifecycle spec from a Rust `#[deprecated]` attribute.
+    ///
+    /// Maps the `since` field to `when` and attempts to parse the `note` field
+    /// for a "use X instead" pattern to populate `with`. The full note is also
+    /// stored in `details`.
     pub fn from_deprecated(since: Option<&str>, note: Option<&str>) -> Self {
         let mut spec = Self::new(LifecycleStage::Deprecated);
         spec.when = since.map(String::from);
@@ -171,7 +189,12 @@ impl LifecycleSpec {
 
     /// Generate the R prelude code for lifecycle signaling.
     ///
-    /// Returns R code to insert at the start of the function body.
+    /// Returns a single line of R code to insert at the start of the function body,
+    /// or `None` for `Stable` stage. The `fn_name` is used as the `what` argument
+    /// if no explicit `what` was provided.
+    ///
+    /// For experimental/superseded: `lifecycle::signal_stage("stage", "fn_name()")`.
+    /// For deprecated variants: `lifecycle::deprecate_*(when, what, with, details, id)`.
     pub fn r_prelude(&self, fn_name: &str) -> Option<String> {
         let signal_fn = self.stage.signal_fn()?;
 
@@ -329,6 +352,10 @@ pub fn parse_lifecycle_attr(meta: &syn::Meta) -> syn::Result<Option<LifecycleSpe
 }
 
 /// Extract lifecycle info from a `#[deprecated]` attribute.
+///
+/// Handles all three forms: `#[deprecated]`, `#[deprecated = "msg"]`,
+/// and `#[deprecated(since = "...", note = "...")]`. Returns `None` if the
+/// attribute is not `#[deprecated]`.
 pub fn parse_rust_deprecated(attr: &syn::Attribute) -> Option<LifecycleSpec> {
     if !attr.path().is_ident("deprecated") {
         return None;

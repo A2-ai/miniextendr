@@ -84,12 +84,29 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
     }
 }
 
-/// Generate R wrapper string for S7-style class.
+/// Generates the complete R wrapper string for an S7-style class.
 ///
-/// Creates:
-/// - S7::new_class with constructor and .ptr property
-/// - S7::new_property for computed/dynamic properties (from #[s7(getter)]/setter)
-/// - S7::new_generic + S7::method for each instance method
+/// Produces the following R code:
+/// - Class definition: `ClassName <- S7::new_class("ClassName", ...)` with a `.ptr` property
+///   of `class_any` holding the `ExternalPtr`, plus optional computed properties
+/// - Constructor: inline in `new_class(constructor = function(...) ...)`, supports
+///   `.ptr` shortcut parameter for factory methods returning `Self`
+/// - Properties: `S7::new_property(...)` for each getter/setter/validator annotated
+///   with `#[miniextendr(s7(getter))]` etc., with support for class constraints,
+///   defaults, required, frozen, and deprecated modifiers
+/// - Instance methods: `S7::new_generic(...)` + `S7::method(generic, class)` pairs
+///   dispatching to Rust `.Call()` wrappers via `x@.ptr`
+/// - External generics: `S7::new_external_generic("pkg", "name")` for overriding
+///   generics from other packages
+/// - Multiple dispatch: via `#[miniextendr(s7(dispatch = "x,y"))]`
+/// - Fallback methods: `S7::method(generic, S7::class_any)` with `tryCatch` for
+///   safe slot access on non-S7 objects
+/// - Static methods: regular functions named `ClassName_method(...)`
+/// - Convert methods: `S7::method(convert, list(From, To))` for `convert_from`
+///   and `convert_to` annotations
+/// - S7 parent/abstract: optional `parent` and `abstract = TRUE` in class definition
+///
+/// Roxygen2 documentation and `@importFrom S7 ...` tags are generated automatically.
 pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
@@ -109,20 +126,26 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Collect S7 property getters, setters, and validators
     // Property name is: s7_prop if specified, else method name
     // We store method idents so we can look them up later
+    /// Accumulated metadata for a single S7 property, built up from getter,
+    /// setter, and validator method annotations during the first pass over methods.
     struct S7Property {
+        /// Property name (from `#[miniextendr(s7(prop = "..."))]` or the method ident).
         name: String,
+        /// Ident of the method annotated with `#[miniextendr(s7(getter))]`.
         getter_method_ident: Option<String>,
+        /// Ident of the method annotated with `#[miniextendr(s7(setter))]`.
         setter_method_ident: Option<String>,
+        /// Ident of the method annotated with `#[miniextendr(s7(validate))]`.
         validator_method_ident: Option<String>,
-        /// S7 class type inferred from getter return type (e.g., "S7::class_double")
+        /// S7 class type inferred from the getter's return type (e.g., `"S7::class_double"`).
         class_type: Option<String>,
-        /// Default value (R expression)
+        /// Default value as an R expression string (from `#[miniextendr(s7(default = "..."))]`).
         default_value: Option<String>,
-        /// Property is required (error if not provided)
+        /// When `true`, the property errors if not provided during construction.
         required: bool,
-        /// Property is frozen (can only be set once)
+        /// When `true`, the property can only be set once (subsequent sets error).
         frozen: bool,
-        /// Deprecation message
+        /// If set, a deprecation warning is emitted when the property is accessed or set.
         deprecated: Option<String>,
     }
 

@@ -58,49 +58,63 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, Ident};
 
-/// Parsed vctrs attributes from struct definition.
+/// Parsed container-level `#[vctrs(...)]` attributes from a struct definition.
+///
+/// These control how the struct maps to a vctrs S3 class, including the
+/// R class name, underlying vector type, printing abbreviation, and
+/// which optional vctrs protocol methods to generate.
 #[derive(Default)]
 struct VctrsAttrs {
-    /// R class name (e.g., "vctrs_percent")
+    /// R class name (e.g., `"vctrs_percent"`). Required.
     class: Option<String>,
-    /// Base vector type: "double", "integer", "character", "list", "record"
+    /// Base vector type: `"double"`, `"integer"`, `"character"`, `"list"`, `"record"`, etc.
+    /// Defaults to `"double"` if not specified.
     base: Option<String>,
-    /// Abbreviation for vec_ptype_abbr
+    /// Short abbreviation for `vec_ptype_abbr` display (e.g., `"pct"`).
     abbr: Option<String>,
-    /// Whether to inherit base type in class vector
+    /// Whether to include the base type in the class vector (`inherit_base_type` in `new_vctr`).
     inherit_base: Option<bool>,
-    /// Additional types to generate coercion methods for (e.g., "double", "integer")
+    /// Additional R types to generate bidirectional coercion methods for
+    /// (e.g., `"double"` generates `vec_ptype2` and `vec_cast` between class and double).
     coerce_with: Vec<String>,
-    /// For list_of: R expression for the prototype (e.g., "integer()", "double()")
+    /// For `list_of` base type: an R expression for the element prototype (e.g., `"integer()"`).
     ptype: Option<String>,
-    /// Generate vec_proxy_equal method (for equality testing)
+    /// Generate `vec_proxy_equal` S3 method for equality testing.
     proxy_equal: bool,
-    /// Generate vec_proxy_compare method (for comparison/sorting)
+    /// Generate `vec_proxy_compare` S3 method for comparison and sorting.
     proxy_compare: bool,
-    /// Generate vec_proxy_order method (for ordering)
+    /// Generate `vec_proxy_order` S3 method for ordering (may differ from compare).
     proxy_order: bool,
-    /// Generate arithmetic methods (vec_arith)
+    /// Generate `vec_arith` S3 methods for arithmetic operations (`+`, `-`, `*`, etc.).
     arith: bool,
-    /// Generate math methods (vec_math)
+    /// Generate `vec_math` S3 method for math functions (`abs`, `sqrt`, `log`, etc.).
     math: bool,
 }
 
-/// Parsed vctrs attributes from a field.
+/// Parsed field-level `#[vctrs(...)]` attributes from a struct field.
 #[derive(Default)]
 struct VctrsFieldAttrs {
-    /// Mark as the data field for IntoVctrs
+    /// When `true`, this field holds the underlying vector data used by `IntoVctrs`.
+    /// Exactly one field should be marked with `#[vctrs(data)]`.
     is_data: bool,
-    /// Skip this field in record generation
+    /// When `true`, this field is excluded from record field generation.
+    /// Useful for internal caches or derived state that should not appear in the R record.
     skip: bool,
 }
 
-/// Information about a struct field.
+/// Information about a single named struct field, including its vctrs attributes.
 struct FieldInfo {
+    /// The field's identifier (name).
     ident: syn::Ident,
+    /// Parsed `#[vctrs(...)]` attributes on this field.
     attrs: VctrsFieldAttrs,
 }
 
-/// Parse vctrs attributes from a struct.
+/// Parses container-level `#[vctrs(...)]` attributes from a struct's attribute list.
+///
+/// Extracts all recognized keys (`class`, `base`, `abbr`, `inherit_base`, `coerce`,
+/// `ptype`, `proxy_equal`, `proxy_compare`, `proxy_order`, `arith`, `math`).
+/// Returns an error for unrecognized attribute keys.
 fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
     let mut result = VctrsAttrs::default();
 
@@ -148,7 +162,10 @@ fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
     Ok(result)
 }
 
-/// Parse vctrs attributes from a field.
+/// Parses field-level `#[vctrs(...)]` attributes from a struct field's attribute list.
+///
+/// Recognizes `data` (mark as the underlying data field) and `skip` (exclude from
+/// record generation). Returns an error for unrecognized field attribute keys.
 fn parse_vctrs_field_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsFieldAttrs> {
     let mut result = VctrsFieldAttrs::default();
 
@@ -170,7 +187,10 @@ fn parse_vctrs_field_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsFieldAt
     Ok(result)
 }
 
-/// Extract field information from a struct.
+/// Extracts field names and their vctrs attributes from a struct's `DeriveInput`.
+///
+/// Returns an error for tuple structs (unnamed fields). Returns an empty vec
+/// for unit structs or non-struct items.
 fn extract_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
     let fields = match &input.data {
         Data::Struct(data) => &data.fields,
@@ -199,7 +219,8 @@ fn extract_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
     }
 }
 
-/// Map base type string to SEXPTYPE.
+/// Maps a base type string (e.g., `"double"`, `"integer"`, `"record"`) to its
+/// corresponding `SEXPTYPE` token stream. Returns `None` for unrecognized types.
 fn base_to_sexptype(base: &str) -> Option<TokenStream> {
     match base {
         "double" | "numeric" => Some(quote! { ::miniextendr_api::ffi::SEXPTYPE::REALSXP }),
@@ -213,7 +234,9 @@ fn base_to_sexptype(base: &str) -> Option<TokenStream> {
     }
 }
 
-/// Map base type string to VctrsKind.
+/// Maps a base type string to its `VctrsKind` token stream.
+///
+/// `"record"` maps to `Rcrd`, `"list"` maps to `ListOf`, and all other types map to `Vctr`.
 fn base_to_kind(base: &str) -> TokenStream {
     match base {
         "record" => quote! { ::miniextendr_api::vctrs::VctrsKind::Rcrd },
@@ -222,19 +245,33 @@ fn base_to_kind(base: &str) -> TokenStream {
     }
 }
 
-/// Options for R wrapper generation
+/// Configuration for generating R wrapper code for a vctrs S3 class.
+///
+/// Passed to [`generate_r_wrappers`] to control which S3 methods are emitted.
 struct RWrapperOptions<'a> {
+    /// R class name (e.g., `"percent"`).
     class: &'a str,
+    /// Base vector type (e.g., `"double"`, `"record"`, `"list"`).
     base: &'a str,
+    /// Optional abbreviation for `vec_ptype_abbr`.
     abbr: Option<&'a str>,
+    /// Field names for record types (used in `format` and field accessor methods).
     record_fields: &'a [String],
+    /// Additional R types to generate bidirectional coercion methods for.
     coerce_with: &'a [String],
+    /// Whether `inherit_base_type = TRUE` is passed to `new_vctr`.
     inherit_base: bool,
+    /// For `list_of`: R expression for element prototype (e.g., `"integer()"`).
     ptype: Option<&'a str>,
+    /// Whether to generate `vec_proxy_equal` method.
     proxy_equal: bool,
+    /// Whether to generate `vec_proxy_compare` method.
     proxy_compare: bool,
+    /// Whether to generate `vec_proxy_order` method.
     proxy_order: bool,
+    /// Whether to generate `vec_arith` methods.
     arith: bool,
+    /// Whether to generate `vec_math` method.
     math: bool,
 }
 
@@ -781,7 +818,9 @@ vec_math.{class} <- function(.fn, .x, ...) {{
     r_code
 }
 
-/// Map base type to R constructor function name.
+/// Maps a base type string to the corresponding R constructor function name
+/// (e.g., `"double"` -> `"double"`, `"record"` -> `"list"`).
+/// Used when generating `new_vctr(double(0), ...)` calls in R wrapper code.
 fn base_to_r_constructor(base: &str) -> &'static str {
     match base {
         "double" | "numeric" => "double",
@@ -795,7 +834,9 @@ fn base_to_r_constructor(base: &str) -> &'static str {
     }
 }
 
-/// Map base type to R as.* coercion function name.
+/// Maps a base type string to the corresponding R `as.*` coercion function name
+/// (e.g., `"integer"` -> `"integer"` for `as.integer()`).
+/// Used in `vec_cast` coercion methods.
 fn base_to_r_as_func(base: &str) -> &'static str {
     match base {
         "double" | "numeric" => "double",
@@ -807,7 +848,17 @@ fn base_to_r_as_func(base: &str) -> &'static str {
     }
 }
 
-/// Generate the Vctrs derive implementation.
+/// Main entry point for `#[derive(Vctrs)]`.
+///
+/// Parses the struct's `#[vctrs(...)]` attributes and fields, validates constraints
+/// (must be a non-generic struct with at least one named field and a `class` attribute),
+/// and generates:
+///
+/// - `impl VctrsClass` -- class metadata (name, kind, base type, abbreviation)
+/// - `impl IntoVctrs` -- if a `#[vctrs(data)]` field is present
+/// - `impl VctrsRecord` -- if base is `"record"` (provides field names)
+/// - `impl VctrsListOf` -- if base is `"list"` with a `ptype`
+/// - `R_WRAPPERS_VCTRS_{TYPE}` const -- R S3 method wrapper code
 pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
