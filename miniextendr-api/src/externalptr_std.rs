@@ -266,3 +266,9 @@ impl<T: 'static> TypedExternal for &'static [T] {
     const TYPE_NAME_CSTR: &'static [u8] = b"StaticSlice\0";
     const TYPE_ID_CSTR: &'static [u8] = b"std::StaticSlice\0";
 }
+
+impl<T: 'static> TypedExternal for &'static mut [T] {
+    const TYPE_NAME: &'static str = "StaticMutSlice";
+    const TYPE_NAME_CSTR: &'static [u8] = b"StaticMutSlice\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"std::StaticMutSlice\0";
+}
