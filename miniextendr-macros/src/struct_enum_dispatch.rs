@@ -271,6 +271,18 @@ fn expand_struct(
                 #dataframe_row
 
                 impl ::miniextendr_api::into_r::IntoR for #df_ident {
+                    type Error = std::convert::Infallible;
+
+                    #[inline]
+                    fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                        Ok(self.into_sexp())
+                    }
+
+                    #[inline]
+                    unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                        self.try_into_sexp()
+                    }
+
                     #[inline]
                     fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                         ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()

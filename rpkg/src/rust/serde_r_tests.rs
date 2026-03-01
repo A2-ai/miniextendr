@@ -10,10 +10,10 @@
 //! - Complex nested structures
 //! - Round-trip conversions
 
+use crate::serde::{Deserialize, Serialize};
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::serde::{RSerdeError, from_r, to_r};
 use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
-use crate::serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
 // =============================================================================

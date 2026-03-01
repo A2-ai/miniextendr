@@ -53,6 +53,13 @@ impl TryFromSexp for Uuid {
 }
 
 impl IntoR for Uuid {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.to_string().into_sexp()
     }
@@ -77,6 +84,13 @@ impl TryFromSexp for Option<Uuid> {
 }
 
 impl IntoR for Option<Uuid> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.map(|u| u.to_string()).into_sexp()
     }
@@ -136,6 +150,13 @@ impl TryFromSexp for Vec<Uuid> {
 }
 
 impl IntoR for Vec<Uuid> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.into_iter()
             .map(|u| u.to_string())
@@ -167,6 +188,13 @@ impl TryFromSexp for Vec<Option<Uuid>> {
 }
 
 impl IntoR for Vec<Option<Uuid>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         self.into_iter()
             .map(|opt| opt.map(|u| u.to_string()))

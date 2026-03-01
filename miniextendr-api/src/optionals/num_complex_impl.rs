@@ -127,6 +127,13 @@ impl TryFromSexp for Complex<f64> {
 }
 
 impl IntoR for Complex<f64> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         use crate::ffi::Rf_ScalarComplex;
         unsafe { Rf_ScalarComplex(to_rcomplex(self)) }
@@ -174,6 +181,13 @@ impl TryFromSexp for Option<Complex<f64>> {
 }
 
 impl IntoR for Option<Complex<f64>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         use crate::ffi::Rf_ScalarComplex;
         match self {
@@ -221,6 +235,13 @@ impl TryFromSexp for Vec<Complex<f64>> {
 }
 
 impl IntoR for Vec<Complex<f64>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         use crate::ffi::{Rf_allocVector, SET_COMPLEX_ELT};
 
@@ -271,6 +292,13 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
 }
 
 impl IntoR for Vec<Option<Complex<f64>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         use crate::ffi::{Rf_allocVector, SET_COMPLEX_ELT};
 

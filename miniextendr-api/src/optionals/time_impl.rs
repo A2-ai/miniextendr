@@ -111,6 +111,13 @@ impl TryFromSexp for OffsetDateTime {
 }
 
 impl IntoR for OffsetDateTime {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         unsafe {
             let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
@@ -190,6 +197,13 @@ impl TryFromSexp for Option<OffsetDateTime> {
 }
 
 impl IntoR for Option<OffsetDateTime> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         match self {
             Some(dt) => dt.into_sexp(),
@@ -266,6 +280,13 @@ impl TryFromSexp for Vec<OffsetDateTime> {
 }
 
 impl IntoR for Vec<OffsetDateTime> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         unsafe {
             let n = self.len();
@@ -344,6 +365,13 @@ impl TryFromSexp for Vec<Option<OffsetDateTime>> {
 }
 
 impl IntoR for Vec<Option<OffsetDateTime>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         unsafe {
             let n = self.len();
@@ -426,6 +454,13 @@ impl TryFromSexp for Date {
 }
 
 impl IntoR for Date {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         unsafe {
             let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
@@ -490,6 +525,13 @@ impl TryFromSexp for Option<Date> {
 }
 
 impl IntoR for Option<Date> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         match self {
             Some(d) => d.into_sexp(),
@@ -553,6 +595,13 @@ impl TryFromSexp for Vec<Date> {
 }
 
 impl IntoR for Vec<Date> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         unsafe {
             let n = self.len();
@@ -616,6 +665,13 @@ impl TryFromSexp for Vec<Option<Date>> {
 }
 
 impl IntoR for Vec<Option<Date>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         unsafe {
             let n = self.len();

@@ -280,6 +280,16 @@ pub(crate) fn generate_altrep_impls(
 
             #[doc = #into_r_doc]
             impl ::miniextendr_api::IntoR for #ident {
+                type Error = std::convert::Infallible;
+
+                fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                    Ok(self.into_sexp())
+                }
+
+                unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                    self.try_into_sexp()
+                }
+
                 fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                     use ::miniextendr_api::altrep_registration::RegisterAltrep;
                     use ::miniextendr_api::externalptr::ExternalPtr;

@@ -169,7 +169,17 @@ fn generate_into_r(info: &AltrepTypeInfo<'_>) -> TokenStream {
 
     quote! {
         impl ::miniextendr_api::IntoR for #ty {
-            fn into_r(self) -> ::miniextendr_api::ffi::SEXP {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
+            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 let cls = <#ty as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
                 let data1 = <#ty as ::miniextendr_api::externalptr::TypedExternal>::wrap(self);
                 unsafe {

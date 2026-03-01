@@ -196,6 +196,13 @@ pub fn table_to_string_styled<T: Tabled>(rows: &[T], style: &str) -> String {
 // =============================================================================
 
 impl IntoR for Table {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     /// Convert a Table to an R character scalar.
     fn into_sexp(self) -> SEXP {
         let s = self.to_string();

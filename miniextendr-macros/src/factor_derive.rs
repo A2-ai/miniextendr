@@ -254,6 +254,16 @@ fn derive_simple_factor(
         }
 
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::ffi::SEXP> =
                     ::std::sync::OnceLock::new();
@@ -451,6 +461,16 @@ fn derive_interaction_factor(
         }
 
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::ffi::SEXP> =
                     ::std::sync::OnceLock::new();

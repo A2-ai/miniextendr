@@ -1,7 +1,7 @@
 //! indicatif adapter tests — R console progress bar integration.
 
 use miniextendr_api::indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use miniextendr_api::progress::{RTerm, RStream, term_like_stderr, term_like_stdout};
+use miniextendr_api::progress::{RStream, RTerm, term_like_stderr, term_like_stdout};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Verify RTerm construction and Debug output.

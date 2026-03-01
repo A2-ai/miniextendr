@@ -294,6 +294,13 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
 // =============================================================================
 
 impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         let (keys, values): (Vec<String>, Vec<V>) = self.0.into_iter().unzip();
         let sexp = V::vec_to_sexp(values);
@@ -307,6 +314,13 @@ impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
 }
 
 impl<V: AtomicElement> IntoR for NamedVector<BTreeMap<String, V>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         let (keys, values): (Vec<String>, Vec<V>) = self.0.into_iter().unzip();
         let sexp = V::vec_to_sexp(values);

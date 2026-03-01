@@ -134,10 +134,10 @@ mod factor_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
 mod identical_tests;
-#[cfg(feature = "indicatif")]
-mod indicatif_adapter_tests;
 #[cfg(feature = "indexmap")]
 mod indexmap_adapter_tests;
+#[cfg(feature = "indicatif")]
+mod indicatif_adapter_tests;
 mod interrupt_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;

@@ -308,7 +308,9 @@ pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
+pub mod into_r_error;
 pub use into_r::{Altrep, IntoR, IntoRAltrep};
+pub use into_r_error::IntoRError;
 pub mod into_r_as;
 pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod unwind_protect;

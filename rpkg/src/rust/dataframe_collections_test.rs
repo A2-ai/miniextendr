@@ -256,14 +256,8 @@ pub struct ParallelExpanded {
 #[derive(Clone, Debug, DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum ParallelExpandedEvent {
-    Measurement {
-        sensor: String,
-        readings: [f64; 2],
-    },
-    Status {
-        sensor: String,
-        code: i32,
-    },
+    Measurement { sensor: String, readings: [f64; 2] },
+    Status { sensor: String, code: i32 },
 }
 
 #[cfg(test)]
@@ -870,7 +864,10 @@ mod tests {
 
         let df = ParallelExpandedEventDataFrame::from_rows(rows);
         assert_eq!(df._tag, vec!["Measurement", "Status"]);
-        assert_eq!(df.sensor, vec![Some("temp".to_string()), Some("temp".to_string())]);
+        assert_eq!(
+            df.sensor,
+            vec![Some("temp".to_string()), Some("temp".to_string())]
+        );
         assert_eq!(df.readings_1, vec![Some(22.5), None]);
         assert_eq!(df.readings_2, vec![Some(23.0), None]);
         assert_eq!(df.code, vec![None, Some(200)]);
