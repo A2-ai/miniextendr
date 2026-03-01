@@ -116,8 +116,8 @@ pub struct MyData { /* ... */ }
 
 ```rust
 impl_typed_external!(MyData);
-// or with a custom display name:
-impl_typed_external_with_tag!(MyData, "CustomName");
+// also works for generic types:
+impl_typed_external!(MyWrapper<i32>);
 ```
 
 **Manually:**

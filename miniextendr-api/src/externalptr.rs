@@ -257,61 +257,6 @@ pub trait TypedExternal: 'static {
 /// ```
 pub trait IntoExternalPtr: TypedExternal {}
 
-/// Implement TypedExternal for a type with automatic namespacing.
-///
-/// This macro generates:
-/// - `TYPE_NAME`: Short display name (just the type identifier)
-/// - `TYPE_NAME_CSTR`: Null-terminated display name for R tag
-/// - `TYPE_ID_CSTR`: Namespaced ID using crate name, version, and module path
-///
-/// Format: `<crate_name>@<crate_version>::<module_path>::<type_name>`
-#[macro_export]
-macro_rules! impl_typed_external {
-    ($ty:ty) => {
-        impl $crate::externalptr::TypedExternal for $ty {
-            const TYPE_NAME: &'static str = stringify!($ty);
-            const TYPE_NAME_CSTR: &'static [u8] = concat!(stringify!($ty), "\0").as_bytes();
-            const TYPE_ID_CSTR: &'static [u8] = concat!(
-                env!("CARGO_PKG_NAME"),
-                "@",
-                env!("CARGO_PKG_VERSION"),
-                "::",
-                module_path!(),
-                "::",
-                stringify!($ty),
-                "\0"
-            )
-            .as_bytes();
-        }
-    };
-}
-
-/// Implement TypedExternal for a type with a custom tag name.
-///
-/// Use this when you want the R tag to display a specific name
-/// (e.g., without module path).
-///
-/// Format: `<crate_name>@<crate_version>::<module_path>::<tag>`
-#[macro_export]
-macro_rules! impl_typed_external_with_tag {
-    ($ty:ty, $tag:expr) => {
-        impl $crate::externalptr::TypedExternal for $ty {
-            const TYPE_NAME: &'static str = $tag;
-            const TYPE_NAME_CSTR: &'static [u8] = concat!($tag, "\0").as_bytes();
-            const TYPE_ID_CSTR: &'static [u8] = concat!(
-                env!("CARGO_PKG_NAME"),
-                "@",
-                env!("CARGO_PKG_VERSION"),
-                "::",
-                module_path!(),
-                "::",
-                $tag,
-                "\0"
-            )
-            .as_bytes();
-        }
-    };
-}
 
 impl TypedExternal for () {
     const TYPE_NAME: &'static str = "()";
