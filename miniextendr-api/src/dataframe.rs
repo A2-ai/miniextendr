@@ -278,6 +278,13 @@ impl TryFromSexp for DataFrameView {
 // =============================================================================
 
 impl IntoR for DataFrameView {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     #[inline]
     fn into_sexp(self) -> SEXP {
         self.inner.as_list().as_sexp()
@@ -606,6 +613,13 @@ impl LazyDataFrame {
 }
 
 impl IntoR for LazyDataFrame {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(<Self as IntoR>::into_sexp(self))
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         unsafe { LazyDataFrame::into_sexp(self) }
     }

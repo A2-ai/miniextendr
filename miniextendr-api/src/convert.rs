@@ -92,6 +92,18 @@ impl<T: IntoList> From<T> for AsList<T> {
 }
 
 impl<T: IntoList> IntoR for AsList<T> {
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         self.0.into_list().into_sexp()
@@ -141,6 +153,18 @@ impl<T: IntoDataFrame> From<T> for ToDataFrame<T> {
 }
 
 impl<T: IntoDataFrame> IntoR for ToDataFrame<T> {
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         self.0.into_data_frame().into_sexp()
@@ -151,6 +175,18 @@ impl<T: IntoDataFrame> IntoR for ToDataFrame<T> {
 ///
 /// This allows DataFrame to be returned directly from `#[miniextendr]` functions.
 impl<T: IntoList> IntoR for DataFrame<T> {
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         self.into_data_frame().into_sexp()
@@ -546,6 +582,18 @@ impl<T: IntoExternalPtr> From<T> for AsExternalPtr<T> {
 }
 
 impl<T: IntoExternalPtr> IntoR for AsExternalPtr<T> {
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         ExternalPtr::new(self.0).into_sexp()
@@ -586,6 +634,18 @@ impl<T: RNativeType> From<T> for AsRNative<T> {
 }
 
 impl<T: RNativeType> IntoR for AsRNative<T> {
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         // Directly allocate a length-1 R vector and write the scalar value.
@@ -647,6 +707,16 @@ impl<T> From<T> for AsNamedList<T> {
 }
 
 impl<K: AsRef<str>, V: IntoR> IntoR for AsNamedList<Vec<(K, V)>> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     fn into_sexp(self) -> crate::ffi::SEXP {
         let pairs: Vec<(K, crate::ffi::SEXP)> = self
             .0
@@ -658,6 +728,16 @@ impl<K: AsRef<str>, V: IntoR> IntoR for AsNamedList<Vec<(K, V)>> {
 }
 
 impl<K: AsRef<str>, V: IntoR, const N: usize> IntoR for AsNamedList<[(K, V); N]> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     fn into_sexp(self) -> crate::ffi::SEXP {
         let pairs: Vec<(K, crate::ffi::SEXP)> = self
             .0
@@ -669,6 +749,16 @@ impl<K: AsRef<str>, V: IntoR, const N: usize> IntoR for AsNamedList<[(K, V); N]>
 }
 
 impl<K: AsRef<str>, V: Clone + IntoR> IntoR for AsNamedList<&[(K, V)]> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     fn into_sexp(self) -> crate::ffi::SEXP {
         let pairs: Vec<(&K, crate::ffi::SEXP)> = self
             .0
@@ -712,18 +802,48 @@ impl<T> From<T> for AsNamedVector<T> {
 }
 
 impl<K: AsRef<str>, V: AtomicElement> IntoR for AsNamedVector<Vec<(K, V)>> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     fn into_sexp(self) -> crate::ffi::SEXP {
         named_vector_from_pairs(self.0)
     }
 }
 
 impl<K: AsRef<str>, V: AtomicElement, const N: usize> IntoR for AsNamedVector<[(K, V); N]> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     fn into_sexp(self) -> crate::ffi::SEXP {
         named_vector_from_pairs(self.0)
     }
 }
 
 impl<K: AsRef<str>, V: Clone + AtomicElement> IntoR for AsNamedVector<&[(K, V)]> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
     fn into_sexp(self) -> crate::ffi::SEXP {
         let (keys, values): (Vec<&K>, Vec<V>) = self.0.iter().map(|(k, v)| (k, v.clone())).unzip();
         let sexp = V::vec_to_sexp(values);

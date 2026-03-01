@@ -295,6 +295,13 @@ impl<'a> StrVecBuilder<'a> {
 // =============================================================================
 
 impl IntoR for StrVec {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     #[inline]
     fn into_sexp(self) -> SEXP {
         self.0

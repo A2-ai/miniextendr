@@ -206,6 +206,16 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
         }
 
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 use ::miniextendr_api::match_arg::MatchArg;
                 self.to_choice().into_sexp()
