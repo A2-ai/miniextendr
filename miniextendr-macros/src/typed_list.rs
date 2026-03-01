@@ -95,12 +95,18 @@ impl Parse for ParsedEntry {
     }
 }
 
-/// Parsed type specification.
+/// Parsed type specification from a `typed_list!` entry's `=> type` clause.
 pub enum ParsedTypeSpec {
-    /// String literal - either a known type or a class name.
+    /// A string literal type spec (e.g., `"numeric"`, `"data.frame"`, `"myclass"`).
+    /// Known base types are mapped to `TypeSpec` variants; unknown strings become class names.
     StringLit(String),
-    /// Call-like expression: `numeric()`, `integer(4)`, etc.
-    TypeCall { name: String, len: Option<usize> },
+    /// A call-like type spec (e.g., `numeric()`, `integer(4)`).
+    TypeCall {
+        /// The type name (must be one of the validated built-in types).
+        name: String,
+        /// Optional expected vector length (e.g., `4` in `numeric(4)`). `None` means any length.
+        len: Option<usize>,
+    },
 }
 
 impl Parse for ParsedTypeSpec {
@@ -176,7 +182,12 @@ impl Parse for ParsedTypeSpec {
     }
 }
 
-/// Generate the TypedListSpec tokens.
+/// Expands a parsed `typed_list!` invocation into a `TypedListSpec` token stream.
+///
+/// Converts each [`ParsedEntry`] into a `TypedEntry` constructor call and wraps
+/// the result in a `TypedListSpec { entries, allow_extra }` literal.
+///
+/// Returns a `TokenStream` that evaluates to `TypedListSpec` at runtime.
 pub fn expand_typed_list(input: TypedListInput) -> TokenStream {
     let allow_extra = input.allow_extra;
 
@@ -210,7 +221,11 @@ pub fn expand_typed_list(input: TypedListInput) -> TokenStream {
     }
 }
 
-/// Convert a string literal to TypeSpec tokens.
+/// Converts a string literal type specification to `TypeSpec` tokens.
+///
+/// Recognizes known base type names (e.g., `"numeric"`, `"integer"`, `"logical"`)
+/// and their aliases (e.g., `"double"` -> Numeric, `"bool"` -> Logical).
+/// Unrecognized strings are treated as R class names via `TypeSpec::Class`.
 fn type_spec_from_string(s: &str) -> TokenStream {
     // Check for known base types first
     match s.to_lowercase().as_str() {
@@ -240,7 +255,11 @@ fn type_spec_from_string(s: &str) -> TokenStream {
     }
 }
 
-/// Convert a type call to TypeSpec tokens.
+/// Converts a call-style type specification (e.g., `numeric(4)`) to `TypeSpec` tokens.
+///
+/// The `name` must be a validated type name from parsing. The optional `len`
+/// specifies the expected vector length constraint (e.g., `numeric(4)` means
+/// a numeric vector of exactly length 4).
 fn type_spec_from_call(name: &str, len: Option<usize>) -> TokenStream {
     let len_tokens = match len {
         None => quote! { None },

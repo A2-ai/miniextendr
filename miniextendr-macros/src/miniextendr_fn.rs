@@ -16,21 +16,38 @@ use crate::{call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_
 /// Result of coercion analysis for a type.
 /// Contains the R native type to extract from SEXP and the target type to coerce to.
 pub(crate) enum CoercionMapping {
-    /// Scalar coercion: extract R native type, coerce to target
+    /// Scalar coercion: extract R native type, coerce to target.
     Scalar {
+        /// The R-native scalar type to extract from the SEXP (e.g., `i32` for R integers,
+        /// `f64` for R reals). This is the type that R stores internally.
         r_native: proc_macro2::TokenStream,
+        /// The Rust target type to coerce into (e.g., `u16`, `bool`, `f32`).
         target: proc_macro2::TokenStream,
     },
-    /// Vec coercion: extract R native slice, coerce element-wise to `Vec<target>`
+    /// Vec coercion: extract R native slice, coerce element-wise to `Vec<target>`.
     Vec {
+        /// The R-native element type of the source slice (e.g., `i32` for integer vectors,
+        /// `f64` for real vectors).
         r_native_elem: proc_macro2::TokenStream,
+        /// The Rust target element type for the resulting `Vec` (e.g., `u16`, `bool`, `f32`).
         target_elem: proc_macro2::TokenStream,
     },
 }
 
 impl CoercionMapping {
-    /// Get the coercion mapping for a type, if it needs coercion.
-    /// Returns None if the type is R-native (no coercion needed) or unknown.
+    /// Determines the coercion mapping for a Rust type, if it needs coercion from
+    /// an R-native type.
+    ///
+    /// Returns `None` if the type is already R-native (`i32`, `f64`, `String`, etc.)
+    /// or is not a recognized coercible type.
+    ///
+    /// # Recognized coercions
+    ///
+    /// - **Scalar integer-like** (`u16`, `i16`, `i8`, `u32`, `u64`, `i64`, `isize`, `usize`):
+    ///   coerced from `i32` (R's native integer type).
+    /// - **Scalar `bool`**: coerced from `i32` (R's logical vectors use `i32` internally).
+    /// - **Scalar `f32`**: coerced from `f64` (R's native real type).
+    /// - **`Vec<T>`** variants: element-wise coercion from the corresponding R-native slice type.
     pub(crate) fn from_type(ty: &syn::Type) -> Option<Self> {
         match ty {
             syn::Type::Path(type_path) => {
@@ -105,8 +122,14 @@ impl CoercionMapping {
 /// `#[miniextendr(match_arg, default = "Safe")]`.
 #[derive(Default)]
 pub(crate) struct PerParamMiniextendrAttr {
+    /// Whether `coerce` was present, enabling automatic type coercion for this parameter
+    /// (e.g., `i32` to `u16`, `f64` to `f32`).
     pub has_coerce: bool,
+    /// Whether `match_arg` was present, generating R `match.arg()` validation for
+    /// string parameters against a set of allowed values.
     pub has_match_arg: bool,
+    /// Default value from `default = "..."`, if present. The tuple contains the default
+    /// value string and the attribute span (for error reporting).
     pub default_value: Option<(String, proc_macro2::Span)>,
     /// Choices for string parameters: `#[miniextendr(choices("a", "b", "c"))]`.
     pub choices: Option<Vec<String>>,
@@ -116,6 +139,15 @@ pub(crate) struct PerParamMiniextendrAttr {
 ///
 /// Handles mixed content like `#[miniextendr(match_arg, default = "\"Safe\"")]`
 /// and `#[miniextendr(choices("a", "b", "c"))]`.
+///
+/// Returns `None` if `attr` is not a `#[miniextendr(...)]` attribute, if it cannot
+/// be parsed, or if it contains only function-level options (like `strict`) with
+/// no per-parameter options.
+///
+/// # Arguments
+///
+/// * `attr` - A `syn::Attribute` to inspect. Only attributes with path `miniextendr`
+///   are considered.
 pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMiniextendrAttr> {
     use syn::spanned::Spanned;
     if !attr.path().is_ident("miniextendr") {
@@ -184,29 +216,42 @@ pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMini
     Some(result)
 }
 
-/// Check if an attribute contains `#[miniextendr(coerce)]` (possibly combined with others).
+/// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `coerce`.
+///
+/// The `coerce` flag may be combined with other per-parameter options (e.g.,
+/// `#[miniextendr(coerce, default = "0")]`).
 pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
     parse_per_param_attr(attr).is_some_and(|a| a.has_coerce)
 }
 
-/// Check if an attribute contains `#[miniextendr(match_arg)]` (possibly combined with others).
+/// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `match_arg`.
+///
+/// The `match_arg` flag may be combined with other per-parameter options (e.g.,
+/// `#[miniextendr(match_arg, choices("a", "b"))]`).
 pub(crate) fn is_miniextendr_match_arg_attr(attr: &syn::Attribute) -> bool {
     parse_per_param_attr(attr).is_some_and(|a| a.has_match_arg)
 }
 
-/// Check if an attribute contains `#[miniextendr(choices(...))]` (possibly combined with others).
+/// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `choices(...)`.
+///
+/// The `choices(...)` option may be combined with other per-parameter options (e.g.,
+/// `#[miniextendr(match_arg, choices("a", "b"))]`).
 pub(crate) fn is_miniextendr_choices_attr(attr: &syn::Attribute) -> bool {
     parse_per_param_attr(attr).is_some_and(|a| a.choices.is_some())
 }
 
-/// Parse choices from `#[miniextendr(choices("a", "b", "c"))]` (possibly combined with others).
+/// Extracts the list of choice strings from a `#[miniextendr(choices("a", "b", "c"))]` attribute.
+///
+/// Returns `None` if the attribute does not contain `choices(...)` or is not a
+/// `#[miniextendr(...)]` attribute.
 pub(crate) fn parse_choices_attr(attr: &syn::Attribute) -> Option<Vec<String>> {
     parse_per_param_attr(attr).and_then(|a| a.choices)
 }
 
-/// Parse default value from `#[miniextendr(default = "...")]` (possibly combined with others).
+/// Extracts the default value from a `#[miniextendr(default = "...")]` attribute.
 ///
-/// Returns Some((default_value, attr_span)) if the attribute contains a default.
+/// Returns `Some((default_value, attr_span))` if the attribute contains a `default` option.
+/// The span is used for error reporting when the default references a non-existent parameter.
 pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<(String, proc_macro2::Span)> {
     parse_per_param_attr(attr).and_then(|a| a.default_value)
 }
@@ -239,6 +284,26 @@ pub(crate) struct MiniextendrFunctionParsed {
     per_param_choices: std::collections::HashMap<String, Vec<String>>,
 }
 
+/// Parses a Rust `fn` item from a token stream, performing all normalizations
+/// required by the `#[miniextendr]` codegen pipeline.
+///
+/// # Normalizations performed
+///
+/// 1. **Variadic (`...`) rewriting**: Replaces Rust variadic syntax with a typed
+///    `&miniextendr_api::dots::Dots` parameter. Named dots (`my_dots: ...`) preserve
+///    the user's identifier; unnamed `...` becomes `__miniextendr_dots`.
+/// 2. **Wildcard pattern renaming**: `_` parameter patterns become `__unused0`,
+///    `__unused1`, etc., so they can be passed by name to the C wrapper.
+/// 3. **Destructuring expansion**: Tuple/struct destructuring patterns are replaced
+///    with synthetic identifiers (`__param_0`, ...) and a `let` binding is prepended
+///    to the function body.
+/// 4. **Per-parameter attribute consumption**: `#[miniextendr(coerce)]`,
+///    `#[miniextendr(match_arg)]`, `#[miniextendr(default = "...")]`, and
+///    `#[miniextendr(choices(...))]` are consumed from parameters and recorded in
+///    the corresponding `per_param_*` fields.
+/// 5. **Validation**: Rejects `#[export_name]` on non-extern functions, rejects
+///    unsupported parameter patterns, and validates that defaults reference existing
+///    parameter names.
 impl syn::parse::Parse for MiniextendrFunctionParsed {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         use syn::spanned::Spanned;
@@ -480,6 +545,16 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
     }
 }
 
+/// Accessors and codegen helpers for [`MiniextendrFunctionParsed`].
+///
+/// Accessors are split into two groups:
+/// - **Parsed metadata**: dots, coerce, match_arg, choices, and defaults from
+///   per-parameter `#[miniextendr(...)]` attributes.
+/// - **Signature components**: attrs, vis, abi, ident, generics, inputs, output
+///   from the normalized `syn::ItemFn`.
+///
+/// Codegen helpers produce identifiers and perform mutations needed by the
+/// `#[miniextendr]` expansion pipeline.
 impl MiniextendrFunctionParsed {
     // -------------------------------------------------------------------------
     // Accessors for parsed metadata
@@ -505,7 +580,9 @@ impl MiniextendrFunctionParsed {
         self.per_param_match_arg.contains(param_name)
     }
 
-    /// Get the set of match_arg parameter names.
+    /// Returns the set of parameter names annotated with `#[miniextendr(match_arg)]`.
+    ///
+    /// Used by the R wrapper generator to emit `match.arg()` calls for these parameters.
     pub(crate) fn match_arg_params(&self) -> &std::collections::HashSet<String> {
         &self.per_param_match_arg
     }
@@ -515,12 +592,17 @@ impl MiniextendrFunctionParsed {
         self.per_param_choices.get(param_name).map(|v| v.as_slice())
     }
 
-    /// Get the full choices map (param_name → choices).
+    /// Returns the full choices map (parameter name to list of allowed string values).
+    ///
+    /// Used by the R wrapper generator to emit `match.arg()` with an explicit choices vector.
     pub(crate) fn choices_params(&self) -> &std::collections::HashMap<String, Vec<String>> {
         &self.per_param_choices
     }
 
-    /// Get all parameter defaults.
+    /// Returns all parameter defaults as a map from parameter name to default value string.
+    ///
+    /// The default value string is the raw R expression that will be placed in the
+    /// R wrapper's formals (e.g., `"NULL"`, `"TRUE"`, `"\"Safe\""`).
     pub(crate) fn param_defaults(&self) -> &std::collections::HashMap<String, String> {
         &self.per_param_defaults
     }
@@ -583,30 +665,46 @@ impl MiniextendrFunctionParsed {
     // Codegen helpers
     // -------------------------------------------------------------------------
 
-    /// Whether this function needs an internal C wrapper (true for Rust ABI functions).
-    /// Extern "C-unwind" functions are used directly without wrapping.
+    /// Returns `true` if this function needs an internal C wrapper (`C_<name>` function).
+    ///
+    /// Rust-ABI functions (no explicit `extern`) need a generated `extern "C-unwind"` wrapper
+    /// that handles SEXP conversion and error propagation. Functions already declared as
+    /// `extern "C-unwind"` are passed through directly without wrapping.
     pub(crate) fn uses_internal_c_wrapper(&self) -> bool {
         self.abi().is_none()
     }
 
-    /// Identifier for the generated `const` `R_CallMethodDef` value.
+    /// Returns the identifier for the generated `const R_CallMethodDef` value.
+    ///
+    /// This constant is used by `miniextendr_module!` to register the function
+    /// with R's `.Call` interface via `R_registerRoutines`.
     pub(crate) fn call_method_def_ident(&self) -> syn::Ident {
         call_method_def_ident_for(self.ident())
     }
 
-    /// Identifier for the generated `const &str` holding the R wrapper code.
+    /// Returns the identifier for the generated `const &str` holding the R wrapper code.
+    ///
+    /// The R wrapper is a string constant containing the R function definition that
+    /// calls `.Call(C_<name>, ...)`. It is collected by `miniextendr_module!` to produce
+    /// the `R/miniextendr_wrappers.R` file.
     pub(crate) fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(self.ident())
     }
 
-    /// Identifier for the match_arg choices helper call defs array.
+    /// Returns the identifier for the `match.arg()` choices helper `R_CallMethodDef` array.
+    ///
+    /// When a function has `match_arg` parameters, additional `.Call` entry points are
+    /// generated so R can query the valid choices at runtime. This identifier names
+    /// the array constant that holds those definitions.
     pub(crate) fn match_arg_call_defs_ident(&self) -> syn::Ident {
         match_arg_call_defs_ident_for(self.ident())
     }
 
-    /// Identifier for the C wrapper function.
-    /// - Rust ABI: `C_<name>`
-    /// - Extern "C-unwind": same as the function name (or export_name if specified)
+    /// Returns the identifier for the C-callable entry point.
+    ///
+    /// - **Rust ABI functions**: Returns `C_<name>` (the generated wrapper function).
+    /// - **`extern "C-unwind"` functions**: Returns the function's own name, or the
+    ///   value from `#[export_name = "..."]` if present.
     pub(crate) fn c_wrapper_ident(&self) -> syn::Ident {
         if self.uses_internal_c_wrapper() {
             quote::format_ident!("C_{}", self.ident())
@@ -617,7 +715,10 @@ impl MiniextendrFunctionParsed {
         }
     }
 
-    /// Extract the export name from `#[export_name = "..."]` attribute, if present.
+    /// Extracts the custom symbol name from `#[export_name = "..."]`, if present.
+    ///
+    /// Only meaningful for `extern "C-unwind"` functions, where `#[export_name]` is
+    /// allowed as an alternative to `#[no_mangle]`. Returns `None` if no such attribute exists.
     pub(crate) fn export_name_ident(&self) -> Option<syn::Ident> {
         for attr in &self.item.attrs {
             if attr.path().is_ident("export_name")
@@ -759,6 +860,27 @@ pub(crate) enum ReturnPref {
     Native,
 }
 
+/// Parses the comma-separated option list inside `#[miniextendr(...)]`.
+///
+/// Supports three syntactic forms for each option:
+/// - **Bare identifier**: `#[miniextendr(invisible)]`
+/// - **Name-value**: `#[miniextendr(prefer = "list")]` or `#[miniextendr(invisible = true)]`
+/// - **Nested list**: `#[miniextendr(unsafe(main_thread))]`, `#[miniextendr(s3(generic = "...", class = "..."))]`
+///
+/// Options with negated forms (`no_worker`, `no_coerce`, `no_strict`, `no_error_in_r`)
+/// explicitly disable the corresponding flag, which is useful for overriding
+/// feature-based defaults.
+///
+/// An empty input (plain `#[miniextendr]`) resolves all options to their feature-based
+/// defaults (e.g., `default-worker`, `default-coerce`, `default-strict`).
+///
+/// # Errors
+///
+/// Returns a compile error for:
+/// - Unknown option names (prevents silent typos)
+/// - Mutually exclusive options (`error_in_r` + `unwrap_in_r`, `internal` + `noexport`)
+/// - Invalid values for key-value options (e.g., bad `prefer` or `c_symbol`)
+/// - Missing required sub-options (e.g., `s3(...)` without `class`)
 impl syn::parse::Parse for MiniextendrFnAttrs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         use syn::spanned::Spanned;

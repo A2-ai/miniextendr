@@ -178,7 +178,11 @@ fn validate_trait(trait_item: &ItemTrait) -> syn::Result<()> {
     Ok(())
 }
 
-/// Validate a single trait method.
+/// Validate a single trait method for ABI compatibility.
+///
+/// Rejects async methods, methods with generic type parameters, and methods
+/// that take `self` by value (only `&self` and `&mut self` are allowed).
+/// Static methods (no receiver) are permitted.
 fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::Result<()> {
     let method_name = &method.sig.ident;
 
@@ -816,23 +820,28 @@ fn generate_method_shim(
 }
 
 /// Information extracted from a trait method for code generation.
+///
+/// Collects everything needed to generate vtable shims, view methods,
+/// and extra trait bounds for a single method in a `#[miniextendr]` trait.
 #[derive(Debug)]
 struct MethodInfo {
-    /// Method name
+    /// Method name (Rust identifier).
     name: syn::Ident,
-    /// Whether the method has a self receiver (instance method)
+    /// Whether the method has a self receiver (instance method).
+    /// False for static/associated methods.
     has_self: bool,
-    /// Whether receiver is `&mut self` (vs `&self`) - only meaningful if has_self is true
+    /// Whether receiver is `&mut self` (vs `&self`). Only meaningful if `has_self` is true.
     is_mut: bool,
-    /// Parameter types (excluding self)
+    /// Parameter types (excluding the self receiver).
     param_types: Vec<syn::Type>,
-    /// Parameter names (excluding self)
+    /// Parameter names (excluding the self receiver). Uses `arg{i}` for unnamed patterns.
     param_names: Vec<syn::Ident>,
-    /// Return type (None for `()`)
+    /// Return type. `None` when the method returns `()` (unit type or no return annotation).
     return_type: Option<syn::Type>,
-    /// Whether method is marked `#[miniextendr(skip)]`
+    /// Whether method is marked `#[miniextendr(skip)]`, excluding it from codegen.
     skip: bool,
-    /// Override the R-facing method name (from `#[miniextendr(r_name = "...")]`)
+    /// Override the R-facing method name (from `#[miniextendr(r_name = "...")]`).
+    /// When set, R wrappers and TPIE metadata use this name instead of the Rust ident.
     r_name: Option<String>,
 }
 
@@ -887,7 +896,11 @@ fn param_is_self_ref(ty: &syn::Type) -> (bool, bool) {
     (false, false)
 }
 
-/// Check if a type contains `Self::AssocType` for a given associated type name.
+/// Check if a type syntactically contains `Self::AssocType` for a given associated type name.
+///
+/// Recursively walks the type tree looking for a 2-segment path where the first
+/// segment is `Self` and the second matches `assoc_name` (e.g., `Self::Item`).
+/// Used to determine whether extra `where` bounds are needed for associated types.
 fn type_contains_self_assoc(ty: &syn::Type, assoc_name: &syn::Ident) -> bool {
     match ty {
         syn::Type::Path(tp) => {
@@ -994,7 +1007,11 @@ fn rewrite_self_in_type(
     }
 }
 
-/// Check if a type contains a specific identifier (for detecting trait type params).
+/// Check if a type syntactically contains a specific identifier.
+///
+/// Used to detect trait type parameters (like `T`) in method signatures so that
+/// appropriate `TryFromSexp` or `IntoR` bounds can be added. Recursively walks
+/// through path segments, generic arguments, references, tuples, slices, and arrays.
 fn type_contains_ident(ty: &syn::Type, ident: &syn::Ident) -> bool {
     match ty {
         syn::Type::Path(tp) => {
@@ -1023,11 +1040,17 @@ fn type_contains_ident(ty: &syn::Type, ident: &syn::Ident) -> bool {
     }
 }
 
-/// Extra bounds computed from method signatures for generic trait support.
+/// Extra trait bounds inferred from method signatures.
+///
+/// For generic traits and methods that reference `Self` or associated types,
+/// the generated shim and vtable builder functions need additional bounds
+/// beyond `__ImplT: TraitName`. This struct collects those bounds.
 struct ExtraBounds {
-    /// Bounds added to `__ImplT` (e.g., `IntoR`, `TypedExternal + 'static`)
+    /// Bounds added directly to `__ImplT` (e.g., `IntoR` when methods return `Self`,
+    /// or `TypedExternal + Send + 'static` when methods take `&Self` parameters).
     impl_bounds: Vec<TokenStream>,
-    /// Where clause predicates (e.g., `<__ImplT as Trait>::Item: IntoR`)
+    /// Where clause predicates for complex types (e.g.,
+    /// `<__ImplT as Trait>::Item: IntoR` or `Vec<T>: TryFromSexp`).
     where_predicates: Vec<TokenStream>,
 }
 
@@ -1130,7 +1153,13 @@ fn compute_extra_bounds(
     }
 }
 
-/// Build combined where predicates from trait's where clause and extra bounds.
+/// Build combined where predicates from the trait's own where clause and computed extra bounds.
+///
+/// Merges the original trait-level where clause predicates with the extra
+/// bounds computed from method signatures (e.g., `IntoR` for return types,
+/// `TryFromSexp` for parameters containing trait type params).
+///
+/// Returns a flat list of predicates suitable for use in a `where` clause.
 fn build_where_predicates(
     trait_where_clause: &Option<syn::WhereClause>,
     extra_bounds: &ExtraBounds,
@@ -1145,7 +1174,11 @@ fn build_where_predicates(
     all
 }
 
-/// Extract method information from a trait method.
+/// Extract method information from a trait method definition.
+///
+/// Parses the method signature to determine receiver type, parameter names/types,
+/// return type, and any `#[miniextendr(...)]` attributes like `skip` and `r_name`.
+/// Parameters with non-ident patterns are assigned synthetic names (`arg0`, `arg1`, etc.).
 fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
     let name = method.sig.ident.clone();
 

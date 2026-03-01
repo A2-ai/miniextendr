@@ -1,4 +1,8 @@
-//! Vtable generation and C wrapper generation for trait impls.
+//! Vtable static generation, C wrapper generation, and method attribute parsing for trait impls.
+//!
+//! This module contains the core codegen for `#[miniextendr]` on `impl Trait for Type` blocks.
+//! It produces the vtable static constant, C-callable wrapper functions for each method and
+//! associated constant, and delegates to [`super::r_wrappers`] for R wrapper code generation.
 
 use proc_macro2::TokenStream;
 use quote::format_ident;
@@ -8,7 +12,26 @@ use super::r_wrappers::{TraitWrapperOpts, generate_trait_r_wrapper};
 use super::{TraitConst, TraitMethod, type_to_uppercase_name};
 use crate::miniextendr_impl::ClassSystem;
 
-/// Generate the vtable static and R-callable wrappers for a trait implementation.
+/// Generate the vtable static, C wrappers, R wrappers, and call defs for a trait implementation.
+///
+/// This is the main entry point for trait impl codegen. For a given
+/// `impl Trait for Type { ... }` block, it produces:
+///
+/// - The cleaned original impl block (with `#[miniextendr]` attrs stripped from methods)
+/// - A `static __VTABLE_{TRAIT}_FOR_{TYPE}: {Trait}VTable` constant
+/// - C wrapper functions and `R_CallMethodDef` entries for each method and const
+/// - R wrapper code string (class-system specific)
+/// - Two `const` items: `{TYPE}_{TRAIT}_CALL_DEFS` and `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
+///
+/// # Arguments
+///
+/// - `impl_item`: The parsed `impl Trait for Type` block
+/// - `trait_path`: Full path to the trait (e.g., `crate::Counter`)
+/// - `concrete_type`: The implementing type (e.g., `MyCounter`)
+/// - `class_system`: Which R class system (env, r6, s3, s4, s7) to generate wrappers for
+/// - `blanket`: If true, skip emitting the impl block (a blanket impl already provides it)
+/// - `internal`: If true, add `@keywords internal` to R documentation
+/// - `noexport`: If true, suppress `@export` in R documentation
 pub(super) fn generate_vtable_static(
     impl_item: &ItemImpl,
     trait_path: &syn::Path,
@@ -298,12 +321,20 @@ pub(super) fn generate_vtable_static(
 
 /// Generate concrete vtable shims for a generic trait impl.
 ///
-/// For generic traits (e.g., `RExtend<T>`), shims and builder can't be generated at the
-/// trait definition site because where clauses like `Vec<T>: TryFromSexp` cause recursive
-/// trait resolution overflow. Instead, we generate fully concrete shims at the impl site
-/// where `T` is known (e.g., `T = i32`).
+/// For generic traits (e.g., `RExtend<T>`), shims and the vtable builder function
+/// cannot be generated at the trait definition site because where clauses like
+/// `Vec<T>: TryFromSexp` cause recursive trait resolution overflow. Instead, we
+/// generate fully monomorphized shims at the impl site where `T` is known (e.g., `T = i32`).
 ///
-/// Each instance method gets a concrete shim: `__vtshim_{Type}__{Trait}__{method}`.
+/// Each instance method gets a concrete `unsafe extern "C"` shim named
+/// `__vtshim_{Type}__{Trait}__{method}` that:
+/// 1. Checks argument arity
+/// 2. Wraps everything in `with_r_unwind_protect`
+/// 3. Extracts SEXP arguments to concrete Rust types
+/// 4. Calls the method via fully-qualified syntax `<Type as Trait>::method()`
+/// 5. Converts the result back to SEXP
+///
+/// Static methods are skipped (not part of the vtable).
 fn generate_concrete_vtable_shims(
     methods: &[TraitMethod],
     type_ident: &syn::Ident,
@@ -444,7 +475,11 @@ fn generate_concrete_vtable_shims(
     quote::quote! { #(#shims)* }
 }
 
-/// Extract methods from a trait impl block.
+/// Extract all methods from a trait impl block as [`TraitMethod`] structs.
+///
+/// Parses each `ImplItem::Fn` to determine receiver type, mutability,
+/// `#[miniextendr(...)]` attributes (coerce, skip, r_name, defaults, etc.),
+/// and roxygen `@param` tags from doc comments.
 fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
     impl_item
         .items
@@ -491,23 +526,40 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
         .collect()
 }
 
-/// Parsed attributes for a trait method.
+/// Parsed `#[miniextendr(...)]` attributes for a single trait method.
+///
+/// Extracted from method-level attributes to control C wrapper behavior,
+/// threading, and R wrapper generation.
 struct TraitMethodAttrs {
+    /// Force execution on R's main thread (overrides default worker thread for static methods).
     unsafe_main_thread: bool,
+    /// Enable `Rf_coerceVector` for all parameters.
     coerce: bool,
+    /// Call `R_CheckUserInterrupt` before the method body.
     check_interrupt: bool,
+    /// Wrap the call in `GetRNGstate`/`PutRNGstate` for reproducible random number generation.
     rng: bool,
+    /// Return `Result<T, E>` to R without unwrapping (R wrapper receives the result variant).
     unwrap_in_r: bool,
+    /// Transport Rust errors as tagged SEXP values; R wrapper raises a condition.
     error_in_r: bool,
+    /// Exclude this method from all generated wrappers (C, R, vtable shims).
     skip: bool,
+    /// Parameter default values: keys are parameter names, values are R expressions.
     defaults: std::collections::HashMap<String, String>,
+    /// Override the R-facing method name.
     r_name: Option<String>,
 }
 
-/// Parse method attributes (worker, main_thread, coerce, defaults).
+/// Parse `#[miniextendr(...)]` attributes from a trait method.
 ///
-/// Accepts both nested class-system style (e.g., #[miniextendr(env(worker))])
-/// and flat style (#[miniextendr(worker)]).
+/// Supports two syntax styles:
+/// - **Flat**: `#[miniextendr(worker, coerce, rng)]`
+/// - **Nested class-system**: `#[miniextendr(env(worker, coerce))]`
+///
+/// Both styles can coexist. The `worker` flag is parsed but currently unused
+/// (worker thread is already the default for static methods).
+/// `error_in_r` and `unwrap_in_r` are mutually exclusive.
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     let mut worker = false;
     let mut unsafe_main_thread = false;
@@ -626,7 +678,10 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     }
 }
 
-/// Extract const items from a trait impl block.
+/// Extract associated constant items from a trait impl block.
+///
+/// Each `const NAME: Type = value;` in the impl block becomes a [`TraitConst`]
+/// that will get its own zero-argument C wrapper for R access.
 fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
     impl_item
         .items
@@ -659,7 +714,18 @@ pub(super) fn is_self_ref_type(ty: &syn::Type) -> bool {
     false
 }
 
-/// Generate a C wrapper for a trait method.
+/// Generate a C wrapper function and `R_CallMethodDef` for a single trait method.
+///
+/// Uses [`CWrapperContext`] builder to produce:
+/// - An `extern "C"` function callable from R via `.Call()`
+/// - A `R_CallMethodDef` constant for symbol registration
+///
+/// Instance methods (`has_self`) extract the object via `ErasedExternalPtr::from_sexp`
+/// and call with fully-qualified trait syntax `<Type as Trait>::method(self_ref, ...)`.
+/// Static methods run on the worker thread by default.
+///
+/// `&Self` parameters are rewritten to `ExternalPtr<Type>` for the C wrapper,
+/// then dereferenced to `&Type` when calling the actual trait method.
 pub(super) fn generate_trait_method_c_wrapper(
     method: &TraitMethod,
     type_ident: &syn::Ident,
@@ -838,6 +904,9 @@ pub(super) fn generate_trait_method_c_wrapper(
 }
 
 /// Returns true when the return type is syntactically `Result<_, _>`.
+///
+/// Used to determine whether `unwrap_in_r` mode should use `ReturnHandling::IntoR`
+/// (passing the Result through to R) instead of the default return handling.
 fn output_is_result(output: &syn::ReturnType) -> bool {
     match output {
         syn::ReturnType::Type(_, ty) => matches!(
@@ -853,7 +922,11 @@ fn output_is_result(output: &syn::ReturnType) -> bool {
     }
 }
 
-/// Generate a C wrapper for a trait const.
+/// Generate a C wrapper function and `R_CallMethodDef` for a trait associated constant.
+///
+/// The generated wrapper takes no arguments and returns the constant value
+/// converted to SEXP. Uses fully-qualified syntax `<Type as Trait>::CONST`
+/// to access the value. Always runs on the main thread.
 pub(super) fn generate_trait_const_c_wrapper(
     trait_const: &TraitConst,
     type_ident: &syn::Ident,

@@ -24,12 +24,15 @@ pub(super) struct DataFrameAttrs {
     pub(super) conflicts: Option<String>,
 }
 
-/// Parse container-level `#[dataframe(...)]` attributes.
+/// Parse container-level `#[dataframe(...)]` attributes from the derive input.
 ///
 /// Supported keys:
-/// - `name = "CustomName"` — custom companion type name
-/// - `align` — enum alignment mode (field-name union)
-/// - `tag = "col_name"` — variant discriminator column
+/// - `name = "CustomName"` -- custom companion type name (default: `{TypeName}DataFrame`)
+/// - `align` -- enum alignment mode (field-name union across variants)
+/// - `tag = "col_name"` -- add a variant discriminator column (works on both structs and enums)
+/// - `conflicts = "string"` -- coerce type-conflicting columns to `String` via `ToString`
+///
+/// Returns `Err` for unknown keys or non-string-literal values.
 fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
     let mut attrs = DataFrameAttrs {
         name: None,
@@ -120,21 +123,32 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
 // =============================================================================
 
 /// Parsed field-level `#[dataframe(...)]` attributes.
+///
+/// These attributes control how individual struct/enum fields map to DataFrame columns.
+/// Mutually exclusive combinations (`as_list` + `expand`, `as_list` + `width`) are
+/// rejected during parsing.
 #[derive(Default)]
 pub(super) struct FieldAttrs {
-    /// Omit this field from the DataFrame.
+    /// `#[dataframe(skip)]` -- omit this field from the DataFrame entirely.
     pub(super) skip: bool,
-    /// Custom column name.
+    /// `#[dataframe(rename = "col")]` -- use a custom column name instead of the field name.
     pub(super) rename: Option<String>,
-    /// Keep collection as single list column (suppress expansion).
+    /// `#[dataframe(as_list)]` -- keep a collection field as a single R list column
+    /// (suppresses automatic expansion into suffixed columns).
     as_list: bool,
-    /// Explicitly expand to suffixed columns.
+    /// `#[dataframe(expand)]` or `#[dataframe(unnest)]` -- explicitly expand a
+    /// collection field into multiple suffixed columns.
     expand: bool,
-    /// Pin expansion width for variable-length collections.
+    /// `#[dataframe(width = N)]` -- pin the expansion width for `Vec<T>`, `Box<[T]>`,
+    /// or `&[T]` fields. Rows shorter than `N` get `None` for missing positions.
     pub(super) width: Option<usize>,
 }
 
 /// Parse field-level `#[dataframe(...)]` attributes from a `syn::Field`.
+///
+/// Recognizes: `skip`, `rename`, `as_list`, `expand` (alias `unnest`), and `width`.
+/// Validates mutual exclusivity of conflicting options (`as_list` vs `expand`/`width`).
+/// Returns `Err` for unknown keys, invalid width values, or conflicting options.
 pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
     let mut attrs = FieldAttrs::default();
 
@@ -196,21 +210,35 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
 // Type classification
 // =============================================================================
 
-/// Classification of a field type for expansion purposes.
+/// Classification of a field type for DataFrame column expansion.
+///
+/// Used to decide whether a field maps to a single column or should be
+/// expanded into multiple suffixed columns (e.g., `coords_1`, `coords_2`).
 pub(super) enum FieldTypeKind<'a> {
-    /// Single column (most types).
+    /// Single column (most types). No expansion.
     Scalar,
-    /// `[T; N]` — expands to N columns at compile time.
+    /// `[T; N]` -- fixed-size array, expands to `N` columns at compile time.
+    /// Contains the element type and array length.
     FixedArray(&'a syn::Type, usize),
-    /// `Vec<T>` — variable length, needs `width` for expansion.
+    /// `Vec<T>` -- variable length, needs `width` attribute or `expand` for expansion.
+    /// Contains the element type.
     VariableVec(&'a syn::Type),
-    /// `Box<[T]>` — owned slice, treated like `Vec<T>` for expansion.
+    /// `Box<[T]>` -- owned slice, treated like `Vec<T>` for expansion purposes.
+    /// Contains the element type.
     BoxedSlice(&'a syn::Type),
-    /// `&[T]` — borrowed slice, treated like `Vec<T>` for expansion.
+    /// `&[T]` -- borrowed slice, treated like `Vec<T>` for expansion purposes.
+    /// Contains the element type.
     BorrowedSlice(&'a syn::Type),
 }
 
-/// Classify a field type for DataFrame expansion.
+/// Classify a field type for DataFrame column expansion.
+///
+/// Inspects the type AST to detect:
+/// - `[T; N]` or `&[T; N]` -> `FixedArray`
+/// - `&[T]` -> `BorrowedSlice`
+/// - `Vec<T>` -> `VariableVec`
+/// - `Box<[T]>` -> `BoxedSlice`
+/// - Everything else -> `Scalar`
 pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
     // Check for [T; N]
     if let syn::Type::Array(arr) = ty
@@ -266,7 +294,14 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
 // Resolved field model (struct path)
 // =============================================================================
 
-/// A resolved field ready for codegen — either a single column or expanded.
+/// A resolved struct field ready for codegen -- determines how this field maps
+/// to DataFrame companion struct columns.
+///
+/// Each variant represents a different expansion strategy:
+/// - `Single`: one field -> one `Vec<T>` column
+/// - `ExpandedFixed`: `[T; N]` -> N columns (`name_1..name_N`) at compile time
+/// - `ExpandedVec`: `Vec<T>` + `width = N` -> N `Vec<Option<T>>` columns
+/// - `AutoExpandVec`: `Vec<T>` + `expand` -> dynamic column count at runtime
 enum ResolvedField {
     /// Single column: `name → Vec<ty>`.
     Single {
@@ -324,7 +359,18 @@ enum ResolvedField {
     },
 }
 
-/// Resolve a struct field into a `ResolvedField`, applying field attrs.
+/// Resolve a struct field into a [`ResolvedField`], applying field attributes.
+///
+/// Combines the field's `#[dataframe(...)]` attributes with its type classification
+/// to determine the codegen strategy:
+/// - `skip` -> returns `None`
+/// - `as_list` -> `Single` (suppresses expansion)
+/// - `FixedArray` -> `ExpandedFixed` (compile-time expansion to N columns)
+/// - `VariableVec`/`BoxedSlice`/`BorrowedSlice` + `width` -> `ExpandedVec`
+/// - `VariableVec`/`BoxedSlice`/`BorrowedSlice` + `expand` -> `AutoExpandVec`
+/// - Everything else -> `Single`
+///
+/// Returns `Err` if `width` or `expand` is used on an incompatible type.
 fn resolve_struct_field(
     field: &syn::Field,
     index: usize,
@@ -510,6 +556,18 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 // Struct path (existing logic, extracted)
 // =============================================================================
 
+/// Generate `DataFrameRow` expansion for struct types.
+///
+/// Produces:
+/// - A companion struct `{Name}DataFrame` with `Vec<T>` columns
+/// - `impl IntoDataFrame for {Name}DataFrame`
+/// - `impl From<Vec<{Name}>> for {Name}DataFrame`
+/// - `impl IntoIterator` (for named structs without expansion)
+/// - Associated methods: `to_dataframe`, `from_dataframe`, `from_rows`, `from_rows_par`
+/// - A compile-time `IntoList` assertion (for non-expanded named structs)
+///
+/// Handles fixed-array expansion (`[T; N]`), pinned-width Vec expansion
+/// (`Vec<T>` + `width`), and auto-expand Vec (`Vec<T>` + `expand`).
 fn derive_struct_dataframe(
     row_name: &syn::Ident,
     input: &DeriveInput,
@@ -1391,6 +1449,10 @@ fn derive_struct_dataframe(
 // =============================================================================
 
 /// A resolved column in the unified schema across all enum variants.
+///
+/// Tracks the column name, element type, which variants contribute to this column,
+/// and whether the type was coerced to `String` due to cross-variant type conflicts
+/// (when `#[dataframe(conflicts = "string")]` is active).
 pub(super) struct ResolvedColumn {
     /// Column name in the companion struct / data frame.
     pub(super) col_name: syn::Ident,
@@ -1404,15 +1466,24 @@ pub(super) struct ResolvedColumn {
     pub(super) string_coerced: bool,
 }
 
-/// Accumulates unique columns for an enum-to-dataframe schema.
+/// Accumulates unique columns for an enum-to-dataframe unified schema.
+///
+/// As columns are registered from each variant's fields, the registry detects
+/// duplicates and validates type consistency. When `coerce_to_string` is enabled,
+/// type conflicts are resolved by coercing to `String`; otherwise they produce errors.
 pub(super) struct ColumnRegistry<'a> {
+    /// The ordered list of resolved columns in the schema.
     pub(super) columns: Vec<ResolvedColumn>,
+    /// Maps column name strings to their index in `columns` for O(1) dedup lookup.
     pub(super) col_index: std::collections::HashMap<String, usize>,
+    /// Whether to coerce type-conflicting columns to `String` instead of erroring.
     pub(super) coerce_to_string: bool,
+    /// Cached `String` type AST node, used as the coercion target type.
     pub(super) string_ty: &'a syn::Type,
 }
 
 impl<'a> ColumnRegistry<'a> {
+    /// Create a new empty column registry.
     fn new(coerce_to_string: bool, string_ty: &'a syn::Type) -> Self {
         Self {
             columns: Vec::new(),
@@ -1422,7 +1493,11 @@ impl<'a> ColumnRegistry<'a> {
         }
     }
 
-    /// Register a single column in the schema.
+    /// Register a single column in the schema, or merge with an existing column.
+    ///
+    /// If a column with the same name already exists, validates that the types match.
+    /// On type conflict: coerces to `String` (if `coerce_to_string` is true) or
+    /// returns `Err`. The `variant_idx` is appended to the column's `present_in` list.
     fn register(
         &mut self,
         col_name: &str,
@@ -1475,7 +1550,12 @@ pub(super) enum VariantShape {
     Unit,
 }
 
-/// A resolved enum field — either a single column or expanded from an array/Vec.
+/// A resolved enum field ready for codegen -- either a single column or expanded
+/// from an array/Vec into multiple suffixed columns.
+///
+/// This is the enum-path counterpart of [`ResolvedField`] (used for structs).
+/// Each variant carries both the binding name (for destructure patterns) and the
+/// original Rust field name (for error reporting and named-variant patterns).
 pub(super) enum EnumResolvedField {
     /// Single column contribution.
     Single {
@@ -1529,7 +1609,11 @@ pub(super) enum EnumResolvedField {
     },
 }
 
-/// Parsed information about an enum variant.
+/// Parsed and resolved information about a single enum variant for DataFrame codegen.
+///
+/// Contains the variant's name, shape (named/tuple/unit), resolved fields (after
+/// applying `#[dataframe(...)]` attributes and type classification), and any
+/// skipped field names (needed for complete destructure patterns in named variants).
 pub(super) struct VariantInfo {
     /// Variant name.
     pub(super) name: syn::Ident,

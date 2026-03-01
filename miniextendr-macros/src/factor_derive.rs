@@ -55,7 +55,11 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, Type};
 
-/// Convert PascalCase to snake_case.
+/// Convert a PascalCase string to snake_case.
+///
+/// Inserts an underscore before each uppercase letter (except the first),
+/// then lowercases the entire result. For example, `"InProgress"` becomes
+/// `"in_progress"`.
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
     for (i, c) in s.chars().enumerate() {
@@ -71,12 +75,18 @@ fn to_snake_case(s: &str) -> String {
     result
 }
 
-/// Convert PascalCase to kebab-case.
+/// Convert a PascalCase string to kebab-case.
+///
+/// First converts to snake_case, then replaces underscores with hyphens.
+/// For example, `"InProgress"` becomes `"in-progress"`.
 fn to_kebab_case(s: &str) -> String {
     to_snake_case(s).replace('_', "-")
 }
 
-/// Apply rename_all transformation.
+/// Apply a `rename_all` transformation to a variant name.
+///
+/// Supported modes: `"snake_case"`, `"kebab-case"`, `"lower"`, `"upper"`.
+/// If `rename_all` is `None` or unrecognized, the name is returned unchanged.
 fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
     match rename_all {
         Some("snake_case") => to_snake_case(name),
@@ -87,16 +97,27 @@ fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
     }
 }
 
-/// Parsed r_factor attributes.
+/// Parsed `#[r_factor(...)]` attributes from an enum or variant.
 #[derive(Default)]
 struct RFactorAttrs {
+    /// Per-variant rename: `#[r_factor(rename = "custom_name")]`.
     rename: Option<String>,
+    /// Enum-level rename-all: `#[r_factor(rename_all = "snake_case")]`.
+    /// Applied to all variants that don't have an explicit `rename`.
     rename_all: Option<String>,
+    /// Inner type's level names for interaction factors:
+    /// `#[r_factor(interaction = ["A", "B"])]`.
+    /// When present, triggers interaction factor codegen instead of simple factor.
     interaction: Option<Vec<String>>,
+    /// Separator between outer and inner level names in interaction factors.
+    /// Defaults to `"."`. Specified via `#[r_factor(sep = "_")]`.
     sep: Option<String>,
 }
 
-/// Parse r_factor attributes from an enum or variant.
+/// Parse `#[r_factor(...)]` attributes from a list of `syn::Attribute`.
+///
+/// Extracts `rename`, `rename_all`, `interaction`, and `sep` keys.
+/// Returns `Err` for unknown attribute keys.
 fn parse_r_factor_attrs(attrs: &[syn::Attribute]) -> syn::Result<RFactorAttrs> {
     let mut result = RFactorAttrs::default();
 
@@ -131,7 +152,19 @@ fn parse_r_factor_attrs(attrs: &[syn::Attribute]) -> syn::Result<RFactorAttrs> {
     Ok(result)
 }
 
-/// Generate the RFactor derive implementation.
+/// Main entry point for `#[derive(RFactor)]`.
+///
+/// Dispatches to either [`derive_simple_factor`] (C-style unit variants) or
+/// [`derive_interaction_factor`] (tuple variants wrapping an inner RFactor type),
+/// based on whether `#[r_factor(interaction = [...])]` is present.
+///
+/// Generates:
+/// - `impl MatchArg` (string choices for `match.arg`)
+/// - `impl RFactor` (1-based level index conversion)
+/// - `impl IntoR` (Rust enum -> R factor SEXP)
+/// - `impl TryFromSexp` (R factor SEXP -> Rust enum)
+///
+/// Returns `Err` for structs, unions, or invalid attribute combinations.
 pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -180,7 +213,17 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
     }
 }
 
-/// Generate RFactor impl for simple (unit variant) enums.
+/// Generate `RFactor`, `MatchArg`, `IntoR`, and `TryFromSexp` impls for simple
+/// (unit variant) enums.
+///
+/// Each variant maps to a 1-based level index and a level name string.
+/// Level names are determined by variant ident, optionally transformed by
+/// `rename_all` or overridden by per-variant `#[r_factor(rename = "...")]`.
+///
+/// Uses a `OnceLock`-cached levels SEXP for efficient repeated conversion.
+///
+/// Returns `Err` if any variant has fields (only C-style enums are supported
+/// in the simple path).
 fn derive_simple_factor(
     name: &syn::Ident,
     impl_generics: &syn::ImplGenerics,
@@ -286,7 +329,24 @@ fn derive_simple_factor(
     })
 }
 
-/// Generate RFactor impl for interaction (tuple variant) enums.
+/// Generate `RFactor`, `MatchArg`, `IntoR`, and `TryFromSexp` impls for interaction
+/// (tuple variant) enums.
+///
+/// Interaction factors combine an outer enum (the variant) with an inner `RFactor`
+/// type, producing combined level names like `"Outer.Inner"`. The level order is
+/// outer-varies-slowest (matches R's `interaction(..., lex.order = TRUE)`).
+///
+/// Generates a compile-time assertion that the specified `inner_levels` match the
+/// inner type's `MatchArg::CHOICES`, catching mismatches early.
+///
+/// All variants must be single-field tuples wrapping the same inner type.
+///
+/// # Arguments
+///
+/// * `inner_levels` - The expected level strings of the inner type
+///   (from `#[r_factor(interaction = [...])]`)
+/// * `sep` - Separator between outer and inner level names (default `"."`)
+/// * `rename_all` - Optional rename transformation for outer variant names
 #[allow(clippy::too_many_arguments)] // generics plumbing, single call site
 fn derive_interaction_factor(
     name: &syn::Ident,

@@ -112,7 +112,11 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-/// Strip miniextendr attributes (and roxygen tags) from an impl block and its items.
+/// Strip `#[miniextendr(...)]` attributes and roxygen doc tags from an impl block and
+/// all of its items (functions, constants, types, macros).
+///
+/// Called before re-emitting the original impl block so that proc-macro attributes
+/// do not appear in the compiler output. Returns the cleaned impl block.
 fn strip_miniextendr_attrs_from_impl(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
     item_impl.attrs = crate::roxygen::strip_roxygen_from_attrs(&item_impl.attrs);
     item_impl
@@ -195,6 +199,9 @@ impl ClassSystem {
     }
 }
 
+/// Case-insensitive parsing of class system names from strings.
+///
+/// Accepts: `"env"`, `"r6"`, `"s3"`, `"s4"`, `"s7"`, `"vctrs"` (any casing).
 impl std::str::FromStr for ClassSystem {
     type Err = String;
 
@@ -223,6 +230,9 @@ pub enum VctrsKind {
     ListOf,
 }
 
+/// Case-insensitive parsing of vctrs kind names from strings.
+///
+/// Accepts: `"vctr"`, `"rcrd"` (or `"record"`), `"list_of"` (or `"listof"`).
 impl std::str::FromStr for VctrsKind {
     type Err = String;
 
@@ -287,13 +297,15 @@ impl ReceiverKind {
 /// Defaults cannot be specified for `self` parameters (compile error).
 #[derive(Debug)]
 pub struct ParsedMethod {
-    /// Method identifier
+    /// The method's name (e.g., `new`, `get`, `set_value`).
     pub ident: syn::Ident,
-    /// Receiver kind
+    /// How this method receives `self`: `&self`, `&mut self`, by value, or not at all (static).
     pub env: ReceiverKind,
-    /// Method signature (without env)
+    /// Method signature with the `self` receiver stripped. Used for C wrapper generation
+    /// where `self` is handled separately as a SEXP parameter.
     pub sig: syn::Signature,
-    /// Visibility
+    /// Rust visibility of the method. Non-`pub` methods become private in R6;
+    /// only `pub` methods get `@export` in R wrappers.
     pub vis: syn::Visibility,
     /// Roxygen tag lines extracted from Rust doc comments
     pub doc_tags: Vec<String>,
@@ -606,35 +618,55 @@ pub struct MethodAttrs {
     pub vctrs_protocol: Option<String>,
 }
 
-/// Parsed impl block with all methods.
+/// Fully parsed `#[miniextendr]` impl block, ready for code generation.
+///
+/// Contains the type identity, chosen class system, all parsed methods, the original
+/// impl block (with miniextendr attrs stripped for re-emission), and all class-system-specific
+/// configuration options. Created by [`ParsedImpl::parse`] and consumed by the per-class-system
+/// R wrapper generators and [`generate_method_c_wrapper`].
 #[derive(Debug)]
 pub struct ParsedImpl {
-    /// Type being implemented
+    /// The Rust type name being implemented (e.g., `Counter`).
     pub type_ident: syn::Ident,
-    /// Class system to use
+    /// Which R class system to generate wrappers for.
     pub class_system: ClassSystem,
-    /// Override class name (else type name)
+    /// Optional override for the R class name. When `None`, uses `type_ident` as the class name.
     pub class_name: Option<String>,
     /// Optional label for distinguishing multiple impl blocks of the same type.
     pub label: Option<String>,
-    /// Roxygen tag lines extracted from impl doc comments
+    /// Roxygen tag lines extracted from `///` doc comments on the impl block.
+    /// Used for class-level documentation (e.g., the R6 class docstring or S3 type description).
     pub doc_tags: Vec<String>,
-    /// All parsed methods
+    /// All parsed methods in this impl block, in source order.
     pub methods: Vec<ParsedMethod>,
-    /// Original impl item for re-emission
+    /// The original impl block with `#[miniextendr]` and roxygen attrs stripped.
+    /// Re-emitted as-is so the Rust compiler sees the actual method implementations.
     pub original_impl: syn::ItemImpl,
-    /// cfg attributes to propagate
+    /// `#[cfg(...)]` attributes from the impl block, propagated to all generated items
+    /// (C wrappers, R wrapper constants, call def arrays) for conditional compilation.
     pub cfg_attrs: Vec<syn::Attribute>,
     /// vctrs-specific attributes (only used when class_system is Vctrs)
     pub vctrs_attrs: VctrsAttrs,
-    // R6-specific configuration (propagated from ImplAttrs)
+    /// R6 parent class name for inheritance (e.g., `"ParentClass"`).
+    /// Propagated from [`ImplAttrs::r6_inherit`].
     pub r6_inherit: Option<String>,
+    /// R6 portable flag. When `Some(true)`, generates a portable R6 class.
+    /// Propagated from [`ImplAttrs::r6_portable`].
     pub r6_portable: Option<bool>,
+    /// R6 cloneable flag. Controls whether `$clone()` is available on instances.
+    /// Propagated from [`ImplAttrs::r6_cloneable`].
     pub r6_cloneable: Option<bool>,
+    /// R6 lock_objects flag. When `Some(true)`, prevents adding new fields after creation.
+    /// Propagated from [`ImplAttrs::r6_lock_objects`].
     pub r6_lock_objects: Option<bool>,
+    /// R6 lock_class flag. When `Some(true)`, prevents modifying the class definition.
+    /// Propagated from [`ImplAttrs::r6_lock_class`].
     pub r6_lock_class: Option<bool>,
-    // S7-specific configuration (propagated from ImplAttrs)
+    /// S7 parent class name for inheritance (e.g., `"ParentClass"`).
+    /// Propagated from [`ImplAttrs::s7_parent`].
     pub s7_parent: Option<String>,
+    /// When true, marks this as an abstract S7 class that cannot be instantiated.
+    /// Propagated from [`ImplAttrs::s7_abstract`].
     pub s7_abstract: bool,
     /// When true, auto-include sidecar `#[r_data]` field accessors in the class definition.
     /// For R6: active bindings are added via `$set("active", ...)` after class creation.
@@ -648,10 +680,19 @@ pub struct ParsedImpl {
     pub noexport: bool,
 }
 
-/// Attributes on the impl block itself.
+/// Attributes parsed from `#[miniextendr(...)]` on an impl block.
+///
+/// These control which R class system to use, class naming, multi-impl labeling,
+/// and class-system-specific options (R6 inheritance, S7 parent, vctrs kind, etc.).
+///
+/// Parsed by the [`syn::parse::Parse`] implementation which handles all supported
+/// attribute formats like `#[miniextendr(r6, class = "Custom", label = "ops")]`.
 #[derive(Debug)]
 pub struct ImplAttrs {
+    /// Which R class system to generate wrappers for.
+    /// Defaults to `Env` unless overridden by feature flags (`default-r6`, `default-s7`).
     pub class_system: ClassSystem,
+    /// Optional override for the R class name. When `None`, the Rust type name is used.
     pub class_name: Option<String>,
     /// Optional label for distinguishing multiple impl blocks of the same type.
     ///
@@ -1418,9 +1459,12 @@ impl ParsedMethod {
         Ok(method_attrs)
     }
 
-    /// Detect env kind from function signature.
+    /// Detect the [`ReceiverKind`] from a method's function signature.
     ///
-    /// Handles both standard (`&self`, `&mut self`) and typed (`self: &Self`, `self: &mut Self`) receivers.
+    /// Inspects the first parameter to determine whether this is a static function
+    /// (`None`), immutable borrow (`Ref`), mutable borrow (`RefMut`), or consuming
+    /// method (`Value`). Handles both standard receivers (`&self`, `&mut self`) and
+    /// typed receivers (`self: &Self`, `self: &mut Self`, `self: Box<Self>`).
     fn detect_env(sig: &syn::Signature) -> ReceiverKind {
         match sig.inputs.first() {
             Some(syn::FnArg::Receiver(r)) => {
@@ -1451,7 +1495,11 @@ impl ParsedMethod {
         }
     }
 
-    /// Create signature without env (for C wrapper generation).
+    /// Create a copy of the method signature with the `self` receiver removed.
+    ///
+    /// The C wrapper receives `self` as a separate SEXP argument and extracts it
+    /// from an `ErasedExternalPtr`, so the receiver must not appear in the
+    /// parameter list used for SEXP-to-Rust conversion codegen.
     fn sig_without_env(sig: &syn::Signature) -> syn::Signature {
         let mut sig = sig.clone();
         if let Some(syn::FnArg::Receiver(_)) = sig.inputs.first() {
@@ -1908,7 +1956,27 @@ impl ParsedImpl {
     }
 }
 
-/// Generate C wrapper for a method.
+/// Generate a C-callable wrapper function for a single method in an impl block.
+///
+/// Produces a `#[no_mangle] extern "C"` function named `C_{Type}__{method}` that:
+/// 1. Accepts SEXP arguments (including `self_sexp` for instance methods)
+/// 2. Extracts `&self` / `&mut self` from an `ErasedExternalPtr` for instance methods
+/// 3. Converts SEXP arguments to Rust types
+/// 4. Calls the actual Rust method
+/// 5. Converts the return value back to SEXP
+///
+/// Thread strategy is determined automatically: instance methods always run on the main
+/// thread (because `self_ref` is a non-Send borrow), while static methods use the worker
+/// thread unless `unsafe(main_thread)` is specified.
+///
+/// Also emits an `R_CallMethodDef` constant for R routine registration, and appends
+/// generated R wrapper code fragments to the `r_wrappers_const` string constant.
+///
+/// # Arguments
+///
+/// * `parsed_impl` - The parsed impl block providing type identity, cfg attrs, and options
+/// * `method` - The parsed method to generate a wrapper for
+/// * `r_wrappers_const` - Identifier of the const that accumulates R wrapper code fragments
 pub fn generate_method_c_wrapper(
     parsed_impl: &ParsedImpl,
     method: &ParsedMethod,
@@ -2025,7 +2093,11 @@ pub fn generate_method_c_wrapper(
     builder.build().generate()
 }
 
-/// Returns true when the return type is syntactically `Result<_, _>`.
+/// Check whether a function's return type is syntactically `Result<_, _>`.
+///
+/// This performs a shallow name check on the last path segment -- it does not resolve
+/// type aliases. Used to decide whether `unwrap_in_r` should strip the `Result` wrapper
+/// before converting to SEXP.
 fn output_is_result(output: &syn::ReturnType) -> bool {
     match output {
         syn::ReturnType::Type(_, ty) => matches!(
@@ -2045,11 +2117,17 @@ fn output_is_result(output: &syn::ReturnType) -> bool {
 // Class-system R wrapper generators (sub-modules)
 // =============================================================================
 
+/// Environment-based class wrapper generator (`obj$method()` dispatch).
 mod env_class;
+/// R6 class wrapper generator (`R6Class` with `$new()`, active bindings, private methods).
 mod r6_class;
+/// S3 class wrapper generator (`structure()` + `generic.Class` dispatch).
 mod s3_class;
+/// S4 class wrapper generator (`setClass` / `setMethod` formal OOP).
 mod s4_class;
+/// S7 class wrapper generator (`new_class` / `new_generic` modern R OOP).
 mod s7_class;
+/// vctrs-compatible class wrapper generator (`new_vctr` / `new_rcrd` / `new_list_of`).
 mod vctrs_class;
 
 pub(crate) use env_class::generate_env_r_wrapper;
@@ -2247,11 +2325,26 @@ pub fn generate_as_coercion_trait_impls(parsed_impl: &ParsedImpl) -> TokenStream
     quote! { #(#impls)* }
 }
 
-/// Expand a #[miniextendr(env|r6|s7|s3|s4|vctrs)] impl block.
+/// Top-level entry point for expanding `#[miniextendr]` on impl blocks.
 ///
-/// This handles two cases:
-/// 1. **Inherent impls** (`impl Type`): Generate class-system wrappers
-/// 2. **Trait impls** (`impl Trait for Type`): Generate vtable static for trait ABI
+/// Dispatches between two cases:
+/// 1. **Inherent impls** (`impl Type { ... }`): Parses [`ImplAttrs`] and [`ParsedImpl`],
+///    then generates C wrappers, R wrapper code, `R_CallMethodDef` arrays, and
+///    `as.<class>()` trait impls for the chosen class system.
+/// 2. **Trait impls** (`impl Trait for Type { ... }`): Delegates to
+///    [`crate::miniextendr_impl_trait::expand_miniextendr_impl_trait`] for trait ABI
+///    vtable generation.
+///
+/// # Arguments
+///
+/// * `attr` - The token stream inside `#[miniextendr(...)]` (class system, options)
+/// * `item` - The full `impl` block token stream
+///
+/// # Returns
+///
+/// A token stream containing the original impl block (with miniextendr attrs stripped),
+/// C wrapper functions, an R wrapper string constant, a `R_CallMethodDef` array constant,
+/// and any forwarding trait impls for `as.<class>()` coercion.
 pub fn expand_impl(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
