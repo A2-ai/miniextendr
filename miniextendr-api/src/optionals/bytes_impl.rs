@@ -375,6 +375,13 @@ use crate::into_r::IntoR;
 
 /// Convert `Bytes` to R raw vector (RAWSXP).
 impl IntoR for Bytes {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
     fn into_sexp(self) -> crate::ffi::SEXP {
         // Convert to Vec<u8> for efficient bulk copy
         Vec::from(self.as_ref()).into_sexp()
@@ -402,6 +409,13 @@ impl TryFromSexp for Bytes {
 
 /// Convert `BytesMut` to R raw vector (RAWSXP).
 impl IntoR for BytesMut {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
     fn into_sexp(self) -> crate::ffi::SEXP {
         // Convert to Vec<u8> for efficient bulk copy
         self.to_vec().into_sexp()
@@ -471,6 +485,13 @@ impl TryFromSexp for Option<BytesMut> {
 
 /// Convert `Option<Bytes>` to R: Some → raw vector, None → NULL.
 impl IntoR for Option<Bytes> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(b) => b.into_sexp(),
@@ -488,6 +509,13 @@ impl IntoR for Option<Bytes> {
 
 /// Convert `Option<BytesMut>` to R: Some → raw vector, None → NULL.
 impl IntoR for Option<BytesMut> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(b) => b.into_sexp(),

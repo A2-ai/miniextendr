@@ -111,6 +111,13 @@ impl RFactor for ColorUncached {
 }
 
 impl IntoR for ColorUncached {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     fn into_sexp(self) -> SEXP {
         // No caching - allocates fresh levels STRSXP each time
         build_factor(&[self.to_level_index()], build_levels_sexp(Self::CHOICES))

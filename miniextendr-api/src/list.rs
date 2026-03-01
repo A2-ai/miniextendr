@@ -1134,6 +1134,13 @@ impl NamedList {
 }
 
 impl IntoR for NamedList {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     #[inline]
     fn into_sexp(self) -> SEXP {
         self.list.into_sexp()
@@ -1454,6 +1461,13 @@ impl List {
 }
 
 impl IntoR for List {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     #[inline]
     fn into_sexp(self) -> SEXP {
         self.0
@@ -1461,6 +1475,13 @@ impl IntoR for List {
 }
 
 impl IntoR for ListMut {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
     #[inline]
     fn into_sexp(self) -> SEXP {
         self.0
