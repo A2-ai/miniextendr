@@ -17,7 +17,7 @@ fn initialize_r() {
             .expect("Failed to initialize R");
         // Initialize in same order as rpkg/src/entrypoint.c.in
         miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_worker_init();
+        miniextendr_api::worker::miniextendr_runtime_init();
         disable_r_stack_checking();
         assert!(
             miniextendr_engine::r_initialized_sentinel(),

@@ -30,7 +30,7 @@ fn ensure_r_initialized() -> Result<(), String> {
                     Ok(engine) => {
                         // Initialize miniextendr-api components
                         miniextendr_api::backtrace::miniextendr_panic_hook();
-                        miniextendr_api::worker::miniextendr_worker_init();
+                        miniextendr_api::worker::miniextendr_runtime_init();
 
                         // Verify R is properly initialized
                         if !miniextendr_engine::r_initialized_sentinel() {

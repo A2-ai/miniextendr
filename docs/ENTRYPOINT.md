@@ -16,8 +16,8 @@ void R_init_mypkg(DllInfo *dll) {
     // 1. Install panic hook (must be first)
     miniextendr_panic_hook();
 
-    // 2. Initialize worker thread (must be before any R API calls from Rust)
-    miniextendr_worker_init();
+    // 2. Initialize thread identification (must be before any R API calls from Rust)
+    miniextendr_runtime_init();
 
     // 3. Register trait ABI C-callables (if using cross-package traits)
     mx_abi_register();
@@ -40,13 +40,14 @@ Without this, panics show generic "unknown panic" messages.
 
 **Must be called first** - before any Rust code that might panic.
 
-### `miniextendr_worker_init()`
+### `miniextendr_runtime_init()`
 
-Initializes the worker thread infrastructure:
+Initializes miniextendr's thread identification:
 
-- Records the main thread ID for thread safety checks
-- Spawns the worker thread for `run_on_worker()`
-- Sets up channels for bidirectional communication
+- Records the main thread ID for `is_r_main_thread()` checks
+- With the `worker-thread` feature: also spawns the worker thread and sets up
+  bidirectional channels for `run_on_worker()` / `with_r_thread()`
+- Without `worker-thread`: only records the thread ID (no thread spawned)
 
 **Must be called from R's main thread.** Calling from another thread causes
 incorrect thread detection for all subsequent R API calls.
@@ -101,8 +102,8 @@ converted to underscores for C identifier compatibility).
 | API Category | When Safe |
 |--------------|-----------|
 | Panic hook | Anytime after `miniextendr_panic_hook()` |
-| R APIs (value-returning) | After `miniextendr_worker_init()`, routed via `with_r_thread` |
-| R APIs (pointer-returning) | Main thread only, after `miniextendr_worker_init()` |
+| R APIs (value-returning) | After `miniextendr_runtime_init()`, on main thread (or via `with_r_thread` with `worker-thread` feature) |
+| R APIs (pointer-returning) | Main thread only, after `miniextendr_runtime_init()` |
 | Trait ABI | After `mx_abi_register()` |
 | User Rust functions | After `R_init_*_miniextendr(dll)` |
 
@@ -117,11 +118,11 @@ For a package named `myrust`:
 
 extern void R_init_myrust_miniextendr(DllInfo *dll);
 extern void miniextendr_panic_hook(void);
-extern void miniextendr_worker_init(void);
+extern void miniextendr_runtime_init(void);
 
 void R_init_myrust(DllInfo *dll) {
     miniextendr_panic_hook();
-    miniextendr_worker_init();
+    miniextendr_runtime_init();
     R_init_myrust_miniextendr(dll);
     R_useDynamicSymbols(dll, FALSE);
     R_forceSymbols(dll, TRUE);
@@ -141,7 +142,7 @@ fn main() {
     let _r = REngine::build().unwrap();
 
     // After this, you can call R APIs
-    // miniextendr_worker_init() is called automatically
+    // miniextendr_runtime_init() is called automatically
 }
 ```
 
@@ -154,15 +155,15 @@ exported from libR.
 
 ## Troubleshooting
 
-### "miniextendr_worker_init() must be called"
+### "miniextendr_runtime_init() must be called"
 
 This panic means R API functions were called before initialization. Ensure
-`miniextendr_worker_init()` is called in `R_init_*()` before any Rust code
+`miniextendr_runtime_init()` is called in `R_init_*()` before any Rust code
 that uses R APIs.
 
 ### Thread check failures
 
-If `is_r_main_thread()` returns incorrect results, `miniextendr_worker_init()`
+If `is_r_main_thread()` returns incorrect results, `miniextendr_runtime_init()`
 was likely called from the wrong thread. It **must** be called from R's main
 thread (the thread that called `R_init_*()`).
 

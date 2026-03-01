@@ -75,7 +75,7 @@ pub fn with_interrupt_check(x: i32) -> i32 {
 }
 
 /// @noRd
-#[miniextendr(unwrap_in_r)]
+#[miniextendr(unwrap_in_r, no_error_in_r)]
 pub fn result_unwrap_in_r(x: i32) -> Result<i32, String> {
     if x >= 0 {
         Ok(x * 2)

@@ -11,9 +11,41 @@ pub const MINIEXTENDR_CRATES: &[&str] = &[
     "miniextendr-engine",
 ];
 
-/// Walk up from `start` (up to 3 levels) looking for a workspace root
-/// (directory containing a `Cargo.toml` with `[workspace]`).
+/// Find the workspace root containing `start`.
+///
+/// Tries `git rev-parse --show-toplevel` first (fast, accurate when in a git repo),
+/// then falls back to walking up to 3 parent directories looking for a `Cargo.toml`
+/// with `[workspace]`.
 pub fn find_workspace_root(start: &Path) -> Option<PathBuf> {
+    // Try git first — fast and handles deeply nested paths
+    if let Some(root) = find_workspace_root_via_git(start) {
+        return Some(root);
+    }
+    // Fallback: walk up to 3 levels
+    find_workspace_root_via_walk(start)
+}
+
+fn find_workspace_root_via_git(start: &Path) -> Option<PathBuf> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(start)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let git_root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let toml = git_root.join("Cargo.toml");
+    if toml.is_file() {
+        let content = std::fs::read_to_string(&toml).ok()?;
+        if content.contains("[workspace]") {
+            return std::fs::canonicalize(&git_root).ok();
+        }
+    }
+    None
+}
+
+fn find_workspace_root_via_walk(start: &Path) -> Option<PathBuf> {
     let dirs = [start.to_path_buf(), start.join(".."), start.join("../..")];
     for dir in &dirs {
         let toml = dir.join("Cargo.toml");

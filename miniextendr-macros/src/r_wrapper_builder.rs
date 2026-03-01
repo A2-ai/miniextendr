@@ -211,8 +211,8 @@ impl<'a> RArgumentBuilder<'a> {
 
 /// Build R formal parameters from a Rust signature, with optional defaults.
 ///
-/// Automatically adds `quote(expr=)` as default for `Missing<T>` parameters
-/// unless a different default is specified.
+/// Missing<T> parameters without user defaults appear as bare formals (no default).
+/// The `if (missing())` prelude is generated separately via [`build_missing_prelude`].
 pub(crate) fn build_r_formals_from_sig(
     sig: &syn::Signature,
     defaults: &std::collections::HashMap<String, String>,
@@ -221,9 +221,7 @@ pub(crate) fn build_r_formals_from_sig(
     if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
         builder = builder.skip_first();
     }
-    // Merge user defaults with auto-generated defaults for Missing<T> params
-    let merged = merge_missing_defaults(&sig.inputs, defaults);
-    builder = builder.with_defaults(merged);
+    builder = builder.with_defaults(defaults.clone());
     builder.build_formals()
 }
 
@@ -307,24 +305,23 @@ pub fn collect_missing_params(
     missing_params
 }
 
-/// Merge Missing<T> defaults with user-specified defaults.
+/// Build `if (missing(param)) param <- quote(expr=)` prelude lines for Missing<T> parameters.
 ///
-/// Parameters with `Missing<T>` type get `quote(expr=)` as default unless
-/// the user has already specified a different default.
-pub fn merge_missing_defaults(
+/// These lines go in the function body BEFORE the .Call(), keeping the R function
+/// signature clean (no `quote(expr=)` in formals) while still passing the
+/// R_MissingArg sentinel through to Rust.
+///
+/// Skips parameters that already have a user-specified default (they appear in
+/// formals with that default, so `missing()` would never be true).
+pub fn build_missing_prelude(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
     user_defaults: &std::collections::HashMap<String, String>,
-) -> std::collections::HashMap<String, String> {
-    let mut merged = user_defaults.clone();
-
-    for param in collect_missing_params(inputs) {
-        // Only add default if user hasn't already specified one
-        merged
-            .entry(param)
-            .or_insert_with(|| "quote(expr=)".to_string());
-    }
-
-    merged
+) -> Vec<String> {
+    collect_missing_params(inputs)
+        .into_iter()
+        .filter(|param| !user_defaults.contains_key(param))
+        .map(|param| format!("if (missing({p})) {p} <- quote(expr=)", p = param))
+        .collect()
 }
 
 // =============================================================================

@@ -172,7 +172,7 @@ where
     R: Send + 'static;
 
 /// Initialize the worker (called from entrypoint.c)
-pub extern "C-unwind" fn miniextendr_worker_init()
+pub extern "C-unwind" fn miniextendr_runtime_init()
 ```
 
 #### Example

@@ -59,11 +59,10 @@ release-thread-check = ["miniextendr-api/release-thread-check"]
 # Project-wide defaults for #[miniextendr] options
 default-strict = ["miniextendr-api/default-strict"]
 default-coerce = ["miniextendr-api/default-coerce"]
-default-error-in-r = ["miniextendr-api/default-error-in-r"]
 default-r6 = ["miniextendr-api/default-r6"]
 default-s7 = ["miniextendr-api/default-s7"]
+worker-thread = ["miniextendr-api/worker-thread"]
 default-worker = ["miniextendr-api/default-worker"]
-default-main-thread = ["miniextendr-api/default-main-thread"]
 
 [dependencies]
 miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }

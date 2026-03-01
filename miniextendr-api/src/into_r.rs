@@ -54,6 +54,20 @@ impl IntoR for crate::ffi::SEXP {
     }
 }
 
+impl IntoR for crate::worker::Sendable<crate::ffi::SEXP> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.0
+    }
+}
+
+impl From<crate::worker::Sendable<crate::ffi::SEXP>> for crate::ffi::SEXP {
+    #[inline]
+    fn from(s: crate::worker::Sendable<crate::ffi::SEXP>) -> Self {
+        s.0
+    }
+}
+
 impl IntoR for () {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -543,39 +557,7 @@ where
     }
 }
 
-// =============================================================================
-// ProtectOnce RAII guard
-// =============================================================================
-
-/// RAII guard for a single `Rf_protect` / `Rf_unprotect(1)` pair.
-///
-/// This eliminates the common pattern of manual `Rf_protect` + `Rf_unprotect`
-/// calls that are error-prone when early returns or panics are possible.
-struct ProtectOnce(crate::ffi::SEXP);
-
-impl ProtectOnce {
-    /// Protect a SEXP and return the guard.
-    #[inline]
-    fn new(sexp: crate::ffi::SEXP) -> Self {
-        unsafe { crate::ffi::Rf_protect(sexp) };
-        Self(sexp)
-    }
-}
-
-impl Drop for ProtectOnce {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe { crate::ffi::Rf_unprotect(1) };
-    }
-}
-
-impl std::ops::Deref for ProtectOnce {
-    type Target = crate::ffi::SEXP;
-    #[inline]
-    fn deref(&self) -> &crate::ffi::SEXP {
-        &self.0
-    }
-}
+use crate::gc_protect::OwnedProtect;
 
 // =============================================================================
 // Vector conversions
@@ -1321,7 +1303,7 @@ impl_option_collection_into_r!(
 fn str_iter_to_strsxp<'a>(iter: impl ExactSizeIterator<Item = &'a str>) -> crate::ffi::SEXP {
     unsafe {
         let n = iter.len();
-        let sexp = ProtectOnce::new(crate::ffi::Rf_allocVector(
+        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
             crate::ffi::SEXPTYPE::STRSXP,
             n as crate::ffi::R_xlen_t,
         ));
@@ -1340,7 +1322,7 @@ unsafe fn str_iter_to_strsxp_unchecked<'a>(
 ) -> crate::ffi::SEXP {
     unsafe {
         let n = iter.len();
-        let sexp = ProtectOnce::new(crate::ffi::Rf_allocVector_unchecked(
+        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
             crate::ffi::SEXPTYPE::STRSXP,
             n as crate::ffi::R_xlen_t,
         ));
@@ -1593,7 +1575,7 @@ impl_vec_option_coerce_into_r!(f32 => f64);
 /// Helper: allocate LGLSXP and fill from an i32 iterator (checked).
 fn logical_iter_to_lglsxp(n: usize, iter: impl Iterator<Item = i32>) -> crate::ffi::SEXP {
     unsafe {
-        let sexp = ProtectOnce::new(crate::ffi::Rf_allocVector(
+        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
             crate::ffi::SEXPTYPE::LGLSXP,
             n as crate::ffi::R_xlen_t,
         ));
@@ -1614,7 +1596,7 @@ unsafe fn logical_iter_to_lglsxp_unchecked(
     iter: impl Iterator<Item = i32>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let sexp = ProtectOnce::new(crate::ffi::Rf_allocVector_unchecked(
+        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
             crate::ffi::SEXPTYPE::LGLSXP,
             n as crate::ffi::R_xlen_t,
         ));
@@ -1705,7 +1687,7 @@ impl IntoR for Vec<Option<String>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {
             let n = self.len();
-            let sexp = ProtectOnce::new(crate::ffi::Rf_allocVector(
+            let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
                 crate::ffi::SEXPTYPE::STRSXP,
                 n as crate::ffi::R_xlen_t,
             ));
@@ -1729,7 +1711,7 @@ impl IntoR for Vec<Option<String>> {
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         unsafe {
             let n = self.len();
-            let sexp = ProtectOnce::new(crate::ffi::Rf_allocVector_unchecked(
+            let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
                 crate::ffi::SEXPTYPE::STRSXP,
                 n as crate::ffi::R_xlen_t,
             ));
@@ -2191,7 +2173,7 @@ where
 fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::ffi::SEXP {
     unsafe {
         let n = items.len();
-        let list = ProtectOnce::new(crate::ffi::Rf_allocVector(
+        let list = OwnedProtect::new(crate::ffi::Rf_allocVector(
             crate::ffi::SEXPTYPE::VECSXP,
             n as crate::ffi::R_xlen_t,
         ));

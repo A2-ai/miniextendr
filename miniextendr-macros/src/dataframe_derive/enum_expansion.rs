@@ -8,8 +8,8 @@ use quote::{format_ident, quote};
 use syn::{DeriveInput, Fields};
 
 use super::{
-    ColumnRegistry, DataFrameAttrs, EnumResolvedField, FieldTypeKind, VariantInfo,
-    VariantShape, classify_field_type, parse_field_attrs,
+    ColumnRegistry, DataFrameAttrs, EnumResolvedField, FieldTypeKind, VariantInfo, VariantShape,
+    classify_field_type, parse_field_attrs,
 };
 use std::collections::HashMap;
 
@@ -997,4 +997,3 @@ pub(super) fn derive_enum_dataframe(
         #row_methods
     })
 }
-

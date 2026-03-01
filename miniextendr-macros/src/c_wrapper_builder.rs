@@ -15,20 +15,22 @@ use quote::{format_ident, quote};
 /// Thread execution strategy for C wrappers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadStrategy {
-    /// Execute on main R thread with `with_r_unwind_protect`.
+    /// Execute on main R thread with `with_r_unwind_protect`. **Default.**
     ///
-    /// Required when:
+    /// All code runs on R's main thread. Combined with `error_in_r` (also default),
+    /// errors are returned as tagged SEXP values and the R wrapper raises structured
+    /// condition objects. Simpler execution model with better R integration.
+    ///
+    /// Also required when:
     /// - Function takes SEXP inputs (not Send)
     /// - Function returns raw SEXP
     /// - Instance method (self_ptr isn't Send)
-    /// - `#[miniextendr(unsafe(main_thread))]` explicitly set
-    /// - `#[miniextendr(check_interrupt)]` used
     /// - Function uses variadic dots (Dots type isn't Send)
+    /// - `#[miniextendr(check_interrupt)]` used
     MainThread,
 
-    /// Execute on worker thread with panic catching.
+    /// Execute on worker thread with panic catching. **Opt-in via `#[miniextendr(worker)]`.**
     ///
-    /// Provides better panic handling with proper destructor cleanup.
     /// Structure:
     /// 1. Argument conversion on main thread
     /// 2. Function execution on worker thread via `run_on_worker`
@@ -1127,8 +1129,8 @@ impl CWrapperContextBuilder {
             .expect("r_wrapper_const is required for CWrapperContext");
 
         // Detect thread strategy if not explicitly set
-        // Worker thread is the default for all methods
-        let thread_strategy = self.thread_strategy.unwrap_or(ThreadStrategy::WorkerThread);
+        // Main thread is the default for all methods (safer, error_in_r compatible)
+        let thread_strategy = self.thread_strategy.unwrap_or(ThreadStrategy::MainThread);
 
         // Detect return handling if not explicitly set
         let return_handling = self

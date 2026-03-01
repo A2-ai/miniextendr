@@ -193,7 +193,7 @@ unsafe fn init_r_once() {
 
         // Register this thread as the R main thread for miniextendr-api's
         // thread safety checks. This must be called after R is initialized.
-        miniextendr_api::miniextendr_worker_init();
+        miniextendr_api::miniextendr_runtime_init();
     });
 }
 

@@ -8,7 +8,8 @@ Four independent FFI boundaries exist between Rust and R:
 
 | Boundary | Where | Guard |
 |----------|-------|-------|
-| Worker thread | `worker.rs` | `catch_unwind` + `r_stop` |
+| Main thread (default) | `unwind_protect.rs` | `R_UnwindProtect` + `catch_unwind` + `error_in_r` tagged values |
+| Worker thread (opt-in, requires `worker-thread` feature) | `worker.rs` | `catch_unwind` + `r_stop` |
 | ALTREP trampolines | `altrep_bridge.rs` | Per-type `AltrepGuard` const |
 | `R_UnwindProtect` | `unwind_protect.rs` | Catches panics + R longjmps |
 | Connection callbacks | `connection.rs` | `catch_unwind` + fallback value |
@@ -230,7 +231,7 @@ All four panic-to-R-error sites call `panic_telemetry::fire()`:
 
 | Site | File | What happens after `fire()` |
 |------|------|-----------------------------|
-| Worker thread | `worker.rs` | `r_stop()` on main thread |
+| Worker thread (opt-in) | `worker.rs` | `r_stop()` on main thread (requires `worker-thread` feature) |
 | ALTREP bridge | `ffi_guard.rs` (via `guarded_ffi_call`) | `r_stop()` or `R_UnwindProtect` |
 | Unwind protect | `unwind_protect.rs` | `R_ContinueUnwind` |
 | Connection | `ffi_guard.rs` (via `guarded_ffi_call_with_fallback`) | Returns fallback value |

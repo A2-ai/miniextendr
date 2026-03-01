@@ -128,6 +128,17 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
                 continue;
             }
 
+            // If the `use` entry has a cfg gate and the child file exists on disk
+            // but wasn't included in the scan (cfg-gated out), skip the warning.
+            if data.use_entry_cfgs.contains_key(use_name)
+                && child_candidates.iter().any(|c| c.exists())
+                && !child_candidates
+                    .iter()
+                    .any(|c| index.file_data.contains_key(c))
+            {
+                continue;
+            }
+
             // Also check #[path]-redirected modules: the `use child;` might reference
             // a module name that maps to a different file via #[path = "file.rs"]
             let redirected_has_module = data

@@ -31,7 +31,7 @@ extern void miniextendr_assert_utf8_locale(void);
 
 void R_init_mypkg(DllInfo *dll) {
     miniextendr_panic_hook();
-    miniextendr_worker_init();
+    miniextendr_runtime_init();
     miniextendr_assert_utf8_locale();  // <-- fails fast if not UTF-8
     R_init_mypkg_miniextendr(dll);
     // ...
