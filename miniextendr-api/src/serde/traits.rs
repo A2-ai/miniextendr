@@ -272,9 +272,11 @@ impl<T: serde::Serialize> From<T> for AsSerialize<T> {
 }
 
 impl<T: serde::Serialize> IntoR for AsSerialize<T> {
-    fn into_sexp(self) -> SEXP {
-        to_r(&self.0).unwrap_or_else(|e| {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(to_r(&self.0).unwrap_or_else(|e| {
             crate::error::r_stop(&format!("serde_r serialization failed: {}", e))
-        })
+        }))
     }
 }

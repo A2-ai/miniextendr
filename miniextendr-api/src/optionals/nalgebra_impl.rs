@@ -138,14 +138,16 @@ where
 
 /// Convert `DVector<T>` to R vector.
 impl<T: RNativeType + Scalar> IntoR for DVector<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let data: Vec<T> = self.data.into();
-        data.into_sexp()
+        Ok(data.into_sexp())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let data: Vec<T> = self.data.into();
-        unsafe { data.into_sexp_unchecked() }
+        Ok(unsafe { data.into_sexp_unchecked() })
     }
 }
 
@@ -157,7 +159,9 @@ impl<T: RNativeType + Scalar> IntoR for DVector<T> {
 ///
 /// nalgebra stores data in column-major order (same as R), so this is efficient.
 impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let nrow = self.nrows();
         let ncol = self.ncols();
 
@@ -165,7 +169,7 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
         let data: Vec<T> = self.data.into();
 
         // Create R matrix with RAII protection
-        unsafe {
+        Ok(unsafe {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
@@ -174,7 +178,7 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
 
             // Return the SEXP - guard drops and unprotects
             guard.get()
-        }
+        })
     }
 }
 
@@ -280,8 +284,10 @@ where
 ///
 /// nalgebra stores data in column-major order (same as R), so this is efficient.
 impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<T, R, C> {
-    fn into_sexp(self) -> SEXP {
-        unsafe {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(unsafe {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, R as i32, C as i32);
             let guard = OwnedProtect::new(mat);
 
@@ -289,7 +295,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
             std::ptr::copy_nonoverlapping(self.as_slice().as_ptr(), ptr, R * C);
 
             guard.get()
-        }
+        })
     }
 }
 
@@ -324,20 +330,22 @@ where
 // Note: Option<SVector<T, D>> IntoR is handled by Option<SMatrix<T, D, 1>> below.
 
 impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<SMatrix<T, R, C>> {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
-        match self {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Some(m) => m.into_sexp(),
             None => unsafe { crate::ffi::R_NilValue },
-        }
+        })
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        match self {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Some(m) => unsafe { m.into_sexp_unchecked() },
             None => unsafe { crate::ffi::R_NilValue },
-        }
+        })
     }
 }
 
@@ -924,16 +932,18 @@ where
     R: RNativeType + Scalar + Copy,
     Coerced<T, R>: Scalar,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
-        DVector::from_vec(r_values).into_sexp()
+        Ok(DVector::from_vec(r_values).into_sexp())
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
-        unsafe { DVector::from_vec(r_values).into_sexp_unchecked() }
+        Ok(unsafe { DVector::from_vec(r_values).into_sexp_unchecked() })
     }
 }
 
@@ -944,20 +954,22 @@ where
     R: RNativeType + Scalar + Copy,
     Coerced<T, R>: Scalar,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let nrow = self.nrows();
         let ncol = self.ncols();
         let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
-        DMatrix::from_vec(nrow, ncol, r_values).into_sexp()
+        Ok(DMatrix::from_vec(nrow, ncol, r_values).into_sexp())
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let nrow = self.nrows();
         let ncol = self.ncols();
         let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
-        unsafe { DMatrix::from_vec(nrow, ncol, r_values).into_sexp_unchecked() }
+        Ok(unsafe { DMatrix::from_vec(nrow, ncol, r_values).into_sexp_unchecked() })
     }
 }
 

@@ -147,20 +147,22 @@ where
     L: IntoR,
     R: IntoR,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
-        match self {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Either::Left(l) => l.into_sexp(),
             Either::Right(r) => r.into_sexp(),
-        }
+        })
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        match self {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Either::Left(l) => unsafe { l.into_sexp_unchecked() },
             Either::Right(r) => unsafe { r.into_sexp_unchecked() },
-        }
+        })
     }
 }
 

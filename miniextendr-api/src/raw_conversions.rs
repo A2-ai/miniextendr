@@ -411,31 +411,34 @@ fn align_slice<T: Pod>(bytes: &[u8]) -> Result<Vec<T>, RawError> {
 // =============================================================================
 
 impl<T: Pod> IntoR for Raw<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let bytes = bytemuck::bytes_of(&self.0);
         unsafe {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as isize);
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-            sexp
+            Ok(sexp)
         }
     }
 }
 
 impl<T: Pod> IntoR for RawSlice<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let bytes = bytemuck::cast_slice::<T, u8>(&self.0);
         unsafe {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as isize);
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-            sexp
+            Ok(sexp)
         }
     }
 }
 
 impl<T: Pod> IntoR for RawTagged<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let header = RawHeader::new_single::<T>();
         let header_bytes = bytemuck::bytes_of(&header);
         let value_bytes = bytemuck::bytes_of(&self.0);
@@ -461,13 +464,14 @@ impl<T: Pod> IntoR for RawTagged<T> {
             );
             Rf_setAttrib(sexp, attr_sym, Rf_ScalarString(charsxp));
 
-            sexp
+            Ok(sexp)
         }
     }
 }
 
 impl<T: Pod> IntoR for RawSliceTagged<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let header = RawHeader::new_slice::<T>(self.0.len());
         let header_bytes = bytemuck::bytes_of(&header);
         let value_bytes = bytemuck::cast_slice::<T, u8>(&self.0);
@@ -493,7 +497,7 @@ impl<T: Pod> IntoR for RawSliceTagged<T> {
             );
             Rf_setAttrib(sexp, attr_sym, Rf_ScalarString(charsxp));
 
-            sexp
+            Ok(sexp)
         }
     }
 }
