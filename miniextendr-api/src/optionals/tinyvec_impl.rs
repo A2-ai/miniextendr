@@ -144,14 +144,16 @@ where
     T: RNativeType + Copy,
     [T; N]: tinyvec::Array<Item = T>,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
-        self.as_slice().into_sexp()
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.as_slice().into_sexp())
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        unsafe { self.as_slice().into_sexp_unchecked() }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(unsafe { self.as_slice().into_sexp_unchecked() })
     }
 }
 
@@ -161,14 +163,16 @@ where
     T: RNativeType + Copy,
     [T; N]: tinyvec::Array<Item = T>,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
-        self.as_slice().into_sexp()
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.as_slice().into_sexp())
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        unsafe { self.as_slice().into_sexp_unchecked() }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(unsafe { self.as_slice().into_sexp_unchecked() })
     }
 }
 
@@ -202,20 +206,22 @@ where
     T: RNativeType + Copy,
     [T; N]: tinyvec::Array<Item = T>,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
-        match self {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Some(tv) => tv.into_sexp(),
             None => unsafe { crate::ffi::R_NilValue },
-        }
+        })
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        match self {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Some(tv) => unsafe { tv.into_sexp_unchecked() },
             None => unsafe { crate::ffi::R_NilValue },
-        }
+        })
     }
 }
 
@@ -249,20 +255,22 @@ where
     T: RNativeType + Copy,
     [T; N]: tinyvec::Array<Item = T>,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
-        match self {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Some(av) => av.into_sexp(),
             None => unsafe { crate::ffi::R_NilValue },
-        }
+        })
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        match self {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Some(av) => unsafe { av.into_sexp_unchecked() },
             None => unsafe { crate::ffi::R_NilValue },
-        }
+        })
     }
 }
 
@@ -378,16 +386,18 @@ where
     R: RNativeType + Copy,
     [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
-        r_values.into_sexp()
+        Ok(r_values.into_sexp())
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
-        unsafe { r_values.into_sexp_unchecked() }
+        Ok(unsafe { r_values.into_sexp_unchecked() })
     }
 }
 
@@ -398,16 +408,18 @@ where
     R: RNativeType + Copy,
     [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
 {
+    type Error = std::convert::Infallible;
+
     #[inline]
-    fn into_sexp(self) -> SEXP {
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
-        r_values.into_sexp()
+        Ok(r_values.into_sexp())
     }
 
     #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
-        unsafe { r_values.into_sexp_unchecked() }
+        Ok(unsafe { r_values.into_sexp_unchecked() })
     }
 }
 
