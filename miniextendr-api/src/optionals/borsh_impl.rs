@@ -39,14 +39,16 @@ pub struct Borsh<T>(pub T);
 
 /// Convert `Borsh<T>` to R raw vector (RAWSXP) via borsh serialization.
 impl<T: borsh::BorshSerialize> IntoR for Borsh<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let bytes = borsh::to_vec(&self.0).expect("borsh serialization failed");
-        bytes.into_sexp()
+        Ok(bytes.into_sexp())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let bytes = borsh::to_vec(&self.0).expect("borsh serialization failed");
-        unsafe { bytes.into_sexp_unchecked() }
+        Ok(unsafe { bytes.into_sexp_unchecked() })
     }
 }
 
