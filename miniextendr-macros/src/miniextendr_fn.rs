@@ -844,6 +844,24 @@ pub(crate) struct MiniextendrFnAttrs {
     /// Overrides the default `C_<fn_name>` naming convention.
     /// Must be a valid C identifier (alphanumeric + underscore, starting with letter or underscore).
     pub(crate) c_symbol: Option<String>,
+    /// Override R wrapper function name.
+    ///
+    /// Use `#[miniextendr(r_name = "is.my_type")]` to give the R wrapper a different name
+    /// than the Rust function. The C symbol is still derived from the Rust name.
+    /// Cannot be combined with `s3(generic/class)` — use `generic`/`class` for S3 naming.
+    pub(crate) r_name: Option<String>,
+    /// R code to inject at the very top of the wrapper body (before all built-in checks).
+    ///
+    /// Use `#[miniextendr(r_entry = "x <- as.integer(x)")]` to run R code before
+    /// missing-default handling, lifecycle checks, stopifnot, and match.arg.
+    /// Multi-line via `\n`. No validation of R syntax.
+    pub(crate) r_entry: Option<String>,
+    /// R code to inject after all built-in checks, immediately before `.Call()`.
+    ///
+    /// Use `#[miniextendr(r_post_checks = "message('calling rust')")]` to run R code
+    /// after all precondition checks but before the Rust function is invoked.
+    /// Multi-line via `\n`. No validation of R syntax.
+    pub(crate) r_post_checks: Option<String>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -905,6 +923,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut noexport = false;
         let mut doc = None;
         let mut c_symbol = None;
+        let mut r_name = None;
+        let mut r_entry = None;
+        let mut r_post_checks = None;
 
         if input.is_empty() {
             return Ok(Self {
@@ -927,6 +948,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 noexport,
                 doc,
                 c_symbol,
+                r_name,
+                r_entry,
+                r_post_checks,
             });
         }
 
@@ -1169,6 +1193,73 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 ));
                             }
                         }
+                    } else if nv.path.is_ident("r_name") {
+                        // r_name = "custom.r.name"
+                        match &nv.value {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    let val = lit.value();
+                                    if val.is_empty() {
+                                        return Err(syn::Error::new_spanned(
+                                            lit,
+                                            "r_name must not be empty",
+                                        ));
+                                    }
+                                    r_name = Some(val);
+                                } else {
+                                    return Err(syn::Error::new_spanned(
+                                        &expr_lit.lit,
+                                        "r_name expects a string literal",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(syn::Error::new_spanned(
+                                    other,
+                                    "r_name expects a string literal",
+                                ));
+                            }
+                        }
+                    } else if nv.path.is_ident("r_entry") {
+                        // r_entry = "x <- as.integer(x)"
+                        match &nv.value {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    r_entry = Some(lit.value());
+                                } else {
+                                    return Err(syn::Error::new_spanned(
+                                        &expr_lit.lit,
+                                        "r_entry expects a string literal",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(syn::Error::new_spanned(
+                                    other,
+                                    "r_entry expects a string literal",
+                                ));
+                            }
+                        }
+                    } else if nv.path.is_ident("r_post_checks") {
+                        // r_post_checks = "message('validated')"
+                        match &nv.value {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    r_post_checks = Some(lit.value());
+                                } else {
+                                    return Err(syn::Error::new_spanned(
+                                        &expr_lit.lit,
+                                        "r_post_checks expects a string literal",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(syn::Error::new_spanned(
+                                    other,
+                                    "r_post_checks expects a string literal",
+                                ));
+                            }
+                        }
                     } else {
                         let key_name = nv
                             .path
@@ -1180,7 +1271,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             format!(
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
-                                 `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`",
+                                 `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
+                                 `r_name = \"...\"`, `r_entry = \"...\"`, `r_post_checks = \"...\"`",
                                 key_name,
                             ),
                         ));
@@ -1337,6 +1429,15 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             ));
         }
 
+        // Validate: `r_name` is incompatible with S3 naming (`s3(generic/class)`)
+        if r_name.is_some() && (s3_generic.is_some() || s3_class.is_some()) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`r_name` cannot be used with `s3(generic = ..., class = ...)`. \
+                 S3 method names are always `generic.class`. Use `generic` and `class` instead.",
+            ));
+        }
+
         // Resolve feature defaults for fields not explicitly set
         let resolved_error_in_r = error_in_r.unwrap_or(true);
         if resolved_error_in_r && unwrap_in_r {
@@ -1367,6 +1468,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             noexport,
             doc,
             c_symbol,
+            r_name,
+            r_entry,
+            r_post_checks,
         })
     }
 }

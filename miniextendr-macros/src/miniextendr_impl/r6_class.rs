@@ -188,23 +188,36 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
         }
 
+        let r_name = ctx.method.r_method_name();
         lines.push(format!(
             "    {} = function({}) {{",
-            ctx.method.ident, ctx.params
+            r_name, ctx.params
         ));
 
+        // Inject r_entry (user code before all checks)
+        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("      {}", line));
+            }
+        }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
             lines.push(format!("      {}", line));
         }
         // Inject lifecycle prelude if present
-        let what = format!("{}${}", class_name, ctx.method.ident);
+        let what = format!("{}${}", class_name, r_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
             lines.push(format!("      {}", prelude));
         }
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("      {}", check));
+        }
+        // Inject r_post_checks (user code after all checks, before .Call)
+        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("      {}", line));
+            }
         }
 
         let call = ctx.instance_call("private$.ptr");
@@ -228,12 +241,24 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     for ctx in parsed_impl.private_instance_method_contexts() {
         lines.push(format!(
             "    {} = function({}) {{",
-            ctx.method.ident, ctx.params
+            ctx.method.r_method_name(), ctx.params
         ));
 
+        // Inject r_entry
+        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("      {}", line));
+            }
+        }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
             lines.push(format!("      {}", line));
+        }
+        // Inject r_post_checks
+        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("      {}", line));
+            }
         }
 
         let call = ctx.instance_call("private$.ptr");
@@ -288,7 +313,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Add inline @field documentation for active bindings
             // roxygen2 requires @field tags (not @description) for active bindings
-            let method_name = ctx.method.ident.to_string();
+            let method_name = ctx.method.r_method_name();
             for tag in &ctx.method.doc_tags {
                 for (line_idx, line) in tag.lines().enumerate() {
                     // Convert @description/@title to @field on first line only
@@ -317,7 +342,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .method_attrs
                 .r6_prop
                 .clone()
-                .unwrap_or_else(|| ctx.method.ident.to_string());
+                .unwrap_or_else(|| ctx.method.r_method_name());
 
             // Check if there's a matching setter for this property
             let setter = parsed_impl.find_setter_for_prop(&prop_name);
@@ -399,7 +424,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as separate functions on the class object
     for ctx in parsed_impl.static_method_contexts() {
-        let method_name = ctx.method.ident.to_string();
+        let method_name = ctx.method.r_method_name();
         let static_method_name = format!("{}${}", class_name, method_name);
         lines.push(String::new());
 
@@ -414,6 +439,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             static_method_name, ctx.params
         ));
 
+        // Inject r_entry
+        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("  {}", line));
+            }
+        }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
             lines.push(format!("  {}", line));
@@ -426,6 +457,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
+        }
+        // Inject r_post_checks
+        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("  {}", line));
+            }
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
