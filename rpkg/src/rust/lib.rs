@@ -130,6 +130,7 @@ mod either_adapter_tests;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_tests;
+mod r_wrapper_attrs;
 mod factor_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
@@ -1789,6 +1790,7 @@ miniextendr_module! {
     use visibility_tests;
     use doc_attr_tests;
     use export_control_tests;
+    use r_wrapper_attrs;
     use thread_tests;
     use misc_tests;
     use lifecycle_tests;

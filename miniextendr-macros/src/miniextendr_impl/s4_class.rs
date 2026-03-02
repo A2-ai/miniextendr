@@ -146,7 +146,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_error_in_r(method.method_attrs.error_in_r)
             .build_s4_inline();
 
-        // Inject missing param defaults, lifecycle prelude, and precondition checks if present
+        // Inject r_entry, missing param defaults, lifecycle prelude, and precondition checks if present
+        let r_entry = &method.method_attrs.r_entry;
         let missing = crate::r_wrapper_builder::build_missing_prelude(
             &method.sig.inputs,
             &method.param_defaults,
@@ -158,11 +159,22 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             &std::collections::HashSet::new(),
         )
         .static_checks;
-        if !missing.is_empty() || lifecycle.is_some() || !preconditions.is_empty() {
+        let r_post_checks = &method.method_attrs.r_post_checks;
+        if r_entry.is_some()
+            || !missing.is_empty()
+            || lifecycle.is_some()
+            || !preconditions.is_empty()
+            || r_post_checks.is_some()
+        {
             lines.push(format!(
                 "methods::setMethod(\"{}\", \"{}\", function({}) {{",
                 method_name, class_name, full_params
             ));
+            if let Some(entry) = r_entry {
+                for line in entry.lines() {
+                    lines.push(format!("  {}", line));
+                }
+            }
             for line in &missing {
                 lines.push(format!("  {}", line));
             }
@@ -171,6 +183,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
             for check in &preconditions {
                 lines.push(format!("  {}", check));
+            }
+            if let Some(post) = r_post_checks {
+                for line in post.lines() {
+                    lines.push(format!("  {}", line));
+                }
             }
             lines.push(format!("  {}", return_expr));
             lines.push("})".to_string());
@@ -185,8 +202,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as regular functions
     for ctx in parsed_impl.static_method_contexts() {
-        let fn_name = format!("{}_{}", class_name, ctx.method.ident);
-        let method_name = ctx.method.ident.to_string();
+        let method_name = ctx.method.r_method_name();
+        let fn_name = format!("{}_{}", class_name, method_name);
 
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
@@ -202,6 +219,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
+        // Inject r_entry
+        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("  {}", line));
+            }
+        }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
             lines.push(format!("  {}", line));
@@ -213,6 +236,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
+        }
+        // Inject r_post_checks
+        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("  {}", line));
+            }
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);

@@ -658,6 +658,9 @@ pub fn miniextendr(
         doc,
         error_in_r,
         c_symbol,
+        r_name: fn_r_name,
+        r_entry,
+        r_post_checks,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -1363,6 +1366,9 @@ pub fn miniextendr(
             String::new()
         };
         s3_method_comment = format!("{}#' @method {} {}\n", import_comment, generic, class);
+    } else if let Some(ref custom_name) = fn_r_name {
+        r_wrapper_ident_str = custom_name.clone();
+        s3_method_comment = String::new();
     } else if abi.is_some() {
         r_wrapper_ident_str = format!("unsafe_{}", rust_ident);
         s3_method_comment = String::new();
@@ -1557,9 +1563,12 @@ pub fn miniextendr(
         }
     };
 
-    // Combine all preludes: missing defaults, lifecycle, static preconditions, match.arg, choices
+    // Combine all preludes: r_entry, missing defaults, lifecycle, static preconditions, match.arg, choices, r_post_checks
     let combined_prelude = {
         let mut parts = Vec::new();
+        if let Some(ref entry) = r_entry {
+            parts.push(entry.as_str());
+        }
         if !missing_prelude.is_empty() {
             parts.push(missing_prelude.as_str());
         }
@@ -1574,6 +1583,9 @@ pub fn miniextendr(
         }
         if !choices_prelude.is_empty() {
             parts.push(&choices_prelude);
+        }
+        if let Some(ref post) = r_post_checks {
+            parts.push(post.as_str());
         }
         if parts.is_empty() {
             None
