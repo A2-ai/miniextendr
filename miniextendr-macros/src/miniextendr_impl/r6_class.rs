@@ -189,16 +189,17 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         let r_name = ctx.method.r_method_name();
-        lines.push(format!(
-            "    {} = function({}) {{",
-            r_name, ctx.params
-        ));
+        lines.push(format!("    {} = function({}) {{", r_name, ctx.params));
 
         // Inject r_entry (user code before all checks)
         if let Some(ref entry) = ctx.method.method_attrs.r_entry {
             for line in entry.lines() {
                 lines.push(format!("      {}", line));
             }
+        }
+        // Inject on.exit cleanup
+        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
+            lines.push(format!("      {}", on_exit.to_r_code()));
         }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
@@ -241,7 +242,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     for ctx in parsed_impl.private_instance_method_contexts() {
         lines.push(format!(
             "    {} = function({}) {{",
-            ctx.method.r_method_name(), ctx.params
+            ctx.method.r_method_name(),
+            ctx.params
         ));
 
         // Inject r_entry
@@ -249,6 +251,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             for line in entry.lines() {
                 lines.push(format!("      {}", line));
             }
+        }
+        // Inject on.exit cleanup
+        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
+            lines.push(format!("      {}", on_exit.to_r_code()));
         }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
@@ -444,6 +450,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             for line in entry.lines() {
                 lines.push(format!("  {}", line));
             }
+        }
+        // Inject on.exit cleanup
+        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
+            lines.push(format!("  {}", on_exit.to_r_code()));
         }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
