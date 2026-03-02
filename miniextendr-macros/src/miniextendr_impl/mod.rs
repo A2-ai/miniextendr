@@ -626,6 +626,11 @@ pub struct MethodAttrs {
     pub r_entry: Option<String>,
     /// R code to inject after all built-in checks, immediately before `.Call()`.
     pub r_post_checks: Option<String>,
+    /// Register `on.exit()` cleanup code in the R method wrapper.
+    ///
+    /// Short form: `#[miniextendr(r_on_exit = "close(con)")]`
+    /// Long form: `#[miniextendr(r_on_exit(expr = "close(con)", add = false))]`
+    pub r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
 }
 
 /// Fully parsed `#[miniextendr]` impl block, ready for code generation.
@@ -1288,9 +1293,49 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.r_post_checks = Some(value.value());
+                        } else if inner.path.is_ident("r_on_exit") {
+                            if inner.input.peek(syn::Token![=]) {
+                                // Short form: r_on_exit = "expr"
+                                let _: syn::Token![=] = inner.input.parse()?;
+                                let value: syn::LitStr = inner.input.parse()?;
+                                method_attrs.r_on_exit = Some(crate::miniextendr_fn::ROnExit {
+                                    expr: value.value(),
+                                    add: true,
+                                    after: true,
+                                });
+                            } else {
+                                // Long form: r_on_exit(expr = "...", add = false, after = false)
+                                let mut expr = None;
+                                let mut add = true;
+                                let mut after = true;
+                                inner.parse_nested_meta(|meta| {
+                                    if meta.path.is_ident("expr") {
+                                        let _: syn::Token![=] = meta.input.parse()?;
+                                        let value: syn::LitStr = meta.input.parse()?;
+                                        expr = Some(value.value());
+                                    } else if meta.path.is_ident("add") {
+                                        let _: syn::Token![=] = meta.input.parse()?;
+                                        let value: syn::LitBool = meta.input.parse()?;
+                                        add = value.value;
+                                    } else if meta.path.is_ident("after") {
+                                        let _: syn::Token![=] = meta.input.parse()?;
+                                        let value: syn::LitBool = meta.input.parse()?;
+                                        after = value.value;
+                                    } else {
+                                        return Err(meta.error(
+                                            "unknown r_on_exit option; expected `expr`, `add`, or `after`",
+                                        ));
+                                    }
+                                    Ok(())
+                                })?;
+                                let expr = expr.ok_or_else(|| {
+                                    inner.error("r_on_exit(...) requires `expr = \"...\"` specifying the R expression")
+                                })?;
+                                method_attrs.r_on_exit = Some(crate::miniextendr_fn::ROnExit { expr, add, after });
+                            }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone, r_on_exit"
                             ));
                         }
                         Ok(())
@@ -1485,9 +1530,49 @@ impl ParsedMethod {
                     let _: syn::Token![=] = meta.input.parse()?;
                     let value: syn::LitStr = meta.input.parse()?;
                     method_attrs.r_post_checks = Some(value.value());
+                } else if meta.path.is_ident("r_on_exit") {
+                    if meta.input.peek(syn::Token![=]) {
+                        // Short form: r_on_exit = "expr"
+                        let _: syn::Token![=] = meta.input.parse()?;
+                        let value: syn::LitStr = meta.input.parse()?;
+                        method_attrs.r_on_exit = Some(crate::miniextendr_fn::ROnExit {
+                            expr: value.value(),
+                            add: true,
+                            after: true,
+                        });
+                    } else {
+                        // Long form: r_on_exit(expr = "...", add = false, after = false)
+                        let mut expr = None;
+                        let mut add = true;
+                        let mut after = true;
+                        meta.parse_nested_meta(|inner| {
+                            if inner.path.is_ident("expr") {
+                                let _: syn::Token![=] = inner.input.parse()?;
+                                let value: syn::LitStr = inner.input.parse()?;
+                                expr = Some(value.value());
+                            } else if inner.path.is_ident("add") {
+                                let _: syn::Token![=] = inner.input.parse()?;
+                                let value: syn::LitBool = inner.input.parse()?;
+                                add = value.value;
+                            } else if inner.path.is_ident("after") {
+                                let _: syn::Token![=] = inner.input.parse()?;
+                                let value: syn::LitBool = inner.input.parse()?;
+                                after = value.value;
+                            } else {
+                                return Err(inner.error(
+                                    "unknown r_on_exit option; expected `expr`, `add`, or `after`",
+                                ));
+                            }
+                            Ok(())
+                        })?;
+                        let expr = expr.ok_or_else(|| {
+                            meta.error("r_on_exit(...) requires `expr = \"...\"` specifying the R expression")
+                        })?;
+                        method_attrs.r_on_exit = Some(crate::miniextendr_fn::ROnExit { expr, add, after });
+                    }
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle, r_name, r_entry, r_post_checks"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit"
                     ));
                 }
                 Ok(())

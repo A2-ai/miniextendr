@@ -538,14 +538,16 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_inline();
 
-            // Inject r_entry, missing param defaults, lifecycle prelude, precondition checks, r_post_checks
+            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, r_post_checks
             let what = format!("{}.{}", generic_name, class_name);
             let r_entry = &ctx.method.method_attrs.r_entry;
+            let r_on_exit = &ctx.method.method_attrs.r_on_exit;
             let missing = ctx.missing_prelude();
             let lifecycle = ctx.method.lifecycle_prelude(&what);
             let preconditions = ctx.precondition_checks();
             let r_post_checks = &ctx.method.method_attrs.r_post_checks;
             if r_entry.is_some()
+                || r_on_exit.is_some()
                 || !missing.is_empty()
                 || lifecycle.is_some()
                 || !preconditions.is_empty()
@@ -558,6 +560,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     for line in entry.lines() {
                         lines.push(format!("  {line}"));
                     }
+                }
+                if let Some(on_exit) = r_on_exit {
+                    lines.push(format!("  {}", on_exit.to_r_code()));
                 }
                 for line in &missing {
                     lines.push(format!("  {line}"));
@@ -644,14 +649,16 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
 
-            // Inject r_entry, missing param defaults, lifecycle prelude, precondition checks, r_post_checks
+            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, r_post_checks
             let what = format!("{}.{}", generic_name, class_name);
             let r_entry = &ctx.method.method_attrs.r_entry;
+            let r_on_exit = &ctx.method.method_attrs.r_on_exit;
             let missing = ctx.missing_prelude();
             let lifecycle = ctx.method.lifecycle_prelude(&what);
             let preconditions = ctx.precondition_checks();
             let r_post_checks = &ctx.method.method_attrs.r_post_checks;
             if r_entry.is_some()
+                || r_on_exit.is_some()
                 || !missing.is_empty()
                 || lifecycle.is_some()
                 || !preconditions.is_empty()
@@ -664,6 +671,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     for line in entry.lines() {
                         lines.push(format!("  {line}"));
                     }
+                }
+                if let Some(on_exit) = r_on_exit {
+                    lines.push(format!("  {}", on_exit.to_r_code()));
                 }
                 for line in &missing {
                     lines.push(format!("  {line}"));
@@ -714,6 +724,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             for line in entry.lines() {
                 lines.push(format!("  {}", line));
             }
+        }
+        // Inject on.exit cleanup
+        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
+            lines.push(format!("  {}", on_exit.to_r_code()));
         }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {

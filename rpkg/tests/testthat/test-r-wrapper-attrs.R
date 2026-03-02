@@ -1,4 +1,4 @@
-# Tests for r_name, r_entry, and r_post_checks attributes
+# Tests for r_name, r_entry, r_post_checks, and r_on_exit attributes
 
 test_that("r_name renames standalone function", {
   # is.widget should exist (renamed from is_widget)
@@ -36,4 +36,31 @@ test_that("R6 method r_entry injects code in method body", {
   # r_entry = "by <- as.integer(by)" coerces the argument
   w$add_by(5L)
   expect_equal(w$get_value(), 15L)
+})
+
+# ── r_on_exit tests ──
+
+test_that("r_on_exit short form runs on.exit cleanup on normal exit", {
+  # on_exit_short has r_on_exit = "message('cleanup ran')"
+  expect_message(on_exit_short(5L), "cleanup ran")
+  expect_equal(suppressMessages(on_exit_short(5L)), 6L)
+})
+
+test_that("r_on_exit with add = false generates on.exit without add arg", {
+  # on_exit_no_add has r_on_exit(expr = "message('cleanup overwrite')", add = false)
+  expect_message(on_exit_no_add(5L), "cleanup overwrite")
+  expect_equal(suppressMessages(on_exit_no_add(5L)), 7L)
+})
+
+test_that("r_on_exit with after = false generates on.exit with after = FALSE", {
+  # on_exit_lifo has r_on_exit(expr = "message('cleanup lifo')", after = false)
+  expect_message(on_exit_lifo(5L), "cleanup lifo")
+  expect_equal(suppressMessages(on_exit_lifo(5L)), 8L)
+})
+
+test_that("R6 method r_on_exit injects on.exit in method body", {
+  w <- WrapperDemo$new(10L)
+  # get_value() has r_on_exit = "message('method cleanup')"
+  expect_message(w$get_value(), "method cleanup")
+  expect_equal(suppressMessages(w$get_value()), 10L)
 })
