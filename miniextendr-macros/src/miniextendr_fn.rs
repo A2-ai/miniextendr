@@ -862,6 +862,45 @@ pub(crate) struct MiniextendrFnAttrs {
     /// after all precondition checks but before the Rust function is invoked.
     /// Multi-line via `\n`. No validation of R syntax.
     pub(crate) r_post_checks: Option<String>,
+    /// Register `on.exit()` cleanup code in the R wrapper.
+    ///
+    /// Short form: `#[miniextendr(r_on_exit = "close(con)")]` → `on.exit(close(con), add = TRUE)`
+    ///
+    /// Long form: `#[miniextendr(r_on_exit(expr = "close(con)", add = false))]`
+    ///
+    /// Defaults: `add = TRUE`, `after = TRUE`. Injected after `r_entry`, before other checks.
+    pub(crate) r_on_exit: Option<ROnExit>,
+}
+
+/// Parsed `r_on_exit` attribute for `on.exit()` cleanup code in R wrappers.
+///
+/// Two forms:
+/// - Short: `r_on_exit = "expr"` → `ROnExit { expr, add: true, after: true }`
+/// - Long: `r_on_exit(expr = "...", add = false, after = false)`
+///
+/// Defaults match R conventions for composable code: `add = TRUE`, `after = TRUE`.
+#[derive(Debug, Clone)]
+pub(crate) struct ROnExit {
+    pub expr: String,
+    pub add: bool,
+    pub after: bool,
+}
+
+impl ROnExit {
+    /// Generate the R `on.exit(...)` call string.
+    ///
+    /// - `add = FALSE` (R default): `on.exit(expr)`
+    /// - `add = TRUE, after = TRUE`: `on.exit(expr, add = TRUE)`
+    /// - `add = TRUE, after = FALSE`: `on.exit(expr, add = TRUE, after = FALSE)`
+    pub fn to_r_code(&self) -> String {
+        if !self.add {
+            format!("on.exit({})", self.expr)
+        } else if !self.after {
+            format!("on.exit({}, add = TRUE, after = FALSE)", self.expr)
+        } else {
+            format!("on.exit({}, add = TRUE)", self.expr)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -926,6 +965,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut r_name = None;
         let mut r_entry = None;
         let mut r_post_checks = None;
+        let mut r_on_exit = None;
 
         if input.is_empty() {
             return Ok(Self {
@@ -951,6 +991,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 r_name,
                 r_entry,
                 r_post_checks,
+                r_on_exit,
             });
         }
 
@@ -1260,6 +1301,30 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 ));
                             }
                         }
+                    } else if nv.path.is_ident("r_on_exit") {
+                        // Short form: r_on_exit = "expr" → on.exit(expr, add = TRUE)
+                        match &nv.value {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    r_on_exit = Some(ROnExit {
+                                        expr: lit.value(),
+                                        add: true,
+                                        after: true,
+                                    });
+                                } else {
+                                    return Err(syn::Error::new_spanned(
+                                        &expr_lit.lit,
+                                        "r_on_exit expects a string literal",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(syn::Error::new_spanned(
+                                    other,
+                                    "r_on_exit expects a string literal",
+                                ));
+                            }
+                        }
                     } else {
                         let key_name = nv
                             .path
@@ -1272,7 +1337,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
                                  `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
-                                 `r_name = \"...\"`, `r_entry = \"...\"`, `r_post_checks = \"...\"`",
+                                 `r_name = \"...\"`, `r_entry = \"...\"`, `r_post_checks = \"...\"`, \
+                                 `r_on_exit = \"...\"`",
                                 key_name,
                             ),
                         ));
@@ -1336,6 +1402,38 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                  `generic` is optional and defaults to the function name",
                             ));
                         }
+                    } else if list.path.is_ident("r_on_exit") {
+                        // Long form: r_on_exit(expr = "...", add = false, after = false)
+                        let mut expr = None;
+                        let mut add = true;
+                        let mut after = true;
+                        list.parse_nested_meta(|meta| {
+                            if meta.path.is_ident("expr") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitStr = meta.input.parse()?;
+                                expr = Some(value.value());
+                            } else if meta.path.is_ident("add") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitBool = meta.input.parse()?;
+                                add = value.value;
+                            } else if meta.path.is_ident("after") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitBool = meta.input.parse()?;
+                                after = value.value;
+                            } else {
+                                return Err(meta.error(
+                                    "unknown r_on_exit option; expected `expr`, `add`, or `after`",
+                                ));
+                            }
+                            Ok(())
+                        })?;
+                        let expr = expr.ok_or_else(|| {
+                            syn::Error::new_spanned(
+                                &list,
+                                "r_on_exit(...) requires `expr = \"...\"` specifying the R expression",
+                            )
+                        })?;
+                        r_on_exit = Some(ROnExit { expr, add, after });
                     } else if let Some(ident) = list.path.get_ident() {
                         // Try parsing as boolean: option(true) / option(false)
                         if let Ok(lit_bool) = list.parse_args::<syn::LitBool>() {
@@ -1471,6 +1569,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             r_name,
             r_entry,
             r_post_checks,
+            r_on_exit,
         })
     }
 }

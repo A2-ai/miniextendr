@@ -1,4 +1,4 @@
-//! Tests for `r_name`, `r_entry`, and `r_post_checks` attributes.
+//! Tests for `r_name`, `r_entry`, `r_post_checks`, and `r_on_exit` attributes.
 
 use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
 
@@ -34,6 +34,30 @@ pub fn create_widget(n: i32) -> i32 {
     n * 10
 }
 
+// ── Standalone function: r_on_exit (short form) ──
+
+/// Test on.exit cleanup with short form.
+#[miniextendr(r_on_exit = "message(\"cleanup ran\")")]
+pub fn on_exit_short(x: i32) -> i32 {
+    x + 1
+}
+
+// ── Standalone function: r_on_exit (long form, add = false) ──
+
+/// Test on.exit cleanup with add = false (overwrite previous).
+#[miniextendr(r_on_exit(expr = "message(\"cleanup overwrite\")", add = false))]
+pub fn on_exit_no_add(x: i32) -> i32 {
+    x + 2
+}
+
+// ── Standalone function: r_on_exit (long form, after = false) ──
+
+/// Test on.exit cleanup with after = false (LIFO order).
+#[miniextendr(r_on_exit(expr = "message(\"cleanup lifo\")", after = false))]
+pub fn on_exit_lifo(x: i32) -> i32 {
+    x + 3
+}
+
 // ── R6 class with r_name on method ──
 
 #[derive(ExternalPtr)]
@@ -57,6 +81,7 @@ impl WrapperDemo {
         self.value += by;
     }
 
+    #[miniextendr(r_on_exit = "message(\"method cleanup\")")]
     pub fn get_value(&self) -> i32 {
         self.value
     }
@@ -69,6 +94,9 @@ miniextendr_module! {
     fn r_entry_demo;
     fn r_post_checks_demo;
     fn create_widget;
+    fn on_exit_short;
+    fn on_exit_no_add;
+    fn on_exit_lifo;
 
     impl WrapperDemo;
 }

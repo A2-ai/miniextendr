@@ -146,8 +146,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_error_in_r(method.method_attrs.error_in_r)
             .build_s4_inline();
 
-        // Inject r_entry, missing param defaults, lifecycle prelude, and precondition checks if present
+        // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, and precondition checks if present
         let r_entry = &method.method_attrs.r_entry;
+        let r_on_exit = &method.method_attrs.r_on_exit;
         let missing = crate::r_wrapper_builder::build_missing_prelude(
             &method.sig.inputs,
             &method.param_defaults,
@@ -161,6 +162,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .static_checks;
         let r_post_checks = &method.method_attrs.r_post_checks;
         if r_entry.is_some()
+            || r_on_exit.is_some()
             || !missing.is_empty()
             || lifecycle.is_some()
             || !preconditions.is_empty()
@@ -174,6 +176,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 for line in entry.lines() {
                     lines.push(format!("  {}", line));
                 }
+            }
+            if let Some(on_exit) = r_on_exit {
+                lines.push(format!("  {}", on_exit.to_r_code()));
             }
             for line in &missing {
                 lines.push(format!("  {}", line));
@@ -224,6 +229,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             for line in entry.lines() {
                 lines.push(format!("  {}", line));
             }
+        }
+        // Inject on.exit cleanup
+        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
+            lines.push(format!("  {}", on_exit.to_r_code()));
         }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
