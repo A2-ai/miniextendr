@@ -661,6 +661,7 @@ pub fn miniextendr(
         r_name: fn_r_name,
         r_entry,
         r_post_checks,
+        r_on_exit,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -1563,11 +1564,15 @@ pub fn miniextendr(
         }
     };
 
-    // Combine all preludes: r_entry, missing defaults, lifecycle, static preconditions, match.arg, choices, r_post_checks
+    // Combine all preludes: r_entry, on.exit, missing defaults, lifecycle, static preconditions, match.arg, choices, r_post_checks
+    let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
     let combined_prelude = {
         let mut parts = Vec::new();
         if let Some(ref entry) = r_entry {
             parts.push(entry.as_str());
+        }
+        if let Some(ref s) = on_exit_str {
+            parts.push(s.as_str());
         }
         if !missing_prelude.is_empty() {
             parts.push(missing_prelude.as_str());

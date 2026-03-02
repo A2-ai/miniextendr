@@ -253,6 +253,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("  {}", line));
             }
         }
+        // Inject on.exit cleanup
+        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
+            lines.push(format!("  {}", on_exit.to_r_code()));
+        }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
             lines.push(format!("  {}", line));
@@ -303,6 +307,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             for line in entry.lines() {
                 lines.push(format!("  {}", line));
             }
+        }
+        // Inject on.exit cleanup
+        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
+            lines.push(format!("  {}", on_exit.to_r_code()));
         }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
