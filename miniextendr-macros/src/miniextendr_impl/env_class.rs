@@ -79,7 +79,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods
     for ctx in parsed_impl.instance_method_contexts() {
-        let method_name = ctx.method.ident.to_string();
+        let method_name = ctx.method.r_method_name();
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
             let method_doc =
@@ -94,6 +94,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name, method_name, ctx.params
         ));
 
+        // Inject r_entry
+        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("  {}", line));
+            }
+        }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
             lines.push(format!("  {}", line));
@@ -106,6 +112,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
+        }
+        // Inject r_post_checks
+        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("  {}", line));
+            }
         }
 
         let call = ctx.instance_call("self");
@@ -122,7 +134,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods
     for ctx in parsed_impl.static_method_contexts() {
-        let method_name = ctx.method.ident.to_string();
+        let method_name = ctx.method.r_method_name();
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
             let method_doc =
@@ -137,6 +149,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name, method_name, ctx.params
         ));
 
+        // Inject r_entry
+        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
+            for line in entry.lines() {
+                lines.push(format!("  {}", line));
+            }
+        }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
             lines.push(format!("  {}", line));
@@ -149,6 +167,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
+        }
+        // Inject r_post_checks
+        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
+            for line in post.lines() {
+                lines.push(format!("  {}", line));
+            }
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
