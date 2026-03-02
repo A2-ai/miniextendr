@@ -361,15 +361,17 @@ where
     T: Flags,
     T::Bits: TryInto<i32>,
 {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let bits = self.0.bits();
-        match bits.try_into() {
+        Ok(match bits.try_into() {
             Ok(int_val) => int_val.into_sexp(),
             Err(_) => {
                 // Value too large for i32 - return NA
                 NA_INTEGER.into_sexp()
             }
-        }
+        })
     }
 }
 
@@ -378,11 +380,13 @@ where
     T: Flags,
     T::Bits: TryInto<i32>,
 {
-    fn into_sexp(self) -> SEXP {
-        match self {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(match self {
             Some(flags) => flags.into_sexp(),
             None => NA_INTEGER.into_sexp(),
-        }
+        })
     }
 }
 
@@ -391,12 +395,14 @@ where
     T: Flags,
     T::Bits: TryInto<i32>,
 {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let ints: Vec<i32> = self
             .into_iter()
             .map(|flags| flags.0.bits().try_into().unwrap_or(NA_INTEGER))
             .collect();
-        ints.into_sexp()
+        Ok(ints.into_sexp())
     }
 }
 
@@ -405,12 +411,14 @@ where
     T: Flags,
     T::Bits: TryInto<i32>,
 {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let ints: Vec<Option<i32>> = self
             .into_iter()
             .map(|opt| opt.and_then(|flags| flags.0.bits().try_into().ok()))
             .collect();
-        ints.into_sexp()
+        Ok(ints.into_sexp())
     }
 }
 

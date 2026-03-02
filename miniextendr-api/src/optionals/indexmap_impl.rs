@@ -133,8 +133,10 @@ impl<T> IntoR for IndexMap<String, T>
 where
     T: IntoR,
 {
-    fn into_sexp(self) -> SEXP {
-        unsafe {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(unsafe {
             let n = self.len();
             let list = Rf_allocVector(SEXPTYPE::VECSXP, n as R_xlen_t);
             Rf_protect(list);
@@ -157,7 +159,7 @@ where
 
             Rf_unprotect(2);
             list
-        }
+        })
     }
 }
 

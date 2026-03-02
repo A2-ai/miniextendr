@@ -326,13 +326,15 @@ impl<T: RNativeType + Copy> TryFromSexp for ArrayD<T> {
 
 /// Convert `Array0<T>` to R scalar (length-1 vector).
 impl<T: RNativeType + Clone> IntoR for Array0<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         // Extract the single element and convert to R scalar via Vec
-        vec![self.into_scalar()].into_sexp()
+        Ok(vec![self.into_scalar()].into_sexp())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        unsafe { vec![self.into_scalar()].into_sexp_unchecked() }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(unsafe { vec![self.into_scalar()].into_sexp_unchecked() })
     }
 }
 
@@ -342,14 +344,16 @@ impl<T: RNativeType + Clone> IntoR for Array0<T> {
 
 /// Convert `Array1<T>` to R vector.
 impl<T: RNativeType> IntoR for Array1<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let vec: Vec<T> = self.into_raw_vec_and_offset().0;
-        vec.into_sexp()
+        Ok(vec.into_sexp())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let vec: Vec<T> = self.into_raw_vec_and_offset().0;
-        unsafe { vec.into_sexp_unchecked() }
+        Ok(unsafe { vec.into_sexp_unchecked() })
     }
 }
 
@@ -692,7 +696,9 @@ impl_all_arrays_try_from_sexp_coerce!(crate::ffi::RLogical => bool);
 /// Creates a column-major R matrix from the ndarray.
 /// Data is always written in column-major order regardless of the array's internal layout.
 impl<T: RNativeType + Clone> IntoR for Array2<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (nrow, ncol) = self.dim();
 
         // Always produce column-major data by iterating column-by-column.
@@ -707,7 +713,7 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
         }
 
         // Create R matrix with RAII protection
-        unsafe {
+        Ok(unsafe {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
@@ -717,7 +723,7 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
             // Return the SEXP - guard drops and unprotects
             // (R manages protection of .Call return values)
             guard.get()
-        }
+        })
     }
 }
 
@@ -729,7 +735,9 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
 ///
 /// Creates a column-major R array from the ndarray.
 impl<T: RNativeType + Clone> IntoR for Array3<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2) = self.dim();
 
         // Iterate in Fortran (column-major) order
@@ -746,7 +754,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
         };
 
         // Create R array with dim attribute using RAII protection
-        unsafe {
+        Ok(unsafe {
             let scope = ProtectScope::new();
 
             let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
@@ -766,7 +774,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
-        } // scope drops here, calling UNPROTECT(2)
+        }) // scope drops here, calling UNPROTECT(2)
     }
 }
 
@@ -776,7 +784,9 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
 
 /// Convert `Array4<T>` to R 4D array.
 impl<T: RNativeType + Clone> IntoR for Array4<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2, d3) = self.dim();
         let shape = vec![d0, d1, d2, d3];
         let total_len = shape.iter().product();
@@ -789,7 +799,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
             v
         };
 
-        unsafe {
+        Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
                 T::SEXP_TYPE,
@@ -808,7 +818,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
-        }
+        })
     }
 }
 
@@ -818,7 +828,9 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
 
 /// Convert `Array5<T>` to R 5D array.
 impl<T: RNativeType + Clone> IntoR for Array5<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2, d3, d4) = self.dim();
         let shape = vec![d0, d1, d2, d3, d4];
         let total_len = shape.iter().product();
@@ -831,7 +843,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
             v
         };
 
-        unsafe {
+        Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
                 T::SEXP_TYPE,
@@ -849,7 +861,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
-        }
+        })
     }
 }
 
@@ -859,7 +871,9 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
 
 /// Convert `Array6<T>` to R 6D array.
 impl<T: RNativeType + Clone> IntoR for Array6<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2, d3, d4, d5) = self.dim();
         let shape = vec![d0, d1, d2, d3, d4, d5];
         let total_len = shape.iter().product();
@@ -872,7 +886,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
             v
         };
 
-        unsafe {
+        Ok(unsafe {
             let scope = ProtectScope::new();
             let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
                 T::SEXP_TYPE,
@@ -890,7 +904,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
-        }
+        })
     }
 }
 
@@ -902,7 +916,9 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
 ///
 /// Creates a column-major R array from the ndarray.
 impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let shape: Vec<usize> = self.shape().to_vec();
         let ndim = shape.len();
         let total_len: usize = shape.iter().product();
@@ -919,7 +935,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
         };
 
         // Create R array with RAII protection
-        unsafe {
+        Ok(unsafe {
             let scope = ProtectScope::new();
 
             let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
@@ -944,7 +960,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
             }
 
             arr
-        } // scope drops here, calling UNPROTECT(n) automatically
+        }) // scope drops here, calling UNPROTECT(n) automatically
     }
 }
 
@@ -987,29 +1003,33 @@ fn fortran_order_iter<F: FnMut(Vec<usize>)>(shape: &[usize], mut f: F) {
 
 /// Convert `ArcArray1<T>` to R vector.
 impl<T: RNativeType + Clone> IntoR for ArcArray1<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         // Convert to owned array, then to SEXP
         // If we have unique ownership, this is efficient; otherwise it clones
         let arr: Array1<T> = self.into_owned();
-        arr.into_sexp()
+        Ok(arr.into_sexp())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let arr: Array1<T> = self.into_owned();
-        unsafe { arr.into_sexp_unchecked() }
+        Ok(unsafe { arr.into_sexp_unchecked() })
     }
 }
 
 /// Convert `ArcArray2<T>` to R matrix.
 impl<T: RNativeType + Clone> IntoR for ArcArray2<T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let arr: Array2<T> = self.into_owned();
-        arr.into_sexp()
+        Ok(arr.into_sexp())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let arr: Array2<T> = self.into_owned();
-        unsafe { arr.into_sexp_unchecked() }
+        Ok(unsafe { arr.into_sexp_unchecked() })
     }
 }
 
@@ -1022,14 +1042,16 @@ impl<T: RNativeType + Clone> IntoR for ArcArray2<T> {
 /// This copies the view's data into a new R vector.
 /// Useful for returning a view of data to R.
 impl<'a, T: RNativeType + Clone> IntoR for ArrayView1<'a, T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let vec: Vec<T> = self.iter().cloned().collect();
-        vec.into_sexp()
+        Ok(vec.into_sexp())
     }
 
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         let vec: Vec<T> = self.iter().cloned().collect();
-        unsafe { vec.into_sexp_unchecked() }
+        Ok(unsafe { vec.into_sexp_unchecked() })
     }
 }
 
@@ -1038,7 +1060,9 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView1<'a, T> {
 /// Creates a column-major R matrix from the view.
 /// Data is always written in column-major order regardless of the view's layout.
 impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (nrow, ncol) = self.dim();
 
         // Iterate column-by-column for R's column-major storage
@@ -1047,7 +1071,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
             data.extend(self.column(j).iter().cloned());
         }
 
-        unsafe {
+        Ok(unsafe {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
@@ -1057,13 +1081,15 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
             // Return the SEXP - guard drops and unprotects
             // (R manages protection of .Call return values)
             guard.get()
-        }
+        })
     }
 }
 
 /// Convert `ArrayView3<T>` to R 3D array by copying.
 impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2) = self.dim();
 
         // Iterate in Fortran (column-major) order
@@ -1079,7 +1105,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             v
         };
 
-        unsafe {
+        Ok(unsafe {
             let scope = ProtectScope::new();
 
             let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
@@ -1099,13 +1125,15 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
-        }
+        })
     }
 }
 
 /// Convert `ArrayViewD<T>` to R N-dimensional array by copying.
 impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
-    fn into_sexp(self) -> SEXP {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let shape: Vec<usize> = self.shape().to_vec();
         let ndim = shape.len();
         let total_len: usize = shape.iter().product();
@@ -1119,7 +1147,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
             v
         };
 
-        unsafe {
+        Ok(unsafe {
             let scope = ProtectScope::new();
 
             let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
@@ -1144,7 +1172,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
             }
 
             arr
-        }
+        })
     }
 }
 
