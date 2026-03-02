@@ -616,6 +616,16 @@ pub struct MethodAttrs {
     /// Supported protocols: format, vec_proxy, vec_proxy_equal, vec_proxy_compare,
     /// vec_proxy_order, vec_restore, obj_print_data, obj_print_header, obj_print_footer.
     pub vctrs_protocol: Option<String>,
+    /// Override R method name.
+    ///
+    /// Use `#[miniextendr(r_name = "add_one")]` to give the R method a different name
+    /// than the Rust method. The C symbol is still derived from the Rust name.
+    /// Cannot be combined with `generic = "..."` on the same method.
+    pub r_name: Option<String>,
+    /// R code to inject at the very top of the method body (before all built-in checks).
+    pub r_entry: Option<String>,
+    /// R code to inject after all built-in checks, immediately before `.Call()`.
+    pub r_post_checks: Option<String>,
 }
 
 /// Fully parsed `#[miniextendr]` impl block, ready for code generation.
@@ -1121,6 +1131,15 @@ impl ParsedMethod {
             ));
         }
 
+        // r_name and generic are mutually exclusive
+        if attrs.r_name.is_some() && attrs.generic.is_some() {
+            return Err(syn::Error::new(
+                span,
+                "`r_name` and `generic` cannot be used on the same method. \
+                 Use `r_name` for a simple rename, or `generic`/`class` for S3/S4/S7 generic dispatch.",
+            ));
+        }
+
         // Worker attribute is now supported on methods
         // (validation happens during wrapper generation based on return type)
 
@@ -1253,6 +1272,22 @@ impl ParsedMethod {
                             method_attrs.s7_convert_to = Some(value.value());
                         } else if inner.path.is_ident("deep_clone") {
                             method_attrs.deep_clone = true;
+                        } else if inner.path.is_ident("r_name") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            let val = value.value();
+                            if val.is_empty() {
+                                return Err(syn::Error::new_spanned(value, "r_name must not be empty"));
+                            }
+                            method_attrs.r_name = Some(val);
+                        } else if inner.path.is_ident("r_entry") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.r_entry = Some(value.value());
+                        } else if inner.path.is_ident("r_post_checks") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.r_post_checks = Some(value.value());
                         } else {
                             return Err(inner.error(
                                 "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
@@ -1434,9 +1469,25 @@ impl ParsedMethod {
                         method_attrs.vctrs_protocol = Some(protocol);
                         Ok(())
                     })?;
+                } else if meta.path.is_ident("r_name") {
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let value: syn::LitStr = meta.input.parse()?;
+                    let val = value.value();
+                    if val.is_empty() {
+                        return Err(syn::Error::new_spanned(value, "r_name must not be empty"));
+                    }
+                    method_attrs.r_name = Some(val);
+                } else if meta.path.is_ident("r_entry") {
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let value: syn::LitStr = meta.input.parse()?;
+                    method_attrs.r_entry = Some(value.value());
+                } else if meta.path.is_ident("r_post_checks") {
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let value: syn::LitStr = meta.input.parse()?;
+                    method_attrs.r_post_checks = Some(value.value());
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle, r_name, r_entry, r_post_checks"
                     ));
                 }
                 Ok(())
@@ -1655,6 +1706,16 @@ impl ParsedMethod {
     /// Active bindings provide property-like access (obj$name instead of obj$name()).
     pub fn is_active(&self) -> bool {
         self.method_attrs.active
+    }
+
+    /// R-facing method name.
+    ///
+    /// Returns `r_name` if set, otherwise the Rust ident as a string.
+    pub fn r_method_name(&self) -> String {
+        self.method_attrs
+            .r_name
+            .clone()
+            .unwrap_or_else(|| self.ident.to_string())
     }
 
     /// C wrapper identifier for this method.
