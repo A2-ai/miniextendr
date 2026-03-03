@@ -97,24 +97,21 @@ impl syn::parse::Parse for MiniextendrModuleFunction {
 impl MiniextendrModuleFunction {
     /// Returns the identifier for the generated `R_CallMethodDef` entry for this function.
     ///
-    /// Delegates to [`call_method_def_ident_for`],
-    /// producing `call_method_def_{ident}`.
+    /// Formats `self.ident` as `call_method_def_{ident}`.
     pub fn call_method_def_ident(&self) -> syn::Ident {
         call_method_def_ident_for(&self.ident)
     }
 
     /// Returns the identifier for the generated `const &str` holding R wrapper source.
     ///
-    /// Delegates to [`r_wrapper_const_ident_for`],
-    /// producing `R_WRAPPER_{IDENT}` (uppercased).
+    /// Formats `self.ident` as `R_WRAPPER_{IDENT}` (uppercased).
     pub fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(&self.ident)
     }
 
     /// Returns the identifier for the match_arg choices helper call defs array.
     ///
-    /// Delegates to [`match_arg_call_defs_ident_for`],
-    /// producing `MATCH_ARG_CALL_DEFS_{IDENT}` (uppercased).
+    /// Formats `self.ident` as `MATCH_ARG_CALL_DEFS_{IDENT}` (uppercased).
     pub fn match_arg_call_defs_ident(&self) -> syn::Ident {
         match_arg_call_defs_ident_for(&self.ident)
     }

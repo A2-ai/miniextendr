@@ -2477,9 +2477,9 @@ pub fn generate_as_coercion_trait_impls(parsed_impl: &ParsedImpl) -> TokenStream
 /// 1. **Inherent impls** (`impl Type { ... }`): Parses [`ImplAttrs`] and [`ParsedImpl`],
 ///    then generates C wrappers, R wrapper code, `R_CallMethodDef` arrays, and
 ///    `as.<class>()` trait impls for the chosen class system.
-/// 2. **Trait impls** (`impl Trait for Type { ... }`): Delegates to
-///    [`crate::miniextendr_impl_trait::expand_miniextendr_impl_trait`] for trait ABI
-///    vtable generation.
+/// 2. **Trait impls** (`impl Trait for Type { ... }`): Generates trait ABI vtables,
+///    cross-package shims, and R wrappers via
+///    [`expand_miniextendr_impl_trait`](crate::miniextendr_impl_trait::expand_miniextendr_impl_trait).
 ///
 /// # Arguments
 ///
