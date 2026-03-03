@@ -74,10 +74,10 @@ pub unsafe fn nil() -> SEXP {
     unsafe { crate::ffi::R_NilValue }
 }
 
-/// Convert an R SEXP to a Rust type.
+/// Convert an R SEXP to a Rust type, aborting via `Rf_error` on failure.
 ///
-/// Wrapper around [`crate::TryFromSexp::try_from_sexp`] that calls [`rf_error`]
-/// on conversion failure.
+/// Attempts [`TryFromSexp::try_from_sexp`](crate::TryFromSexp::try_from_sexp)
+/// and calls [`rf_error`] (R longjmp, never returns) if conversion fails.
 ///
 /// # Type Parameters
 ///
@@ -124,7 +124,8 @@ where
 
 /// Convert a Rust value to an R SEXP.
 ///
-/// Wrapper around [`crate::IntoR::into_sexp`] for use in method shims.
+/// Calls [`IntoR::into_sexp`](crate::IntoR::into_sexp) to produce an R value.
+/// Used in trait ABI method shims.
 ///
 /// # Type Parameters
 ///
