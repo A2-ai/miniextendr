@@ -222,7 +222,7 @@ impl DataFrameView {
 
     /// Validate the data frame's column types against a [`TypedListSpec`].
     ///
-    /// This bridges the [`typed_list`](crate::typed_list) validation infrastructure
+    /// This bridges the [`typed_list`](crate::typed_list!) validation infrastructure
     /// to data frames, allowing schema checks like:
     ///
     /// ```ignore
