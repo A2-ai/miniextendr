@@ -142,8 +142,8 @@ pub unsafe fn mx_query(sexp: SEXP, tag: mx_tag) -> *const c_void {
 
 /// Query an object for an interface and return a typed view.
 ///
-/// Convenience wrapper around [`mx_query`] that returns an `Option<&V>`
-/// where `V` is the view type for the trait.
+/// Looks up `tag` in the object's vtable registry and, if found, returns
+/// `Some(&V)` pointing to the data pointer + vtable pair for the trait.
 ///
 /// # Type Parameters
 ///

@@ -3,15 +3,14 @@ use crate::from_r::TryFromSexp;
 use crate::list::{List, ListFromSexpError};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
 
-/// Rust type representing `...`.
+/// Rust type representing R's `...` (variadic arguments).
 ///
-/// The R wrapper passes `list(...)` to the Rust function, so `Dots` contains
-/// a list SEXP. Use [`as_list`](Dots::as_list) or [`try_list`](Dots::try_list)
-/// to access the underlying list.
+/// The generated R wrapper captures `...` as `list(...)` and passes it to Rust,
+/// so `Dots` holds a list SEXP. Use [`as_list`](Dots::as_list) or
+/// [`try_list`](Dots::try_list) to access elements by name or position.
 ///
-/// See [`miniextendr`] macro for more information.
-///
-/// [`miniextendr`]: crate::miniextendr
+/// Declare as the last parameter: `fn foo(x: i32, _dots: &Dots)`.
+/// Use `name @ ...` syntax for a custom parameter name.
 #[derive(Debug)]
 pub struct Dots {
     // Dots is always passed to us, they need no protection.
