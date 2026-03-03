@@ -25,7 +25,7 @@ pub(super) struct TraitWrapperOpts {
 
 /// Generate R wrapper code for trait methods and consts, dispatching by class system.
 ///
-/// Delegates to the appropriate class-system-specific generator (env, s3, s4, s7, r6),
+/// Calls the appropriate class-system-specific generator (env, s3, s4, s7, r6),
 /// then applies post-processing for `@noRd`, `internal`, and `noexport` options:
 ///
 /// - `class_has_no_rd`: Strips roxygen blocks (for S3/vctrs, keeps `@method`/`@export` tags)
