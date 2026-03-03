@@ -1190,7 +1190,7 @@ pub mod tls {
 // WorkerUnprotectGuard — Send-safe unprotect for worker threads
 // =============================================================================
 
-/// A `Send`-safe guard that calls `Rf_unprotect(n)` on drop via [`with_r_thread`].
+/// A `Send`-safe guard that calls `Rf_unprotect(n)` on drop via `with_r_thread`.
 ///
 /// Use this when you `Rf_protect` on the R main thread, then need the unprotect
 /// to happen when a guard drops on a **worker thread** (e.g., rayon parallel code).

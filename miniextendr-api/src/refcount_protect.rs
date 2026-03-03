@@ -812,7 +812,7 @@ pub type RefCountedGuard<'a> = ArenaGuard<'a, BTreeMap<usize, Entry>>;
 /// Implementors only need to provide [`with_state`](Self::with_state) to access
 /// the thread-local state; all 14 arena methods are provided as defaults.
 ///
-/// The [`define_thread_local_arena!`] macro generates both the struct and the
+/// The `define_thread_local_arena!` macro generates both the struct and the
 /// `ThreadLocalArenaOps` impl, so this trait is an implementation detail.
 /// Import it when calling methods on thread-local arena types:
 ///

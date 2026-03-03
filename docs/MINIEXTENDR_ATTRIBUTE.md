@@ -120,6 +120,65 @@ pub fn long_simulation(n: i32) -> Vec<f64> { /* ... */ }
 pub fn old_api() -> i32 { 0 }
 ```
 
+#### R Wrapper Customization
+
+These attributes inject custom R code into the generated wrapper function, giving
+fine-grained control over the R-side behavior without touching the Rust logic.
+
+| Attribute | Effect |
+|-----------|--------|
+| `r_name = "..."` | Override R function name (e.g., `"is.widget"`) |
+| `r_entry = "..."` | Inject R code at function entry (before all checks) |
+| `r_post_checks = "..."` | Inject R code after checks (before `.Call()`) |
+| `r_on_exit = "..."` | Register `on.exit()` cleanup (short form, `add = TRUE`) |
+| `r_on_exit(expr = "...", add = bool, after = bool)` | Long form with full `on.exit()` control |
+
+Generated wrapper layout:
+
+```r
+fn_name <- function(formals) {
+  # r_entry code
+  on.exit(...)         # r_on_exit
+  # missing defaults, lifecycle, stopifnot, match.arg
+  # r_post_checks code
+  .Call(C_fn_name, ...)
+}
+```
+
+```rust
+// Rename R function (C symbol still derived from Rust name)
+#[miniextendr(r_name = "is.widget")]
+pub fn is_widget(x: i32) -> bool { x > 0 }
+
+// Coerce input before Rust sees it
+#[miniextendr(r_entry = "x <- as.integer(x)")]
+pub fn process(x: i32) -> i32 { x * 2 }
+
+// Validate after built-in checks
+#[miniextendr(r_post_checks = "stopifnot(x > 0L)")]
+pub fn positive_only(x: i32) -> i32 { x }
+
+// Register cleanup code
+#[miniextendr(r_on_exit = "message(\"done\")")]
+pub fn with_cleanup(x: i32) -> i32 { x + 1 }
+
+// Full on.exit control (LIFO order)
+#[miniextendr(r_on_exit(expr = "close(con)", after = false))]
+pub fn with_connection(x: i32) -> i32 { x }
+
+// Combine all four
+#[miniextendr(
+    r_name = "widget.create",
+    r_entry = "n <- as.integer(n)",
+    r_on_exit = "message(\"cleanup\")",
+    r_post_checks = "stopifnot(n > 0L)",
+)]
+pub fn create_widget(n: i32) -> i32 { n * 10 }
+```
+
+`r_on_exit` defaults: `add = TRUE`, `after = TRUE` (composable, FIFO — standard R convention).
+When `add = FALSE`: omits both `add` and `after` (R ignores `after` when `add = FALSE`).
+
 #### S3 Standalone Functions
 
 Functions can be standalone S3 methods without an impl block:
@@ -259,6 +318,10 @@ impl Person {
 | `coerce` / `no_coerce` | Type coercion override |
 | `rng` | RNG state management |
 | `error_in_r` / `unwrap_in_r` | Error handling override |
+| `r_name = "..."` | Override R method name |
+| `r_entry = "..."` | Inject R code at method entry |
+| `r_post_checks = "..."` | Inject R code after checks |
+| `r_on_exit = "..."` | Register `on.exit()` cleanup |
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,
 `integer`, `logical`, `matrix`, `vector`, `factor`, `Date`, `POSIXct`, `complex`,
