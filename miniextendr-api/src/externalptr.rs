@@ -1134,9 +1134,8 @@ where
 
     /// Writes a value and converts to initialized.
     ///
-    /// See `assume_init` for notes about SEXP behavior.
-    ///
-    /// Equivalent to `Box::write`.
+    /// Creates a new SEXP with `T`'s type information (the original
+    /// `MaybeUninit<T>` SEXP becomes an orphaned shell, cleaned up by GC).
     #[inline]
     pub fn write(mut self, value: T) -> ExternalPtr<T> {
         unsafe {

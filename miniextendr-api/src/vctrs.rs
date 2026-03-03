@@ -430,7 +430,8 @@ pub fn short_vec_recycle(sexp: SEXP, size: R_len_t) -> Result<SEXP, VctrsError> 
 pub trait VctrsSexpExt {
     /// Check if this object is a vector according to vctrs.
     ///
-    /// See [`obj_is_vector`] for details.
+    /// Returns `true` for atomic vectors, lists (including data frames),
+    /// and S3/S4 objects with a `vec_proxy()` method.
     ///
     /// # Examples
     ///
@@ -446,7 +447,8 @@ pub trait VctrsSexpExt {
 
     /// Get the size of this vector.
     ///
-    /// See [`short_vec_size`] for details.
+    /// Returns the number of observations: length for atomic vectors,
+    /// number of rows for data frames.
     ///
     /// # Examples
     ///
@@ -461,7 +463,7 @@ pub trait VctrsSexpExt {
 
     /// Recycle this vector to a target size.
     ///
-    /// See [`short_vec_recycle`] for details.
+    /// Size-1 vectors are recycled to any size; others must match exactly.
     ///
     /// # Safety
     ///
