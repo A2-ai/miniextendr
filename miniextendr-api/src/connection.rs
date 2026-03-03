@@ -629,10 +629,11 @@ unsafe fn get_state<T: RConnectionImpl>(conn: *mut Rconn) -> &'static mut T {
     unsafe { &mut *private.cast::<T>() }
 }
 
-/// Convenience alias for the connection panic guard.
+/// Catches panics in connection callbacks, returning `fallback` on panic.
 ///
-/// Delegates to [`crate::ffi_guard::guarded_ffi_call_with_fallback`] with
-/// [`PanicSource::Connection`](crate::panic_telemetry::PanicSource::Connection).
+/// Wraps the closure in [`catch_unwind`](std::panic::catch_unwind), fires
+/// [`PanicSource::Connection`](crate::panic_telemetry::PanicSource::Connection)
+/// telemetry on panic, and returns `fallback` instead of unwinding into C.
 #[inline]
 fn catch_connection_panic<F, R>(fallback: R, f: F) -> R
 where

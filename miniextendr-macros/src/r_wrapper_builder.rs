@@ -589,7 +589,7 @@ impl RoxygenBuilder {
     }
 }
 
-/// Delegates to [`RoxygenBuilder::new`], creating an empty builder with no tags set.
+/// Creates an empty builder with no tags set.
 impl Default for RoxygenBuilder {
     fn default() -> Self {
         Self::new()

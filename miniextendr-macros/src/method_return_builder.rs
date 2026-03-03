@@ -186,7 +186,8 @@ impl MethodReturnBuilder {
 
     /// Generate the `if (inherits(.val, "rust_error_value") ...)` check lines.
     ///
-    /// Delegates to [`error_in_r_check_lines`] with the current indentation.
+    /// Emits an R `inherits` guard that extracts and re-raises Rust errors
+    /// transported as tagged SEXP values, using the current indentation.
     fn error_check_lines(&self, indent: &str) -> Vec<String> {
         error_in_r_check_lines(indent)
     }
