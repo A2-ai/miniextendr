@@ -23,10 +23,10 @@ use core::ffi::c_void;
 /// at monomorphization time — zero runtime overhead for the chosen mode.
 ///
 /// - `Unsafe`: No protection — the closure runs directly.
-/// - `RustUnwind`: Delegates to [`crate::ffi_guard::guarded_ffi_call`] with
-///   [`GuardMode::CatchUnwind`](crate::ffi_guard::GuardMode::CatchUnwind).
-/// - `RUnwind`: Delegates to [`crate::ffi_guard::guarded_ffi_call`] with
-///   [`GuardMode::RUnwind`](crate::ffi_guard::GuardMode::RUnwind).
+/// - `RustUnwind`: Wraps in [`catch_unwind`](std::panic::catch_unwind), converting
+///   panics to `Rf_error` so they don't unwind through C frames.
+/// - `RUnwind`: Wraps in [`R_UnwindProtect`](crate::ffi::R_UnwindProtect), catching
+///   both Rust panics and R longjmps safely.
 #[inline(always)]
 fn guarded_altrep_call<T: Altrep, F, R>(f: F) -> R
 where
