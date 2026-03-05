@@ -1,6 +1,6 @@
 //! Tests for `r_name`, `r_entry`, `r_post_checks`, and `r_on_exit` attributes.
 
-use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 
 // ── Standalone function: r_name ──
 
@@ -29,7 +29,11 @@ pub fn r_post_checks_demo(x: i32) -> i32 {
 // ── Standalone function: all three combined ──
 
 /// Combined test: r_name + r_entry + r_post_checks.
-#[miniextendr(r_name = "widget.create", r_entry = "n <- as.integer(n)", r_post_checks = "stopifnot(n > 0L)")]
+#[miniextendr(
+    r_name = "widget.create",
+    r_entry = "n <- as.integer(n)",
+    r_post_checks = "stopifnot(n > 0L)"
+)]
 pub fn create_widget(n: i32) -> i32 {
     n * 10
 }
