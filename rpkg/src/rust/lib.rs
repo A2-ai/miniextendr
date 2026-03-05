@@ -130,7 +130,6 @@ mod either_adapter_tests;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_tests;
-mod r_wrapper_attrs;
 mod factor_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
@@ -158,6 +157,7 @@ mod ordered_float_adapter_tests;
 mod panic_tests;
 mod r6_default_tests;
 mod r6_tests;
+mod r_wrapper_attrs;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
 mod rdata_sidecar_tests;

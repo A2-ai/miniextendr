@@ -257,7 +257,6 @@ pub trait TypedExternal: 'static {
 /// ```
 pub trait IntoExternalPtr: TypedExternal {}
 
-
 impl TypedExternal for () {
     const TYPE_NAME: &'static str = "()";
     const TYPE_NAME_CSTR: &'static [u8] = b"()\0";
