@@ -188,6 +188,8 @@ pub use miniextendr_macros::ExternalPtr;
 #[doc(inline)]
 pub use miniextendr_macros::RNativeType;
 #[doc(inline)]
+pub use miniextendr_macros::impl_typed_external;
+#[doc(inline)]
 pub use miniextendr_macros::list;
 #[doc(inline)]
 pub use miniextendr_macros::miniextendr;
@@ -197,8 +199,6 @@ pub use miniextendr_macros::miniextendr_module;
 pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
 pub use miniextendr_macros::typed_list;
-#[doc(inline)]
-pub use miniextendr_macros::impl_typed_external;
 // Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
 // but they're in different namespaces (derive macros vs types/traits)
 #[cfg(feature = "vctrs")]

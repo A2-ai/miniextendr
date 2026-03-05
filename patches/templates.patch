@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-02-22 17:51:29
-+++ b/monorepo/rpkg/configure.ac	2026-02-22 17:51:38
+--- a/monorepo/rpkg/configure.ac	2026-03-01 01:33:11
++++ b/monorepo/rpkg/configure.ac	2026-02-24 09:24:28
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -64,7 +64,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
 -if test -z "${MINIEXTENDR_FEATURES+x}"; then
 -  dnl MINIEXTENDR_FEATURES not set - enable all optional features
--  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs"
+-  MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh"
 +dnl Default: no extra features enabled
 +dnl Users can set {{{features_var}}} to enable specific features
 +if test -z "${{{{features_var}}}+x}"; then
@@ -527,8 +527,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-02-22 17:51:29
-+++ b/rpkg/configure.ac	2026-02-22 17:51:34
+--- a/rpkg/configure.ac	2026-03-01 01:33:11
++++ b/rpkg/configure.ac	2026-02-24 09:24:28
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -592,7 +592,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
 -if test -z "${MINIEXTENDR_FEATURES+x}"; then
 -  dnl MINIEXTENDR_FEATURES not set - enable all optional features
--  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs"
+-  MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh"
 +dnl Default: no extra features enabled
 +dnl Users can set {{{features_var}}} to enable specific features
 +if test -z "${{{{features_var}}}+x}"; then
