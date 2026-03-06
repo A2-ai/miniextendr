@@ -158,29 +158,14 @@ See `rpkg/src/rust/doc_attr_tests.rs` for test coverage.
 
 ### 2.1 Mutable Slice Parameters Rejected at Compile Time
 
-**Status:** Enforced (compile error + safe alternative)
+**Status:** Enforced (compile error)
 **Impact:** Medium
-**Location:** `miniextendr-macros/src/rust_conversion_builder.rs` (rejection), `miniextendr-api/src/from_r.rs` (`CopySliceMut<T>`)
+**Location:** `miniextendr-macros/src/rust_conversion_builder.rs` (rejection)
 
-**Contract:** `&mut [T]` at the `#[miniextendr]` boundary is rejected with a compile error because R's GC can invalidate the slice pointer mid-use. The macro emits a helpful error directing users to `CopySliceMut<T>` or `Vec<T>`.
-
-**Safe alternative -- `CopySliceMut<T>`:**
-
-`CopySliceMut<T>` copies R vector data into an owned `Vec<T>` on construction (copy-in), provides `DerefMut` to `[T]` for ergonomic mutation, and converts back to an R vector via `IntoR` (copy-out). Supported element types: `i32`, `f64`, `u8`, `RLogical`.
+**Contract:** `&mut [T]` at the `#[miniextendr]` boundary is rejected with a compile error because R's GC can invalidate the slice pointer mid-use. Use `Vec<T>` instead (copies data on input via `TryFromSexp`, copies back on output via `IntoR`).
 
 ```rust
-use miniextendr_api::CopySliceMut;
-
-// CopySliceMut: copy-in, mutate, copy-out
-#[miniextendr]
-pub fn double_values(mut data: CopySliceMut<f64>) -> CopySliceMut<f64> {
-    for x in data.iter_mut() {
-        *x *= 2.0;
-    }
-    data
-}
-
-// Alternative: Accept immutable slice, return modified copy
+// Accept immutable slice, return modified copy
 #[miniextendr]
 pub fn modify_vec(data: &[i32]) -> Vec<i32> {
     let mut result = data.to_vec();
@@ -188,7 +173,7 @@ pub fn modify_vec(data: &[i32]) -> Vec<i32> {
     result
 }
 
-// Alternative: Accept owned Vec (copies data)
+// Accept owned Vec (copies data)
 #[miniextendr]
 pub fn modify_vec_owned(mut data: Vec<i32>) -> Vec<i32> {
     data[0] = 42;

@@ -143,6 +143,7 @@ mod interrupt_tests;
 mod lifecycle_tests;
 mod macro_equivalence;
 mod match_arg_tests;
+mod missing_tests;
 mod misc_tests;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
@@ -1861,6 +1862,7 @@ miniextendr_module! {
     use factor_tests;
     use macro_equivalence;
     use match_arg_tests;
+    use missing_tests;
     #[cfg(feature = "vctrs")]
     use vctrs_tests;
     #[cfg(feature = "vctrs")]
