@@ -487,13 +487,11 @@ pub fn get_option(config: NamedList) -> Option<String> {
 
 ## Safe Mutable Input
 
-R vectors are copy-on-write, so `&mut [T]` is not supported in `#[miniextendr]` functions (rejected at compile time with a helpful error). Use `CopySliceMut<T>` for copy-in/copy-out mutation:
+R vectors are copy-on-write, so `&mut [T]` is not supported in `#[miniextendr]` functions (rejected at compile time with a helpful error). Use `Vec<T>` for copy-in/copy-out mutation:
 
 ```rust
-use miniextendr_api::CopySliceMut;
-
 #[miniextendr]
-pub fn double_in_place(mut x: CopySliceMut<f64>) -> CopySliceMut<f64> {
+pub fn double_in_place(mut x: Vec<f64>) -> Vec<f64> {
     for v in x.iter_mut() {
         *v *= 2.0;
     }
@@ -501,13 +499,13 @@ pub fn double_in_place(mut x: CopySliceMut<f64>) -> CopySliceMut<f64> {
 }
 ```
 
-`CopySliceMut<T>` copies the R vector on input (`TryFromSexp`), provides `Deref`/`DerefMut` to `[T]` for mutation, and copies out to a new R vector on return (`IntoR`).
+`Vec<T>` copies the R vector on input (`TryFromSexp`), allows mutation, and copies out to a new R vector on return (`IntoR`).
 
 ---
 
 ## Known Limitations
 
-- **Mutable slice parameters** (`&mut [T]`) are rejected at compile time. Use `CopySliceMut<T>` (see above) or accept `&[T]` and return a new `Vec<T>`.
+- **Mutable slice parameters** (`&mut [T]`) are rejected at compile time. Accept `&[T]` and return a new `Vec<T>`, or accept `Vec<T>` directly.
 - **String matrices** (`ndarray::Array<String, Ix2>`) are not directly convertible because R's STRSXP is not contiguous memory. Use `Vec<Vec<String>>` as an intermediary.
 - **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
 
