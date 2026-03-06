@@ -29,7 +29,7 @@ Comprehensive documentation for the miniextendr Rust-R interoperability framewor
 How miniextendr works under the hood.
 
 - **[Architecture](ARCHITECTURE.md)** -- Crate structure, call flow, how Rust talks to R
-- **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp`/`IntoR` system, `NamedList`, `CopySliceMut`
+- **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp`/`IntoR` system, `NamedList`
 - **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`, `REnv` for calling R from Rust
 - **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`, `error_in_r` mode, backtrace control
 - **[ExternalPtr](EXTERNALPTR.md)** -- Box-like owned pointer wrapping R's EXTPTRSXP (`TypedExternal`, `ExternalSlice`, ALTREP helpers)

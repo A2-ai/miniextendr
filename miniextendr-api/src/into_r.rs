@@ -889,29 +889,6 @@ where
     }
 }
 
-impl<T> IntoR for crate::from_r::CopySliceMut<T>
-where
-    T: crate::ffi::RNativeType,
-{
-    type Error = std::convert::Infallible;
-    #[inline]
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_vec().into_sexp())
-    }
-    #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        self.into_vec().into_sexp()
-    }
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { self.into_vec().into_sexp_unchecked() }
-    }
-}
-
 /// Convert a slice to an R vector (checked).
 #[inline]
 unsafe fn vec_to_sexp<T: crate::ffi::RNativeType>(slice: &[T]) -> crate::ffi::SEXP {
