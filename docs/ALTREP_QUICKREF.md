@@ -238,9 +238,38 @@ miniextendr_module! {
 }
 ```
 
+## Receiving ALTREP from R
+
+R frequently passes ALTREP vectors to Rust (e.g., `1:10`, `seq_len(N)`).
+
+| Rust parameter | ALTREP handling | Use when |
+|---|---|---|
+| `Vec<i32>`, `&[f64]`, etc. | Auto-materialized | You need the data |
+| `SEXP` | Auto-materialized | You need the handle, not data |
+| `AltrepSexp` | Not materialized, `!Send` | You need ALTREP metadata |
+| `extern "C-unwind"` raw SEXP | No conversion at all | You inspect ALTREP state |
+
+```rust
+// Recommended: typed parameter handles everything
+#[miniextendr]
+pub fn sum_ints(x: Vec<i32>) -> i64 {
+    x.iter().map(|&v| v as i64).sum()
+}
+// sum_ints(1:1000000)  ← works, ALTREP auto-materialized
+
+// Explicit ALTREP handling
+#[miniextendr]
+pub fn altrep_len(x: AltrepSexp) -> usize { x.len() }
+// altrep_len(1:10)      ← works
+// altrep_len(c(1L, 2L)) ← error: not ALTREP
+```
+
+Full guide: [Receiving ALTREP from R](ALTREP_SEXP.md)
+
 ## Further Reading
 
 - **Complete guide**: [ALTREP.md](ALTREP.md)
+- **Receiving ALTREP**: [ALTREP_SEXP.md](ALTREP_SEXP.md)
 - **Practical examples**: [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md)
 - **Test suite**: [../rpkg/tests/testthat/test-altrep*.R](../rpkg/tests/testthat/)
 - **Reference**: [R Altrep.h](../background/r-source-tags-R-4-5-2/src/include/R_ext/Altrep.h)
