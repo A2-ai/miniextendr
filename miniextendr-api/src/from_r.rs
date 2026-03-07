@@ -373,14 +373,19 @@ impl_try_from_sexp_scalar_native!(crate::ffi::Rcomplex, CPLXSXP);
 impl TryFromSexp for SEXP {
     type Error = SexpError;
 
+    /// Converts a SEXP, auto-materializing ALTREP vectors.
+    ///
+    /// If the input is ALTREP, `ensure_materialized` is called to force
+    /// materialization on the R main thread. After materialization the data
+    /// pointer is stable and the SEXP can be safely sent to other threads.
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        Ok(sexp)
+        Ok(unsafe { crate::altrep_sexp::ensure_materialized(sexp) })
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Ok(sexp)
+        Ok(unsafe { crate::altrep_sexp::ensure_materialized(sexp) })
     }
 }
 
@@ -392,7 +397,9 @@ impl TryFromSexp for Option<SEXP> {
         if sexp.type_of() == SEXPTYPE::NILSXP {
             Ok(None)
         } else {
-            Ok(Some(sexp))
+            Ok(Some(unsafe {
+                crate::altrep_sexp::ensure_materialized(sexp)
+            }))
         }
     }
 
