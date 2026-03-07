@@ -16,7 +16,7 @@ new_counter <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   structure(.val, class = "Counter")
@@ -44,7 +44,7 @@ get.Counter <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -72,7 +72,7 @@ increment.Counter <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   x
@@ -87,7 +87,7 @@ counter_zero <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   structure(.val, class = "Counter")

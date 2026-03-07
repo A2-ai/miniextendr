@@ -635,21 +635,21 @@ test_that("extension traits (.as_named_vector / .as_named_list) work", {
 test_that("HashMap rejects duplicate non-empty names", {
   expect_error(
     conv_hashmap_i32_len(list(a = 1L, b = 2L, a = 3L)),
-    "DuplicateName"
+    "duplicate name"
   )
 })
 
 test_that("BTreeMap rejects duplicate non-empty names", {
   expect_error(
     conv_btreemap_i32_len(list(a = 1L, b = 2L, a = 3L)),
-    "DuplicateName"
+    "duplicate name"
   )
 })
 
 test_that("Option<HashMap> non-NULL path rejects duplicate names", {
   expect_error(
     conv_opt_hashmap_i32_arg(list(a = 1L, b = 2L, a = 3L)),
-    "DuplicateName"
+    "duplicate name"
   )
 })
 
@@ -709,7 +709,7 @@ test_that("Option<BTreeMap> return None produces NULL", {
 test_that("Option<BTreeMap> non-NULL path rejects duplicate names", {
   expect_error(
     conv_opt_btreemap_i32_arg(list(a = 1L, b = 2L, a = 3L)),
-    "DuplicateName"
+    "duplicate name"
   )
 })
 
@@ -747,7 +747,7 @@ test_that("Vec<BTreeMap> ret produces list of named lists", {
 test_that("Vec<HashMap> inner list rejects duplicate names", {
   expect_error(
     conv_vec_hashmap_i32_arg(list(list(a = 1L, a = 2L))),
-    "DuplicateName"
+    "duplicate name"
   )
 })
 

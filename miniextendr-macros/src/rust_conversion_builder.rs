@@ -25,6 +25,9 @@ pub struct RustConversionBuilder {
     coerce_params: Vec<String>,
     /// Enable strict input conversion for lossy types
     strict: bool,
+    /// When true, conversion failures return tagged error SEXP instead of panicking.
+    /// Only used on the main-thread error_in_r path (not worker thread).
+    error_in_r: bool,
 }
 
 impl RustConversionBuilder {
@@ -34,6 +37,7 @@ impl RustConversionBuilder {
             coerce_all: false,
             coerce_params: Vec::new(),
             strict: false,
+            error_in_r: false,
         }
     }
 
@@ -58,11 +62,81 @@ impl RustConversionBuilder {
         self
     }
 
+    /// Enable error_in_r mode: conversion failures return tagged error SEXP instead of panicking.
+    ///
+    /// Only appropriate for the main-thread error_in_r path. On the worker thread path,
+    /// conversions happen inside `catch_unwind`, so `.expect()` panics are caught. On the
+    /// `no_error_in_r` path, panics are needed for `with_r_unwind_protect` to catch.
+    pub fn with_error_in_r(mut self) -> Self {
+        self.error_in_r = true;
+        self
+    }
+
     /// Check if a parameter should use coercion.
     ///
     /// Returns `true` if `coerce_all` is set or `param_name` appears in the per-parameter list.
     fn should_coerce(&self, param_name: &str) -> bool {
         self.coerce_all || self.coerce_params.contains(&param_name.to_string())
+    }
+
+    /// Generate a conversion expression that either panics (`.expect()`) or returns
+    /// a tagged error SEXP (`error_in_r` mode) on failure.
+    ///
+    /// - `try_expr`: The `Result<T, E>`-producing expression
+    /// - `error_msg`: Human-readable error message for the failure
+    /// - `ident`: The binding name for the converted value
+    /// - `ty`: The target Rust type (for the `let` binding)
+    /// - `span`: Source span for error reporting
+    fn conversion_stmt(
+        &self,
+        try_expr: TokenStream,
+        error_msg: &str,
+        ident: &syn::Ident,
+        ty: &syn::Type,
+        span: proc_macro2::Span,
+    ) -> TokenStream {
+        if self.error_in_r {
+            quote_spanned! {span=>
+                let #ident: #ty = match #try_expr {
+                    Ok(v) => v,
+                    Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                        &format!("{}: {e}", #error_msg),
+                        "conversion",
+                        Some(__miniextendr_call),
+                    ),
+                };
+            }
+        } else {
+            quote_spanned! {span=>
+                let #ident: #ty = #try_expr.expect(#error_msg);
+            }
+        }
+    }
+
+    /// Like [`conversion_stmt`] but without a type annotation on the binding.
+    fn conversion_stmt_untyped(
+        &self,
+        try_expr: TokenStream,
+        error_msg: &str,
+        ident: &syn::Ident,
+        span: proc_macro2::Span,
+    ) -> TokenStream {
+        if self.error_in_r {
+            quote_spanned! {span=>
+                let #ident = match #try_expr {
+                    Ok(v) => v,
+                    Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                        &format!("{}: {e}", #error_msg),
+                        "conversion",
+                        Some(__miniextendr_call),
+                    ),
+                };
+            }
+        } else {
+            quote_spanned! {span=>
+                let #ident = #try_expr.expect(#error_msg);
+            }
+        }
     }
 
     /// Generate conversion statement for a single parameter.
@@ -150,10 +224,10 @@ impl RustConversionBuilder {
                         ident
                     );
                     let span = ty.span();
-                    let stmt = quote_spanned! {span=>
-                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                            .expect(#error_msg);
+                    let try_expr = quote_spanned! {span=>
+                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
+                    let stmt = self.conversion_stmt_untyped(try_expr, &error_msg, ident, span);
                     (vec![stmt], vec![])
                 } else if is_str {
                     // &str: Convert to String, then borrow using Borrow trait.
@@ -165,10 +239,11 @@ impl RustConversionBuilder {
                     );
                     let span = ty.span();
                     // Owned conversion: SEXP -> String
-                    let owned_stmt = quote_spanned! {span=>
-                        let #owned_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                            .expect(#error_msg);
+                    let string_ty: syn::Type = syn::parse_quote!(String);
+                    let try_expr = quote_spanned! {span=>
+                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
+                    let owned_stmt = self.conversion_stmt(try_expr, &error_msg, &owned_ident, &string_ty, span);
                     // Borrow: String -> &str (using Borrow trait)
                     let borrow_stmt = quote_spanned! {span=>
                         let #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
@@ -182,10 +257,10 @@ impl RustConversionBuilder {
                         quote!(#ty)
                     );
                     let span = ty.span();
-                    let stmt = quote_spanned! {span=>
-                        let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                            .expect(#error_msg);
+                    let try_expr = quote_spanned! {span=>
+                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
+                    let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
                     (vec![stmt], vec![])
                 }
             }
@@ -229,13 +304,36 @@ impl RustConversionBuilder {
                             param_name,
                             quote!(#target)
                         );
-                        quote_spanned! {span=>
-                            let #ident: #target = {
-                                let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                                    .expect(#error_msg_convert);
-                                ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val)
-                                    .expect(#error_msg_coerce)
-                            };
+                        if self.error_in_r {
+                            quote_spanned! {span=>
+                                let #ident: #target = {
+                                    let __r_val: #r_native = match ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) {
+                                        Ok(v) => v,
+                                        Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                                            &format!("{}: {e}", #error_msg_convert),
+                                            "conversion",
+                                            Some(__miniextendr_call),
+                                        ),
+                                    };
+                                    match ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val) {
+                                        Ok(v) => v,
+                                        Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                                            &format!("{}: {e}", #error_msg_coerce),
+                                            "conversion",
+                                            Some(__miniextendr_call),
+                                        ),
+                                    }
+                                };
+                            }
+                        } else {
+                            quote_spanned! {span=>
+                                let #ident: #target = {
+                                    let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                                        .expect(#error_msg_convert);
+                                    ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val)
+                                        .expect(#error_msg_coerce)
+                                };
+                            }
                         }
                     }
                     Some(CoercionMapping::Vec {
@@ -251,15 +349,41 @@ impl RustConversionBuilder {
                             param_name,
                             quote!(#target_elem)
                         );
-                        quote_spanned! {span=>
-                            let #ident: Vec<#target_elem> = {
-                                let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                                    .expect(#error_msg_convert);
-                                __r_slice.iter().copied()
-                                    .map(::miniextendr_api::TryCoerce::<#target_elem>::try_coerce)
-                                    .collect::<Result<Vec<_>, _>>()
-                                    .expect(#error_msg_coerce)
-                            };
+                        if self.error_in_r {
+                            quote_spanned! {span=>
+                                let #ident: Vec<#target_elem> = {
+                                    let __r_slice: &[#r_native_elem] = match ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) {
+                                        Ok(v) => v,
+                                        Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                                            &format!("{}: {e}", #error_msg_convert),
+                                            "conversion",
+                                            Some(__miniextendr_call),
+                                        ),
+                                    };
+                                    match __r_slice.iter().copied()
+                                        .map(::miniextendr_api::TryCoerce::<#target_elem>::try_coerce)
+                                        .collect::<Result<Vec<_>, _>>()
+                                    {
+                                        Ok(v) => v,
+                                        Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                                            &format!("{}: {e}", #error_msg_coerce),
+                                            "conversion",
+                                            Some(__miniextendr_call),
+                                        ),
+                                    }
+                                };
+                            }
+                        } else {
+                            quote_spanned! {span=>
+                                let #ident: Vec<#target_elem> = {
+                                    let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                                        .expect(#error_msg_convert);
+                                    __r_slice.iter().copied()
+                                        .map(::miniextendr_api::TryCoerce::<#target_elem>::try_coerce)
+                                        .collect::<Result<Vec<_>, _>>()
+                                        .expect(#error_msg_coerce)
+                                };
+                            }
                         }
                     }
                     None => {
@@ -268,10 +392,10 @@ impl RustConversionBuilder {
                             param_name,
                             quote!(#ty)
                         );
-                        quote_spanned! {span=>
-                            let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                                .expect(#error_msg);
-                        }
+                        let try_expr = quote_spanned! {span=>
+                            ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                        };
+                        self.conversion_stmt(try_expr, &error_msg, ident, ty, span)
                     }
                 };
                 (vec![stmt], vec![])

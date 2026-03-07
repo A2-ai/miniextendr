@@ -827,6 +827,9 @@ pub fn miniextendr(
     if strict {
         conversion_builder = conversion_builder.with_strict();
     }
+    if error_in_r {
+        conversion_builder = conversion_builder.with_error_in_r();
+    }
     if coerce_all {
         conversion_builder = conversion_builder.with_coerce_all();
     }
@@ -975,16 +978,15 @@ pub fn miniextendr(
             rust_ident, r_wrapper_generator
         );
         if rng {
-            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
-            let rng_panic_handler = if error_in_r {
-                quote::quote! {
-                    ::miniextendr_api::error_value::make_rust_error_value(
-                        &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                        "panic",
-                    )
-                }
-            } else {
-                quote::quote! { ::std::panic::resume_unwind(payload) }
+            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
+            // rng always implies error_in_r (validated at parse time), so we always return
+            // a tagged error value on panic instead of resume_unwind.
+            let rng_panic_handler = quote::quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    "panic",
+                    Some(#call_param_ident),
+                )
             };
             quote::quote! {
                 #[doc = #c_wrapper_doc]
@@ -1047,6 +1049,7 @@ pub fn miniextendr(
                 ::miniextendr_api::error_value::make_rust_error_value(
                     &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
                     "panic",
+                    Some(#call_param_ident),
                 )
             }
         } else {
@@ -1058,7 +1061,7 @@ pub fn miniextendr(
             }
         };
         if error_in_r {
-            // error_in_r: use run_on_worker_result to get Result<T, String> instead of diverging
+            // error_in_r: run_on_worker returns Result; Err → tagged error value
             quote::quote! {
                 #[doc = #c_wrapper_doc]
                 #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
@@ -1071,7 +1074,7 @@ pub fn miniextendr(
                         #(#pre_call_statements)*
                         #(#pre_closure_stmts)*
 
-                        match ::miniextendr_api::worker::run_on_worker_result(move || {
+                        match ::miniextendr_api::worker::run_on_worker(move || {
                             #(#in_closure_stmts)*
                             let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
                             #(#post_call_statements)*
@@ -1085,7 +1088,7 @@ pub fn miniextendr(
                             }
                             Err(__panic_msg) => {
                                 ::miniextendr_api::error_value::make_rust_error_value(
-                                    &__panic_msg, "panic",
+                                    &__panic_msg, "panic", Some(#call_param_ident),
                                 )
                             }
                         }
@@ -1098,6 +1101,7 @@ pub fn miniextendr(
                 }
             }
         } else {
+            // run_on_worker returns Result; Err → R error via Rf_error
             quote::quote! {
                 #[doc = #c_wrapper_doc]
                 #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
@@ -1110,17 +1114,22 @@ pub fn miniextendr(
                         #(#pre_call_statements)*
                         #(#pre_closure_stmts)*
 
-                        let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
+                        match ::miniextendr_api::worker::run_on_worker(move || {
                             #(#in_closure_stmts)*
                             let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
                             #(#post_call_statements)*
                             #rust_result_ident
-                        });
-
-                        #unwind_protect_fn(
-                            move || #return_expression,
-                            None,
-                        )
+                        }) {
+                            Ok(#rust_result_ident) => {
+                                #unwind_protect_fn(
+                                    move || #return_expression,
+                                    None,
+                                )
+                            }
+                            Err(__panic_msg) => {
+                                ::miniextendr_api::worker::panic_message_to_r_error(__panic_msg, None)
+                            }
+                        }
                     }));
                     #rng_put
                     match __miniextendr_panic_result {
@@ -2489,23 +2498,16 @@ fn generate_trait_impl_wrapper(
 /// Apply this to an `extern "C-unwind"` block to generate wrappers that ensure
 /// R API calls happen on R's main thread.
 ///
-/// # Behavior by Return Type
+/// # Behavior
 ///
-/// The wrapper behavior depends on the return type:
+/// All non-variadic functions are routed to the main thread via `with_r_thread`
+/// when called from a worker thread. The return value is wrapped in `Sendable`
+/// and sent back to the caller. This applies to both value-returning functions
+/// (SEXP, i32, etc.) and pointer-returning functions (`*const T`, `*mut T`).
 ///
-/// ## Value-returning functions
-/// Functions returning values (SEXP, i32, etc.) are automatically routed to
-/// the main thread via `with_r_thread` when called from a worker thread.
-///
-/// ## Pointer-returning functions
-/// Functions returning raw pointers (`*const T`, `*mut T`) **cannot be routed**
-/// and will **panic** if called from a non-main thread. This is because the
-/// pointer could become invalid when R's garbage collector runs on the main thread.
-///
-/// For pointer-returning APIs (like `INTEGER`, `REAL`), you must:
-/// - Call them from the main thread, OR
-/// - Use `with_r_thread(|| { ... })` to execute pointer operations on main thread
-///   and process results before returning
+/// Pointer-returning functions (like `INTEGER`, `REAL`) are safe to route because
+/// the underlying SEXP must be GC-protected by the caller, and R's GC only runs
+/// during R API calls which are serialized through `with_r_thread`.
 ///
 /// # Initialization Requirement
 ///
@@ -2523,10 +2525,8 @@ fn generate_trait_impl_wrapper(
 /// ```ignore
 /// #[r_ffi_checked]
 /// unsafe extern "C-unwind" {
-///     // Value-returning: automatically routed from worker threads
+///     // Routed to main thread via with_r_thread when called from worker
 ///     pub fn Rf_ScalarInteger(arg1: i32) -> SEXP;
-///
-///     // Pointer-returning: panics if called from worker thread
 ///     pub fn INTEGER(x: SEXP) -> *mut i32;
 /// }
 /// ```

@@ -1584,6 +1584,16 @@ impl ParsedMethod {
         method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(true);
         method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "default-coerce"));
         let resolved_error_in_r = error_in_r.unwrap_or(true);
+
+        // Validate: rng requires error_in_r
+        if method_attrs.rng && !resolved_error_in_r {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`rng` requires `error_in_r` (PutRNGstate must run after .Call returns; \
+                 non-error_in_r diverges via longjmp, skipping PutRNGstate)",
+            ));
+        }
+
         if resolved_error_in_r && method_attrs.unwrap_in_r {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),

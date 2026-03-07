@@ -12,6 +12,7 @@
 //! The tagged SEXP is a named list with:
 //! - `error`: error message (character scalar)
 //! - `kind`: error kind string (`"panic"`, `"result_err"`, `"none_err"`)
+//! - `call`: the R call SEXP (or `NULL` if not available)
 //! - class attribute: `"rust_error_value"`
 //! - `__rust_error__` attribute: `TRUE`
 
@@ -29,10 +30,11 @@ use crate::ffi::{self, SEXP};
 /// * `message` - Human-readable error message
 /// * `kind` - Machine-readable error kind: `"panic"`, `"result_err"`, `"none_err"`,
 ///   or `"other_rust_error"`
-pub fn make_rust_error_value(message: &str, kind: &str) -> SEXP {
+/// * `call` - Optional R call SEXP for error context. When `None`, uses `R_NilValue`.
+pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> SEXP {
     unsafe {
-        // Allocate a list of length 2: (error, kind)
-        let list = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, 2);
+        // Allocate a list of length 3: (error, kind, call)
+        let list = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, 3);
         ffi::Rf_protect(list);
 
         // Set list element 0: error message
@@ -49,11 +51,16 @@ pub fn make_rust_error_value(message: &str, kind: &str) -> SEXP {
         let kind_strsxp = ffi::Rf_ScalarString(kind_charsxp);
         ffi::SET_VECTOR_ELT(list, 1, kind_strsxp);
 
-        // Set names: c("error", "kind")
-        let names = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 2);
+        // Set list element 2: call SEXP
+        let call_sexp = call.unwrap_or(ffi::R_NilValue);
+        ffi::SET_VECTOR_ELT(list, 2, call_sexp);
+
+        // Set names: c("error", "kind", "call")
+        let names = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 3);
         ffi::Rf_protect(names);
         ffi::SET_STRING_ELT(names, 0, ffi::Rf_mkCharCE(c"error".as_ptr(), ffi::CE_UTF8));
         ffi::SET_STRING_ELT(names, 1, ffi::Rf_mkCharCE(c"kind".as_ptr(), ffi::CE_UTF8));
+        ffi::SET_STRING_ELT(names, 2, ffi::Rf_mkCharCE(c"call".as_ptr(), ffi::CE_UTF8));
         ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
 
         // Set class: "rust_error_value"
