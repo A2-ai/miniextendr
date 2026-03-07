@@ -280,6 +280,8 @@ will cause all subsequent thread checks to be incorrect.
 | `R_MAIN_THREAD_ID` | Set once, from main thread, during init |
 | `Sendable<T>` | Value moved, not shared; accessed only at destination |
 | `ExternalPtr<T>` | Not Send/Sync; main thread only |
+| `AltrepSexp` | !Send + !Sync; materialization on main thread only |
+| SEXP (via `TryFromSexp`) | ALTREP auto-materialized before function body runs |
 | `R_CONTINUATION_TOKEN` | Created once, preserved for session lifetime |
 | `StackCheckGuard` | Atomic refcount; last drop restores limit |
 | Allocator | Main thread or worker context only |

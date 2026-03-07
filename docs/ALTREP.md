@@ -4,6 +4,7 @@ ALTREP (Alternative Representations) is R's system for creating custom vector im
 
 **Additional Resources**:
 - **[Quick Reference](ALTREP_QUICKREF.md)** - One-page cheat sheet
+- **[Receiving ALTREP from R](ALTREP_SEXP.md)** - How `SEXP` and `AltrepSexp` parameters handle ALTREP input
 - **[Practical Examples](ALTREP_EXAMPLES.md)** - Real-world use cases
 - **[Test Suite](../rpkg/tests/testthat/test-altrep*.R)** - Working examples
 

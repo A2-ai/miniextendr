@@ -360,11 +360,27 @@ impl_try_from_sexp_scalar_native!(u8, RAWSXP);
 impl_try_from_sexp_scalar_native!(RLogical, LGLSXP);
 impl_try_from_sexp_scalar_native!(crate::ffi::Rcomplex, CPLXSXP);
 
-/// Pass-through conversion for raw SEXP values.
+/// Pass-through conversion for raw SEXP values with ALTREP auto-materialization.
 ///
-/// This allows SEXP to be used directly in `#[miniextendr]` function signatures.
-/// A blanket impl `impl<T: From<SEXP>> TryFromSexp for T` would conflict with
-/// many explicit conversions in this module, so we use an explicit impl.
+/// This allows `SEXP` to be used directly in `#[miniextendr]` function signatures.
+/// When R passes an ALTREP vector (e.g., `1:10`, `seq_len(N)`),
+/// [`ensure_materialized`](crate::altrep_sexp::ensure_materialized) is called
+/// automatically to force materialization on the R main thread. After this,
+/// the SEXP's data pointer is stable and safe to access from any thread.
+///
+/// # ALTREP handling
+///
+/// | Input | Result |
+/// |---|---|
+/// | Regular SEXP | Passed through unchanged |
+/// | ALTREP SEXP | Materialized via `ensure_materialized`, then passed through |
+///
+/// To receive ALTREP without materializing, use
+/// [`AltrepSexp`](crate::altrep_sexp::AltrepSexp) as the parameter type instead.
+/// To receive the raw SEXP without any conversion (including no materialization),
+/// use `extern "C-unwind"`.
+///
+/// See `docs/ALTREP_SEXP.md` for the full guide.
 ///
 /// # Safety
 ///
@@ -375,9 +391,10 @@ impl TryFromSexp for SEXP {
 
     /// Converts a SEXP, auto-materializing ALTREP vectors.
     ///
-    /// If the input is ALTREP, `ensure_materialized` is called to force
-    /// materialization on the R main thread. After materialization the data
-    /// pointer is stable and the SEXP can be safely sent to other threads.
+    /// If the input is ALTREP, [`ensure_materialized`](crate::altrep_sexp::ensure_materialized)
+    /// is called to force materialization on the R main thread. After
+    /// materialization the data pointer is stable and the SEXP can be safely
+    /// sent to other threads.
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         Ok(unsafe { crate::altrep_sexp::ensure_materialized(sexp) })
