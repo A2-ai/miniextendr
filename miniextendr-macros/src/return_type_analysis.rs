@@ -224,7 +224,7 @@ fn analyze_option_type(
                 match #rust_result_ident {
                     Some(()) => unsafe { ::miniextendr_api::ffi::R_NilValue },
                     None => ::miniextendr_api::error_value::make_rust_error_value(
-                        #option_none_error_msg, "none_err"
+                        #option_none_error_msg, "none_err", Some(__miniextendr_call),
                     ),
                 }
             }
@@ -314,7 +314,7 @@ fn analyze_result_type(
                 match #rust_result_ident {
                     Ok(()) => unsafe { ::miniextendr_api::ffi::R_NilValue },
                     Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                        &format!("{:?}", e), "result_err"
+                        &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                     ),
                 }
             }
@@ -326,7 +326,7 @@ fn analyze_result_type(
                 match #rust_result_ident {
                     Ok(v) => v,
                     Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                        &format!("{:?}", e), "result_err"
+                        &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                     ),
                 }
             }
@@ -337,7 +337,7 @@ fn analyze_result_type(
                 match #rust_result_ident {
                     Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
                     Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                        &format!("{:?}", e), "result_err"
+                        &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                     ),
                 }
             }
