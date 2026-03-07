@@ -238,6 +238,19 @@ let sexp = rx.recv().unwrap();
 
 ALTREP methods are called by R on the main thread, so they don't need `StackCheckGuard`. However, if an ALTREP method spawns threads that call back into R, those threads need the guard.
 
+### ALTREP and Thread Safety
+
+When R passes an ALTREP vector (e.g., `1:10`) to a `#[miniextendr]` function,
+miniextendr auto-materializes it on the R main thread before the function body
+runs. This ensures the data pointer is stable before any SEXP could cross a
+thread boundary.
+
+For explicit ALTREP handling, use `AltrepSexp` — a `!Send + !Sync` wrapper
+that prevents un-materialized ALTREP vectors from reaching rayon or other
+worker threads at compile time.
+
+See [Receiving ALTREP from R](ALTREP_SEXP.md) for the full guide.
+
 ## Non-API Functions Used
 
 These are gated behind `feature = "nonapi"` and may break with R updates:

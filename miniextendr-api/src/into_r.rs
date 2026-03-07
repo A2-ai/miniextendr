@@ -2640,7 +2640,7 @@ impl<T> Altrep<T> {
         self.0
     }
 
-    /// Convert to R ALTREP and wrap in [`AltrepSexp`] (`!Send + !Sync`).
+    /// Convert to R ALTREP and wrap in [`AltrepSexp`](crate::altrep_sexp::AltrepSexp) (`!Send + !Sync`).
     ///
     /// This creates the ALTREP SEXP and wraps it in an `AltrepSexp` that
     /// prevents the result from being sent to non-R threads. Use this when

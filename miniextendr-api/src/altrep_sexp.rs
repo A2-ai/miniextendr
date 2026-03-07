@@ -1,27 +1,51 @@
 //! `AltrepSexp` — a `!Send + !Sync` wrapper for ALTREP vectors.
 //!
-//! ALTREP vectors must not have `DATAPTR_RO` called on non-R threads because
-//! materialization dispatches into R internals (C callbacks, GC toggling,
-//! allocation). `AltrepSexp` makes this a compile-time guarantee: it wraps
-//! a SEXP known to be ALTREP and is `!Send + !Sync`, preventing it from
-//! crossing thread boundaries.
+//! R uses ALTREP (Alternative Representations) for common idioms like `1:N`,
+//! `seq_len(N)`, and `as.character(1:N)`. These vectors are lazily materialized:
+//! calling `DATAPTR_RO` triggers allocation, GC, and C callbacks inside R's
+//! runtime. This must only happen on the R main thread.
 //!
-//! Plain (non-ALTREP) SEXPs remain `Send + Sync` and are unaffected.
+//! This module provides two complementary tools:
+//!
+//! - **[`AltrepSexp`]** — a `!Send + !Sync` wrapper that holds an ALTREP SEXP
+//!   and prevents it from crossing thread boundaries at compile time.
+//! - **[`ensure_materialized`]** — a function that forces materialization if
+//!   the SEXP is ALTREP, returning a SEXP with a stable data pointer.
+//!
+//! Plain (non-ALTREP) SEXPs are `Send + Sync` and are unaffected by either.
+//!
+//! # How ALTREP flows through miniextendr
+//!
+//! | Parameter type | ALTREP handling |
+//! |---|---|
+//! | Typed (`Vec<i32>`, `&[f64]`) | Auto-materialized via `DATAPTR_RO` in `TryFromSexp` |
+//! | `SEXP` | Auto-materialized via [`ensure_materialized`] in `TryFromSexp` |
+//! | [`AltrepSexp`] | Wrapped without materializing. `!Send + !Sync`. |
+//! | `extern "C-unwind"` raw SEXP | No conversion — receives raw SEXP as-is |
 //!
 //! # Usage
 //!
 //! ```ignore
 //! use miniextendr_api::AltrepSexp;
 //!
-//! // Wrap a SEXP that might be ALTREP:
+//! // As a #[miniextendr] parameter — accepts only ALTREP vectors:
+//! #[miniextendr]
+//! pub fn altrep_length(x: AltrepSexp) -> usize {
+//!     x.len()
+//! }
+//!
+//! // Manual wrapping:
 //! if let Some(altrep) = AltrepSexp::try_wrap(sexp) {
 //!     // Must materialize on R main thread before accessing data
 //!     let materialized: SEXP = unsafe { altrep.materialize() };
 //! }
 //!
-//! // Or use the convenience helper:
+//! // Or use the convenience helper on any SEXP:
 //! let safe_sexp = unsafe { ensure_materialized(sexp) };
 //! ```
+//!
+//! See also: `docs/ALTREP_SEXP.md` for the full guide on receiving ALTREP
+//! vectors from R.
 
 use crate::ffi::{self, Rcomplex, SEXP, SEXPTYPE};
 use crate::from_r::r_slice;
@@ -35,6 +59,24 @@ use std::rc::Rc;
 /// or other worker threads where `DATAPTR_RO` would invoke R internals
 /// (undefined behavior).
 ///
+/// # As a `#[miniextendr]` parameter
+///
+/// `AltrepSexp` implements [`TryFromSexp`](crate::from_r::TryFromSexp), so it
+/// can be used directly as a function parameter. It **only accepts ALTREP
+/// vectors** — non-ALTREP input produces an error.
+///
+/// ```ignore
+/// #[miniextendr]
+/// pub fn altrep_info(x: AltrepSexp) -> String {
+///     format!("{:?}, len={}", x.sexptype(), x.len())
+/// }
+/// ```
+///
+/// ```r
+/// altrep_info(1:10)          # OK — 1:10 is ALTREP
+/// altrep_info(c(1L, 2L, 3L)) # Error: "expected an ALTREP vector"
+/// ```
+///
 /// # Construction
 ///
 /// - [`AltrepSexp::try_wrap`] — runtime check, returns `None` if not ALTREP
@@ -42,10 +84,22 @@ use std::rc::Rc;
 ///
 /// # Materialization
 ///
+/// All materialization methods must be called on the R main thread.
+///
 /// - [`AltrepSexp::materialize`] — forces R to materialize, returns plain SEXP
-/// - [`AltrepSexp::materialize_real`] — materialize and return `&[f64]`
-/// - [`AltrepSexp::materialize_integer`] — materialize and return `&[i32]`
+/// - [`AltrepSexp::materialize_integer`] — materialize INTSXP and return `&[i32]`
+/// - [`AltrepSexp::materialize_real`] — materialize REALSXP and return `&[f64]`
+/// - [`AltrepSexp::materialize_logical`] — materialize LGLSXP and return `&[i32]`
+/// - [`AltrepSexp::materialize_raw`] — materialize RAWSXP and return `&[u8]`
+/// - [`AltrepSexp::materialize_complex`] — materialize CPLXSXP and return `&[Rcomplex]`
 /// - [`AltrepSexp::materialize_strings`] — materialize STRSXP to `Vec<Option<String>>`
+///
+/// # Thread safety
+///
+/// `AltrepSexp` is `!Send + !Sync` (via `PhantomData<Rc<()>>`). This is a
+/// compile-time guarantee: you cannot send an un-materialized ALTREP vector
+/// to another thread. Call one of the `materialize_*` methods first to get
+/// a `Send + Sync` slice or SEXP.
 pub struct AltrepSexp {
     sexp: SEXP,
     /// PhantomData<Rc<()>> makes this type !Send + !Sync.
@@ -223,6 +277,13 @@ impl AltrepSexp {
     }
 }
 
+/// Conversion from R SEXP to `AltrepSexp`.
+///
+/// Only succeeds if the input is an ALTREP vector (`ALTREP(sexp) != 0`).
+/// Non-ALTREP input produces `SexpError::InvalidValue`.
+///
+/// This is the inverse of [`TryFromSexp for SEXP`](crate::from_r::TryFromSexp),
+/// which accepts any SEXP but auto-materializes ALTREP.
 impl crate::from_r::TryFromSexp for AltrepSexp {
     type Error = crate::from_r::SexpError;
 
@@ -250,16 +311,23 @@ impl std::fmt::Debug for AltrepSexp {
     }
 }
 
-/// If `sexp` is ALTREP, materialize it in place and return the SEXP.
-/// If not ALTREP, return as-is.
+/// If `sexp` is ALTREP, force materialization and return the SEXP.
+/// If not ALTREP, return as-is (no-op).
 ///
 /// This is the main entry point for ensuring a SEXP is safe to access
 /// from non-R threads. After materialization, the data pointer is stable
 /// and the SEXP can be freely sent across threads.
 ///
+/// Called automatically by `TryFromSexp for SEXP` — you only need to call
+/// this directly in `extern "C-unwind"` functions that receive raw SEXPs.
+///
+/// For contiguous types (INTSXP, REALSXP, LGLSXP, RAWSXP, CPLXSXP),
+/// calls `DATAPTR_RO` to trigger materialization. For STRSXP, iterates
+/// `STRING_ELT` to force each element to materialize.
+///
 /// # Safety
 ///
-/// Must be called on the R main thread.
+/// Must be called on the R main thread (materialization invokes R internals).
 #[inline]
 pub unsafe fn ensure_materialized(sexp: SEXP) -> SEXP {
     if unsafe { ffi::ALTREP(sexp) } != 0 {
