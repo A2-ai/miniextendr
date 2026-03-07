@@ -10,13 +10,13 @@ fn main() {
 
 #[divan::bench]
 fn run_on_worker_no_r() {
-    let out: i32 = run_on_worker(|| 7);
+    let out: i32 = run_on_worker(|| 7).unwrap();
     divan::black_box(out);
 }
 
 #[divan::bench]
 fn run_on_worker_with_r_thread() {
-    let out = run_on_worker(|| with_r_thread(|| unsafe { ffi::Rf_ScalarInteger(1) }));
+    let out = run_on_worker(|| with_r_thread(|| unsafe { ffi::Rf_ScalarInteger(1) })).unwrap();
     divan::black_box(out);
 }
 
@@ -35,7 +35,7 @@ const SATURATION_COUNTS: &[usize] = &[1, 5, 20, 100];
 #[divan::bench(args = SATURATION_COUNTS)]
 fn worker_channel_saturation(n: usize) {
     for i in 0..n {
-        let out: i32 = run_on_worker(move || i as i32);
+        let out: i32 = run_on_worker(move || i as i32).unwrap();
         divan::black_box(out);
     }
 }
@@ -55,7 +55,8 @@ fn worker_batching(n: usize) {
             sum += unsafe { ffi::Rf_asInteger(sexp) } as i32;
         }
         divan::black_box(sum);
-    });
+    })
+    .unwrap();
 }
 
 // =============================================================================
@@ -67,6 +68,6 @@ const PAYLOAD_SIZES: &[usize] = &[8, 256, 4096, 65536];
 #[divan::bench(args = PAYLOAD_SIZES)]
 fn worker_payload_size(size: usize) {
     let data = vec![0u8; size];
-    let out: usize = run_on_worker(move || data.len());
+    let out: usize = run_on_worker(move || data.len()).unwrap();
     divan::black_box(out);
 }
