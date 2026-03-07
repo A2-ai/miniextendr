@@ -55,7 +55,6 @@ indicatif = ["miniextendr-api/indicatif"]
 macro-coverage = ["miniextendr-api/macro-coverage"]
 debug-preserve = ["miniextendr-api/debug-preserve"]
 growth-debug = ["miniextendr-api/growth-debug"]
-release-thread-check = ["miniextendr-api/release-thread-check"]
 # Project-wide defaults for #[miniextendr] options
 default-strict = ["miniextendr-api/default-strict"]
 default-coerce = ["miniextendr-api/default-coerce"]

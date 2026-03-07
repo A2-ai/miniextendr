@@ -138,16 +138,11 @@ test_that("main_thread function R error with drops still drops resources", {
   )
 })
 
-# Wrong thread detection
-# Note: This test only works in debug builds because the thread check is behind
-# #[cfg(debug_assertions)]. In release builds, the function will succeed.
-# We skip this test since rpkg is built in release mode.
+# Checked R API calls from worker thread are routed to main thread via
+# with_r_thread (all return types, including pointers). This should succeed.
 
-# test_that("calling checked R API from worker without with_r_thread panics clearly", {
-#   expect_error(
-#     miniextendr:::unsafe_C_test_wrong_thread_r_api(),
-#     "non-main thread"
-#   )
+# test_that("checked R API from worker thread is routed to main", {
+#   expect_no_error(miniextendr:::unsafe_C_test_wrong_thread_r_api())
 # })
 
 # Nested wrapper tests
