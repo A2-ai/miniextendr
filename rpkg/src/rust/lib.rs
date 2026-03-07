@@ -592,22 +592,27 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
     LazyIntSeqClass(data).into_sexp()
 }
 
+/// Check if a lazy int seq ALTREP has been materialized.
+///
+/// Takes raw SEXP (extern "C-unwind") because auto-materialization in
+/// TryFromSexp for SEXP would trigger materialization before we can inspect it.
 /// @noRd
 #[miniextendr]
-pub fn lazy_int_seq_is_materialized(x: SEXP) -> bool {
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
     use miniextendr_api::altrep_data1_as;
     use miniextendr_api::ffi::ALTREP;
 
-    // Check if it's an ALTREP object
-    if unsafe { ALTREP(x) } == 0 {
-        return false;
-    }
-
-    // Try to extract the data
-    match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {
-        Some(data) => data.materialized.is_some(),
-        None => false,
-    }
+    let result = if unsafe { ALTREP(x) } == 0 {
+        false
+    } else {
+        match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {
+            Some(data) => data.materialized.is_some(),
+            None => false,
+        }
+    };
+    result.into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -1904,7 +1909,7 @@ miniextendr_module! {
     // Lazy materialization ALTREP example
     struct LazyIntSeqClass;
     fn lazy_int_seq;
-    fn lazy_int_seq_is_materialized;
+    extern "C-unwind" fn C_lazy_int_seq_is_materialized;
 
     // Logical ALTREP
     struct ConstantLogicalClass;
