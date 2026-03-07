@@ -1,12 +1,16 @@
 use miniextendr_api::altrep_sexp::{AltrepSexp, ensure_materialized};
 use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
+use miniextendr_api::IntoR;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Check if a SEXP is ALTREP and return info about it.
 ///
+/// Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection.
 /// Returns a character vector: c(is_altrep, sexptype, length).
 #[miniextendr]
-pub fn altrep_sexp_check(x: SEXP) -> Vec<String> {
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_altrep_sexp_check(x: SEXP) -> SEXP {
     let is_altrep = unsafe { ffi::ALTREP(x) } != 0;
     let sexptype = (unsafe { ffi::TYPEOF(x) }) as SEXPTYPE;
     let len = (unsafe { ffi::Rf_xlength(x) }) as usize;
@@ -16,84 +20,83 @@ pub fn altrep_sexp_check(x: SEXP) -> Vec<String> {
         format!("sexptype={:?}", sexptype),
         format!("length={}", len),
     ]
+    .into_sexp()
 }
 
 /// Try to wrap a SEXP in AltrepSexp and materialize it as integers.
 ///
-/// Returns the materialized Vec<i32>, or errors if not ALTREP or not INTSXP.
+/// Uses AltrepSexp parameter — only accepts ALTREP vectors.
 #[miniextendr]
-pub fn altrep_sexp_materialize_int(x: SEXP) -> Vec<i32> {
-    let altrep = AltrepSexp::try_wrap(x)
-        .expect("expected an ALTREP vector");
-
-    assert_eq!(altrep.sexptype(), SEXPTYPE::INTSXP, "expected INTSXP");
-
-    let slice = unsafe { altrep.materialize_integer() };
+pub fn altrep_sexp_materialize_int(x: AltrepSexp) -> Vec<i32> {
+    assert_eq!(x.sexptype(), SEXPTYPE::INTSXP, "expected INTSXP");
+    let slice = unsafe { x.materialize_integer() };
     slice.to_vec()
 }
 
 /// Try to wrap a SEXP in AltrepSexp and materialize it as doubles.
 ///
-/// Returns the materialized Vec<f64>, or errors if not ALTREP or not REALSXP.
+/// Uses AltrepSexp parameter — only accepts ALTREP vectors.
 #[miniextendr]
-pub fn altrep_sexp_materialize_real(x: SEXP) -> Vec<f64> {
-    let altrep = AltrepSexp::try_wrap(x)
-        .expect("expected an ALTREP vector");
-
-    assert_eq!(altrep.sexptype(), SEXPTYPE::REALSXP, "expected REALSXP");
-
-    let slice = unsafe { altrep.materialize_real() };
+pub fn altrep_sexp_materialize_real(x: AltrepSexp) -> Vec<f64> {
+    assert_eq!(x.sexptype(), SEXPTYPE::REALSXP, "expected REALSXP");
+    let slice = unsafe { x.materialize_real() };
     slice.to_vec()
 }
 
 /// Try to wrap a SEXP in AltrepSexp and materialize strings.
 ///
-/// Returns character vector, with NA preserved.
+/// Uses AltrepSexp parameter — only accepts ALTREP vectors.
 #[miniextendr]
-pub fn altrep_sexp_materialize_strings(x: SEXP) -> Vec<Option<String>> {
-    let altrep = AltrepSexp::try_wrap(x)
-        .expect("expected an ALTREP vector");
-
-    assert_eq!(altrep.sexptype(), SEXPTYPE::STRSXP, "expected STRSXP");
-
-    unsafe { altrep.materialize_strings() }
+pub fn altrep_sexp_materialize_strings(x: AltrepSexp) -> Vec<Option<String>> {
+    assert_eq!(x.sexptype(), SEXPTYPE::STRSXP, "expected STRSXP");
+    unsafe { x.materialize_strings() }
 }
 
 /// Use ensure_materialized on any SEXP, then extract as integer vector.
 ///
-/// Works whether or not the input is ALTREP — it materializes if needed
-/// and passes through if not.
+/// Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection,
+/// then materializes and converts normally.
 #[miniextendr]
-pub fn altrep_sexp_ensure_materialized_int(x: SEXP) -> Vec<i32> {
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_altrep_ensure_materialized_int(x: SEXP) -> SEXP {
     let materialized = unsafe { ensure_materialized(x) };
-
-    // After ensure_materialized, it's safe to convert normally
-    miniextendr_api::from_r::TryFromSexp::try_from_sexp(materialized).unwrap()
+    let result: Vec<i32> =
+        miniextendr_api::from_r::TryFromSexp::try_from_sexp(materialized).unwrap();
+    result.into_sexp()
 }
 
 /// Use ensure_materialized on any SEXP, then extract as string vector.
 ///
-/// Works for both ALTREP and non-ALTREP STRSXP.
+/// Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection.
 #[miniextendr]
-pub fn altrep_sexp_ensure_materialized_str(x: SEXP) -> Vec<Option<String>> {
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_altrep_ensure_materialized_str(x: SEXP) -> SEXP {
     let materialized = unsafe { ensure_materialized(x) };
-
-    miniextendr_api::from_r::TryFromSexp::try_from_sexp(materialized).unwrap()
+    let result: Vec<Option<String>> =
+        miniextendr_api::from_r::TryFromSexp::try_from_sexp(materialized).unwrap();
+    result.into_sexp()
 }
 
-/// Return whether try_wrap returns Some (ALTREP) or None (non-ALTREP).
+/// Return whether a SEXP is ALTREP.
+///
+/// Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection.
 #[miniextendr]
-pub fn altrep_sexp_is_altrep(x: SEXP) -> bool {
-    AltrepSexp::try_wrap(x).is_some()
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_altrep_sexp_is_altrep(x: SEXP) -> SEXP {
+    let is_altrep = AltrepSexp::try_wrap(x).is_some();
+    is_altrep.into_sexp()
 }
 
 miniextendr_module! {
     mod altrep_sexp_tests;
-    fn altrep_sexp_check;
+    extern "C-unwind" fn C_altrep_sexp_check;
     fn altrep_sexp_materialize_int;
     fn altrep_sexp_materialize_real;
     fn altrep_sexp_materialize_strings;
-    fn altrep_sexp_ensure_materialized_int;
-    fn altrep_sexp_ensure_materialized_str;
-    fn altrep_sexp_is_altrep;
+    extern "C-unwind" fn C_altrep_ensure_materialized_int;
+    extern "C-unwind" fn C_altrep_ensure_materialized_str;
+    extern "C-unwind" fn C_altrep_sexp_is_altrep;
 }

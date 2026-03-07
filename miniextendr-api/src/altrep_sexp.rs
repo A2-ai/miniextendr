@@ -223,6 +223,24 @@ impl AltrepSexp {
     }
 }
 
+impl crate::from_r::TryFromSexp for AltrepSexp {
+    type Error = crate::from_r::SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        AltrepSexp::try_wrap(sexp).ok_or_else(|| {
+            crate::from_r::SexpError::InvalidValue(
+                "expected an ALTREP vector but got a non-ALTREP SEXP".to_string(),
+            )
+        })
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
 impl std::fmt::Debug for AltrepSexp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AltrepSexp")

@@ -64,7 +64,7 @@ test_that("lazy materialization element access works", {
   lazy <- lazy_int_seq(1L, 100L, 1L)
 
   # Check initial state is NOT materialized
-  expect_false(lazy_int_seq_is_materialized(lazy))
+  expect_false(unsafe_C_lazy_int_seq_is_materialized(lazy))
 
   # Element access should work without materialization
   expect_equal(lazy[1], 1L)
@@ -72,7 +72,7 @@ test_that("lazy materialization element access works", {
   expect_equal(lazy[100], 100L)
 
   # Still should not be materialized after element access
-  expect_false(lazy_int_seq_is_materialized(lazy))
+  expect_false(unsafe_C_lazy_int_seq_is_materialized(lazy))
 })
 
 test_that("lazy materialization sum uses O(1) formula", {
@@ -82,20 +82,20 @@ test_that("lazy materialization sum uses O(1) formula", {
   expect_equal(sum(big_lazy), 500000500000)
 
   # Still not materialized
-  expect_false(lazy_int_seq_is_materialized(big_lazy))
+  expect_false(unsafe_C_lazy_int_seq_is_materialized(big_lazy))
 })
 
 test_that("lazy materialization triggers on dataptr", {
   lazy <- lazy_int_seq(1L, 10L, 1L)
 
   # Not materialized initially
-  expect_false(lazy_int_seq_is_materialized(lazy))
+  expect_false(unsafe_C_lazy_int_seq_is_materialized(lazy))
 
   # Force materialization via arithmetic that requires dataptr
   y <- lazy + 0L
 
   # Now it should be materialized
-  expect_true(lazy_int_seq_is_materialized(lazy))
+  expect_true(unsafe_C_lazy_int_seq_is_materialized(lazy))
 
   # Check values are still correct
   expect_equal(y, 1:10)
