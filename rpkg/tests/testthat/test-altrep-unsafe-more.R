@@ -9,8 +9,8 @@ test_that("ALTREP constructors produce vectors", {
 
 test_that("lazy_int_seq_is_materialized reflects state", {
   lazy <- lazy_int_seq(1L, 5L, 1L)
-  expect_false(lazy_int_seq_is_materialized(lazy))
+  expect_false(unsafe_C_lazy_int_seq_is_materialized(lazy))
   # force materialization
   tmp <- lazy + 0L
-  expect_true(lazy_int_seq_is_materialized(lazy))
+  expect_true(unsafe_C_lazy_int_seq_is_materialized(lazy))
 })
