@@ -24,6 +24,7 @@ WrapperDemo R6 Class
 \if{html}{\out{<a id="method-WrapperDemo-new"></a>}}
 \if{latex}{\out{\hypertarget{method-WrapperDemo-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new WrapperDemo
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{WrapperDemo$new(value, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -31,6 +32,8 @@ WrapperDemo R6 Class
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
+\item{\code{value}}{Initial integer value.}
+
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
 \if{html}{\out{</div>}}
@@ -40,6 +43,7 @@ WrapperDemo R6 Class
 \if{html}{\out{<a id="method-WrapperDemo-add_one"></a>}}
 \if{latex}{\out{\hypertarget{method-WrapperDemo-add_one}{}}}
 \subsection{Method \code{add_one()}}{
+Increment the value by one.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{WrapperDemo$add_one()}\if{html}{\out{</div>}}
 }
@@ -49,15 +53,24 @@ WrapperDemo R6 Class
 \if{html}{\out{<a id="method-WrapperDemo-add_by"></a>}}
 \if{latex}{\out{\hypertarget{method-WrapperDemo-add_by}{}}}
 \subsection{Method \code{add_by()}}{
+Add a custom amount to the value
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{WrapperDemo$add_by(by)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{by}}{Amount to add.}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-WrapperDemo-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-WrapperDemo-get_value}{}}}
 \subsection{Method \code{get_value()}}{
+Get the current value.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{WrapperDemo$get_value()}\if{html}{\out{</div>}}
 }
