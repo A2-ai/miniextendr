@@ -1039,7 +1039,22 @@ pub fn miniextendr(
             }
         }
     } else {
-        // Pure Rust functions: use worker thread strategy
+        // Pure Rust functions: use worker thread strategy.
+        // Emit a compile-time check that the `worker-thread` feature is enabled.
+        // Without it, `run_on_worker` is a stub that runs inline (silent degradation).
+        // Check both `worker-thread` (direct) and `default-worker` (implies worker-thread
+        // via miniextendr-api, but the user crate may only have the latter in its features).
+        let worker_feature_check = {
+            let fn_name = rust_ident.to_string();
+            let msg = format!(
+                "`#[miniextendr(worker)]` on `{fn_name}` requires the `worker-thread` cargo feature. \
+                 Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
+            );
+            quote::quote! {
+                #[cfg(not(any(feature = "worker-thread", feature = "default-worker")))]
+                compile_error!(#msg);
+            }
+        };
         let c_wrapper_doc = format!(
             "C wrapper for [`{}`] (worker thread). See [`{}`] for R wrapper.",
             rust_ident, r_wrapper_generator
@@ -1063,6 +1078,8 @@ pub fn miniextendr(
         if error_in_r {
             // error_in_r: run_on_worker returns Result; Err → tagged error value
             quote::quote! {
+                #worker_feature_check
+
                 #[doc = #c_wrapper_doc]
                 #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
                 #[doc = #source_loc_doc]
@@ -1103,6 +1120,8 @@ pub fn miniextendr(
         } else {
             // run_on_worker returns Result; Err → R error via Rf_error
             quote::quote! {
+                #worker_feature_check
+
                 #[doc = #c_wrapper_doc]
                 #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
                 #[doc = #source_loc_doc]
@@ -1948,12 +1967,26 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     // Generate match_arg choices helper call defs for registration (per-function)
     // Every #[miniextendr] function generates a MATCH_ARG_CALL_DEFS_* array (empty if no match_arg params)
-    let match_arg_call_defs: Vec<syn::Expr> = parsed_module
+    let match_arg_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .functions
         .iter()
         .map(|f| {
             let call_defs_static = f.match_arg_call_defs_ident();
-            syn::parse_quote!(#call_defs_static)
+            let cfg_attrs = extract_cfg_attrs(&f.attrs);
+            (cfg_attrs, syn::parse_quote!(#call_defs_static))
+        })
+        .collect();
+    let match_arg_extend_calls: Vec<proc_macro2::TokenStream> = match_arg_call_defs_with_attrs
+        .iter()
+        .map(|(cfg_attrs, expr)| {
+            if cfg_attrs.is_empty() {
+                quote::quote!(entries.extend_from_slice(&#expr);)
+            } else {
+                quote::quote! {
+                    #(#cfg_attrs)*
+                    entries.extend_from_slice(&#expr);
+                }
+            }
         })
         .collect();
 
@@ -2280,7 +2313,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(entries.extend_from_slice(&#impl_call_defs);)*
             #(entries.extend_from_slice(&#trait_impl_call_defs);)*
             #(entries.extend_from_slice(&#rdata_call_defs);)*
-            #(entries.extend_from_slice(&#match_arg_call_defs);)*
+            #(#match_arg_extend_calls)*
             entries
         }
 

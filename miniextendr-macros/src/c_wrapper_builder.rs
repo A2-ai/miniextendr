@@ -397,6 +397,19 @@ impl CWrapperContext {
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
+        // Compile-time check: worker dispatch requires the `worker-thread` feature.
+        // Check both `worker-thread` (direct) and `default-worker` (implies worker-thread
+        // via miniextendr-api, but the user crate may only have the latter in its features).
+        let fn_name = self.fn_ident.to_string();
+        let feature_msg = format!(
+            "`#[miniextendr(worker)]` on `{fn_name}` requires the `worker-thread` cargo feature. \
+             Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
+        );
+        let worker_feature_check = quote! {
+            #[cfg(not(any(feature = "worker-thread", feature = "default-worker")))]
+            compile_error!(#feature_msg);
+        };
+
         let pre_call_checks = if self.check_interrupt {
             quote! {
                 unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
@@ -442,6 +455,8 @@ impl CWrapperContext {
         if self.error_in_r {
             // error_in_r: run_on_worker returns Result; Err → tagged error value
             quote! {
+                #worker_feature_check
+
                 #[doc = #doc]
                 #[doc = #source_loc_doc]
                 #[doc = concat!("Generated from source file `", file!(), "`.")]
@@ -479,6 +494,8 @@ impl CWrapperContext {
         } else {
             // run_on_worker returns Result; Err → R error via Rf_errorcall
             quote! {
+                #worker_feature_check
+
                 #[doc = #doc]
                 #[doc = #source_loc_doc]
                 #[doc = concat!("Generated from source file `", file!(), "`.")]

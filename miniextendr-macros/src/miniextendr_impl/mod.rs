@@ -2146,11 +2146,14 @@ pub fn generate_method_c_wrapper(
 
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
-    // Static methods use worker thread by default, main thread only when explicitly requested
+    // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(worker)]
+    // or by the default-worker feature flag)
     let thread_strategy = if method.method_attrs.unsafe_main_thread || method.env.is_instance() {
         ThreadStrategy::MainThread
-    } else {
+    } else if method.method_attrs.worker {
         ThreadStrategy::WorkerThread
+    } else {
+        ThreadStrategy::MainThread
     };
 
     // Build rust argument names from the signature
