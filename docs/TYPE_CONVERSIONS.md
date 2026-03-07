@@ -49,6 +49,19 @@ These are particularly useful with `#[derive(DataFrameRow)]` where row fields ca
 | `logical` | `Option<bool>` | NA → `None` |
 | `character` | `Option<String>` | NA → `None` |
 
+### ALTREP-Aware Types
+
+R frequently passes ALTREP vectors (e.g., `1:10`, `seq_len(N)`) to Rust. All
+parameter types handle this transparently:
+
+| Rust Type | ALTREP Handling |
+|-----------|-----------------|
+| `Vec<i32>`, `&[f64]`, etc. | Auto-materialized during conversion |
+| `SEXP` | Auto-materialized via `ensure_materialized` |
+| `AltrepSexp` | Accepted only if ALTREP, `!Send + !Sync` |
+
+See [Receiving ALTREP from R](ALTREP_SEXP.md) for details.
+
 ---
 
 ## NA Value Representation
