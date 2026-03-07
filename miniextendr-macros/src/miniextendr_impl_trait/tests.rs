@@ -24,6 +24,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         sig,
         has_self,
         is_mut: false,
+        worker: false,
         unsafe_main_thread: false,
         coerce: false,
         check_interrupt: false,

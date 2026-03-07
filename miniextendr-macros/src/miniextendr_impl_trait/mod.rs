@@ -127,6 +127,9 @@ struct TraitMethod {
     has_self: bool,
     /// Whether receiver is `&mut self` (vs `&self`). Only meaningful if `has_self` is true.
     is_mut: bool,
+    /// When true, dispatches to the worker thread via `run_on_worker`.
+    /// Set by explicit `#[miniextendr(worker)]` or the `default-worker` feature flag.
+    worker: bool,
     /// When true, forces execution on R's main thread via `unsafe(main_thread)`.
     unsafe_main_thread: bool,
     /// Enable automatic type coercion for all parameters via `Rf_coerceVector`.
@@ -663,6 +666,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 sig,
                 has_self,
                 is_mut,
+                worker: cfg!(feature = "default-worker"),
                 unsafe_main_thread: false,
                 coerce: false,
                 check_interrupt: false,
