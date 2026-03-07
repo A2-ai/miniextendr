@@ -217,6 +217,7 @@ pub mod altrep;
 pub mod altrep_bridge;
 pub mod altrep_data;
 pub mod altrep_impl;
+pub mod altrep_sexp;
 pub mod altrep_traits;
 
 // Re-export for backward compatibility - RegisterAltrep was moved from altrep_registration to altrep
@@ -270,8 +271,9 @@ pub use altrep_data::{
     WindowedIterRealData,
     WindowedIterState,
 };
-// Re-export RBase enum and AltrepGuard
+// Re-export RBase enum, AltrepGuard, and AltrepSexp
 pub use altrep::RBase;
+pub use altrep_sexp::{AltrepSexp, ensure_materialized};
 pub use altrep_traits::AltrepGuard;
 
 // ALTREP package name global - set by C entrypoint before ALTREP registration
