@@ -116,7 +116,7 @@ check-features:
         "default-strict,default-coerce,default-r6"
         "default-strict,default-s7,default-worker"
         # diagnostic features
-        "growth-debug,materialization-tracking,release-thread-check"
+        "growth-debug,materialization-tracking"
         # all features together
         "rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi"
     )

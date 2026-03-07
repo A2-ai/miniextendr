@@ -98,20 +98,19 @@ See [NONAPI.md](NONAPI.md) for the full tracking list.
 
 ### `worker-thread`
 
-Enables the dedicated worker thread infrastructure. Without this feature, `run_on_worker()`,
-`with_r_thread()`, and related APIs are lightweight inline stubs that execute closures
-directly on the calling thread (no thread dispatch).
+Enables the dedicated worker thread infrastructure. Without this feature, `run_on_worker()`
+and `with_r_thread()` are lightweight inline stubs that execute closures directly on the
+calling thread (no thread dispatch).
 
 **With the feature enabled:**
 - `miniextendr_runtime_init()` spawns a dedicated worker thread with bidirectional channels
-- `run_on_worker(f)` dispatches `f` to the worker thread, catches panics
+- `run_on_worker(f)` dispatches `f` to the worker thread, returns `Result<T, String>`
 - `with_r_thread(f)` routes `f` back to R's main thread from the worker
 
 **Without the feature (the default):**
 - `miniextendr_runtime_init()` only records the main thread ID
-- `run_on_worker(f)` → `f()` (inline)
-- `with_r_thread(f)` → `f()` (inline, with init check)
-- `has_worker_context()` → `false`
+- `run_on_worker(f)` → `Ok(f())` (inline)
+- `with_r_thread(f)` → `f()` (inline, panics if not on main thread)
 
 The `default-worker` feature implies `worker-thread`.
 
