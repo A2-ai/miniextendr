@@ -333,12 +333,6 @@ pub use worker::{Sendable, is_r_main_thread, with_r_thread};
 // Required exports for generated code and initialization
 pub use worker::miniextendr_runtime_init;
 
-// Advanced/internal worker items remain under worker:: namespace:
-// - has_worker_context()
-// - assert_r_main_thread_for_pointer_api()
-// - panic_message_to_r_error()
-// - run_on_worker() / run_on_worker_result() (used by macro-generated code)
-
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
 

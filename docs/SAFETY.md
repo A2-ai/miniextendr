@@ -232,27 +232,22 @@ but can cause issues in other contexts.
 
 ## FFI Function Categories
 
-Functions in `ffi.rs` marked with `#[r_ffi_checked]` fall into two categories:
+All non-variadic functions in `ffi.rs` marked with `#[r_ffi_checked]` behave
+identically: they are routed to the main thread via `with_r_thread` when called
+from the worker thread. The return value is wrapped in `Sendable` and sent back
+to the caller. This applies to both value-returning functions
+(`Rf_ScalarInteger`, `Rf_allocVector`) and pointer-returning functions
+(`INTEGER`, `REAL`, `DATAPTR`).
 
-### Value-returning functions
+Pointer-returning functions are safe to route because the underlying SEXP must
+be GC-protected by the caller, and R's GC only runs during R API calls which
+are serialized through `with_r_thread`.
 
-Examples: `Rf_ScalarInteger`, `Rf_allocVector`
+By default (main thread execution), all checked wrappers run inline. With the
+`worker-thread` feature, they route through `with_r_thread`.
 
-By default (main thread execution), these run inline. With the `worker-thread`
-feature, they are automatically routed to the main thread via `with_r_thread`
-when called from the worker.
-
-### Pointer-returning functions
-
-Examples: `INTEGER`, `REAL`, `DATAPTR`
-
-These **must** be called on the main thread and panic otherwise. The returned
-pointer could become invalid if:
-- R's GC runs on the main thread while another thread holds the pointer
-- The SEXP is not protected
-
-**Pattern**: Access data pointers on the main thread and copy data within
-the same scope, rather than holding pointers across thread boundaries.
+Without the `worker-thread` feature, calling checked wrappers from a non-main
+thread panics (there is no routing infrastructure to fall back on).
 
 ## Initialization Requirements
 
