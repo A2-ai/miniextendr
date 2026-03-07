@@ -69,22 +69,29 @@ pub struct WrapperDemo {
     value: i32,
 }
 
+/// Demo class for testing R wrapper attributes on methods.
 #[miniextendr(r6)]
 impl WrapperDemo {
+    /// Create a new WrapperDemo.
+    /// @param value Initial integer value.
     pub fn new(value: i32) -> Self {
         Self { value }
     }
 
+    /// Increment the value by one.
     #[miniextendr(r_name = "add_one")]
     pub fn increment(&mut self) {
         self.value += 1;
     }
 
+    /// Add a custom amount to the value.
+    /// @param by Amount to add.
     #[miniextendr(r_entry = "by <- as.integer(by)")]
     pub fn add_by(&mut self, by: i32) {
         self.value += by;
     }
 
+    /// Get the current value.
     #[miniextendr(r_on_exit = "message(\"method cleanup\")")]
     pub fn get_value(&self) -> i32 {
         self.value
