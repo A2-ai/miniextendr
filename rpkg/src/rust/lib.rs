@@ -97,6 +97,7 @@ pub use miniextendr_api::serde_crate as serde;
 
 // Test modules
 mod adapter_traits_tests;
+mod altrep_sexp_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
 mod as_coerce_tests;
@@ -1765,6 +1766,7 @@ miniextendr_module! {
 
     // Aggregate all test modules
     use adapter_traits_tests;
+    use altrep_sexp_tests;
     use as_coerce_tests;
     use panic_tests;
     use unwind_protect_tests;
