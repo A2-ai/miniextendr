@@ -1538,6 +1538,16 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         // Resolve feature defaults for fields not explicitly set
         let resolved_error_in_r = error_in_r.unwrap_or(true);
+
+        // Validate: rng requires error_in_r
+        if rng && !resolved_error_in_r {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`rng` requires `error_in_r` (PutRNGstate must run after .Call returns; \
+                 non-error_in_r diverges via longjmp, skipping PutRNGstate)",
+            ));
+        }
+
         if resolved_error_in_r && unwrap_in_r {
             // This can happen when error_in_r is the default and unwrap_in_r is explicit
             return Err(syn::Error::new(

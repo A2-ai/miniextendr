@@ -17,7 +17,7 @@ new_percent <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   data <- .val
@@ -66,7 +66,7 @@ value.Percent <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -97,7 +97,7 @@ scale.Percent <- function(x, factor, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   x

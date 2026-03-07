@@ -27,7 +27,7 @@ Counter <- R6::R6Class("Counter",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -39,7 +39,7 @@ Counter <- R6::R6Class("Counter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -50,7 +50,7 @@ Counter <- R6::R6Class("Counter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       invisible(self)
@@ -77,7 +77,7 @@ Counter$from_value <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   Counter$new(.ptr = .val)

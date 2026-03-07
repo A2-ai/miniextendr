@@ -27,7 +27,7 @@ pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
             indent
         ),
         format!(
-            "{}    list(message = .val$error, call = sys.call(), kind = .val$kind)",
+            "{}    list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)",
             indent
         ),
         format!("{}  ))", indent),
@@ -49,7 +49,7 @@ pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
          if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n      \
            stop(structure(\n        \
              class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n        \
-             list(message = .val$error, call = sys.call(), kind = .val$kind)\n      \
+             list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)\n      \
            ))\n    \
          }}\n    \
          {inner}\n  \
@@ -70,7 +70,7 @@ pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String
          if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n    \
            stop(structure(\n      \
              class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n      \
-             list(message = .val$error, call = sys.call(), kind = .val$kind)\n    \
+             list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)\n    \
            ))\n  \
          }}\n  \
          {final_return}"

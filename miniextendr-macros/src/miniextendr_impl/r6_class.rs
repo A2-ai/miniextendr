@@ -142,7 +142,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     .to_string(),
             );
             lines.push(
-                "            list(message = .val$error, call = sys.call(), kind = .val$kind)"
+                "            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)"
                     .to_string(),
             );
             lines.push("          ))".to_string());

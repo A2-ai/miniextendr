@@ -17,7 +17,7 @@ Widget$new <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -39,7 +39,7 @@ Widget$update <- function(step = 1L, verbose = FALSE) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self

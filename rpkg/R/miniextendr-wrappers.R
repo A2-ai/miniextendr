@@ -33,7 +33,7 @@ altrep_compact_int <- function(n, start, step) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -49,7 +49,7 @@ altrep_from_doubles <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -65,7 +65,7 @@ altrep_from_strings <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -80,7 +80,7 @@ altrep_from_logicals <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -96,7 +96,7 @@ altrep_from_raw <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -112,7 +112,7 @@ altrep_from_integers <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -127,7 +127,7 @@ altrep_from_list <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -142,7 +142,7 @@ small_vec_copy <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -157,7 +157,7 @@ large_vec_altrep <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -176,7 +176,7 @@ lazy_squares <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -195,7 +195,7 @@ boxed_data_altrep <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -214,7 +214,7 @@ bench_vec_copy <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -233,7 +233,7 @@ bench_vec_altrep <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -248,7 +248,7 @@ constant_int <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -263,7 +263,7 @@ constant_real <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -284,7 +284,7 @@ arith_seq <- function(from, step, length_out) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -307,7 +307,7 @@ lazy_int_seq <- function(from, to, by) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -322,7 +322,7 @@ unsafe_C_lazy_int_seq_is_materialized <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -341,7 +341,7 @@ constant_logical <- function(value, n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -360,7 +360,7 @@ lazy_string <- function(prefix, n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -378,7 +378,7 @@ repeating_raw <- function(pattern, n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -397,7 +397,7 @@ unit_circle <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -423,7 +423,7 @@ integer_sequence_list <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -442,7 +442,7 @@ boxed_ints <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -457,7 +457,7 @@ static_ints <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -476,7 +476,7 @@ leaked_ints <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -491,7 +491,7 @@ static_strings <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -512,7 +512,7 @@ iter_int_range <- function(from, to) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -531,7 +531,7 @@ iter_real_squares <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -550,7 +550,7 @@ iter_logical_alternating <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -569,7 +569,7 @@ iter_raw_bytes <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -588,7 +588,7 @@ iter_string_items <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -607,7 +607,7 @@ iter_int_from_u16 <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -626,7 +626,7 @@ iter_real_from_f32 <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -645,7 +645,7 @@ vec_int_altrep <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -664,7 +664,7 @@ vec_real_altrep <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -683,7 +683,7 @@ vec_complex_altrep <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -702,7 +702,7 @@ boxed_reals <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -721,7 +721,7 @@ boxed_logicals <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -740,7 +740,7 @@ boxed_raw <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -759,7 +759,7 @@ boxed_strings <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -778,7 +778,7 @@ boxed_complex <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -799,7 +799,7 @@ range_int_altrep <- function(from, to) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -820,7 +820,7 @@ range_i64_altrep <- function(from, to) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -841,7 +841,7 @@ range_real_altrep <- function(from, to) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -864,7 +864,7 @@ sparse_iter_int <- function(from, to) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -883,7 +883,7 @@ sparse_iter_int_squares <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -906,7 +906,7 @@ sparse_iter_real <- function(from, step, n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -925,7 +925,7 @@ sparse_iter_logical <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -944,7 +944,7 @@ sparse_iter_raw <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -964,7 +964,7 @@ rpkg_enabled_features <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -978,7 +978,7 @@ unsafe_C_altrep_sexp_check <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -992,7 +992,7 @@ altrep_sexp_materialize_int <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1006,7 +1006,7 @@ altrep_sexp_materialize_real <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1020,7 +1020,7 @@ altrep_sexp_materialize_strings <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1034,7 +1034,7 @@ unsafe_C_altrep_ensure_materialized_int <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1048,7 +1048,7 @@ unsafe_C_altrep_ensure_materialized_str <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1062,7 +1062,7 @@ unsafe_C_altrep_sexp_is_altrep <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1090,7 +1090,7 @@ add <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1111,7 +1111,7 @@ add2 <- function(left, right, dummy = NULL) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1132,7 +1132,7 @@ add3 <- function(left, right, dummy = NULL) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1153,7 +1153,7 @@ add4 <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1168,7 +1168,7 @@ nested_panic <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1201,7 +1201,7 @@ add_panic <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1222,7 +1222,7 @@ add_r_error <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1243,7 +1243,7 @@ add_panic_heap <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1264,7 +1264,7 @@ add_r_error_heap <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1285,7 +1285,7 @@ add_left_mut <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1306,7 +1306,7 @@ add_right_mut <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1327,7 +1327,7 @@ add_left_right_mut <- function(left, right) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1342,7 +1342,7 @@ take_and_return_nothing <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1357,7 +1357,7 @@ unsafe_C_just_panic <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1372,7 +1372,7 @@ unsafe_C_panic_and_catch <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1387,7 +1387,7 @@ drop_message_on_success <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1402,7 +1402,7 @@ drop_on_panic <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1417,7 +1417,7 @@ drop_on_panic_with_move <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1432,7 +1432,7 @@ unsafe_C_r_error <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1447,7 +1447,7 @@ unsafe_C_r_error_in_catch <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1462,7 +1462,7 @@ unsafe_C_r_error_in_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1477,7 +1477,7 @@ unsafe_C_r_print_in_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1501,7 +1501,7 @@ unsafe_C_unwind_protect_normal <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1516,7 +1516,7 @@ unsafe_C_unwind_protect_r_error <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1531,7 +1531,7 @@ unsafe_C_unwind_protect_lowlevel_test <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1556,7 +1556,7 @@ greetings_with_named_dots <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1571,7 +1571,7 @@ greetings_with_named_and_unused_dots <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1586,7 +1586,7 @@ greetings_with_nameless_dots <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1605,7 +1605,7 @@ greetings_last_as_named_dots <- function(exclamations, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1624,7 +1624,7 @@ greetings_last_as_named_and_unused_dots <- function(exclamations, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1643,7 +1643,7 @@ greetings_last_as_nameless_dots <- function(exclamations, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1659,7 +1659,7 @@ validate_numeric_args <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1675,7 +1675,7 @@ validate_strict_args <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1691,7 +1691,7 @@ validate_class_args <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1707,7 +1707,7 @@ validate_with_attribute <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1723,7 +1723,7 @@ validate_attr_optional <- function(...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1737,7 +1737,7 @@ error_in_r_panic <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1751,7 +1751,7 @@ error_in_r_result_err <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1765,7 +1765,7 @@ error_in_r_result_ok <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1779,7 +1779,7 @@ error_in_r_option_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1793,7 +1793,7 @@ error_in_r_option_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -1807,7 +1807,7 @@ error_in_r_normal <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1821,7 +1821,7 @@ error_in_r_i32_ok <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1835,7 +1835,7 @@ error_in_r_i32_err <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1853,7 +1853,7 @@ error_in_r_panic_custom <- function(msg) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1868,7 +1868,7 @@ unsafe_C_check_interupt_after <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1883,7 +1883,7 @@ unsafe_C_check_interupt_unwind <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1911,7 +1911,7 @@ test_i32_identity <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1930,7 +1930,7 @@ test_i32_add_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1953,7 +1953,7 @@ test_i32_sum <- function(a, b, c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1972,7 +1972,7 @@ test_f64_identity <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -1991,7 +1991,7 @@ test_f64_add_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2012,7 +2012,7 @@ test_f64_multiply <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2031,7 +2031,7 @@ test_u8_identity <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2050,7 +2050,7 @@ test_u8_add_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2069,7 +2069,7 @@ test_logical_identity <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2088,7 +2088,7 @@ test_logical_not <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2109,7 +2109,7 @@ test_logical_and <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2128,7 +2128,7 @@ test_i32_to_f64 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2147,7 +2147,7 @@ test_f64_to_i32 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2163,7 +2163,7 @@ test_i32_slice_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2179,7 +2179,7 @@ test_i32_slice_sum <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2195,7 +2195,7 @@ test_i32_slice_first <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2211,7 +2211,7 @@ test_i32_slice_last <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2227,7 +2227,7 @@ test_f64_slice_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2243,7 +2243,7 @@ test_f64_slice_sum <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2259,7 +2259,7 @@ test_f64_slice_mean <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2275,7 +2275,7 @@ test_u8_slice_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2291,7 +2291,7 @@ test_u8_slice_sum <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2306,7 +2306,7 @@ test_logical_slice_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2321,7 +2321,7 @@ test_logical_slice_any_true <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2336,7 +2336,7 @@ test_logical_slice_all_true <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2355,7 +2355,7 @@ strict_echo_i64 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2371,7 +2371,7 @@ strict_echo_vec_i64 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2387,7 +2387,7 @@ strict_echo_vec_option_i64 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2406,7 +2406,7 @@ conv_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2421,7 +2421,7 @@ conv_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2440,7 +2440,7 @@ conv_f64_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2455,7 +2455,7 @@ conv_f64_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2474,7 +2474,7 @@ conv_u8_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2489,7 +2489,7 @@ conv_u8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2508,7 +2508,7 @@ conv_rbool_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2523,7 +2523,7 @@ conv_rbool_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2538,7 +2538,7 @@ conv_rlog_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2553,7 +2553,7 @@ conv_rlog_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2572,7 +2572,7 @@ conv_string_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2587,7 +2587,7 @@ conv_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2602,7 +2602,7 @@ conv_str_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2617,7 +2617,7 @@ conv_sexp_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2632,7 +2632,7 @@ conv_sexp_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2651,7 +2651,7 @@ conv_i64_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2666,7 +2666,7 @@ conv_i64_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2686,7 +2686,7 @@ conv_u64_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2701,7 +2701,7 @@ conv_u64_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2720,7 +2720,7 @@ conv_isize_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2735,7 +2735,7 @@ conv_isize_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2755,7 +2755,7 @@ conv_usize_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2770,7 +2770,7 @@ conv_usize_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2789,7 +2789,7 @@ conv_i8_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2804,7 +2804,7 @@ conv_i8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2823,7 +2823,7 @@ conv_i16_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2838,7 +2838,7 @@ conv_i16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2858,7 +2858,7 @@ conv_u16_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2873,7 +2873,7 @@ conv_u16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2893,7 +2893,7 @@ conv_u32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2908,7 +2908,7 @@ conv_u32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2927,7 +2927,7 @@ conv_f32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2942,7 +2942,7 @@ conv_f32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2961,7 +2961,7 @@ conv_opt_i32_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2976,7 +2976,7 @@ conv_opt_i32_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -2991,7 +2991,7 @@ conv_opt_i32_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3010,7 +3010,7 @@ conv_opt_f64_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3025,7 +3025,7 @@ conv_opt_f64_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3040,7 +3040,7 @@ conv_opt_f64_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3059,7 +3059,7 @@ conv_opt_bool_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3074,7 +3074,7 @@ conv_opt_bool_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3089,7 +3089,7 @@ conv_opt_bool_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3108,7 +3108,7 @@ conv_opt_string_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3123,7 +3123,7 @@ conv_opt_string_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3138,7 +3138,7 @@ conv_opt_string_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3157,7 +3157,7 @@ conv_opt_i8_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3176,7 +3176,7 @@ conv_opt_i16_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3195,7 +3195,7 @@ conv_opt_i64_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3214,7 +3214,7 @@ conv_opt_isize_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3234,7 +3234,7 @@ conv_opt_u16_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3254,7 +3254,7 @@ conv_opt_u32_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3274,7 +3274,7 @@ conv_opt_u64_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3294,7 +3294,7 @@ conv_opt_usize_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3313,7 +3313,7 @@ conv_opt_f32_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3332,7 +3332,7 @@ conv_opt_u8_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3351,7 +3351,7 @@ conv_opt_rbool_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3366,7 +3366,7 @@ conv_opt_rlog_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3382,7 +3382,7 @@ conv_slice_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3398,7 +3398,7 @@ conv_slice_f64_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3414,7 +3414,7 @@ conv_slice_u8_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3429,7 +3429,7 @@ conv_slice_rlog_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3444,7 +3444,7 @@ conv_ref_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3459,7 +3459,7 @@ conv_ref_mut_i32_add_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3475,7 +3475,7 @@ conv_slice_mut_i32_add_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3491,7 +3491,7 @@ conv_slice_mut_u8_add_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3506,7 +3506,7 @@ conv_opt_ref_i32_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3522,7 +3522,7 @@ conv_opt_mut_slice_i32_is_some <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3537,7 +3537,7 @@ conv_vec_ref_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3552,7 +3552,7 @@ conv_vec_slice_i32_total_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3567,7 +3567,7 @@ conv_vec_mut_slice_i32_add_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3583,7 +3583,7 @@ conv_vec_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3598,7 +3598,7 @@ conv_vec_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3614,7 +3614,7 @@ conv_vec_f64_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3629,7 +3629,7 @@ conv_vec_f64_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3645,7 +3645,7 @@ conv_vec_u8_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3660,7 +3660,7 @@ conv_vec_u8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3675,7 +3675,7 @@ conv_vec_rlog_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3690,7 +3690,7 @@ conv_vec_rlog_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3706,7 +3706,7 @@ conv_vec_bool_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3721,7 +3721,7 @@ conv_vec_bool_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3737,7 +3737,7 @@ conv_vec_string_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3752,7 +3752,7 @@ conv_vec_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3768,7 +3768,7 @@ conv_vec_i8_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3784,7 +3784,7 @@ conv_vec_i16_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3800,7 +3800,7 @@ conv_vec_i64_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3816,7 +3816,7 @@ conv_vec_isize_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3832,7 +3832,7 @@ conv_vec_u16_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3848,7 +3848,7 @@ conv_vec_u32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3864,7 +3864,7 @@ conv_vec_u64_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3880,7 +3880,7 @@ conv_vec_usize_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3896,7 +3896,7 @@ conv_vec_f32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3912,7 +3912,7 @@ conv_vec_opt_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3927,7 +3927,7 @@ conv_vec_opt_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3943,7 +3943,7 @@ conv_vec_opt_f64_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3958,7 +3958,7 @@ conv_vec_opt_f64_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3974,7 +3974,7 @@ conv_vec_opt_bool_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -3989,7 +3989,7 @@ conv_vec_opt_bool_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4005,7 +4005,7 @@ conv_vec_opt_string_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4020,7 +4020,7 @@ conv_vec_opt_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4035,7 +4035,7 @@ conv_vec_opt_rlog_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4050,7 +4050,7 @@ conv_vec_opt_rbool_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4066,7 +4066,7 @@ conv_vec_opt_i8_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4082,7 +4082,7 @@ conv_vec_opt_u8_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4097,7 +4097,7 @@ conv_hashset_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4112,7 +4112,7 @@ conv_hashset_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4127,7 +4127,7 @@ conv_hashset_u8_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4142,7 +4142,7 @@ conv_hashset_u8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4157,7 +4157,7 @@ conv_hashset_string_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4172,7 +4172,7 @@ conv_hashset_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4187,7 +4187,7 @@ conv_hashset_rlog_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4202,7 +4202,7 @@ conv_hashset_rlog_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4217,7 +4217,7 @@ conv_btreeset_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4232,7 +4232,7 @@ conv_btreeset_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4247,7 +4247,7 @@ conv_btreeset_u8_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4262,7 +4262,7 @@ conv_btreeset_u8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4277,7 +4277,7 @@ conv_btreeset_string_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4292,7 +4292,7 @@ conv_btreeset_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4308,7 +4308,7 @@ conv_hashmap_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4323,7 +4323,7 @@ conv_hashmap_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4339,7 +4339,7 @@ conv_hashmap_f64_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4354,7 +4354,7 @@ conv_hashmap_f64_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4370,7 +4370,7 @@ conv_hashmap_string_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4385,7 +4385,7 @@ conv_hashmap_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4401,7 +4401,7 @@ conv_hashmap_rlog_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4416,7 +4416,7 @@ conv_hashmap_rlog_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4432,7 +4432,7 @@ conv_btreemap_i32_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4447,7 +4447,7 @@ conv_btreemap_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4463,7 +4463,7 @@ conv_btreemap_f64_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4478,7 +4478,7 @@ conv_btreemap_f64_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4494,7 +4494,7 @@ conv_btreemap_string_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4509,7 +4509,7 @@ conv_btreemap_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4525,7 +4525,7 @@ conv_btreemap_rlog_len <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4540,7 +4540,7 @@ conv_btreemap_rlog_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4556,7 +4556,7 @@ conv_list_mut_set_first <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4571,7 +4571,7 @@ conv_result_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4586,7 +4586,7 @@ conv_result_vec_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4601,7 +4601,7 @@ conv_result_i32_ok <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4616,7 +4616,7 @@ conv_result_i32_err <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4631,7 +4631,7 @@ conv_result_f64_ok <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4646,7 +4646,7 @@ conv_result_f64_err <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4661,7 +4661,7 @@ conv_result_string_ok <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4676,7 +4676,7 @@ conv_result_string_err <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4691,7 +4691,7 @@ conv_result_vec_i32_ok <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4706,7 +4706,7 @@ conv_result_vec_i32_err <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4725,7 +4725,7 @@ conv_char_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4740,7 +4740,7 @@ conv_char_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4755,7 +4755,7 @@ conv_vec_i8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4770,7 +4770,7 @@ conv_vec_i16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4785,7 +4785,7 @@ conv_vec_u16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4800,7 +4800,7 @@ conv_vec_f32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4815,7 +4815,7 @@ conv_hashset_i8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4830,7 +4830,7 @@ conv_btreeset_i8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4845,7 +4845,7 @@ conv_hashset_i16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4860,7 +4860,7 @@ conv_btreeset_i16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4875,7 +4875,7 @@ conv_hashset_u16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4890,7 +4890,7 @@ conv_btreeset_u16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4905,7 +4905,7 @@ conv_opt_ref_i32_some_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4920,7 +4920,7 @@ conv_opt_ref_i32_none_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4936,7 +4936,7 @@ conv_opt_vec_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4951,7 +4951,7 @@ conv_opt_vec_i32_some_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4966,7 +4966,7 @@ conv_opt_vec_i32_none_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4982,7 +4982,7 @@ conv_opt_vec_string_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -4997,7 +4997,7 @@ conv_opt_vec_string_some_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5012,7 +5012,7 @@ conv_opt_vec_string_none_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5028,7 +5028,7 @@ conv_opt_hashmap_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5043,7 +5043,7 @@ conv_opt_hashmap_i32_some_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5058,7 +5058,7 @@ conv_opt_hashmap_i32_none_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5073,7 +5073,7 @@ conv_opt_hashset_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5088,7 +5088,7 @@ conv_opt_hashset_i32_some_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5103,7 +5103,7 @@ conv_opt_hashset_i32_none_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5119,7 +5119,7 @@ conv_opt_btreemap_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5134,7 +5134,7 @@ conv_opt_btreemap_i32_some_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5149,7 +5149,7 @@ conv_opt_btreemap_i32_none_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5164,7 +5164,7 @@ conv_vec_hashmap_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5179,7 +5179,7 @@ conv_vec_hashmap_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5194,7 +5194,7 @@ conv_vec_btreemap_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5209,7 +5209,7 @@ conv_vec_btreemap_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5224,7 +5224,7 @@ conv_vec_vec_i32_arg <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5239,7 +5239,7 @@ conv_vec_vec_i32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5254,7 +5254,7 @@ conv_vec_vec_string_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5269,7 +5269,7 @@ conv_vec_option_i64_ret_small <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5284,7 +5284,7 @@ conv_vec_option_i64_ret_big <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5300,7 +5300,7 @@ conv_vec_option_i64_roundtrip <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5315,7 +5315,7 @@ conv_vec_option_u64_ret_small <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5330,7 +5330,7 @@ conv_vec_option_u64_ret_big <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5345,7 +5345,7 @@ conv_vec_option_isize_ret_small <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5360,7 +5360,7 @@ conv_vec_option_usize_ret_small <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5375,7 +5375,7 @@ conv_vec_option_u32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5390,7 +5390,7 @@ conv_vec_option_f32_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5405,7 +5405,7 @@ conv_vec_option_i8_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5420,7 +5420,7 @@ conv_vec_option_i16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5435,7 +5435,7 @@ conv_vec_option_u16_ret <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5450,7 +5450,7 @@ conv_option_i64_some_small <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5465,7 +5465,7 @@ conv_option_i64_some_big <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5480,7 +5480,7 @@ conv_option_i64_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5495,7 +5495,7 @@ conv_option_f32_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5510,7 +5510,7 @@ conv_option_u32_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5525,7 +5525,7 @@ conv_as_named_list_vec <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5540,7 +5540,7 @@ conv_as_named_list_array <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5555,7 +5555,7 @@ conv_as_named_list_heterogeneous <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5570,7 +5570,7 @@ conv_as_named_list_str_keys <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5585,7 +5585,7 @@ conv_as_named_list_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5600,7 +5600,7 @@ conv_as_named_list_duplicate_names <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5615,7 +5615,7 @@ conv_as_named_vector_i32 <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5630,7 +5630,7 @@ conv_as_named_vector_f64 <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5645,7 +5645,7 @@ conv_as_named_vector_string <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5660,7 +5660,7 @@ conv_as_named_vector_option_i32 <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5675,7 +5675,7 @@ conv_as_named_vector_array <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5690,7 +5690,7 @@ conv_as_named_vector_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5705,7 +5705,7 @@ conv_as_named_vector_ext_trait <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5720,7 +5720,7 @@ conv_as_named_list_ext_trait <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5735,7 +5735,7 @@ conv_as_named_list_slice <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5750,7 +5750,7 @@ conv_as_named_vector_slice <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5766,7 +5766,7 @@ conv_named_list_get <- function(config) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5782,7 +5782,7 @@ conv_named_list_contains <- function(config) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5798,7 +5798,7 @@ conv_named_list_len <- function(config) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5814,7 +5814,7 @@ conv_named_list_roundtrip <- function(config) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5833,7 +5833,7 @@ greet <- function(name = "World") {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5852,7 +5852,7 @@ greet_hidden <- function(name = "World") {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5875,7 +5875,7 @@ add_with_defaults <- function(x, y = 0L, z = 1L) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5894,7 +5894,7 @@ with_flag <- function(flag = FALSE) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5923,7 +5923,7 @@ extptr_counter_new <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5938,7 +5938,7 @@ unsafe_C_extptr_counter_get <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5953,7 +5953,7 @@ unsafe_C_extptr_counter_increment <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5974,7 +5974,7 @@ extptr_point_new <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -5989,7 +5989,7 @@ unsafe_C_extptr_point_get_x <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6004,7 +6004,7 @@ unsafe_C_extptr_point_get_y <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6019,7 +6019,7 @@ unsafe_C_extptr_type_mismatch_test <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6034,7 +6034,7 @@ unsafe_C_extptr_null_test <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6049,7 +6049,7 @@ unsafe_C_extptr_is_counter <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6064,7 +6064,7 @@ unsafe_C_extptr_is_point <- function(ptr) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6079,7 +6079,7 @@ test_extptr_on_main_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6104,7 +6104,7 @@ rdata_sidecar_env_new <- function(count, score, flag, name) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6125,7 +6125,7 @@ rdata_sidecar_r6_new <- function(value, label) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6144,7 +6144,7 @@ rdata_sidecar_s3_new <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6167,7 +6167,7 @@ rdata_sidecar_s4_new <- function(slot_int, slot_real, slot_str) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6190,7 +6190,7 @@ rdata_sidecar_s7_new <- function(prop_int, prop_flag, prop_name) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6210,7 +6210,7 @@ rdata_sidecar_vctrs_new <- function(vec_data, vec_label) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6225,7 +6225,7 @@ rdata_sidecar_rawsexp_new <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6244,7 +6244,7 @@ rdata_sidecar_raw_new <- function(byte_val) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6263,7 +6263,7 @@ test_list_builder_length <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6278,7 +6278,7 @@ test_list_builder_set <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6293,7 +6293,7 @@ test_list_set_elt <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6308,7 +6308,7 @@ test_list_set_elt_with <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6327,7 +6327,7 @@ test_strvec_builder_length <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6342,7 +6342,7 @@ test_strvec_builder_set <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6357,7 +6357,7 @@ test_strvec_set_str <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6376,7 +6376,7 @@ test_reprotect_slot_accumulate <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6391,7 +6391,7 @@ test_reprotect_slot_count <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6410,7 +6410,7 @@ test_reprotect_slot_no_growth <- function(iterations) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6425,7 +6425,7 @@ into_sexp_altrep <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6440,7 +6440,7 @@ unsafe_C_test_sexp_equality <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6466,13 +6466,13 @@ r6_standalone_add <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_worker_drop_on_success` (worker_tests.rs:15:26)
+# Generated from Rust fn `C_worker_drop_on_success` (worker_tests.rs:27:26)
 #' @title C worker drop on success
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_worker_drop_on_success`
@@ -6481,13 +6481,13 @@ unsafe_C_worker_drop_on_success <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_worker_drop_on_panic` (worker_tests.rs:28:26)
+# Generated from Rust fn `C_worker_drop_on_panic` (worker_tests.rs:40:26)
 #' @title C worker drop on panic
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_worker_drop_on_panic`
@@ -6496,13 +6496,13 @@ unsafe_C_worker_drop_on_panic <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_simple` (worker_tests.rs:51:26)
+# Generated from Rust fn `C_test_worker_simple` (worker_tests.rs:63:26)
 #' @title C test worker simple
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_simple`
@@ -6511,13 +6511,13 @@ unsafe_C_test_worker_simple <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_with_r_thread` (worker_tests.rs:68:26)
+# Generated from Rust fn `C_test_worker_with_r_thread` (worker_tests.rs:80:26)
 #' @title C test worker with r thread
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_with_r_thread`
@@ -6526,13 +6526,13 @@ unsafe_C_test_worker_with_r_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_multiple_r_calls` (worker_tests.rs:85:26)
+# Generated from Rust fn `C_test_worker_multiple_r_calls` (worker_tests.rs:97:26)
 #' @title C test worker multiple r calls
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_multiple_r_calls`
@@ -6541,13 +6541,13 @@ unsafe_C_test_worker_multiple_r_calls <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_simple` (worker_tests.rs:121:26)
+# Generated from Rust fn `C_test_worker_panic_simple` (worker_tests.rs:133:26)
 #' @title C test worker panic simple
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_simple`
@@ -6556,13 +6556,13 @@ unsafe_C_test_worker_panic_simple <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_with_drops` (worker_tests.rs:132:26)
+# Generated from Rust fn `C_test_worker_panic_with_drops` (worker_tests.rs:144:26)
 #' @title C test worker panic with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_with_drops`
@@ -6571,13 +6571,13 @@ unsafe_C_test_worker_panic_with_drops <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_in_r_thread` (worker_tests.rs:145:26)
+# Generated from Rust fn `C_test_worker_panic_in_r_thread` (worker_tests.rs:157:26)
 #' @title C test worker panic in r thread
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_in_r_thread`
@@ -6586,13 +6586,13 @@ unsafe_C_test_worker_panic_in_r_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_in_r_thread_with_drops` (worker_tests.rs:158:26)
+# Generated from Rust fn `C_test_worker_panic_in_r_thread_with_drops` (worker_tests.rs:170:26)
 #' @title C test worker panic in r thread with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_in_r_thread_with_drops`
@@ -6601,13 +6601,13 @@ unsafe_C_test_worker_panic_in_r_thread_with_drops <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_error_in_r_thread` (worker_tests.rs:178:26)
+# Generated from Rust fn `C_test_worker_r_error_in_r_thread` (worker_tests.rs:190:26)
 #' @title C test worker r error in r thread
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_error_in_r_thread`
@@ -6616,13 +6616,13 @@ unsafe_C_test_worker_r_error_in_r_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_error_with_drops` (worker_tests.rs:191:26)
+# Generated from Rust fn `C_test_worker_r_error_with_drops` (worker_tests.rs:203:26)
 #' @title C test worker r error with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_error_with_drops`
@@ -6631,13 +6631,13 @@ unsafe_C_test_worker_r_error_with_drops <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_calls_then_error` (worker_tests.rs:213:26)
+# Generated from Rust fn `C_test_worker_r_calls_then_error` (worker_tests.rs:225:26)
 #' @title C test worker r calls then error
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_calls_then_error`
@@ -6646,13 +6646,13 @@ unsafe_C_test_worker_r_calls_then_error <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_calls_then_panic` (worker_tests.rs:239:26)
+# Generated from Rust fn `C_test_worker_r_calls_then_panic` (worker_tests.rs:251:26)
 #' @title C test worker r calls then panic
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_calls_then_panic`
@@ -6661,13 +6661,13 @@ unsafe_C_test_worker_r_calls_then_panic <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `test_worker_return_i32` (worker_tests.rs:284:8)
+# Generated from Rust fn `test_worker_return_i32` (worker_tests.rs:296:8)
 #' @title test worker return i32
 #' @noRd
 #' @name rpkg_worker_tests
@@ -6687,13 +6687,13 @@ test_worker_return_i32 <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `test_worker_return_string` (worker_tests.rs:292:8)
+# Generated from Rust fn `test_worker_return_string` (worker_tests.rs:304:8)
 #' @title test worker return string
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_worker_return_string`
@@ -6702,13 +6702,13 @@ test_worker_return_string <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `test_worker_return_f64` (worker_tests.rs:299:8)
+# Generated from Rust fn `test_worker_return_f64` (worker_tests.rs:311:8)
 #' @title test worker return f64
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_worker_return_f64`
@@ -6717,13 +6717,13 @@ test_worker_return_f64 <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_extptr_from_worker` (worker_tests.rs:311:26)
+# Generated from Rust fn `C_test_extptr_from_worker` (worker_tests.rs:323:26)
 #' @title C test extptr from worker
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_extptr_from_worker`
@@ -6732,13 +6732,13 @@ unsafe_C_test_extptr_from_worker <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_multiple_extptrs_from_worker` (worker_tests.rs:329:26)
+# Generated from Rust fn `C_test_multiple_extptrs_from_worker` (worker_tests.rs:341:26)
 #' @title C test multiple extptrs from worker
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_multiple_extptrs_from_worker`
@@ -6747,13 +6747,13 @@ unsafe_C_test_multiple_extptrs_from_worker <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `test_main_thread_r_api` (worker_tests.rs:371:8)
+# Generated from Rust fn `test_main_thread_r_api` (worker_tests.rs:383:8)
 #' @title test main thread r api
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_main_thread_r_api`
@@ -6762,13 +6762,13 @@ test_main_thread_r_api <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `test_main_thread_r_error` (worker_tests.rs:379:8)
+# Generated from Rust fn `test_main_thread_r_error` (worker_tests.rs:391:8)
 #' @title test main thread r error
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_main_thread_r_error`
@@ -6777,13 +6777,13 @@ test_main_thread_r_error <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `test_main_thread_r_error_with_drops` (worker_tests.rs:388:8)
+# Generated from Rust fn `test_main_thread_r_error_with_drops` (worker_tests.rs:400:8)
 #' @title test main thread r error with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_main_thread_r_error_with_drops`
@@ -6792,13 +6792,13 @@ test_main_thread_r_error_with_drops <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_wrong_thread_r_api` (worker_tests.rs:407:26)
+# Generated from Rust fn `C_test_wrong_thread_r_api` (worker_tests.rs:419:26)
 #' @title C test wrong thread r api
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_wrong_thread_r_api`
@@ -6807,13 +6807,13 @@ unsafe_C_test_wrong_thread_r_api <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_nested_helper_from_worker` (worker_tests.rs:433:26)
+# Generated from Rust fn `C_test_nested_helper_from_worker` (worker_tests.rs:446:26)
 #' @title C test nested helper from worker
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_helper_from_worker`
@@ -6822,13 +6822,13 @@ unsafe_C_test_nested_helper_from_worker <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_nested_multiple_helpers` (worker_tests.rs:442:26)
+# Generated from Rust fn `C_test_nested_multiple_helpers` (worker_tests.rs:455:26)
 #' @title C test nested multiple helpers
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_multiple_helpers`
@@ -6837,13 +6837,13 @@ unsafe_C_test_nested_multiple_helpers <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_nested_with_r_thread` (worker_tests.rs:455:26)
+# Generated from Rust fn `C_test_nested_with_r_thread` (worker_tests.rs:468:26)
 #' @title C test nested with r thread
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_with_r_thread`
@@ -6852,13 +6852,13 @@ unsafe_C_test_nested_with_r_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_call_worker_fn_from_main` (worker_tests.rs:469:26)
+# Generated from Rust fn `C_test_call_worker_fn_from_main` (worker_tests.rs:482:26)
 #' @title C test call worker fn from main
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_call_worker_fn_from_main`
@@ -6867,13 +6867,13 @@ unsafe_C_test_call_worker_fn_from_main <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_nested_worker_calls` (worker_tests.rs:480:26)
+# Generated from Rust fn `C_test_nested_worker_calls` (worker_tests.rs:493:26)
 #' @title C test nested worker calls
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_worker_calls`
@@ -6882,13 +6882,13 @@ unsafe_C_test_nested_worker_calls <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_nested_with_error` (worker_tests.rs:497:26)
+# Generated from Rust fn `C_test_nested_with_error` (worker_tests.rs:510:26)
 #' @title C test nested with error
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_with_error`
@@ -6897,13 +6897,13 @@ unsafe_C_test_nested_with_error <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_nested_with_panic` (worker_tests.rs:527:26)
+# Generated from Rust fn `C_test_nested_with_panic` (worker_tests.rs:540:26)
 #' @title C test nested with panic
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_with_panic`
@@ -6912,13 +6912,13 @@ unsafe_C_test_nested_with_panic <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
 }
 
-# Generated from Rust fn `C_test_deep_with_r_thread_sequence` (worker_tests.rs:551:26)
+# Generated from Rust fn `C_test_deep_with_r_thread_sequence` (worker_tests.rs:564:26)
 #' @title C test deep with r thread sequence
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_deep_with_r_thread_sequence`
@@ -6927,7 +6927,7 @@ unsafe_C_test_deep_with_r_thread_sequence <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6955,7 +6955,7 @@ test_coerce_identity <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6974,7 +6974,7 @@ test_coerce_widen <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -6993,7 +6993,7 @@ test_coerce_bool_to_int <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7012,7 +7012,7 @@ test_coerce_via_helper <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7031,7 +7031,7 @@ test_try_coerce_f64_to_i32 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7050,7 +7050,7 @@ test_rnative_newtype <- function(id) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7069,7 +7069,7 @@ test_rnative_named_field <- function(temp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7089,7 +7089,7 @@ test_coerce_attr_u16 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7108,7 +7108,7 @@ test_coerce_attr_i16 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7124,7 +7124,7 @@ test_coerce_attr_vec_u16 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7143,7 +7143,7 @@ test_coerce_attr_f32 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7163,7 +7163,7 @@ test_coerce_attr_with_invisible <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7185,7 +7185,7 @@ test_per_arg_coerce_first <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7207,7 +7207,7 @@ test_per_arg_coerce_second <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7229,7 +7229,7 @@ test_per_arg_coerce_both <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7249,7 +7249,7 @@ test_per_arg_coerce_vec <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7275,7 +7275,7 @@ invisibly_return_no_arrow <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7290,7 +7290,7 @@ invisibly_return_arrow <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7305,7 +7305,7 @@ invisibly_option_return_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7320,7 +7320,7 @@ invisibly_option_return_some <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7335,7 +7335,7 @@ invisibly_result_return_ok <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7354,7 +7354,7 @@ result_null_on_err <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7381,7 +7381,7 @@ force_invisible_i32 <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7396,7 +7396,7 @@ force_visible_unit <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7415,7 +7415,7 @@ with_interrupt_check <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7437,7 +7437,7 @@ doc_attr_basic <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7453,7 +7453,7 @@ doc_attr_no_params <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7467,7 +7467,7 @@ export_control_normal <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7481,7 +7481,7 @@ export_control_internal <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7494,7 +7494,7 @@ export_control_noexport <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7512,7 +7512,7 @@ is.widget <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7531,7 +7531,7 @@ r_entry_demo <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7550,7 +7550,7 @@ r_post_checks_demo <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7570,7 +7570,7 @@ widget.create <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7589,7 +7589,7 @@ on_exit_short <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7608,7 +7608,7 @@ on_exit_no_add <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7627,7 +7627,7 @@ on_exit_lifo <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7652,7 +7652,7 @@ unsafe_C_test_r_thread_builder <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7667,7 +7667,7 @@ unsafe_C_test_r_thread_builder_spawn_join <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7694,7 +7694,7 @@ underscore_it_all <- function(unused0, unused1) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   invisible(.val)
@@ -7709,7 +7709,7 @@ do_nothing <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7731,7 +7731,7 @@ old_deprecated_fn <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7749,7 +7749,7 @@ also_deprecated <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7772,7 +7772,7 @@ experimental_feature <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7794,7 +7794,7 @@ superseded_fn <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7816,7 +7816,7 @@ soft_deprecated_fn <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7838,7 +7838,7 @@ fully_deprecated <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7860,7 +7860,7 @@ defunct_fn <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7884,7 +7884,7 @@ hybrid_as_list <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7907,7 +7907,7 @@ hybrid_as_ptr <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7930,7 +7930,7 @@ hybrid_as_native <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7953,7 +7953,7 @@ ptr_list_as_list <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7976,7 +7976,7 @@ ptr_list_as_ptr <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -7999,7 +7999,7 @@ native_list_as_list <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8022,7 +8022,7 @@ native_list_as_native <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8037,7 +8037,7 @@ create_points_df <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8052,7 +8052,7 @@ create_people_df <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8067,7 +8067,7 @@ create_events_df <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8082,7 +8082,7 @@ create_shapes_df <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8097,7 +8097,7 @@ create_expanded_points_df <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8112,7 +8112,7 @@ create_scored_items_df <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8127,7 +8127,7 @@ create_sensor_readings_df <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8145,7 +8145,7 @@ create_large_par_points <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8163,7 +8163,7 @@ create_large_par_events <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8182,7 +8182,7 @@ rng_uniform <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8201,7 +8201,7 @@ rng_normal <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8220,7 +8220,7 @@ rng_exponential <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8241,7 +8241,7 @@ rng_int <- function(n, max) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8260,7 +8260,7 @@ rng_with_interrupt <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8279,7 +8279,7 @@ rng_worker_uniform <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8298,7 +8298,7 @@ rng_guard_test <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8317,7 +8317,7 @@ rng_with_rng_test <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8334,7 +8334,7 @@ rayon_parallel_sum <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8351,7 +8351,7 @@ rayon_parallel_sqrt <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8368,7 +8368,7 @@ rayon_parallel_filter_positive <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8388,7 +8388,7 @@ rayon_vec_collect <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8408,7 +8408,7 @@ rayon_with_r_vec <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8428,7 +8428,7 @@ rayon_with_r_vec_map <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8445,7 +8445,7 @@ rayon_par_map <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8465,7 +8465,7 @@ rayon_par_map2 <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8486,7 +8486,7 @@ rayon_par_map3 <- function(a, b, c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8508,7 +8508,7 @@ rayon_with_r_matrix <- function(nrow, ncol) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8525,7 +8525,7 @@ rayon_parallel_stats <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8542,7 +8542,7 @@ rayon_parallel_sum_int <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8558,7 +8558,7 @@ rayon_num_threads <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8574,7 +8574,7 @@ rayon_in_thread <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8593,7 +8593,7 @@ serde_r_serialize_i32 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8612,7 +8612,7 @@ serde_r_serialize_f64 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8631,7 +8631,7 @@ serde_r_serialize_bool <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8650,7 +8650,7 @@ serde_r_serialize_string <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8669,7 +8669,7 @@ serde_r_serialize_option_i32 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8684,7 +8684,7 @@ serde_r_serialize_vec_i32 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8699,7 +8699,7 @@ serde_r_serialize_vec_f64 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8714,7 +8714,7 @@ serde_r_serialize_vec_string <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8729,7 +8729,7 @@ serde_r_serialize_vec_bool <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8744,7 +8744,7 @@ serde_r_serialize_hashmap <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8759,7 +8759,7 @@ serde_r_deserialize_i32 <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8774,7 +8774,7 @@ serde_r_deserialize_f64 <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8789,7 +8789,7 @@ serde_r_deserialize_string <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8804,7 +8804,7 @@ serde_r_deserialize_vec_i32 <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8819,7 +8819,7 @@ serde_r_deserialize_vec_f64 <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8840,7 +8840,7 @@ serde_r_roundtrip_point <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8865,7 +8865,7 @@ serde_r_roundtrip_rectangle <- function(x1, y1, x2, y2) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8880,7 +8880,7 @@ serde_r_roundtrip_deep_nest <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8895,7 +8895,7 @@ serde_r_roundtrip_collections <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8910,7 +8910,7 @@ serde_r_roundtrip_optionals_present <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8925,7 +8925,7 @@ serde_r_roundtrip_optionals_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8940,7 +8940,7 @@ serde_r_deserialize_wrong_type <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8955,7 +8955,7 @@ serde_r_deserialize_missing_field <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8970,7 +8970,7 @@ serde_r_serialize_tuple <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -8985,7 +8985,7 @@ serde_r_serialize_tuple_struct <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9000,7 +9000,7 @@ serde_r_complex_nested <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9015,7 +9015,7 @@ serde_r_deserialize_complex <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9030,7 +9030,7 @@ ndarray_roundtrip_vec <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9045,7 +9045,7 @@ ndarray_roundtrip_matrix <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9060,7 +9060,7 @@ ndarray_roundtrip_array <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9075,7 +9075,7 @@ ndarray_roundtrip_int_vec <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9090,7 +9090,7 @@ ndarray_roundtrip_int_matrix <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9105,7 +9105,7 @@ uuid_roundtrip <- function(uuid) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9120,7 +9120,7 @@ uuid_roundtrip_vec <- function(uuids) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9135,7 +9135,7 @@ uuid_new_v4 <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9150,7 +9150,7 @@ uuid_nil <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9165,7 +9165,7 @@ uuid_max <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9180,7 +9180,7 @@ uuid_version <- function(uuid) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9195,7 +9195,7 @@ uuid_is_nil <- function(uuid) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9216,7 +9216,7 @@ regex_is_match <- function(pattern, text) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9237,7 +9237,7 @@ regex_find <- function(pattern, text) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9258,7 +9258,7 @@ regex_find_all <- function(pattern, text) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9281,7 +9281,7 @@ regex_replace_first <- function(pattern, text, replacement) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9304,7 +9304,7 @@ regex_replace_all <- function(pattern, text, replacement) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9325,7 +9325,7 @@ regex_split <- function(pattern, text) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9340,7 +9340,7 @@ time_roundtrip_posixct <- function(dt) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9355,7 +9355,7 @@ time_roundtrip_date <- function(date) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9370,7 +9370,7 @@ time_get_year <- function(date) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9385,7 +9385,7 @@ time_get_month <- function(date) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9400,7 +9400,7 @@ time_get_day <- function(date) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9415,7 +9415,7 @@ time_epoch_date <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9430,7 +9430,7 @@ time_epoch_posixct <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9445,7 +9445,7 @@ time_distant_past <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9460,7 +9460,7 @@ time_format_date <- function(date) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9475,7 +9475,7 @@ ordered_float_roundtrip <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9490,7 +9490,7 @@ ordered_float_roundtrip_vec <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9506,7 +9506,7 @@ ordered_float_sort <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9525,7 +9525,7 @@ ordered_float_is_nan <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9544,7 +9544,7 @@ ordered_float_is_finite <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9559,7 +9559,7 @@ ordered_float_inf <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9574,7 +9574,7 @@ ordered_float_neg_inf <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9589,7 +9589,7 @@ ordered_float_neg_zero <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9605,7 +9605,7 @@ ordered_float_sort_special <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9624,7 +9624,7 @@ bigint_roundtrip <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9645,7 +9645,7 @@ bigint_add <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9666,7 +9666,7 @@ bigint_mul <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9685,7 +9685,7 @@ bigint_factorial <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9704,7 +9704,7 @@ bigint_is_positive <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9723,7 +9723,7 @@ decimal_roundtrip <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9744,7 +9744,7 @@ decimal_add <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9765,7 +9765,7 @@ decimal_mul <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9786,7 +9786,7 @@ decimal_round <- function(s, dp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9805,7 +9805,7 @@ decimal_scale <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9824,7 +9824,7 @@ decimal_is_zero <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9839,7 +9839,7 @@ indexmap_roundtrip_int <- function(map) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9854,7 +9854,7 @@ indexmap_roundtrip_str <- function(map) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9869,7 +9869,7 @@ indexmap_roundtrip_dbl <- function(map) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9884,7 +9884,7 @@ indexmap_keys <- function(map) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9899,7 +9899,7 @@ indexmap_len <- function(map) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9914,7 +9914,7 @@ indexmap_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9929,7 +9929,7 @@ indexmap_duplicate_key <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9944,7 +9944,7 @@ indexmap_order_preserved <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9959,7 +9959,7 @@ indexmap_single <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9974,7 +9974,7 @@ bytes_roundtrip <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -9989,7 +9989,7 @@ bytes_len <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10004,7 +10004,7 @@ bytes_mut_roundtrip <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10019,7 +10019,7 @@ bytes_concat <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10040,7 +10040,7 @@ bytes_slice <- function(data, start, end) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10055,7 +10055,7 @@ bytes_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10070,7 +10070,7 @@ bytes_empty_len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10085,7 +10085,7 @@ bytes_large <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10100,7 +10100,7 @@ bytes_all_values <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10115,7 +10115,7 @@ bitflags_roundtrip <- function(flags) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10134,7 +10134,7 @@ bitflags_from_strict <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10153,7 +10153,7 @@ bitflags_from_truncate <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10168,7 +10168,7 @@ bitflags_has_read <- function(flags) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10183,7 +10183,7 @@ bitflags_has_write <- function(flags) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10198,7 +10198,7 @@ bitflags_union <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10213,7 +10213,7 @@ bitflags_intersect <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10228,7 +10228,7 @@ bitflags_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10243,7 +10243,7 @@ bitflags_all <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10258,7 +10258,7 @@ bitflags_has_execute <- function(flags) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10273,7 +10273,7 @@ bitvec_roundtrip <- function(bits) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10288,7 +10288,7 @@ bitvec_ones <- function(bits) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10303,7 +10303,7 @@ bitvec_zeros <- function(bits) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10319,7 +10319,7 @@ bitvec_from_vec <- function(bools) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10334,7 +10334,7 @@ bitvec_to_vec <- function(bits) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10349,7 +10349,7 @@ bitvec_len <- function(bits) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10364,7 +10364,7 @@ bitvec_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10383,7 +10383,7 @@ bitvec_all_ones <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10402,7 +10402,7 @@ bitvec_all_zeros <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10417,7 +10417,7 @@ bitvec_toggle <- function(bits) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10433,7 +10433,7 @@ borsh_roundtrip_doubles <- function(values) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10452,7 +10452,7 @@ borsh_roundtrip_string <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10467,7 +10467,7 @@ borsh_tuple_size <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10482,7 +10482,7 @@ borsh_nested_roundtrip <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10497,7 +10497,7 @@ borsh_invalid_data <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10512,7 +10512,7 @@ borsh_option_roundtrip <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10527,7 +10527,7 @@ tinyvec_roundtrip_int <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10542,7 +10542,7 @@ tinyvec_roundtrip_dbl <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10557,7 +10557,7 @@ tinyvec_len <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10572,7 +10572,7 @@ arrayvec_roundtrip_int <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10587,7 +10587,7 @@ arrayvec_roundtrip_dbl <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10602,7 +10602,7 @@ tinyvec_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10617,7 +10617,7 @@ tinyvec_at_capacity <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10632,7 +10632,7 @@ tinyvec_over_capacity <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10647,7 +10647,7 @@ arrayvec_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10666,7 +10666,7 @@ sha2_sha256 <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10685,7 +10685,7 @@ sha2_sha512 <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10700,7 +10700,7 @@ sha2_sha256_len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10715,7 +10715,7 @@ sha2_sha512_len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10730,7 +10730,7 @@ sha2_sha256_hello <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10745,7 +10745,7 @@ sha2_sha256_large <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10760,7 +10760,7 @@ sha2_sha256_binary_content <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10775,7 +10775,7 @@ sha2_different_inputs_differ <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10790,7 +10790,7 @@ url_roundtrip <- function(url) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10805,7 +10805,7 @@ url_scheme <- function(url) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10820,7 +10820,7 @@ url_host <- function(url) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10835,7 +10835,7 @@ url_path <- function(url) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10850,7 +10850,7 @@ url_roundtrip_vec <- function(urls) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10869,7 +10869,7 @@ url_is_valid <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10884,7 +10884,7 @@ url_query <- function(url) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10899,7 +10899,7 @@ url_fragment <- function(url) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10914,7 +10914,7 @@ url_port_or_default <- function(url) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10929,7 +10929,7 @@ url_full_components <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10949,7 +10949,7 @@ aho_test_is_match <- function(patterns, haystack) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10969,7 +10969,7 @@ aho_test_count <- function(patterns, haystack) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -10989,7 +10989,7 @@ aho_test_find_flat <- function(patterns, haystack) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11011,7 +11011,7 @@ aho_test_replace <- function(patterns, haystack, replacement) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11031,7 +11031,7 @@ aho_test_no_match <- function(patterns, haystack) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11050,7 +11050,7 @@ aho_test_overlapping <- function(haystack) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11070,7 +11070,7 @@ aho_test_unicode <- function(patterns, haystack) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11090,7 +11090,7 @@ aho_test_replace_empty <- function(patterns, haystack) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11109,7 +11109,7 @@ toml_roundtrip <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11128,7 +11128,7 @@ toml_pretty <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11143,7 +11143,7 @@ toml_type_name <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11158,7 +11158,7 @@ toml_is_table <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11173,7 +11173,7 @@ toml_table_keys <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11192,7 +11192,7 @@ toml_nested_keys <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11207,7 +11207,7 @@ toml_array_of_tables <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11226,7 +11226,7 @@ toml_parse_invalid <- function(input) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11241,7 +11241,7 @@ toml_mixed_types <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11261,7 +11261,7 @@ tabled_from_vecs <- function(headers, col1, col2) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11276,7 +11276,7 @@ tabled_simple <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11291,7 +11291,7 @@ tabled_empty_rows <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11307,7 +11307,7 @@ tabled_many_columns <- function(headers) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11322,7 +11322,7 @@ tabled_special_chars <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11337,7 +11337,7 @@ tabled_single_cell <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11352,7 +11352,7 @@ nalgebra_dvector_roundtrip <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11367,7 +11367,7 @@ nalgebra_dvector_len <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11382,7 +11382,7 @@ nalgebra_dvector_sum <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11397,7 +11397,7 @@ nalgebra_dvector_norm <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11412,7 +11412,7 @@ nalgebra_dvector_dot <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11427,7 +11427,7 @@ nalgebra_dmatrix_roundtrip <- function(m) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11442,7 +11442,7 @@ nalgebra_dmatrix_nrows <- function(m) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11457,7 +11457,7 @@ nalgebra_dmatrix_ncols <- function(m) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11472,7 +11472,7 @@ nalgebra_dmatrix_transpose <- function(m) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11487,7 +11487,7 @@ nalgebra_dmatrix_trace <- function(m) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11502,7 +11502,7 @@ either_int_or_str <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11517,7 +11517,7 @@ either_dbl_or_vec <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11536,7 +11536,7 @@ either_make_left <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11555,7 +11555,7 @@ either_make_right <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11570,7 +11570,7 @@ either_is_left <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11585,7 +11585,7 @@ either_is_right <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11600,7 +11600,7 @@ either_nested <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11615,7 +11615,7 @@ either_zero <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11630,7 +11630,7 @@ json_roundtrip <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11645,7 +11645,7 @@ json_type_name <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11660,7 +11660,7 @@ json_is_object <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11675,7 +11675,7 @@ json_object_keys <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11696,7 +11696,7 @@ json_serialize_point <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11711,7 +11711,7 @@ json_to_pretty <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11726,7 +11726,7 @@ complex_roundtrip <- function(c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11741,7 +11741,7 @@ complex_add <- function(a, b) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11756,7 +11756,7 @@ complex_norm <- function(c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11771,7 +11771,7 @@ complex_conj <- function(c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11786,7 +11786,7 @@ complex_re <- function(c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11801,7 +11801,7 @@ complex_im <- function(c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11816,7 +11816,7 @@ complex_roundtrip_vec <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11831,7 +11831,7 @@ complex_is_finite <- function(c) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11852,7 +11852,7 @@ complex_from_parts <- function(re, im) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11871,7 +11871,7 @@ num_is_zero <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11890,7 +11890,7 @@ num_is_one <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11909,7 +11909,7 @@ signed_abs <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11928,7 +11928,7 @@ signed_signum <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11947,7 +11947,7 @@ signed_is_positive <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11966,7 +11966,7 @@ signed_is_negative <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -11985,7 +11985,7 @@ float_floor <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12004,7 +12004,7 @@ float_ceil <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12023,7 +12023,7 @@ float_sqrt <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12042,7 +12042,7 @@ float_is_finite <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12061,7 +12061,7 @@ float_is_nan <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12082,7 +12082,7 @@ float_powi <- function(x, n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12097,7 +12097,7 @@ factor_describe_color <- function(color) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12116,7 +12116,7 @@ factor_get_color <- function(name) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12131,7 +12131,7 @@ factor_get_all_colors <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12146,7 +12146,7 @@ factor_describe_status <- function(status) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12161,7 +12161,7 @@ factor_describe_priority <- function(priority) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12176,7 +12176,7 @@ factor_color_levels <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12191,7 +12191,7 @@ factor_status_levels <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12206,7 +12206,7 @@ factor_priority_levels <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12221,7 +12221,7 @@ factor_count_colors <- function(colors) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12236,7 +12236,7 @@ factor_colors_with_na <- function(colors) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12257,7 +12257,7 @@ mx_point_new <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12272,7 +12272,7 @@ mx_point_sum <- function(p) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12293,7 +12293,7 @@ mx_record_create <- function(name, value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12308,7 +12308,7 @@ mx_obs_create <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12323,7 +12323,7 @@ mx_season_summer <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12338,7 +12338,7 @@ mx_season_name <- function(s) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12353,7 +12353,7 @@ mx_verbosity_check <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12368,7 +12368,7 @@ mx_derived_ints <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12385,7 +12385,7 @@ match_arg_set_mode <- function(mode = NULL) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12402,7 +12402,7 @@ match_arg_set_status <- function(status = NULL) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12419,7 +12419,7 @@ match_arg_set_priority <- function(priority = NULL) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12440,7 +12440,7 @@ match_arg_mixed <- function(x, mode = NULL) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12457,7 +12457,7 @@ match_arg_with_default <- function(mode = "Safe") {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12471,7 +12471,7 @@ match_arg_mode_choices <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12485,7 +12485,7 @@ match_arg_status_choices <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12499,7 +12499,7 @@ match_arg_priority_choices <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12516,7 +12516,7 @@ match_arg_return_mode <- function(mode = NULL) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12539,7 +12539,7 @@ choices_correlation <- function(x, y, method = c("pearson", "kendall", "spearman
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12556,7 +12556,7 @@ choices_color <- function(color = c("red", "green", "blue")) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12579,7 +12579,7 @@ choices_mixed <- function(n, mode = c("fast", "safe"), verbose) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12594,7 +12594,7 @@ missing_test_f64 <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12609,7 +12609,7 @@ missing_test_string <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12624,7 +12624,7 @@ missing_test_present <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12639,7 +12639,7 @@ missing_test_option <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12652,7 +12652,7 @@ test_vctrs_is_initialized <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12665,7 +12665,7 @@ test_vctrs_obj_is_vector <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12678,7 +12678,7 @@ test_vctrs_short_vec_size <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12695,7 +12695,7 @@ test_vctrs_short_vec_recycle <- function(x, size) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12712,7 +12712,7 @@ test_vctrs_error_message <- function(code) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12726,7 +12726,7 @@ test_new_vctr <- function(data, class) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12744,7 +12744,7 @@ test_new_vctr_inherit <- function(data, class, inherit_base_type) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12758,7 +12758,7 @@ test_new_rcrd <- function(fields, class) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12772,7 +12772,7 @@ test_new_list_of_ptype <- function(x, ptype, class) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12790,7 +12790,7 @@ test_new_list_of_size <- function(x, size, class) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12807,7 +12807,7 @@ test_vctrs_build_error_message <- function(error_type) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12825,7 +12825,7 @@ new_percent <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12841,7 +12841,7 @@ vec_ptype_abbr.percent <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12856,7 +12856,7 @@ format.percent <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12872,7 +12872,7 @@ vec_proxy.percent <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12888,7 +12888,7 @@ vec_restore.percent <- function(x, to, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12904,7 +12904,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12920,7 +12920,7 @@ vec_cast.percent.percent <- function(x, to, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12936,7 +12936,7 @@ vec_cast.percent.double <- function(x, to, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12952,7 +12952,7 @@ vec_ptype2.percent.double <- function(x, y, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12968,7 +12968,7 @@ vec_ptype2.double.percent <- function(x, y, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -12984,7 +12984,7 @@ vec_cast.double.percent <- function(x, to, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13002,7 +13002,7 @@ new_derived_percent <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13016,7 +13016,7 @@ derived_percent_class_info <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13038,7 +13038,7 @@ new_derived_rational <- function(n, d) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13052,7 +13052,7 @@ derived_rational_class_info <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13069,7 +13069,7 @@ new_derived_int_lists <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13091,7 +13091,7 @@ new_derived_point <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13109,7 +13109,7 @@ new_derived_temp <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13132,7 +13132,7 @@ Point$new <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -13145,7 +13145,7 @@ Point$x <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13156,7 +13156,7 @@ Point$y <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13220,7 +13220,7 @@ MyFloat$new <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -13233,7 +13233,7 @@ MyFloat$value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13244,7 +13244,7 @@ MyFloat$nan <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "MyFloat"
@@ -13311,7 +13311,7 @@ ChainedError$new <- function(outer_msg, inner_msg) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -13328,7 +13328,7 @@ ChainedError$without_source <- function(msg) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "ChainedError"
@@ -13390,7 +13390,7 @@ IntVecIter$new <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -13452,7 +13452,7 @@ GrowableVec$new <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -13465,7 +13465,7 @@ GrowableVec$to_vec <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13476,7 +13476,7 @@ GrowableVec$clear <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13488,7 +13488,7 @@ GrowableVec$from_vec <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "GrowableVec"
@@ -13553,7 +13553,7 @@ IntSet$contains <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13614,7 +13614,7 @@ IterableVec$new <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -13627,7 +13627,7 @@ IterableVec$len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13638,7 +13638,7 @@ IterableVec$to_vec <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13698,7 +13698,7 @@ IterableVecIter$collect_all <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -13769,7 +13769,7 @@ ExportControlTraitPoint$new <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -14129,7 +14129,7 @@ new_ascoercetestdata <- function(names, values) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   structure(.val, class = "AsCoerceTestData")
@@ -14158,7 +14158,7 @@ len.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14187,7 +14187,7 @@ as_data_frame.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14216,7 +14216,7 @@ as_list.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14245,7 +14245,7 @@ as_character.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14274,7 +14274,7 @@ as_numeric.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14303,7 +14303,7 @@ as_integer.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14327,7 +14327,7 @@ as.data.frame.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14344,7 +14344,7 @@ as.list.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14361,7 +14361,7 @@ as.character.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14378,7 +14378,7 @@ as.numeric.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14395,7 +14395,7 @@ as.integer.AsCoerceTestData <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14415,7 +14415,7 @@ new_ascoerceerrortest <- function(is_empty) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   structure(.val, class = "AsCoerceErrorTest")
@@ -14442,7 +14442,7 @@ as_data_frame.AsCoerceErrorTest <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14469,7 +14469,7 @@ as_list.AsCoerceErrorTest <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14496,7 +14496,7 @@ as_character.AsCoerceErrorTest <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14514,7 +14514,7 @@ as.data.frame.AsCoerceErrorTest <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14526,7 +14526,7 @@ as.list.AsCoerceErrorTest <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14538,7 +14538,7 @@ as.character.AsCoerceErrorTest <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14561,7 +14561,7 @@ ErrorInRCounter$new <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -14578,7 +14578,7 @@ ErrorInRCounter$get <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14593,7 +14593,7 @@ ErrorInRCounter$inc <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self
@@ -14608,7 +14608,7 @@ ErrorInRCounter$panic_method <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14623,7 +14623,7 @@ ErrorInRCounter$failing_method <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14704,7 +14704,7 @@ ErrorInRR6Widget <- R6::R6Class("ErrorInRR6Widget",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -14716,7 +14716,7 @@ ErrorInRR6Widget <- R6::R6Class("ErrorInRR6Widget",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -14727,7 +14727,7 @@ ErrorInRR6Widget <- R6::R6Class("ErrorInRR6Widget",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -14738,7 +14738,7 @@ ErrorInRR6Widget <- R6::R6Class("ErrorInRR6Widget",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -14772,7 +14772,7 @@ ErrorInRS7Gauge <- S7::new_class("ErrorInRS7Gauge",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -14788,7 +14788,7 @@ S7::method(read_level, ErrorInRS7Gauge) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -14807,7 +14807,7 @@ S7::method(set_level, ErrorInRS7Gauge) <- function(x, level, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     x
@@ -14822,7 +14822,7 @@ S7::method(panic_method, ErrorInRS7Gauge) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -14836,7 +14836,7 @@ S7::method(failing_result, ErrorInRS7Gauge) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -14863,7 +14863,7 @@ FallibleImpl$new <- function(value) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -14880,7 +14880,7 @@ FallibleImpl$inherent_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14946,7 +14946,7 @@ FallibleImpl$Fallible$get_value <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14958,7 +14958,7 @@ FallibleImpl$Fallible$will_panic <- function(x) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -14984,7 +14984,7 @@ StrictCounter <- R6::R6Class("StrictCounter",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -14995,7 +14995,7 @@ StrictCounter <- R6::R6Class("StrictCounter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -15009,7 +15009,7 @@ StrictCounter <- R6::R6Class("StrictCounter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -15639,7 +15639,7 @@ SidecarR6 <- R6::R6Class("SidecarR6",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -15686,7 +15686,7 @@ SidecarS7 <- S7::new_class("SidecarS7",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -15830,7 +15830,7 @@ SharedData <- R6::R6Class("SharedData",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -15841,7 +15841,7 @@ SharedData <- R6::R6Class("SharedData",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -15851,7 +15851,7 @@ SharedData <- R6::R6Class("SharedData",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -15861,7 +15861,7 @@ SharedData <- R6::R6Class("SharedData",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -15888,7 +15888,7 @@ ReceiverCounter$new <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -15901,7 +15901,7 @@ ReceiverCounter$value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -15912,7 +15912,7 @@ ReceiverCounter$inc <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -15927,7 +15927,7 @@ ReceiverCounter$add <- function(amount) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -15938,7 +15938,7 @@ ReceiverCounter$default_counter <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "ReceiverCounter"
@@ -16010,7 +16010,7 @@ R6Counter <- R6::R6Class("R6Counter",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16022,7 +16022,7 @@ R6Counter <- R6::R6Class("R6Counter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16033,7 +16033,7 @@ R6Counter <- R6::R6Class("R6Counter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16048,7 +16048,7 @@ R6Counter <- R6::R6Class("R6Counter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16068,7 +16068,7 @@ R6Counter$default_counter <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   R6Counter$new(.ptr = .val)
@@ -16088,7 +16088,7 @@ R6Accumulator <- R6::R6Class("R6Accumulator",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16104,7 +16104,7 @@ R6Accumulator <- R6::R6Class("R6Accumulator",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16115,7 +16115,7 @@ R6Accumulator <- R6::R6Class("R6Accumulator",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16126,7 +16126,7 @@ R6Accumulator <- R6::R6Class("R6Accumulator",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16137,7 +16137,7 @@ R6Accumulator <- R6::R6Class("R6Accumulator",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16173,7 +16173,7 @@ R6Rectangle <- R6::R6Class("R6Rectangle",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16185,7 +16185,7 @@ R6Rectangle <- R6::R6Class("R6Rectangle",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16196,7 +16196,7 @@ R6Rectangle <- R6::R6Class("R6Rectangle",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16212,7 +16212,7 @@ R6Rectangle <- R6::R6Class("R6Rectangle",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16223,7 +16223,7 @@ R6Rectangle <- R6::R6Class("R6Rectangle",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16254,7 +16254,7 @@ R6Temperature <- R6::R6Class("R6Temperature",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16270,7 +16270,7 @@ R6Temperature <- R6::R6Class("R6Temperature",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       invisible(self)
@@ -16285,7 +16285,7 @@ R6Temperature <- R6::R6Class("R6Temperature",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       invisible(self)
@@ -16339,7 +16339,7 @@ R6Cloneable <- R6::R6Class("R6Cloneable",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16351,7 +16351,7 @@ R6Cloneable <- R6::R6Class("R6Cloneable",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16366,7 +16366,7 @@ R6Cloneable <- R6::R6Class("R6Cloneable",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       invisible(self)
@@ -16401,7 +16401,7 @@ R6Animal <- R6::R6Class("R6Animal",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16412,7 +16412,7 @@ R6Animal <- R6::R6Class("R6Animal",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16422,7 +16422,7 @@ R6Animal <- R6::R6Class("R6Animal",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16455,7 +16455,7 @@ R6Dog <- R6::R6Class("R6Dog", inherit = R6Animal,
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16466,7 +16466,7 @@ R6Dog <- R6::R6Class("R6Dog", inherit = R6Animal,
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16476,7 +16476,7 @@ R6Dog <- R6::R6Class("R6Dog", inherit = R6Animal,
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16509,7 +16509,7 @@ R6GoldenRetriever <- R6::R6Class("R6GoldenRetriever", inherit = R6Dog,
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16520,7 +16520,7 @@ R6GoldenRetriever <- R6::R6Class("R6GoldenRetriever", inherit = R6Dog,
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16554,7 +16554,7 @@ R6NonPortable <- R6::R6Class("R6NonPortable",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16565,7 +16565,7 @@ R6NonPortable <- R6::R6Class("R6NonPortable",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16600,7 +16600,7 @@ Calculator <- R6::R6Class("Calculator",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -16612,7 +16612,7 @@ Calculator <- R6::R6Class("Calculator",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16628,7 +16628,7 @@ Calculator <- R6::R6Class("Calculator",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -16644,7 +16644,7 @@ Calculator <- R6::R6Class("Calculator",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       invisible(self)
@@ -16671,7 +16671,7 @@ new_s3counter <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   structure(.val, class = "S3Counter")
@@ -16698,7 +16698,7 @@ s3_value.S3Counter <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -16725,7 +16725,7 @@ s3_inc.S3Counter <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -16757,7 +16757,7 @@ s3_add.S3Counter <- function(x, amount, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -16773,7 +16773,7 @@ s3counter_default_counter <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   structure(.val, class = "S3Counter")
@@ -16804,7 +16804,7 @@ S7Counter <- S7::new_class("S7Counter",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -16820,7 +16820,7 @@ S7::method(s7_value, S7Counter) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -16834,7 +16834,7 @@ S7::method(s7_inc, S7Counter) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -16853,7 +16853,7 @@ S7::method(s7_add, S7Counter) <- function(x, amount, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -16866,7 +16866,7 @@ S7Counter_default_counter <- function() {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     S7Counter(.ptr = .val)
@@ -16897,7 +16897,7 @@ S7Range <- S7::new_class("S7Range",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -16913,7 +16913,7 @@ S7::method(s7_start, S7Range) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -16927,7 +16927,7 @@ S7::method(s7_end, S7Range) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -16960,7 +16960,7 @@ S7Config <- S7::new_class("S7Config",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -16976,7 +16976,7 @@ S7::method(get_version, S7Config) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17002,7 +17002,7 @@ S7Strict <- S7::new_class("S7Strict",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17018,7 +17018,7 @@ S7::method(strict_length, S7Strict) <- function(x) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17032,7 +17032,7 @@ S7::method(describe_any, S7::class_any) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17058,7 +17058,7 @@ S7Celsius <- S7::new_class("S7Celsius",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17074,7 +17074,7 @@ S7::method(value, S7Celsius) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17100,7 +17100,7 @@ S7Fahrenheit <- S7::new_class("S7Fahrenheit",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17116,7 +17116,7 @@ S7::method(value, S7Fahrenheit) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17130,7 +17130,7 @@ S7::method(to_celsius, S7Fahrenheit) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17142,7 +17142,7 @@ S7Fahrenheit_from_celsius <- function(c) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     S7Fahrenheit(.ptr = .val)
@@ -17154,7 +17154,7 @@ S7::method(convert, list(S7Celsius, S7Fahrenheit)) <- function(from, to) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     S7Fahrenheit(.ptr = .val)
@@ -17165,7 +17165,7 @@ S7::method(convert, list(S7Fahrenheit, S7Celsius)) <- function(from, to) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     S7Celsius(.ptr = .val)
@@ -17192,7 +17192,7 @@ S7Shape <- S7::new_class("S7Shape",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17208,7 +17208,7 @@ S7::method(shape_name, S7Shape) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17234,7 +17234,7 @@ S7Circle <- S7::new_class("S7Circle", parent = S7Shape,
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17250,7 +17250,7 @@ S7::method(circle_area, S7Circle) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17280,7 +17280,7 @@ S7Animal <- S7::new_class("S7Animal",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17296,7 +17296,7 @@ S7::method(animal_kind, S7Animal) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17322,7 +17322,7 @@ S7Dog <- S7::new_class("S7Dog", parent = S7Animal,
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17338,7 +17338,7 @@ S7::method(dog_breed, S7Dog) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17352,7 +17352,7 @@ S7::method(bark, S7Dog) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17378,7 +17378,7 @@ S7GoldenRetriever <- S7::new_class("S7GoldenRetriever", parent = S7Dog,
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       S7::new_object(S7::S7_object(), .ptr = .val)
@@ -17394,7 +17394,7 @@ S7::method(retriever_name, S7GoldenRetriever) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17408,7 +17408,7 @@ S7::method(color, S7GoldenRetriever) <- function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17426,7 +17426,7 @@ S4Counter <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   methods::new("S4Counter", ptr = .val)
@@ -17438,7 +17438,7 @@ methods::setMethod("s4_value", "S4Counter", function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17450,7 +17450,7 @@ methods::setMethod("s4_inc", "S4Counter", function(x, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17467,7 +17467,7 @@ methods::setMethod("s4_add", "S4Counter", function(x, amount, ...) {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     .val
@@ -17480,14 +17480,14 @@ S4Counter_default_counter <- function() {
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),
-        list(message = .val$error, call = sys.call(), kind = .val$kind)
+        list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
       ))
     }
     methods::new("S4Counter", ptr = .val)
   }
 }
 
-# Generated from Rust impl `WrapperDemo` (r_wrapper_attrs.rs:73:6)
+# Generated from Rust impl `WrapperDemo` (r_wrapper_attrs.rs:74:6)
 #' @title WrapperDemo R6 Class
 #' @name WrapperDemo
 #' @rdname WrapperDemo
@@ -17497,6 +17497,8 @@ S4Counter_default_counter <- function() {
 #' @export
 WrapperDemo <- R6::R6Class("WrapperDemo",
   public = list(
+    #' @description Create a new WrapperDemo
+    #' @param value Initial integer value.
     initialize = function(value, .ptr = NULL) {
       if (is.null(.ptr)) {
         stopifnot(
@@ -17511,22 +17513,25 @@ WrapperDemo <- R6::R6Class("WrapperDemo",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
       }
     },
+    #' @description Increment the value by one.
     add_one = function() {
       .val <- .Call(C_WrapperDemo__increment, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       invisible(self)
     },
+    #' @description Add a custom amount to the value
+    #' @param by Amount to add.
     add_by = function(by) {
       by <- as.integer(by)
       stopifnot(
@@ -17537,18 +17542,19 @@ WrapperDemo <- R6::R6Class("WrapperDemo",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       invisible(self)
     },
+    #' @description Get the current value.
     get_value = function() {
       on.exit(message("method cleanup"), add = TRUE)
       .val <- .Call(C_WrapperDemo__get_value, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -17583,7 +17589,7 @@ LifecycleDemo <- R6::R6Class("LifecycleDemo",
         if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
           stop(structure(
             class = c("rust_error", "simpleError", "error", "condition"),
-            list(message = .val$error, call = sys.call(), kind = .val$kind)
+            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
           ))
         }
         private$.ptr <- .val
@@ -17595,7 +17601,7 @@ LifecycleDemo <- R6::R6Class("LifecycleDemo",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -17608,7 +17614,7 @@ LifecycleDemo <- R6::R6Class("LifecycleDemo",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -17622,7 +17628,7 @@ LifecycleDemo <- R6::R6Class("LifecycleDemo",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -17635,7 +17641,7 @@ LifecycleDemo <- R6::R6Class("LifecycleDemo",
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
         stop(structure(
           class = c("rust_error", "simpleError", "error", "condition"),
-          list(message = .val$error, call = sys.call(), kind = .val$kind)
+          list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
         ))
       }
       .val
@@ -17666,7 +17672,7 @@ SimpleCounter$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -17685,7 +17691,7 @@ SimpleCounter$trait_add <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self
@@ -17704,7 +17710,7 @@ SimpleCounter$new_counter <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "SimpleCounter"
@@ -17777,7 +17783,7 @@ PanickyCounter$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -17796,7 +17802,7 @@ PanickyCounter$try_add <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self
@@ -17815,7 +17821,7 @@ PanickyCounter$new_panicky <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "PanickyCounter"
@@ -17888,7 +17894,7 @@ S3TraitCounter$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -17907,7 +17913,7 @@ S3TraitCounter$new_s3trait <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "S3TraitCounter"
@@ -17972,7 +17978,7 @@ S4TraitCounter$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -17987,7 +17993,7 @@ S4TraitCounter$new_s4trait <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "S4TraitCounter"
@@ -18048,7 +18054,7 @@ S7TraitCounter$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -18063,7 +18069,7 @@ S7TraitCounter$new_s7trait <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "S7TraitCounter"
@@ -18124,7 +18130,7 @@ R6TraitCounter$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -18139,7 +18145,7 @@ R6TraitCounter$new_r6trait <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "R6TraitCounter"
@@ -18447,7 +18453,7 @@ CounterTraitEnv$new <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -18463,7 +18469,7 @@ CounterTraitEnv$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -18538,7 +18544,7 @@ CounterTraitS3$new <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -18554,7 +18560,7 @@ CounterTraitS3$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -18629,7 +18635,7 @@ CounterTraitS4$new <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -18645,7 +18651,7 @@ CounterTraitS4$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -18720,7 +18726,7 @@ CounterTraitS7$new <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -18736,7 +18742,7 @@ CounterTraitS7$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -18811,7 +18817,7 @@ CounterTraitR6$new <- function(v) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -18827,7 +18833,7 @@ CounterTraitR6$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19127,7 +19133,7 @@ SharedSimpleCounter$new <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -19143,7 +19149,7 @@ SharedSimpleCounter$get_value <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19218,7 +19224,7 @@ AtomicCounter$new_atomic <- function(initial) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "AtomicCounter"
@@ -19369,7 +19375,7 @@ RngSampler$new <- function(seed_hint) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -19386,7 +19392,7 @@ RngSampler$seed_hint <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19405,7 +19411,7 @@ RngSampler$sample_uniform <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19424,7 +19430,7 @@ RngSampler$sample_normal <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19443,7 +19449,7 @@ RngSampler$static_sample <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19520,7 +19526,7 @@ SerdeRPoint$new <- function(x, y) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -19537,7 +19543,7 @@ SerdeRPoint$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19552,7 +19558,7 @@ SerdeRPoint$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19633,7 +19639,7 @@ SerdeRPoint3D$new <- function(x, y, z, label) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -19649,7 +19655,7 @@ SerdeRPoint3D$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19663,7 +19669,7 @@ SerdeRPoint3D$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19744,7 +19750,7 @@ Rectangle$new <- function(x1, y1, x2, y2) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -19760,7 +19766,7 @@ Rectangle$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19786,7 +19792,7 @@ Rectangle$with_color <- function(x1, y1, x2, y2, color) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "Rectangle"
@@ -19801,7 +19807,7 @@ Rectangle$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19872,7 +19878,7 @@ DeepNest$new <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -19888,7 +19894,7 @@ DeepNest$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19902,7 +19908,7 @@ DeepNest$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -19973,7 +19979,7 @@ Collections$new <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -19989,7 +19995,7 @@ Collections$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20003,7 +20009,7 @@ Collections$empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "Collections"
@@ -20018,7 +20024,7 @@ Collections$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20089,7 +20095,7 @@ Maps$new <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -20105,7 +20111,7 @@ Maps$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20119,7 +20125,7 @@ Maps$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20190,7 +20196,7 @@ WithEnums$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20208,7 +20214,7 @@ WithEnums$new_circle <- function(radius) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "WithEnums"
@@ -20229,7 +20235,7 @@ WithEnums$new_rectangle <- function(width, height) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "WithEnums"
@@ -20244,7 +20250,7 @@ WithEnums$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20315,7 +20321,7 @@ WithOptionals$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20329,7 +20335,7 @@ WithOptionals$all_present <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "WithOptionals"
@@ -20344,7 +20350,7 @@ WithOptionals$all_none <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "WithOptionals"
@@ -20359,7 +20365,7 @@ WithOptionals$mixed <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "WithOptionals"
@@ -20374,7 +20380,7 @@ WithOptionals$from_r <- function(sexp) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20439,7 +20445,7 @@ NdVec$new <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -20452,7 +20458,7 @@ NdVec$len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20463,7 +20469,7 @@ NdVec$is_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20474,7 +20480,7 @@ NdVec$ndim <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20485,7 +20491,7 @@ NdVec$shape <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20496,7 +20502,7 @@ NdVec$sum <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20507,7 +20513,7 @@ NdVec$mean <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20518,7 +20524,7 @@ NdVec$min <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20529,7 +20535,7 @@ NdVec$max <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20540,7 +20546,7 @@ NdVec$product <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20551,7 +20557,7 @@ NdVec$var <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20562,7 +20568,7 @@ NdVec$std <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20577,7 +20583,7 @@ NdVec$get <- function(index) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20588,7 +20594,7 @@ NdVec$first <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20599,7 +20605,7 @@ NdVec$last <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20616,7 +20622,7 @@ NdVec$slice_1d <- function(start, end) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20628,7 +20634,7 @@ NdVec$get_many <- function(indices) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20643,7 +20649,7 @@ NdVec$is_valid_index <- function(index) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20654,7 +20660,7 @@ NdVec$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20665,7 +20671,7 @@ NdVec$view_to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20684,7 +20690,7 @@ NdVec$from_range <- function(start, end, step) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "NdVec"
@@ -20745,7 +20751,7 @@ NdMatrix$new <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -20758,7 +20764,7 @@ NdMatrix$len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20769,7 +20775,7 @@ NdMatrix$is_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20780,7 +20786,7 @@ NdMatrix$ndim <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20791,7 +20797,7 @@ NdMatrix$shape <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20802,7 +20808,7 @@ NdMatrix$sum <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20813,7 +20819,7 @@ NdMatrix$mean <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20824,7 +20830,7 @@ NdMatrix$min <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20835,7 +20841,7 @@ NdMatrix$max <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20846,7 +20852,7 @@ NdMatrix$product <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20857,7 +20863,7 @@ NdMatrix$var <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20868,7 +20874,7 @@ NdMatrix$std <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20885,7 +20891,7 @@ NdMatrix$get_2d <- function(row, col) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20900,7 +20906,7 @@ NdMatrix$row <- function(row) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20915,7 +20921,7 @@ NdMatrix$col <- function(col) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20926,7 +20932,7 @@ NdMatrix$diag <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20937,7 +20943,7 @@ NdMatrix$nrows <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20948,7 +20954,7 @@ NdMatrix$ncols <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20959,7 +20965,7 @@ NdMatrix$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20970,7 +20976,7 @@ NdMatrix$view_to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -20988,7 +20994,7 @@ NdMatrix$from_rows <- function(nrow, ncol, data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "NdMatrix"
@@ -21004,7 +21010,7 @@ NdMatrix$identity <- function(n) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "NdMatrix"
@@ -21069,7 +21075,7 @@ NdArrayDyn$new <- function(shape, data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -21082,7 +21088,7 @@ NdArrayDyn$len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21093,7 +21099,7 @@ NdArrayDyn$is_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21104,7 +21110,7 @@ NdArrayDyn$sum <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21115,7 +21121,7 @@ NdArrayDyn$mean <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21126,7 +21132,7 @@ NdArrayDyn$min <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21137,7 +21143,7 @@ NdArrayDyn$max <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21148,7 +21154,7 @@ NdArrayDyn$product <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21159,7 +21165,7 @@ NdArrayDyn$var <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21170,7 +21176,7 @@ NdArrayDyn$std <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21182,7 +21188,7 @@ NdArrayDyn$get_nd <- function(indices) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21197,7 +21203,7 @@ NdArrayDyn$slice_nd <- function(start, end) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21208,7 +21214,7 @@ NdArrayDyn$shape_nd <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21219,7 +21225,7 @@ NdArrayDyn$ndim <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21230,7 +21236,7 @@ NdArrayDyn$len_nd <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21241,7 +21247,7 @@ NdArrayDyn$flatten <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21252,7 +21258,7 @@ NdArrayDyn$flatten_c <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21264,7 +21270,7 @@ NdArrayDyn$is_valid_nd <- function(indices) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21281,7 +21287,7 @@ NdArrayDyn$axis_slice <- function(axis, index) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21293,7 +21299,7 @@ NdArrayDyn$reshape <- function(new_shape) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21304,7 +21310,7 @@ NdArrayDyn$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21316,7 +21322,7 @@ NdArrayDyn$zeros <- function(shape) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "NdArrayDyn"
@@ -21329,7 +21335,7 @@ NdArrayDyn$ones <- function(shape) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   class(.val) <- "NdArrayDyn"
@@ -21391,7 +21397,7 @@ NdIntVec$new <- function(data) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   self <- .val
@@ -21404,7 +21410,7 @@ NdIntVec$len <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21415,7 +21421,7 @@ NdIntVec$is_empty <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21426,7 +21432,7 @@ NdIntVec$ndim <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21437,7 +21443,7 @@ NdIntVec$shape <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21448,7 +21454,7 @@ NdIntVec$sum <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21459,7 +21465,7 @@ NdIntVec$mean <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21470,7 +21476,7 @@ NdIntVec$min <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21481,7 +21487,7 @@ NdIntVec$max <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21492,7 +21498,7 @@ NdIntVec$product <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21503,7 +21509,7 @@ NdIntVec$var <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21514,7 +21520,7 @@ NdIntVec$std <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21529,7 +21535,7 @@ NdIntVec$get <- function(index) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21540,7 +21546,7 @@ NdIntVec$first <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21551,7 +21557,7 @@ NdIntVec$last <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21568,7 +21574,7 @@ NdIntVec$slice_1d <- function(start, end) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21579,7 +21585,7 @@ NdIntVec$to_r <- function() {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21643,7 +21649,7 @@ new_derivedcurrency <- function(symbol, amounts) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   data <- .val
@@ -21689,7 +21695,7 @@ symbol.DerivedCurrency <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val
@@ -21705,7 +21711,7 @@ format.DerivedCurrency <- function(x, ...) {
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = sys.call(), kind = .val$kind)
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
     ))
   }
   .val

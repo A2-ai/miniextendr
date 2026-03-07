@@ -239,6 +239,9 @@ impl CWrapperContext {
         if self.strict {
             builder = builder.with_strict();
         }
+        if self.error_in_r {
+            builder = builder.with_error_in_r();
+        }
         if self.coerce_all {
             builder = builder.with_coerce_all();
         }
@@ -260,6 +263,9 @@ impl CWrapperContext {
         let mut builder = crate::RustConversionBuilder::new();
         if self.strict {
             builder = builder.with_strict();
+        }
+        if self.error_in_r {
+            builder = builder.with_error_in_r();
         }
         if self.coerce_all {
             builder = builder.with_coerce_all();
@@ -315,16 +321,15 @@ impl CWrapperContext {
         };
 
         if self.rng {
-            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
-            let rng_panic_handler = if self.error_in_r {
-                quote! {
-                    ::miniextendr_api::error_value::make_rust_error_value(
-                        &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                        "panic",
-                    )
-                }
-            } else {
-                quote! { ::std::panic::resume_unwind(payload) }
+            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
+            // rng always implies error_in_r (validated at parse time), so we always return
+            // a tagged error value on panic instead of resume_unwind.
+            let rng_panic_handler = quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    "panic",
+                    Some(__miniextendr_call),
+                )
             };
             quote! {
                 #[doc = #doc]
@@ -380,7 +385,7 @@ impl CWrapperContext {
     /// 1. `GetRNGstate()` (if `rng` enabled)
     /// 2. `catch_unwind` around the entire body
     /// 3. Pre-closure conversions on the main thread (produces owned values)
-    /// 4. `run_on_worker` (or `run_on_worker_result` in `error_in_r` mode) with a
+    /// 4. `run_on_worker` (returns `Result<T, String>`) with a
     ///    `move` closure containing in-closure conversions and the call expression
     /// 5. Return conversion back on the main thread via `with_r_unwind_protect`
     /// 6. `PutRNGstate()` (if `rng` enabled)
@@ -422,6 +427,7 @@ impl CWrapperContext {
                 ::miniextendr_api::error_value::make_rust_error_value(
                     &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
                     "panic",
+                    Some(__miniextendr_call),
                 )
             }
         } else {
@@ -434,7 +440,7 @@ impl CWrapperContext {
         };
 
         if self.error_in_r {
-            // error_in_r: use run_on_worker_result to get Result<T, String> instead of diverging
+            // error_in_r: run_on_worker returns Result; Err → tagged error value
             quote! {
                 #[doc = #doc]
                 #[doc = #source_loc_doc]
@@ -447,7 +453,7 @@ impl CWrapperContext {
                         #(#pre_call)*
                         #(#pre_closure_stmts)*
 
-                        match ::miniextendr_api::worker::run_on_worker_result(move || {
+                        match ::miniextendr_api::worker::run_on_worker(move || {
                             #(#in_closure_stmts)*
                             #worker_body
                         }) {
@@ -456,7 +462,7 @@ impl CWrapperContext {
                             }
                             Err(__panic_msg) => {
                                 ::miniextendr_api::error_value::make_rust_error_value(
-                                    &__panic_msg, "panic",
+                                    &__panic_msg, "panic", Some(__miniextendr_call),
                                 )
                             }
                         }
@@ -471,6 +477,7 @@ impl CWrapperContext {
                 }
             }
         } else {
+            // run_on_worker returns Result; Err → R error via Rf_errorcall
             quote! {
                 #[doc = #doc]
                 #[doc = #source_loc_doc]
@@ -483,12 +490,17 @@ impl CWrapperContext {
                         #(#pre_call)*
                         #(#pre_closure_stmts)*
 
-                        let __miniextendr_result = ::miniextendr_api::worker::run_on_worker(move || {
+                        match ::miniextendr_api::worker::run_on_worker(move || {
                             #(#in_closure_stmts)*
                             #worker_body
-                        });
-
-                        #return_conversion
+                        }) {
+                            Ok(__miniextendr_result) => {
+                                #return_conversion
+                            }
+                            Err(__panic_msg) => {
+                                ::miniextendr_api::worker::panic_message_to_r_error(__panic_msg, Some(__miniextendr_call))
+                            }
+                        }
                     }));
                     #rng_put
                     match __miniextendr_panic_result {
@@ -545,7 +557,7 @@ impl CWrapperContext {
                         let __result = #call_expr;
                         if __result.is_none() {
                             return ::miniextendr_api::error_value::make_rust_error_value(
-                                #error_msg, "none_err"
+                                #error_msg, "none_err", Some(__miniextendr_call),
                             );
                         }
                         unsafe { ::miniextendr_api::ffi::R_NilValue }
@@ -568,7 +580,7 @@ impl CWrapperContext {
                         match __result {
                             Some(v) => v,
                             None => return ::miniextendr_api::error_value::make_rust_error_value(
-                                #error_msg, "none_err"
+                                #error_msg, "none_err", Some(__miniextendr_call),
                             ),
                         }
                     }
@@ -592,7 +604,7 @@ impl CWrapperContext {
                         let #result_ident = match __result {
                             Some(v) => v,
                             None => return ::miniextendr_api::error_value::make_rust_error_value(
-                                #error_msg, "none_err"
+                                #error_msg, "none_err", Some(__miniextendr_call),
                             ),
                         };
                         #conversion
@@ -614,7 +626,7 @@ impl CWrapperContext {
                         let __result = #call_expr;
                         if let Err(e) = __result {
                             return ::miniextendr_api::error_value::make_rust_error_value(
-                                &format!("{:?}", e), "result_err"
+                                &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             );
                         }
                         unsafe { ::miniextendr_api::ffi::R_NilValue }
@@ -636,7 +648,7 @@ impl CWrapperContext {
                         match __result {
                             Ok(v) => v,
                             Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
-                                &format!("{:?}", e), "result_err"
+                                &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             ),
                         }
                     }
@@ -659,7 +671,7 @@ impl CWrapperContext {
                         let #result_ident = match __result {
                             Ok(v) => v,
                             Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
-                                &format!("{:?}", e), "result_err"
+                                &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             ),
                         };
                         #conversion
@@ -753,7 +765,7 @@ impl CWrapperContext {
                     let convert = quote! {
                         if __miniextendr_result.is_none() {
                             ::miniextendr_api::error_value::make_rust_error_value(
-                                #error_msg, "none_err"
+                                #error_msg, "none_err", Some(__miniextendr_call),
                             )
                         } else {
                             unsafe { ::miniextendr_api::ffi::R_NilValue }
@@ -781,7 +793,7 @@ impl CWrapperContext {
                         match __miniextendr_result {
                             Some(v) => v,
                             None => ::miniextendr_api::error_value::make_rust_error_value(
-                                #error_msg, "none_err"
+                                #error_msg, "none_err", Some(__miniextendr_call),
                             ),
                         }
                     };
@@ -814,7 +826,7 @@ impl CWrapperContext {
                                 None,
                             ),
                             None => ::miniextendr_api::error_value::make_rust_error_value(
-                                #error_msg, "none_err"
+                                #error_msg, "none_err", Some(__miniextendr_call),
                             ),
                         }
                     };
@@ -845,7 +857,7 @@ impl CWrapperContext {
                         match __miniextendr_result {
                             Ok(()) => unsafe { ::miniextendr_api::ffi::R_NilValue },
                             Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                                &format!("{:?}", e), "result_err"
+                                &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             ),
                         }
                     };
@@ -870,7 +882,7 @@ impl CWrapperContext {
                         match __miniextendr_result {
                             Ok(v) => v,
                             Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                                &format!("{:?}", e), "result_err"
+                                &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             ),
                         }
                     };
@@ -902,7 +914,7 @@ impl CWrapperContext {
                                 None,
                             ),
                             Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                                &format!("{:?}", e), "result_err"
+                                &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             ),
                         }
                     };

@@ -84,41 +84,12 @@ pub(crate) unsafe fn panic_payload_to_r_error(
     }
 }
 
-/// Execute a closure with R unwind protection.
+/// Core R_UnwindProtect wrapper. Returns `Ok(result)` on success,
+/// `Err(payload)` on Rust panic, or diverges via `R_ContinueUnwind` on R longjmp.
 ///
-/// If the closure panics, the panic is caught and converted to an R error.
-/// If R raises an error (longjmp), all Rust RAII resources are properly dropped
-/// before R continues unwinding.
-///
-/// # Arguments
-///
-/// * `f` - The closure to execute
-/// * `call` - Optional R call SEXP for better error messages
-///
-/// # Example
-///
-/// ```ignore
-/// let result: i32 = with_r_unwind_protect(|| {
-///     // Code that might call R APIs that can error
-///     42
-/// }, None);
-/// ```
-pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
-where
-    F: FnOnce() -> R,
-{
-    with_r_unwind_protect_sourced(f, call, crate::panic_telemetry::PanicSource::UnwindProtect)
-}
-
-/// Like [`with_r_unwind_protect`], but reports panics with a custom [`PanicSource`].
-///
-/// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
-/// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.
-pub(crate) fn with_r_unwind_protect_sourced<F, R>(
-    f: F,
-    call: Option<SEXP>,
-    source: crate::panic_telemetry::PanicSource,
-) -> R
+/// Handles: CallData boxing, trampoline, cleanup handler, continuation token,
+/// `Box::from_raw` reclamation on all non-diverging paths.
+fn run_r_unwind_protect<F, R>(f: F) -> Result<R, Box<dyn Any + Send>>
 where
     F: FnOnce() -> R,
 {
@@ -183,26 +154,72 @@ where
                 // Check if trampoline caught a panic
                 if let Some(payload) = data.panic_payload.take() {
                     drop(data);
-                    panic_payload_to_r_error(payload, call, source);
+                    Err(payload)
+                } else {
+                    // Normal completion - return the result
+                    Ok(data
+                        .result
+                        .take()
+                        .expect("result not set after successful completion"))
                 }
-                // Normal completion - return the result
-                data.result
-                    .take()
-                    .expect("result not set after successful completion")
             }
             Err(payload) => {
                 // Drop data first to run destructors
                 drop(data);
                 // Check if this was an R error or a Rust panic
                 if payload.downcast_ref::<RErrorMarker>().is_some() {
-                    // R error - continue R's unwind
+                    // R error - continue R's unwind (diverges, never returns)
                     R_ContinueUnwind(token);
                 } else {
-                    // Rust panic - convert to R error
-                    panic_payload_to_r_error(payload, call, source);
+                    // Rust panic
+                    Err(payload)
                 }
             }
         }
+    }
+}
+
+/// Execute a closure with R unwind protection.
+///
+/// If the closure panics, the panic is caught and converted to an R error.
+/// If R raises an error (longjmp), all Rust RAII resources are properly dropped
+/// before R continues unwinding.
+///
+/// # Arguments
+///
+/// * `f` - The closure to execute
+/// * `call` - Optional R call SEXP for better error messages
+///
+/// # Example
+///
+/// ```ignore
+/// let result: i32 = with_r_unwind_protect(|| {
+///     // Code that might call R APIs that can error
+///     42
+/// }, None);
+/// ```
+pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
+where
+    F: FnOnce() -> R,
+{
+    with_r_unwind_protect_sourced(f, call, crate::panic_telemetry::PanicSource::UnwindProtect)
+}
+
+/// Like [`with_r_unwind_protect`], but reports panics with a custom [`PanicSource`].
+///
+/// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
+/// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.
+pub(crate) fn with_r_unwind_protect_sourced<F, R>(
+    f: F,
+    call: Option<SEXP>,
+    source: crate::panic_telemetry::PanicSource,
+) -> R
+where
+    F: FnOnce() -> R,
+{
+    match run_r_unwind_protect(f) {
+        Ok(result) => result,
+        Err(payload) => unsafe { panic_payload_to_r_error(payload, call, source) },
     }
 }
 
@@ -214,97 +231,16 @@ where
 /// R error condition past the Rust boundary.
 ///
 /// R-origin errors (longjmp) still pass through via `R_ContinueUnwind`.
-pub fn with_r_unwind_protect_error_in_r<F>(f: F, _call: Option<SEXP>) -> SEXP
+pub fn with_r_unwind_protect_error_in_r<F>(f: F, call: Option<SEXP>) -> SEXP
 where
     F: FnOnce() -> SEXP,
 {
-    // Marker type for R errors caught by cleanup handler.
-    struct RErrorMarker;
-
-    struct CallData<F> {
-        f: Option<F>,
-        result: Option<SEXP>,
-        panic_payload: Option<Box<dyn Any + Send>>,
-    }
-
-    unsafe extern "C-unwind" fn trampoline<F>(data: *mut c_void) -> SEXP
-    where
-        F: FnOnce() -> SEXP,
-    {
-        let data = unsafe { data.cast::<CallData<F>>().as_mut().unwrap() };
-        let f = data.f.take().expect("trampoline: closure already consumed");
-
-        match catch_unwind(AssertUnwindSafe(f)) {
-            Ok(result) => {
-                data.result = Some(result);
-                unsafe { crate::ffi::R_NilValue }
-            }
-            Err(payload) => {
-                data.panic_payload = Some(payload);
-                unsafe { crate::ffi::R_NilValue }
-            }
-        }
-    }
-
-    unsafe extern "C-unwind" fn cleanup_handler(_data: *mut c_void, jump: Rboolean) {
-        if jump != Rboolean::FALSE {
-            std::panic::panic_any(RErrorMarker);
-        }
-    }
-
-    unsafe {
-        let token = get_continuation_token();
-
-        let data = Box::into_raw(Box::new(CallData::<F> {
-            f: Some(f),
-            result: None,
-            panic_payload: None,
-        }));
-
-        let panic_result = catch_unwind(AssertUnwindSafe(|| {
-            R_UnwindProtect_C_unwind(
-                Some(trampoline::<F>),
-                data.cast(),
-                Some(cleanup_handler),
-                std::ptr::null_mut(),
-                token,
-            )
-        }));
-
-        let mut data = Box::from_raw(data);
-
-        match panic_result {
-            Ok(_) => {
-                if let Some(payload) = data.panic_payload.take() {
-                    // Rust panic → return tagged error value (not R error)
-                    drop(data);
-                    let msg = panic_payload_to_string(payload.as_ref());
-                    crate::panic_telemetry::fire(
-                        &msg,
-                        crate::panic_telemetry::PanicSource::UnwindProtect,
-                    );
-                    crate::error_value::make_rust_error_value(&msg, "panic")
-                } else {
-                    data.result
-                        .take()
-                        .expect("result not set after successful completion")
-                }
-            }
-            Err(payload) => {
-                drop(data);
-                if payload.downcast_ref::<RErrorMarker>().is_some() {
-                    // R error - continue R's unwind (passes through)
-                    R_ContinueUnwind(token);
-                } else {
-                    // Unexpected panic → return tagged error value
-                    let msg = panic_payload_to_string(payload.as_ref());
-                    crate::panic_telemetry::fire(
-                        &msg,
-                        crate::panic_telemetry::PanicSource::UnwindProtect,
-                    );
-                    crate::error_value::make_rust_error_value(&msg, "panic")
-                }
-            }
+    match run_r_unwind_protect(f) {
+        Ok(result) => result,
+        Err(payload) => {
+            let msg = panic_payload_to_string(payload.as_ref());
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
+            crate::error_value::make_rust_error_value(&msg, "panic", call)
         }
     }
 }
