@@ -24,7 +24,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
         .stack_size(16 * 1024 * 1024) // 16 MiB
         .name("test-r-worker".to_string())
         .spawn(|| {
-            // Use _unchecked APIs (no stack check)
+            // mxl::allow(MXL301)
             let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(123) };
             unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
         })
@@ -41,6 +41,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
 pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
     let result = RThreadBuilder::new()
         .spawn_join(|| {
+            // mxl::allow(MXL301)
             let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(456) };
             unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
         })

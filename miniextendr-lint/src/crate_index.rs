@@ -826,9 +826,41 @@ const RF_ERROR_PATTERNS: &[&str] = &[
     "Rf_errorcall_unchecked(",
 ];
 
+/// Check if a lint code is suppressed via `// mxl::allow(MXL...)` comment.
+///
+/// Checks the current line for a trailing `// mxl::allow(MXLnnn)` comment,
+/// and also checks the immediately preceding line for a standalone
+/// `// mxl::allow(MXLnnn)` comment. Multiple codes can be comma-separated:
+/// `// mxl::allow(MXL300, MXL301)`.
+fn is_suppressed(lines: &[&str], line_idx: usize, code: &str) -> bool {
+    // Check current line for trailing comment
+    if line_has_allow(lines[line_idx], code) {
+        return true;
+    }
+    // Check preceding line for standalone allow comment
+    if line_idx > 0 && line_has_allow(lines[line_idx - 1], code) {
+        return true;
+    }
+    false
+}
+
+/// Check if a single line contains `// mxl::allow(...)` matching the given code.
+fn line_has_allow(line: &str, code: &str) -> bool {
+    const PREFIX: &str = "// mxl::allow(";
+    if let Some(pos) = line.find(PREFIX) {
+        let after = &line[pos + PREFIX.len()..];
+        if let Some(end) = after.find(')') {
+            let codes = &after[..end];
+            return codes.split(',').any(|c| c.trim() == code);
+        }
+    }
+    false
+}
+
 /// Scan raw source text for `ffi::*_unchecked()` calls.
 fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
-    for (line_idx, line) in src.lines().enumerate() {
+    let lines: Vec<&str> = src.lines().collect();
+    for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         // Skip comment lines
         if trimmed.starts_with("//") {
@@ -849,8 +881,10 @@ fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
                 .unwrap_or(after_ffi.len());
             let ident = &after_ffi[..ident_end];
             if ident.ends_with("_unchecked") && after_ffi[ident_end..].starts_with('(') {
-                data.ffi_unchecked_calls
-                    .push((ident.to_string(), line_idx + 1));
+                if !is_suppressed(&lines, line_idx, "MXL301") {
+                    data.ffi_unchecked_calls
+                        .push((ident.to_string(), line_idx + 1));
+                }
             }
             search_from = abs_pos + 5 + ident_end;
         }
@@ -859,7 +893,8 @@ fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
 
 /// Scan raw source text for direct Rf_error/Rf_errorcall calls.
 fn scan_rf_error_calls(src: &str, data: &mut FileData) {
-    for (line_idx, line) in src.lines().enumerate() {
+    let lines: Vec<&str> = src.lines().collect();
+    for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         // Skip comment lines
         if trimmed.starts_with("//") {
@@ -867,10 +902,11 @@ fn scan_rf_error_calls(src: &str, data: &mut FileData) {
         }
         for pattern in RF_ERROR_PATTERNS {
             if trimmed.contains(pattern) {
-                // Extract the function name (without the trailing paren)
-                let fn_name = &pattern[..pattern.len() - 1];
-                data.rf_error_calls
-                    .push((fn_name.to_string(), line_idx + 1));
+                if !is_suppressed(&lines, line_idx, "MXL300") {
+                    let fn_name = &pattern[..pattern.len() - 1];
+                    data.rf_error_calls
+                        .push((fn_name.to_string(), line_idx + 1));
+                }
             }
         }
     }
