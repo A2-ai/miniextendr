@@ -44,6 +44,7 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 | **MXL106** | Registered function is not `pub` | Add `pub` to the function definition |
 | **MXL107** | Missing `#[miniextendr] impl Trait for Type` | Add the attribute to the trait impl |
 | **MXL108** | Missing module entry for trait impl | Add `impl Trait for Type;` to module |
+| **MXL109** | `#[cfg]` mismatch between `mod` and `use` | Ensure `#[cfg]` on `mod child;` matches `use child;` in `miniextendr_module!` |
 
 ### Warnings (P1 — important)
 
@@ -54,6 +55,86 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 | **MXL202** | Orphan `use child;` | Remove the `use` for non-existent child module |
 | **MXL203** | `internal` + `noexport` redundancy | Use just `#[miniextendr(internal)]` (implies noexport) |
 | **MXL204** | Multiple root-level modules | Only one root `miniextendr_module!` per crate |
+
+### Warnings (P2 — safety)
+
+| Code | Description | Fix |
+|------|-------------|-----|
+| **MXL300** | Direct `Rf_error`/`Rf_errorcall` call | Use `panic!()` or return `Err(...)` instead |
+| **MXL301** | `_unchecked` FFI call outside guard context | Use the checked wrapper, or ensure you're inside `with_r_unwind_protect` |
+
+#### MXL300: Direct Rf_error calls
+
+`Rf_error()` and `Rf_errorcall()` perform a C `longjmp` that skips Rust destructors. This leaks memory and can corrupt state. The lint detects these calls via text scanning.
+
+**Preferred alternatives:**
+
+- `panic!("message")` — caught by miniextendr's unwind protection, produces a structured R condition
+- `return Err(...)` — for `Result<T, E>` return types, produces a clean R error
+
+**When Rf_error is intentional** (e.g., inside `with_r_unwind_protect` closures or test fixtures), suppress with `// mxl::allow(MXL300)` — see [Inline Suppression](#inline-suppression) below.
+
+#### MXL301: Unchecked FFI calls
+
+Functions like `Rf_ScalarInteger_unchecked()` bypass miniextendr's main-thread routing check. They are only safe when you are **certain** you're on R's main thread (inside ALTREP callbacks, `with_r_unwind_protect` closures, `extern "C-unwind"` functions called by R, etc.).
+
+**Preferred:** Use the checked wrapper (without `_unchecked` suffix). It adds a debug-mode thread assertion.
+
+**When unchecked is intentional**, suppress with `// mxl::allow(MXL301)`.
+
+## Inline Suppression
+
+Both MXL300 and MXL301 support inline suppression via `// mxl::allow(...)` comments. The suppression comment can appear:
+
+1. **On the same line** (trailing comment):
+
+```rust
+Rf_error(c"%s".as_ptr(), c"intentional".as_ptr()) // mxl::allow(MXL300)
+```
+
+2. **On the immediately preceding line** (standalone comment):
+
+```rust
+// mxl::allow(MXL300)
+Rf_error(c"%s".as_ptr(), c"intentional".as_ptr())
+```
+
+Multiple codes can be suppressed in one comment:
+
+```rust
+// mxl::allow(MXL300, MXL301)
+Rf_error_unchecked(c"test".as_ptr())
+```
+
+**Important:** The comment must be on the exact same line or the line directly above. A comment two lines above will not suppress the diagnostic.
+
+```rust
+// mxl::allow(MXL300)   <-- too far away (2 lines above)
+unsafe {
+    Rf_error(...)        <-- NOT suppressed
+}
+```
+
+Move the comment inside the block:
+
+```rust
+unsafe {
+    // mxl::allow(MXL300)
+    Rf_error(...)        <-- suppressed
+}
+```
+
+### Suppression syntax
+
+```
+// mxl::allow(CODE)
+// mxl::allow(CODE1, CODE2)
+// mxl::allow(CODE1, CODE2, CODE3)
+```
+
+- Prefix: `// mxl::allow(`
+- Codes: comma-separated, whitespace around commas is ignored
+- Only `MXL300` and `MXL301` are currently suppressible
 
 ## Common Proc-Macro Errors
 

@@ -37,7 +37,7 @@ pub fn drop_on_panic() {
 pub fn drop_on_panic_with_move() {
     let _a = MsgOnDrop;
     unsafe {
-        Rf_error(c"%s".as_ptr(), c"an r error occurred".as_ptr());
+        Rf_error(c"%s".as_ptr(), c"an r error occurred".as_ptr()); // mxl::allow(MXL300)
     }
 }
 
@@ -134,6 +134,7 @@ pub fn add_panic(_left: i32, _right: i32) -> i32 {
 pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
     unsafe {
+        // mxl::allow(MXL300)
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     }
 }
@@ -150,6 +151,7 @@ pub fn add_panic_heap(_left: i32, _right: i32) -> i32 {
 pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
     unsafe {
+        // mxl::allow(MXL300)
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     }
 }
@@ -205,7 +207,7 @@ pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_r_error() -> SEXP {
-    // Use unchecked - this is testing raw R error behavior
+    // mxl::allow(MXL300, MXL301)
     unsafe { miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr()) }
 }
 
@@ -217,7 +219,7 @@ pub extern "C-unwind" fn C_r_error() -> SEXP {
 pub extern "C-unwind" fn C_r_error_in_catch() -> SEXP {
     unsafe {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            // Use unchecked - this is testing raw R error behavior
+            // mxl::allow(MXL300, MXL301)
             miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr())
         }))
         .unwrap();
@@ -245,7 +247,7 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
     // Use checked Rf_error - will panic with clear message about wrong thread.
     // Since Rf_error returns !, the thread always panics, so unwrap_err is safe.
     let e = std::thread::spawn(|| unsafe {
-        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr())
+        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr()) // mxl::allow(MXL300)
     })
     .join()
     .unwrap_err();

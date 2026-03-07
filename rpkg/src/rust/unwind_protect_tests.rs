@@ -59,6 +59,7 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
             // a and b are captured by the `move` closure, so they remain
             // alive at this point. Rf_error diverges (returns !).
             unsafe {
+                // mxl::allow(MXL300)
                 ::miniextendr_api::ffi::Rf_error(
                     c"%s".as_ptr(),
                     c"intentional R error for testing".as_ptr(),
@@ -79,6 +80,7 @@ pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
         with_r_unwind_protect(
             || {
                 eprintln!("[Rust] Inside protected function, about to trigger R error");
+                // mxl::allow(MXL300)
                 ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr())
             },
             None,
