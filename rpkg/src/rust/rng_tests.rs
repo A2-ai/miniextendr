@@ -46,6 +46,7 @@ pub fn rng_with_interrupt(n: i32) -> Vec<f64> {
 }
 
 /// @noRd
+#[cfg(feature = "default-worker")]
 #[miniextendr(rng, worker)]
 pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
@@ -124,6 +125,7 @@ miniextendr_module! {
     fn rng_exponential;
     fn rng_int;
     fn rng_with_interrupt;
+    #[cfg(feature = "default-worker")]
     fn rng_worker_uniform;
 
     // Manual RNG tests

@@ -508,6 +508,7 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     sig: method.sig.clone(),
                     has_self,
                     is_mut,
+                    worker: attrs.worker,
                     unsafe_main_thread: attrs.unsafe_main_thread,
                     coerce: attrs.coerce,
                     check_interrupt: attrs.check_interrupt,
@@ -531,6 +532,8 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
 /// Extracted from method-level attributes to control C wrapper behavior,
 /// threading, and R wrapper generation.
 struct TraitMethodAttrs {
+    /// Dispatch to worker thread. Set by explicit `#[miniextendr(worker)]` or `default-worker` feature.
+    worker: bool,
     /// Force execution on R's main thread (overrides default worker thread for static methods).
     unsafe_main_thread: bool,
     /// Enable `Rf_coerceVector` for all parameters.
@@ -557,8 +560,8 @@ struct TraitMethodAttrs {
 /// - **Flat**: `#[miniextendr(worker, coerce, rng)]`
 /// - **Nested class-system**: `#[miniextendr(env(worker, coerce))]`
 ///
-/// Both styles can coexist. The `worker` flag is parsed but currently unused
-/// (worker thread is already the default for static methods).
+/// Both styles can coexist. The `worker` flag controls whether static methods
+/// dispatch to the worker thread (defaults to `cfg!(feature = "default-worker")`).
 /// `error_in_r` and `unwrap_in_r` are mutually exclusive.
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     let mut worker = false;
@@ -662,10 +665,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         });
     }
 
-    // `worker` is parsed but not used — WorkerThread is the default for static methods
-    let _ = worker;
-
     TraitMethodAttrs {
+        worker: worker || cfg!(feature = "default-worker"),
         unsafe_main_thread,
         coerce,
         check_interrupt,
@@ -722,7 +723,7 @@ pub(super) fn is_self_ref_type(ty: &syn::Type) -> bool {
 ///
 /// Instance methods (`has_self`) extract the object via `ErasedExternalPtr::from_sexp`
 /// and call with fully-qualified trait syntax `<Type as Trait>::method(self_ref, ...)`.
-/// Static methods run on the worker thread by default.
+/// Static methods run on the worker thread when the `worker` flag is set.
 ///
 /// `&Self` parameters are rewritten to `ExternalPtr<Type>` for the C wrapper,
 /// then dereferenced to `&Type` when calling the actual trait method.
@@ -738,14 +739,14 @@ pub(super) fn generate_trait_method_c_wrapper(
     let c_ident = method.c_wrapper_ident(type_ident, trait_name);
     let call_method_def_ident = method.call_method_def_ident(type_ident, trait_name);
 
-    // Thread strategy: instance methods stay on main thread; static methods default to worker
-    // Note: `worker` flag is currently redundant since WorkerThread is already the default
-    // for static methods. It's kept for explicitness and potential future use.
+    // Thread strategy: instance methods stay on main thread (self_ref can't cross threads);
+    // static methods use worker thread only when worker=true (explicit or default-worker feature)
     let thread_strategy = if method.has_self || method.unsafe_main_thread {
         ThreadStrategy::MainThread
-    } else {
-        // Static methods use worker thread (method.worker flag is the default behavior)
+    } else if method.worker {
         ThreadStrategy::WorkerThread
+    } else {
+        ThreadStrategy::MainThread
     };
 
     // Build rust argument names from the signature (excluding self receiver)
