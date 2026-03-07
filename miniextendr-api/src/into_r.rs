@@ -2639,6 +2639,25 @@ impl<T> Altrep<T> {
     pub fn into_inner(self) -> T {
         self.0
     }
+
+    /// Convert to R ALTREP and wrap in [`AltrepSexp`] (`!Send + !Sync`).
+    ///
+    /// This creates the ALTREP SEXP and wraps it in an `AltrepSexp` that
+    /// prevents the result from being sent to non-R threads. Use this when
+    /// you need to keep the ALTREP vector in Rust code and want compile-time
+    /// thread safety guarantees.
+    ///
+    /// For returning directly to R from `#[miniextendr]` functions, use
+    /// `Altrep<T>` as the return type (which implements `IntoR`) or call
+    /// `.into_sexp()` / `.into_sexp_altrep()` instead.
+    pub fn into_altrep_sexp(self) -> crate::altrep_sexp::AltrepSexp
+    where
+        T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
+    {
+        let sexp = self.into_sexp();
+        // Safety: we just created an ALTREP SEXP via R_new_altrep
+        unsafe { crate::altrep_sexp::AltrepSexp::from_raw(sexp) }
+    }
 }
 
 impl<T> From<T> for Altrep<T> {
@@ -2702,6 +2721,24 @@ where
             crate::ffi::Rf_unprotect_unchecked(1);
             out
         }
+    }
+}
+
+/// Convert `AltrepSexp` to R by returning the inner SEXP.
+///
+/// This allows `AltrepSexp` to be used as a return type from `#[miniextendr]`
+/// functions, transparently passing the ALTREP SEXP back to R.
+impl IntoR for crate::altrep_sexp::AltrepSexp {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        // Safety: returning to R which is always the main thread context
+        unsafe { self.as_raw() }
     }
 }
 
