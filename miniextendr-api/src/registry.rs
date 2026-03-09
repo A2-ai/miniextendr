@@ -155,7 +155,6 @@ pub unsafe extern "C-unwind" fn miniextendr_register_routines(dll: *mut DllInfo)
             std::ptr::null(),
             std::ptr::null(),
         );
-        // R_useDynamicSymbols and R_forceSymbols are called in entrypoint.c
     }
 }
 
