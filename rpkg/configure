@@ -3811,6 +3811,26 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         echo "configure: removed vendor directory (dev-monorepo)"
       fi
       rm -f "$VENDOR_OUT/.vendor.lock.cksum"
+
+            if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
+                for _crate in miniextendr-api miniextendr-lint; do
+          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-[^\"]*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        done
+
+                if grep -q '^\[patch\.crates-io\]' src/rust/Cargo.toml 2>/dev/null; then
+          "$SED" '/^\[patch\.crates-io\]/,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+            && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        fi
+
+                printf '\n[patch."https://github.com/CGMossa/miniextendr"]\n' >> src/rust/Cargo.toml
+        for _crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint; do
+          printf '%s = { path = "../../../%s" }\n' "$_crate" "$_crate" >> src/rust/Cargo.toml
+        done
+
+        echo "configure: restored Cargo.toml from vendored to monorepo state"
+      fi
+
       echo "configure: dev-monorepo — using patch paths"
       ;;
     dev-detached)
@@ -3818,6 +3838,21 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         rm -rf "$VENDOR_OUT"
         echo "configure: removed vendor directory (dev-detached)"
       fi
+
+            if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
+                for _crate in miniextendr-api miniextendr-lint; do
+          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-[^\"]*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        done
+
+                if grep -q '^\[patch\.crates-io\]' src/rust/Cargo.toml 2>/dev/null; then
+          "$SED" '/^\[patch\.crates-io\]/,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+            && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        fi
+
+        echo "configure: restored Cargo.toml from vendored to git state"
+      fi
+
       echo "configure: dev-detached — using git/network deps"
       ;;
     vendored-install|prepare-cran)
