@@ -387,7 +387,7 @@ vendor:
     # (crates with inter-workspace deps fail cargo package because deps aren't on crates.io)
     # For these, we copy source directly and resolve { workspace = true } deps.
     echo "Ensuring all workspace crates are vendored..."
-    ws_version="0.1.0"
+    ws_version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$root/Cargo.toml" | head -1)
     for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
         dest="$vendor_out/${crate}-${ws_version}"
         if [ -d "$dest" ]; then
@@ -427,9 +427,16 @@ vendor:
             "$dest/Cargo.toml"
         rm -f "$dest/Cargo.toml.bak"
 
-        # Strip [dev-dependencies] to end of file (tests/benches dirs are removed from vendor)
-        sed -i.bak '/^\[dev-dependencies\]/,$d' "$dest/Cargo.toml"
+        # Strip [dev-dependencies] section (tests/benches dirs are removed from vendor)
+        sed -i.bak '/^\[dev-dependencies\]/,/^\[/{/^\[dev-dependencies\]/d;/^\[/!d;}' "$dest/Cargo.toml"
         rm -f "$dest/Cargo.toml.bak"
+
+        # Verify all workspace refs were resolved
+        if grep -q 'workspace = true' "$dest/Cargo.toml"; then
+            echo "ERROR: unresolved { workspace = true } in $dest/Cargo.toml:" >&2
+            grep 'workspace = true' "$dest/Cargo.toml" >&2
+            exit 1
+        fi
 
         echo '{"files":{}}' > "$dest/.cargo-checksum.json"
     done
