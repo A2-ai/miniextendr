@@ -508,7 +508,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       dnl Rewrite git deps to path deps
       for _crate in miniextendr-api miniextendr-lint; do
         _versioned_dir=""
-        for _d in "$VENDOR_OUT/$_crate"-*/; do
+        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
           if test -d "$_d"; then _versioned_dir="$_d"; break; fi
         done
         if test -n "$_versioned_dir"; then
