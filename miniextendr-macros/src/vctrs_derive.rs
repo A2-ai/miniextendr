@@ -716,6 +716,7 @@ vec_proxy_order.{class} <- function(x, ...) {{
             r_code.push_str(&format!(
                 r#"
 #' @importFrom vctrs vec_arith
+#' @method vec_arith {class}
 #' @export
 vec_arith.{class} <- function(op, x, y, ...) {{
   UseMethod("vec_arith.{class}", y)

@@ -127,13 +127,13 @@ Counter$from_string <- function(s) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(Counter)) {
       ns <- Counter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
