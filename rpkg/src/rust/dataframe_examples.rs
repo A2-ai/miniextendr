@@ -142,7 +142,7 @@ pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
 
 // ── Collection expansion examples ────────────────────────────────────────────
 
-/// Struct with array expansion: [f64; 3] → coords_1, coords_2, coords_3.
+/// Struct with array expansion: [f64; 3] -> coords_1, coords_2, coords_3.
 #[derive(Clone, Debug, DataFrameRow)]
 pub struct PointExpanded {
     pub label: String,

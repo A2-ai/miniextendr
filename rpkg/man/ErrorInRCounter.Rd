@@ -42,9 +42,9 @@ ErrorInRCounter
 \description{
 Create a new counter.
 
-Get the current value — should always succeed.
+Get the current value -- should always succeed.
 
-Increment — mutable method, should succeed and allow chaining.
+Increment -- mutable method, should succeed and allow chaining.
 
 Deliberately panic in a method.
 

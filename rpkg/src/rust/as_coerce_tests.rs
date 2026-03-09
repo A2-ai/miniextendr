@@ -30,9 +30,13 @@ pub struct AsCoerceErrorTest {
 /// @title as.<class>() Coercion Test Type
 /// @name AsCoerceTestData
 /// @description Test type for as.data.frame, as.list, and as.character methods
+/// @param x An object.
+/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl AsCoerceTestData {
     /// Create a new test data object.
+    /// @param names Character vector of names.
+    /// @param values Numeric vector of values.
     pub fn new(names: Vec<String>, values: Vec<f64>) -> Self {
         Self { names, values }
     }

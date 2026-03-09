@@ -56,6 +56,8 @@ SidecarR6_set_label <- function(x, value) {
 # Auto-generated active bindings for SidecarR6 sidecar fields.
 # These are applied when `r_data_accessors` is set on the impl block.
 .rdata_active_bindings_SidecarR6 <- function(cls) {
+  # R CMD check: self/private are R6 runtime bindings (set by cls$set)
+  self <- private <- NULL
   cls$set("active", "value", function(value) {
     if (missing(value)) .Call(C__mx_rdata_get_SidecarR6_value, private$.ptr)
     else { .Call(C__mx_rdata_set_SidecarR6_value, private$.ptr, value); invisible(self) }
@@ -1658,7 +1660,7 @@ S7::method(convert, list(S7Fahrenheit, S7Celsius)) <- function(from, to) {
     S7Celsius(.ptr = .val)
   }
 
-# Generated from Rust impl `ErrorInRS7Gauge` (error_in_r_tests.rs:158:6)
+# Generated from Rust impl `ErrorInRS7Gauge` (error_in_r_tests.rs:177:6)
 #' @noRd
 ErrorInRS7Gauge <- S7::new_class("ErrorInRS7Gauge",
   properties = list(
@@ -2063,13 +2065,13 @@ NdVec$from_range <- function(start, end, step) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(NdVec)) {
       ns <- NdVec[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -2312,13 +2314,13 @@ NdIntVec$to_r <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(NdIntVec)) {
       ns <- NdIntVec[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -2632,13 +2634,13 @@ NdMatrix$identity <- function(n) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(NdMatrix)) {
       ns <- NdMatrix[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -2957,13 +2959,13 @@ NdArrayDyn$ones <- function(shape) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(NdArrayDyn)) {
       ns <- NdArrayDyn[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3261,13 +3263,13 @@ RngSampler$static_sample <- function(n) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(RngSampler)) {
       ns <- RngSampler[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3372,13 +3374,13 @@ SimpleCounter$new_counter <- function(initial) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(SimpleCounter)) {
       ns <- SimpleCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3483,13 +3485,13 @@ PanickyCounter$new_panicky <- function(initial) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(PanickyCounter)) {
       ns <- PanickyCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3560,13 +3562,13 @@ R6TraitCounter$new_r6trait <- function(initial) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(R6TraitCounter)) {
       ns <- R6TraitCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3651,13 +3653,13 @@ S3TraitCounter$new_s3trait <- function(initial) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(S3TraitCounter)) {
       ns <- S3TraitCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3728,13 +3730,13 @@ S4TraitCounter$new_s4trait <- function(initial) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(S4TraitCounter)) {
       ns <- S4TraitCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3804,13 +3806,13 @@ S7TraitCounter$new_s7trait <- function(initial) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(S7TraitCounter)) {
       ns <- S7TraitCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3828,7 +3830,7 @@ S7TraitCounter$new_s7trait <- function(initial) {
 #' @noRd
 `[[.S7TraitCounter` <- `$.S7TraitCounter`
 
-# Generated from Rust impl `FallibleImpl` (error_in_r_tests.rs:211:6)
+# Generated from Rust impl `FallibleImpl` (error_in_r_tests.rs:230:6)
 #' @title FallibleImpl  Class
 #' @name FallibleImpl
 #' @rdname FallibleImpl
@@ -3896,13 +3898,13 @@ FallibleImpl$inherent_value <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(FallibleImpl)) {
       ns <- FallibleImpl[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -3921,7 +3923,7 @@ FallibleImpl$inherent_value <- function() {
 #' @export
 `[[.FallibleImpl` <- `$.FallibleImpl`
 
-# Generated from Rust impl `ErrorInRCounter` (error_in_r_tests.rs:78:6)
+# Generated from Rust impl `ErrorInRCounter` (error_in_r_tests.rs:97:6)
 #' @title ErrorInRCounter  Class
 #' @name ErrorInRCounter
 #' @rdname ErrorInRCounter
@@ -3946,7 +3948,7 @@ ErrorInRCounter$new <- function() {
   self
 }
 
-#' @description Get the current value — should always succeed.
+#' @description Get the current value -- should always succeed.
 #' @name ErrorInRCounter$get
 #' @rdname ErrorInRCounter
 #' @source Generated by miniextendr from `ErrorInRCounter::get`
@@ -3961,7 +3963,7 @@ ErrorInRCounter$get <- function() {
   .val
 }
 
-#' @description Increment — mutable method, should succeed and allow chaining.
+#' @description Increment -- mutable method, should succeed and allow chaining.
 #' @name ErrorInRCounter$inc
 #' @rdname ErrorInRCounter
 #' @source Generated by miniextendr from `ErrorInRCounter::inc`
@@ -4030,13 +4032,13 @@ ErrorInRCounter$failing_method <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(ErrorInRCounter)) {
       ns <- ErrorInRCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -4111,7 +4113,7 @@ S7::method(bark, S7Dog) <- function(x, ...) {
     .val
   }
 
-# Generated from Rust impl `ErrorInRR6Widget` (error_in_r_tests.rs:120:6)
+# Generated from Rust impl `ErrorInRR6Widget` (error_in_r_tests.rs:139:6)
 #' @title ErrorInRR6Widget R6 Class
 #' @name ErrorInRR6Widget
 #' @rdname ErrorInRR6Widget
@@ -4143,7 +4145,7 @@ ErrorInRR6Widget <- R6::R6Class("ErrorInRR6Widget",
         private$.ptr <- .val
       }
     },
-    #' @description Get the name — should always succeed.
+    #' @description Get the name -- should always succeed.
     get_name = function() {
       .val <- .Call(C_ErrorInRR6Widget__get_name, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -4236,13 +4238,13 @@ AtomicCounter$new_atomic <- function(initial) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(AtomicCounter)) {
       ns <- AtomicCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -4327,13 +4329,13 @@ SharedSimpleCounter$get_value <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(SharedSimpleCounter)) {
       ns <- SharedSimpleCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -4391,7 +4393,7 @@ SidecarR6 <- R6::R6Class("SidecarR6",
 .rdata_active_bindings_SidecarR6(SidecarR6)
 
 # Generated from Rust impl `SidecarS3` (rdata_sidecar_tests.rs:132:6)
-#' @rdname SidecarS3
+#' @noRd
 SidecarS3 <- new.env(parent = emptyenv())
 
 # Generated from Rust impl `SidecarS4` (rdata_sidecar_tests.rs:164:6)
@@ -4478,13 +4480,13 @@ SidecarEnv <- new.env(parent = emptyenv())
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(SidecarEnv)) {
       ns <- SidecarEnv[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -4527,13 +4529,13 @@ SidecarRaw <- new.env(parent = emptyenv())
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(SidecarRaw)) {
       ns <- SidecarRaw[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -4591,13 +4593,13 @@ SidecarRawSexp <- new.env(parent = emptyenv())
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(SidecarRawSexp)) {
       ns <- SidecarRawSexp[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -4615,12 +4617,16 @@ SidecarRawSexp <- new.env(parent = emptyenv())
 #' @noRd
 `[[.SidecarRawSexp` <- `$.SidecarRawSexp`
 
-# Generated from Rust impl `AsCoerceTestData` (as_coerce_tests.rs:34:6)
+# Generated from Rust impl `AsCoerceTestData` (as_coerce_tests.rs:36:6)
 #' @rdname AsCoerceTestData
 #' @title as.<class>() Coercion Test Type
 #' @name AsCoerceTestData
 #' @description Test type for as.data.frame, as.list, and as.character methods
-#' @description Create a new test data object.
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @title Create a new test data object
+#' @param names Character vector of names.
+#' @param values Numeric vector of values.
 #' @source Generated by miniextendr from Rust type `AsCoerceTestData`
 #' @export
 new_ascoercetestdata <- function(names, values) {
@@ -4640,8 +4646,8 @@ new_ascoercetestdata <- function(names, values) {
 
 #' @title S3 generic for `len`
 #' S3 generic for `len`
-#' @rdname AsCoerceTestData
 #' @name len
+#' @rdname AsCoerceTestData
 #' @param x An object
 #' @param ... Additional arguments passed to methods
 #' @source Generated by miniextendr from `AsCoerceTestData::len`
@@ -4655,6 +4661,8 @@ if (!exists("len", mode = "function")) {
 #' @rdname AsCoerceTestData
 #' @source Generated by miniextendr from `AsCoerceTestData::len`
 #' @method len AsCoerceTestData
+#' @param x An object.
+#' @param ... Additional arguments.
 #' @export
 len.AsCoerceTestData <- function(x, ...) {
   .val <- .Call(C_AsCoerceTestData__len, .call = match.call(), x)
@@ -4669,8 +4677,8 @@ len.AsCoerceTestData <- function(x, ...) {
 
 #' @title S3 generic for `as_data_frame`
 #' S3 generic for `as_data_frame`
-#' @rdname AsCoerceTestData
 #' @name as_data_frame
+#' @rdname AsCoerceTestData
 #' @param x An object
 #' @param ... Additional arguments passed to methods
 #' @source Generated by miniextendr from `AsCoerceTestData::as_data_frame`
@@ -4684,6 +4692,8 @@ if (!exists("as_data_frame", mode = "function")) {
 #' @rdname AsCoerceTestData
 #' @source Generated by miniextendr from `AsCoerceTestData::as_data_frame`
 #' @method as_data_frame AsCoerceTestData
+#' @param x An object.
+#' @param ... Additional arguments.
 #' @export
 as_data_frame.AsCoerceTestData <- function(x, ...) {
   .val <- .Call(C_AsCoerceTestData__as_data_frame, .call = match.call(), x)
@@ -4698,8 +4708,8 @@ as_data_frame.AsCoerceTestData <- function(x, ...) {
 
 #' @title S3 generic for `as_list`
 #' S3 generic for `as_list`
-#' @rdname AsCoerceTestData
 #' @name as_list
+#' @rdname AsCoerceTestData
 #' @param x An object
 #' @param ... Additional arguments passed to methods
 #' @source Generated by miniextendr from `AsCoerceTestData::as_list`
@@ -4713,6 +4723,8 @@ if (!exists("as_list", mode = "function")) {
 #' @rdname AsCoerceTestData
 #' @source Generated by miniextendr from `AsCoerceTestData::as_list`
 #' @method as_list AsCoerceTestData
+#' @param x An object.
+#' @param ... Additional arguments.
 #' @export
 as_list.AsCoerceTestData <- function(x, ...) {
   .val <- .Call(C_AsCoerceTestData__as_list, .call = match.call(), x)
@@ -4727,8 +4739,8 @@ as_list.AsCoerceTestData <- function(x, ...) {
 
 #' @title S3 generic for `as_character`
 #' S3 generic for `as_character`
-#' @rdname AsCoerceTestData
 #' @name as_character
+#' @rdname AsCoerceTestData
 #' @param x An object
 #' @param ... Additional arguments passed to methods
 #' @source Generated by miniextendr from `AsCoerceTestData::as_character`
@@ -4742,6 +4754,8 @@ if (!exists("as_character", mode = "function")) {
 #' @rdname AsCoerceTestData
 #' @source Generated by miniextendr from `AsCoerceTestData::as_character`
 #' @method as_character AsCoerceTestData
+#' @param x An object.
+#' @param ... Additional arguments.
 #' @export
 as_character.AsCoerceTestData <- function(x, ...) {
   .val <- .Call(C_AsCoerceTestData__as_character, .call = match.call(), x)
@@ -4756,8 +4770,8 @@ as_character.AsCoerceTestData <- function(x, ...) {
 
 #' @title S3 generic for `as_numeric`
 #' S3 generic for `as_numeric`
-#' @rdname AsCoerceTestData
 #' @name as_numeric
+#' @rdname AsCoerceTestData
 #' @param x An object
 #' @param ... Additional arguments passed to methods
 #' @source Generated by miniextendr from `AsCoerceTestData::as_numeric`
@@ -4771,6 +4785,8 @@ if (!exists("as_numeric", mode = "function")) {
 #' @rdname AsCoerceTestData
 #' @source Generated by miniextendr from `AsCoerceTestData::as_numeric`
 #' @method as_numeric AsCoerceTestData
+#' @param x An object.
+#' @param ... Additional arguments.
 #' @export
 as_numeric.AsCoerceTestData <- function(x, ...) {
   .val <- .Call(C_AsCoerceTestData__as_numeric, .call = match.call(), x)
@@ -4785,8 +4801,8 @@ as_numeric.AsCoerceTestData <- function(x, ...) {
 
 #' @title S3 generic for `as_integer`
 #' S3 generic for `as_integer`
-#' @rdname AsCoerceTestData
 #' @name as_integer
+#' @rdname AsCoerceTestData
 #' @param x An object
 #' @param ... Additional arguments passed to methods
 #' @source Generated by miniextendr from `AsCoerceTestData::as_integer`
@@ -4800,6 +4816,8 @@ if (!exists("as_integer", mode = "function")) {
 #' @rdname AsCoerceTestData
 #' @source Generated by miniextendr from `AsCoerceTestData::as_integer`
 #' @method as_integer AsCoerceTestData
+#' @param x An object.
+#' @param ... Additional arguments.
 #' @export
 as_integer.AsCoerceTestData <- function(x, ...) {
   .val <- .Call(C_AsCoerceTestData__as_integer, .call = match.call(), x)
@@ -4904,7 +4922,7 @@ as.integer.AsCoerceTestData <- function(x, ...) {
   .val
 }
 
-# Generated from Rust impl `AsCoerceErrorTest` (as_coerce_tests.rs:147:6)
+# Generated from Rust impl `AsCoerceErrorTest` (as_coerce_tests.rs:151:6)
 #' @title as.<class>() Error Test Type
 #' @name AsCoerceErrorTest
 #' @noRd
@@ -4924,22 +4942,13 @@ new_ascoerceerrortest <- function(is_empty) {
   structure(.val, class = "AsCoerceErrorTest")
 }
 
-#' @title S3 generic for `as_data_frame`
-#' S3 generic for `as_data_frame`
-#' @rdname AsCoerceErrorTest
-#' @name as_data_frame
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @source Generated by miniextendr from `AsCoerceErrorTest::as_data_frame`
+#' @noRd
 if (!exists("as_data_frame", mode = "function")) {
   as_data_frame <- function(x, ...) UseMethod("as_data_frame")
 }
 
-#' @description Convert to data.frame - fails when empty.
-#' @name as_data_frame
-#' @rdname AsCoerceErrorTest
-#' @source Generated by miniextendr from `AsCoerceErrorTest::as_data_frame`
 #' @method as_data_frame AsCoerceErrorTest
+#' @export
 as_data_frame.AsCoerceErrorTest <- function(x, ...) {
   .val <- .Call(C_AsCoerceErrorTest__as_data_frame, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -4951,22 +4960,13 @@ as_data_frame.AsCoerceErrorTest <- function(x, ...) {
   .val
 }
 
-#' @title S3 generic for `as_list`
-#' S3 generic for `as_list`
-#' @rdname AsCoerceErrorTest
-#' @name as_list
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @source Generated by miniextendr from `AsCoerceErrorTest::as_list`
+#' @noRd
 if (!exists("as_list", mode = "function")) {
   as_list <- function(x, ...) UseMethod("as_list")
 }
 
-#' @description Convert to list - always returns "not supported" error.
-#' @name as_list
-#' @rdname AsCoerceErrorTest
-#' @source Generated by miniextendr from `AsCoerceErrorTest::as_list`
 #' @method as_list AsCoerceErrorTest
+#' @export
 as_list.AsCoerceErrorTest <- function(x, ...) {
   .val <- .Call(C_AsCoerceErrorTest__as_list, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -4978,22 +4978,13 @@ as_list.AsCoerceErrorTest <- function(x, ...) {
   .val
 }
 
-#' @title S3 generic for `as_character`
-#' S3 generic for `as_character`
-#' @rdname AsCoerceErrorTest
-#' @name as_character
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @source Generated by miniextendr from `AsCoerceErrorTest::as_character`
+#' @noRd
 if (!exists("as_character", mode = "function")) {
   as_character <- function(x, ...) UseMethod("as_character")
 }
 
-#' @description Convert to character - custom error message.
-#' @name as_character
-#' @rdname AsCoerceErrorTest
-#' @source Generated by miniextendr from `AsCoerceErrorTest::as_character`
 #' @method as_character AsCoerceErrorTest
+#' @export
 as_character.AsCoerceErrorTest <- function(x, ...) {
   .val <- .Call(C_AsCoerceErrorTest__as_character, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -5005,7 +4996,7 @@ as_character.AsCoerceErrorTest <- function(x, ...) {
   .val
 }
 
-#' @rdname AsCoerceErrorTest
+#' @noRd
 AsCoerceErrorTest <- new.env(parent = emptyenv())
 
 AsCoerceErrorTest$new <- new_ascoerceerrortest
@@ -5138,13 +5129,13 @@ ReceiverCounter$default_counter <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(ReceiverCounter)) {
       ns <- ReceiverCounter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -5162,7 +5153,7 @@ ReceiverCounter$default_counter <- function() {
 #' @noRd
 `[[.ReceiverCounter` <- `$.ReceiverCounter`
 
-# Generated from Rust impl `WrapperDemo` (r_wrapper_attrs.rs:74:6)
+# Generated from Rust impl `WrapperDemo` (r_wrapper_attrs.rs:95:6)
 #' @title WrapperDemo R6 Class
 #' @name WrapperDemo
 #' @rdname WrapperDemo
@@ -5243,7 +5234,9 @@ WrapperDemo <- R6::R6Class("WrapperDemo",
   cloneable = FALSE
 )
 
-# Generated from Rust impl `S3Counter` (s3_tests.rs:14:6)
+# Generated from Rust impl `S3Counter` (s3_tests.rs:16:6)
+#' @param x An object.
+#' @param ... Additional arguments.
 #' @noRd
 #' @title Creates a new counter with the given initial value
 #' @param initial Initial value for the counter.
@@ -5262,22 +5255,13 @@ new_s3counter <- function(initial) {
   structure(.val, class = "S3Counter")
 }
 
-#' @title S3 generic for `s3_value`
-#' S3 generic for `s3_value`
-#' @rdname S3Counter
-#' @name s3_value
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @source Generated by miniextendr from `S3Counter::s3_value`
+#' @noRd
 if (!exists("s3_value", mode = "function")) {
   s3_value <- function(x, ...) UseMethod("s3_value")
 }
 
-#' @description Returns the current value (S3-specific method name to avoid conflicts).
-#' @name s3_value
-#' @rdname S3Counter
-#' @source Generated by miniextendr from `S3Counter::s3_value`
 #' @method s3_value S3Counter
+#' @export
 s3_value.S3Counter <- function(x, ...) {
   .val <- .Call(C_S3Counter__s3_value, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -5289,22 +5273,13 @@ s3_value.S3Counter <- function(x, ...) {
   .val
 }
 
-#' @title S3 generic for `s3_inc`
-#' S3 generic for `s3_inc`
-#' @rdname S3Counter
-#' @name s3_inc
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @source Generated by miniextendr from `S3Counter::s3_inc`
+#' @noRd
 if (!exists("s3_inc", mode = "function")) {
   s3_inc <- function(x, ...) UseMethod("s3_inc")
 }
 
-#' @description Increments the counter by 1 and returns the new value.
-#' @name s3_inc
-#' @rdname S3Counter
-#' @source Generated by miniextendr from `S3Counter::s3_inc`
 #' @method s3_inc S3Counter
+#' @export
 s3_inc.S3Counter <- function(x, ...) {
   .val <- .Call(C_S3Counter__s3_inc, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -5316,23 +5291,13 @@ s3_inc.S3Counter <- function(x, ...) {
   .val
 }
 
-#' @title S3 generic for `s3_add`
-#' S3 generic for `s3_add`
-#' @rdname S3Counter
-#' @name s3_add
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @source Generated by miniextendr from `S3Counter::s3_add`
+#' @noRd
 if (!exists("s3_add", mode = "function")) {
   s3_add <- function(x, ...) UseMethod("s3_add")
 }
 
-#' @title Adds the given amount to the counter and returns the new value
-#' @param amount The amount to add to the counter.
-#' @name s3_add
-#' @rdname S3Counter
-#' @source Generated by miniextendr from `S3Counter::s3_add`
 #' @method s3_add S3Counter
+#' @export
 s3_add.S3Counter <- function(x, amount, ...) {
   stopifnot(
     "'amount' must be numeric, logical, or raw" = is.numeric(amount) || is.logical(amount) || is.raw(amount),
@@ -5348,11 +5313,7 @@ s3_add.S3Counter <- function(x, amount, ...) {
   .val
 }
 
-#' @description A static method that returns a default counter (value = 0).
-#' @name s3counter_default_counter
-#' @rdname S3Counter
-#' @source Generated by miniextendr from `S3Counter::default_counter`
-#' @export
+#' @noRd
 s3counter_default_counter <- function() {
   .val <- .Call(C_S3Counter__default_counter, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -5364,7 +5325,7 @@ s3counter_default_counter <- function() {
   structure(.val, class = "S3Counter")
 }
 
-#' @rdname S3Counter
+#' @noRd
 S3Counter <- new.env(parent = emptyenv())
 
 S3Counter$new <- new_s3counter
@@ -5655,13 +5616,13 @@ Maps$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(Maps)) {
       ns <- Maps[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -5756,13 +5717,13 @@ DeepNest$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(DeepNest)) {
       ns <- DeepNest[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -5894,13 +5855,13 @@ Rectangle$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(Rectangle)) {
       ns <- Rectangle[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6019,13 +5980,13 @@ WithEnums$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(WithEnums)) {
       ns <- WithEnums[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6135,13 +6096,13 @@ Collections$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(Collections)) {
       ns <- Collections[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6244,13 +6205,13 @@ SerdeRPoint$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(SerdeRPoint)) {
       ns <- SerdeRPoint[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6355,13 +6316,13 @@ SerdeRPoint3D$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(SerdeRPoint3D)) {
       ns <- SerdeRPoint3D[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6485,13 +6446,13 @@ WithOptionals$from_r <- function(sexp) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(WithOptionals)) {
       ns <- WithOptionals[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6576,13 +6537,13 @@ CounterTraitR6$get_value <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(CounterTraitR6)) {
       ns <- CounterTraitR6[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6667,13 +6628,13 @@ CounterTraitS3$get_value <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(CounterTraitS3)) {
       ns <- CounterTraitS3[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6758,13 +6719,13 @@ CounterTraitS4$get_value <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(CounterTraitS4)) {
       ns <- CounterTraitS4[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6849,13 +6810,13 @@ CounterTraitS7$get_value <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(CounterTraitS7)) {
       ns <- CounterTraitS7[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -6940,13 +6901,13 @@ CounterTraitEnv$get_value <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(CounterTraitEnv)) {
       ns <- CounterTraitEnv[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7031,13 +6992,13 @@ Point$y <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(Point)) {
       ns <- Point[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7095,13 +7056,13 @@ IntSet$contains <- function(value) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(IntSet)) {
       ns <- IntSet[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7184,13 +7145,13 @@ MyFloat$nan <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(MyFloat)) {
       ns <- MyFloat[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7247,13 +7208,13 @@ IntVecIter$new <- function(data) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(IntVecIter)) {
       ns <- IntVecIter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7344,13 +7305,13 @@ GrowableVec$from_vec <- function(data) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(GrowableVec)) {
       ns <- GrowableVec[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7429,13 +7390,13 @@ IterableVec$to_vec <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(IterableVec)) {
       ns <- IterableVec[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7513,13 +7474,13 @@ ChainedError$without_source <- function(msg) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(ChainedError)) {
       ns <- ChainedError[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7573,13 +7534,13 @@ IterableVecIter$collect_all <- function() {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(IterableVecIter)) {
       ns <- IterableVecIter[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7648,13 +7609,13 @@ ExportControlTraitPoint$new <- function(x) {
     }
     bound
   } else if (is.null(obj)) {
-    # Not found at top level — search trait namespace environments
+    # Not found at top level -- search trait namespace environments
     for (ns_name in names(ExportControlTraitPoint)) {
       ns <- ExportControlTraitPoint[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
         if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          # Instance method — bind self as first arg
+          # Instance method -- bind self as first arg
           m <- method
           s <- self
           return(function(...) m(s, ...))
@@ -7672,7 +7633,7 @@ ExportControlTraitPoint$new <- function(x) {
 #' @rdname ExportControlTraitPoint
 `[[.ExportControlTraitPoint` <- `$.ExportControlTraitPoint`
 
-# Generated from Rust impl `DerivedCurrency` (vctrs_derive_example.rs:256:6)
+# Generated from Rust impl `DerivedCurrency` (vctrs_derive_example.rs:260:6)
 #' @noRd
 #' @description Creates a new currency value.
 new_derivedcurrency <- function(symbol, amounts) {
@@ -7833,7 +7794,7 @@ add_with_defaults <- function(x, y = 0L, z = 1L) {
   .val
 }
 
-# Generated from Rust fn `choices_color` (match_arg_tests.rs:105:8)
+# Generated from Rust fn `choices_color` (match_arg_tests.rs:135:8)
 #' @title choices color
 #' @param color One of "red", "green", "blue".
 #' @source Generated by miniextendr from Rust fn `choices_color`
@@ -7850,8 +7811,10 @@ choices_color <- function(color = c("red", "green", "blue")) {
   .val
 }
 
-# Generated from Rust fn `choices_mixed` (match_arg_tests.rs:110:8)
+# Generated from Rust fn `choices_mixed` (match_arg_tests.rs:142:8)
 #' @title choices mixed
+#' @param n Count.
+#' @param verbose Whether to print details.
 #' @param mode One of "fast", "safe".
 #' @source Generated by miniextendr from Rust fn `choices_mixed`
 #' @export
@@ -7873,9 +7836,12 @@ choices_mixed <- function(n, mode = c("fast", "safe"), verbose) {
   .val
 }
 
-# Generated from Rust fn `match_arg_mixed` (match_arg_tests.rs:55:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_mixed`
+# Generated from Rust fn `match_arg_mixed` (match_arg_tests.rs:71:8)
+#' @title Function with match_arg + regular param to test mixing
+#' @param x An integer input.
+#' @param mode A Mode enum value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_mixed`
 match_arg_mixed <- function(x, mode = NULL) {
   stopifnot(
     "'x' must be numeric, logical, or raw" = is.numeric(x) || is.logical(x) || is.raw(x),
@@ -7894,9 +7860,11 @@ match_arg_mixed <- function(x, mode = NULL) {
   .val
 }
 
-# Generated from Rust fn `match_arg_set_mode` (match_arg_tests.rs:39:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_set_mode`
+# Generated from Rust fn `match_arg_set_mode` (match_arg_tests.rs:43:8)
+#' @title Set mode using match_arg
+#' @param mode A Mode enum value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_set_mode`
 match_arg_set_mode <- function(mode = NULL) {
   .__mx_choices_mode <- .Call(C_match_arg_set_mode__match_arg_choices__mode, .call = match.call())
   mode <- if (is.factor(mode)) as.character(mode) else mode
@@ -7911,8 +7879,10 @@ match_arg_set_mode <- function(mode = NULL) {
   .val
 }
 
-# Generated from Rust fn `choices_correlation` (match_arg_tests.rs:96:8)
+# Generated from Rust fn `choices_correlation` (match_arg_tests.rs:126:8)
 #' @title choices correlation
+#' @param x First value.
+#' @param y Second value.
 #' @param method One of "pearson", "kendall", "spearman".
 #' @source Generated by miniextendr from Rust fn `choices_correlation`
 #' @export
@@ -7934,9 +7904,11 @@ choices_correlation <- function(x, y, method = c("pearson", "kendall", "spearman
   .val
 }
 
-# Generated from Rust fn `match_arg_set_status` (match_arg_tests.rs:44:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_set_status`
+# Generated from Rust fn `match_arg_set_status` (match_arg_tests.rs:52:8)
+#' @title Set status using match_arg
+#' @param status A BuildStatus enum value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_set_status`
 match_arg_set_status <- function(status = NULL) {
   .__mx_choices_status <- .Call(C_match_arg_set_status__match_arg_choices__status, .call = match.call())
   status <- if (is.factor(status)) as.character(status) else status
@@ -7951,9 +7923,11 @@ match_arg_set_status <- function(status = NULL) {
   .val
 }
 
-# Generated from Rust fn `match_arg_return_mode` (match_arg_tests.rs:87:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_return_mode`
+# Generated from Rust fn `match_arg_return_mode` (match_arg_tests.rs:115:8)
+#' @title Test returning a MatchArg enum (uses IntoR -> character scalar)
+#' @param mode A Mode enum value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_return_mode`
 match_arg_return_mode <- function(mode = NULL) {
   .__mx_choices_mode <- .Call(C_match_arg_return_mode__match_arg_choices__mode, .call = match.call())
   mode <- if (is.factor(mode)) as.character(mode) else mode
@@ -7968,9 +7942,10 @@ match_arg_return_mode <- function(mode = NULL) {
   .val
 }
 
-# Generated from Rust fn `match_arg_mode_choices` (match_arg_tests.rs:69:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_mode_choices`
+# Generated from Rust fn `match_arg_mode_choices` (match_arg_tests.rs:90:8)
+#' @title Return the choices for Mode (for testing from R)
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_mode_choices`
 match_arg_mode_choices <- function() {
   .val <- .Call(C_match_arg_mode_choices, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -7982,9 +7957,11 @@ match_arg_mode_choices <- function() {
   .val
 }
 
-# Generated from Rust fn `match_arg_set_priority` (match_arg_tests.rs:49:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_set_priority`
+# Generated from Rust fn `match_arg_set_priority` (match_arg_tests.rs:61:8)
+#' @title Set priority using match_arg
+#' @param priority A Priority enum value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_set_priority`
 match_arg_set_priority <- function(priority = NULL) {
   .__mx_choices_priority <- .Call(C_match_arg_set_priority__match_arg_choices__priority, .call = match.call())
   priority <- if (is.factor(priority)) as.character(priority) else priority
@@ -7999,9 +7976,11 @@ match_arg_set_priority <- function(priority = NULL) {
   .val
 }
 
-# Generated from Rust fn `match_arg_with_default` (match_arg_tests.rs:61:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_with_default`
+# Generated from Rust fn `match_arg_with_default` (match_arg_tests.rs:80:8)
+#' @title Function with explicit default override for match_arg param
+#' @param mode A Mode enum value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_with_default`
 match_arg_with_default <- function(mode = "Safe") {
   .__mx_choices_mode <- .Call(C_match_arg_with_default__match_arg_choices__mode, .call = match.call())
   mode <- if (is.factor(mode)) as.character(mode) else mode
@@ -8016,9 +7995,10 @@ match_arg_with_default <- function(mode = "Safe") {
   .val
 }
 
-# Generated from Rust fn `match_arg_status_choices` (match_arg_tests.rs:75:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_status_choices`
+# Generated from Rust fn `match_arg_status_choices` (match_arg_tests.rs:98:8)
+#' @title Return the choices for BuildStatus
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_status_choices`
 match_arg_status_choices <- function() {
   .val <- .Call(C_match_arg_status_choices, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -8030,9 +8010,10 @@ match_arg_status_choices <- function() {
   .val
 }
 
-# Generated from Rust fn `match_arg_priority_choices` (match_arg_tests.rs:81:8)
-#' @source Generated by miniextendr from Rust fn `match_arg_priority_choices`
+# Generated from Rust fn `match_arg_priority_choices` (match_arg_tests.rs:106:8)
+#' @title Return the choices for Priority
 #' @export
+#' @source Generated by miniextendr from Rust fn `match_arg_priority_choices`
 match_arg_priority_choices <- function() {
   .val <- .Call(C_match_arg_priority_choices, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -8503,9 +8484,11 @@ r6_standalone_add <- function(a, b) {
   .val
 }
 
-# Generated from Rust fn `missing_test_f64` (missing_tests.rs:7:8)
-#' @source Generated by miniextendr from Rust fn `missing_test_f64`
+# Generated from Rust fn `missing_test_f64` (missing_tests.rs:10:8)
+#' @title Test Missing<f64> -- returns "absent" or the value as string
+#' @param x An optional numeric value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `missing_test_f64`
 missing_test_f64 <- function(x) {
   if (missing(x)) x <- quote(expr=)
   .val <- .Call(C_missing_test_f64, .call = match.call(), x)
@@ -8518,9 +8501,11 @@ missing_test_f64 <- function(x) {
   .val
 }
 
-# Generated from Rust fn `missing_test_option` (missing_tests.rs:28:8)
-#' @source Generated by miniextendr from Rust fn `missing_test_option`
+# Generated from Rust fn `missing_test_option` (missing_tests.rs:40:8)
+#' @title Test Missing<Option<f64>> -- distinguishes missing, NULL, and present
+#' @param x An optional nullable numeric.
 #' @export
+#' @source Generated by miniextendr from Rust fn `missing_test_option`
 missing_test_option <- function(x) {
   if (missing(x)) x <- quote(expr=)
   .val <- .Call(C_missing_test_option, .call = match.call(), x)
@@ -8533,9 +8518,11 @@ missing_test_option <- function(x) {
   .val
 }
 
-# Generated from Rust fn `missing_test_string` (missing_tests.rs:16:8)
-#' @source Generated by miniextendr from Rust fn `missing_test_string`
+# Generated from Rust fn `missing_test_string` (missing_tests.rs:22:8)
+#' @title Test Missing<String> with the helper methods
+#' @param x An optional string value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `missing_test_string`
 missing_test_string <- function(x) {
   if (missing(x)) x <- quote(expr=)
   .val <- .Call(C_missing_test_string, .call = match.call(), x)
@@ -8548,9 +8535,11 @@ missing_test_string <- function(x) {
   .val
 }
 
-# Generated from Rust fn `missing_test_present` (missing_tests.rs:22:8)
-#' @source Generated by miniextendr from Rust fn `missing_test_present`
+# Generated from Rust fn `missing_test_present` (missing_tests.rs:31:8)
+#' @title Test Missing<i32> with is_present / is_absent
+#' @param x An optional integer value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `missing_test_present`
 missing_test_present <- function(x) {
   if (missing(x)) x <- quote(expr=)
   .val <- .Call(C_missing_test_present, .call = match.call(), x)
@@ -10015,9 +10004,10 @@ unsafe_C_test_worker_panic_in_r_thread_with_drops <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_panic` (error_in_r_tests.rs:15:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_panic`
+# Generated from Rust fn `error_in_r_panic` (error_in_r_tests.rs:17:8)
+#' @title Standalone function that panics -- error_in_r catches this
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_panic`
 error_in_r_panic <- function() {
   .val <- .Call(C_error_in_r_panic, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10029,9 +10019,10 @@ error_in_r_panic <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_i32_ok` (error_in_r_tests.rs:51:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_i32_ok`
+# Generated from Rust fn `error_in_r_i32_ok` (error_in_r_tests.rs:65:8)
+#' @title Function returning i32 -- tests numeric return
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_i32_ok`
 error_in_r_i32_ok <- function() {
   .val <- .Call(C_error_in_r_i32_ok, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10043,9 +10034,10 @@ error_in_r_i32_ok <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_normal` (error_in_r_tests.rs:45:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_normal`
+# Generated from Rust fn `error_in_r_normal` (error_in_r_tests.rs:57:8)
+#' @title Normal function (no error) -- works fine
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_normal`
 error_in_r_normal <- function() {
   .val <- .Call(C_error_in_r_normal, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10057,9 +10049,10 @@ error_in_r_normal <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_i32_err` (error_in_r_tests.rs:57:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_i32_err`
+# Generated from Rust fn `error_in_r_i32_err` (error_in_r_tests.rs:73:8)
+#' @title Function returning Result<i32, String> with Err -- becomes error value
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_i32_err`
 error_in_r_i32_err <- function() {
   .val <- .Call(C_error_in_r_i32_err, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10071,9 +10064,10 @@ error_in_r_i32_err <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_result_ok` (error_in_r_tests.rs:27:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_result_ok`
+# Generated from Rust fn `error_in_r_result_ok` (error_in_r_tests.rs:33:8)
+#' @title Standalone function that returns Result::Ok -- works normally
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_result_ok`
 error_in_r_result_ok <- function() {
   .val <- .Call(C_error_in_r_result_ok, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10085,9 +10079,10 @@ error_in_r_result_ok <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_result_err` (error_in_r_tests.rs:21:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_result_err`
+# Generated from Rust fn `error_in_r_result_err` (error_in_r_tests.rs:25:8)
+#' @title Standalone function that returns Result::Err -- becomes error value
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_result_err`
 error_in_r_result_err <- function() {
   .val <- .Call(C_error_in_r_result_err, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10099,9 +10094,10 @@ error_in_r_result_err <- function() {
   .val
 }
 
-# Generated from Rust fn `error_in_r_option_none` (error_in_r_tests.rs:33:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_option_none`
+# Generated from Rust fn `error_in_r_option_none` (error_in_r_tests.rs:41:8)
+#' @title Standalone function that returns Option::None (unit) -- becomes error value
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_option_none`
 error_in_r_option_none <- function() {
   .val <- .Call(C_error_in_r_option_none, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10113,9 +10109,10 @@ error_in_r_option_none <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `error_in_r_option_some` (error_in_r_tests.rs:39:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_option_some`
+# Generated from Rust fn `error_in_r_option_some` (error_in_r_tests.rs:49:8)
+#' @title Standalone function that returns Option::Some(()) -- returns NULL
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_option_some`
 error_in_r_option_some <- function() {
   .val <- .Call(C_error_in_r_option_some, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -10127,9 +10124,11 @@ error_in_r_option_some <- function() {
   invisible(.val)
 }
 
-# Generated from Rust fn `error_in_r_panic_custom` (error_in_r_tests.rs:63:8)
-#' @source Generated by miniextendr from Rust fn `error_in_r_panic_custom`
+# Generated from Rust fn `error_in_r_panic_custom` (error_in_r_tests.rs:82:8)
+#' @title Panic with custom message
+#' @param msg Custom panic message.
 #' @export
+#' @source Generated by miniextendr from Rust fn `error_in_r_panic_custom`
 error_in_r_panic_custom <- function(msg) {
   stopifnot(
     "'msg' must be character" = is.character(msg),
@@ -16203,7 +16202,7 @@ arith_seq <- function(from, step, length_out) {
   .val
 }
 
-# Generated from Rust fn `boxed_raw` (lib.rs:1365:8)
+# Generated from Rust fn `boxed_raw` (lib.rs:1369:8)
 #' @title boxed raw
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `boxed_raw`
@@ -16222,7 +16221,7 @@ boxed_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_ints` (lib.rs:1159:8)
+# Generated from Rust fn `boxed_ints` (lib.rs:1163:8)
 #' @title boxed ints
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `boxed_ints`
@@ -16241,7 +16240,7 @@ boxed_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_reals` (lib.rs:1343:8)
+# Generated from Rust fn `boxed_reals` (lib.rs:1347:8)
 #' @title boxed reals
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `boxed_reals`
@@ -16260,7 +16259,7 @@ boxed_reals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `lazy_string` (lib.rs:946:4)
+# Generated from Rust fn `lazy_string` (lib.rs:950:4)
 #' @source Generated by miniextendr from Rust fn `lazy_string`
 lazy_string <- function(prefix, n) {
   stopifnot(
@@ -16279,7 +16278,7 @@ lazy_string <- function(prefix, n) {
   .val
 }
 
-# Generated from Rust fn `leaked_ints` (lib.rs:1183:8)
+# Generated from Rust fn `leaked_ints` (lib.rs:1187:8)
 #' @title leaked ints
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `leaked_ints`
@@ -16298,7 +16297,7 @@ leaked_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `static_ints` (lib.rs:1177:8)
+# Generated from Rust fn `static_ints` (lib.rs:1181:8)
 #' @title static ints
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `static_ints`
@@ -16313,7 +16312,7 @@ static_ints <- function() {
   .val
 }
 
-# Generated from Rust fn `unit_circle` (lib.rs:1041:8)
+# Generated from Rust fn `unit_circle` (lib.rs:1045:8)
 #' @title unit circle
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `unit_circle`
@@ -16332,9 +16331,11 @@ unit_circle <- function(n) {
   .val
 }
 
-# Generated from Rust fn `create_large_par_events` (dataframe_rayon_tests.rs:31:8)
-#' @source Generated by miniextendr from Rust fn `create_large_par_events`
+# Generated from Rust fn `create_large_par_events` (dataframe_rayon_tests.rs:39:8)
+#' @title Create a large parallel events data frame
+#' @param n Number of rows to create.
 #' @export
+#' @source Generated by miniextendr from Rust fn `create_large_par_events`
 create_large_par_events <- function(n) {
   stopifnot(
     "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
@@ -16350,9 +16351,11 @@ create_large_par_events <- function(n) {
   .val
 }
 
-# Generated from Rust fn `create_large_par_points` (dataframe_rayon_tests.rs:12:8)
-#' @source Generated by miniextendr from Rust fn `create_large_par_points`
+# Generated from Rust fn `create_large_par_points` (dataframe_rayon_tests.rs:16:8)
+#' @title Create a large parallel points data frame
+#' @param n Number of rows to create.
 #' @export
+#' @source Generated by miniextendr from Rust fn `create_large_par_points`
 create_large_par_points <- function(n) {
   stopifnot(
     "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
@@ -16541,8 +16544,9 @@ lazy_int_seq <- function(from, to, by) {
   .val
 }
 
-# Generated from Rust fn `lazy_squares` (lib.rs:726:8)
+# Generated from Rust fn `lazy_squares` (lib.rs:727:8)
 #' @title Example: Lazy computation - compute on demand
+#' @param n Length of the sequence.
 #' @export
 #' @source Generated by miniextendr from Rust fn `lazy_squares`
 lazy_squares <- function(n) {
@@ -16560,7 +16564,7 @@ lazy_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_complex` (lib.rs:1387:8)
+# Generated from Rust fn `boxed_complex` (lib.rs:1391:8)
 #' @title boxed complex
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `boxed_complex`
@@ -16579,7 +16583,7 @@ boxed_complex <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_strings` (lib.rs:1376:8)
+# Generated from Rust fn `boxed_strings` (lib.rs:1380:8)
 #' @title boxed strings
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `boxed_strings`
@@ -16613,7 +16617,7 @@ constant_real <- function() {
   .val
 }
 
-# Generated from Rust fn `repeating_raw` (lib.rs:986:4)
+# Generated from Rust fn `repeating_raw` (lib.rs:990:4)
 #' @source Generated by miniextendr from Rust fn `repeating_raw`
 repeating_raw <- function(pattern, n) {
   stopifnot(
@@ -16631,8 +16635,9 @@ repeating_raw <- function(pattern, n) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_copy` (lib.rs:758:8)
+# Generated from Rust fn `bench_vec_copy` (lib.rs:761:8)
 #' @title Create a vector of given size using regular copy (IntoR)
+#' @param n Length of the vector.
 #' @export
 #' @source Generated by miniextendr from Rust fn `bench_vec_copy`
 bench_vec_copy <- function(n) {
@@ -16650,7 +16655,7 @@ bench_vec_copy <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_logicals` (lib.rs:1354:8)
+# Generated from Rust fn `boxed_logicals` (lib.rs:1358:8)
 #' @title boxed logicals
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `boxed_logicals`
@@ -16669,7 +16674,7 @@ boxed_logicals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_range` (lib.rs:1264:8)
+# Generated from Rust fn `iter_int_range` (lib.rs:1268:8)
 #' @title iter int range
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `iter_int_range`
@@ -16690,7 +16695,7 @@ iter_int_range <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `iter_raw_bytes` (lib.rs:1284:8)
+# Generated from Rust fn `iter_raw_bytes` (lib.rs:1288:8)
 #' @title iter raw bytes
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `iter_raw_bytes`
@@ -16724,7 +16729,7 @@ small_vec_copy <- function() {
   .val
 }
 
-# Generated from Rust fn `static_strings` (lib.rs:1207:8)
+# Generated from Rust fn `static_strings` (lib.rs:1211:8)
 #' @title static strings
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `static_strings`
@@ -16739,7 +16744,7 @@ static_strings <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_int_altrep` (lib.rs:1315:8)
+# Generated from Rust fn `vec_int_altrep` (lib.rs:1319:8)
 #' @title vec int altrep
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `vec_int_altrep`
@@ -16774,7 +16779,7 @@ altrep_from_raw <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int` (lib.rs:1474:8)
+# Generated from Rust fn `sparse_iter_int` (lib.rs:1478:8)
 #' @title Create a sparse integer iterator ALTREP that skips elements
 #' @param from Start value (inclusive)
 #' @param to End value (exclusive)
@@ -16797,7 +16802,7 @@ sparse_iter_int <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_raw` (lib.rs:1624:8)
+# Generated from Rust fn `sparse_iter_raw` (lib.rs:1628:8)
 #' @title Create a sparse raw iterator ALTREP
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `sparse_iter_raw`
@@ -16816,7 +16821,7 @@ sparse_iter_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_real_altrep` (lib.rs:1322:8)
+# Generated from Rust fn `vec_real_altrep` (lib.rs:1326:8)
 #' @title vec real altrep
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `vec_real_altrep`
@@ -16850,8 +16855,9 @@ altrep_from_list <- function(x) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_altrep` (lib.rs:769:8)
+# Generated from Rust fn `bench_vec_altrep` (lib.rs:773:8)
 #' @title Create a vector of given size using ALTREP zero-copy
+#' @param n Length of the vector.
 #' @export
 #' @source Generated by miniextendr from Rust fn `bench_vec_altrep`
 bench_vec_altrep <- function(n) {
@@ -16869,7 +16875,7 @@ bench_vec_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_logical` (lib.rs:808:4)
+# Generated from Rust fn `constant_logical` (lib.rs:812:4)
 #' @source Generated by miniextendr from Rust fn `constant_logical`
 constant_logical <- function(value, n) {
   stopifnot(
@@ -16903,7 +16909,7 @@ large_vec_altrep <- function() {
   .val
 }
 
-# Generated from Rust fn `range_i64_altrep` (lib.rs:1407:8)
+# Generated from Rust fn `range_i64_altrep` (lib.rs:1411:8)
 #' @title range i64 altrep
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `range_i64_altrep`
@@ -16924,7 +16930,7 @@ range_i64_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `range_int_altrep` (lib.rs:1401:8)
+# Generated from Rust fn `range_int_altrep` (lib.rs:1405:8)
 #' @title range int altrep
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `range_int_altrep`
@@ -16945,7 +16951,7 @@ range_int_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_real` (lib.rs:1534:8)
+# Generated from Rust fn `sparse_iter_real` (lib.rs:1538:8)
 #' @title Create a sparse real iterator ALTREP
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `sparse_iter_real`
@@ -16968,8 +16974,9 @@ sparse_iter_real <- function(from, step, n) {
   .val
 }
 
-# Generated from Rust fn `boxed_data_altrep` (lib.rs:741:8)
+# Generated from Rust fn `boxed_data_altrep` (lib.rs:743:8)
 #' @title Example: Using into_altrep() to store wrapper
+#' @param n Length of the vector.
 #' @export
 #' @source Generated by miniextendr from Rust fn `boxed_data_altrep`
 boxed_data_altrep <- function(n) {
@@ -16987,7 +16994,7 @@ boxed_data_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_from_u16` (lib.rs:1301:8)
+# Generated from Rust fn `iter_int_from_u16` (lib.rs:1305:8)
 #' @title iter int from u16
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `iter_int_from_u16`
@@ -17006,7 +17013,7 @@ iter_int_from_u16 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_real_squares` (lib.rs:1270:8)
+# Generated from Rust fn `iter_real_squares` (lib.rs:1274:8)
 #' @title iter real squares
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `iter_real_squares`
@@ -17025,7 +17032,7 @@ iter_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_string_items` (lib.rs:1291:8)
+# Generated from Rust fn `iter_string_items` (lib.rs:1295:8)
 #' @title iter string items
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `iter_string_items`
@@ -17044,7 +17051,7 @@ iter_string_items <- function(n) {
   .val
 }
 
-# Generated from Rust fn `range_real_altrep` (lib.rs:1413:8)
+# Generated from Rust fn `range_real_altrep` (lib.rs:1417:8)
 #' @title range real altrep
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `range_real_altrep`
@@ -17098,7 +17105,7 @@ altrep_compact_int <- function(n, start, step) {
   .val
 }
 
-# Generated from Rust fn `iter_real_from_f32` (lib.rs:1308:8)
+# Generated from Rust fn `iter_real_from_f32` (lib.rs:1312:8)
 #' @title iter real from f32
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `iter_real_from_f32`
@@ -17117,7 +17124,7 @@ iter_real_from_f32 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_complex_altrep` (lib.rs:1329:8)
+# Generated from Rust fn `vec_complex_altrep` (lib.rs:1333:8)
 #' @title vec complex altrep
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `vec_complex_altrep`
@@ -17168,7 +17175,7 @@ altrep_from_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_logical` (lib.rs:1577:8)
+# Generated from Rust fn `sparse_iter_logical` (lib.rs:1581:8)
 #' @title Create a sparse logical iterator ALTREP (alternating TRUE/FALSE)
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `sparse_iter_logical`
@@ -17218,7 +17225,7 @@ altrep_from_logicals <- function(x) {
   .val
 }
 
-# Generated from Rust fn `integer_sequence_list` (lib.rs:1092:8)
+# Generated from Rust fn `integer_sequence_list` (lib.rs:1096:8)
 #' @title Create a list ALTREP where each element is an integer sequence
 #' @param n Number of elements in the list.
 #' @return A list where element i contains the vector 1:i.
@@ -17244,7 +17251,7 @@ integer_sequence_list <- function(n) {
   .val
 }
 
-# Generated from Rust fn `rpkg_enabled_features` (lib.rs:1665:8)
+# Generated from Rust fn `rpkg_enabled_features` (lib.rs:1669:8)
 #' @title Returns a vector of enabled feature names for this build
 #' @description Returns a vector of enabled feature names for this build.
 #' @name rpkg_enabled_features
@@ -17264,7 +17271,7 @@ rpkg_enabled_features <- function() {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1487:8)
+# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1491:8)
 #' @title Create a sparse integer iterator that generates squares
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `sparse_iter_int_squares`
@@ -17283,7 +17290,7 @@ sparse_iter_int_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_logical_alternating` (lib.rs:1277:8)
+# Generated from Rust fn `iter_logical_alternating` (lib.rs:1281:8)
 #' @title iter logical alternating
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `iter_logical_alternating`
@@ -17317,9 +17324,11 @@ unsafe_C_lazy_int_seq_is_materialized <- function(x) {
   .val
 }
 
-# Generated from Rust fn `is_widget` (r_wrapper_attrs.rs:9:8)
-#' @source Generated by miniextendr from Rust fn `is_widget`
+# Generated from Rust fn `is_widget` (r_wrapper_attrs.rs:12:8)
+#' @title Check if an object is a widget
+#' @param x Value to check.
 #' @export
+#' @source Generated by miniextendr from Rust fn `is_widget`
 is.widget <- function(x) {
   stopifnot(
     "'x' must be numeric, logical, or raw" = is.numeric(x) || is.logical(x) || is.raw(x),
@@ -17335,9 +17344,11 @@ is.widget <- function(x) {
   .val
 }
 
-# Generated from Rust fn `on_exit_lifo` (r_wrapper_attrs.rs:61:8)
-#' @source Generated by miniextendr from Rust fn `on_exit_lifo`
+# Generated from Rust fn `on_exit_lifo` (r_wrapper_attrs.rs:82:8)
+#' @title Test on.exit cleanup with after = false (LIFO order)
+#' @param x Input value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `on_exit_lifo`
 on_exit_lifo <- function(x) {
   on.exit(message("cleanup lifo"), add = TRUE, after = FALSE)
   stopifnot(
@@ -17354,9 +17365,11 @@ on_exit_lifo <- function(x) {
   .val
 }
 
-# Generated from Rust fn `r_entry_demo` (r_wrapper_attrs.rs:17:8)
-#' @source Generated by miniextendr from Rust fn `r_entry_demo`
+# Generated from Rust fn `r_entry_demo` (r_wrapper_attrs.rs:23:8)
+#' @title Coerce x to integer before passing to Rust
+#' @param x Value to coerce.
 #' @export
+#' @source Generated by miniextendr from Rust fn `r_entry_demo`
 r_entry_demo <- function(x) {
   x <- as.integer(x)
   stopifnot(
@@ -17373,9 +17386,11 @@ r_entry_demo <- function(x) {
   .val
 }
 
-# Generated from Rust fn `create_widget` (r_wrapper_attrs.rs:37:8)
-#' @source Generated by miniextendr from Rust fn `create_widget`
+# Generated from Rust fn `create_widget` (r_wrapper_attrs.rs:49:8)
+#' @title Combined test: r_name + r_entry + r_post_checks
+#' @param n Number of widgets.
 #' @export
+#' @source Generated by miniextendr from Rust fn `create_widget`
 widget.create <- function(n) {
   n <- as.integer(n)
   stopifnot(
@@ -17393,9 +17408,11 @@ widget.create <- function(n) {
   .val
 }
 
-# Generated from Rust fn `on_exit_short` (r_wrapper_attrs.rs:45:8)
-#' @source Generated by miniextendr from Rust fn `on_exit_short`
+# Generated from Rust fn `on_exit_short` (r_wrapper_attrs.rs:60:8)
+#' @title Test on.exit cleanup with short form
+#' @param x Input value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `on_exit_short`
 on_exit_short <- function(x) {
   on.exit(message("cleanup ran"), add = TRUE)
   stopifnot(
@@ -17412,9 +17429,11 @@ on_exit_short <- function(x) {
   .val
 }
 
-# Generated from Rust fn `on_exit_no_add` (r_wrapper_attrs.rs:53:8)
-#' @source Generated by miniextendr from Rust fn `on_exit_no_add`
+# Generated from Rust fn `on_exit_no_add` (r_wrapper_attrs.rs:71:8)
+#' @title Test on.exit cleanup with add = false (overwrite previous)
+#' @param x Input value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `on_exit_no_add`
 on_exit_no_add <- function(x) {
   on.exit(message("cleanup overwrite"))
   stopifnot(
@@ -17431,9 +17450,11 @@ on_exit_no_add <- function(x) {
   .val
 }
 
-# Generated from Rust fn `r_post_checks_demo` (r_wrapper_attrs.rs:25:8)
-#' @source Generated by miniextendr from Rust fn `r_post_checks_demo`
+# Generated from Rust fn `r_post_checks_demo` (r_wrapper_attrs.rs:34:8)
+#' @title Log a message after checks pass
+#' @param x Input value.
 #' @export
+#' @source Generated by miniextendr from Rust fn `r_post_checks_demo`
 r_post_checks_demo <- function(x) {
   stopifnot(
     "'x' must be numeric, logical, or raw" = is.numeric(x) || is.logical(x) || is.raw(x),
@@ -17609,9 +17630,10 @@ bitvec_roundtrip <- function(bits) {
   .val
 }
 
-# Generated from Rust fn `export_control_normal` (export_control_tests.rs:7:8)
-#' @source Generated by miniextendr from Rust fn `export_control_normal`
+# Generated from Rust fn `export_control_normal` (export_control_tests.rs:9:8)
+#' @title A normal exported function for comparison
 #' @export
+#' @source Generated by miniextendr from Rust fn `export_control_normal`
 export_control_normal <- function() {
   .val <- .Call(C_export_control_normal, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -17623,7 +17645,7 @@ export_control_normal <- function() {
   .val
 }
 
-# Generated from Rust fn `export_control_internal` (export_control_tests.rs:13:8)
+# Generated from Rust fn `export_control_internal` (export_control_tests.rs:15:8)
 #' @source Generated by miniextendr from Rust fn `export_control_internal`
 #' @keywords internal
 export_control_internal <- function() {
@@ -17637,7 +17659,7 @@ export_control_internal <- function() {
   .val
 }
 
-# Generated from Rust fn `export_control_noexport` (export_control_tests.rs:19:8)
+# Generated from Rust fn `export_control_noexport` (export_control_tests.rs:21:8)
 #' @source Generated by miniextendr from Rust fn `export_control_noexport`
 export_control_noexport <- function() {
   .val <- .Call(C_export_control_noexport, .call = match.call())
@@ -18985,7 +19007,7 @@ borsh_tuple_size <- function() {
 }
 
 # Generated from Rust fn `borsh_invalid_data` (borsh_adapter_tests.rs:49:8)
-#' @title Attempt to deserialize invalid bytes — should return an error string
+#' @title Attempt to deserialize invalid bytes -- should return an error string
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `borsh_invalid_data`
 borsh_invalid_data <- function() {
@@ -19049,7 +19071,7 @@ borsh_roundtrip_string <- function(input) {
 }
 
 # Generated from Rust fn `borsh_roundtrip_doubles` (borsh_adapter_tests.rs:10:8)
-#' @title Roundtrip a Vec<f64> through borsh serialization → R raw → borsh deserialization
+#' @title Roundtrip a Vec<f64> through borsh serialization -> R raw -> borsh deserialization
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `borsh_roundtrip_doubles`
 borsh_roundtrip_doubles <- function(values) {
@@ -20294,9 +20316,11 @@ serde_r_roundtrip_optionals_present <- function() {
   .val
 }
 
-# Generated from Rust fn `C_altrep_sexp_check` (altrep_sexp_tests.rs:13:26)
-#' @source Generated by miniextendr from Rust fn `C_altrep_sexp_check`
+# Generated from Rust fn `C_altrep_sexp_check` (altrep_sexp_tests.rs:16:26)
+#' @title Check if a SEXP is ALTREP and return info about it
+#' @param x A SEXP to inspect.
 #' @export
+#' @source Generated by miniextendr from Rust fn `C_altrep_sexp_check`
 unsafe_C_altrep_sexp_check <- function(x) {
   .val <- .Call(C_altrep_sexp_check, x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20308,9 +20332,11 @@ unsafe_C_altrep_sexp_check <- function(x) {
   .val
 }
 
-# Generated from Rust fn `C_altrep_sexp_is_altrep` (altrep_sexp_tests.rs:88:26)
-#' @source Generated by miniextendr from Rust fn `C_altrep_sexp_is_altrep`
+# Generated from Rust fn `C_altrep_sexp_is_altrep` (altrep_sexp_tests.rs:109:26)
+#' @title Return whether a SEXP is ALTREP
+#' @param x A SEXP to check.
 #' @export
+#' @source Generated by miniextendr from Rust fn `C_altrep_sexp_is_altrep`
 unsafe_C_altrep_sexp_is_altrep <- function(x) {
   .val <- .Call(C_altrep_sexp_is_altrep, x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20322,9 +20348,11 @@ unsafe_C_altrep_sexp_is_altrep <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_sexp_materialize_int` (altrep_sexp_tests.rs:30:8)
-#' @source Generated by miniextendr from Rust fn `altrep_sexp_materialize_int`
+# Generated from Rust fn `altrep_sexp_materialize_int` (altrep_sexp_tests.rs:36:8)
+#' @title Try to wrap a SEXP in AltrepSexp and materialize it as integers
+#' @param x An ALTREP integer vector.
 #' @export
+#' @source Generated by miniextendr from Rust fn `altrep_sexp_materialize_int`
 altrep_sexp_materialize_int <- function(x) {
   .val <- .Call(C_altrep_sexp_materialize_int, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20336,9 +20364,11 @@ altrep_sexp_materialize_int <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_sexp_materialize_real` (altrep_sexp_tests.rs:40:8)
-#' @source Generated by miniextendr from Rust fn `altrep_sexp_materialize_real`
+# Generated from Rust fn `altrep_sexp_materialize_real` (altrep_sexp_tests.rs:49:8)
+#' @title Try to wrap a SEXP in AltrepSexp and materialize it as doubles
+#' @param x An ALTREP real vector.
 #' @export
+#' @source Generated by miniextendr from Rust fn `altrep_sexp_materialize_real`
 altrep_sexp_materialize_real <- function(x) {
   .val <- .Call(C_altrep_sexp_materialize_real, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20350,9 +20380,11 @@ altrep_sexp_materialize_real <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_sexp_materialize_strings` (altrep_sexp_tests.rs:50:8)
-#' @source Generated by miniextendr from Rust fn `altrep_sexp_materialize_strings`
+# Generated from Rust fn `altrep_sexp_materialize_strings` (altrep_sexp_tests.rs:62:8)
+#' @title Try to wrap a SEXP in AltrepSexp and materialize strings
+#' @param x An ALTREP string vector.
 #' @export
+#' @source Generated by miniextendr from Rust fn `altrep_sexp_materialize_strings`
 altrep_sexp_materialize_strings <- function(x) {
   .val <- .Call(C_altrep_sexp_materialize_strings, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20364,9 +20396,11 @@ altrep_sexp_materialize_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `C_altrep_ensure_materialized_int` (altrep_sexp_tests.rs:62:26)
-#' @source Generated by miniextendr from Rust fn `C_altrep_ensure_materialized_int`
+# Generated from Rust fn `C_altrep_ensure_materialized_int` (altrep_sexp_tests.rs:77:26)
+#' @title Use ensure_materialized on any SEXP, then extract as integer vector
+#' @param x A SEXP to materialize.
 #' @export
+#' @source Generated by miniextendr from Rust fn `C_altrep_ensure_materialized_int`
 unsafe_C_altrep_ensure_materialized_int <- function(x) {
   .val <- .Call(C_altrep_ensure_materialized_int, x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20378,9 +20412,11 @@ unsafe_C_altrep_ensure_materialized_int <- function(x) {
   .val
 }
 
-# Generated from Rust fn `C_altrep_ensure_materialized_str` (altrep_sexp_tests.rs:75:26)
-#' @source Generated by miniextendr from Rust fn `C_altrep_ensure_materialized_str`
+# Generated from Rust fn `C_altrep_ensure_materialized_str` (altrep_sexp_tests.rs:93:26)
+#' @title Use ensure_materialized on any SEXP, then extract as string vector
+#' @param x A SEXP to materialize.
 #' @export
+#' @source Generated by miniextendr from Rust fn `C_altrep_ensure_materialized_str`
 unsafe_C_altrep_ensure_materialized_str <- function(x) {
   .val <- .Call(C_altrep_ensure_materialized_str, x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20569,7 +20605,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `new_derived_temp` (vctrs_derive_example.rs:238:8)
+# Generated from Rust fn `new_derived_temp` (vctrs_derive_example.rs:242:8)
 #' @title Create a new derived_temp vector with arithmetic/math support
 #' @param x Temperature values.
 #' @return A derived_temp vector.
@@ -20587,7 +20623,7 @@ new_derived_temp <- function(x) {
   .val
 }
 
-# Generated from Rust fn `new_derived_point` (vctrs_derive_example.rs:208:8)
+# Generated from Rust fn `new_derived_point` (vctrs_derive_example.rs:212:8)
 #' @title Create a new derived_point record vector
 #' @param x X coordinates.
 #' @param y Y coordinates.
@@ -20627,7 +20663,7 @@ new_derived_percent <- function(x) {
   .val
 }
 
-# Generated from Rust fn `new_derived_rational` (vctrs_derive_example.rs:120:8)
+# Generated from Rust fn `new_derived_rational` (vctrs_derive_example.rs:122:8)
 #' @title Create a new derived_rational vector
 #' @param n Numerator values.
 #' @param d Denominator values.
@@ -20649,7 +20685,7 @@ new_derived_rational <- function(n, d) {
   .val
 }
 
-# Generated from Rust fn `new_derived_int_lists` (vctrs_derive_example.rs:163:8)
+# Generated from Rust fn `new_derived_int_lists` (vctrs_derive_example.rs:167:8)
 #' @title Create a new derived_int_lists vector (list_of<integer>)
 #' @param x A list of integer vectors.
 #' @return A derived_int_lists list_of vector.
@@ -20666,9 +20702,10 @@ new_derived_int_lists <- function(x) {
   .val
 }
 
-# Generated from Rust fn `derived_percent_class_info` (vctrs_derive_example.rs:77:8)
-#' @source Generated by miniextendr from Rust fn `derived_percent_class_info`
+# Generated from Rust fn `derived_percent_class_info` (vctrs_derive_example.rs:79:8)
+#' @title Verify VctrsClass trait constants
 #' @export
+#' @source Generated by miniextendr from Rust fn `derived_percent_class_info`
 derived_percent_class_info <- function() {
   .val <- .Call(C_derived_percent_class_info, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -20680,9 +20717,10 @@ derived_percent_class_info <- function() {
   .val
 }
 
-# Generated from Rust fn `derived_rational_class_info` (vctrs_derive_example.rs:130:8)
-#' @source Generated by miniextendr from Rust fn `derived_rational_class_info`
+# Generated from Rust fn `derived_rational_class_info` (vctrs_derive_example.rs:134:8)
+#' @title Verify VctrsClass trait constants for rational
 #' @export
+#' @source Generated by miniextendr from Rust fn `derived_rational_class_info`
 derived_rational_class_info <- function() {
   .val <- .Call(C_derived_rational_class_info, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -21098,7 +21136,7 @@ S7TraitCounter$Counter$MAX_VALUE <- function() {
   .Call(C_S7TraitCounter__Counter__MAX_VALUE, .call = match.call())
 }
 
-# Generated from Rust impl `Fallible` for `FallibleImpl` (error_in_r_tests.rs:225:19)
+# Generated from Rust impl `Fallible` for `FallibleImpl` (error_in_r_tests.rs:244:19)
 # Trait methods and consts for FallibleImpl implementing Fallible
 # Generated by #[miniextendr] impl Fallible for FallibleImpl
 
@@ -21715,7 +21753,7 @@ ExportControlTraitPoint$RDisplay$as_r_string <- function(x) {
 }
 attr(ExportControlTraitPoint$RDisplay$as_r_string, ".__mx_instance__") <- TRUE
 
-# Generated from Rust derive(Vctrs) on `DerivedTemp` (vctrs_derive_example.rs:222:12)
+# Generated from Rust derive(Vctrs) on `DerivedTemp` (vctrs_derive_example.rs:226:12)
 #' @export
 format.derived_temp <- function(x, ...) {
   format(unclass(x), ...)
@@ -21724,7 +21762,7 @@ format.derived_temp <- function(x, ...) {
 #' @importFrom vctrs vec_ptype_abbr
 #' @export
 vec_ptype_abbr.derived_temp <- function(x, ...) {
-  "°"
+  "deg"
 }
 
 #' @importFrom vctrs vec_ptype_full
@@ -21758,6 +21796,7 @@ vec_cast.derived_temp.derived_temp <- function(x, to, ...) {
 }
 
 #' @importFrom vctrs vec_arith
+#' @method vec_arith derived_temp
 #' @export
 vec_arith.derived_temp <- function(op, x, y, ...) {
   UseMethod("vec_arith.derived_temp", y)
@@ -21809,7 +21848,7 @@ vec_math.derived_temp <- function(.fn, .x, ...) {
   vctrs::new_vctr(result, class = "derived_temp", inherit_base_type = FALSE)
 }
 
-# Generated from Rust derive(Vctrs) on `DerivedPoint` (vctrs_derive_example.rs:187:12)
+# Generated from Rust derive(Vctrs) on `DerivedPoint` (vctrs_derive_example.rs:191:12)
 #' @importFrom vctrs field
 #' @export
 format.derived_point <- function(x, ...) {
@@ -21934,7 +21973,7 @@ vec_cast.double.derived_percent <- function(x, to, ...) {
   vctrs::vec_data(x)
 }
 
-# Generated from Rust derive(Vctrs) on `DerivedIntLists` (vctrs_derive_example.rs:147:12)
+# Generated from Rust derive(Vctrs) on `DerivedIntLists` (vctrs_derive_example.rs:151:12)
 #' @export
 format.derived_int_lists <- function(x, ...) {
   vapply(unclass(x), function(elt) {
@@ -21974,7 +22013,7 @@ vec_cast.derived_int_lists.derived_int_lists <- function(x, to, ...) {
   x
 }
 
-# Generated from Rust derive(Vctrs) on `DerivedRational` (vctrs_derive_example.rs:96:12)
+# Generated from Rust derive(Vctrs) on `DerivedRational` (vctrs_derive_example.rs:98:12)
 #' @importFrom vctrs field
 #' @export
 format.derived_rational <- function(x, ...) {

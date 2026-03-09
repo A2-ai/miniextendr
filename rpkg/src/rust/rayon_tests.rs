@@ -71,7 +71,7 @@ pub fn rayon_with_r_vec_map(n: i32) -> SEXP {
 }
 
 /// @noRd
-/// Test par_map: transform input slice → R vector.
+/// Test par_map: transform input slice -> R vector.
 #[cfg(feature = "rayon")]
 /// @noRd
 #[miniextendr]

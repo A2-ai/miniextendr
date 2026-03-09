@@ -15,7 +15,7 @@
 //   #[miniextendr]
 //   impl SharedCounter for SimpleCounter { ... }
 //
-////
+//
 // consumer.pkg/Cargo.toml:
 //   [dependencies]
 //   producer-pkg = { version = "0.1" }  # Rust-level dependency

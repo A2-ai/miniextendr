@@ -93,10 +93,7 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
                 "src/rust/cargo-config.toml.in",
             ],
         ),
-        (
-            "Source Templates",
-            &["src/Makevars.in", "src/stub.c"],
-        ),
+        ("Source Templates", &["src/Makevars.in", "src/stub.c"]),
     ];
 
     // Build vendored crate paths dynamically from constant

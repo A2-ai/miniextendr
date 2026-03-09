@@ -14,6 +14,22 @@ A Rust-R interoperability framework for building R packages with Rust backends.
   - `rpkg/configure` → edit `rpkg/configure.ac` (then run `autoconf`)
   - `rpkg/src/stub.c` — static file (no configure substitution), just a linker stub
 
+## Capturing Command Output
+
+**Always redirect long-running R/Cargo command output to a log file**, then read the log. This ensures you see the full output (no truncation from `tail`) and can re-read sections as needed.
+
+```bash
+# Pattern: redirect to file, then read with Read tool
+just devtools-document 2>&1 > /tmp/devtools-doc.log
+just rcmdinstall 2>&1 > /tmp/rcmdinstall.log
+just r-cmd-check 2>&1 > /tmp/rcmdcheck.log
+just devtools-test 2>&1 > /tmp/devtools-test.log
+just vendor 2>&1 > /tmp/vendor.log
+just devtools-check 2>&1 > /tmp/devtools-check.log
+```
+
+After the command finishes, use the **Read tool** to read the log file. Start by reading the whole file (or the tail end for very long logs), and if you need more context, read earlier sections. **Do NOT use `tail` or `head`** — use the Read tool so you see the complete output and can go back for more.
+
 ## Sandbox Restrictions
 
 **IMPORTANT**: The Claude Code sandbox blocks compilation. Commands that compile code (like `just devtools-document`, `R CMD INSTALL`, `cargo build`) will fail with "Could not find tools necessary to compile a package" or similar errors.
@@ -83,6 +99,11 @@ just devtools-check     # Runs devtools::check with output saved to rpkg-check-o
 #   - 00check.log: Main check log
 #   - 00install.out: Installation/compilation output
 #   - tests/: Test output files
+
+# IMPORTANT: When running `just r-cmd-check`, save output to a file and read it:
+#   just r-cmd-check 2>&1 | tee /tmp/rcmdcheck.log
+#   # Then read /tmp/rcmdcheck.log — do NOT tail the output, as warnings
+#   # and notes appear throughout and will be missed.
 
 # Cross-package tests
 just cross-install      # Build + install producer.pkg and consumer.pkg

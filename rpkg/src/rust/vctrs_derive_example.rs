@@ -73,6 +73,8 @@ pub fn new_derived_percent(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, St
 }
 
 /// Verify VctrsClass trait constants.
+///
+/// @export
 #[miniextendr]
 pub fn derived_percent_class_info() -> Vec<String> {
     vec![
@@ -126,6 +128,8 @@ pub fn new_derived_rational(
 }
 
 /// Verify VctrsClass trait constants for rational.
+///
+/// @export
 #[miniextendr]
 pub fn derived_rational_class_info() -> Vec<String> {
     vec![
@@ -218,7 +222,7 @@ pub fn new_derived_point(x: Vec<f64>, y: Vec<f64>) -> Result<miniextendr_api::ff
 ///
 /// Demonstrates `arith` and `math` attributes for numeric vctrs.
 #[derive(Vctrs)]
-#[vctrs(class = "derived_temp", base = "double", abbr = "°", arith, math)]
+#[vctrs(class = "derived_temp", base = "double", abbr = "deg", arith, math)]
 pub struct DerivedTemp {
     #[vctrs(data)]
     values: Vec<f64>,

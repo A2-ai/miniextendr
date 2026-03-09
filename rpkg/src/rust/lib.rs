@@ -721,6 +721,7 @@ pub fn large_vec_altrep() -> SEXP {
 
 /// Example: Lazy computation - compute on demand
 ///
+/// @param n Length of the sequence.
 /// @export
 #[miniextendr]
 pub fn lazy_squares(n: i32) -> SEXP {
@@ -736,6 +737,7 @@ pub fn lazy_squares(n: i32) -> SEXP {
 
 /// Example: Using into_altrep() to store wrapper
 ///
+/// @param n Length of the vector.
 /// @export
 #[miniextendr]
 pub fn boxed_data_altrep(n: i32) -> SEXP {
@@ -753,6 +755,7 @@ pub fn boxed_data_altrep(n: i32) -> SEXP {
 
 /// Create a vector of given size using regular copy (IntoR)
 ///
+/// @param n Length of the vector.
 /// @export
 #[miniextendr]
 pub fn bench_vec_copy(n: i32) -> Vec<i32> {
@@ -764,6 +767,7 @@ pub fn bench_vec_copy(n: i32) -> Vec<i32> {
 
 /// Create a vector of given size using ALTREP zero-copy
 ///
+/// @param n Length of the vector.
 /// @export
 #[miniextendr]
 pub fn bench_vec_altrep(n: i32) -> SEXP {

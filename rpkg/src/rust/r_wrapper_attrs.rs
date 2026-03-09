@@ -5,6 +5,9 @@ use miniextendr_api::{ExternalPtr, miniextendr};
 // ── Standalone function: r_name ──
 
 /// Check if an object is a widget.
+///
+/// @param x Value to check.
+/// @export
 #[miniextendr(r_name = "is.widget")]
 pub fn is_widget(x: i32) -> bool {
     x > 0
@@ -13,6 +16,9 @@ pub fn is_widget(x: i32) -> bool {
 // ── Standalone function: r_entry ──
 
 /// Coerce x to integer before passing to Rust.
+///
+/// @param x Value to coerce.
+/// @export
 #[miniextendr(r_entry = "x <- as.integer(x)")]
 pub fn r_entry_demo(x: i32) -> i32 {
     x * 2
@@ -21,6 +27,9 @@ pub fn r_entry_demo(x: i32) -> i32 {
 // ── Standalone function: r_post_checks ──
 
 /// Log a message after checks pass.
+///
+/// @param x Input value.
+/// @export
 #[miniextendr(r_post_checks = "message(\"validated\")")]
 pub fn r_post_checks_demo(x: i32) -> i32 {
     x + 1
@@ -29,6 +38,9 @@ pub fn r_post_checks_demo(x: i32) -> i32 {
 // ── Standalone function: all three combined ──
 
 /// Combined test: r_name + r_entry + r_post_checks.
+///
+/// @param n Number of widgets.
+/// @export
 #[miniextendr(
     r_name = "widget.create",
     r_entry = "n <- as.integer(n)",
@@ -41,6 +53,9 @@ pub fn create_widget(n: i32) -> i32 {
 // ── Standalone function: r_on_exit (short form) ──
 
 /// Test on.exit cleanup with short form.
+///
+/// @param x Input value.
+/// @export
 #[miniextendr(r_on_exit = "message(\"cleanup ran\")")]
 pub fn on_exit_short(x: i32) -> i32 {
     x + 1
@@ -49,6 +64,9 @@ pub fn on_exit_short(x: i32) -> i32 {
 // ── Standalone function: r_on_exit (long form, add = false) ──
 
 /// Test on.exit cleanup with add = false (overwrite previous).
+///
+/// @param x Input value.
+/// @export
 #[miniextendr(r_on_exit(expr = "message(\"cleanup overwrite\")", add = false))]
 pub fn on_exit_no_add(x: i32) -> i32 {
     x + 2
@@ -57,6 +75,9 @@ pub fn on_exit_no_add(x: i32) -> i32 {
 // ── Standalone function: r_on_exit (long form, after = false) ──
 
 /// Test on.exit cleanup with after = false (LIFO order).
+///
+/// @param x Input value.
+/// @export
 #[miniextendr(r_on_exit(expr = "message(\"cleanup lifo\")", after = false))]
 pub fn on_exit_lifo(x: i32) -> i32 {
     x + 3

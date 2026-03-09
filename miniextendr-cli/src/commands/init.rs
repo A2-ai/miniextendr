@@ -447,8 +447,7 @@ local({
 }
 
 fn write_cleanup(root: &Path) -> Result<()> {
-    let content =
-        "#!/bin/sh\nrm -rf src/rust/target src/Makevars src/rust/.cargo\n";
+    let content = "#!/bin/sh\nrm -rf src/rust/target src/Makevars src/rust/.cargo\n";
     let p = root.join("cleanup");
     if !p.exists() {
         std::fs::write(&p, content)?;
