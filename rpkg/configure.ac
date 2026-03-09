@@ -530,7 +530,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       _patch_lines=""
       for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
         _versioned_dir=""
-        for _d in "$VENDOR_OUT/$_crate"-*/; do
+        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
           if test -d "$_d"; then _versioned_dir="$_d"; break; fi
         done
         if test -n "$_versioned_dir"; then
