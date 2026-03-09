@@ -366,11 +366,6 @@ use rust_decimal::prelude::*;
 ///
 /// #[miniextendr]
 /// impl RDecimalOps for MyDecimal {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RDecimalOps for MyDecimal;
-/// }
 /// ```
 ///
 /// In R:

@@ -1,6 +1,6 @@
 //! num-bigint adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::num_bigint_impl::BigInt;
-use miniextendr_api::{miniextendr, miniextendr_module};
 use std::str::FromStr;
 
 /// @noRd
@@ -43,13 +43,4 @@ pub fn bigint_is_positive(s: &str) -> bool {
     BigInt::from_str(s)
         .map(|bi| bi > BigInt::from(0))
         .unwrap_or(false)
-}
-
-miniextendr_module! {
-    mod bigint_adapter_tests;
-    fn bigint_roundtrip;
-    fn bigint_add;
-    fn bigint_mul;
-    fn bigint_factorial;
-    fn bigint_is_positive;
 }

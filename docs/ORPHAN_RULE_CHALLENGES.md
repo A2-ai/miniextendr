@@ -76,7 +76,7 @@ Feature crate exports `pub fn array2_from_sexp(sexp: SEXP) -> Result<Array2<f64>
 
 ### 6. User-crate macro expansion
 
-Have `miniextendr_module!` or a registration macro in the user's crate generate the impls.
+Have a registration macro in the user's crate generate the impls.
 
 **Result:** The user's crate also doesn't own `TryFromSexp` or `Array2<f64>`. Same orphan violation, regardless of where the macro is defined.
 

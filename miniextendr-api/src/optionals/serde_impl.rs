@@ -212,11 +212,6 @@ use crate::{
 ///
 /// #[miniextendr]
 /// impl RSerialize for Point {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RSerialize for Point;
-/// }
 /// ```
 pub trait RSerialize {
     /// Serialize to a compact JSON string.
@@ -258,11 +253,6 @@ impl<T: Serialize> RSerialize for T {
 ///
 /// #[miniextendr]
 /// impl RDeserialize for Config {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RDeserialize for Config;
-/// }
 /// ```
 ///
 /// In R:
@@ -843,14 +833,8 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
 ///
 /// # Registration
 ///
-/// ```ignore
-/// use miniextendr_api::serde_impl::{JsonValue, RJsonValueOps};
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RJsonValueOps for JsonValue;
-/// }
-/// ```
+/// Registration is automatic when you annotate `impl RJsonValueOps for JsonValue`
+/// with `#[miniextendr]`.
 pub trait RJsonValueOps {
     /// Check if this is a null value.
     fn is_null(&self) -> bool;

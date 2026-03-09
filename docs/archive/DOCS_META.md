@@ -27,9 +27,9 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         R Package (rpkg)                            │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐  │
-│  │ R/miniextendr_  │  │ src/entrypoint.c│  │ src/rust/lib.rs     │  │
-│  │ wrappers.R      │  │ (R_init_*)      │  │ (#[miniextendr] fns)│  │
-│  │ (auto-generated)│  │ (init glue)     │  │ (exports + tests)   │  │
+│  │ R/miniextendr_  │  │ src/rust/lib.rs │  │ src/stub.c          │  │
+│  │ wrappers.R      │  │ (#[miniextendr] │  │ (empty C stub)      │  │
+│  │ (auto-generated)│  │  + init! macro) │  │                     │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -37,7 +37,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      miniextendr-macros                             │
 │  • #[miniextendr] - generates C wrappers + R wrappers               │
-│  • miniextendr_module! - registers functions with R                 │
+│  • linkme distributed slices - automatic registration               │
 │  • #[r_ffi_checked] - main-thread routed R FFI wrappers             │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -171,7 +171,7 @@ where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static;
 
-/// Initialize the worker (called from entrypoint.c)
+/// Initialize the runtime (called by package_init via miniextendr_init!)
 pub extern "C-unwind" fn miniextendr_runtime_init()
 ```
 
@@ -632,30 +632,11 @@ Generates:
 
 For ALTREP class registration. Generates registration code for method trait implementations.
 
-### miniextendr_module
+### Automatic Registration
 
-Registers functions and structs with R's dynamic loading.
-
-```rust
-miniextendr_module! {
-    mod mymodule;
-
-    use other_module;  // Include another module's registrations
-
-    fn my_function;
-    fn another_function;
-
-    extern "C-unwind" fn C_direct_wrapper;
-
-    struct MyAltrepClass;
-}
-```
-
-Generates:
-
-- `R_init_<module>` entry point
-- Call method registration array
-- R wrapper file content
+All `#[miniextendr]` items are automatically registered via linkme distributed slices.
+No manual module declarations are needed -- the `R_init_<module>` entry point, call method
+registration array, and R wrapper file content are generated automatically.
 
 ### #[r_ffi_checked]
 

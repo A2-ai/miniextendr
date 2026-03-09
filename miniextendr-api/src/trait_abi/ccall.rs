@@ -1,9 +1,9 @@
-//! # Direct FFI to mx_abi.c Functions
+//! # Direct FFI to mx_abi Functions
 //!
-//! This module provides Rust wrappers around the C functions defined in
-//! `mx_abi.c`, which is compiled into each package's shared object.
+//! This module provides Rust wrappers around the `#[no_mangle]` functions defined in
+//! `mx_abi.rs`, which is compiled into each package's static library.
 //!
-//! ## C Functions
+//! ## Functions
 //!
 //! | Function | Purpose |
 //! |----------|---------|
@@ -13,7 +13,7 @@
 //!
 //! ## Linkage
 //!
-//! Each package compiles `mx_abi.c` into its own `.so`, so these symbols are
+//! Each package includes `mx_abi.rs` in its staticlib, so these symbols are
 //! resolved at link time — no `R_GetCCallable` indirection needed.
 //!
 //! ## Thread Safety
@@ -25,7 +25,7 @@ use crate::ffi::SEXP;
 use std::os::raw::c_void;
 
 // =============================================================================
-// Direct extern declarations to mx_abi.c functions (same .so)
+// Direct extern declarations to mx_abi.rs functions (same .so)
 // =============================================================================
 
 mod ffi {
@@ -61,7 +61,7 @@ mod ffi {
 /// - `ptr` must be a valid pointer to `mx_erased`
 /// - `ptr` must be heap-allocated (will be freed by finalizer)
 /// - Must be called on R's main thread
-/// - `mx_abi_register()` must have been called (from entrypoint.c)
+/// - `mx_abi_register()` must have been called (via `miniextendr_init!`)
 ///
 /// # Example
 ///
@@ -73,7 +73,7 @@ mod ffi {
 #[inline]
 pub unsafe fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
     // SAFETY: Caller guarantees ptr is valid and we're on main thread.
-    // mx_wrap is linked from mx_abi.c in the same .so.
+    // mx_wrap is linked from mx_abi.rs in the same .so.
     unsafe { ffi::mx_wrap(ptr) }
 }
 

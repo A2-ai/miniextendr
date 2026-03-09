@@ -218,8 +218,7 @@ AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
 dnl Generate files from .in templates
-AC_CONFIG_FILES([src/rust/document.rs])
-AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
+AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl ---- no vendoring needed (direct path deps to workspace crates) ----
 VENDOR_OUT=""
@@ -231,8 +230,6 @@ AS_MKDIR_P([src/rust/.cargo])
 AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
-  src/entrypoint.c:src/entrypoint.c.in
-  src/mx_abi.c:src/mx_abi.c.in
 ])
 
 dnl 1) Remove cargo config in dev mode (direct path deps don't need source replacement)

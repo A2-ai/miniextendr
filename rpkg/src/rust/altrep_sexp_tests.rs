@@ -1,7 +1,7 @@
+use miniextendr_api::IntoR;
 use miniextendr_api::altrep_sexp::{AltrepSexp, ensure_materialized};
 use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
-use miniextendr_api::IntoR;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// Check if a SEXP is ALTREP and return info about it.
 ///
@@ -88,15 +88,4 @@ pub extern "C-unwind" fn C_altrep_ensure_materialized_str(x: SEXP) -> SEXP {
 pub extern "C-unwind" fn C_altrep_sexp_is_altrep(x: SEXP) -> SEXP {
     let is_altrep = AltrepSexp::try_wrap(x).is_some();
     is_altrep.into_sexp()
-}
-
-miniextendr_module! {
-    mod altrep_sexp_tests;
-    extern "C-unwind" fn C_altrep_sexp_check;
-    fn altrep_sexp_materialize_int;
-    fn altrep_sexp_materialize_real;
-    fn altrep_sexp_materialize_strings;
-    extern "C-unwind" fn C_altrep_ensure_materialized_int;
-    extern "C-unwind" fn C_altrep_ensure_materialized_str;
-    extern "C-unwind" fn C_altrep_sexp_is_altrep;
 }

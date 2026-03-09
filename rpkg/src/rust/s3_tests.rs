@@ -1,6 +1,6 @@
 //! Tests for S3-style impl blocks (e.g., `#[miniextendr(s3)] impl Foo`).
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// A simple counter that demonstrates S3-style impl block support.
 /// This gets exported as S3 methods: `new_s3counter()`, `value.S3Counter()`, etc.
@@ -40,10 +40,4 @@ impl S3Counter {
     pub fn default_counter() -> Self {
         S3Counter { value: 0 }
     }
-}
-
-miniextendr_module! {
-    mod s3_tests;
-
-    impl S3Counter;
 }

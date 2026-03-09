@@ -5,7 +5,7 @@
 //! Exercises `#[miniextendr]` on impl blocks for each class system:
 //! env, r6, s3, s4, s7 (including S7 properties and fallback).
 
-use crate::{miniextendr, miniextendr_module};
+use crate::miniextendr;
 
 // =============================================================================
 // Env-style class
@@ -121,18 +121,4 @@ impl CovS7 {
     pub fn describe_cov(&self) -> String {
         format!("CovS7({})", self.v)
     }
-}
-
-// =============================================================================
-// Module registration
-// =============================================================================
-
-miniextendr_module! {
-    mod impl_matrix;
-
-    impl CovEnv;
-    impl CovR6;
-    impl CovS3;
-    impl CovS4;
-    impl CovS7;
 }

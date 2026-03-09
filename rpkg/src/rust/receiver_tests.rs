@@ -1,6 +1,6 @@
 //! Tests for env-style impl blocks (e.g., `#[miniextendr(env)] impl Foo`).
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// A simple counter that demonstrates env-style impl block support.
 /// This gets exported as an R class with `$new()`, `$value()`, `$inc()`, `$add()` methods.
@@ -38,10 +38,4 @@ impl ReceiverCounter {
     pub fn default_counter() -> Self {
         ReceiverCounter { value: 0 }
     }
-}
-
-miniextendr_module! {
-    mod receiver_tests;
-
-    impl ReceiverCounter;
 }

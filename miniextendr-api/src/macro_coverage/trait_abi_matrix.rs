@@ -6,7 +6,7 @@
 //! Both paths have separate expansion logic (vtable generation).
 
 use super::impl_matrix::CovEnv;
-use crate::{miniextendr, miniextendr_module};
+use crate::miniextendr;
 
 #[miniextendr]
 pub trait CovTrait {
@@ -64,14 +64,6 @@ impl CovTrait for Aligned64Counter {
     fn cov_trait_value(&self) -> i32 {
         self.value
     }
-}
-
-miniextendr_module! {
-    mod trait_abi_matrix;
-
-    impl CovTrait for CovEnv;
-    impl CovTrait for Aligned32Counter;
-    impl CovTrait for Aligned64Counter;
 }
 
 // =============================================================================

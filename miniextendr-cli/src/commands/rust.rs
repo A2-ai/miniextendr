@@ -46,9 +46,8 @@ fn rust_source(ctx: &ProjectContext, code: &str, quiet: bool) -> Result<()> {
 /// Compile a single Rust function.
 fn rust_function(ctx: &ProjectContext, code: &str, quiet: bool) -> Result<()> {
     let wrapped = format!(
-        "use miniextendr_api::{{miniextendr, miniextendr_module}};\n\n\
-         {code}\n\n\
-         miniextendr_module! {{\n    mod mx_temp;\n}}\n"
+        "use miniextendr_api::miniextendr;\n\n\
+         {code}\n"
     );
     rust_source(ctx, &wrapped, quiet)
 }

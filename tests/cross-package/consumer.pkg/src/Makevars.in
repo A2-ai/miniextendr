@@ -15,10 +15,9 @@ NOT_CRAN_FLAG = @NOT_CRAN@
 CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
-PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
-
-R_WRAPPERS_GENERATED = $(ABS_RPKG_SRCDIR)/@PACKAGE_TARNAME@-wrappers.R
-R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/@PACKAGE_TARNAME@-wrappers.R
+# force_load: extract ALL .o members from the archive, preserving linkme
+# distributed_slice entries that would otherwise be dropped by lazy linking.
+PKG_LIBS = -Wl,-force_load,$(CARGO_AR)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 ## ----------------------------------------------------------------------
@@ -48,7 +47,7 @@ all: $(SHLIB)
 # Phony target to force Cargo invocation (no recipe - just triggers dependents)
 FORCE_CARGO:
 
-$(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
+$(SHLIB): $(OBJECTS) $(CARGO_AR)
 
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
@@ -65,24 +64,4 @@ $(CARGO_AR): FORCE_CARGO
 	  --target-dir $(CARGO_TARGET_DIR); \
 	test -f "$(CARGO_AR)"
 
-# Generate R wrappers from proc-macro output
-# FORCE_CARGO ensures the document binary is always run.
-$(R_WRAPPERS_GENERATED): FORCE_CARGO $(CARGO_AR)
-	@set -e; \
-	TARGET_OPT=""; \
-	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
-	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
-	  --bin document --profile $(CARGO_PROFILE) \
-	  --manifest-path $(CARGO_TOML) \
-	  --target-dir $(CARGO_TARGET_DIR); \
-	test -f "$(R_WRAPPERS_GENERATED)"
-
-$(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED)
-	@cp "$(R_WRAPPERS_GENERATED)" "$(R_WRAPPERS_CURRENT)"
-
 clean:
-	@# Only clean generated files on CRAN (preserve for dev)
-	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
-	  rm -f "$(R_WRAPPERS_GENERATED)" "$(R_WRAPPERS_CURRENT)"; \
-	fi

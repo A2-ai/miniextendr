@@ -1,7 +1,2 @@
-//! Nested submodule for `use submodule;` variant coverage.
-
-use crate::miniextendr_module;
-
-miniextendr_module! {
-    mod nested;
-}
+//! Nested submodule — previously used for `use submodule;` coverage.
+//! Now empty since linkme handles registration automatically.

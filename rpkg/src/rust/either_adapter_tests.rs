@@ -1,6 +1,6 @@
 //! Either adapter tests
 use miniextendr_api::either_impl::Either;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// Accepts either an integer or a string. Returns "int:N" or "str:S".
 /// @noRd
@@ -68,16 +68,4 @@ pub fn either_nested(value: Either<bool, Either<i32, String>>) -> String {
 #[miniextendr]
 pub fn either_zero() -> Either<i32, String> {
     Either::Left(0)
-}
-
-miniextendr_module! {
-    mod either_adapter_tests;
-    fn either_int_or_str;
-    fn either_dbl_or_vec;
-    fn either_make_left;
-    fn either_make_right;
-    fn either_is_left;
-    fn either_is_right;
-    fn either_nested;
-    fn either_zero;
 }

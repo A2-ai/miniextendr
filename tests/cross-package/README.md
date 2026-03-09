@@ -78,12 +78,11 @@ producer.pkg/
 ├── R/                   # R source files (generated wrappers)
 ├── src/
 │   ├── Makevars.in      # Make configuration template
-│   ├── entrypoint.c.in  # C initialization template
+│   ├── stub.c           # Minimal C stub for R linker
 │   └── rust/
 │       ├── Cargo.toml.in  # Cargo manifest template
 │       ├── lib.rs         # Rust implementation
-│       ├── build.rs       # Build script
-│       └── document.rs.in # R wrapper generator
+│       └── build.rs       # Build script
 └── tests/testthat/      # R test suite
 ```
 
@@ -109,11 +108,7 @@ impl Counter for SimpleCounter {
     fn add(&mut self, n: i32) { self.value += n; }
 }
 
-miniextendr_module! {
-    mod producer_pkg;
-    impl SimpleCounter;               // Inherent impl registration
-    impl Counter for SimpleCounter;   // Trait impl registration
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 **Generated infrastructure:**
@@ -179,7 +174,7 @@ For cross-package trait dispatch to work:
 1. **Identical trait definitions** - Both packages must vendor the same trait definition
 2. **Type tag matching** - `TAG_COUNTER` must hash to the same value
 3. **Method signatures** - Same number/order of methods in trait
-4. **Registration** - Producer must register `impl Trait for Type` in miniextendr_module!
+4. **Registration** - Producer must have `#[miniextendr]` on `impl Trait for Type`
 
 ## What Gets Generated
 

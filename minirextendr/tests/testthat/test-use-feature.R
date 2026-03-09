@@ -77,8 +77,6 @@ test_that("detect_cargo_features warns on missing Cargo.toml", {
 test_that("generate_feature_detection_rust produces valid structure", {
   code <- generate_feature_detection_rust("testpkg", c("rayon", "serde"))
 
-  # Should contain miniextendr_module!
-  expect_true(grepl("miniextendr_module!", code))
   # Should contain the function name
   expect_true(grepl("testpkg_enabled_features", code))
   # Should contain cfg! checks for each feature
@@ -109,6 +107,5 @@ test_that("generate_feature_detection_rust handles empty features", {
   code <- generate_feature_detection_rust("testpkg", character())
 
   # Should still produce valid code
-  expect_true(grepl("miniextendr_module!", code))
   expect_true(grepl("testpkg_enabled_features", code))
 })

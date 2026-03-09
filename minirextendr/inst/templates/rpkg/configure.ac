@@ -248,9 +248,7 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
-dnl Generate files from .in templates (templates must be committed)
-AC_CONFIG_FILES([src/rust/document.rs])
-AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
+AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
@@ -284,8 +282,6 @@ AS_MKDIR_P([src/rust/.cargo])
 AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
-  src/entrypoint.c:src/entrypoint.c.in
-  src/mx_abi.c:src/mx_abi.c.in
   src/{{package}}-win.def:src/win.def.in
 ])
 

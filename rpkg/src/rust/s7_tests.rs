@@ -1,6 +1,6 @@
 //! Tests for S7-style impl blocks (e.g., `#[miniextendr(s7)] impl Foo`).
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// A simple counter that demonstrates S7-style impl block support.
 /// This gets exported as an S7 class with new_generic methods.
@@ -355,20 +355,4 @@ impl S7GoldenRetriever {
     pub fn color(&self) -> String {
         "golden".to_string()
     }
-}
-
-miniextendr_module! {
-    mod s7_tests;
-
-    impl S7Counter;
-    impl S7Range;
-    impl S7Config;
-    impl S7Strict;
-    impl S7Celsius;
-    impl S7Fahrenheit;
-    impl S7Shape;
-    impl S7Circle;
-    impl S7Animal;
-    impl S7Dog;
-    impl S7GoldenRetriever;
 }

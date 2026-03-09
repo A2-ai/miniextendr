@@ -1,8 +1,8 @@
 //! Tests for worker thread (run_on_worker) and with_r_thread functionality.
 
 use miniextendr_api::ffi::{R_NilValue, SEXP};
+use miniextendr_api::miniextendr;
 use miniextendr_api::worker::{panic_message_to_r_error, run_on_worker, with_r_thread};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 use crate::externalptr_tests::{Counter, Point};
 use crate::panic_tests::add;
@@ -578,44 +578,4 @@ pub extern "C-unwind" fn C_test_deep_with_r_thread_sequence() -> SEXP {
     });
 
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(sum) }
-}
-
-miniextendr_module! {
-    mod worker_tests;
-
-    // Worker thread tests (basic)
-    extern "C-unwind" fn C_worker_drop_on_success;
-    extern "C-unwind" fn C_worker_drop_on_panic;
-
-    // Comprehensive worker/with_r_thread tests
-    extern "C-unwind" fn C_test_worker_simple;
-    extern "C-unwind" fn C_test_worker_with_r_thread;
-    extern "C-unwind" fn C_test_worker_multiple_r_calls;
-    extern "C-unwind" fn C_test_worker_panic_simple;
-    extern "C-unwind" fn C_test_worker_panic_with_drops;
-    extern "C-unwind" fn C_test_worker_panic_in_r_thread;
-    extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops;
-    extern "C-unwind" fn C_test_worker_r_error_in_r_thread;
-    extern "C-unwind" fn C_test_worker_r_error_with_drops;
-    extern "C-unwind" fn C_test_worker_r_calls_then_error;
-    extern "C-unwind" fn C_test_worker_r_calls_then_panic;
-    fn test_worker_return_i32;
-    fn test_worker_return_string;
-    fn test_worker_return_f64;
-    extern "C-unwind" fn C_test_extptr_from_worker;
-    extern "C-unwind" fn C_test_multiple_extptrs_from_worker;
-    fn test_main_thread_r_api;
-    fn test_main_thread_r_error;
-    fn test_main_thread_r_error_with_drops;
-    extern "C-unwind" fn C_test_wrong_thread_r_api;
-
-    // Nested wrapper tests
-    extern "C-unwind" fn C_test_nested_helper_from_worker;
-    extern "C-unwind" fn C_test_nested_multiple_helpers;
-    extern "C-unwind" fn C_test_nested_with_r_thread;
-    extern "C-unwind" fn C_test_call_worker_fn_from_main;
-    extern "C-unwind" fn C_test_nested_worker_calls;
-    extern "C-unwind" fn C_test_nested_with_error;
-    extern "C-unwind" fn C_test_nested_with_panic;
-    extern "C-unwind" fn C_test_deep_with_r_thread_sequence;
 }

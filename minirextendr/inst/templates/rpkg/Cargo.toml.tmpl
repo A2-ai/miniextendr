@@ -7,14 +7,9 @@ publish = false
 # Make this a standalone workspace (prevents inheriting from parent)
 [workspace]
 
-[[bin]]
-name = "document"
-path = "document.rs"
-bench = false
-
 [lib]
 path = "lib.rs"
-crate-type = ["rlib", "staticlib"]
+crate-type = ["staticlib"]
 
 [features]
 default = []

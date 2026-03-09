@@ -15,12 +15,7 @@
 //   #[miniextendr]
 //   impl SharedCounter for SimpleCounter { ... }
 //
-//   miniextendr_module! {
-//       mod producer_pkg;
-//       impl SimpleCounter;
-//       impl SharedCounter for SimpleCounter;
-//   }
-//
+////
 // consumer.pkg/Cargo.toml:
 //   [dependencies]
 //   producer-pkg = { version = "0.1" }  # Rust-level dependency
@@ -48,7 +43,7 @@
 // 2. Generated trait wrappers (Type$Trait$method) available in R
 // 3. Consumer can call producer's trait methods on the object
 
-use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
+use miniextendr_api::{ExternalPtr, miniextendr};
 use std::sync::atomic::{AtomicI32, Ordering};
 
 // ============================================================================
@@ -142,13 +137,3 @@ impl SharedCounter for AtomicCounter {
 // ============================================================================
 // Module registration
 // ============================================================================
-
-miniextendr_module! {
-    mod shared_trait_test;
-
-    // Register implementations
-    impl SharedSimpleCounter;
-    impl SharedCounter for SharedSimpleCounter;
-    impl AtomicCounter;
-    impl SharedCounter for AtomicCounter;
-}

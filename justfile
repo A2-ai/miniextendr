@@ -158,11 +158,9 @@ clippy *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run miniextendr-lint on rpkg (checks #[miniextendr] ↔ miniextendr_module! consistency)
+# Run miniextendr-lint on rpkg (checks #[miniextendr] consistency)
 # The lint runs as a build script; this command triggers it via cargo check.
 # Lint output appears as cargo warnings. Errors indicate:
-# - #[miniextendr] items missing from miniextendr_module!
-# - miniextendr_module! items without #[miniextendr] attribute
 # - Multiple unlabeled impl blocks for the same type
 # - Class system incompatibilities between inherent and trait impls
 lint:
@@ -505,7 +503,33 @@ devtools-check: devtools-document
     NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document
+# 1. Build the document binary (links all distributed_slice entries via rlib)
+# 2. Run the binary to write R wrappers
+# 3. document() runs roxygen2 on the newly-written wrappers
 devtools-document: configure
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Extract cargo features from configured Makevars (set by ./configure)
+    FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' rpkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
+    # Build cdylib for wrapper generation
+    cargo rustc --lib --manifest-path rpkg/src/rust/Cargo.toml \
+      --target-dir rpkg/src/rust/target $FEATURES_FLAG \
+      --crate-type cdylib
+    # Determine cdylib filename (platform-specific)
+    CRATE_NAME=$(grep '^name' rpkg/src/rust/Cargo.toml | head -1 | sed 's/.*= *"//;s/".*//' | tr '-' '_')
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      CDYLIB="rpkg/src/rust/target/debug/lib${CRATE_NAME}.dylib"
+    elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+      CDYLIB="rpkg/src/rust/target/debug/${CRATE_NAME}.dll"
+    else
+      CDYLIB="rpkg/src/rust/target/debug/lib${CRATE_NAME}.so"
+    fi
+    # Generate R wrappers via cdylib
+    Rscript -e "
+      lib <- dyn.load('${CDYLIB}')
+      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'rpkg/R/miniextendr-wrappers.R')
+      dyn.unload('${CDYLIB}')
+    "
     NOT_CRAN=true Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace
@@ -675,8 +699,7 @@ templates-sources:
     #   - monorepo/      : Rust workspace with embedded R package
     #
     # Only include files where rpkg is the source of truth.
-    # Templates with @PLACEHOLDER@ markers (document.rs.in, entrypoint.c.in)
-    # are NOT compared - they are the source, rpkg has expanded versions.
+    # Only include files where rpkg is the source of truth.
     cat <<'EOF'
     # rel	src
     # === R Package Template (rpkg/) ===

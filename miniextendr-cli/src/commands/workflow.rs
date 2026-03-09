@@ -218,8 +218,6 @@ fn workflow_doctor(ctx: &ProjectContext, quiet: bool) -> Result<()> {
     }
     let template_pairs = [
         ("src/Makevars.in", "src/Makevars"),
-        ("src/entrypoint.c.in", "src/entrypoint.c"),
-        ("src/rust/document.rs.in", "src/rust/document.rs"),
     ];
 
     for (tmpl, generated) in &template_pairs {

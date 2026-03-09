@@ -19,12 +19,11 @@ my.package/
 │   └── my.package-package.R
 ├── src/
 │   ├── Makevars.in
-│   ├── entrypoint.c.in
+│   ├── stub.c
 │   └── rust/
 │       ├── Cargo.toml
 │       ├── lib.rs
-│       ├── build.rs
-│       └── document.rs.in
+│       └── build.rs
 ├── configure.ac
 └── bootstrap.R
 ```
@@ -64,7 +63,7 @@ my-project/
     ├── R/
     ├── src/
     │   ├── Makevars.in
-    │   ├── entrypoint.c.in
+    │   ├── stub.c
     │   └── rust/
     │       ├── Cargo.toml
     │       ├── lib.rs

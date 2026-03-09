@@ -27,7 +27,7 @@
 //! ```
 
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
-use miniextendr_api::{Vctrs, miniextendr, miniextendr_module};
+use miniextendr_api::{Vctrs, miniextendr};
 
 // =============================================================================
 // Simple vctr: Percent backed by doubles
@@ -277,20 +277,3 @@ impl DerivedCurrency {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod vctrs_derive_example;
-    fn new_derived_percent;
-    fn derived_percent_class_info;
-    fn new_derived_rational;
-    fn derived_rational_class_info;
-    fn new_derived_int_lists;
-    fn new_derived_point;
-    fn new_derived_temp;
-    vctrs DerivedPercent;
-    vctrs DerivedRational;
-    vctrs DerivedIntLists;
-    vctrs DerivedPoint;
-    vctrs DerivedTemp;
-    impl DerivedCurrency;
-}

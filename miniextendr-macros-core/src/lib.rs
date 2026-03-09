@@ -1,10 +1,7 @@
-//! Shared parser types for miniextendr proc macros and lint.
+//! Shared naming helpers for miniextendr proc macros.
 //!
-//! This crate contains the `miniextendr_module!` parser and naming helper
-//! functions used by both `miniextendr-macros` (proc-macro codegen) and
-//! `miniextendr-lint` (build-time static analysis).
-
-pub mod miniextendr_module;
+//! This crate contains naming convention functions used by `miniextendr-macros`
+//! to generate consistent identifiers for R registration statics.
 
 /// Identifier for the generated `const` `R_CallMethodDef` value.
 ///

@@ -1,4 +1,6 @@
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
+
+miniextendr_api::miniextendr_init!({{package_rs}});
 
 /// A simple function that adds two numbers
 ///
@@ -19,9 +21,3 @@ pub fn hello(name: &str) -> String {
     format!("Hello, {}!", name)
 }
 
-// Register the module with R
-miniextendr_module! {
-    mod {{package_rs}};
-    fn add;
-    fn hello;
-}

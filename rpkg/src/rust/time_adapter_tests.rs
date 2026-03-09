@@ -1,7 +1,7 @@
 //! Time adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::time;
 use miniextendr_api::time_impl::{Date, OffsetDateTime};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -60,17 +60,4 @@ pub fn time_distant_past() -> Date {
 pub fn time_format_date(date: Date) -> String {
     let fmt = time::format_description::parse("[year]-[month]-[day]").expect("valid format");
     date.format(&fmt).unwrap_or_else(|e| e.to_string())
-}
-
-miniextendr_module! {
-    mod time_adapter_tests;
-    fn time_roundtrip_posixct;
-    fn time_roundtrip_date;
-    fn time_get_year;
-    fn time_get_month;
-    fn time_get_day;
-    fn time_epoch_date;
-    fn time_epoch_posixct;
-    fn time_distant_past;
-    fn time_format_date;
 }

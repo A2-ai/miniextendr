@@ -4,7 +4,7 @@
 //! instead of raising immediate R errors. The generated R wrapper inspects the
 //! tagged value and raises a proper R error condition past the Rust boundary.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // =============================================================================
 // Standalone functions
@@ -232,24 +232,4 @@ impl Fallible for FallibleImpl {
     fn will_panic(&self) -> i32 {
         panic!("trait panic in error_in_r")
     }
-}
-
-miniextendr_module! {
-    mod error_in_r_tests;
-
-    fn error_in_r_panic;
-    fn error_in_r_result_err;
-    fn error_in_r_result_ok;
-    fn error_in_r_option_none;
-    fn error_in_r_option_some;
-    fn error_in_r_normal;
-    fn error_in_r_i32_ok;
-    fn error_in_r_i32_err;
-    fn error_in_r_panic_custom;
-
-    impl ErrorInRCounter;
-    impl ErrorInRR6Widget;
-    impl ErrorInRS7Gauge;
-    impl FallibleImpl;
-    impl Fallible for FallibleImpl;
 }

@@ -1060,9 +1060,11 @@ impl CWrapperContext {
             #[doc = #doc_example]
             #[doc = #source_loc_doc]
             #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
             #[allow(non_upper_case_globals)]
             #[allow(non_snake_case)]
-            const #call_method_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+            static #call_method_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
                 ::miniextendr_api::ffi::R_CallMethodDef {
                     name: #c_ident_name.as_ptr(),
                     fun: Some(std::mem::transmute::<

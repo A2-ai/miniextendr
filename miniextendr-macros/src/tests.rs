@@ -1,20 +1,6 @@
 use crate::miniextendr_fn::{
     MiniextendrFnAttrs, MiniextendrFunctionParsed, is_miniextendr_coerce_attr,
 };
-use crate::miniextendr_module::MiniextendrModuleFunction;
-
-#[test]
-fn wrapper_idents_match_between_attribute_and_module_macros() {
-    // Parse via MiniextendrFunctionParsed (attribute macro path)
-    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn my_fn() {} }).unwrap();
-
-    // Parse via MiniextendrModuleFunction (module macro path)
-    let m: MiniextendrModuleFunction = syn::parse2(quote::quote! { fn my_fn }).unwrap();
-
-    assert_eq!(parsed.call_method_def_ident(), m.call_method_def_ident());
-    assert_eq!(parsed.r_wrapper_const_ident(), m.r_wrapper_const_ident());
-}
-
 #[test]
 fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
     let parsed: MiniextendrFunctionParsed =

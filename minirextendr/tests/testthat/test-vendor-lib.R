@@ -77,12 +77,9 @@ make_test_project <- function() {
     'AC_OUTPUT'
   ), file.path(tmp, "configure.ac"))
 
-  # document.rs.in (required by is_miniextendr_package)
-  writeLines("// placeholder", file.path(cargo_dir, "document.rs.in"))
-
-  # entrypoint.c.in + Makevars.in (required by is_miniextendr_package)
+  # stub.c + Makevars.in (required by is_miniextendr_package)
   src_dir <- file.path(tmp, "src")
-  writeLines("// placeholder", file.path(src_dir, "entrypoint.c.in"))
+  writeLines("// placeholder", file.path(src_dir, "stub.c"))
   writeLines("# placeholder", file.path(src_dir, "Makevars.in"))
 
   tmp

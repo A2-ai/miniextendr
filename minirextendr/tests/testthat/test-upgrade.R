@@ -1,38 +1,5 @@
 # Tests for upgrade functionality
 
-test_that("generate_entrypoint_c substitutes correctly", {
-  tmp <- withr::local_tempdir()
-  in_file <- file.path(tmp, "entrypoint.c.in")
-  out_file <- file.path(tmp, "entrypoint.c")
-
-  writeLines(c(
-    "void R_init_@PACKAGE_NAME@(DllInfo *dll) {",
-    "  R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);",
-    "}"
-  ), in_file)
-
-  minirextendr:::generate_entrypoint_c(in_file, out_file, "my.pkg")
-
-  result <- readLines(out_file)
-  expect_equal(result[1], "void R_init_my.pkg(DllInfo *dll) {")
-  expect_equal(result[2], "  R_init_my_pkg_miniextendr(dll);")
-})
-
-test_that("generate_mx_abi_c substitutes correctly", {
-  tmp <- withr::local_tempdir()
-  in_file <- file.path(tmp, "mx_abi.c.in")
-  out_file <- file.path(tmp, "mx_abi.c")
-
-  writeLines(c(
-    'R_RegisterCCallable("@PACKAGE_NAME@", "mx_wrap", (DL_FUNC)mx_wrap);'
-  ), in_file)
-
-  minirextendr:::generate_mx_abi_c(in_file, out_file, "my.pkg")
-
-  result <- readLines(out_file)
-  expect_equal(result[1], 'R_RegisterCCallable("my.pkg", "mx_wrap", (DL_FUNC)mx_wrap);')
-})
-
 test_that("upgrade_gitignore removes obsolete entries", {
   tmp <- withr::local_tempdir()
   usethis::local_project(tmp, force = TRUE, setwd = FALSE)

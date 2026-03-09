@@ -1,7 +1,7 @@
 //! Panic, drop, and R error handling tests.
 
 use miniextendr_api::ffi::{Rf_error, SEXP};
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // region: MsgOnDrop for testing drop behavior
 
@@ -273,36 +273,3 @@ pub extern "C-unwind" fn C_r_print_in_thread() -> SEXP {
 }
 
 // endregion
-
-miniextendr_module! {
-    mod panic_tests;
-
-    fn add;
-    fn add2;
-    fn add3;
-    fn add4;
-    fn nested_panic;
-    fn add_panic;
-    fn add_r_error;
-
-    fn add_panic_heap;
-    fn add_r_error_heap;
-
-    fn add_left_mut;
-    fn add_right_mut;
-    fn add_left_right_mut;
-
-    fn take_and_return_nothing;
-
-    extern "C-unwind" fn C_just_panic;
-    extern "C-unwind" fn C_panic_and_catch;
-
-    fn drop_message_on_success;
-    fn drop_on_panic;
-    fn drop_on_panic_with_move;
-
-    extern fn C_r_error;
-    extern fn C_r_error_in_catch;
-    extern fn C_r_error_in_thread;
-    extern fn C_r_print_in_thread;
-}

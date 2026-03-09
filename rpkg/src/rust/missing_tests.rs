@@ -1,6 +1,6 @@
 //! Tests for `Missing<T>` — optional R argument handling.
 
-use miniextendr_api::{Missing, miniextendr, miniextendr_module};
+use miniextendr_api::{Missing, miniextendr};
 
 /// Test Missing<f64> — returns "absent" or the value as string.
 #[miniextendr]
@@ -31,13 +31,4 @@ pub fn missing_test_option(x: Missing<Option<f64>>) -> String {
         Missing::Present(None) => "null".to_string(),
         Missing::Present(Some(v)) => format!("{v}"),
     }
-}
-
-miniextendr_module! {
-    mod missing_tests;
-
-    fn missing_test_f64;
-    fn missing_test_string;
-    fn missing_test_present;
-    fn missing_test_option;
 }

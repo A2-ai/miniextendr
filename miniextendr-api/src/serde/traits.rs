@@ -38,11 +38,6 @@ use crate::ffi::SEXP;
 ///
 /// #[miniextendr]
 /// impl RSerializeNative for Config {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RSerializeNative for Config;
-/// }
 /// ```
 ///
 /// # R Usage
@@ -111,11 +106,6 @@ impl<T: serde::Serialize> RSerializeNative for T {
 ///
 /// #[miniextendr]
 /// impl RDeserializeNative for Config {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RDeserializeNative for Config;
-/// }
 /// ```
 ///
 /// # R Usage

@@ -3,13 +3,13 @@
 #[cfg(feature = "rayon")]
 use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "rayon")]
+use miniextendr_api::miniextendr;
+#[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::{
     par_map, par_map2, par_map3, with_r_matrix, with_r_vec, with_r_vec_map,
 };
-#[cfg(feature = "rayon")]
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 /// Test parallel sum using rayon.
@@ -158,24 +158,4 @@ pub fn rayon_num_threads() -> i32 {
 #[miniextendr]
 pub fn rayon_in_thread() -> bool {
     miniextendr_api::rayon_bridge::perf::in_rayon_thread()
-}
-
-#[cfg(feature = "rayon")]
-miniextendr_module! {
-    mod rayon_tests;
-
-    fn rayon_parallel_sum;
-    fn rayon_parallel_sqrt;
-    fn rayon_parallel_filter_positive;
-    fn rayon_vec_collect;
-    fn rayon_with_r_vec;
-    fn rayon_with_r_vec_map;
-    fn rayon_par_map;
-    fn rayon_par_map2;
-    fn rayon_par_map3;
-    fn rayon_with_r_matrix;
-    fn rayon_parallel_stats;
-    fn rayon_parallel_sum_int;
-    fn rayon_num_threads;
-    fn rayon_in_thread;
 }

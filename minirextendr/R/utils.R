@@ -499,58 +499,6 @@ to_tarname <- function(name) {
   tolower(gsub("\\.", "-", name))
 }
 
-#' Generate document.rs from document.rs.in
-#'
-#' Performs the three substitutions that configure normally does, so that
-#' `cargo check` works without running `./configure` first.
-#'
-#' @param document_rs_in_path Path to document.rs.in
-#' @param document_rs_path Path to write document.rs
-#' @param package R package name
-#' @noRd
-generate_document_rs <- function(document_rs_in_path, document_rs_path, package) {
-  crate_name <- to_rust_name(package)
-  crate_upper <- toupper(crate_name)
-  tarname <- to_tarname(package)
-
-  content <- readLines(document_rs_in_path, warn = FALSE)
-  content <- gsub("@CARGO_STATICLIB_NAME@", crate_name, content, fixed = TRUE)
-  content <- gsub("@PACKAGE_TARNAME_RS_UPPERCASE@", crate_upper, content, fixed = TRUE)
-  content <- gsub("@PACKAGE_TARNAME@", tarname, content, fixed = TRUE)
-  writeLines(content, document_rs_path)
-}
-
-#' Generate entrypoint.c from entrypoint.c.in
-#'
-#' Performs the substitutions that configure normally does, so that
-#' the generated C file works without running `./configure` first.
-#'
-#' @param in_path Path to entrypoint.c.in
-#' @param out_path Path to write entrypoint.c
-#' @param package R package name
-#' @noRd
-generate_entrypoint_c <- function(in_path, out_path, package) {
-  content <- readLines(in_path, warn = FALSE)
-  content <- gsub("@PACKAGE_NAME@", package, content, fixed = TRUE)
-  content <- gsub("@PACKAGE_TARNAME_RS@", to_rust_name(package), content, fixed = TRUE)
-  writeLines(content, out_path)
-}
-
-#' Generate mx_abi.c from mx_abi.c.in
-#'
-#' Performs the substitutions that configure normally does, so that
-#' the generated C file works without running `./configure` first.
-#'
-#' @param in_path Path to mx_abi.c.in
-#' @param out_path Path to write mx_abi.c
-#' @param package R package name
-#' @noRd
-generate_mx_abi_c <- function(in_path, out_path, package) {
-  content <- readLines(in_path, warn = FALSE)
-  content <- gsub("@PACKAGE_NAME@", package, content, fixed = TRUE)
-  writeLines(content, out_path)
-}
-
 #' Get package name from Cargo.toml
 #'
 #' @param cargo_path Path to Cargo.toml file
@@ -647,22 +595,17 @@ is_miniextendr_package <- function() {
     return(FALSE)
   }
 
-  templates <- c(
+  required <- c(
     "src/rust/Cargo.toml",
-    "src/rust/document.rs.in",
-    "src/entrypoint.c.in",
     "src/Makevars.in"
   )
-  generated <- c(
-    "src/rust/document.rs",
-    "src/entrypoint.c",
-    "src/Makevars"
-  )
 
-  has_templates <- all(fs::file_exists(usethis::proj_path(templates)))
-  has_generated <- all(fs::file_exists(usethis::proj_path(generated)))
+  has_required <- all(fs::file_exists(usethis::proj_path(required)))
+  # Also accept if stub.c or generated Makevars exists
+  has_stub <- fs::file_exists(usethis::proj_path("src", "stub.c"))
+  has_makevars <- fs::file_exists(usethis::proj_path("src", "Makevars"))
 
-  has_templates || has_generated
+  has_required || (has_stub && has_makevars)
 }
 
 #' CLI bullet for file creation

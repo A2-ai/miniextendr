@@ -11,7 +11,7 @@
 //! and contains the actual implementation.
 
 use miniextendr_api::adapter_traits::RIterator;
-use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
+use miniextendr_api::{ExternalPtr, miniextendr};
 use std::cell::RefCell;
 use std::fmt;
 use std::str::FromStr;
@@ -508,43 +508,3 @@ impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint {}
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod adapter_traits_tests;
-
-    impl Point;
-    impl MyFloat;
-    impl ChainedError;
-    impl IntVecIter;
-    impl GrowableVec;
-    impl IntSet;
-    impl IterableVec;
-    impl IterableVecIter;
-    impl ExportControlTraitPoint;
-
-    // Non-generic adapter traits (TPIE: empty impl auto-expands wrappers)
-    impl miniextendr_api::adapter_traits::RDebug for Point;
-    impl miniextendr_api::adapter_traits::RDisplay for Point;
-    impl miniextendr_api::adapter_traits::RHash for Point;
-    impl miniextendr_api::adapter_traits::RClone for Point;
-    impl miniextendr_api::adapter_traits::RDefault for Point;
-    impl miniextendr_api::adapter_traits::RFromStr for Point;
-    impl miniextendr_api::adapter_traits::RCopy for Point;
-    impl miniextendr_api::adapter_traits::RError for ChainedError;
-    impl miniextendr_api::adapter_traits::ROrd for Point;
-    impl miniextendr_api::adapter_traits::RPartialOrd for MyFloat;
-
-    // Export control on trait impls
-    impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint;
-    impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint;
-
-    // Associated-type trait (non-blanket)
-    impl miniextendr_api::adapter_traits::RIterator for IntVecIter;
-    impl miniextendr_api::adapter_traits::RIterator for IterableVecIter;
-
-    // Generic traits
-    impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec;
-    impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet;
-    impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet;
-    impl miniextendr_api::adapter_traits::RMakeIter<i32, IterableVecIter> for IterableVec;
-}

@@ -1,6 +1,6 @@
 //! Tests for R return value visibility (visible/invisible returns).
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 #[miniextendr]
 /// @title Visibility and Interrupt Tests
@@ -82,19 +82,4 @@ pub fn result_unwrap_in_r(x: i32) -> Result<i32, String> {
     } else {
         Err(format!("negative input: {}", x))
     }
-}
-
-miniextendr_module! {
-    mod visibility_tests;
-
-    fn invisibly_return_no_arrow;
-    fn invisibly_return_arrow;
-    fn invisibly_option_return_none;
-    fn invisibly_option_return_some;
-    fn invisibly_result_return_ok;
-    fn result_null_on_err;
-    fn result_unwrap_in_r;
-    fn force_invisible_i32;
-    fn force_visible_unit;
-    fn with_interrupt_check;
 }

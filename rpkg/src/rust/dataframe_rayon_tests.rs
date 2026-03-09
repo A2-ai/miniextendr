@@ -1,5 +1,5 @@
 use miniextendr_api::convert::ToDataFrame;
-use miniextendr_api::{DataFrameRow, IntoList, miniextendr, miniextendr_module};
+use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
 
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
 pub struct ParPoint {
@@ -45,10 +45,4 @@ pub fn create_large_par_events(n: i32) -> ToDataFrame<ParEventDataFrame> {
         })
         .collect();
     ToDataFrame(ParEvent::to_dataframe(rows))
-}
-
-miniextendr_module! {
-    mod dataframe_rayon_tests;
-    fn create_large_par_points;
-    fn create_large_par_events;
 }

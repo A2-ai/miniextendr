@@ -1,7 +1,7 @@
 //! MatchArg tests - demonstrates `#[derive(MatchArg)]` for enum ↔ R string
 //! conversion with `match.arg` semantics (partial matching, NULL default).
 
-use miniextendr_api::{MatchArg, miniextendr_module};
+use miniextendr_api::MatchArg;
 
 /// Simple mode enum with default variant ordering.
 #[derive(Copy, Clone, Debug, PartialEq, MatchArg)]
@@ -113,21 +113,4 @@ pub fn choices_mixed(
     verbose: bool,
 ) -> String {
     format!("n={}, mode={}, verbose={}", n, mode, verbose)
-}
-
-miniextendr_module! {
-    mod match_arg_tests;
-
-    fn match_arg_set_mode;
-    fn match_arg_set_status;
-    fn match_arg_set_priority;
-    fn match_arg_mixed;
-    fn match_arg_with_default;
-    fn match_arg_mode_choices;
-    fn match_arg_status_choices;
-    fn match_arg_priority_choices;
-    fn match_arg_return_mode;
-    fn choices_correlation;
-    fn choices_color;
-    fn choices_mixed;
 }

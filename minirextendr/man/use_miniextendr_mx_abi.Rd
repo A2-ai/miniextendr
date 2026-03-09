@@ -2,7 +2,7 @@
 % Please edit documentation in R/use-rust.R
 \name{use_miniextendr_mx_abi}
 \alias{use_miniextendr_mx_abi}
-\title{Add mx_abi.c.in and mx_abi.h templates}
+\title{Add mx_abi.h header template}
 \usage{
 use_miniextendr_mx_abi(path = ".")
 }
@@ -10,11 +10,11 @@ use_miniextendr_mx_abi(path = ".")
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
-Invisibly returns TRUE if files were created
+Invisibly returns TRUE if file was created
 }
 \description{
-Creates src/mx_abi.c.in and inst/include/mx_abi.h which provide the
-C ABI for cross-package trait dispatch. These files enable other packages
-to interact with miniextendr's trait system.
+Creates inst/include/mx_abi.h which provides the C header for
+cross-package trait dispatch. This enables other packages to
+interact with miniextendr's trait system.
 }
 \keyword{internal}

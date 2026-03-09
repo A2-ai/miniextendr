@@ -1,6 +1,6 @@
 //! IndexMap adapter tests
 use miniextendr_api::indexmap_impl::IndexMap;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @noRd
 #[miniextendr]
@@ -68,17 +68,4 @@ pub fn indexmap_single() -> IndexMap<String, String> {
     let mut map = IndexMap::new();
     map.insert("only".to_string(), "value".to_string());
     map
-}
-
-miniextendr_module! {
-    mod indexmap_adapter_tests;
-    fn indexmap_roundtrip_int;
-    fn indexmap_roundtrip_str;
-    fn indexmap_roundtrip_dbl;
-    fn indexmap_keys;
-    fn indexmap_len;
-    fn indexmap_empty;
-    fn indexmap_duplicate_key;
-    fn indexmap_order_preserved;
-    fn indexmap_single;
 }

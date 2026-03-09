@@ -1,8 +1,8 @@
 //! num-traits adapter tests
 //!
 //! Tests RNum, RSigned, and RFloat blanket impls by wrapping f64 operations.
+use miniextendr_api::miniextendr;
 use miniextendr_api::num_traits_impl::{RFloat, RNum, RSigned};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -74,20 +74,4 @@ pub fn float_is_nan(x: f64) -> bool {
 #[miniextendr]
 pub fn float_powi(x: f64, n: i32) -> f64 {
     RFloat::powi(&x, n)
-}
-
-miniextendr_module! {
-    mod num_traits_adapter_tests;
-    fn num_is_zero;
-    fn num_is_one;
-    fn signed_abs;
-    fn signed_signum;
-    fn signed_is_positive;
-    fn signed_is_negative;
-    fn float_floor;
-    fn float_ceil;
-    fn float_sqrt;
-    fn float_is_finite;
-    fn float_is_nan;
-    fn float_powi;
 }

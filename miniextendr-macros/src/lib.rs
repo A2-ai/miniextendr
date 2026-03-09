@@ -6,7 +6,6 @@
 //!
 //! Primary macros and derives:
 //! - `#[miniextendr]` on functions, impl blocks, trait defs, and trait impls.
-//! - `miniextendr_module!` for registration and wrapper aggregation.
 //! - `#[r_ffi_checked]` for main-thread routing of C-ABI wrappers.
 //! - Derives: `ExternalPtr`, `RNativeType`, ALTREP derives, `RFactor`.
 //! - Helpers: `typed_list` for typed list builders.
@@ -83,22 +82,6 @@
 //! │  3. Original impl preserved                                              │
 //! └──────────────────────────────────────────────────────────────────────────┘
 //!
-//! ┌──────────────────────────────────────────────────────────────────────────┐
-//! │                         miniextendr_module! { ... }                      │
-//! │                                                                          │
-//! │  1. Parse module contents:                                               │
-//! │     ├── mod <name>;          → package name                              │
-//! │     ├── fn <name>;           → function registration                     │
-//! │     ├── struct <name>;       → ALTREP registration                       │
-//! │     ├── impl <Type>;         → class method registration                 │
-//! │     └── impl Trait for Type; → trait ABI registration                    │
-//! │                                                                          │
-//! │  2. Generate:                                                            │
-//! │     ├── R_CallMethodDef array from all registered items                  │
-//! │     ├── R_init_<name>_miniextendr() initialization function              │
-//! │     ├── Combined R wrapper code (all functions + classes)                │
-//! │     └── Trait ABI vtable/view types if traits present                    │
-//! └──────────────────────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! ### Key Modules
@@ -113,7 +96,6 @@
 //! | `r_class_formatter` | Class system code generation (env/r6/s3/s4/s7) |
 //! | `miniextendr_trait` | Trait ABI metadata generation |
 //! | `miniextendr_impl_trait` | `impl Trait for Type` vtable generation |
-//! | `miniextendr_module` | Module macro parsing and codegen |
 //! | `altrep` / `altrep_derive` | ALTREP struct derivation |
 //! | `externalptr_derive` | `#[derive(ExternalPtr)]` |
 //! | `roxygen` | Roxygen doc comment handling |
@@ -195,15 +177,12 @@
 // miniextendr-macros procedural macros
 
 mod altrep;
-mod altrep_module;
 mod c_wrapper_builder;
 mod list_macro;
 mod miniextendr_fn;
 mod typed_list;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
-use crate::miniextendr_module::MiniextendrModule;
-pub(crate) use miniextendr_macros_core::miniextendr_module;
 mod r_wrapper_builder;
 /// Builder utilities for formatting R wrapper arguments and calls.
 pub(crate) use r_wrapper_builder::RArgumentBuilder;
@@ -239,9 +218,7 @@ mod struct_enum_dispatch;
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
 
-pub(crate) use miniextendr_macros_core::{
-    call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for,
-};
+pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
 // Feature default mutual exclusivity guards
 #[cfg(all(feature = "default-r6", feature = "default-s7"))]
@@ -371,18 +348,14 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// # Functions
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, miniextendr_module};
+/// use miniextendr_api::miniextendr;
 ///
 /// #[miniextendr]
 /// fn add(a: i32, b: i32) -> i32 { a + b }
-///
-/// miniextendr_module! {
-///     mod mypkg;
-///     fn add;
-/// }
 /// ```
 ///
 /// This produces a C wrapper `C_add` and an R wrapper `add()`.
+/// Registration is automatic via linkme distributed slices.
 ///
 /// ## `extern "C-unwind"`
 ///
@@ -427,8 +400,8 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// # Impl blocks (class systems)
 ///
-/// Apply `#[miniextendr(env|r6|s7|s3|s4)]` to an `impl Type` block and list
-/// `impl Type;` in `miniextendr_module!`.
+/// Apply `#[miniextendr(env|r6|s7|s3|s4)]` to an `impl Type` block.
+/// Registration is automatic.
 ///
 /// ## R6 Active Bindings
 ///
@@ -436,7 +409,7 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// active bindings (computed properties accessed without parentheses):
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, miniextendr_module};
+/// use miniextendr_api::miniextendr;
 ///
 /// pub struct Rectangle {
 ///     width: f64,
@@ -461,11 +434,6 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///         self.height *= factor;
 ///     }
 /// }
-///
-/// miniextendr_module! {
-///     mod mypkg;
-///     impl Rectangle;
-/// }
 /// ```
 ///
 /// In R:
@@ -484,7 +452,7 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// to create computed properties accessed via `@`:
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+/// use miniextendr_api::{miniextendr, ExternalPtr};
 ///
 /// #[derive(ExternalPtr)]
 /// pub struct Range {
@@ -571,7 +539,7 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// Use `convert_from` and `convert_to` to enable S7's `convert()` for type coercion:
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+/// use miniextendr_api::{miniextendr, ExternalPtr};
 ///
 /// #[derive(ExternalPtr)]
 /// pub struct Celsius { value: f64 }
@@ -612,13 +580,12 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// # Traits (ABI)
 ///
 /// Apply `#[miniextendr]` to a trait to generate ABI metadata, then use
-/// `#[miniextendr] impl Trait for Type` and list `impl Trait for Type;` in
-/// `miniextendr_module!`.
+/// `#[miniextendr] impl Trait for Type`. Registration is automatic.
 ///
 /// # ALTREP
 ///
 /// Apply `#[miniextendr(class = "...", pkg = "...", base = "...")]` to a
-/// one-field wrapper struct and list `struct Type;` in `miniextendr_module!`.
+/// one-field wrapper struct. Registration is automatic.
 #[proc_macro_attribute]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
@@ -694,7 +661,6 @@ pub fn miniextendr(
     // Extract commonly used values
     let uses_internal_c_wrapper = parsed.uses_internal_c_wrapper();
     let call_method_def = parsed.call_method_def_ident();
-    let match_arg_call_defs = parsed.match_arg_call_defs_ident();
     let c_ident = if let Some(ref sym) = c_symbol {
         syn::Ident::new(sym, parsed.c_wrapper_ident().span())
     } else {
@@ -1738,9 +1704,11 @@ pub fn miniextendr(
                 }
 
                 #(#cfg_attrs)*
+                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
                 #[allow(non_upper_case_globals)]
                 #[allow(non_snake_case)]
-                const #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+                static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
                     ::miniextendr_api::ffi::R_CallMethodDef {
                         name: #helper_c_name.as_ptr(),
                         fun: Some(std::mem::transmute::<
@@ -1755,7 +1723,6 @@ pub fn miniextendr(
             }
         })
         .collect();
-    let match_arg_count = match_arg_helper_def_idents.len();
 
     // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
@@ -1772,36 +1739,45 @@ pub fn miniextendr(
         #(#cfg_attrs)*
         #c_wrapper
 
-        // R wrapper
+        // R wrapper (self-registers via distributed_slice)
         #(#cfg_attrs)*
         #[doc = #r_wrapper_doc]
         #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
-        const #r_wrapper_generator: &str =
-            concat!(
-                "# Generated from Rust fn `",
-                stringify!(#rust_ident),
-                "` (",
-                file!(),
-                ":",
-                #source_line_lit,
-                ":",
-                #source_col_lit,
-                ")",
-                #r_wrapper_str
-            );
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+        #[allow(non_upper_case_globals)]
+        #[allow(non_snake_case)]
+        static #r_wrapper_generator: ::miniextendr_api::registry::RWrapperEntry =
+            ::miniextendr_api::registry::RWrapperEntry {
+                priority: ::miniextendr_api::registry::RWrapperPriority::Function,
+                content: concat!(
+                    "# Generated from Rust fn `",
+                    stringify!(#rust_ident),
+                    "` (",
+                    file!(),
+                    ":",
+                    #source_line_lit,
+                    ":",
+                    #source_col_lit,
+                    ")",
+                    #r_wrapper_str
+                ),
+            };
 
-        // registration of C wrapper in R
+        // registration of C wrapper in R (self-registers via distributed_slice)
         #(#cfg_attrs)*
         #[doc = #call_method_def_doc]
         #[doc = #call_method_def_example]
         #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
-        const #call_method_def: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+        static #call_method_def: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
             ::miniextendr_api::ffi::R_CallMethodDef {
                 name: #c_ident_name.as_ptr(),
                 // Cast to DL_FUNC (generic function pointer) for storage in R's registration table.
@@ -1815,15 +1791,8 @@ pub fn miniextendr(
         };
 
         // match_arg choices helpers (C wrappers + R_CallMethodDef entries)
+        // Each helper's call_method_def self-registers via distributed_slice
         #(#match_arg_helpers)*
-
-        // match_arg call defs array (collected by miniextendr_module!)
-        #(#cfg_attrs)*
-        #[doc(hidden)]
-        #[allow(non_upper_case_globals)]
-        #[allow(non_snake_case)]
-        const #match_arg_call_defs: [::miniextendr_api::ffi::R_CallMethodDef; #match_arg_count] =
-            [#(#match_arg_helper_def_idents),*];
 
         // doc-lint warnings (if any)
         #doc_lint_warnings
@@ -1831,699 +1800,6 @@ pub fn miniextendr(
     .into();
 
     expanded
-}
-
-/// Register functions and ALTREP types with R's dynamic symbol registration.
-///
-/// This macro generates the `R_init_<module>_miniextendr` entrypoint that R calls
-/// when loading the shared library.
-///
-/// # Syntax
-///
-/// ```ignore
-/// miniextendr_module! {
-///     mod mymodule;
-///
-///     // Functions annotated with #[miniextendr]
-///     fn my_function;
-///     extern "C-unwind" fn C_my_raw_function;
-///
-///     // ALTREP types (registers the class with R)
-///     struct MyAltrepClass;
-///
-///     // Impl blocks (class systems)
-///     impl MyType;
-///
-///     // Trait impls (ABI dispatch)
-///     impl Counter for MyType;
-///
-///     // Re-export from submodules
-///     use submodule;
-/// }
-/// ```
-///
-/// # Function Registration
-///
-/// Functions listed here must be defined with the `#[miniextendr]` attribute.
-/// The macro looks up the generated `CALL_METHOD_DEF_<name>` constant that
-/// `#[miniextendr]` creates for each function.
-///
-/// The distinction between Rust ABI and C ABI functions is handled by
-/// `#[miniextendr]` at the function definition site, not in this module declaration:
-///
-/// - **Rust ABI** (`fn foo(...)`): `#[miniextendr]` generates a `C_foo` wrapper
-/// - **C ABI** (`extern "C-unwind" fn foo(...)`): `#[miniextendr]` uses the function directly,
-///   and the R wrapper is prefixed with `unsafe_`
-///
-/// Both are listed the same way in `miniextendr_module!`:
-///
-/// ```ignore
-/// miniextendr_module! {
-///     mod mypackage;
-///     fn rust_function;    // refers to #[miniextendr] fn rust_function
-///     fn c_function;       // refers to #[miniextendr] extern "C-unwind" fn c_function
-/// }
-/// ```
-///
-/// # ALTREP Registration
-///
-/// Structs listed are registered as ALTREP classes during `R_init_*`.
-/// The struct must implement the appropriate ALTREP traits.
-///
-/// # Impl and trait impl registration
-///
-/// - `impl Type;` registers a `#[miniextendr(...)] impl Type` block (env/S3/S4/S7/R6).
-/// - `impl Trait for Type;` registers ABI wrappers for cross-package trait dispatch.
-///
-/// # Example
-///
-/// ```ignore
-/// #[miniextendr]
-/// fn add(a: i32, b: i32) -> i32 { a + b }
-///
-/// #[miniextendr]
-/// #[unsafe(no_mangle)]
-/// extern "C-unwind" fn C_fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
-///
-/// miniextendr_module! {
-///     mod mypackage;
-///     fn add;
-///     extern "C-unwind" fn C_fast_add;
-/// }
-/// ```
-#[proc_macro]
-pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let parsed_module = syn::parse_macro_input!(item as MiniextendrModule);
-
-    let module = &parsed_module.module_name.ident;
-    let module_entrypoint_ident = quote::format_ident!("R_init_{module}_miniextendr");
-    let module_source_loc_doc = source_location_doc(module.span());
-    // Build call entries with their cfg attributes preserved
-    let call_entries_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .functions
-        .iter()
-        .map(|f| {
-            let call_method_def = f.call_method_def_ident();
-            let cfg_attrs = extract_cfg_attrs(&f.attrs);
-            (cfg_attrs, syn::parse_quote!(#call_method_def))
-        })
-        .collect();
-
-    // Generate ALTREP registrations for struct items (if they implement RegisterAltrep)
-    let altrep_regs: Vec<syn::Expr> = parsed_module
-        .structs
-        .iter()
-        .map(|s| {
-            let ty = &s.ident;
-            syn::parse_quote!(<#ty as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class())
-        })
-        .collect();
-
-    // Generate impl block call defs for registration with cfg attributes
-    let impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .impls
-        .iter()
-        .map(|i| {
-            let call_defs_static = i.call_defs_const_ident();
-            let cfg_attrs = extract_cfg_attrs(&i.attrs);
-            (cfg_attrs, syn::parse_quote!(#call_defs_static))
-        })
-        .collect();
-    let impl_call_defs: Vec<syn::Expr> = impl_call_defs_with_attrs
-        .iter()
-        .map(|(_, expr)| expr.clone())
-        .collect();
-
-    // Generate sidecar call defs for registration (from #[derive(ExternalPtr)] with #[r_data])
-    // These are generated even if empty - the constants exist but may be zero-length arrays
-    let rdata_call_defs: Vec<syn::Expr> = parsed_module
-        .impls
-        .iter()
-        .map(|i| {
-            let call_defs_static = i.rdata_call_defs_const_ident();
-            syn::parse_quote!(#call_defs_static)
-        })
-        .collect();
-
-    // Generate match_arg choices helper call defs for registration (per-function)
-    // Every #[miniextendr] function generates a MATCH_ARG_CALL_DEFS_* array (empty if no match_arg params)
-    let match_arg_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .functions
-        .iter()
-        .map(|f| {
-            let call_defs_static = f.match_arg_call_defs_ident();
-            let cfg_attrs = extract_cfg_attrs(&f.attrs);
-            (cfg_attrs, syn::parse_quote!(#call_defs_static))
-        })
-        .collect();
-    let match_arg_extend_calls: Vec<proc_macro2::TokenStream> = match_arg_call_defs_with_attrs
-        .iter()
-        .map(|(cfg_attrs, expr)| {
-            if cfg_attrs.is_empty() {
-                quote::quote!(entries.extend_from_slice(&#expr);)
-            } else {
-                quote::quote! {
-                    #(#cfg_attrs)*
-                    entries.extend_from_slice(&#expr);
-                }
-            }
-        })
-        .collect();
-
-    // Generate impl R wrapper refs with cfg attributes
-    let impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .impls
-        .iter()
-        .map(|i| {
-            let r_wrapper_const = i.r_wrappers_const_ident();
-            let cfg_attrs = extract_cfg_attrs(&i.attrs);
-            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
-        })
-        .collect();
-
-    // Generate sidecar R wrapper refs (from #[derive(ExternalPtr)] with #[r_data])
-    let rdata_r_wrappers: Vec<syn::Expr> = parsed_module
-        .impls
-        .iter()
-        .map(|i| {
-            let r_wrapper_const = i.rdata_r_wrappers_const_ident();
-            syn::parse_quote!(#r_wrapper_const)
-        })
-        .collect();
-
-    // Generate vctrs R wrapper refs (from #[derive(Vctrs)])
-    #[cfg(feature = "vctrs")]
-    let vctrs_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .vctrs
-        .iter()
-        .map(|v| {
-            let r_wrapper_const = v.r_wrappers_const_ident();
-            let cfg_attrs = extract_cfg_attrs(&v.attrs);
-            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
-        })
-        .collect();
-    #[cfg(not(feature = "vctrs"))]
-    let vctrs_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
-
-    // Separate ALTREP trait impls from regular cross-package trait impls
-    let (altrep_impls, regular_trait_impls) =
-        altrep_module::extract_altrep_impls(&parsed_module.trait_impls);
-
-    // Generate ALTREP code (low-level traits, registration, IntoR)
-    let (altrep_generated_code, altrep_registration_exprs) =
-        altrep_module::generate_altrep_code(&altrep_impls);
-
-    // Generate trait impl call defs for registration with cfg attributes
-    // (only for regular trait impls, not ALTREP)
-    let trait_impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> =
-        regular_trait_impls
-            .iter()
-            .map(|ti| {
-                let call_defs_static = ti.call_defs_const_ident();
-                let cfg_attrs = extract_cfg_attrs(&ti.attrs);
-                (cfg_attrs, syn::parse_quote!(#call_defs_static))
-            })
-            .collect();
-    let trait_impl_call_defs: Vec<syn::Expr> = trait_impl_call_defs_with_attrs
-        .iter()
-        .map(|(_, expr)| expr.clone())
-        .collect();
-
-    // Generate trait impl R wrapper refs with cfg attributes
-    // (only for regular trait impls, not ALTREP)
-    let trait_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = regular_trait_impls
-        .iter()
-        .map(|ti| {
-            let r_wrapper_const = ti.r_wrappers_const_ident();
-            let cfg_attrs = extract_cfg_attrs(&ti.attrs);
-            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
-        })
-        .collect();
-
-    // Get call_entries functions from child modules (via `use`)
-    let use_module_call_entries_with_cfg: Vec<(Vec<syn::Attribute>, proc_macro2::TokenStream)> =
-        parsed_module
-            .uses
-            .iter()
-            .map(|x| {
-                let use_module_ident = &x.use_name.ident;
-                let call_entries_fn = quote::format_ident!("{use_module_ident}_call_entries");
-                let cfg_attrs = extract_cfg_attrs(&x.attrs);
-                (
-                    cfg_attrs,
-                    quote::quote!(#use_module_ident::#call_entries_fn()),
-                )
-            })
-            .collect();
-
-    // Call ALTREP registration from child modules (via `use`)
-    let use_module_altrep_regs: Vec<proc_macro2::TokenStream> = parsed_module
-        .uses
-        .iter()
-        .map(|x| {
-            let use_module_ident = &x.use_name.ident;
-            let altrep_reg_fn = quote::format_ident!("{use_module_ident}_register_altrep");
-            let cfg_attrs = extract_cfg_attrs(&x.attrs);
-            quote::quote!(#(#cfg_attrs)* #use_module_ident::#altrep_reg_fn())
-        })
-        .collect();
-
-    // region: r wrapper generation in `mod`
-
-    // R wrapper generators with cfg attributes preserved
-    let r_wrapper_generators_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .functions
-        .iter()
-        .map(|x| {
-            let r_wrapper_const = x.r_wrapper_const_ident();
-            let cfg_attrs = extract_cfg_attrs(&x.attrs);
-            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
-        })
-        .collect();
-
-    // Generate conditional R wrapper array elements
-    // For functions without cfg: just include the const reference
-    // For functions with cfg: prefix with cfg attributes (Rust allows cfg on array elements)
-    let r_wrapper_generators: Vec<proc_macro2::TokenStream> = r_wrapper_generators_with_cfg
-        .iter()
-        .map(|(cfg_attrs, expr)| {
-            if cfg_attrs.is_empty() {
-                quote::quote!(#expr)
-            } else {
-                // Cfg attributes on array elements work in Rust:
-                // const ARR: &[&str] = &[FOO, #[cfg(feature = "x")] BAR];
-                quote::quote!(#(#cfg_attrs)* #expr)
-            }
-        })
-        .collect();
-    // Collect child modules' function wrappers (PARTS)
-    let r_wrappers_use_other_modules: Vec<proc_macro2::TokenStream> = parsed_module
-        .uses
-        .iter()
-        .map(|x| {
-            let use_module_ident = &x.use_name.ident;
-            let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
-            let r_wrappers_use_module =
-                quote::format_ident!("R_WRAPPERS_PARTS_{use_module_ident_upper}");
-            let cfg_attrs = extract_cfg_attrs(&x.attrs);
-            quote::quote!(#(#cfg_attrs)* #use_module_ident::#r_wrappers_use_module)
-        })
-        .collect();
-
-    // Collect child modules' impl wrappers (IMPLS)
-    let r_wrappers_impl_use_other_modules: Vec<proc_macro2::TokenStream> = parsed_module
-        .uses
-        .iter()
-        .map(|x| {
-            let use_module_ident = &x.use_name.ident;
-            let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
-            let r_wrappers_use_module =
-                quote::format_ident!("R_WRAPPERS_IMPLS_{use_module_ident_upper}");
-            let cfg_attrs = extract_cfg_attrs(&x.attrs);
-            quote::quote!(#(#cfg_attrs)* #use_module_ident::#r_wrappers_use_module)
-        })
-        .collect();
-
-    let module_upper = module.to_string().to_uppercase();
-    let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module_upper}");
-    let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module_upper}");
-    let r_wrappers_impl_deps_ident = quote::format_ident!("R_WRAPPERS_IMPL_DEPS_{module_upper}");
-
-    // Generate doc string listing all registered functions
-    let fn_links: Vec<String> = parsed_module
-        .functions
-        .iter()
-        .map(|f| format!("[`{}`]", f.ident))
-        .collect();
-    let struct_links: Vec<String> = parsed_module
-        .structs
-        .iter()
-        .map(|s| format!("[`{}`]", s.ident))
-        .collect();
-    let impl_links: Vec<String> = parsed_module
-        .impls
-        .iter()
-        .map(|i| format!("[`{}`]", i.ident))
-        .collect();
-    let module_doc = if fn_links.is_empty() && struct_links.is_empty() && impl_links.is_empty() {
-        format!("R entrypoint for module `{}`.", module)
-    } else {
-        let mut doc = format!(
-            "R entrypoint for module `{}`.\n\n# Registered items\n",
-            module
-        );
-        if !fn_links.is_empty() {
-            doc.push_str(&format!("- Functions: {}\n", fn_links.join(", ")));
-        }
-        if !struct_links.is_empty() {
-            doc.push_str(&format!("- ALTREP types: {}\n", struct_links.join(", ")));
-        }
-        if !impl_links.is_empty() {
-            doc.push_str(&format!("- Impl blocks: {}\n", impl_links.join(", ")));
-        }
-        doc
-    };
-
-    // endregion
-
-    // Generate trait ABI wrapper infrastructure grouped by concrete type.
-    // Only for regular trait impls (not ALTREP). Generic types are skipped since
-    // cross-package trait dispatch requires named types with ExternalPtr.
-    let mut trait_impl_groups: Vec<(syn::Ident, Vec<syn::Path>)> = Vec::new();
-    for ti in regular_trait_impls.iter() {
-        // Only process simple types (non-generic)
-        if let Some(type_ident) = ti.simple_type_ident() {
-            if let Some((_, traits)) = trait_impl_groups
-                .iter_mut()
-                .find(|(ty, _)| ty == type_ident)
-            {
-                traits.push(ti.trait_path.clone());
-            } else {
-                trait_impl_groups.push((type_ident.clone(), vec![ti.trait_path.clone()]));
-            }
-        }
-    }
-    let trait_impl_wrappers: Vec<proc_macro2::TokenStream> = trait_impl_groups
-        .iter()
-        .map(|(type_ident, trait_paths)| generate_trait_impl_wrapper(trait_paths, type_ident))
-        .collect();
-
-    // R wrapper parts const (includes both functions and impl wrappers)
-    let r_wrappers_impls_ident = quote::format_ident!("R_WRAPPERS_IMPLS_{module_upper}");
-
-    // Generate call_entries function name (builds Vec at runtime)
-    let call_entries_fn_ident = quote::format_ident!("{module}_call_entries");
-
-    // Generate ALTREP registration function name
-    let altrep_reg_fn_ident = quote::format_ident!("{module}_register_altrep");
-
-    // Generate Vec elements for call entries, with cfg attributes preserved
-    let call_entry_vec_elements: Vec<proc_macro2::TokenStream> = call_entries_with_attrs
-        .iter()
-        .map(|(cfg_attrs, expr)| {
-            if cfg_attrs.is_empty() {
-                quote::quote!(#expr)
-            } else {
-                quote::quote!(#(#cfg_attrs)* #expr)
-            }
-        })
-        .collect();
-
-    // Generate child-module extend calls, each wrapped with cfg attrs if needed
-    let use_module_extend_calls: Vec<proc_macro2::TokenStream> = use_module_call_entries_with_cfg
-        .iter()
-        .map(|(cfg_attrs, expr)| {
-            if cfg_attrs.is_empty() {
-                quote::quote!(all.extend(#expr);)
-            } else {
-                quote::quote! {
-                    #(#cfg_attrs)*
-                    all.extend(#expr);
-                }
-            }
-        })
-        .collect();
-
-    // Generate R wrapper impls constant - includes impl, trait impl, sidecar, and vctrs wrappers
-    // Combine all with cfg info and generate conditional array elements
-    let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
-    // Sidecar R wrappers FIRST (from #[derive(ExternalPtr)] with #[r_data])
-    // These must come before impl wrappers because R6/S7 class definitions
-    // may reference .rdata_active_bindings_* / .rdata_properties_* helpers.
-    all_impl_r_wrappers_with_cfg.extend(
-        rdata_r_wrappers
-            .iter()
-            .map(|expr| (Vec::new(), expr.clone())),
-    );
-    all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
-    all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
-    // Add vctrs R wrappers (from #[derive(Vctrs)])
-    all_impl_r_wrappers_with_cfg.extend(vctrs_r_wrappers_with_cfg.iter().cloned());
-
-    // Generate array elements with cfg attributes where needed
-    let all_impl_r_wrapper_elements: Vec<proc_macro2::TokenStream> = all_impl_r_wrappers_with_cfg
-        .iter()
-        .map(|(cfg_attrs, expr)| {
-            if cfg_attrs.is_empty() {
-                quote::quote!(#expr)
-            } else {
-                quote::quote!(#(#cfg_attrs)* #expr)
-            }
-        })
-        .collect();
-
-    let r_wrappers_impls_const = if all_impl_r_wrapper_elements.is_empty() {
-        quote::quote! {
-            #[doc(hidden)]
-            #[doc = #module_source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
-            pub const #r_wrappers_impls_ident: &[&str] = &[];
-        }
-    } else {
-        quote::quote! {
-            #[doc(hidden)]
-            #[doc = #module_source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
-            pub const #r_wrappers_impls_ident: &[&str] = &[#(#all_impl_r_wrapper_elements),*];
-        }
-    };
-
-    // Generate the module - common structure for both cases
-    quote::quote! {
-        #[doc(hidden)]
-        #[doc = #module_source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
-        #r_wrappers_impls_const
-        #[doc(hidden)]
-        #[doc = #module_source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
-        #[doc(hidden)]
-        #[doc = #module_source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        pub const #r_wrappers_impl_deps_ident: &[&[&str]] = &[#(#r_wrappers_impl_use_other_modules),*];
-
-        /// Collect this module's call entries into a `Vec` (excluding children).
-        #[doc(hidden)]
-        pub(crate) fn #call_entries_fn_ident() -> Vec<::miniextendr_api::ffi::R_CallMethodDef> {
-            let mut entries: Vec<::miniextendr_api::ffi::R_CallMethodDef> = vec![
-                #(#call_entry_vec_elements,)*
-            ];
-            #(entries.extend_from_slice(&#impl_call_defs);)*
-            #(entries.extend_from_slice(&#trait_impl_call_defs);)*
-            #(entries.extend_from_slice(&#rdata_call_defs);)*
-            #(#match_arg_extend_calls)*
-            entries
-        }
-
-        // Trait ABI wrapper infrastructure
-        #(#trait_impl_wrappers)*
-
-        // ALTREP trait implementations generated from `impl AltXxxData for Type;`
-        #altrep_generated_code
-
-        /// Register ALTREP classes declared in this module.
-        #[doc = #module_source_loc_doc]
-        pub(crate) fn #altrep_reg_fn_ident() {
-            // From `struct Type;` declarations (old style)
-            #(#altrep_regs;)*
-            // From `impl AltXxxData for Type;` declarations (new style)
-            #(#altrep_registration_exprs;)*
-        }
-
-        #[doc = #module_doc]
-        #[doc = #module_source_loc_doc]
-        #[unsafe(no_mangle)]
-        #[allow(non_snake_case)]
-        extern "C-unwind" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
-            // Register ALTREP classes from this module
-            #altrep_reg_fn_ident();
-
-            // Register ALTREP classes from child modules
-            #(#use_module_altrep_regs;)*
-
-            // Build call entries at runtime — no compile-time array size computation needed.
-            let mut all = #call_entries_fn_ident();
-            // Child module entries
-            #(#use_module_extend_calls)*
-            // Sentinel (null-terminated)
-            all.push(::miniextendr_api::ffi::R_CallMethodDef {
-                name: std::ptr::null(),
-                fun: None,
-                numArgs: 0,
-            });
-
-            unsafe {
-                ::miniextendr_api::ffi::R_registerRoutines_unchecked(
-                    dll,
-                    std::ptr::null(),
-                    // Leak the Vec — init runs once at package load, so this is fine.
-                    all.leak().as_ptr(),
-                    std::ptr::null(),
-                    std::ptr::null()
-                );
-                // R_useDynamicSymbols and R_forceSymbols are called in entrypoint.c
-            }
-        }
-    }
-    .into()
-}
-
-/// Generate wrapper infrastructure for a trait implementation.
-///
-/// For `impl Counter for SimpleCounter;` generates:
-/// - `__MxWrapperSimpleCounter` - Type-erased wrapper struct
-/// - `__MX_BASE_VTABLE_SIMPLECOUNTER` - Base vtable
-/// - `__mx_wrap_simplecounter()` - Constructor
-///
-/// If multiple `impl Trait for Type;` entries exist for the same concrete type,
-/// the generated query function includes all listed traits.
-fn generate_trait_impl_wrapper(
-    trait_paths: &[syn::Path],
-    type_ident: &syn::Ident,
-) -> proc_macro2::TokenStream {
-    let type_upper = type_ident.to_string().to_uppercase();
-    let type_lower = type_ident.to_string().to_lowercase();
-
-    // Generate identifiers
-    let wrapper_name = quote::format_ident!("__MxWrapper{}", type_ident);
-    let base_vtable_name = quote::format_ident!("__MX_BASE_VTABLE_{}", type_upper);
-    let concrete_tag_name = quote::format_ident!("__MX_TAG_{}", type_upper);
-    let drop_fn_name = quote::format_ident!("__mx_drop_{}", type_lower);
-    let query_fn_name = quote::format_ident!("__mx_query_{}", type_lower);
-    let wrap_fn_name = quote::format_ident!("__mx_wrap_{}", type_lower);
-    let source_loc_doc = source_location_doc(type_ident.span());
-
-    // Generate tag path string for hashing
-    let tag_path = format!("::{}", type_ident);
-
-    // Generate query branches for each trait
-    let query_branches: Vec<proc_macro2::TokenStream> = trait_paths
-        .iter()
-        .map(|trait_path| {
-            let trait_name = trait_path
-                .segments
-                .last()
-                .map(|s| &s.ident)
-                .expect("trait path has at least one segment");
-            let trait_name_upper = trait_name.to_string().to_uppercase();
-
-            // Build TAG path - same module as trait
-            // Strip generic args (e.g., RExtend<i32> → TAG_REXTEND, not TAG_REXTEND<i32>)
-            let mut trait_tag_path = trait_path.clone();
-            if let Some(last) = trait_tag_path.segments.last_mut() {
-                last.ident = quote::format_ident!("TAG_{}", trait_name_upper);
-                last.arguments = syn::PathArguments::None;
-            }
-
-            // Build vtable static name: __VTABLE_{TRAIT}_FOR_{TYPE}
-            let vtable_name =
-                quote::format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_upper);
-
-            quote::quote! {
-                if trait_tag == #trait_tag_path {
-                    return std::ptr::from_ref(&#vtable_name).cast::<::std::os::raw::c_void>();
-                }
-            }
-        })
-        .collect();
-
-    quote::quote! {
-        #[doc = concat!(
-            "Type-erased wrapper for `",
-            stringify!(#type_ident),
-            "` with trait dispatch support."
-        )]
-        #[doc = "Generated by `miniextendr_module!`."]
-        #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[repr(C)]
-        #[doc(hidden)]
-        struct #wrapper_name {
-            /// Type-erased header. Must be first field for `mx_erased` compatibility.
-            pub erased: ::miniextendr_api::abi::mx_erased,
-            /// The actual data.
-            pub data: #type_ident,
-        }
-
-        #[doc = concat!(
-            "Concrete type tag for `",
-            stringify!(#type_ident),
-            "`."
-        )]
-        #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[doc(hidden)]
-        const #concrete_tag_name: ::miniextendr_api::abi::mx_tag =
-            ::miniextendr_api::abi::mx_tag_from_path(concat!(module_path!(), #tag_path));
-
-        #[doc = concat!(
-            "Drop function for `",
-            stringify!(#type_ident),
-            "` wrapper."
-        )]
-        #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[doc(hidden)]
-        unsafe extern "C" fn #drop_fn_name(ptr: *mut ::miniextendr_api::abi::mx_erased) {
-            if ptr.is_null() {
-                return;
-            }
-            let wrapper = ptr.cast::<#wrapper_name>();
-            unsafe { drop(Box::from_raw(wrapper)); }
-        }
-
-        #[doc = concat!(
-            "Query function for `",
-            stringify!(#type_ident),
-            "` trait dispatch."
-        )]
-        #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[doc(hidden)]
-        unsafe extern "C" fn #query_fn_name(
-            _ptr: *mut ::miniextendr_api::abi::mx_erased,
-            trait_tag: ::miniextendr_api::abi::mx_tag,
-        ) -> *const ::std::os::raw::c_void {
-            #(#query_branches)*
-            ::std::ptr::null()
-        }
-
-        #[doc = concat!(
-            "Base vtable for `",
-            stringify!(#type_ident),
-            "`."
-        )]
-        #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[doc(hidden)]
-        static #base_vtable_name: ::miniextendr_api::abi::mx_base_vtable =
-            ::miniextendr_api::abi::mx_base_vtable {
-                drop: #drop_fn_name,
-                concrete_tag: #concrete_tag_name,
-                query: #query_fn_name,
-                data_offset: ::std::mem::offset_of!(#wrapper_name, data),
-            };
-
-        #[doc = concat!(
-            "Create a type-erased wrapper for `",
-            stringify!(#type_ident),
-            "`."
-        )]
-        #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[doc(hidden)]
-        fn #wrap_fn_name(data: #type_ident) -> *mut ::miniextendr_api::abi::mx_erased {
-            let wrapper = Box::new(#wrapper_name {
-                erased: ::miniextendr_api::abi::mx_erased {
-                    base: &#base_vtable_name,
-                },
-                data,
-            });
-            Box::into_raw(wrapper).cast::<::miniextendr_api::abi::mx_erased>()
-        }
-    }
 }
 
 /// Generate thread-safe wrappers for R FFI functions.
@@ -2819,10 +2095,10 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///
 /// # Trait ABI
 ///
-/// To enable trait dispatch wrappers, list trait impls in `miniextendr_module!`:
+/// Trait dispatch wrappers are automatically generated:
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, miniextendr_module};
+/// use miniextendr_api::miniextendr;
 ///
 /// #[derive(ExternalPtr)]
 /// struct MyCounter {
@@ -2833,11 +2109,6 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// impl Counter for MyCounter {
 ///     fn value(&self) -> i32 { self.value }
 ///     fn increment(&mut self) { self.value += 1; }
-/// }
-///
-/// miniextendr_module! {
-///     mod mypkg;
-///     impl Counter for MyCounter;
 /// }
 /// ```
 ///
@@ -3385,6 +2656,60 @@ pub fn impl_typed_external(input: proc_macro::TokenStream) -> proc_macro::TokenS
         Ok(tokens) => tokens.into(),
         Err(err) => err.into_compile_error().into(),
     }
+}
+
+/// Generate the `R_init_*` entry point for a miniextendr R package.
+///
+/// This macro consolidates all package initialization into a single line.
+/// It generates an `extern "C-unwind"` function that R calls when loading
+/// the shared library.
+///
+/// # Usage
+///
+/// ```ignore
+/// miniextendr_init!(mypkg);
+/// ```
+///
+/// This expands to:
+///
+/// ```ignore
+/// #[unsafe(no_mangle)]
+/// pub unsafe extern "C-unwind" fn R_init_mypkg(
+///     dll: *mut ::miniextendr_api::ffi::DllInfo,
+/// ) {
+///     unsafe {
+///         ::miniextendr_api::init::package_init(dll, c"mypkg");
+///     }
+/// }
+/// ```
+///
+/// The generated function calls [`miniextendr_api::init::package_init`] which
+/// handles panic hooks, runtime init, locale assertion, ALTREP setup, trait ABI
+/// registration, routine registration, and symbol locking.
+#[proc_macro]
+pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let pkg_name: syn::Ident = syn::parse_macro_input!(input as syn::Ident);
+    let fn_name = syn::Ident::new(&format!("R_init_{}", pkg_name), pkg_name.span());
+
+    // Build a byte string literal with NUL terminator for the package name.
+    let mut name_bytes = pkg_name.to_string().into_bytes();
+    name_bytes.push(0);
+    let byte_lit = syn::LitByteStr::new(&name_bytes, pkg_name.span());
+
+    let expanded = quote::quote! {
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C-unwind" fn #fn_name(
+            dll: *mut ::miniextendr_api::ffi::DllInfo,
+        ) {
+            unsafe {
+                // SAFETY: byte literal is a valid NUL-terminated string produced by the macro.
+                let pkg_name = ::std::ffi::CStr::from_bytes_with_nul_unchecked(#byte_lit);
+                ::miniextendr_api::init::package_init(dll, pkg_name);
+            }
+        }
+    };
+
+    expanded.into()
 }
 
 #[cfg(test)]

@@ -605,7 +605,7 @@ PACKAGE_STRING='pigworld 1.0'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL=''
 
-ac_unique_file="src/entrypoint.c.in"
+ac_unique_file="src/rust/lib.rs"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
@@ -2475,8 +2475,6 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 
-ac_config_files="$ac_config_files src/rust/document.rs"
-
 
 
 VENDOR_OUT="$abs_top_srcdir/vendor"
@@ -2495,7 +2493,7 @@ VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
-ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/entrypoint.c:src/entrypoint.c.in src/mx_abi.c:src/mx_abi.c.in src/pigworld-win.def:src/win.def.in"
+ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/pigworld-win.def:src/win.def.in"
 
 
 ac_config_commands="$ac_config_commands dev-cargo-config"
@@ -3224,11 +3222,8 @@ cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
 for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
-    "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
     "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars:src/Makevars.in" ;;
-    "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c:src/entrypoint.c.in" ;;
-    "src/mx_abi.c") CONFIG_FILES="$CONFIG_FILES src/mx_abi.c:src/mx_abi.c.in" ;;
     "src/pigworld-win.def") CONFIG_FILES="$CONFIG_FILES src/pigworld-win.def:src/win.def.in" ;;
     "dev-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS dev-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;

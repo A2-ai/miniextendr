@@ -1,6 +1,6 @@
 //! Tests for `r_name`, `r_entry`, `r_post_checks`, and `r_on_exit` attributes.
 
-use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
+use miniextendr_api::{ExternalPtr, miniextendr};
 
 // ── Standalone function: r_name ──
 
@@ -96,18 +96,4 @@ impl WrapperDemo {
     pub fn get_value(&self) -> i32 {
         self.value
     }
-}
-
-miniextendr_module! {
-    mod r_wrapper_attrs;
-
-    fn is_widget;
-    fn r_entry_demo;
-    fn r_post_checks_demo;
-    fn create_widget;
-    fn on_exit_short;
-    fn on_exit_no_add;
-    fn on_exit_lifo;
-
-    impl WrapperDemo;
 }

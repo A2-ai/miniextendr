@@ -6,7 +6,9 @@
 // - Verifies trait dispatch works across package boundaries
 // - Implements its own Counter (DoubleCounter) for bidirectional testing
 
-use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, miniextendr_module, trait_abi::ccall};
+use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, trait_abi::ccall};
+
+miniextendr_api::miniextendr_init!(consumer_pkg);
 
 // Import the shared Counter trait and its generated ABI types
 pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
@@ -281,40 +283,4 @@ pub fn consumer_magic_number() -> i32 {
 #[miniextendr]
 pub fn debug_consumer_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
-}
-
-miniextendr_module! {
-    mod consumer_pkg;
-
-    // Cross-package utilities
-    fn passthrough_ptr;
-    fn is_external_ptr;
-    fn consumer_get_class;
-    fn has_class;
-
-    // DoubleCounter (consumer's own Counter implementation)
-    impl DoubleCounter;
-    impl Counter for DoubleCounter;
-    fn new_double_counter;
-
-    // Counter trait generic functions
-    fn increment_twice;
-    fn add_and_get;
-    fn peek_value;
-    fn is_counter;
-
-    // Resettable trait generic functions
-    fn reset_and_check;
-    fn check_is_default;
-    fn is_resettable;
-
-    // Combined trait functions (Counter + Resettable)
-    fn increment_then_reset;
-    fn get_reset_get;
-
-    // Utility functions
-    fn consumer_greet;
-    fn consumer_magic_number;
-    fn debug_consumer_tag_counter;
-    fn debug_consumer_tag_resettable;
 }

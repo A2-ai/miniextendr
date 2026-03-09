@@ -72,7 +72,7 @@ miniextendr-api = { version = "0.1", features = ["serde_full"] }
 
 ```rust
 use serde::{Serialize, Deserialize};
-use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+use miniextendr_api::{miniextendr, ExternalPtr};
 use miniextendr_api::serde_r::{RSerializeNative, RDeserializeNative};
 
 #[derive(Serialize, Deserialize, Clone, ExternalPtr)]
@@ -95,12 +95,7 @@ impl RSerializeNative for Point {}
 #[miniextendr]
 impl RDeserializeNative for Point {}
 
-miniextendr_module! {
-    mod mymodule;
-    impl Point;
-    impl RSerializeNative for Point;
-    impl RDeserializeNative for Point;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 ### Using from R

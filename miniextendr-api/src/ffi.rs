@@ -1719,6 +1719,11 @@ pub struct R_CallMethodDef {
     pub numArgs: ::std::os::raw::c_int,
 }
 
+// SAFETY: `name` points to a static CStr literal, `fun` is a function pointer.
+// Both are valid for program lifetime and safe to read from any thread.
+unsafe impl Sync for R_CallMethodDef {}
+unsafe impl Send for R_CallMethodDef {}
+
 /// Method definition for .External interface routines.
 ///
 /// Structurally identical to `R_CallMethodDef`.

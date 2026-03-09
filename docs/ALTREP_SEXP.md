@@ -161,7 +161,7 @@ inspect ALTREP state without triggering materialization.
 - Function name must start with `C_` (convention)
 - Must return `SEXP` (not typed returns)
 - Must manually call `.into_sexp()` on return values
-- Must be registered as `extern "C-unwind" fn C_name;` in `miniextendr_module!`
+- Registration is automatic via `#[miniextendr]`
 - R wrapper will be `unsafe_C_name()` (prefixed with `unsafe_`)
 
 ## Thread Safety Model

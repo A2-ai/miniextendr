@@ -1,6 +1,6 @@
 //! TinyVec adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::tinyvec_impl::{ArrayVec, TinyVec};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -66,17 +66,4 @@ pub fn tinyvec_over_capacity() -> TinyVec<[i32; 8]> {
 #[miniextendr]
 pub fn arrayvec_empty() -> ArrayVec<[i32; 8]> {
     ArrayVec::new()
-}
-
-miniextendr_module! {
-    mod tinyvec_adapter_tests;
-    fn tinyvec_roundtrip_int;
-    fn tinyvec_roundtrip_dbl;
-    fn tinyvec_len;
-    fn arrayvec_roundtrip_int;
-    fn arrayvec_roundtrip_dbl;
-    fn tinyvec_empty;
-    fn tinyvec_at_capacity;
-    fn tinyvec_over_capacity;
-    fn arrayvec_empty;
 }

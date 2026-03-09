@@ -6,7 +6,6 @@
 use miniextendr_api::as_coerce::AsCoerceError;
 use miniextendr_api::{
     ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, ffi, miniextendr,
-    miniextendr_module,
 };
 
 /// Test struct for as.<class> coercion methods.
@@ -191,14 +190,4 @@ impl AsCoerceErrorTest {
             "intentional error for testing".into(),
         ))
     }
-}
-
-miniextendr_module! {
-    mod as_coerce_tests;
-
-    // AsCoerceTestData - successful coercions
-    impl AsCoerceTestData;
-
-    // AsCoerceErrorTest - error handling
-    impl AsCoerceErrorTest;
 }

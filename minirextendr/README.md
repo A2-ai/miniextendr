@@ -143,8 +143,8 @@ cargo_deps(depth = 2)
 ## What minirextendr generates
 
 - Autoconf scripts and configure wrappers (configure.ac, configure, configure.win)
-- Rust files (Cargo.toml, lib.rs, build.rs, document.rs.in)
-- Build templates (src/Makevars.in, src/entrypoint.c.in)
+- Rust files (Cargo.toml, lib.rs, build.rs)
+- Build templates (src/Makevars.in, src/stub.c)
 - Package docs and ignore files (.Rbuildignore, .gitignore)
 - Vendored miniextendr crates under vendor/
 

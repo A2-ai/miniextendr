@@ -87,9 +87,7 @@ miniextendr_doctor <- function(path = ".") {
   cli::cli_h2("Generated files")
 
   template_pairs <- list(
-    list(template = "src/Makevars.in", generated = "src/Makevars"),
-    list(template = "src/entrypoint.c.in", generated = "src/entrypoint.c"),
-    list(template = "src/rust/document.rs.in", generated = "src/rust/document.rs")
+    list(template = "src/Makevars.in", generated = "src/Makevars")
   )
 
   for (pair in template_pairs) {

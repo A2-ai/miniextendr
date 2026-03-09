@@ -8,7 +8,7 @@ use miniextendr_api::connection::{RConnectionImpl, RConnectionIo, RCustomConnect
 #[cfg(feature = "connections")]
 use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "connections")]
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 #[cfg(feature = "connections")]
 use std::io::Cursor;
 
@@ -400,21 +400,4 @@ pub fn rot13_connection(text: &str) -> SEXP {
         .can_seek(false)
         .text(true)
         .build(TransformConnection::new(data, transform))
-}
-
-// =============================================================================
-// Module declaration
-// =============================================================================
-
-#[cfg(feature = "connections")]
-miniextendr_module! {
-    mod connection_tests;
-
-    fn memory_connection;
-    fn string_input_connection;
-    fn counter_connection;
-    fn cursor_connection;
-    fn empty_cursor_connection;
-    fn uppercase_connection;
-    fn rot13_connection;
 }

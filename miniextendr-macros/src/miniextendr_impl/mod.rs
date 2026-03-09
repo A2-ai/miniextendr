@@ -1824,21 +1824,6 @@ impl ParsedMethod {
         }
     }
 
-    /// Call method def identifier for registration.
-    ///
-    /// Format: `call_method_def_{type}_{method}` or `call_method_def_{type}_{label}_{method}` if labeled.
-    pub fn call_method_def_ident(
-        &self,
-        type_ident: &syn::Ident,
-        label: Option<&str>,
-    ) -> syn::Ident {
-        if let Some(label) = label {
-            format_ident!("call_method_def_{}_{}_{}", type_ident, label, self.ident)
-        } else {
-            format_ident!("call_method_def_{}_{}", type_ident, self.ident)
-        }
-    }
-
     /// Generate lifecycle prelude R code for this method, if lifecycle is specified.
     ///
     /// The `what` parameter describes the method in the format appropriate for the class system:
@@ -2078,19 +2063,6 @@ impl ParsedImpl {
         self.methods
             .iter()
             .find(|m| m.should_include() && m.is_finalizer())
-    }
-
-    /// Module constant identifier for all call method defs.
-    ///
-    /// Format: `{TYPE}_CALL_DEFS` or `{TYPE}_{LABEL}_CALL_DEFS` if labeled.
-    pub fn call_defs_const_ident(&self) -> syn::Ident {
-        let type_upper = self.type_ident.to_string().to_uppercase();
-        if let Some(ref label) = self.label {
-            let label_upper = label.to_uppercase();
-            format_ident!("{}_{}_CALL_DEFS", type_upper, label_upper)
-        } else {
-            format_ident!("{}_CALL_DEFS", type_upper)
-        }
     }
 
     /// Module constant identifier for R wrapper parts.
@@ -2558,18 +2530,6 @@ pub fn expand_impl(
         r_wrapper_string.push_str(&as_coercion_wrappers);
     }
 
-    let call_defs_const = parsed.call_defs_const_ident();
-
-    let label = parsed.label();
-    let call_def_idents: Vec<syn::Ident> = parsed
-        .included_methods()
-        .map(|m| m.call_method_def_ident(type_ident, label))
-        .collect();
-
-    let call_defs_len = call_def_idents.len();
-    let call_defs_len_lit =
-        syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
-
     let original_impl = &parsed.original_impl;
 
     // Generate forwarding trait impls for as.<class>() coercion methods
@@ -2601,7 +2561,7 @@ pub fn expand_impl(
         // Forwarding trait impls for as.<class>() coercion methods
         #trait_impls
 
-        // R wrapper constant
+        // R wrapper registration via distributed slice
         #(#cfg_attrs)*
         #[doc = concat!(
             "R wrapper code for impl block on `",
@@ -2610,32 +2570,24 @@ pub fn expand_impl(
         )]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
-        const #r_wrappers_const: &str =
-            concat!(
-                "# Generated from Rust impl `",
-                stringify!(#type_ident),
-                "` (",
-                file!(),
-                ":",
-                #source_line_lit,
-                ":",
-                #source_col_lit,
-                ")",
-                #r_wrapper_str
-            );
-
-        // Call method def array for module registration
-        #(#cfg_attrs)*
-        #[doc = concat!(
-            "Call method definition array for impl block on `",
-            stringify!(#type_ident),
-            "`."
-        )]
-        #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[doc(hidden)]
-        const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
-            [#(#call_def_idents),*];
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+        static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
+            ::miniextendr_api::registry::RWrapperEntry {
+                priority: ::miniextendr_api::registry::RWrapperPriority::Class,
+                content: concat!(
+                    "# Generated from Rust impl `",
+                    stringify!(#type_ident),
+                    "` (",
+                    file!(),
+                    ":",
+                    #source_line_lit,
+                    ":",
+                    #source_col_lit,
+                    ")",
+                    #r_wrapper_str
+                ),
+            };
     };
 
     expanded.into()

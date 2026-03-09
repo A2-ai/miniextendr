@@ -1,6 +1,6 @@
 //! URL adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::url_impl::{RUrlOps, Url};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -71,18 +71,4 @@ pub fn url_full_components() -> Vec<String> {
         RUrlOps::query(&url).unwrap_or_default(),
         RUrlOps::fragment(&url).unwrap_or_default(),
     ]
-}
-
-miniextendr_module! {
-    mod url_adapter_tests;
-    fn url_roundtrip;
-    fn url_scheme;
-    fn url_host;
-    fn url_path;
-    fn url_roundtrip_vec;
-    fn url_is_valid;
-    fn url_query;
-    fn url_fragment;
-    fn url_port_or_default;
-    fn url_full_components;
 }

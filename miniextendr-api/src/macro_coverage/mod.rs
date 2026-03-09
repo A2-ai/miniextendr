@@ -20,14 +20,3 @@ pub mod helper_macro_matrix;
 pub mod impl_matrix;
 mod nested;
 pub mod trait_abi_matrix;
-
-use crate::miniextendr_module;
-
-miniextendr_module! {
-    mod macro_coverage;
-    use fn_matrix;
-    use impl_matrix;
-    use trait_abi_matrix;
-    use helper_macro_matrix;
-    use nested;
-}

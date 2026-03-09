@@ -23,16 +23,7 @@ fn add(a: i32, b: i32) -> i32 {
 }
 ```
 
-Register exports in your package/module:
-
-```rust
-use miniextendr_api::miniextendr_module;
-
-miniextendr_module! {
-    mod mypkg;
-    fn add;
-}
-```
+Exports are automatically registered via linkme -- no manual module declarations needed.
 
 ## Feature highlights
 
@@ -50,7 +41,7 @@ miniextendr_module! {
 
 ## R wrapper generation
 
-`#[miniextendr]` and `miniextendr_module!` generate:
+`#[miniextendr]` generates:
 
 - C‑ABI wrappers (`C_<name>` symbols)
 - R functions that call `.Call(...)` with the original argument names
@@ -82,7 +73,6 @@ across package boundaries.
 
 - Apply `#[miniextendr]` to the trait definition to generate tags + vtable types.
 - Apply `#[miniextendr]` to `impl Trait for Type` to build vtables and wrappers.
-- Register `impl Trait for Type;` entries in `miniextendr_module!`.
 
 See `tests/cross-package/README.md` for an end‑to‑end example.
 
@@ -120,8 +110,8 @@ ALTREP support is built around a two‑layer trait model:
 - **FFI traits** (`Alt*`) expose raw `SEXP` callbacks. Only methods that are
   explicitly enabled are registered with R, so defaults remain safe.
 
-Registration is handled via `#[miniextendr]` on a one‑field wrapper type and
-`miniextendr_module!` to register the class at load time.
+Registration is handled via `#[miniextendr]` on a one‑field wrapper type.
+Classes are automatically registered at load time.
 
 ### Iterators as ALTREP
 

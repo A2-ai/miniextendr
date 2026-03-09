@@ -6,8 +6,8 @@
 //! - Manual RNG management with `RngGuard` and `with_rng`
 
 use miniextendr_api::ffi::{R_unif_index, exp_rand, norm_rand, unif_rand};
+use miniextendr_api::miniextendr;
 use miniextendr_api::rng::{RngGuard, with_rng};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 // =============================================================================
 // Standalone function tests
@@ -46,7 +46,7 @@ pub fn rng_with_interrupt(n: i32) -> Vec<f64> {
 }
 
 /// @noRd
-#[cfg(feature = "default-worker")]
+#[cfg(feature = "worker-thread")]
 #[miniextendr(rng, worker)]
 pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
@@ -115,23 +115,3 @@ impl RngSampler {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod rng_tests;
-
-    // Standalone functions
-    fn rng_uniform;
-    fn rng_normal;
-    fn rng_exponential;
-    fn rng_int;
-    fn rng_with_interrupt;
-    #[cfg(feature = "default-worker")]
-    fn rng_worker_uniform;
-
-    // Manual RNG tests
-    fn rng_guard_test;
-    fn rng_with_rng_test;
-
-    // Impl methods
-    impl RngSampler;
-}

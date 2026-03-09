@@ -9,12 +9,10 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
 - **Edit `.in` templates, not generated files**: Many files in rpkg are generated from `.in` templates. Always edit the `.in` source file instead:
   - `rpkg/src/rust/.cargo/config.toml` → edit `rpkg/src/rust/cargo-config.toml.in`
-  - `rpkg/src/rust/document.rs` → edit `rpkg/src/rust/document.rs.in` (document.rs is tracked in git so `cargo check` works without configure, but configure still regenerates it)
   - `rpkg/src/Makevars` → edit `rpkg/src/Makevars.in`
-  - `rpkg/src/entrypoint.c` → edit `rpkg/src/entrypoint.c.in`
-  - `rpkg/src/mx_abi.c` → edit `rpkg/src/mx_abi.c.in`
   - `rpkg/src/miniextendr-win.def` → edit `rpkg/src/win.def.in`
   - `rpkg/configure` → edit `rpkg/configure.ac` (then run `autoconf`)
+  - `rpkg/src/stub.c` — static file (no configure substitution), just a linker stub
 
 ## Sandbox Restrictions
 
@@ -36,8 +34,8 @@ R CMD check rpkg          # Checks include compilation
 ```sh
 miniextendr/
 ├── miniextendr-api/      # Runtime library (FFI, ExternalPtr, ALTREP, worker thread)
-├── miniextendr-macros/   # Proc macros (#[miniextendr], miniextendr_module!)
-├── miniextendr-macros-core/ # Shared parser types (used by macros + lint)
+├── miniextendr-macros/   # Proc macros (#[miniextendr], derives)
+├── miniextendr-macros-core/ # Shared naming helpers (used by macros)
 ├── miniextendr-bench/    # Benchmarks (separate workspace member)
 ├── miniextendr-lint/     # Static analysis tool
 ├── miniextendr-engine/   # Code generation engine
@@ -58,7 +56,7 @@ miniextendr/
 just check              # Run cargo check on all crates
 just test               # Run cargo tests
 just clippy             # Run clippy lints
-just lint               # Run miniextendr-lint (checks macro/module consistency)
+just lint               # Run miniextendr-lint (source-side checks)
 just fmt                # Format Rust code
 
 # R package development (rpkg)
@@ -227,21 +225,20 @@ When adding new `#[miniextendr]` functions to rpkg:
 
 ### Requirements for R export
 
-1. **Function must be `pub`** - only `pub` functions get `@export` in R wrappers
-2. **Function must be in `miniextendr_module!`** - list it in the module declaration
-3. **Sub-modules must be `use`d** - if functions are in a sub-module, add `use module_name;` to the parent's `miniextendr_module!`
+1. **Function must have `#[miniextendr]`** — this attribute handles automatic registration via linkme's `#[distributed_slice]`
+2. **Function must be `pub`** — only `pub` functions get `@export` in R wrappers
+3. **No module declaration needed** — functions self-register automatically; there is no `miniextendr_module!`
 
 ### Workflow for new functions
 
 ```bash
 # 1. Add your #[miniextendr] function(s) to a .rs file
-# 2. Add fn declarations to miniextendr_module! in that file
-# 3. If new module, add `use module_name;` to lib.rs miniextendr_module!
-# 4. Rebuild and regenerate R wrappers:
-NOT_CRAN=true just configure
-NOT_CRAN=true just rcmdinstall
-NOT_CRAN=true just devtools-document   # Regenerates R/miniextendr_wrappers.R and NAMESPACE
-NOT_CRAN=true just rcmdinstall         # Rebuild with new wrappers
+# 2. Make sure the file is reachable via `mod` declarations from lib.rs
+# 3. Rebuild and regenerate R wrappers:
+just configure
+just rcmdinstall
+just devtools-document   # Regenerates R/miniextendr_wrappers.R and NAMESPACE
+just rcmdinstall         # Rebuild with new wrappers
 
 # If permission issues, use local library path:
 R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
@@ -252,30 +249,25 @@ R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
 For modules that only exist when a feature is enabled (like `rayon`):
 
 ```rust
-// In lib.rs - use #[cfg] on both mod and use
+// In lib.rs - use #[cfg] on the mod declaration
 #[cfg(feature = "my_feature")]
 mod my_module;
-
-miniextendr_module! {
-    mod rpkg;
-    #[cfg(feature = "my_feature")]
-    use my_module;
-}
 ```
 
-The `#[cfg]` must appear in **both** places — on the `mod` declaration and on the `use` entry
-in `miniextendr_module!`. The lint (MXL109) checks for mismatches between the two.
+The `#[cfg]` on the `mod` declaration is sufficient — functions inside the module
+self-register via linkme when the feature is enabled.
 
 ### What `just devtools-document` does
 
-- Runs the `document` binary which executes proc macros to generate R code
-- Regenerates `rpkg/R/miniextendr_wrappers.R` with R wrapper functions
+- Builds a cdylib from the user crate (includes all linkme distributed_slice entries)
+- Loads the cdylib via `dyn.load()` and calls `miniextendr_write_wrappers` to generate R code
+- Regenerates `rpkg/R/miniextendr-wrappers.R` with R wrapper functions
 - Runs roxygen2 to regenerate `rpkg/NAMESPACE` with exports
 
 ### Verifying your changes
 
 ```bash
-just lint                        # Check #[miniextendr] ↔ miniextendr_module! consistency
+just lint                        # Run source-side checks
 NOT_CRAN=true just devtools-test # Run R tests
 ```
 
@@ -500,19 +492,17 @@ just templates-approve  # Accept current delta as approved (after intentional ch
 
 ## miniextendr-lint
 
-The `miniextendr-lint` crate is a build-time static analysis tool that checks consistency between `#[miniextendr]` attributes and `miniextendr_module!` declarations.
+The `miniextendr-lint` crate is a build-time static analysis tool that checks source-level correctness of `#[miniextendr]` usage.
 
 ### What it checks
 
-- **Missing module entries**: `#[miniextendr]` / `#[derive(Altrep)]` / `#[derive(Vctrs)]` items not listed in `miniextendr_module!`
-- **Missing attributes**: Items in `miniextendr_module!` without matching `#[miniextendr]` or derive attribute
-- **Missing `use submodule;`**: Child modules with `miniextendr_module!` not wired into the parent (MXL006)
-- **Multiple impl blocks**: When a type has 2+ impl blocks, all must have distinct labels
-- **Class system compatibility**: Trait impls must be compatible with inherent impl class systems
-- **Cfg parity**: `#[cfg(...)]` mismatches between items and module entries, or between `mod` and `use` declarations
-- **Trait ABI registration**: Missing `TypedExternal` for trait dispatch, generic types in trait entries
-- **Function visibility**: Registered top-level functions that aren't `pub`
-- **Module graph**: Unreachable modules, duplicate entrypoint symbols, multiple root macros
+- **MXL008**: Trait impl class system compatibility with inherent impl
+- **MXL009**: Multiple impl blocks for a type without distinct labels
+- **MXL010**: Duplicate labels on impl blocks
+- **MXL106**: Non-`pub` function that would get `@export`
+- **MXL203**: Redundant `internal` + `noexport` on the same item
+- **MXL300**: Direct `Rf_error`/`Rf_errorcall` usage (should use `panic!()` instead)
+- **MXL301**: `_unchecked` FFI calls outside of known-safe contexts
 
 ### Running the lint
 
@@ -528,14 +518,14 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 
 ### Fixing lint errors
 
-1. **"#[miniextendr] fn X not listed in miniextendr_module!"**
-   - Add `fn X;` to the appropriate `miniextendr_module!` block
-
-2. **"fn X listed in miniextendr_module! but has no #[miniextendr] attribute"**
-   - Add `#[miniextendr]` to the function definition, or remove from module
-
-3. **"type T has N impl blocks but some are missing labels"**
+1. **"type T has N impl blocks but some are missing labels"** (MXL009)
    - Add `#[miniextendr(label = "...")]` with unique labels to each impl block
+
+2. **"non-pub function will not be exported"** (MXL106)
+   - Make the function `pub`, or add `#[miniextendr(noexport)]`
+
+3. **"direct Rf_error usage"** (MXL300)
+   - Replace `Rf_error()` with `panic!()` — the framework converts panics to R errors safely
 
 ## Common Issues
 
@@ -543,10 +533,10 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 
 Functions exist in Rust but aren't callable from R. Check:
 
-1. **Function is `pub`** - non-pub functions don't get `@export`
-2. **Function is in `miniextendr_module!`** - check the module declaration
-3. **Sub-module is `use`d** - check parent module's `miniextendr_module!` has `use submodule;`
-4. **NAMESPACE is stale** - run `just devtools-document` to regenerate
+1. **Function has `#[miniextendr]`** — required for automatic registration
+2. **Function is `pub`** — non-pub functions don't get `@export`
+3. **Module is reachable** — the `.rs` file must be reachable via `mod` declarations from `lib.rs`
+4. **NAMESPACE is stale** — run `just devtools-document` to regenerate
 
 Quick fix:
 

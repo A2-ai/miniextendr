@@ -59,93 +59,6 @@ test_that("compute_inline_hash trims whitespace", {
   expect_equal(h1, h2)
 })
 
-# ---- parse_module_exports ----
-
-test_that("parse_module_exports extracts fn names", {
-  code <- '
-miniextendr_module! {
-    mod mymod;
-    fn add;
-    fn hello;
-}
-'
-  result <- parse_module_exports(code)
-  expect_equal(result$fns, c("add", "hello"))
-  expect_equal(result$impls, character())
-})
-
-test_that("parse_module_exports extracts impl names", {
-  code <- '
-miniextendr_module! {
-    mod mymod;
-    fn create_counter;
-    impl Counter;
-}
-'
-  result <- parse_module_exports(code)
-  expect_equal(result$fns, "create_counter")
-  expect_equal(result$impls, "Counter")
-})
-
-test_that("parse_module_exports returns empty for no module block", {
-  code <- 'pub fn add(x: i32) -> i32 { x + 1 }'
-  result <- parse_module_exports(code)
-  expect_equal(result$fns, character())
-  expect_equal(result$impls, character())
-})
-
-test_that("parse_module_exports handles mixed fn and impl", {
-  code <- '
-miniextendr_module! {
-    mod test;
-    fn greet;
-    impl Person;
-    fn farewell;
-    impl Dog;
-}
-'
-  result <- parse_module_exports(code)
-  expect_equal(result$fns, c("greet", "farewell"))
-  expect_equal(result$impls, c("Person", "Dog"))
-})
-
-# ---- rewrite_module_name ----
-
-test_that("rewrite_module_name replaces module name", {
-  code <- '
-miniextendr_module! {
-    mod placeholder;
-    fn add;
-}
-'
-  result <- rewrite_module_name(code, "mxinline12345678")
-  expect_true(grepl("mod mxinline12345678;", result))
-  expect_false(grepl("mod placeholder;", result))
-})
-
-test_that("rewrite_module_name handles various spacing", {
-  code1 <- 'miniextendr_module! { mod foo; fn x; }'
-  expect_true(grepl("mod bar;", rewrite_module_name(code1, "bar")))
-
-  code2 <- 'miniextendr_module!{\n    mod foo;\n    fn x;\n}'
-  expect_true(grepl("mod bar;", rewrite_module_name(code2, "bar")))
-})
-
-test_that("rewrite_module_name preserves other code", {
-  code <- '
-use miniextendr_api::miniextendr;
-pub fn add(a: f64) -> f64 { a + 1.0 }
-miniextendr_module! {
-    mod old_name;
-    fn add;
-}
-'
-  result <- rewrite_module_name(code, "new_name")
-  expect_true(grepl("pub fn add", result))
-  expect_true(grepl("use miniextendr_api", result))
-  expect_true(grepl("mod new_name;", result))
-})
-
 # ---- extract_pub_fn_names ----
 
 test_that("extract_pub_fn_names finds pub fn declarations", {
@@ -200,15 +113,10 @@ test_that("scaffold_inline_package creates correct directory structure", {
   fs::dir_create(fs::path(vendor_dir, "miniextendr-lint"), recurse = TRUE)
 
   code <- '
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 #[miniextendr]
 pub fn add_one(x: i32) -> i32 { x + 1 }
-
-miniextendr_module! {
-    mod placeholder;
-    fn add_one;
-}
 '
   hash <- "abcdef1234567890abcdef1234567890"
   pkg_name <- "mxinlineabcdef12"
@@ -226,11 +134,7 @@ miniextendr_module! {
   expect_true(fs::file_exists(fs::path(pkg_dir, "src", "rust", "lib.rs")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "src", "rust", "Cargo.toml")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "src", "rust", "build.rs")))
-  expect_true(fs::file_exists(fs::path(pkg_dir, "src", "rust", "document.rs")))
-  expect_true(fs::file_exists(fs::path(pkg_dir, "src", "rust", "document.rs.in")))
-  expect_true(fs::file_exists(fs::path(pkg_dir, "src", "entrypoint.c")))
-  expect_true(fs::file_exists(fs::path(pkg_dir, "src", "entrypoint.c.in")))
-  expect_true(fs::file_exists(fs::path(pkg_dir, "src", "mx_abi.c")))
+  expect_true(fs::file_exists(fs::path(pkg_dir, "src", "stub.c")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "src", "Makevars.in")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "configure.ac")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "inst", "include", "mx_abi.h")))
@@ -246,16 +150,13 @@ miniextendr_module! {
   expect_true(any(grepl("export\\(add_one\\)", ns)))
   expect_true(any(grepl(paste0("useDynLib\\(", pkg_name), ns)))
 
-  # Check lib.rs has rewritten module name
+  # Check lib.rs contains the user code (no module rewriting)
   lib_rs <- paste(readLines(fs::path(pkg_dir, "src", "rust", "lib.rs")),
                   collapse = "\n")
-  expect_true(grepl(paste0("mod ", pkg_rs, ";"), lib_rs))
-  expect_false(grepl("mod placeholder;", lib_rs))
+  expect_true(grepl("pub fn add_one", lib_rs))
 
-  # Check entrypoint.c has correct package name
-  entry_c <- paste(readLines(fs::path(pkg_dir, "src", "entrypoint.c")),
-                   collapse = "\n")
-  expect_true(grepl(paste0("R_init_", pkg_name), entry_c))
+  # Check lib.rs has miniextendr_init! macro
+  expect_true(grepl("miniextendr_init!", lib_rs))
 
   # Check vendor symlink
   expect_true(fs::link_exists(fs::path(pkg_dir, "vendor")) ||
@@ -271,10 +172,9 @@ test_that("scaffold_inline_package handles features in Cargo.toml", {
   fs::dir_create(fs::path(vendor_dir, "miniextendr-lint"), recurse = TRUE)
 
   code <- '
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 #[miniextendr]
 pub fn f() -> i32 { 1 }
-miniextendr_module! { mod placeholder; fn f; }
 '
   scaffold_inline_package(code, "hash123", c("rayon"), "mxtest", "mxtest",
                            tmp, quiet = TRUE)
