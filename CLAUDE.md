@@ -64,7 +64,7 @@ just configure          # REQUIRED before any R CMD operations (dev mode, no ven
 just vendor             # Vendor deps for CRAN release prep (creates inst/vendor.tar.xz)
 just rcmdinstall        # Build and install `library(miniextendr)` package in `rpkg` directory
 just devtools-test      # Run R tests
-just devtools-document  # Regenerate R wrappers
+just devtools-document  # Run roxygen2 (NAMESPACE + man pages)
 
 # Full R CMD check workflow
 just configure          # 1. Configure (generates Makevars, etc.)
@@ -155,17 +155,15 @@ For changes to fully propagate (especially macro changes):
 
 ```bash
 just configure          # 1. Configure build (generates Makevars, etc.)
-just rcmdinstall        # 2. Build and install (compiles Rust)
-just devtools-document  # 3. Regenerate R wrappers
-just rcmdinstall        # 4. Rebuild with updated R wrappers
+just rcmdinstall        # 2. Build and install (compiles Rust + auto-generates R wrappers)
+just devtools-document  # 3. Run roxygen2 (regenerate NAMESPACE + man pages)
 ```
 
 **Why this order matters:**
 
 - `just configure` generates build config files
-- First build compiles the new macros
-- `devtools-document` runs the macros to regenerate `rpkg/R/miniextendr_wrappers.R`
-- Second build incorporates the regenerated R code
+- Build compiles Rust, then auto-generates `rpkg/R/miniextendr-wrappers.R` via cdylib
+- `devtools-document` runs roxygen2 on the generated wrappers to update NAMESPACE
 
 ### Testing Changes
 
@@ -234,11 +232,10 @@ When adding new `#[miniextendr]` functions to rpkg:
 ```bash
 # 1. Add your #[miniextendr] function(s) to a .rs file
 # 2. Make sure the file is reachable via `mod` declarations from lib.rs
-# 3. Rebuild and regenerate R wrappers:
+# 3. Rebuild (R wrappers are auto-generated during build):
 just configure
 just rcmdinstall
-just devtools-document   # Regenerates R/miniextendr_wrappers.R and NAMESPACE
-just rcmdinstall         # Rebuild with new wrappers
+just devtools-document   # Regenerates NAMESPACE via roxygen2
 
 # If permission issues, use local library path:
 R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
@@ -257,12 +254,17 @@ mod my_module;
 The `#[cfg]` on the `mod` declaration is sufficient — functions inside the module
 self-register via linkme when the feature is enabled.
 
+### What happens during build (R CMD INSTALL)
+
+1. Makevars builds a **cdylib** via `cargo rustc --crate-type cdylib`
+2. Loads the cdylib via `dyn.load()` and calls `miniextendr_write_wrappers`
+3. Auto-generates `R/miniextendr-wrappers.R` with all R wrapper functions
+4. Builds the **staticlib** (linked into the final `.so`)
+
 ### What `just devtools-document` does
 
-- Builds a cdylib from the user crate (includes all linkme distributed_slice entries)
-- Loads the cdylib via `dyn.load()` and calls `miniextendr_write_wrappers` to generate R code
-- Regenerates `rpkg/R/miniextendr-wrappers.R` with R wrapper functions
-- Runs roxygen2 to regenerate `rpkg/NAMESPACE` with exports
+- Runs roxygen2 on all R files (including the auto-generated wrappers)
+- Regenerates `rpkg/NAMESPACE` with exports, S3method registrations, etc.
 
 ### Verifying your changes
 
@@ -541,10 +543,10 @@ Functions exist in Rust but aren't callable from R. Check:
 Quick fix:
 
 ```bash
-NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
+just configure && just rcmdinstall && just devtools-document
 # Or with local library path if permission issues:
-R_LIBS=/tmp/claude/R_lib NOT_CRAN=true just devtools-document
 R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
+NOT_CRAN=true just devtools-document
 ```
 
 ### "configure: command not found"
@@ -557,10 +559,10 @@ cd rpkg && autoconf && bash ./configure
 
 ### Stale R wrappers after macro changes
 
-Run the full workflow:
+R wrappers are auto-generated during build, so just rebuild:
 
 ```bash
-just configure && just rcmdinstall && just devtools-document && just rcmdinstall
+just configure && just rcmdinstall && just devtools-document
 ```
 
 ### Tests fail with "package not found"

@@ -329,6 +329,14 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
+dnl Platform-specific cdylib extension (for wrapper generation via cargo rustc --crate-type cdylib)
+case "$host_os" in
+  darwin*) CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*) CDYLIB_EXT="dll" ;;
+  *) CDYLIB_EXT="so" ;;
+esac
+AC_SUBST([CDYLIB_EXT])
+
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,

@@ -610,6 +610,7 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
+CDYLIB_EXT
 CARGO_STATICLIB_NAME
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
@@ -2552,6 +2553,13 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
+
+case "$host_os" in
+  darwin*) CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*) CDYLIB_EXT="dll" ;;
+  *) CDYLIB_EXT="so" ;;
+esac
+
 
 
 

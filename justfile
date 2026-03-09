@@ -13,7 +13,7 @@
 #     just configure          - Configure R package build (dev mode, no vendoring)
 #     just vendor             - Vendor deps for CRAN release prep
 #     just devtools-test      - Run R package tests
-#     just devtools-document  - Generate R documentation
+#     just devtools-document  - Run roxygen2 (NAMESPACE + man pages)
 #     just rcmdinstall        - Build and install R package
 #
 #   minirextendr (helper R package):
@@ -502,34 +502,9 @@ devtools-build: configure
 devtools-check: devtools-document
     NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
-# Document rpkg with devtools::document
-# 1. Build the document binary (links all distributed_slice entries via rlib)
-# 2. Run the binary to write R wrappers
-# 3. document() runs roxygen2 on the newly-written wrappers
+# Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages)
+# R wrappers are generated automatically by Makevars during R CMD INSTALL.
 devtools-document: configure
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Extract cargo features from configured Makevars (set by ./configure)
-    FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' rpkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
-    # Build cdylib for wrapper generation
-    cargo rustc --lib --manifest-path rpkg/src/rust/Cargo.toml \
-      --target-dir rpkg/src/rust/target $FEATURES_FLAG \
-      --crate-type cdylib
-    # Determine cdylib filename (platform-specific)
-    CRATE_NAME=$(grep '^name' rpkg/src/rust/Cargo.toml | head -1 | sed 's/.*= *"//;s/".*//' | tr '-' '_')
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      CDYLIB="rpkg/src/rust/target/debug/lib${CRATE_NAME}.dylib"
-    elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
-      CDYLIB="rpkg/src/rust/target/debug/${CRATE_NAME}.dll"
-    else
-      CDYLIB="rpkg/src/rust/target/debug/lib${CRATE_NAME}.so"
-    fi
-    # Generate R wrappers via cdylib
-    Rscript -e "
-      lib <- dyn.load('${CDYLIB}')
-      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'rpkg/R/miniextendr-wrappers.R')
-      dyn.unload('${CDYLIB}')
-    "
     NOT_CRAN=true Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace

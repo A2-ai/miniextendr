@@ -13,6 +13,7 @@ VENDOR_OUT = @VENDOR_OUT@
 CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
 NOT_CRAN_FLAG = @NOT_CRAN@
 CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
+CDYLIB_EXT = @CDYLIB_EXT@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # force_load: extract ALL .o members from the archive, preserving linkme
@@ -20,6 +21,10 @@ CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 PKG_LIBS = -Wl,-force_load,$(CARGO_AR)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
+
+# cdylib for R wrapper generation (platform-specific extension)
+CARGO_CDYLIB = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
 ## ----------------------------------------------------------------------
 
 # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
@@ -62,9 +67,9 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR)
 # to avoid NOTEs about hidden files and long paths. We unpack it here.
 VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
 
-$(CARGO_AR): FORCE_CARGO
-	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
-	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
+$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
+	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 	  echo "Unpacking vendor.tar.xz from inst/..."; \
 	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
 	fi
@@ -77,5 +82,35 @@ $(CARGO_AR): FORCE_CARGO
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR); \
 	test -f "$(CARGO_AR)"
+
+# Automatic R wrapper generation.
+# Builds a cdylib (shared library) containing all linkme distributed_slice
+# entries, loads it in R, and calls miniextendr_write_wrappers() which
+# writes R/miniextendr-wrappers.R.
+# NAMESPACE is NOT generated here — use devtools::document() for that.
+$(WRAPPERS_R): $(CARGO_CDYLIB)
+	@echo "Generating R wrappers..."
+	@"$(R_HOME)/bin/Rscript" -e "\
+	  lib <- dyn.load('$(CARGO_CDYLIB)'); \
+	  .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), \
+	    '$(WRAPPERS_R)'); \
+	  dyn.unload('$(CARGO_CDYLIB)')"
+
+# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
+$(CARGO_CDYLIB): FORCE_CARGO
+	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
+	  echo "Unpacking vendor.tar.xz from inst/..."; \
+	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+	fi
+	@set -e; \
+	TARGET_OPT=""; \
+	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
+	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	  --lib --profile $(CARGO_PROFILE) \
+	  --manifest-path $(CARGO_TOML) \
+	  --target-dir $(CARGO_TARGET_DIR) \
+	  --crate-type cdylib
 
 clean:
