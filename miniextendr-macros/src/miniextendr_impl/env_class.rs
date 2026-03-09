@@ -232,7 +232,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    }".to_string());
     lines.push("    bound".to_string());
     lines.push("  } else if (is.null(obj)) {".to_string());
-    lines.push("    # Not found at top level — search trait namespace environments".to_string());
+    lines.push("    # Not found at top level -- search trait namespace environments".to_string());
     lines.push(format!("    for (ns_name in names({})) {{", class_name));
     lines.push(format!("      ns <- {}[[ns_name]]", class_name));
     lines.push(
@@ -243,7 +243,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         "        if (is.function(method) && isTRUE(attr(method, \".__mx_instance__\"))) {"
             .to_string(),
     );
-    lines.push("          # Instance method — bind self as first arg".to_string());
+    lines.push("          # Instance method -- bind self as first arg".to_string());
     lines.push("          m <- method".to_string());
     lines.push("          s <- self".to_string());
     lines.push("          return(function(...) m(s, ...))".to_string());
