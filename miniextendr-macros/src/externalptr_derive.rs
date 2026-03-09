@@ -804,7 +804,9 @@ fn generate_class_integration_r_code(
                 "# These are applied when `r_data_accessors` is set on the impl block.\n",
             );
             code.push_str(&format!(
-                ".rdata_active_bindings_{type} <- function(cls) {{\n",
+                ".rdata_active_bindings_{type} <- function(cls) {{\n\
+                 \x20 # R CMD check: self/private are R6 runtime bindings (set by cls$set)\n\
+                 \x20 self <- private <- NULL\n",
                 type = type_name,
             ));
             for slot in pub_slots {
