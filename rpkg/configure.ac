@@ -481,14 +481,17 @@ AC_CONFIG_COMMANDS([cargo-vendor],
             src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         done
 
-        dnl 2) Strip [patch.crates-io] section (added by vendored-install)
+        dnl 2) Strip [patch.crates-io] section and trailing blank lines
         if grep -q '^\@<:@patch\.crates-io\@:>@' src/rust/Cargo.toml 2>/dev/null; then
           "$SED" '/^\@<:@patch\.crates-io\@:>@/,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
             && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         fi
+        dnl Remove trailing blank lines left after section deletion
+        "$SED" -e :a -e '/^$/{ $d; N; ba; }' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 
         dnl 3) Add [patch."https://..."] with monorepo-relative paths
-        printf '\n@<:@patch."https://github.com/CGMossa/miniextendr"@:>@\n' >> src/rust/Cargo.toml
+        printf '@<:@patch."https://github.com/CGMossa/miniextendr"@:>@\n' >> src/rust/Cargo.toml
         for _crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint; do
           printf '%s = { path = "../../../%s" }\n' "$_crate" "$_crate" >> src/rust/Cargo.toml
         done
@@ -513,11 +516,13 @@ AC_CONFIG_COMMANDS([cargo-vendor],
             src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         done
 
-        dnl 2) Strip [patch.crates-io] section (added by vendored-install)
+        dnl 2) Strip [patch.crates-io] section and trailing blank lines
         if grep -q '^\@<:@patch\.crates-io\@:>@' src/rust/Cargo.toml 2>/dev/null; then
           "$SED" '/^\@<:@patch\.crates-io\@:>@/,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
             && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         fi
+        "$SED" -e :a -e '/^$/{ $d; N; ba; }' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 
         echo "configure: restored Cargo.toml from vendored to git state"
       fi
