@@ -241,6 +241,22 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
+dnl Platform-specific force-load linker flags.
+dnl linkme distributed_slice entries need force_load/whole-archive to prevent stripping.
+case "$host_os" in
+  darwin*)
+    FORCE_LOAD_PREFIX="-Wl,-force_load,"
+    FORCE_LOAD_SUFFIX=""
+    ;;
+  *)
+    dnl Linux, Windows/MinGW, and other GNU ld compatible platforms
+    FORCE_LOAD_PREFIX="-Wl,--whole-archive "
+    FORCE_LOAD_SUFFIX=" -Wl,--no-whole-archive"
+    ;;
+esac
+AC_SUBST([FORCE_LOAD_PREFIX])
+AC_SUBST([FORCE_LOAD_SUFFIX])
+
 dnl Generate files from .in templates (templates must be committed)
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 

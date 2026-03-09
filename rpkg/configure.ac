@@ -337,6 +337,24 @@ case "$host_os" in
 esac
 AC_SUBST([CDYLIB_EXT])
 
+dnl Platform-specific force-load linker flags.
+dnl linkme's distributed_slice entries are not directly referenced, so the linker
+dnl would normally strip them during dead-code elimination. force_load/whole-archive
+dnl forces all archive members into the shared library.
+case "$host_os" in
+  darwin*)
+    FORCE_LOAD_PREFIX="-Wl,-force_load,"
+    FORCE_LOAD_SUFFIX=""
+    ;;
+  *)
+    dnl Linux, Windows/MinGW, and other GNU ld compatible platforms
+    FORCE_LOAD_PREFIX="-Wl,--whole-archive "
+    FORCE_LOAD_SUFFIX=" -Wl,--no-whole-archive"
+    ;;
+esac
+AC_SUBST([FORCE_LOAD_PREFIX])
+AC_SUBST([FORCE_LOAD_SUFFIX])
+
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,

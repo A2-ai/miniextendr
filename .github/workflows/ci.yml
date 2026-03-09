@@ -274,8 +274,10 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
-      - name: Configure
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       # ---------------------------------------------------------------------
       # Rust checks (Linux only, run once on R=release)
@@ -431,8 +433,10 @@ jobs:
           shared-key: r-macos-${{ matrix.arch }}
           cache-on-failure: true
 
-      - name: Configure
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -542,7 +546,7 @@ jobs:
           $config = "[target.x86_64-pc-windows-gnu]`nlinker = `"x86_64-w64-mingw32.static.posix-gcc.exe`"`n`n[env]`nLIBRARY_PATH = `"$pwd_slash/libgcc_mock`""
           [System.IO.File]::WriteAllText("$PWD\.cargo\config.toml", $config)
 
-      - name: Configure
+      - name: Configure and vendor
         shell: C:\rtools44\usr\bin\bash.exe -e -o pipefail {0}
         run: |
           # Add rtools and cargo to PATH (--login might reset PATH)
@@ -559,6 +563,9 @@ jobs:
           cd "$(cygpath -u "$GITHUB_WORKSPACE")/rpkg"
           # Windows needs explicit target for GNU toolchain (msys != windows-gnu)
           NOT_CRAN=true CARGO_BUILD_TARGET=x86_64-pc-windows-gnu ./configure
+          # Vendor deps so R CMD check can build from the extracted tarball
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          just vendor
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -853,10 +860,10 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
-      - name: Configure and vendor (dev mode creates clean vendor.tar.xz)
-        env:
-          NOT_CRAN: "true"
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       - name: Build source tarball
         run: |
