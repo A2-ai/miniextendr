@@ -383,6 +383,57 @@ vendor:
         echo '{"files":{}}' > "$vendor_out/$basename/.cargo-checksum.json"
     done
 
+    # 3b. Copy workspace crates that cargo package couldn't handle
+    # (crates with inter-workspace deps fail cargo package because deps aren't on crates.io)
+    # For these, we copy source directly and resolve { workspace = true } deps.
+    echo "Ensuring all workspace crates are vendored..."
+    ws_version="0.1.0"
+    for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
+        dest="$vendor_out/${crate}-${ws_version}"
+        if [ -d "$dest" ]; then
+            echo "  $crate-$ws_version (already present)"
+            continue
+        fi
+        if [ ! -d "$root/$crate" ]; then
+            continue
+        fi
+        echo "  $crate-$ws_version (copying from workspace)"
+
+        mkdir -p "$dest"
+        # Copy source files (mirror what cargo package includes)
+        cp "$root/$crate/Cargo.toml" "$dest/Cargo.toml"
+        cp -R "$root/$crate/src" "$dest/src"
+        [ -f "$root/$crate/build.rs" ] && cp "$root/$crate/build.rs" "$dest/"
+        [ -f "$root/$crate/README.md" ] && cp "$root/$crate/README.md" "$dest/"
+
+        # Resolve workspace = true references in Cargo.toml
+        # These mirror [workspace.package] and [workspace.dependencies] from root Cargo.toml
+        sed -i.bak \
+            -e 's/^version\.workspace = true$/version = "0.1.0"/' \
+            -e 's/^edition\.workspace = true$/edition = "2024"/' \
+            -e 's/^license\.workspace = true$/license = "MIT"/' \
+            -e 's|^repository\.workspace = true$|repository = "https://github.com/CGMossa/miniextendr"|' \
+            -e 's|^homepage\.workspace = true$|homepage = "https://github.com/CGMossa/miniextendr"|' \
+            -e 's|^keywords\.workspace = true$|keywords = ["r", "ffi", "bindings"]|' \
+            -e 's|^categories\.workspace = true$|categories = ["api-bindings", "external-ffi-bindings"]|' \
+            -e 's/^linkme = { workspace = true }$/linkme = "0.3"/' \
+            -e 's/^miniextendr-macros = { workspace = true }$/miniextendr-macros = "*"/' \
+            -e 's/^miniextendr-macros-core = { workspace = true }$/miniextendr-macros-core = "*"/' \
+            -e 's/^miniextendr-engine = { workspace = true }$/miniextendr-engine = "*"/' \
+            -e 's/^miniextendr-api = { workspace = true }$/miniextendr-api = "*"/' \
+            -e 's|^proc-macro2 = { workspace = true }$|proc-macro2 = { version = "1.0", features = ["span-locations"] }|' \
+            -e 's/^quote = { workspace = true }$/quote = "1.0"/' \
+            -e 's|^syn = { workspace = true }$|syn = { version = "2.0", features = ["full", "extra-traits"] }|' \
+            "$dest/Cargo.toml"
+        rm -f "$dest/Cargo.toml.bak"
+
+        # Strip [dev-dependencies] to end of file (tests/benches dirs are removed from vendor)
+        sed -i.bak '/^\[dev-dependencies\]/,$d' "$dest/Cargo.toml"
+        rm -f "$dest/Cargo.toml.bak"
+
+        echo '{"files":{}}' > "$dest/.cargo-checksum.json"
+    done
+
     # 4. Strip checksums from Cargo.lock
     if [ -f "$lockfile" ]; then
         sed -i.bak '/^checksum = /d' "$lockfile" && rm -f "$lockfile.bak"
