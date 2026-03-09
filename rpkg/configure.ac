@@ -487,7 +487,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
             && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         fi
         dnl Remove trailing blank lines left after section deletion
-        "$SED" -e :a -e '/^$/{ $d; N; ba; }' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+        "$SED" -e :a -e '/^$/{$d' -e N -e ba -e '}' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
           && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 
         dnl 3) Add [patch."https://..."] with monorepo-relative paths
@@ -521,7 +521,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           "$SED" '/^\@<:@patch\.crates-io\@:>@/,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
             && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         fi
-        "$SED" -e :a -e '/^$/{ $d; N; ba; }' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+        "$SED" -e :a -e '/^$/{$d' -e N -e ba -e '}' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
           && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 
         echo "configure: restored Cargo.toml from vendored to git state"
