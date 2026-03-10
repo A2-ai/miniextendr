@@ -614,6 +614,7 @@ TAR_FORCE_LOCAL
 FORCE_LOAD_SUFFIX
 FORCE_LOAD_PREFIX
 CDYLIB_EXT
+CDYLIB_PREFIX
 CARGO_STATICLIB_NAME
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
@@ -2558,10 +2559,11 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 
 case "$host_os" in
-  darwin*) CDYLIB_EXT="dylib" ;;
-  *mingw*|*msys*|*cygwin*) CDYLIB_EXT="dll" ;;
-  *) CDYLIB_EXT="so" ;;
+  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
 esac
+
 
 
 case "$host_os" in

@@ -329,12 +329,14 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
-dnl Platform-specific cdylib extension (for wrapper generation via cargo rustc --crate-type cdylib)
+dnl Platform-specific cdylib naming (for wrapper generation via cargo rustc --crate-type cdylib)
+dnl Rust cdylibs: lib<name>.so (Linux), lib<name>.dylib (macOS), <name>.dll (Windows — no lib prefix)
 case "$host_os" in
-  darwin*) CDYLIB_EXT="dylib" ;;
-  *mingw*|*msys*|*cygwin*) CDYLIB_EXT="dll" ;;
-  *) CDYLIB_EXT="so" ;;
+  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
 esac
+AC_SUBST([CDYLIB_PREFIX])
 AC_SUBST([CDYLIB_EXT])
 
 dnl Platform-specific force-load linker flags.

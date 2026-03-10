@@ -1,22 +1,23 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-10 01:49:11
+--- a/monorepo/rpkg/Makevars.in	2026-03-10 03:18:40
 +++ b/monorepo/rpkg/Makevars.in	2026-03-10 01:49:56
-@@ -14,5 +14,4 @@
+@@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
+-CDYLIB_PREFIX = @CDYLIB_PREFIX@
 -CDYLIB_EXT = @CDYLIB_EXT@
  FORCE_LOAD_PREFIX = @FORCE_LOAD_PREFIX@
  FORCE_LOAD_SUFFIX = @FORCE_LOAD_SUFFIX@
-@@ -26,8 +25,4 @@
+@@ -27,8 +25,4 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 -WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
 -
 -# cdylib for R wrapper generation (platform-specific extension)
--CARGO_CDYLIB = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
+-CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
  ## ----------------------------------------------------------------------
  
-@@ -72,7 +67,7 @@
+@@ -73,7 +67,7 @@
  VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
  
 -$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
@@ -27,7 +28,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
  	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
-@@ -87,34 +82,4 @@
+@@ -88,40 +82,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -38,11 +39,13 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -# NAMESPACE is NOT generated here — use devtools::document() for that.
 -$(WRAPPERS_R): $(CARGO_CDYLIB)
 -	@echo "Generating R wrappers..."
--	@"$(R_HOME)/bin/Rscript" -e "\
--	  lib <- dyn.load('$(CARGO_CDYLIB)'); \
--	  .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), \
--	    '$(WRAPPERS_R)'); \
--	  dyn.unload('$(CARGO_CDYLIB)')"
+-	@_cdylib='$(CARGO_CDYLIB)'; \
+-	_wrappers='$(WRAPPERS_R)'; \
+-	if command -v cygpath >/dev/null 2>&1; then \
+-	  _cdylib=$$(cygpath -m "$$_cdylib"); \
+-	  _wrappers=$$(cygpath -m "$$_wrappers"); \
+-	fi; \
+-	"$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
 -
 -# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
 -$(CARGO_CDYLIB): FORCE_CARGO
@@ -53,8 +56,12 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
--	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+-	case "$(CARGO_BUILD_TARGET)" in \
+-	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc"; ;; \
+-	esac; \
+-	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 -	  --lib --profile $(CARGO_PROFILE) \
 -	  --manifest-path $(CARGO_TOML) \
@@ -63,7 +70,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-10 01:49:27
+--- a/monorepo/rpkg/configure.ac	2026-03-10 03:18:22
 +++ b/monorepo/rpkg/configure.ac	2026-03-10 01:50:12
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -270,15 +277,17 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
-@@ -330,16 +249,6 @@
+@@ -330,18 +249,6 @@
  AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
  
--dnl Platform-specific cdylib extension (for wrapper generation via cargo rustc --crate-type cdylib)
+-dnl Platform-specific cdylib naming (for wrapper generation via cargo rustc --crate-type cdylib)
+-dnl Rust cdylibs: lib<name>.so (Linux), lib<name>.dylib (macOS), <name>.dll (Windows — no lib prefix)
 -case "$host_os" in
--  darwin*) CDYLIB_EXT="dylib" ;;
--  *mingw*|*msys*|*cygwin*) CDYLIB_EXT="dll" ;;
--  *) CDYLIB_EXT="so" ;;
+-  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+-  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+-  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
 -esac
+-AC_SUBST([CDYLIB_PREFIX])
 -AC_SUBST([CDYLIB_EXT])
 -
  dnl Platform-specific force-load linker flags.
@@ -288,7 +297,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl linkme distributed_slice entries need force_load/whole-archive to prevent stripping.
  case "$host_os" in
    darwin*)
-@@ -386,8 +295,7 @@
+@@ -388,8 +295,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -299,7 +308,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -398,45 +306,27 @@
+@@ -400,45 +306,27 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -357,7 +366,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -456,26 +346,25 @@
+@@ -458,26 +346,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -402,7 +411,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -489,162 +378,104 @@
+@@ -491,162 +378,104 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -648,7 +657,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  
-@@ -658,5 +489,5 @@
+@@ -660,5 +489,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
@@ -656,24 +665,25 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-10 01:49:11
+--- a/rpkg/Makevars.in	2026-03-10 03:18:40
 +++ b/rpkg/Makevars.in	2026-03-10 01:49:53
-@@ -14,5 +14,4 @@
+@@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
+-CDYLIB_PREFIX = @CDYLIB_PREFIX@
 -CDYLIB_EXT = @CDYLIB_EXT@
  FORCE_LOAD_PREFIX = @FORCE_LOAD_PREFIX@
  FORCE_LOAD_SUFFIX = @FORCE_LOAD_SUFFIX@
-@@ -26,8 +25,4 @@
+@@ -27,8 +25,4 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 -WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
 -
 -# cdylib for R wrapper generation (platform-specific extension)
--CARGO_CDYLIB = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
+-CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
  ## ----------------------------------------------------------------------
  
-@@ -72,7 +67,7 @@
+@@ -73,7 +67,7 @@
  VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
  
 -$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
@@ -684,7 +694,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
  	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
-@@ -87,34 +82,4 @@
+@@ -88,40 +82,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -695,11 +705,13 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -# NAMESPACE is NOT generated here — use devtools::document() for that.
 -$(WRAPPERS_R): $(CARGO_CDYLIB)
 -	@echo "Generating R wrappers..."
--	@"$(R_HOME)/bin/Rscript" -e "\
--	  lib <- dyn.load('$(CARGO_CDYLIB)'); \
--	  .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), \
--	    '$(WRAPPERS_R)'); \
--	  dyn.unload('$(CARGO_CDYLIB)')"
+-	@_cdylib='$(CARGO_CDYLIB)'; \
+-	_wrappers='$(WRAPPERS_R)'; \
+-	if command -v cygpath >/dev/null 2>&1; then \
+-	  _cdylib=$$(cygpath -m "$$_cdylib"); \
+-	  _wrappers=$$(cygpath -m "$$_wrappers"); \
+-	fi; \
+-	"$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
 -
 -# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
 -$(CARGO_CDYLIB): FORCE_CARGO
@@ -710,8 +722,12 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
--	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+-	case "$(CARGO_BUILD_TARGET)" in \
+-	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc"; ;; \
+-	esac; \
+-	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 -	  --lib --profile $(CARGO_PROFILE) \
 -	  --manifest-path $(CARGO_TOML) \
@@ -720,7 +736,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-10 01:49:27
+--- a/rpkg/configure.ac	2026-03-10 03:18:22
 +++ b/rpkg/configure.ac	2026-03-10 01:50:06
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -927,15 +943,17 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
-@@ -330,16 +249,6 @@
+@@ -330,18 +249,6 @@
  AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
  
--dnl Platform-specific cdylib extension (for wrapper generation via cargo rustc --crate-type cdylib)
+-dnl Platform-specific cdylib naming (for wrapper generation via cargo rustc --crate-type cdylib)
+-dnl Rust cdylibs: lib<name>.so (Linux), lib<name>.dylib (macOS), <name>.dll (Windows — no lib prefix)
 -case "$host_os" in
--  darwin*) CDYLIB_EXT="dylib" ;;
--  *mingw*|*msys*|*cygwin*) CDYLIB_EXT="dll" ;;
--  *) CDYLIB_EXT="so" ;;
+-  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+-  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+-  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
 -esac
+-AC_SUBST([CDYLIB_PREFIX])
 -AC_SUBST([CDYLIB_EXT])
 -
  dnl Platform-specific force-load linker flags.
@@ -945,7 +963,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl linkme distributed_slice entries need force_load/whole-archive to prevent stripping.
  case "$host_os" in
    darwin*)
-@@ -386,8 +295,7 @@
+@@ -388,8 +295,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -956,7 +974,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -398,45 +306,27 @@
+@@ -400,45 +306,27 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -1014,7 +1032,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -456,26 +346,25 @@
+@@ -458,26 +346,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -1059,7 +1077,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -489,162 +378,107 @@
+@@ -491,162 +378,107 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -1308,7 +1326,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  
-@@ -658,5 +492,5 @@
+@@ -660,5 +492,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
