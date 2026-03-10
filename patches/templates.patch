@@ -1,13 +1,13 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-10 00:59:48
-+++ b/monorepo/rpkg/Makevars.in	2026-03-10 00:59:48
+--- a/monorepo/rpkg/Makevars.in	2026-03-10 01:06:29
++++ b/monorepo/rpkg/Makevars.in	2026-03-10 01:08:25
 @@ -14,5 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
 -CDYLIB_EXT = @CDYLIB_EXT@
  FORCE_LOAD_PREFIX = @FORCE_LOAD_PREFIX@
  FORCE_LOAD_SUFFIX = @FORCE_LOAD_SUFFIX@
-@@ -25,8 +24,4 @@
+@@ -26,8 +25,4 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 -WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
@@ -16,7 +16,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -CARGO_CDYLIB = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
  ## ----------------------------------------------------------------------
  
-@@ -71,7 +66,7 @@
+@@ -72,7 +67,7 @@
  VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
  
 -$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
@@ -26,8 +26,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 +	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
- 	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
-@@ -86,34 +81,4 @@
+ 	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+@@ -87,34 +82,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -49,7 +49,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 -	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 -	  echo "Unpacking vendor.tar.xz from inst/..."; \
--	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+-	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
@@ -63,8 +63,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-10 00:59:38
-+++ b/monorepo/rpkg/configure.ac	2026-03-10 01:01:53
+--- a/monorepo/rpkg/configure.ac	2026-03-10 01:07:06
++++ b/monorepo/rpkg/configure.ac	2026-03-10 01:08:10
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -288,7 +288,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl linkme distributed_slice entries need force_load/whole-archive to prevent stripping.
  case "$host_os" in
    darwin*)
-@@ -379,8 +288,7 @@
+@@ -386,8 +295,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -299,7 +299,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -391,45 +299,27 @@
+@@ -398,45 +306,27 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -357,7 +357,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -449,26 +339,25 @@
+@@ -456,26 +346,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -366,7 +366,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
--              tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-              tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 -              if test $? -ne 0; then
 -                echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -                exit 1
@@ -382,7 +382,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-+            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++            tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 +            if test $? -ne 0; then
 +              echo "configure: error: failed to unpack vendor.tar.xz" >&2
                exit 1
@@ -402,11 +402,11 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -482,162 +371,104 @@
+@@ -489,162 +378,104 @@
    fi
  ],
--[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
-+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
+-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
++[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
  
 -dnl 2) Handle vendor directory based on BUILD_CONTEXT
 +dnl 3) Ensure vendor/ exists for offline builds
@@ -424,7 +424,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +      echo "configure: unpacking inst/vendor.tar.xz"
-+      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++      tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 +      if test $? -ne 0; then
 +        echo "configure: error: failed to unpack vendor.tar.xz" >&2
 +        exit 1
@@ -515,7 +515,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: unpacking inst/vendor.tar.xz"
--          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-          tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 -          if test $? -ne 0; then
 -            echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -            exit 1
@@ -624,8 +624,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    echo "configure: CRAN build — vendor ready"
 +  fi
  ],
--[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
-+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME"])
+-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
++[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
  
 -dnl 2b) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 +dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
@@ -648,7 +648,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  
-@@ -651,5 +482,5 @@
+@@ -658,5 +489,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
@@ -656,15 +656,15 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-10 00:59:48
-+++ b/rpkg/Makevars.in	2026-03-10 00:59:48
+--- a/rpkg/Makevars.in	2026-03-10 01:06:29
++++ b/rpkg/Makevars.in	2026-03-10 01:08:18
 @@ -14,5 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
 -CDYLIB_EXT = @CDYLIB_EXT@
  FORCE_LOAD_PREFIX = @FORCE_LOAD_PREFIX@
  FORCE_LOAD_SUFFIX = @FORCE_LOAD_SUFFIX@
-@@ -25,8 +24,4 @@
+@@ -26,8 +25,4 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 -WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
@@ -673,7 +673,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -CARGO_CDYLIB = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
  ## ----------------------------------------------------------------------
  
-@@ -71,7 +66,7 @@
+@@ -72,7 +67,7 @@
  VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
  
 -$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
@@ -683,8 +683,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 +	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
- 	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
-@@ -86,34 +81,4 @@
+ 	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+@@ -87,34 +82,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -706,7 +706,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 -	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 -	  echo "Unpacking vendor.tar.xz from inst/..."; \
--	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+-	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
@@ -720,8 +720,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-10 00:59:38
-+++ b/rpkg/configure.ac	2026-03-10 01:01:52
+--- a/rpkg/configure.ac	2026-03-10 01:07:06
++++ b/rpkg/configure.ac	2026-03-10 01:07:52
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -945,7 +945,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl linkme distributed_slice entries need force_load/whole-archive to prevent stripping.
  case "$host_os" in
    darwin*)
-@@ -379,8 +288,7 @@
+@@ -386,8 +295,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -956,7 +956,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -391,45 +299,27 @@
+@@ -398,45 +306,27 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -1014,7 +1014,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -449,26 +339,25 @@
+@@ -456,26 +346,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -1023,7 +1023,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
--              tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-              tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 -              if test $? -ne 0; then
 -                echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -                exit 1
@@ -1039,7 +1039,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-+            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++            tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 +            if test $? -ne 0; then
 +              echo "configure: error: failed to unpack vendor.tar.xz" >&2
                exit 1
@@ -1059,11 +1059,11 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -482,162 +371,107 @@
+@@ -489,162 +378,107 @@
    fi
  ],
--[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
-+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
+-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
++[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
  
 -dnl 2) Handle vendor directory based on BUILD_CONTEXT
 +dnl 3) Ensure vendor/ exists for offline builds
@@ -1081,7 +1081,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +      echo "configure: unpacking inst/vendor.tar.xz"
-+      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++      tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 +      if test $? -ne 0; then
 +        echo "configure: error: failed to unpack vendor.tar.xz" >&2
 +        exit 1
@@ -1172,7 +1172,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: unpacking inst/vendor.tar.xz"
--          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-          tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
 -          if test $? -ne 0; then
 -            echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -            exit 1
@@ -1284,8 +1284,8 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    echo "configure: CRAN build — vendor ready"
 +  fi
  ],
--[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
-+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME"])
+-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
++[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
  
 -dnl 2b) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 +dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
@@ -1308,7 +1308,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  
-@@ -651,5 +485,5 @@
+@@ -658,5 +492,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])

@@ -610,6 +610,7 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
+TAR_FORCE_LOCAL
 FORCE_LOAD_SUFFIX
 FORCE_LOAD_PREFIX
 CARGO_STATICLIB_NAME
@@ -2490,6 +2491,12 @@ esac
 
 
 
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+  *)                       TAR_FORCE_LOCAL="" ;;
+esac
+
+
 
 
 VENDOR_OUT="$abs_top_srcdir/vendor"
@@ -3225,8 +3232,8 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 # INIT-COMMANDS
 #
 NOT_CRAN="$NOT_CRAN"
-CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
-NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME"
+CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
+NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"
 
 _ACEOF
@@ -3691,7 +3698,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+            tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
             if test $? -ne 0; then
               echo "configure: error: failed to unpack vendor.tar.xz" >&2
               exit 1
@@ -3721,7 +3728,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
     if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
       echo "configure: unpacking inst/vendor.tar.xz"
-      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+      tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
       if test $? -ne 0; then
         echo "configure: error: failed to unpack vendor.tar.xz" >&2
         exit 1

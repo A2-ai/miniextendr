@@ -233,6 +233,13 @@ esac
 AC_SUBST([FORCE_LOAD_PREFIX])
 AC_SUBST([FORCE_LOAD_SUFFIX])
 
+dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+  *)                       TAR_FORCE_LOCAL="" ;;
+esac
+AC_SUBST([TAR_FORCE_LOCAL])
+
 dnl Generate files from .in templates
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 

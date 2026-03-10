@@ -15,6 +15,7 @@ NOT_CRAN_FLAG = @NOT_CRAN@
 CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
 FORCE_LOAD_PREFIX = @FORCE_LOAD_PREFIX@
 FORCE_LOAD_SUFFIX = @FORCE_LOAD_SUFFIX@
+TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # force_load/whole-archive: extract ALL .o members from the archive, preserving
@@ -69,7 +70,7 @@ $(CARGO_AR): FORCE_CARGO
 	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
 	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 	  echo "Unpacking vendor.tar.xz from inst/..."; \
-	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
 	fi
 	@set -e; \
 	TARGET_OPT=""; \

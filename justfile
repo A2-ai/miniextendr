@@ -347,6 +347,10 @@ vendor:
     manifest="$rpkg_src/rust/Cargo.toml"
     lockfile="$rpkg_src/rust/Cargo.lock"
 
+    # MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
+    TAR_FORCE_LOCAL=""
+    case "$(uname -s)" in MSYS*|MINGW*|CYGWIN*) TAR_FORCE_LOCAL="--force-local" ;; esac
+
     echo "=== CRAN vendor prep ==="
 
     # 1. Package workspace crates (creates .crate archives)
@@ -376,7 +380,7 @@ vendor:
         basename=$(basename "$crate_file" .crate)
         echo "  $basename"
         mkdir -p "$vendor_out/$basename"
-        tar -xzf "$crate_file" -C "$vendor_out/$basename" --strip-components=1
+        tar $TAR_FORCE_LOCAL -xzf "$crate_file" -C "$vendor_out/$basename" --strip-components=1
         # Add cargo checksum file (required for vendored sources)
         echo '{"files":{}}' > "$vendor_out/$basename/.cargo-checksum.json"
     done
@@ -556,6 +560,9 @@ r-cmd-check *args: vendor
 test-r-build: configure
     #!/usr/bin/env bash
     set -euo pipefail
+    # MSYS2/MinGW tar interprets D: in paths as remote host
+    TAR_FORCE_LOCAL=""
+    case "$(uname -s)" in MSYS*|MINGW*|CYGWIN*) TAR_FORCE_LOCAL="--force-local" ;; esac
     # Extract package info from DESCRIPTION
     pkg=$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Package"]])')
     ver=$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Version"]])')
@@ -567,7 +574,7 @@ test-r-build: configure
     # Extract for inspection
     out_dir="rpkg_build/${pkg}_${ver}"
     mkdir -p "$out_dir"
-    tar -xf "$tarball" -C "$out_dir" --strip-components=1
+    tar $TAR_FORCE_LOCAL -xf "$tarball" -C "$out_dir" --strip-components=1
     echo "Extracted to: $out_dir"
 
 # ============================================================================

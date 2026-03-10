@@ -264,6 +264,13 @@ esac
 AC_SUBST([FORCE_LOAD_PREFIX])
 AC_SUBST([FORCE_LOAD_SUFFIX])
 
+dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+  *)                       TAR_FORCE_LOCAL="" ;;
+esac
+AC_SUBST([TAR_FORCE_LOCAL])
+
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
@@ -343,7 +350,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+            tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
             if test $? -ne 0; then
               echo "configure: error: failed to unpack vendor.tar.xz" >&2
               exit 1
@@ -370,7 +377,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
 dnl 3) Ensure vendor/ exists for offline builds
 dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
@@ -381,7 +388,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
   if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
     if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
       echo "configure: unpacking inst/vendor.tar.xz"
-      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+      tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
       if test $? -ne 0; then
         echo "configure: error: failed to unpack vendor.tar.xz" >&2
         exit 1
@@ -461,7 +468,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     echo "configure: CRAN build — vendor ready"
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
 dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],

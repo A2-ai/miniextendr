@@ -609,6 +609,7 @@ ac_unique_file="src/rust/lib.rs"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT
+TAR_FORCE_LOCAL
 FORCE_LOAD_SUFFIX
 FORCE_LOAD_PREFIX
 CARGO_STATICLIB_NAME
@@ -2475,6 +2476,12 @@ case "$host_os" in
     ;;
 esac
 
+
+
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+  *)                       TAR_FORCE_LOCAL="" ;;
+esac
 
 
 
