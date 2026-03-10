@@ -323,6 +323,11 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"error"'
           check-dir: '"check"'
+        env:
+          # Override job-level NOT_CRAN=true so the extracted tarball's configure
+          # detects vendored-install mode (from inst/vendor.tar.xz), not dev-detached
+          # which would fetch git deps from main branch.
+          NOT_CRAN: false
 
       - name: Fail if Rust checks failed
         if: always() && matrix.r == 'release'
@@ -445,6 +450,8 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"error"'
           check-dir: '"check"'
+        env:
+          NOT_CRAN: false
 
       - name: Print failed tests
         if: always()
@@ -574,6 +581,8 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"error"'
           check-dir: '"check"'
+        env:
+          NOT_CRAN: false
 
       - name: Print failed tests
         if: always()
@@ -876,6 +885,9 @@ jobs:
         run: |
           # Check the tarball without NOT_CRAN (simulates CRAN)
           R CMD check --as-cran --no-manual ${{ env.TARBALL }}
+        env:
+          # Override setup-r's NOT_CRAN=true so configure detects vendored-install
+          NOT_CRAN: false
 
       - name: Copy check results
         if: always()
