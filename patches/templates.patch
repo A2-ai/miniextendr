@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-10 01:06:29
-+++ b/monorepo/rpkg/Makevars.in	2026-03-10 01:08:25
+--- a/monorepo/rpkg/Makevars.in	2026-03-10 01:49:11
++++ b/monorepo/rpkg/Makevars.in	2026-03-10 01:49:56
 @@ -14,5 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
@@ -26,7 +26,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 +	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
- 	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+ 	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
 @@ -87,34 +82,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
@@ -49,7 +49,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 -	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 -	  echo "Unpacking vendor.tar.xz from inst/..."; \
--	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+-	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
@@ -63,8 +63,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-10 01:07:06
-+++ b/monorepo/rpkg/configure.ac	2026-03-10 01:08:10
+--- a/monorepo/rpkg/configure.ac	2026-03-10 01:49:27
++++ b/monorepo/rpkg/configure.ac	2026-03-10 01:50:12
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -366,7 +366,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
--              tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-              (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -              if test $? -ne 0; then
 -                echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -                exit 1
@@ -382,7 +382,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-+            tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++            (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +            if test $? -ne 0; then
 +              echo "configure: error: failed to unpack vendor.tar.xz" >&2
                exit 1
@@ -424,7 +424,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +      echo "configure: unpacking inst/vendor.tar.xz"
-+      tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++      (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +      if test $? -ne 0; then
 +        echo "configure: error: failed to unpack vendor.tar.xz" >&2
 +        exit 1
@@ -515,7 +515,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: unpacking inst/vendor.tar.xz"
--          tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-          (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -          if test $? -ne 0; then
 -            echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -            exit 1
@@ -656,8 +656,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-10 01:06:29
-+++ b/rpkg/Makevars.in	2026-03-10 01:08:18
+--- a/rpkg/Makevars.in	2026-03-10 01:49:11
++++ b/rpkg/Makevars.in	2026-03-10 01:49:53
 @@ -14,5 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
@@ -683,7 +683,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 +	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
- 	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+ 	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
 @@ -87,34 +82,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
@@ -706,7 +706,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 -	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 -	  echo "Unpacking vendor.tar.xz from inst/..."; \
--	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+-	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
@@ -720,8 +720,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-10 01:07:06
-+++ b/rpkg/configure.ac	2026-03-10 01:07:52
+--- a/rpkg/configure.ac	2026-03-10 01:49:27
++++ b/rpkg/configure.ac	2026-03-10 01:50:06
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -1023,7 +1023,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
--              tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-              (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -              if test $? -ne 0; then
 -                echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -                exit 1
@@ -1039,7 +1039,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-+            tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++            (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +            if test $? -ne 0; then
 +              echo "configure: error: failed to unpack vendor.tar.xz" >&2
                exit 1
@@ -1081,7 +1081,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +      echo "configure: unpacking inst/vendor.tar.xz"
-+      tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++      (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +      if test $? -ne 0; then
 +        echo "configure: error: failed to unpack vendor.tar.xz" >&2
 +        exit 1
@@ -1172,7 +1172,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: unpacking inst/vendor.tar.xz"
--          tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-          (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -          if test $? -ne 0; then
 -            echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -            exit 1

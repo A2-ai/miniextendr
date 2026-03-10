@@ -75,7 +75,7 @@ $(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
 	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 	  echo "Unpacking vendor.tar.xz from inst/..."; \
-	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
 	fi
 	@set -e; \
 	TARGET_OPT=""; \
@@ -105,7 +105,7 @@ $(CARGO_CDYLIB): FORCE_CARGO
 	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 	  echo "Unpacking vendor.tar.xz from inst/..."; \
-	  tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)" -C "$(ABS_TOP_SRCDIR)"; \
+	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
 	fi
 	@set -e; \
 	TARGET_OPT=""; \

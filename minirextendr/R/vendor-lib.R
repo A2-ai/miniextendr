@@ -205,7 +205,7 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
       '    if test -f "$_lib_tarball"; then',
       '      echo "configure: extracting $_lib_crate from $(basename "$_lib_tarball")"',
       '      mkdir -p "$VENDOR_OUT/$_lib_crate"',
-      '      tar $TAR_FORCE_LOCAL -xzf "$_lib_tarball" -C "$VENDOR_OUT/$_lib_crate" --strip-components=1',
+      '      (cd "$VENDOR_OUT/$_lib_crate" && tar $TAR_FORCE_LOCAL -xzf "$_lib_tarball" --strip-components=1)',
       "      if test $? -ne 0; then",
       '        echo "configure: error: failed to extract $_lib_tarball" >&2',
       "        exit 1",
