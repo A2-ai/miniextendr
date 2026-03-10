@@ -20,7 +20,7 @@ CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # force_load/whole-archive: extract ALL .o members from the archive, preserving
 # linkme distributed_slice entries that would otherwise be dropped by lazy linking.
 # macOS: -Wl,-force_load,<lib>  Linux/MinGW: -Wl,--whole-archive <lib> -Wl,--no-whole-archive
-PKG_LIBS = $(FORCE_LOAD_PREFIX)$(CARGO_AR)$(FORCE_LOAD_SUFFIX)
+PKG_LIBS = $(FORCE_LOAD_PREFIX)$(CARGO_AR) $(FORCE_LOAD_SUFFIX)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 ## ----------------------------------------------------------------------

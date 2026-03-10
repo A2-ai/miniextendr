@@ -227,7 +227,7 @@ case "$host_os" in
   *)
     dnl Linux, Windows/MinGW, and other GNU ld compatible platforms
     FORCE_LOAD_PREFIX="-Wl,--whole-archive "
-    FORCE_LOAD_SUFFIX=" -Wl,--no-whole-archive"
+    FORCE_LOAD_SUFFIX="-Wl,--no-whole-archive"
     ;;
 esac
 AC_SUBST([FORCE_LOAD_PREFIX])
