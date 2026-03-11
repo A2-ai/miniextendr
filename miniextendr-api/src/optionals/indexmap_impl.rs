@@ -183,11 +183,6 @@ where
 ///
 /// #[miniextendr]
 /// impl RIndexMapOps for MyMap {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RIndexMapOps for MyMap;
-/// }
 /// ```
 ///
 /// In R:

@@ -1,8 +1,8 @@
 //! indicatif adapter tests — R console progress bar integration.
 
 use miniextendr_api::indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+use miniextendr_api::miniextendr;
 use miniextendr_api::progress::{RStream, RTerm, term_like_stderr, term_like_stdout};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Verify RTerm construction and Debug output.
 /// @noRd
@@ -51,12 +51,4 @@ pub fn indicatif_short_bar() -> String {
     }
     pb.finish_with_message("done");
     "done".to_string()
-}
-
-miniextendr_module! {
-    mod indicatif_adapter_tests;
-    fn indicatif_rterm_debug;
-    fn indicatif_factories_compile;
-    fn indicatif_hidden_bar;
-    fn indicatif_short_bar;
 }

@@ -14,7 +14,7 @@
 //!   can't attach Type$Trait$method() patterns to them.
 //! - For maximum compatibility, use Env inherent impl with any trait impl style.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // =============================================================================
 // Shared trait for all counter types
@@ -216,24 +216,3 @@ impl StaticXParam for CounterTraitEnv {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod class_system_matrix;
-
-    // Inherent impls (all Env style)
-    impl CounterTraitEnv;
-    impl CounterTraitS3;
-    impl CounterTraitS4;
-    impl CounterTraitS7;
-    impl CounterTraitR6;
-
-    // Trait implementations (different styles)
-    impl MatrixCounter for CounterTraitEnv;
-    impl MatrixCounter for CounterTraitS3;
-    impl MatrixCounter for CounterTraitS4;
-    impl MatrixCounter for CounterTraitS7;
-    impl MatrixCounter for CounterTraitR6;
-
-    // Regression: static method with first param named 'x'
-    impl StaticXParam for CounterTraitEnv;
-}

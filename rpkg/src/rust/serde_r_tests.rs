@@ -13,7 +13,7 @@
 use crate::serde::{Deserialize, Serialize};
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::serde::{RSerdeError, from_r, to_r};
-use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
+use miniextendr_api::{ExternalPtr, miniextendr};
 use std::collections::{BTreeMap, HashMap};
 
 // =============================================================================
@@ -633,46 +633,3 @@ pub fn serde_r_deserialize_complex(sexp: SEXP) -> String {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod serde_r_tests;
-
-    // Structs with explicit to_r/from_r methods in inherent impl
-    impl SerdeRPoint;
-    impl SerdeRPoint3D;
-    impl Rectangle;
-    impl DeepNest;
-    impl Collections;
-    impl Maps;
-    impl WithEnums;
-    impl WithOptionals;
-
-    // Standalone functions
-    fn serde_r_serialize_i32;
-    fn serde_r_serialize_f64;
-    fn serde_r_serialize_bool;
-    fn serde_r_serialize_string;
-    fn serde_r_serialize_option_i32;
-    fn serde_r_serialize_vec_i32;
-    fn serde_r_serialize_vec_f64;
-    fn serde_r_serialize_vec_string;
-    fn serde_r_serialize_vec_bool;
-    fn serde_r_serialize_hashmap;
-    fn serde_r_deserialize_i32;
-    fn serde_r_deserialize_f64;
-    fn serde_r_deserialize_string;
-    fn serde_r_deserialize_vec_i32;
-    fn serde_r_deserialize_vec_f64;
-    fn serde_r_roundtrip_point;
-    fn serde_r_roundtrip_rectangle;
-    fn serde_r_roundtrip_deep_nest;
-    fn serde_r_roundtrip_collections;
-    fn serde_r_roundtrip_optionals_present;
-    fn serde_r_roundtrip_optionals_none;
-    fn serde_r_deserialize_wrong_type;
-    fn serde_r_deserialize_missing_field;
-    fn serde_r_serialize_tuple;
-    fn serde_r_serialize_tuple_struct;
-    fn serde_r_complex_nested;
-    fn serde_r_deserialize_complex;
-}

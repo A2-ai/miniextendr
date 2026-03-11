@@ -1,6 +1,5 @@
 use miniextendr_lint::{lint_enabled, run};
 use std::fs;
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -23,100 +22,30 @@ fn lint_enabled_respects_env() {
 }
 
 #[test]
-fn reports_missing_module_for_miniextendr_items() {
+fn no_errors_for_simple_miniextendr_fn() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
 
-    let file = src_dir.join("lib.rs");
-    fs::write(
-        &file,
-        r#"
-            #[miniextendr]
-            fn foo() {}
-            "#,
-    )
-    .unwrap();
-
-    let report = run(dir.path()).expect("lint run should succeed");
-    let errors = report.errors;
-    assert!(
-        errors.iter().any(|e| e.contains("no miniextendr_module!")),
-        "expected missing module error, got: {:?}",
-        errors
-    );
-}
-
-#[test]
-fn succeeds_when_items_match_module() {
-    let dir = tempfile::tempdir().unwrap();
-    let src_dir = dir.path().join("src");
-    fs::create_dir(&src_dir).unwrap();
-
-    let file = src_dir.join("lib.rs");
-    fs::write(
-        &file,
-        r#"
-        #[miniextendr]
-        fn foo() {}
-        
-        miniextendr_module! {
-            mod lib;
-            fn foo;
-            }
-            "#,
-    )
-    .unwrap();
-
-    let report = run(dir.path()).expect("lint should succeed");
-    assert_eq!(report.errors.len(), 0, "expected no lint errors");
-    assert_eq!(
-        report.files,
-        vec![PathBuf::from(&file)],
-        "should report the scanned file"
-    );
-}
-
-#[test]
-fn reports_missing_external_ptr_derive() {
-    let dir = tempfile::tempdir().unwrap();
-    let src_dir = dir.path().join("src");
-    fs::create_dir(&src_dir).unwrap();
-
-    // Struct used in `impl Counter;` but missing #[derive(ExternalPtr)]
     fs::write(
         src_dir.join("lib.rs"),
         r#"
-        struct Counter {
-            value: i32,
-        }
-
         #[miniextendr]
-        impl Counter {
-            fn new() -> Self { Counter { value: 0 } }
-        }
-
-        miniextendr_module! {
-            mod lib;
-            impl Counter;
-        }
+        pub fn hello() -> String { "world".to_string() }
         "#,
     )
     .unwrap();
 
-    let report = run(dir.path()).expect("lint run should succeed");
+    let report = run(dir.path()).expect("lint should succeed");
     assert!(
-        report
-            .errors
-            .iter()
-            .any(|e| e.contains("does not derive ExternalPtr")),
-        "expected missing ExternalPtr derive error, got: {:?}",
+        report.errors.is_empty(),
+        "simple #[miniextendr] fn should have no errors, got: {:?}",
         report.errors
     );
 }
 
 #[test]
-fn no_warning_when_external_ptr_derived() {
+fn mxl106_non_pub_fn_with_export_tag() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
@@ -124,138 +53,127 @@ fn no_warning_when_external_ptr_derived() {
     fs::write(
         src_dir.join("lib.rs"),
         r#"
-        #[derive(ExternalPtr)]
-        struct Counter {
-            value: i32,
-        }
+        /// @export
+        #[miniextendr]
+        fn not_pub() -> i32 { 42 }
+        "#,
+    )
+    .unwrap();
 
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL106"),
+        "expected MXL106 warning for non-pub fn with @export, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl009_multiple_impl_blocks_without_labels() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
         #[miniextendr]
         impl Counter {
             fn new() -> Self { Counter { value: 0 } }
         }
 
-        miniextendr_module! {
-            mod lib;
-            impl Counter;
+        #[miniextendr]
+        impl Counter {
+            fn get_value(&self) -> i32 { self.value }
         }
         "#,
     )
     .unwrap();
 
     let report = run(dir.path()).expect("lint should succeed");
-    let derive_errors: Vec<_> = report
-        .errors
-        .iter()
-        .filter(|e| e.contains("ExternalPtr"))
-        .collect();
     assert!(
-        derive_errors.is_empty(),
-        "should not warn when ExternalPtr is derived, got: {:?}",
-        derive_errors
+        report.errors.iter().any(|e| e.contains("missing labels")),
+        "expected MXL009 error for missing labels, got: {:?}",
+        report.errors
     );
 }
 
 #[test]
-fn no_warning_when_qualified_external_ptr_derived() {
+fn mxl010_duplicate_labels() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
 
-    // Using fully-qualified derive path
     fs::write(
         src_dir.join("lib.rs"),
         r#"
-        #[derive(miniextendr_api::ExternalPtr)]
-        struct Counter {
-            value: i32,
-        }
-
-        #[miniextendr]
+        #[miniextendr(label = "ops")]
         impl Counter {
             fn new() -> Self { Counter { value: 0 } }
         }
 
-        miniextendr_module! {
-            mod lib;
-            impl Counter;
+        #[miniextendr(label = "ops")]
+        impl Counter {
+            fn get_value(&self) -> i32 { self.value }
         }
         "#,
     )
     .unwrap();
 
     let report = run(dir.path()).expect("lint should succeed");
-    let derive_errors: Vec<_> = report
-        .errors
-        .iter()
-        .filter(|e| e.contains("ExternalPtr"))
-        .collect();
     assert!(
-        derive_errors.is_empty(),
-        "should not warn when miniextendr_api::ExternalPtr is derived, got: {:?}",
-        derive_errors
+        report.errors.iter().any(|e| e.contains("duplicate label")),
+        "expected MXL010 error for duplicate labels, got: {:?}",
+        report.errors
     );
 }
 
 #[test]
-fn no_warning_when_typed_external_implemented() {
+fn mxl203_internal_plus_noexport_redundancy() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
 
-    // Manual TypedExternal impl instead of derive
     fs::write(
         src_dir.join("lib.rs"),
         r#"
-        struct Counter {
-            value: i32,
-        }
-
-        impl TypedExternal for Counter {
-            fn type_tag() -> &'static str { "Counter" }
-        }
-
-        #[miniextendr]
-        impl Counter {
-            fn new() -> Self { Counter { value: 0 } }
-        }
-
-        miniextendr_module! {
-            mod lib;
-            impl Counter;
-        }
+        #[miniextendr(internal, noexport)]
+        pub fn helper() -> i32 { 42 }
         "#,
     )
     .unwrap();
 
     let report = run(dir.path()).expect("lint should succeed");
-    let derive_errors: Vec<_> = report
-        .errors
-        .iter()
-        .filter(|e| e.contains("ExternalPtr"))
-        .collect();
     assert!(
-        derive_errors.is_empty(),
-        "should not warn when TypedExternal is manually implemented, got: {:?}",
-        derive_errors
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL203"),
+        "expected MXL203 for internal+noexport redundancy, got: {:?}",
+        report.diagnostics
     );
 }
 
 #[test]
-fn no_warning_for_fn_only_modules() {
+fn no_errors_for_labeled_impl_blocks() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
 
-    // Only fn entries, no impl entries -- should NOT warn about ExternalPtr
     fs::write(
         src_dir.join("lib.rs"),
         r#"
-        #[miniextendr]
-        fn hello() -> String { "world".to_string() }
+        #[miniextendr(label = "constructors")]
+        impl Counter {
+            fn new() -> Self { Counter { value: 0 } }
+        }
 
-        miniextendr_module! {
-            mod lib;
-            fn hello;
+        #[miniextendr(label = "methods")]
+        impl Counter {
+            fn get_value(&self) -> i32 { self.value }
         }
         "#,
     )
@@ -264,98 +182,43 @@ fn no_warning_for_fn_only_modules() {
     let report = run(dir.path()).expect("lint should succeed");
     assert!(
         report.errors.is_empty(),
-        "fn-only modules should not trigger ExternalPtr warnings, got: {:?}",
+        "properly labeled impl blocks should not error, got: {:?}",
         report.errors
     );
 }
 
 #[test]
-fn reports_missing_derive_across_files() {
+fn follows_mod_declarations() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
 
-    // Struct defined in one file, module in another
-    fs::write(
-        src_dir.join("counter.rs"),
-        r#"
-        struct Counter { value: i32 }
-
-        #[miniextendr]
-        impl Counter {
-            fn new() -> Self { Counter { value: 0 } }
-        }
-
-        miniextendr_module! {
-            mod counter;
-            impl Counter;
-        }
-        "#,
-    )
-    .unwrap();
-
     fs::write(
         src_dir.join("lib.rs"),
         r#"
-        mod counter;
-        "#,
-    )
-    .unwrap();
-
-    let report = run(dir.path()).expect("lint run should succeed");
-    assert!(
-        report
-            .errors
-            .iter()
-            .any(|e| e.contains("does not derive ExternalPtr")),
-        "expected missing ExternalPtr derive across files, got: {:?}",
-        report.errors
-    );
-}
-
-#[test]
-fn no_warning_derive_in_different_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let src_dir = dir.path().join("src");
-    fs::create_dir(&src_dir).unwrap();
-
-    // Derive in one file, module in another
-    fs::write(
-        src_dir.join("types.rs"),
-        r#"
-        #[derive(ExternalPtr)]
-        struct Counter { value: i32 }
+        mod child;
         "#,
     )
     .unwrap();
 
     fs::write(
-        src_dir.join("lib.rs"),
+        src_dir.join("child.rs"),
         r#"
-        mod types;
-
         #[miniextendr]
-        impl Counter {
-            fn new() -> Self { Counter { value: 0 } }
-        }
-
-        miniextendr_module! {
-            mod lib;
-            impl Counter;
-        }
+        pub fn from_child() -> i32 { 1 }
         "#,
     )
     .unwrap();
 
     let report = run(dir.path()).expect("lint should succeed");
-    let derive_errors: Vec<_> = report
-        .errors
-        .iter()
-        .filter(|e| e.contains("ExternalPtr"))
-        .collect();
+    assert_eq!(
+        report.files.len(),
+        2,
+        "should scan both lib.rs and child.rs"
+    );
     assert!(
-        derive_errors.is_empty(),
-        "should find derive from different file, got: {:?}",
-        derive_errors
+        report.errors.is_empty(),
+        "child module with #[miniextendr] should be fine, got: {:?}",
+        report.errors
     );
 }

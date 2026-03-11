@@ -43,16 +43,10 @@
 //!
 //! For record types, additional field accessor methods are generated.
 //!
-//! ## Module Registration
+//! ## Registration
 //!
-//! Types with `#[derive(Vctrs)]` must be registered in `miniextendr_module!`:
-//!
-//! ```ignore
-//! miniextendr_module! {
-//!     mod mypackage;
-//!     vctrs Percent;  // Register vctrs type
-//! }
-//! ```
+//! Types with `#[derive(Vctrs)]` are automatically registered via linkme
+//! distributed slices. No manual module declaration is needed.
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -1121,23 +1115,28 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         #listof_impl
         #into_vctrs_impl
 
-        /// Generated R wrapper code for vctrs S3 methods.
+        /// Generated R wrapper code for vctrs S3 methods (distributed slice).
         #[doc = #source_location_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
-        pub const #r_wrappers_const_ident: &str =
-            concat!(
-                "# Generated from Rust derive(Vctrs) on `",
-                stringify!(#name),
-                "` (",
-                file!(),
-                ":",
-                #source_line_lit,
-                ":",
-                #source_col_lit,
-                ")",
-                #r_wrappers
-            );
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+        static #r_wrappers_const_ident: ::miniextendr_api::registry::RWrapperEntry =
+            ::miniextendr_api::registry::RWrapperEntry {
+                priority: ::miniextendr_api::registry::RWrapperPriority::Vctrs,
+                content: concat!(
+                    "# Generated from Rust derive(Vctrs) on `",
+                    stringify!(#name),
+                    "` (",
+                    file!(),
+                    ":",
+                    #source_line_lit,
+                    ":",
+                    #source_col_lit,
+                    ")",
+                    #r_wrappers
+                ),
+            };
     })
 }
 

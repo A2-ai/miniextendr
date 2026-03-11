@@ -32,20 +32,6 @@ Common attributes:
 - `#[miniextendr(check_interrupt)]` – call `R_CheckUserInterrupt()` up front.
 - `#[miniextendr(coerce)]` – enable coercion for non-native argument types.
 
-### `miniextendr_module!`
-
-Registers exported functions, ALTREP classes, and trait impls for a
-package/module.
-
-```rust
-use miniextendr_api::miniextendr_module;
-
-miniextendr_module! {
-    mod mypkg;
-    fn add;
-}
-```
-
 ### `#[r_ffi_checked]`
 
 Wraps `extern "C-unwind"` blocks with wrappers that route calls to R's main
@@ -68,8 +54,8 @@ thread when invoked from a non-main thread (requires a worker context).
   `#[miniextendr(coerce)]` control wrapper behavior and safety.
 - R wrapper generation is driven by doc comments and roxygen tags.
 - Impl‑block support covers S3/S4/S7/R6 methods plus env‑style dispatch.
-- Trait dispatch requires `#[miniextendr]` on the trait definition and the
-  trait impl, plus `impl Trait for Type;` in `miniextendr_module!`.
+- Trait dispatch requires `#[miniextendr]` on both the trait definition and the
+  trait impl. Registration is automatic via linkme.
 
 ## Publishing to CRAN
 

@@ -8,7 +8,7 @@
 //! - FFI bindings + checked wrappers for R's C API (`ffi`, `r_ffi_checked`).
 //! - Conversions between Rust and R types (`IntoR`, `TryFromSexp`, `Coerce`).
 //! - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
-//! - Wrapper generation from Rust signatures (`#[miniextendr]`, `miniextendr_module!`).
+//! - Wrapper generation from Rust signatures (`#[miniextendr]`, automatic registration via linkme).
 //! - Worker-thread pattern for panic isolation and `Drop` safety (`worker`).
 //! - Class system support (S3, S4, S7, R6, env-style impl blocks).
 //! - Cross-package trait ABI for type-erased dispatch (`trait_abi`).
@@ -27,23 +27,11 @@
 //! }
 //! ```
 //!
-//! Register exports in your package/module:
-//!
-//! ```ignore
-//! use miniextendr_api::miniextendr_module;
-//!
-//! miniextendr_module! {
-//!     mod mypkg;
-//!     fn add;
-//! }
-//! ```
-//!
-//! ## R wrapper generation
-//!
-//! `#[miniextendr]` and `miniextendr_module!` generate C-ABI wrappers plus
-//! R functions that call `.Call(...)` using the original argument names.
+//! That's it — `#[miniextendr]` handles everything. Items self-register
+//! at link time; `miniextendr_init!` generates the `R_init_*` function
+//! that calls `package_init()` to register all routines with R.
 //! Wrapper R code is produced from Rust doc comments (roxygen tags are
-//! extracted) by the `document` binary and committed into
+//! extracted) by the cdylib-based wrapper generator and committed into
 //! `R/miniextendr_wrappers.R` so CRAN builds do not require codegen.
 //!
 //! ## GC protection and ownership
@@ -180,6 +168,10 @@
 // altrep_data/iter.rs.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+// Re-export linkme for use by generated code (distributed_slice entries)
+#[doc(hidden)]
+pub use linkme;
+
 // Procedural macros (re-exported from miniextendr-macros)
 #[doc(hidden)]
 pub use miniextendr_macros::__mx_trait_impl_expand;
@@ -194,7 +186,7 @@ pub use miniextendr_macros::list;
 #[doc(inline)]
 pub use miniextendr_macros::miniextendr;
 #[doc(inline)]
-pub use miniextendr_macros::miniextendr_module;
+pub use miniextendr_macros::miniextendr_init;
 #[doc(inline)]
 pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
@@ -229,6 +221,13 @@ pub mod altrep_registration {
 ///
 /// Most users should prefer safe wrappers from higher-level modules.
 pub mod ffi;
+
+/// Automatic registration internals.
+///
+/// Items annotated with `#[miniextendr]` self-register at link time.
+/// The C entrypoint calls [`registry::miniextendr_register_routines`] to
+/// finalize registration with R. Users don't interact with this module.
+pub mod registry;
 
 // Re-export high-level ALTREP data traits
 pub use altrep_data::{
@@ -567,6 +566,17 @@ pub use allocator::RAllocator;
 /// This module defines the stable, C-compatible types used for runtime trait
 /// dispatch across R package boundaries.
 pub mod abi;
+
+/// C-callable mx_abi functions (mx_wrap, mx_get, mx_query, mx_abi_register).
+///
+/// These are registered via `R_RegisterCCallable` during package init and
+/// loaded by consumer packages via `R_GetCCallable`.
+pub mod mx_abi;
+
+/// Package initialization (`miniextendr_init!` support).
+///
+/// Consolidates all init steps into [`init::package_init`].
+pub mod init;
 
 /// Runtime support for trait ABI operations.
 ///

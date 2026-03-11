@@ -22,9 +22,14 @@ Imports:
     S7,
     vctrs
 Suggests:
+    bench,
     callr,
+    dplyr,
+    ggplot2,
+    scales,
     testthat (>= 3.0.0),
-    tibble
+    tibble,
+    tidyr
 Config/testthat/edition: 3
 Config/build/bootstrap: TRUE
 Config/build/never-clean: true

@@ -17,11 +17,6 @@
 //! // RDebug is automatically available for any Debug type
 //! #[miniextendr]
 //! impl RDebug for MyData {}
-//!
-//! miniextendr_module! {
-//!     mod mymod;
-//!     impl RDebug for MyData;
-//! }
 //! ```
 //!
 //! In R:
@@ -55,11 +50,6 @@ use std::str::FromStr;
 ///
 /// #[miniextendr]
 /// impl RDebug for Config {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RDebug for Config;
-/// }
 /// ```
 #[miniextendr]
 pub trait RDebug {
@@ -102,11 +92,6 @@ impl<T: Debug> RDebug for T {
 ///
 /// #[miniextendr]
 /// impl RDisplay for Version {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RDisplay for Version;
-/// }
 /// ```
 #[miniextendr]
 pub trait RDisplay {
@@ -142,11 +127,6 @@ impl<T: Display> RDisplay for T {
 ///
 /// #[miniextendr]
 /// impl RHash for Record {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RHash for Record;
-/// }
 /// ```
 #[miniextendr]
 pub trait RHash {
@@ -179,11 +159,6 @@ impl<T: Hash> RHash for T {
 ///
 /// #[miniextendr]
 /// impl ROrd for Priority {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl ROrd for Priority;
-/// }
 /// ```
 #[miniextendr]
 pub trait ROrd {
@@ -224,11 +199,6 @@ impl<T: Ord> ROrd for T {
 ///
 /// #[miniextendr]
 /// impl RPartialOrd for MyFloat {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RPartialOrd for MyFloat;
-/// }
 /// ```
 #[miniextendr]
 pub trait RPartialOrd {
@@ -289,11 +259,6 @@ impl<T: PartialOrd> RPartialOrd for T {
 ///
 /// #[miniextendr]
 /// impl RError for MyErrorWrapper {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RError for MyErrorWrapper;
-/// }
 /// ```
 #[miniextendr]
 pub trait RError {
@@ -353,11 +318,6 @@ impl<T: std::error::Error> RError for T {
 ///
 /// #[miniextendr]
 /// impl RFromStr for IpAddress {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RFromStr for IpAddress;
-/// }
 /// ```
 ///
 /// In R:
@@ -397,11 +357,6 @@ impl<T: FromStr> RFromStr for T {
 ///
 /// #[miniextendr]
 /// impl RClone for Buffer {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RClone for Buffer;
-/// }
 /// ```
 ///
 /// In R:
@@ -442,11 +397,6 @@ impl<T: Clone> RClone for T {
 ///
 /// #[miniextendr]
 /// impl RDefault for Config {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RDefault for Config;
-/// }
 /// ```
 ///
 /// In R:
@@ -492,11 +442,6 @@ impl<T: Default> RDefault for T {
 ///
 /// #[miniextendr]
 /// impl RCopy for Point {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RCopy for Point;
-/// }
 /// ```
 ///
 /// In R:
@@ -573,11 +518,6 @@ impl<T: Copy> RCopy for T {
 ///
 /// #[miniextendr]
 /// impl RIterator for MyIter {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RIterator for MyIter;
-/// }
 /// ```
 ///
 /// In R (note: `next` is a reserved word, so expose as `next_item` or similar):
@@ -708,11 +648,6 @@ pub trait RIterator {
 ///
 /// #[miniextendr]
 /// impl RExtend<i32> for MyVec {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RExtend<i32> for MyVec;
-/// }
 /// ```
 ///
 /// In R:
@@ -788,11 +723,6 @@ pub trait RExtend<T> {
 ///
 /// #[miniextendr]
 /// impl RFromIter<i32> for MySet {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RFromIter<i32> for MySet;
-/// }
 /// ```
 ///
 /// In R:
@@ -844,11 +774,6 @@ where
 /// // RToVec is automatically available via blanket impl
 /// #[miniextendr]
 /// impl RToVec<i32> for MySet {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RToVec<i32> for MySet;
-/// }
 /// ```
 ///
 /// In R:
@@ -943,11 +868,6 @@ where
 ///
 /// #[miniextendr]
 /// impl RMakeIter<i32, MyVecIter> for MyVec {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RMakeIter<i32, MyVecIter> for MyVec;
-/// }
 /// ```
 ///
 /// In R (note: expose `next` as `next_item` since `next` is reserved):

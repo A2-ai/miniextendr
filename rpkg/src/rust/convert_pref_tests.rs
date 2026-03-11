@@ -5,7 +5,7 @@
 //! desired representation.
 
 use miniextendr_api::convert::{AsExternalPtr, AsList, AsRNative};
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 #[derive(
     Copy,
@@ -102,15 +102,4 @@ pub fn native_list_as_list(x: i32) -> AsList<NativeList> {
 /// native_list_as_native(3L)
 pub fn native_list_as_native(x: i32) -> AsRNative<NativeList> {
     AsRNative(NativeList(x))
-}
-
-miniextendr_module! {
-    mod convert_pref_tests;
-    fn hybrid_as_list;
-    fn hybrid_as_ptr;
-    fn hybrid_as_native;
-    fn ptr_list_as_list;
-    fn ptr_list_as_ptr;
-    fn native_list_as_list;
-    fn native_list_as_native;
 }

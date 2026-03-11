@@ -1,6 +1,6 @@
 //! nalgebra adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -60,18 +60,4 @@ pub fn nalgebra_dmatrix_transpose(m: DMatrix<f64>) -> DMatrix<f64> {
 #[miniextendr]
 pub fn nalgebra_dmatrix_trace(m: DMatrix<f64>) -> f64 {
     RMatrixOps::trace(&m)
-}
-
-miniextendr_module! {
-    mod nalgebra_adapter_tests;
-    fn nalgebra_dvector_roundtrip;
-    fn nalgebra_dvector_len;
-    fn nalgebra_dvector_sum;
-    fn nalgebra_dvector_norm;
-    fn nalgebra_dvector_dot;
-    fn nalgebra_dmatrix_roundtrip;
-    fn nalgebra_dmatrix_nrows;
-    fn nalgebra_dmatrix_ncols;
-    fn nalgebra_dmatrix_transpose;
-    fn nalgebra_dmatrix_trace;
 }

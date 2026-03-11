@@ -1,6 +1,6 @@
 use miniextendr_api::ffi::SEXP;
+use miniextendr_api::miniextendr;
 use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
 #[miniextendr]
@@ -40,10 +40,4 @@ pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {
 
     let result = handle.join().expect("thread panicked");
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-miniextendr_module! {
-    mod nonapi;
-    extern "C-unwind" fn C_test_spawn_with_r_lean_stack;
-    extern "C-unwind" fn C_test_stack_check_guard_lean;
 }

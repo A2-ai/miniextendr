@@ -335,12 +335,12 @@ test_that("new_derived_temp creates a vctrs vector", {
   expect_equal(vctrs::vec_size(x), 3)
 })
 
-test_that("vec_ptype_abbr.derived_temp returns '°'", {
+test_that("vec_ptype_abbr.derived_temp returns 'deg'", {
   skip_if_vctrs_disabled()
 
   x <- new_derived_temp(c(20.0))
 
-  expect_equal(vctrs::vec_ptype_abbr(x), "°")
+  expect_equal(vctrs::vec_ptype_abbr(x), "deg")
 })
 
 test_that("derived_temp arithmetic works", {

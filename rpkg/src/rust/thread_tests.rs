@@ -1,8 +1,8 @@
 //! Tests for RThreadBuilder and thread safety.
 
 use miniextendr_api::ffi::SEXP;
+use miniextendr_api::miniextendr;
 use miniextendr_api::thread::RThreadBuilder;
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -48,12 +48,4 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
         .expect("thread failed");
 
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-miniextendr_module! {
-    mod thread_tests;
-
-    // Thread safety tests - RThreadBuilder (always available, large stacks)
-    extern "C-unwind" fn C_test_r_thread_builder;
-    extern "C-unwind" fn C_test_r_thread_builder_spawn_join;
 }

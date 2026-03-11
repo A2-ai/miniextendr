@@ -1,8 +1,6 @@
 //! Tests for [`Coerce`], [`TryCoerce`], and [`RNativeType`] traits.
 
-use miniextendr_api::{
-    Coerce, CoerceError, RNativeType, TryCoerce, miniextendr, miniextendr_module,
-};
+use miniextendr_api::{Coerce, CoerceError, RNativeType, TryCoerce, miniextendr};
 
 // Test 6: `RNativeType` derive macro - newtype wrappers (both tuple and named field)
 #[derive(Clone, Copy, RNativeType)]
@@ -188,30 +186,4 @@ pub fn test_per_arg_coerce_both(
 #[miniextendr]
 pub fn test_per_arg_coerce_vec(#[miniextendr(coerce)] x: Vec<u16>, y: i32) -> i32 {
     x.iter().map(|&v| v as i32).sum::<i32>() + y
-}
-
-miniextendr_module! {
-    mod coerce_tests;
-
-    // Coerce trait tests
-    fn test_coerce_identity;
-    fn test_coerce_widen;
-    fn test_coerce_bool_to_int;
-    fn test_coerce_via_helper;
-    fn test_try_coerce_f64_to_i32;
-    fn test_rnative_newtype;
-    fn test_rnative_named_field;
-
-    // Coerce attribute tests
-    fn test_coerce_attr_u16;
-    fn test_coerce_attr_i16;
-    fn test_coerce_attr_vec_u16;
-    fn test_coerce_attr_f32;
-    fn test_coerce_attr_with_invisible;
-
-    // Per-argument coerce tests
-    fn test_per_arg_coerce_first;
-    fn test_per_arg_coerce_second;
-    fn test_per_arg_coerce_both;
-    fn test_per_arg_coerce_vec;
 }

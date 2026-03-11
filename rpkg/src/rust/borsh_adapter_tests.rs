@@ -1,10 +1,10 @@
-//! Borsh adapter tests — binary serialization via R raw vectors.
+//! Borsh adapter tests -- binary serialization via R raw vectors.
 
 use miniextendr_api::borsh_impl::{borsh_from_raw, borsh_to_raw};
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{Borsh, IntoR, RBorshOps, TryFromSexp, miniextendr, miniextendr_module};
+use miniextendr_api::{Borsh, IntoR, RBorshOps, TryFromSexp, miniextendr};
 
-/// Roundtrip a Vec<f64> through borsh serialization → R raw → borsh deserialization.
+/// Roundtrip a Vec<f64> through borsh serialization -> R raw -> borsh deserialization.
 /// @noRd
 #[miniextendr]
 pub fn borsh_roundtrip_doubles(values: Vec<f64>) -> Vec<f64> {
@@ -43,7 +43,7 @@ pub fn borsh_nested_roundtrip() -> bool {
     original == recovered
 }
 
-/// Attempt to deserialize invalid bytes — should return an error string.
+/// Attempt to deserialize invalid bytes -- should return an error string.
 /// @noRd
 #[miniextendr]
 pub fn borsh_invalid_data() -> String {
@@ -66,14 +66,4 @@ pub fn borsh_option_roundtrip() -> bool {
     let r_some: Option<i32> = RBorshOps::borsh_deserialize(&some_bytes).unwrap();
     let r_none: Option<i32> = RBorshOps::borsh_deserialize(&none_bytes).unwrap();
     r_some == some_val && r_none == none_val
-}
-
-miniextendr_module! {
-    mod borsh_adapter_tests;
-    fn borsh_roundtrip_doubles;
-    fn borsh_roundtrip_string;
-    fn borsh_tuple_size;
-    fn borsh_nested_roundtrip;
-    fn borsh_invalid_data;
-    fn borsh_option_roundtrip;
 }

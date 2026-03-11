@@ -223,11 +223,6 @@ impl IntoR for Vec<Option<Uuid>> {
 ///
 /// #[miniextendr]
 /// impl RUuidOps for MyUuid {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RUuidOps for MyUuid;
-/// }
 /// ```
 ///
 /// In R:

@@ -282,14 +282,8 @@ pub fn aho_replace_all_with(
 ///
 /// # Registration
 ///
-/// ```ignore
-/// use miniextendr_api::aho_corasick_impl::{AhoCorasick, RAhoCorasickOps};
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RAhoCorasickOps for AhoCorasick;
-/// }
-/// ```
+/// Registration is automatic when you annotate `impl RAhoCorasickOps for AhoCorasick`
+/// with `#[miniextendr]`.
 pub trait RAhoCorasickOps {
     /// Number of patterns in the automaton.
     fn patterns_len(&self) -> i32;

@@ -109,6 +109,7 @@ growth-debug = []
 refcount-fast-hash = ["dep:ahash"]
 
 [dependencies]
+linkme = { workspace = true }
 miniextendr-macros = { workspace = true }
 rayon = { version = "1.11.0", optional = true }
 rand = { version = "0.9.2", optional = true }
