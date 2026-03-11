@@ -99,7 +99,7 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 	  _wrappers=$$(cygpath -m "$$_wrappers"); \
 	fi; \
-	"$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
 
 # Build cdylib for wrapper generation (shares incremental compilation with staticlib)
 $(CARGO_CDYLIB): FORCE_CARGO

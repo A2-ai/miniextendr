@@ -39,24 +39,31 @@ use std::ffi::CStr;
 /// duration of the R session (typically a string literal).
 pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
     unsafe {
+        // When loaded as a cdylib for wrapper generation, skip full init.
+        // Only routine registration is needed so .Call(miniextendr_write_wrappers) works.
+        // The env var is set by Makevars before dyn.load().
+        let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
+
         // 1. Install panic hook for better error messages
         crate::backtrace::miniextendr_panic_hook();
 
-        // 2. Record main thread ID (and optionally spawn worker thread)
-        crate::worker::miniextendr_runtime_init();
+        if !wrapper_gen {
+            // 2. Record main thread ID (and optionally spawn worker thread)
+            crate::worker::miniextendr_runtime_init();
 
-        // 3. Assert UTF-8 locale
-        crate::encoding::miniextendr_assert_utf8_locale();
+            // 3. Assert UTF-8 locale
+            crate::encoding::miniextendr_assert_utf8_locale();
 
-        // 4. Set ALTREP package name
-        crate::miniextendr_set_altrep_pkg_name(pkg_name.as_ptr());
+            // 4. Set ALTREP package name
+            crate::miniextendr_set_altrep_pkg_name(pkg_name.as_ptr());
 
-        // 5. Initialize vctrs C API (if feature enabled)
-        // Status 1 (not available) is fine — vctrs is optional
-        let _ = miniextendr_init_vctrs_wrapper();
+            // 5. Initialize vctrs C API (if feature enabled)
+            // Status 1 (not available) is fine — vctrs is optional
+            let _ = miniextendr_init_vctrs_wrapper();
 
-        // 6. Register mx_abi C-callables
-        crate::mx_abi::mx_abi_register(pkg_name);
+            // 6. Register mx_abi C-callables
+            crate::mx_abi::mx_abi_register(pkg_name);
+        }
 
         // 7. Register all #[miniextendr] routines and ALTREP classes
         crate::registry::miniextendr_register_routines(dll);
