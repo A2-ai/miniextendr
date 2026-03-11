@@ -243,7 +243,8 @@ impl RustConversionBuilder {
                     let try_expr = quote_spanned! {span=>
                         ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
-                    let owned_stmt = self.conversion_stmt(try_expr, &error_msg, &owned_ident, &string_ty, span);
+                    let owned_stmt =
+                        self.conversion_stmt(try_expr, &error_msg, &owned_ident, &string_ty, span);
                     // Borrow: String -> &str (using Borrow trait)
                     let borrow_stmt = quote_spanned! {span=>
                         let #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);

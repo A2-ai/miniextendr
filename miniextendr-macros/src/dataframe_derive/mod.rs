@@ -302,6 +302,7 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
 /// - `ExpandedFixed`: `[T; N]` -> N columns (`name_1..name_N`) at compile time
 /// - `ExpandedVec`: `Vec<T>` + `width = N` -> N `Vec<Option<T>>` columns
 /// - `AutoExpandVec`: `Vec<T>` + `expand` -> dynamic column count at runtime
+#[allow(clippy::large_enum_variant)]
 enum ResolvedField {
     /// Single column: `name → Vec<ty>`.
     Single {
@@ -1556,6 +1557,7 @@ pub(super) enum VariantShape {
 /// This is the enum-path counterpart of [`ResolvedField`] (used for structs).
 /// Each variant carries both the binding name (for destructure patterns) and the
 /// original Rust field name (for error reporting and named-variant patterns).
+#[allow(clippy::large_enum_variant)]
 pub(super) enum EnumResolvedField {
     /// Single column contribution.
     Single {
