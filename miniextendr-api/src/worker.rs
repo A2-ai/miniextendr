@@ -559,11 +559,12 @@ mod tests {
         // If another test already called miniextendr_runtime_init (via Once),
         // we can't test the pre-init path. Verify at least panics from wrong thread.
         if R_MAIN_THREAD_ID.get().is_some() {
-            let handle = std::thread::spawn(|| {
-                std::panic::catch_unwind(|| with_r_thread(|| 42))
-            });
+            let handle = std::thread::spawn(|| std::panic::catch_unwind(|| with_r_thread(|| 42)));
             let result = handle.join().expect("thread panicked outside catch_unwind");
-            assert!(result.is_err(), "with_r_thread should panic from non-main thread");
+            assert!(
+                result.is_err(),
+                "with_r_thread should panic from non-main thread"
+            );
             return;
         }
         let result = std::panic::catch_unwind(|| {
@@ -622,9 +623,9 @@ mod tests {
                     );
                 }
                 Ok(Err(msg)) => panic!("{msg}"),
-                Err(_) => panic!(
-                    "DEADLOCK: run_on_worker re-entry caused the test to hang for 5 seconds"
-                ),
+                Err(_) => {
+                    panic!("DEADLOCK: run_on_worker re-entry caused the test to hang for 5 seconds")
+                }
             }
         }
     }
