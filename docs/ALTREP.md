@@ -1258,25 +1258,6 @@ impl Altrep for ArithSeq {
 
 ---
 
-## Module Registration
-
-Register your ALTREP types in `miniextendr_module!`:
-
-```rust
-miniextendr_module! {
-    mod mypkg;
-
-    // Constructor functions
-    fn constant_int;
-    fn arith_seq;
-    fn unit_circle;
-
-    // ALTREP classes are registered automatically via #[miniextendr] attribute
-}
-```
-
----
-
 ## Materialization and DATAPTR
 
 ### Understanding Materialization
@@ -1488,7 +1469,7 @@ impl OptionallyMaterialized {
 ## Troubleshooting
 
 ### "Error: could not find function"
-- Ensure constructor function is listed in `miniextendr_module!`
+- Ensure constructor function has `#[miniextendr]` and is `pub`
 - Run `just devtools-document` after adding new functions
 
 ### Elements return wrong values

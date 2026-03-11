@@ -45,20 +45,20 @@ Proc macros that generate the glue code:
 
 - `#[miniextendr]` on functions: generates C-callable wrapper + R wrapper code
 - `#[miniextendr]` on impl blocks: generates method dispatch (env/R6/S3/S4/S7 class systems)
-- `miniextendr_module!`: declares which items to register with R
+- Registration is automatic via linkme distributed slices
 - `#[derive(ExternalPtr)]`, `#[derive(DataFrameRow)]`, `#[derive(Vctrs)]`, etc.
 
 ### miniextendr-engine
 
-Code generation engine used by the `document` binary. Reads proc-macro output and generates `miniextendr-wrappers.R` (the R-side wrapper functions).
+Code generation engine. Provides the `miniextendr_write_wrappers` function that reads linkme distributed slices and generates `miniextendr-wrappers.R` (the R-side wrapper functions). Called via a temporary cdylib loaded into R.
 
 ### miniextendr-macros-core
 
-Shared parser types used by both `miniextendr-macros` and `miniextendr-lint`. Provides the `miniextendr_module!` parser and common AST types, ensuring both crates agree on syntax.
+Shared parser types used by both `miniextendr-macros` and `miniextendr-lint`. Provides common AST types, ensuring both crates agree on syntax.
 
 ### miniextendr-lint
 
-Build-time static analysis. Checks consistency between `#[miniextendr]` attributes and `miniextendr_module!` declarations. Runs automatically during `cargo check` via `build.rs`.
+Build-time static analysis. Checks `#[miniextendr]` source-level attributes for consistency. Runs automatically during `cargo check` via `build.rs`.
 
 ## How a function call flows
 
@@ -68,7 +68,7 @@ When R calls a miniextendr function, the path is:
 R: my_function(x, y)
   │
   ▼
-C: C_my_function(x_sexp, y_sexp)        [generated entrypoint in entrypoint.c]
+Rust: C_my_function(x_sexp, y_sexp)     [registered via linkme + miniextendr_init!]
   │
   ▼
 Rust: with_r_unwind_protect(|| {         [main thread, unwind-protected]
@@ -95,10 +95,12 @@ Key safety properties:
 .in templates ──[autoconf]──> configure script ──[./configure]──> generated files
 
 Makevars.in ────────────────────────────────────> Makevars
-entrypoint.c.in ────────────────────────────────> entrypoint.c
-document.rs.in ─────────────────────────────────> document.rs
 cargo-config.toml.in ──────────────────────────> .cargo/config.toml
 ```
+
+Note: `entrypoint.c.in` and `mx_abi.c.in` have been eliminated. All entry
+points are now generated in Rust via `miniextendr_init!`. A minimal `stub.c`
+exists solely to satisfy R's build system requirement for at least one C file.
 
 ### Vendor system
 
