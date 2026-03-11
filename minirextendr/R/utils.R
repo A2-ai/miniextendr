@@ -38,6 +38,7 @@ with_project <- function(path, .local_envir = parent.frame()) {
 with_envvars <- function(env, expr) {
   if (length(env) == 0) return(expr)
   old <- Sys.getenv(names(env), unset = NA)
+  names(old) <- names(env)  # Sys.getenv drops names when unset= is used
   do.call(Sys.setenv, as.list(env))
   on.exit({
     to_unset <- names(old)[is.na(old)]

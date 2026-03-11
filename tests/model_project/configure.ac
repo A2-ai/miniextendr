@@ -324,7 +324,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+            (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
             if test $? -ne 0; then
               echo "configure: error: failed to unpack vendor.tar.xz" >&2
               exit 1
@@ -362,7 +362,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
   if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
     if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
       echo "configure: unpacking inst/vendor.tar.xz"
-      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+      (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
       if test $? -ne 0; then
         echo "configure: error: failed to unpack vendor.tar.xz" >&2
         exit 1

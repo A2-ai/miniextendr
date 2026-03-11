@@ -378,7 +378,7 @@ vendor:
         basename=$(basename "$crate_file" .crate)
         echo "  $basename"
         mkdir -p "$vendor_out/$basename"
-        tar -xzf "$crate_file" -C "$vendor_out/$basename" --strip-components=1
+        (cd "$vendor_out/$basename" && tar -xzf "$crate_file" --strip-components=1)
         # Add cargo checksum file (required for vendored sources)
         echo '{"files":{}}' > "$vendor_out/$basename/.cargo-checksum.json"
     done
@@ -461,7 +461,7 @@ vendor:
     find "$compress_staging/vendor" -name '*.md' -type f -exec truncate -s 0 {} \; 2>/dev/null || true
 
     mkdir -p "$root/rpkg/inst"
-    tar -cJf "$root/rpkg/inst/vendor.tar.xz" -C "$compress_staging" vendor
+    (cd "$compress_staging" && tar -cJf "$root/rpkg/inst/vendor.tar.xz" vendor)
 
     # Clean up staging
     rm -rf "$staging" "$compress_staging"
@@ -568,7 +568,7 @@ test-r-build: configure
     # Extract for inspection
     out_dir="rpkg_build/${pkg}_${ver}"
     mkdir -p "$out_dir"
-    tar -xf "$tarball" -C "$out_dir" --strip-components=1
+    (cd "$out_dir" && tar -xf "$tarball" --strip-components=1)
     echo "Extracted to: $out_dir"
 
 # ============================================================================
