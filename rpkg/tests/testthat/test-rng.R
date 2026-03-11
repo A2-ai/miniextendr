@@ -60,6 +60,12 @@ test_that("rng_with_interrupt works (main thread + RNG)", {
 })
 
 test_that("rng_worker_uniform works (explicit worker + RNG)", {
+  # rng_worker_uniform requires the default-worker feature
+  skip_if_not(
+    !is.null(tryCatch(getNativeSymbolInfo("C_rng_worker_uniform", "miniextendr"),
+                       error = function(e) NULL)),
+    "default-worker feature not enabled"
+  )
   set.seed(42)
   result1 <- rng_worker_uniform(5L)
 
