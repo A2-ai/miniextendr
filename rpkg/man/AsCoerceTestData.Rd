@@ -90,9 +90,9 @@ AsCoerceTestData
 \method{as.integer}{AsCoerceTestData}(x, ...)
 }
 \arguments{
-\item{x}{An object}
+\item{x}{An object.}
 
-\item{...}{Additional arguments passed to methods}
+\item{...}{Additional arguments.}
 }
 \description{
 Test type for as.data.frame, as.list, and as.character methods

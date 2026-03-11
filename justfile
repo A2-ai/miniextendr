@@ -169,7 +169,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     cd rpkg
-    output=$(NOT_CRAN=true cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
+    output=$(cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
         echo "$output"
         echo ""
         echo "::error::cargo check failed (see output above)"
@@ -322,7 +322,7 @@ expand *cargo_flags:
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true bash ./configure
+    bash ./configure
 
 # Configure in CRAN/offline mode (BUILD_CONTEXT=prepare-cran)
 #
@@ -348,6 +348,10 @@ vendor:
     vendor_out="$rpkg_root/vendor"
     manifest="$rpkg_src/rust/Cargo.toml"
     lockfile="$rpkg_src/rust/Cargo.lock"
+
+    # MSYS2 tar interprets D: as remote host; --force-local treats all as local
+    TAR_FORCE_LOCAL=""
+    case "$(uname -s)" in MSYS*|MINGW*|CYGWIN*) TAR_FORCE_LOCAL="--force-local";; esac
 
     echo "=== CRAN vendor prep ==="
 
@@ -378,7 +382,13 @@ vendor:
         basename=$(basename "$crate_file" .crate)
         echo "  $basename"
         mkdir -p "$vendor_out/$basename"
-        tar -xzf "$crate_file" -C "$vendor_out/$basename" --strip-components=1
+        (cd "$vendor_out/$basename" && tar $TAR_FORCE_LOCAL -xzf "$crate_file" --strip-components=1)
+        # Strip [[bench]], [[test]], [dev-dependencies] from Cargo.toml
+        # (benches/tests dirs will be removed during compression)
+        for section in '\[dev-dependencies\]' '\[\[bench\]\]' '\[\[test\]\]'; do
+            sed -i.bak "/^${section}/,/^\[/{/^${section}/d;/^\[/!d;}" "$vendor_out/$basename/Cargo.toml"
+            rm -f "$vendor_out/$basename/Cargo.toml.bak"
+        done
         # Add cargo checksum file (required for vendored sources)
         echo '{"files":{}}' > "$vendor_out/$basename/.cargo-checksum.json"
     done
@@ -427,9 +437,13 @@ vendor:
             "$dest/Cargo.toml"
         rm -f "$dest/Cargo.toml.bak"
 
-        # Strip [dev-dependencies] section (tests/benches dirs are removed from vendor)
-        sed -i.bak '/^\[dev-dependencies\]/,/^\[/{/^\[dev-dependencies\]/d;/^\[/!d;}' "$dest/Cargo.toml"
-        rm -f "$dest/Cargo.toml.bak"
+        # Strip [dev-dependencies], [[bench]], and [[test]] sections
+        # (tests/ and benches/ dirs are removed from vendor, so Cargo.toml
+        # must not reference them or cargo will error)
+        for section in '\[dev-dependencies\]' '\[\[bench\]\]' '\[\[test\]\]'; do
+            sed -i.bak "/^${section}/,/^\[/{/^${section}/d;/^\[/!d;}" "$dest/Cargo.toml"
+            rm -f "$dest/Cargo.toml.bak"
+        done
 
         # Verify all workspace refs were resolved
         if grep -q 'workspace = true' "$dest/Cargo.toml"; then
@@ -461,7 +475,7 @@ vendor:
     find "$compress_staging/vendor" -name '*.md' -type f -exec truncate -s 0 {} \; 2>/dev/null || true
 
     mkdir -p "$root/rpkg/inst"
-    tar -cJf "$root/rpkg/inst/vendor.tar.xz" -C "$compress_staging" vendor
+    (cd "$compress_staging" && tar $TAR_FORCE_LOCAL -cJf "$root/rpkg/inst/vendor.tar.xz" vendor)
 
     # Clean up staging
     rm -rf "$staging" "$compress_staging"
@@ -498,15 +512,14 @@ devtools-build: configure
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
-# NOT_CRAN=true ensures vendor directory is preserved during R CMD build
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
 devtools-check: devtools-document
-    NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
+    Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document
 devtools-document: configure
-    NOT_CRAN=true Rscript -e 'devtools::document("rpkg")'
+    Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace
 # This includes: rpkg, minirextendr, and cross-package test packages
@@ -557,6 +570,9 @@ r-cmd-check *args: vendor
 test-r-build: configure
     #!/usr/bin/env bash
     set -euo pipefail
+    # MSYS2 tar interprets D: as remote host; --force-local treats all as local
+    TAR_FORCE_LOCAL=""
+    case "$(uname -s)" in MSYS*|MINGW*|CYGWIN*) TAR_FORCE_LOCAL="--force-local";; esac
     # Extract package info from DESCRIPTION
     pkg=$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Package"]])')
     ver=$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Version"]])')
@@ -568,7 +584,7 @@ test-r-build: configure
     # Extract for inspection
     out_dir="rpkg_build/${pkg}_${ver}"
     mkdir -p "$out_dir"
-    tar -xf "$tarball" -C "$out_dir" --strip-components=1
+    (cd "$out_dir" && tar $TAR_FORCE_LOCAL -xf "$tarball" --strip-components=1)
     echo "Extracted to: $out_dir"
 
 # ============================================================================
