@@ -230,7 +230,6 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      NOT_CRAN: true
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
 
@@ -390,7 +389,6 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      NOT_CRAN: true
       SCCACHE_GHA_ENABLED: "true"
 
     steps:
@@ -482,7 +480,6 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      NOT_CRAN: true
       SCCACHE_GHA_ENABLED: "true"
       # Windows GNU toolchain requires explicit target (msys != windows-gnu)
       CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
@@ -568,7 +565,7 @@ jobs:
           echo "rustc: $(which rustc || echo 'not found')"
           cd "$(cygpath -u "$GITHUB_WORKSPACE")/rpkg"
           # Windows needs explicit target for GNU toolchain (msys != windows-gnu)
-          NOT_CRAN=true CARGO_BUILD_TARGET=x86_64-pc-windows-gnu ./configure
+          CARGO_BUILD_TARGET=x86_64-pc-windows-gnu ./configure
           cd "$(cygpath -u "$GITHUB_WORKSPACE")"
           just vendor
 
@@ -630,7 +627,6 @@ jobs:
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      NOT_CRAN: true
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
 
@@ -696,7 +692,6 @@ jobs:
     if: needs.changes.outputs.r == 'true'
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      NOT_CRAN: true
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
 
@@ -871,9 +866,7 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
-      - name: Configure and vendor (dev mode creates clean vendor.tar.xz)
-        env:
-          NOT_CRAN: "true"
+      - name: Configure and vendor
         run: |
           just configure
           just vendor
