@@ -1,20 +1,14 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-13 09:25:19
-+++ b/monorepo/rpkg/Makevars.in	2026-03-13 09:21:09
-@@ -9,5 +9,4 @@
- ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
- CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
--ABS_RPKG_SRC_CARGO = @ABS_RPKG_SRC_CARGO@
- CARGO_LIBDIR = @CARGO_LIBDIR@
- VENDOR_OUT = @VENDOR_OUT@
-@@ -15,6 +14,4 @@
+--- a/monorepo/rpkg/Makevars.in	2026-03-10 22:18:46
++++ b/monorepo/rpkg/Makevars.in	2026-03-11 05:00:57
+@@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
 -CDYLIB_PREFIX = @CDYLIB_PREFIX@
 -CDYLIB_EXT = @CDYLIB_EXT@
  TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
  
-@@ -26,8 +23,4 @@
+@@ -25,8 +23,4 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 -WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
@@ -23,7 +17,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
  ## ----------------------------------------------------------------------
  
-@@ -72,7 +65,7 @@
+@@ -71,7 +65,7 @@
  VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
  
 -$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
@@ -33,8 +27,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 +	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
- 	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
-@@ -87,40 +80,4 @@
+ 	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
+@@ -86,40 +80,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -51,7 +45,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 -	  _wrappers=$$(cygpath -m "$$_wrappers"); \
 -	fi; \
--	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+-	"$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
 -
 -# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
 -$(CARGO_CDYLIB): FORCE_CARGO
@@ -62,10 +56,10 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 -	case "$(CARGO_BUILD_TARGET)" in \
--	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def"; ;; \
+-	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc"; ;; \
 -	esac; \
 -	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
@@ -76,8 +70,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-13 09:21:09
-+++ b/monorepo/rpkg/configure.ac	2026-03-13 09:21:09
+--- a/monorepo/rpkg/configure.ac	2026-03-10 22:18:46
++++ b/monorepo/rpkg/configure.ac	2026-03-11 05:00:57
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -376,7 +370,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
--              (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
+-              (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -              if test $? -ne 0; then
 -                echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -                exit 1
@@ -392,7 +386,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-+            (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
++            (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +            if test $? -ne 0; then
 +              echo "configure: error: failed to unpack vendor.tar.xz" >&2
                exit 1
@@ -434,7 +428,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +      echo "configure: unpacking inst/vendor.tar.xz"
-+      (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
++      (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +      if test $? -ne 0; then
 +        echo "configure: error: failed to unpack vendor.tar.xz" >&2
 +        exit 1
@@ -525,7 +519,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: unpacking inst/vendor.tar.xz"
--          (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
+-          (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -          if test $? -ne 0; then
 -            echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -            exit 1
@@ -666,22 +660,16 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-13 09:25:19
-+++ b/rpkg/Makevars.in	2026-03-13 09:21:09
-@@ -9,5 +9,4 @@
- ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
- CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
--ABS_RPKG_SRC_CARGO = @ABS_RPKG_SRC_CARGO@
- CARGO_LIBDIR = @CARGO_LIBDIR@
- VENDOR_OUT = @VENDOR_OUT@
-@@ -15,6 +14,4 @@
+--- a/rpkg/Makevars.in	2026-03-10 22:18:46
++++ b/rpkg/Makevars.in	2026-03-11 05:00:57
+@@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
 -CDYLIB_PREFIX = @CDYLIB_PREFIX@
 -CDYLIB_EXT = @CDYLIB_EXT@
  TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
  
-@@ -26,8 +23,4 @@
+@@ -25,8 +23,4 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 -WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
@@ -690,7 +678,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
  ## ----------------------------------------------------------------------
  
-@@ -72,7 +65,7 @@
+@@ -71,7 +65,7 @@
  VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
  
 -$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
@@ -700,8 +688,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 +	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
- 	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
-@@ -87,40 +80,4 @@
+ 	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
+@@ -86,40 +80,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -718,7 +706,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 -	  _wrappers=$$(cygpath -m "$$_wrappers"); \
 -	fi; \
--	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+-	"$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
 -
 -# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
 -$(CARGO_CDYLIB): FORCE_CARGO
@@ -729,10 +717,10 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 -	case "$(CARGO_BUILD_TARGET)" in \
--	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def"; ;; \
+-	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc"; ;; \
 -	esac; \
 -	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
@@ -743,8 +731,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-13 09:21:09
-+++ b/rpkg/configure.ac	2026-03-13 09:21:09
+--- a/rpkg/configure.ac	2026-03-10 22:18:46
++++ b/rpkg/configure.ac	2026-03-11 05:00:57
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -1043,7 +1031,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
--              (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
+-              (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -              if test $? -ne 0; then
 -                echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -                exit 1
@@ -1059,7 +1047,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-+            (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
++            (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +            if test $? -ne 0; then
 +              echo "configure: error: failed to unpack vendor.tar.xz" >&2
                exit 1
@@ -1101,7 +1089,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +      echo "configure: unpacking inst/vendor.tar.xz"
-+      (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
++      (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 +      if test $? -ne 0; then
 +        echo "configure: error: failed to unpack vendor.tar.xz" >&2
 +        exit 1
@@ -1192,7 +1180,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: unpacking inst/vendor.tar.xz"
--          (cd "$abs_rpkg_dir" && tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
+-          (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
 -          if test $? -ne 0; then
 -            echo "configure: error: failed to unpack vendor.tar.xz" >&2
 -            exit 1
