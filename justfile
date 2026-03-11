@@ -169,7 +169,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     cd rpkg
-    output=$(NOT_CRAN=true cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
+    output=$(cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
         echo "$output"
         echo ""
         echo "::error::cargo check failed (see output above)"
@@ -322,7 +322,7 @@ expand *cargo_flags:
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true bash ./configure
+    bash ./configure
 
 # Configure in CRAN/offline mode (BUILD_CONTEXT=prepare-cran)
 #
@@ -512,15 +512,14 @@ devtools-build: configure
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
-# NOT_CRAN=true ensures vendor directory is preserved during R CMD build
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
 devtools-check: devtools-document
-    NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
+    Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document
 devtools-document: configure
-    NOT_CRAN=true Rscript -e 'devtools::document("rpkg")'
+    Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace
 # This includes: rpkg, minirextendr, and cross-package test packages
