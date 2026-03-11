@@ -149,6 +149,9 @@ miniextendr_document <- function(path = ".") {
 #' (incorporates wrappers). The two installs are needed because R wrapper
 #' generation requires the compiled Rust `document` binary.
 #'
+#' Uses `R CMD INSTALL .` directly (not `devtools::install()`) to avoid the
+#' tarball intermediate step which strips the vendor/ directory.
+#'
 #' @param path Path to the R package root, or `NULL` to use the active project.
 #' @param install Whether to run `R CMD INSTALL` steps. If `FALSE`, only
 #'   runs autoconf + configure + document.
@@ -171,22 +174,8 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
 
   if (install) {
     cli::cli_h2("Step 3: first install (compile Rust)")
-    if (!requireNamespace("devtools", quietly = TRUE)) {
-      cli::cli_warn("devtools not installed, skipping install step")
-    } else {
-      tryCatch(
-        with_envvars(env_vars, {
-          devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
-        }),
-        error = function(e) {
-          cli::cli_abort(c(
-            "Package installation failed",
-            "i" = conditionMessage(e)
-          ))
-        }
-      )
-      cli::cli_alert_success("Installed package (first pass)")
-    }
+    r_cmd_install(pkg_path, env_vars)
+    cli::cli_alert_success("Installed package (first pass)")
   }
 
   cli::cli_h2("Step 4: document (generate R wrappers)")
@@ -202,21 +191,39 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
 
   if (install) {
     cli::cli_h2("Step 6: final install (with R wrappers + NAMESPACE)")
-    tryCatch(
-      with_envvars(env_vars, {
-        devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
-      }),
-      error = function(e) {
-        cli::cli_abort(c(
-          "Package installation failed",
-          "i" = conditionMessage(e)
-        ))
-      }
-    )
+    r_cmd_install(pkg_path, env_vars)
     cli::cli_alert_success("Installed package (final pass)")
   }
 
   cli::cli_alert_success("Build complete!")
+  invisible(TRUE)
+}
+
+#' Run R CMD INSTALL directly on a source directory
+#'
+#' Uses `R CMD INSTALL .` instead of `devtools::install()` to avoid the
+#' `R CMD build` tarball intermediate step. This preserves vendor/ which
+#' is excluded by .Rbuildignore.
+#'
+#' @param pkg_path Path to the package directory
+#' @param env_vars Named character vector of environment variables to set
+#' @return Invisibly returns TRUE on success
+#' @keywords internal
+r_cmd_install <- function(pkg_path, env_vars = character()) {
+  with_envvars(env_vars, {
+    result <- run_with_logging(
+      file.path(R.home("bin"), "R"),
+      args = c("CMD", "INSTALL", pkg_path),
+      log_prefix = "r-cmd-install",
+      wd = pkg_path,
+      env = if (requireNamespace("devtools", quietly = TRUE)) {
+        devtools::r_env_vars()
+      } else {
+        character()
+      }
+    )
+    check_result(result, "R CMD INSTALL")
+  })
   invisible(TRUE)
 }
 

@@ -135,8 +135,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Configure (vendor crates)
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       - name: Check vendor sync
         run: just vendor-sync-check
@@ -274,8 +276,10 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
-      - name: Configure
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       # ---------------------------------------------------------------------
       # Rust checks (Linux only, run once on R=release)
@@ -321,6 +325,8 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"error"'
           check-dir: '"check"'
+        env:
+          NOT_CRAN: false
 
       - name: Fail if Rust checks failed
         if: always() && matrix.r == 'release'
@@ -431,8 +437,10 @@ jobs:
           shared-key: r-macos-${{ matrix.arch }}
           cache-on-failure: true
 
-      - name: Configure
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -441,6 +449,8 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"error"'
           check-dir: '"check"'
+        env:
+          NOT_CRAN: false
 
       - name: Print failed tests
         if: always()
@@ -542,7 +552,7 @@ jobs:
           $config = "[target.x86_64-pc-windows-gnu]`nlinker = `"x86_64-w64-mingw32.static.posix-gcc.exe`"`n`n[env]`nLIBRARY_PATH = `"$pwd_slash/libgcc_mock`""
           [System.IO.File]::WriteAllText("$PWD\.cargo\config.toml", $config)
 
-      - name: Configure
+      - name: Configure and vendor
         shell: C:\rtools44\usr\bin\bash.exe -e -o pipefail {0}
         run: |
           # Add rtools and cargo to PATH (--login might reset PATH)
@@ -559,6 +569,8 @@ jobs:
           cd "$(cygpath -u "$GITHUB_WORKSPACE")/rpkg"
           # Windows needs explicit target for GNU toolchain (msys != windows-gnu)
           NOT_CRAN=true CARGO_BUILD_TARGET=x86_64-pc-windows-gnu ./configure
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          just vendor
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -567,6 +579,8 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"error"'
           check-dir: '"check"'
+        env:
+          NOT_CRAN: false
 
       - name: Print failed tests
         if: always()
@@ -656,8 +670,10 @@ jobs:
           shared-key: r-tests
           cache-on-failure: true
 
-      - name: Configure
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       - name: Install package
         working-directory: rpkg
@@ -726,8 +742,10 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
-      - name: Configure shared vendor
-        run: just configure
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
 
       - name: Build and test cross-package packages
         working-directory: tests/cross-package
@@ -856,7 +874,9 @@ jobs:
       - name: Configure and vendor (dev mode creates clean vendor.tar.xz)
         env:
           NOT_CRAN: "true"
-        run: just configure
+        run: |
+          just configure
+          just vendor
 
       - name: Build source tarball
         run: |
@@ -866,6 +886,8 @@ jobs:
           echo "TARBALL=$(ls -1 miniextendr_*.tar.gz)" >> $GITHUB_ENV
 
       - name: R CMD check (CRAN-like, from tarball)
+        env:
+          NOT_CRAN: false
         run: |
           # Check the tarball without NOT_CRAN (simulates CRAN)
           R CMD check --as-cran --no-manual ${{ env.TARBALL }}

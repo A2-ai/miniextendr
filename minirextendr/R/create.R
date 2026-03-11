@@ -14,12 +14,14 @@
 create_miniextendr_package <- function(path, open = interactive(),
                                         rstudio = TRUE) {
   # Validate package name (derived from directory basename)
+  # R package names: ASCII letters, digits, and dots only.
+  # Must start with a letter and not end with a dot. Minimum 2 characters.
   pkg_name <- basename(normalizePath(path, mustWork = FALSE))
-  if (grepl("-", pkg_name)) {
+  if (!grepl("^[a-zA-Z][a-zA-Z0-9.]*[a-zA-Z0-9]$", pkg_name) || nchar(pkg_name) < 2) {
     cli::cli_abort(c(
-      "Package name {.val {pkg_name}} contains hyphens, which are not allowed in R package names.",
-      "i" = "Use dots or underscores instead: {.val {gsub('-', '.', pkg_name)}} or {.val {gsub('-', '_', pkg_name)}}",
-      "i" = "Or choose a directory name without hyphens."
+      "Package name {.val {pkg_name}} is not a valid R package name.",
+      "i" = "R package names must start with a letter, contain only ASCII letters, digits, and dots, and not end with a dot.",
+      "i" = "Try: {.val {gsub('[^a-zA-Z0-9.]', '', pkg_name)}}"
     ))
   }
 
