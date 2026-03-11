@@ -880,11 +880,12 @@ fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
                 .find(|c: char| !c.is_alphanumeric() && c != '_')
                 .unwrap_or(after_ffi.len());
             let ident = &after_ffi[..ident_end];
-            if ident.ends_with("_unchecked") && after_ffi[ident_end..].starts_with('(') {
-                if !is_suppressed(&lines, line_idx, "MXL301") {
-                    data.ffi_unchecked_calls
-                        .push((ident.to_string(), line_idx + 1));
-                }
+            if ident.ends_with("_unchecked")
+                && after_ffi[ident_end..].starts_with('(')
+                && !is_suppressed(&lines, line_idx, "MXL301")
+            {
+                data.ffi_unchecked_calls
+                    .push((ident.to_string(), line_idx + 1));
             }
             search_from = abs_pos + 5 + ident_end;
         }
@@ -901,12 +902,10 @@ fn scan_rf_error_calls(src: &str, data: &mut FileData) {
             continue;
         }
         for pattern in RF_ERROR_PATTERNS {
-            if trimmed.contains(pattern) {
-                if !is_suppressed(&lines, line_idx, "MXL300") {
-                    let fn_name = &pattern[..pattern.len() - 1];
-                    data.rf_error_calls
-                        .push((fn_name.to_string(), line_idx + 1));
-                }
+            if trimmed.contains(pattern) && !is_suppressed(&lines, line_idx, "MXL300") {
+                let fn_name = &pattern[..pattern.len() - 1];
+                data.rf_error_calls
+                    .push((fn_name.to_string(), line_idx + 1));
             }
         }
     }
