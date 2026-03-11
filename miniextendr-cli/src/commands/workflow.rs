@@ -216,11 +216,7 @@ fn workflow_doctor(ctx: &ProjectContext, quiet: bool) -> Result<()> {
     if !quiet {
         println!("\n-- Generated files --");
     }
-    let template_pairs = [
-        ("src/Makevars.in", "src/Makevars"),
-        ("src/entrypoint.c.in", "src/entrypoint.c"),
-        ("src/rust/document.rs.in", "src/rust/document.rs"),
-    ];
+    let template_pairs = [("src/Makevars.in", "src/Makevars")];
 
     for (tmpl, generated) in &template_pairs {
         let tmpl_path = root.join(tmpl);

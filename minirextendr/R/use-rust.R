@@ -46,69 +46,38 @@ use_miniextendr_cargo_config <- function(path = ".") {
   invisible(TRUE)
 }
 
-#' Add document.rs.in template
+#' Add stub.c file
 #'
-#' Creates src/rust/document.rs.in which generates R wrapper functions
-#' from the Rust code. This is processed by configure to create document.rs.
-#'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @return Invisibly returns TRUE if file was created
-#' @keywords internal
-use_miniextendr_document <- function(path = ".") {
-  with_project(path)
-  ensure_dir(usethis::proj_path("src", "rust"))
-  use_template("document.rs.in", save_as = "src/rust/document.rs.in")
-  generate_document_rs(
-    usethis::proj_path("src", "rust", "document.rs.in"),
-    usethis::proj_path("src", "rust", "document.rs"),
-    package = get_package_name()
-  )
-  invisible(TRUE)
-}
-
-#' Add entrypoint.c.in template
-#'
-#' Creates src/entrypoint.c.in which provides the C entry point for R
-#' to load the shared library. Initializes panic hooks and worker thread.
+#' Copies src/stub.c which is a minimal C file so R's build system
+#' produces a shared library. All entry points are defined in Rust
+#' via miniextendr_init!().
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
+#' @export
 #' @keywords internal
-use_miniextendr_entrypoint <- function(path = ".") {
+use_miniextendr_stub <- function(path = ".") {
   with_project(path)
   ensure_dir(usethis::proj_path("src"))
-  use_template("entrypoint.c.in", save_as = "src/entrypoint.c.in")
-  generate_entrypoint_c(
-    usethis::proj_path("src", "entrypoint.c.in"),
-    usethis::proj_path("src", "entrypoint.c"),
-    package = get_package_name()
-  )
+  stub_src <- template_path("stub.c")
+  stub_dest <- usethis::proj_path("src", "stub.c")
+  fs::file_copy(stub_src, stub_dest, overwrite = TRUE)
+  bullet_created("src/stub.c")
   invisible(TRUE)
 }
 
-#' Add mx_abi.c.in and mx_abi.h templates
+#' Add mx_abi.h header template
 #'
-#' Creates src/mx_abi.c.in and inst/include/mx_abi.h which provide the
-#' C ABI for cross-package trait dispatch. These files enable other packages
-#' to interact with miniextendr's trait system.
+#' Creates inst/include/mx_abi.h which provides the C header for
+#' cross-package trait dispatch. This enables other packages to
+#' interact with miniextendr's trait system.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
-#' @return Invisibly returns TRUE if files were created
+#' @return Invisibly returns TRUE if file was created
 #' @keywords internal
 use_miniextendr_mx_abi <- function(path = ".") {
   with_project(path)
   data <- template_data()
-
-  # Create src/ directory if needed
-  ensure_dir(usethis::proj_path("src"))
-
-  # mx_abi.c.in template
-  use_template("mx_abi.c.in", save_as = "src/mx_abi.c.in")
-  generate_mx_abi_c(
-    usethis::proj_path("src", "mx_abi.c.in"),
-    usethis::proj_path("src", "mx_abi.c"),
-    package = get_package_name()
-  )
 
   # inst/include/ directory and header
   ensure_dir(usethis::proj_path("inst", "include"))
@@ -121,8 +90,7 @@ use_miniextendr_mx_abi <- function(path = ".") {
 #' Add build.rs template
 #'
 #' Creates src/rust/build.rs which runs miniextendr-lint during cargo build
-#' to check consistency between `#[miniextendr]` attributes and
-#' `miniextendr_module!` declarations.
+#' to check `#[miniextendr]` attributes and registration consistency.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created

@@ -328,7 +328,6 @@ use_feature_detection <- function(path = ".",
   cli::cli_alert_info("Remember to:")
   cli::cli_bullets(c(
     " " = "Add {.code mod feature_detection;} to lib.rs",
-    " " = "Add {.code use feature_detection;} to miniextendr_module!",
     " " = "Run {.code devtools::document()} to update NAMESPACE"
   ))
 
@@ -420,7 +419,7 @@ generate_feature_detection_rust <- function(package_name, features) {
 //! This module provides runtime access to compile-time feature flags.
 //! Regenerate with: minirextendr::update_feature_detection()
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// Returns a vector of enabled Cargo features
 ///
@@ -434,16 +433,10 @@ pub fn %s() -> Vec<&\'static str> {
 
     features
 }
-
-miniextendr_module! {
-    mod feature_detection;
-    fn %s;
-}
 ',
     package_rs,
     fn_name,
-    paste(checks, collapse = "\n"),
-    fn_name
+    paste(checks, collapse = "\n")
   )
 
   code

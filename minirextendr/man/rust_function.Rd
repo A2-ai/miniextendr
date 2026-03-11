@@ -19,8 +19,7 @@ Invisibly returns the result of \code{\link[=rust_source]{rust_source()}}.
 }
 \description{
 Convenience wrapper around \code{\link[=rust_source]{rust_source()}} for compiling a single function.
-Automatically wraps the code with \code{use} imports and a \verb{miniextendr_module!}
-block.
+Automatically wraps the code with \code{use} imports.
 }
 \examples{
 \dontrun{

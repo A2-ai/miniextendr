@@ -8,7 +8,9 @@
 // - S7-style: S7Point
 // - Trait dispatch: SimpleCounter implements shared Counter trait
 
-use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, miniextendr_module, trait_abi::ccall};
+use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, trait_abi::ccall};
+
+miniextendr_api::miniextendr_init!(producer_pkg);
 
 // Import the shared Counter trait and its generated ABI types
 pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
@@ -482,43 +484,4 @@ pub fn debug_shared_data_type_name() -> String {
 #[miniextendr]
 pub fn get_r_class(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_getAttrib(x, miniextendr_api::ffi::R_ClassSymbol) }
-}
-
-miniextendr_module! {
-    mod producer_pkg;
-
-    // Env-style (default)
-    impl SharedData;
-    impl EnvPoint;
-
-    // R6-style
-    impl R6Point;
-
-    // S3-style
-    impl S3Point;
-
-    // S4-style
-    impl S4Point;
-
-    // S7-style
-    impl S7Point;
-
-    // Trait dispatch - SimpleCounter
-    impl SimpleCounter;
-    impl Counter for SimpleCounter;
-    impl Resettable for SimpleCounter;
-    fn new_counter;
-    fn counter_get_value;
-
-    // Trait dispatch - StatefulCounter
-    impl StatefulCounter;
-    impl Counter for StatefulCounter;
-    impl Resettable for StatefulCounter;
-    fn new_stateful_counter;
-
-    // Debug/utility
-    fn debug_shared_data_type_name;
-    fn debug_tag_counter;
-    fn debug_tag_resettable;
-    fn get_r_class;
 }

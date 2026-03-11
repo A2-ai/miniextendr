@@ -67,11 +67,10 @@ test_that("create_miniextendr_monorepo creates correct directory structure", {
   expect_true(file.exists(file.path(tmp, "testpkg", "DESCRIPTION")))
   expect_true(file.exists(file.path(tmp, "testpkg", "configure.ac")))
   expect_true(file.exists(file.path(tmp, "testpkg", "src", "Makevars.in")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "entrypoint.c.in")))
+  expect_true(file.exists(file.path(tmp, "testpkg", "src", "stub.c")))
   expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "lib.rs")))
   expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "Cargo.toml")))
   expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "build.rs")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "document.rs.in")))
   expect_true(dir.exists(file.path(tmp, "testpkg", "vendor")))
 })
 
@@ -91,9 +90,9 @@ test_that("create_miniextendr_monorepo performs correct template substitution", 
   crate_cargo <- readLines(file.path(tmp, "my-pkg", "Cargo.toml"))
   expect_true(any(grepl('name = "my-pkg"', crate_cargo)))
 
-  # rpkg lib.rs should have package_rs (underscores)
+  # rpkg lib.rs should exist with #[miniextendr] functions
   rpkg_lib <- readLines(file.path(tmp, "myPkg", "src", "rust", "lib.rs"))
-  expect_true(any(grepl("mod myPkg;", rpkg_lib)))
+  expect_true(any(grepl("#\\[miniextendr\\]", rpkg_lib)))
 
   # rpkg DESCRIPTION should have package name
   desc <- readLines(file.path(tmp, "myPkg", "DESCRIPTION"))
@@ -179,9 +178,9 @@ test_that("use_template works with rpkg template type", {
   expect_true(file.exists(file.path(tmp, "src", "rust", "build.rs")))
   expect_true(file.exists(file.path(tmp, "src", "Makevars.in")))
 
-  # Verify substitution
+  # Verify lib.rs was created with #[miniextendr] functions
   lib_rs <- readLines(file.path(tmp, "src", "rust", "lib.rs"))
-  expect_true(any(grepl("mod testpkg;", lib_rs)))
+  expect_true(any(grepl("#\\[miniextendr\\]", lib_rs)))
 })
 
 test_that("use_template performs mustache substitution correctly", {
@@ -204,8 +203,8 @@ test_that("use_template performs mustache substitution correctly", {
 
   content <- paste(readLines(file.path(tmp, "src", "rust", "lib.rs")), collapse = "\n")
 
-  # Should have substituted {{package_rs}} but no leftover {{...}} markers
-  expect_true(grepl("mod special_pkg;", content))
+  # Should have no leftover {{...}} markers and contain expected content
+  expect_true(grepl("#\\[miniextendr\\]", content))
   expect_false(grepl("\\{\\{package", content))
 })
 
@@ -308,7 +307,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   pkg_name <- desc::desc(file.path(pkg_path, "DESCRIPTION"))$get_field("Package")
 
   # Build and install to temp library using R CMD INSTALL
-  # This will compile Rust code and generate R wrappers via document binary
+  # This will compile Rust code
   lib_path <- file.path(tmp, "library")
   dir.create(lib_path)
 
@@ -322,6 +321,32 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
+
+  # Generate R wrappers via cdylib (loads distributed_slice entries)
+  rust_dir <- file.path(pkg_path, "src", "rust")
+  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
+                        value = TRUE)
+  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
+  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
+  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
+  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
+  cdylib_result <- system2(
+    "cargo",
+    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
+      "--target-dir", file.path(rust_dir, "target"),
+      if (nzchar(features_flag)) features_flag,
+      "--crate-type", "cdylib"),
+    stdout = TRUE, stderr = TRUE
+  )
+  cdylib_status <- attr(cdylib_result, "status")
+  expect_true(is.null(cdylib_status) || cdylib_status == 0,
+              info = paste("cdylib build failed:", paste(cdylib_result, collapse = "\n")))
+  cdylib_path <- file.path(rust_dir, "target", "debug",
+    paste0("lib", crate_name, if (.Platform$OS.type == "windows") ".dll" else if (Sys.info()["sysname"] == "Darwin") ".dylib" else ".so"))
+  wrapper_path <- file.path(pkg_path, "R", paste0(pkg_name, "-wrappers.R"))
+  lib <- dyn.load(cdylib_path)
+  on.exit(dyn.unload(cdylib_path), add = TRUE)
+  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
 
   # Regenerate NAMESPACE with exports from generated R wrappers
   # Use roxygen2::roxygenise directly to avoid pkgload compilation
@@ -422,19 +447,6 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     "",
     lib_content[(use_idx + 1):length(lib_content)]
   )
-  # Update module to include new function
-  module_idx <- grep("miniextendr_module!", lib_content)
-  if (length(module_idx) > 0) {
-    # Find the line with fn declarations
-    fn_line <- grep("fn add;", lib_content)
-    if (length(fn_line) > 0) {
-      lib_content <- c(
-        lib_content[1:fn_line],
-        "    fn join_strings;",
-        lib_content[(fn_line + 1):length(lib_content)]
-      )
-    }
-  }
   writeLines(lib_content, lib_rs)
 
   # Reconfigure to vendor itertools (with FORCE_VENDOR environment variable)
@@ -455,7 +467,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   expect_true(dir.exists(file.path(pkg_path, "vendor", "itertools")),
               info = "itertools was not vendored")
 
-  # Build and install - this generates R wrappers via document binary
+  # Build and install
   lib_path <- file.path(tmp, "library")
   dir.create(lib_path)
 
@@ -469,6 +481,32 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
+
+  # Generate R wrappers via cdylib (loads distributed_slice entries)
+  rust_dir <- file.path(pkg_path, "src", "rust")
+  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
+                        value = TRUE)
+  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
+  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
+  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
+  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
+  cdylib_result <- system2(
+    "cargo",
+    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
+      "--target-dir", file.path(rust_dir, "target"),
+      if (nzchar(features_flag)) features_flag,
+      "--crate-type", "cdylib"),
+    stdout = TRUE, stderr = TRUE
+  )
+  cdylib_status <- attr(cdylib_result, "status")
+  expect_true(is.null(cdylib_status) || cdylib_status == 0,
+              info = paste("cdylib build failed:", paste(cdylib_result, collapse = "\n")))
+  cdylib_path <- file.path(rust_dir, "target", "debug",
+    paste0("lib", crate_name, if (.Platform$OS.type == "windows") ".dll" else if (Sys.info()["sysname"] == "Darwin") ".dylib" else ".so"))
+  wrapper_path <- file.path(pkg_path, "R", "testpkg-wrappers.R")
+  lib <- dyn.load(cdylib_path)
+  on.exit(dyn.unload(cdylib_path), add = TRUE)
+  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
 
   # Generate NAMESPACE from the R wrappers created during build
   # Use roxygen2::roxygenise directly to avoid pkgload compilation
@@ -526,9 +564,9 @@ test_that("monorepo handles dots in package names", {
   desc <- readLines(file.path(tmp, "my.pkg", "DESCRIPTION"))
   expect_true(any(grepl("Package: my.pkg", desc)))
 
-  # rpkg lib.rs should use underscores (Rust module names)
+  # rpkg lib.rs should exist with #[miniextendr] functions
   rpkg_lib <- readLines(file.path(tmp, "my.pkg", "src", "rust", "lib.rs"))
-  expect_true(any(grepl("mod my_pkg;", rpkg_lib)))
+  expect_true(any(grepl("#\\[miniextendr\\]", rpkg_lib)))
 })
 
 test_that("monorepo handles hyphens in crate names", {
@@ -620,6 +658,32 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
+
+  # Generate R wrappers via cdylib (loads distributed_slice entries)
+  rust_dir <- file.path(rpkg_path, "src", "rust")
+  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(rpkg_path, "src", "Makevars")),
+                        value = TRUE)
+  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
+  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
+  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
+  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
+  cdylib_result <- system2(
+    "cargo",
+    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
+      "--target-dir", file.path(rust_dir, "target"),
+      if (nzchar(features_flag)) features_flag,
+      "--crate-type", "cdylib"),
+    stdout = TRUE, stderr = TRUE
+  )
+  cdylib_status <- attr(cdylib_result, "status")
+  expect_true(is.null(cdylib_status) || cdylib_status == 0,
+              info = paste("cdylib build failed:", paste(cdylib_result, collapse = "\n")))
+  cdylib_path <- file.path(rust_dir, "target", "debug",
+    paste0("lib", crate_name, if (.Platform$OS.type == "windows") ".dll" else if (Sys.info()["sysname"] == "Darwin") ".dylib" else ".so"))
+  wrapper_path <- file.path(rpkg_path, "R", paste0(pkg_name, "-wrappers.R"))
+  lib <- dyn.load(cdylib_path)
+  on.exit(dyn.unload(cdylib_path), add = TRUE)
+  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
 
   # Generate NAMESPACE from the R wrappers created during build
   # Use roxygen2::roxygenise directly to avoid pkgload compilation

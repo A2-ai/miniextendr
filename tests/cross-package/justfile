@@ -16,11 +16,53 @@ document-all: document-producer document-consumer
 
 # Document producer.pkg
 document-producer: configure-producer
-    cd producer.pkg && Rscript -e 'devtools::document()'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' producer.pkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
+    cargo rustc --lib --manifest-path producer.pkg/src/rust/Cargo.toml \
+      --target-dir producer.pkg/src/rust/target $FEATURES_FLAG \
+      --crate-type cdylib
+    CRATE_NAME=$(grep '^name' producer.pkg/src/rust/Cargo.toml | head -1 | sed 's/.*= *"//;s/".*//' | tr '-' '_')
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      CDYLIB="producer.pkg/src/rust/target/debug/lib${CRATE_NAME}.dylib"
+    elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+      CDYLIB="producer.pkg/src/rust/target/debug/${CRATE_NAME}.dll"
+    else
+      CDYLIB="producer.pkg/src/rust/target/debug/lib${CRATE_NAME}.so"
+    fi
+    Rscript -e "
+      lib <- dyn.load('${CDYLIB}')
+      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'producer.pkg/R/producer-pkg-wrappers.R')
+      dyn.unload('${CDYLIB}')
+    "
+    # Install first so roxygen2 can use load_installed (needed for R6 source refs)
+    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
+    cd producer.pkg && Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
 
 # Document consumer.pkg
-document-consumer: configure-consumer
-    cd consumer.pkg && Rscript -e 'devtools::document()'
+document-consumer: document-producer configure-consumer
+    #!/usr/bin/env bash
+    set -euo pipefail
+    FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' consumer.pkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
+    cargo rustc --lib --manifest-path consumer.pkg/src/rust/Cargo.toml \
+      --target-dir consumer.pkg/src/rust/target $FEATURES_FLAG \
+      --crate-type cdylib
+    CRATE_NAME=$(grep '^name' consumer.pkg/src/rust/Cargo.toml | head -1 | sed 's/.*= *"//;s/".*//' | tr '-' '_')
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      CDYLIB="consumer.pkg/src/rust/target/debug/lib${CRATE_NAME}.dylib"
+    elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+      CDYLIB="consumer.pkg/src/rust/target/debug/${CRATE_NAME}.dll"
+    else
+      CDYLIB="consumer.pkg/src/rust/target/debug/lib${CRATE_NAME}.so"
+    fi
+    Rscript -e "
+      lib <- dyn.load('${CDYLIB}')
+      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'consumer.pkg/R/consumer-pkg-wrappers.R')
+      dyn.unload('${CDYLIB}')
+    "
+    # Install first so roxygen2 can use load_installed (needed for R6 source refs)
+    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
+    cd consumer.pkg && Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
 
 # Configure both packages
 configure-all: configure-producer configure-consumer
@@ -45,13 +87,13 @@ configure-consumer:
 build-consumer: build-producer configure-consumer
     cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
 
-# Test producer.pkg
+# Test producer.pkg (uses installed package, not load_all)
 test-producer: configure-producer
-    cd producer.pkg && Rscript -e 'devtools::test()'
+    cd producer.pkg && Rscript -e 'testthat::test_local(".", load_package = "installed")'
 
-# Test consumer.pkg (includes cross-package tests)
+# Test consumer.pkg (includes cross-package tests, uses installed package)
 test-consumer: configure-consumer
-    cd consumer.pkg && Rscript -e 'devtools::test()'
+    cd consumer.pkg && Rscript -e 'testthat::test_local(".", load_package = "installed")'
 
 # Run all tests
 test-all: test-producer test-consumer
