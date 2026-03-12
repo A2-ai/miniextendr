@@ -87,7 +87,11 @@
 use miniextendr_api::Altrep;
 use miniextendr_api::IntoR;
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
+
+// Package initialization — generates R_init_miniextendr() entry point.
+// Replaces the previous entrypoint.c with a pure-Rust implementation.
+miniextendr_api::miniextendr_init!(miniextendr);
 
 // Re-export the serde crate from miniextendr-api so test modules can derive
 // Serialize/Deserialize without a direct serde dependency.
@@ -97,9 +101,9 @@ pub use miniextendr_api::serde_crate as serde;
 
 // Test modules
 mod adapter_traits_tests;
-mod altrep_sexp_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
+mod altrep_sexp_tests;
 mod as_coerce_tests;
 #[cfg(feature = "num-bigint")]
 mod bigint_adapter_tests;
@@ -144,8 +148,8 @@ mod interrupt_tests;
 mod lifecycle_tests;
 mod macro_equivalence;
 mod match_arg_tests;
-mod missing_tests;
 mod misc_tests;
+mod missing_tests;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
 #[cfg(feature = "ndarray")]
@@ -717,6 +721,7 @@ pub fn large_vec_altrep() -> SEXP {
 
 /// Example: Lazy computation - compute on demand
 ///
+/// @param n Length of the sequence.
 /// @export
 #[miniextendr]
 pub fn lazy_squares(n: i32) -> SEXP {
@@ -732,6 +737,7 @@ pub fn lazy_squares(n: i32) -> SEXP {
 
 /// Example: Using into_altrep() to store wrapper
 ///
+/// @param n Length of the vector.
 /// @export
 #[miniextendr]
 pub fn boxed_data_altrep(n: i32) -> SEXP {
@@ -749,6 +755,7 @@ pub fn boxed_data_altrep(n: i32) -> SEXP {
 
 /// Create a vector of given size using regular copy (IntoR)
 ///
+/// @param n Length of the vector.
 /// @export
 #[miniextendr]
 pub fn bench_vec_copy(n: i32) -> Vec<i32> {
@@ -760,6 +767,7 @@ pub fn bench_vec_copy(n: i32) -> Vec<i32> {
 
 /// Create a vector of given size using ALTREP zero-copy
 ///
+/// @param n Length of the vector.
 /// @export
 #[miniextendr]
 pub fn bench_vec_altrep(n: i32) -> SEXP {
@@ -1765,225 +1773,4 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
 }
 
 // endregion
-
-miniextendr_module! {
-    mod miniextendr;
-
-    // Aggregate all test modules
-    use adapter_traits_tests;
-    use altrep_sexp_tests;
-    use as_coerce_tests;
-    use panic_tests;
-    use unwind_protect_tests;
-    use dots_tests;
-    use error_in_r_tests;
-    use interrupt_tests;
-    use conversion_tests;
-    use conversions;
-    use default_tests;
-    use externalptr_tests;
-    use rdata_sidecar_tests;
-    use gc_protect_tests;
-    use gc_stress_fixtures;
-    use identical_tests;
-    use receiver_tests;
-    use r6_tests;
-    use r6_default_tests;
-    use s3_tests;
-    use s7_tests;
-    use s4_tests;
-    #[cfg(feature = "worker-thread")]
-    use worker_tests;
-    use coerce_tests;
-    use visibility_tests;
-    use doc_attr_tests;
-    use export_control_tests;
-    use r_wrapper_attrs;
-    use thread_tests;
-    use misc_tests;
-    use lifecycle_tests;
-    use trait_abi_tests;
-    use class_system_matrix;
-    use shared_trait_test;
-    use convert_pref_tests;
-    use dataframe_examples;
-    #[cfg(feature = "rayon")]
-    use dataframe_rayon_tests;
-    use rng_tests;
-    #[cfg(feature = "rayon")]
-    use rayon_tests;
-    #[cfg(feature = "serde")]
-    use serde_r_tests;
-    #[cfg(feature = "ndarray")]
-    use ndarray_tests;
-    #[cfg(feature = "uuid")]
-    use uuid_adapter_tests;
-    #[cfg(feature = "regex")]
-    use regex_adapter_tests;
-    #[cfg(feature = "time")]
-    use time_adapter_tests;
-    #[cfg(feature = "ordered-float")]
-    use ordered_float_adapter_tests;
-    #[cfg(feature = "num-bigint")]
-    use bigint_adapter_tests;
-    #[cfg(feature = "rust_decimal")]
-    use decimal_adapter_tests;
-    #[cfg(feature = "indexmap")]
-    use indexmap_adapter_tests;
-    #[cfg(feature = "bytes")]
-    use bytes_adapter_tests;
-    #[cfg(feature = "bitflags")]
-    use bitflags_adapter_tests;
-    #[cfg(feature = "bitvec")]
-    use bitvec_adapter_tests;
-    #[cfg(feature = "borsh")]
-    use borsh_adapter_tests;
-    #[cfg(feature = "tinyvec")]
-    use tinyvec_adapter_tests;
-    #[cfg(feature = "sha2")]
-    use sha2_adapter_tests;
-    #[cfg(feature = "url")]
-    use url_adapter_tests;
-    #[cfg(feature = "aho-corasick")]
-    use aho_corasick_adapter_tests;
-    #[cfg(feature = "toml")]
-    use toml_adapter_tests;
-    #[cfg(feature = "tabled")]
-    use tabled_adapter_tests;
-    #[cfg(feature = "nalgebra")]
-    use nalgebra_adapter_tests;
-    #[cfg(feature = "either")]
-    use either_adapter_tests;
-    #[cfg(feature = "serde_json")]
-    use serde_json_adapter_tests;
-    #[cfg(feature = "num-complex")]
-    use num_complex_adapter_tests;
-    #[cfg(feature = "num-traits")]
-    use num_traits_adapter_tests;
-    #[cfg(feature = "indicatif")]
-    use indicatif_adapter_tests;
-    #[cfg(feature = "connections")]
-    use connection_tests;
-    #[cfg(feature = "nonapi")]
-    use nonapi;
-    use factor_tests;
-    use macro_equivalence;
-    use match_arg_tests;
-    use missing_tests;
-    #[cfg(feature = "vctrs")]
-    use vctrs_tests;
-    #[cfg(feature = "vctrs")]
-    use vctrs_class_example;
-    #[cfg(feature = "vctrs")]
-    use vctrs_derive_example;
-
-    // ALTREP helper functions
-    fn altrep_compact_int;
-    fn altrep_from_doubles;
-    fn altrep_from_strings;
-    fn altrep_from_logicals;
-    fn altrep_from_raw;
-    fn altrep_from_integers;
-    fn altrep_from_list;
-
-    // ALTREP convenience helpers examples
-    fn small_vec_copy;
-    fn large_vec_altrep;
-    fn lazy_squares;
-    fn boxed_data_altrep;
-
-    // Benchmark functions
-    fn bench_vec_copy;
-    fn bench_vec_altrep;
-
-    // ALTREP test fixtures
-    struct ConstantIntClass;
-    fn constant_int;
-    struct ConstantRealClass;
-    fn constant_real;
-
-    // Arithmetic sequence ALTREP
-    struct ArithSeqClass;
-    fn arith_seq;
-
-    // Lazy materialization ALTREP example
-    struct LazyIntSeqClass;
-    fn lazy_int_seq;
-    extern "C-unwind" fn C_lazy_int_seq_is_materialized;
-
-    // Logical ALTREP
-    struct ConstantLogicalClass;
-    fn constant_logical;
-    struct LogicalVecClass;
-
-    // String ALTREP
-    struct LazyStringClass;
-    fn lazy_string;
-    struct SimpleVecStringClass;
-
-    // Raw ALTREP
-    struct RepeatingRawClass;
-    fn repeating_raw;
-    struct SimpleVecRawClass;
-
-    // Complex ALTREP - unit circle (roots of unity)
-    struct UnitCircleClass;
-    fn unit_circle;
-
-    // Integer ALTREP
-    struct SimpleVecIntClass;
-
-    // Real ALTREP with base type auto-inferred
-    struct InferredVecRealClass;
-
-    // List ALTREP
-    struct ListDataClass;
-    struct IntegerSequenceListClass;
-    fn integer_sequence_list;
-
-    // Box<[T]> ALTREP example
-    struct BoxedIntsClass;
-    fn boxed_ints;
-
-    // Static slice ALTREP examples
-    struct StaticIntsClass;
-    fn static_ints;
-    fn leaked_ints;
-    struct StaticStringsClass;
-    fn static_strings;
-
-    // ALTREP test functions (return Altrep<T> marker type)
-    fn iter_int_range;
-    fn iter_real_squares;
-    fn iter_logical_alternating;
-    fn iter_raw_bytes;
-    fn iter_string_items;
-    fn iter_int_from_u16;
-    fn iter_real_from_f32;
-    fn vec_int_altrep;
-    fn vec_real_altrep;
-    fn vec_complex_altrep;
-    fn boxed_reals;
-    fn boxed_logicals;
-    fn boxed_raw;
-    fn boxed_strings;
-    fn boxed_complex;
-    fn range_int_altrep;
-    fn range_i64_altrep;
-    fn range_real_altrep;
-
-    // Sparse iterator ALTREP (skipping support)
-    struct SparseIntIterClass;
-    fn sparse_iter_int;
-    fn sparse_iter_int_squares;
-    struct SparseRealIterClass;
-    fn sparse_iter_real;
-    struct SparseLogicalIterClass;
-    fn sparse_iter_logical;
-    struct SparseRawIterClass;
-    fn sparse_iter_raw;
-
-    // Feature detection
-    fn rpkg_enabled_features;
-}
 mod dataframe_collections_test;

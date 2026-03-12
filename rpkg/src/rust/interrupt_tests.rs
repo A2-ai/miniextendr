@@ -1,8 +1,8 @@
 //! Tests for R interrupt checking.
 
 use miniextendr_api::ffi::{R_NilValue, SEXP};
+use miniextendr_api::miniextendr;
 use miniextendr_api::unwind_protect::with_r_unwind_protect;
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -38,11 +38,4 @@ pub extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
         );
         R_NilValue
     }
-}
-
-miniextendr_module! {
-    mod interrupt_tests;
-
-    extern fn C_check_interupt_after;
-    extern fn C_check_interupt_unwind;
 }

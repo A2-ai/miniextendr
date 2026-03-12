@@ -1,5 +1,0 @@
-error: duplicate `mod <name>`
- --> tests/ui/module_duplicate_mod.rs:7:5
-  |
-7 |     mod second;
-  |     ^^^

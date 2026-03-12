@@ -12,7 +12,5 @@ if [ "$NOT_CRAN" != "true" ]; then
   rm -rf rust-target
   rm -rf ra-target
   rm -rf src/rust/.cargo
-  rm -rf src/rust/document.rs
-  rm -rf src/entrypoint.c
   rm -f  src/*-wrappers.R
 fi

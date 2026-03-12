@@ -4,7 +4,7 @@
 //! and ALTREP serialization test suites.
 
 use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
-use miniextendr_api::{IntoRAltrep, miniextendr, miniextendr_module};
+use miniextendr_api::{IntoRAltrep, miniextendr};
 
 /// Simple R6 class for GC stress tests.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -58,10 +58,4 @@ pub fn into_sexp_altrep(x: SEXP) -> SEXP {
         }
         _ => panic!("into_sexp_altrep: unsupported SEXP type {:?}", sxp_type),
     }
-}
-
-miniextendr_module! {
-    mod gc_stress_fixtures;
-    impl SharedData;
-    fn into_sexp_altrep;
 }

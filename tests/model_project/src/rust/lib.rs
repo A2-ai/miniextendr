@@ -13,10 +13,12 @@
 //! stochastic processes, and `itertools` for histogram aggregation.
 
 use itertools::Itertools;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
 use rayon::prelude::*;
+
+miniextendr_api::miniextendr_init!(pigworld);
 
 /// A single pig agent in the simulation.
 ///
@@ -293,9 +295,4 @@ impl World {
             avg_energy
         )
     }
-}
-
-miniextendr_module! {
-    mod pigworld;
-    impl World;
 }

@@ -1,6 +1,6 @@
 //! Tests for `#[miniextendr(doc = "...")]` attribute.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// This doc comment should be replaced by the custom doc.
 #[miniextendr(
@@ -13,11 +13,4 @@ pub fn doc_attr_basic(x: f64) -> f64 {
 #[miniextendr(doc = "@title No-param doc\n@description A function with custom doc and no params.")]
 pub fn doc_attr_no_params() -> &'static str {
     "hello from doc_attr"
-}
-
-miniextendr_module! {
-    mod doc_attr_tests;
-
-    fn doc_attr_basic;
-    fn doc_attr_no_params;
 }

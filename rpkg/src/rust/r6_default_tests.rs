@@ -1,6 +1,6 @@
 //! Test default parameters in R6 methods.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct Calculator {
@@ -36,9 +36,4 @@ impl Calculator {
     pub fn set(&mut self, new_value: f64) {
         self.value = new_value;
     }
-}
-
-miniextendr_module! {
-    mod r6_default_tests;
-    impl Calculator;
 }

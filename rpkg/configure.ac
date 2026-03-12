@@ -329,9 +329,24 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
-dnl Generate files from .in templates (templates must be committed)
-AC_CONFIG_FILES([src/rust/document.rs])
-AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
+dnl Platform-specific cdylib naming (for wrapper generation via cargo rustc --crate-type cdylib)
+dnl Rust cdylibs: lib<name>.so (Linux), lib<name>.dylib (macOS), <name>.dll (Windows — no lib prefix)
+case "$host_os" in
+  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
+esac
+AC_SUBST([CDYLIB_PREFIX])
+AC_SUBST([CDYLIB_EXT])
+
+dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+  *)                       TAR_FORCE_LOCAL="" ;;
+esac
+AC_SUBST([TAR_FORCE_LOCAL])
+
+AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
@@ -366,8 +381,6 @@ AS_MKDIR_P([src/rust/.cargo])
 AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
-  src/entrypoint.c:src/entrypoint.c.in
-  src/mx_abi.c:src/mx_abi.c.in
   src/miniextendr-win.def:src/win.def.in
 ])
 
@@ -459,7 +472,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
 dnl 2) Handle vendor directory based on BUILD_CONTEXT
 AC_CONFIG_COMMANDS([cargo-vendor],
@@ -602,7 +615,7 @@ $_crate = { path = \"../../vendor/$_dirname\" }"
       ;;
   esac
 ],
-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
 dnl 2b) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],

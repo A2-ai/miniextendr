@@ -1,6 +1,6 @@
 //! rust_decimal adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::rust_decimal_impl::Decimal;
-use miniextendr_api::{miniextendr, miniextendr_module};
 use std::str::FromStr;
 
 /// @noRd
@@ -45,14 +45,4 @@ pub fn decimal_scale(s: &str) -> i32 {
 #[miniextendr]
 pub fn decimal_is_zero(s: &str) -> bool {
     Decimal::from_str(s).map(|d| d.is_zero()).unwrap_or(false)
-}
-
-miniextendr_module! {
-    mod decimal_adapter_tests;
-    fn decimal_roundtrip;
-    fn decimal_add;
-    fn decimal_mul;
-    fn decimal_round;
-    fn decimal_scale;
-    fn decimal_is_zero;
 }

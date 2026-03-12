@@ -1,6 +1,6 @@
 //! Tabled adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::tabled_impl::table_from_vecs;
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -55,14 +55,4 @@ pub fn tabled_special_chars() -> String {
 #[miniextendr]
 pub fn tabled_single_cell() -> String {
     table_from_vecs(&["Only"], &[vec!["cell"]])
-}
-
-miniextendr_module! {
-    mod tabled_adapter_tests;
-    fn tabled_from_vecs;
-    fn tabled_simple;
-    fn tabled_empty_rows;
-    fn tabled_many_columns;
-    fn tabled_special_chars;
-    fn tabled_single_cell;
 }

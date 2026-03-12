@@ -7,7 +7,7 @@
 //! - [`MiniextendrFnAttrs`]: Parsed `#[miniextendr(...)]` attribute options
 //! - [`CoercionMapping`]: Type coercion analysis for automatic R→Rust conversion
 
-use crate::{call_method_def_ident_for, match_arg_call_defs_ident_for, r_wrapper_const_ident_for};
+use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
 // =============================================================================
 // Coercion analysis
@@ -676,8 +676,8 @@ impl MiniextendrFunctionParsed {
 
     /// Returns the identifier for the generated `const R_CallMethodDef` value.
     ///
-    /// This constant is used by `miniextendr_module!` to register the function
-    /// with R's `.Call` interface via `R_registerRoutines`.
+    /// This constant is automatically registered with R's `.Call` interface
+    /// via linkme distributed slices.
     pub(crate) fn call_method_def_ident(&self) -> syn::Ident {
         call_method_def_ident_for(self.ident())
     }
@@ -685,19 +685,10 @@ impl MiniextendrFunctionParsed {
     /// Returns the identifier for the generated `const &str` holding the R wrapper code.
     ///
     /// The R wrapper is a string constant containing the R function definition that
-    /// calls `.Call(C_<name>, ...)`. It is collected by `miniextendr_module!` to produce
-    /// the `R/miniextendr_wrappers.R` file.
+    /// calls `.Call(C_<name>, ...)`. It is collected via linkme distributed slices to
+    /// produce the `R/miniextendr_wrappers.R` file.
     pub(crate) fn r_wrapper_const_ident(&self) -> syn::Ident {
         r_wrapper_const_ident_for(self.ident())
-    }
-
-    /// Returns the identifier for the `match.arg()` choices helper `R_CallMethodDef` array.
-    ///
-    /// When a function has `match_arg` parameters, additional `.Call` entry points are
-    /// generated so R can query the valid choices at runtime. This identifier names
-    /// the array constant that holds those definitions.
-    pub(crate) fn match_arg_call_defs_ident(&self) -> syn::Ident {
-        match_arg_call_defs_ident_for(self.ident())
     }
 
     /// Returns the identifier for the C-callable entry point.

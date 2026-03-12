@@ -30,15 +30,15 @@
 //!
 //! ## Submodules
 //!
-//! - [`ccall`]: Direct FFI wrappers for `mx_abi.c` functions
+//! - [`ccall`]: Direct FFI wrappers for `mx_abi.rs` functions
 //! - [`conv`]: Type conversion helpers for method shims
 //!
 //! ## Integration with ExternalPtr / TypedExternal
 //!
 //! Trait ABI support is integrated with the [`ExternalPtr`] and [`TypedExternal`]
 //! system. `ExternalPtr<T>` serves as the "traitless" case (equivalent to `Any`
-//! in dynamic typing). To enable trait dispatch wrappers, list trait impls in
-//! `miniextendr_module!`:
+//! in dynamic typing). Trait dispatch wrappers are automatically registered
+//! when you annotate `impl Trait for Type` with `#[miniextendr]`:
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
@@ -46,11 +46,6 @@
 //!
 //! #[miniextendr]
 //! impl Shape for Circle { /* ... */ }
-//!
-//! miniextendr_module! {
-//!     mod shapes;
-//!     impl Shape for Circle;
-//! }
 //! ```
 //!
 //! This generates the wrapper structures, vtable references, and query
@@ -81,9 +76,9 @@
 //!
 //! ## Initialization
 //!
-//! Each package compiles `mx_abi.c` which provides the `mx_wrap`/`mx_get`/`mx_query`
-//! functions. The entrypoint calls `mx_abi_register()` to initialize the tag symbol
-//! and register C-callables.
+//! Each package includes `mx_abi.rs` (from miniextendr-api) which provides the
+//! `mx_wrap`/`mx_get`/`mx_query` functions. `package_init()` (via `miniextendr_init!`)
+//! calls `mx_abi_register()` to initialize the tag symbol and register C-callables.
 //!
 //! ## Thread Safety
 //!
@@ -111,11 +106,6 @@
 //! impl Shape for Circle {
 //!     fn area(&self) -> f64 { std::f64::consts::PI * self.radius * self.radius }
 //!     fn perimeter(&self) -> f64 { 2.0 * std::f64::consts::PI * self.radius }
-//! }
-//!
-//! miniextendr_module! {
-//!     mod shapes;
-//!     impl Shape for Circle;
 //! }
 //! ```
 //!

@@ -36,7 +36,6 @@ rm -rf ra-target
 
 # Remove generated files (configure recreates them from .in templates)
 rm -f src/Makevars
-rm -f src/rust/document.rs
 rm -f src/entrypoint.c
 rm -f src/*-wrappers.R
 # Note: Cargo.toml is NOT removed - it's a source file, not generated

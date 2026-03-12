@@ -47,12 +47,11 @@ miniextendr_status <- function(path = ".") {
       "src/rust/Cargo.toml",
       "src/rust/lib.rs",
       "src/rust/build.rs",
-      "src/rust/cargo-config.toml.in",
-      "src/rust/document.rs.in"
+      "src/rust/cargo-config.toml.in"
     ),
-    "Source Templates" = c(
+    "Source Files" = c(
       "src/Makevars.in",
-      "src/entrypoint.c.in"
+      "src/stub.c"
     ),
     "Vendored Crates" = c(
       "vendor/miniextendr-api",
@@ -63,7 +62,6 @@ miniextendr_status <- function(path = ".") {
     ),
     "Generated Files" = c(
       "src/Makevars",
-      "src/entrypoint.c",
       wrapper_file
     )
   )
@@ -98,8 +96,6 @@ miniextendr_status <- function(path = ".") {
 
   template_pairs <- list(
     c("src/Makevars.in", "src/Makevars"),
-    c("src/entrypoint.c.in", "src/entrypoint.c"),
-    c("src/rust/document.rs.in", "src/rust/document.rs"),
     c("src/rust/cargo-config.toml.in", "src/rust/.cargo/config.toml")
   )
 

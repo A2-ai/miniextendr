@@ -230,18 +230,10 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 
   # src/ files
   use_template("Makevars.in", save_as = file.path(rpkg_name, "src", "Makevars.in"), subdir = "rpkg")
-  use_template("entrypoint.c.in", save_as = file.path(rpkg_name, "src", "entrypoint.c.in"), subdir = "rpkg")
-  generate_entrypoint_c(
-    usethis::proj_path(rpkg_name, "src", "entrypoint.c.in"),
-    usethis::proj_path(rpkg_name, "src", "entrypoint.c"),
-    package = data$package
-  )
-  use_template("mx_abi.c.in", save_as = file.path(rpkg_name, "src", "mx_abi.c.in"), subdir = "rpkg")
-  generate_mx_abi_c(
-    usethis::proj_path(rpkg_name, "src", "mx_abi.c.in"),
-    usethis::proj_path(rpkg_name, "src", "mx_abi.c"),
-    package = data$package
-  )
+  # stub.c — minimal C file so R's build system produces a shared library
+  stub_src <- template_path("stub.c", subdir = "rpkg")
+  fs::file_copy(stub_src, usethis::proj_path(rpkg_name, "src", "stub.c"), overwrite = TRUE)
+  bullet_created(file.path(rpkg_name, "src", "stub.c"))
   use_template("win.def.in", save_as = file.path(rpkg_name, "src", "win.def.in"), subdir = "rpkg")
 
   # inst/include/ for cross-package header
@@ -253,12 +245,6 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_template("Cargo.toml.tmpl", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml"), subdir = "rpkg", data = data)
   use_template("build.rs", save_as = file.path(rpkg_name, "src", "rust", "build.rs"), subdir = "rpkg")
   use_template("lib.rs", save_as = file.path(rpkg_name, "src", "rust", "lib.rs"), subdir = "rpkg", data = data)
-  use_template("document.rs.in", save_as = file.path(rpkg_name, "src", "rust", "document.rs.in"), subdir = "rpkg")
-  generate_document_rs(
-    usethis::proj_path(rpkg_name, "src", "rust", "document.rs.in"),
-    usethis::proj_path(rpkg_name, "src", "rust", "document.rs"),
-    package = data$package
-  )
   use_template("cargo-config.toml.in", save_as = file.path(rpkg_name, "src", "rust", "cargo-config.toml.in"), subdir = "rpkg")
 
   # Ignore files
@@ -403,8 +389,7 @@ use_miniextendr <- function(path = ".",
   cli::cli_h2("Creating Rust project")
   use_miniextendr_rust()
   use_miniextendr_cargo_config()
-  use_miniextendr_document()
-  use_miniextendr_entrypoint()
+  use_miniextendr_stub()
   use_miniextendr_mx_abi()
 
   # R package files

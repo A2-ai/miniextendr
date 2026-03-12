@@ -90,14 +90,16 @@ AsCoerceTestData
 \method{as.integer}{AsCoerceTestData}(x, ...)
 }
 \arguments{
+\item{names}{Character vector of names.}
+
+\item{values}{Numeric vector of values.}
+
 \item{x}{An object.}
 
 \item{...}{Additional arguments.}
 }
 \description{
 Test type for as.data.frame, as.list, and as.character methods
-
-Create a new test data object.
 
 Get the number of items.
 

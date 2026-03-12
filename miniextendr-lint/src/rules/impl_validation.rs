@@ -3,7 +3,6 @@
 //! - MXL008: Trait impl class system incompatible with inherent impl.
 //! - MXL009: Multiple impl blocks for one type without labels.
 //! - MXL010: Duplicate labels on impl blocks for one type.
-//! - MXL201: Impl label mismatch quality diagnostic (improved guidance).
 
 use crate::crate_index::CrateIndex;
 use crate::diagnostic::Diagnostic;
@@ -98,72 +97,6 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
                         seen_labels.insert(label.as_str(), *line);
                     }
                 }
-            }
-        }
-
-        // MXL201: Label mismatch quality diagnostic
-        // When impl Type exists on both sides with label disagreement, give specific guidance
-        check_label_mismatches(path, data, diagnostics);
-    }
-}
-
-/// Check for label mismatches between source impl blocks and module entries.
-fn check_label_mismatches(
-    path: &std::path::Path,
-    data: &crate::crate_index::FileData,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    use crate::crate_index::LintKind;
-
-    // Collect impl items from both sides grouped by type name
-    let source_impls: Vec<_> = data
-        .miniextendr_items
-        .iter()
-        .filter(|i| i.kind == LintKind::Impl)
-        .collect();
-    let module_impls: Vec<_> = data
-        .module_items
-        .iter()
-        .filter(|i| i.kind == LintKind::Impl)
-        .collect();
-
-    // For each source impl that's NOT in the module set, check if there's a
-    // same-type entry with a different label
-    let module_set = data.module_items_set();
-    for src in &source_impls {
-        if module_set.contains(src) {
-            continue;
-        }
-        // Look for a module entry with the same type name but different label
-        for mod_item in &module_impls {
-            if mod_item.name == src.name && mod_item.label != src.label {
-                let src_label = src
-                    .label
-                    .as_deref()
-                    .map(|l| format!("\"{}\"", l))
-                    .unwrap_or_else(|| "(none)".to_string());
-                let mod_label = mod_item
-                    .label
-                    .as_deref()
-                    .map(|l| format!("\"{}\"", l))
-                    .unwrap_or_else(|| "(none)".to_string());
-                diagnostics.push(
-                    Diagnostic::new(
-                        LintCode::MXL201,
-                        path,
-                        src.line,
-                        format!(
-                            "impl block for `{}` has label {} but module entry at line {} \
-                             has label {}",
-                            src.name, src_label, mod_item.line, mod_label
-                        ),
-                    )
-                    .with_help(format!(
-                        "Update the module entry to: impl {} as \"{}\";",
-                        src.name,
-                        src.label.as_deref().unwrap_or("LABEL")
-                    )),
-                );
             }
         }
     }

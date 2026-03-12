@@ -2,7 +2,7 @@
 use miniextendr_api::bitflags_impl::{
     RFlags, flags_from_i32_strict, flags_from_i32_truncate, flags_to_i32,
 };
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 miniextendr_api::bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,18 +77,4 @@ pub fn bitflags_all() -> i32 {
 #[miniextendr]
 pub fn bitflags_has_execute(flags: RFlags<Perms>) -> bool {
     flags.contains(Perms::EXECUTE)
-}
-
-miniextendr_module! {
-    mod bitflags_adapter_tests;
-    fn bitflags_roundtrip;
-    fn bitflags_from_strict;
-    fn bitflags_from_truncate;
-    fn bitflags_has_read;
-    fn bitflags_has_write;
-    fn bitflags_union;
-    fn bitflags_intersect;
-    fn bitflags_empty;
-    fn bitflags_all;
-    fn bitflags_has_execute;
 }

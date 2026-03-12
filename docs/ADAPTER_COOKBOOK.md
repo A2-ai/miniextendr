@@ -59,12 +59,7 @@ fn range_iter(start: f64, end: f64, step: f64) -> FloatIter {
     FloatIter::new(iter)
 }
 
-// 5. Register everything
-miniextendr_module! {
-    mod myiter;
-    fn range_iter;
-    impl RIterator for FloatIter;
-}
+// 5. Registration is automatic via #[miniextendr] and linkme distributed slices.
 ```
 
 **Usage in R:**
@@ -138,12 +133,7 @@ impl Config {
     }
 }
 
-miniextendr_module! {
-    mod myconfig;
-    fn config_from_json;
-    impl Config;
-    impl RSerializable for Config;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 **Usage in R:**
@@ -259,12 +249,7 @@ fn text_reader(content: &str) -> TextReader {
     TextReader::from_string(content)
 }
 
-miniextendr_module! {
-    mod myio;
-    fn text_reader;
-    impl RReader for TextReader;
-    impl RLineReader for TextReader;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 **Usage in R:**
@@ -345,11 +330,7 @@ impl Version {
     }
 }
 
-miniextendr_module! {
-    mod myversion;
-    impl Version;
-    impl RComparable for Version;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 **Usage in R:**
@@ -412,11 +393,7 @@ impl Record {
     }
 }
 
-miniextendr_module! {
-    mod myhash;
-    impl Record;
-    impl RHashable for Record;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 **Usage in R:**

@@ -1,6 +1,6 @@
 //! OrderedFloat adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::ordered_float_impl::OrderedFloat;
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -62,17 +62,4 @@ pub fn ordered_float_sort_special(x: Vec<f64>) -> Vec<f64> {
     let mut ordered: Vec<OrderedFloat<f64>> = x.into_iter().map(OrderedFloat).collect();
     ordered.sort();
     ordered.into_iter().map(|of| of.0).collect()
-}
-
-miniextendr_module! {
-    mod ordered_float_adapter_tests;
-    fn ordered_float_roundtrip;
-    fn ordered_float_roundtrip_vec;
-    fn ordered_float_sort;
-    fn ordered_float_is_nan;
-    fn ordered_float_is_finite;
-    fn ordered_float_inf;
-    fn ordered_float_neg_inf;
-    fn ordered_float_neg_zero;
-    fn ordered_float_sort_special;
 }

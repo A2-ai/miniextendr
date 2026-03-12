@@ -1,5 +1,0 @@
-error: glob imports (`use x::*`) are not supported in miniextendr_module!; modules must be listed explicitly
- --> tests/ui/module_use_glob.rs:7:14
-  |
-7 |     use foo::*;
-  |              ^

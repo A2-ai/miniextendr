@@ -1,9 +1,0 @@
-error: missing `mod <name>;` declaration in miniextendr_module!
- --> tests/ui/module_empty.rs:5:1
-  |
-5 | / miniextendr_module! {
-6 | |     // Empty - missing mod declaration
-7 | | }
-  | |_^
-  |
-  = note: this error originates in the macro `miniextendr_module` (in Nightly builds, run with -Z macro-backtrace for more info)

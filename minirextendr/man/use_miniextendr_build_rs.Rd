@@ -14,7 +14,6 @@ Invisibly returns TRUE if file was created
 }
 \description{
 Creates src/rust/build.rs which runs miniextendr-lint during cargo build
-to check consistency between \verb{#[miniextendr]} attributes and
-\verb{miniextendr_module!} declarations.
+to check \verb{#[miniextendr]} attributes and registration consistency.
 }
 \keyword{internal}

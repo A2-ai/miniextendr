@@ -202,7 +202,7 @@ struct mx_erased {
  * These functions are registered with R_RegisterCCallable and can be
  * obtained via R_GetCCallable("pigworld", "mx_*").
  *
- * NOTE: Function bodies are defined in mx_abi.c.
+ * NOTE: Function bodies are defined in mx_abi.rs (miniextendr-api).
  */
 
 /**

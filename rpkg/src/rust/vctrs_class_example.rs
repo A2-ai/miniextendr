@@ -17,8 +17,8 @@ use miniextendr_api::ffi::{
     SEXPTYPE, SexpExt,
 };
 use miniextendr_api::gc_protect::OwnedProtect;
+use miniextendr_api::miniextendr;
 use miniextendr_api::vctrs::new_vctr;
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 // =============================================================================
 // Constructor
@@ -160,18 +160,3 @@ pub fn vec_cast_double_percent(x: SEXP, _to: SEXP, _dots: ...) -> SEXP {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod vctrs_class_example;
-    fn new_percent;
-    fn vec_ptype_abbr_percent;
-    fn format_percent;
-    fn vec_proxy_percent;
-    fn vec_restore_percent;
-    fn vec_ptype2_percent_percent;
-    fn vec_cast_percent_percent;
-    fn vec_cast_percent_double;
-    fn vec_ptype2_percent_double;
-    fn vec_ptype2_double_percent;
-    fn vec_cast_double_percent;
-}

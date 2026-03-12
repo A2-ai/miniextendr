@@ -69,16 +69,15 @@ NOT_CRAN=true just rcmdinstall        # Rebuild with new wrappers
 Functions exist in Rust but aren't callable from R. Check in order:
 
 1. **Function is `pub`** -- non-pub functions don't get `@export` in R wrappers
-2. **Function is in `miniextendr_module!`** -- check the module declaration in the same file
-3. **Sub-module is `use`d** -- check the parent module's `miniextendr_module!` has `use submodule;`
-4. **NAMESPACE is stale** -- run `just devtools-document` to regenerate
+2. **Function has `#[miniextendr]`** -- check the attribute is present
+3. **NAMESPACE is stale** -- run `just devtools-document` to regenerate
 
 Quick fix:
 ```bash
 NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
 ```
 
-**Note:** The lint tool (`just lint`) catches issues #1 and #2 but does NOT catch missing `use submodule;` in the parent module. This is a known limitation.
+**Note:** The lint tool (`just lint`) catches issues #1 and #2 at build time.
 
 ### "package not found" when running tests
 
@@ -145,34 +144,20 @@ Many files in rpkg are generated from `.in` templates. Always edit the template:
 | Generated file | Edit this instead |
 |---|---|
 | `rpkg/src/rust/.cargo/config.toml` | `rpkg/src/rust/cargo-config.toml.in` |
-| `rpkg/src/rust/document.rs` | `rpkg/src/rust/document.rs.in` |
 | `rpkg/src/Makevars` | `rpkg/src/Makevars.in` |
-| `rpkg/src/entrypoint.c` | `rpkg/src/entrypoint.c.in` |
-| `rpkg/src/mx_abi.c` | `rpkg/src/mx_abi.c.in` |
 | `rpkg/configure` | `rpkg/configure.ac` (then run `autoconf`) |
 
 ---
 
 ## Lint Issues
 
-### Lint reports "not listed in miniextendr_module!"
+### Lint reports missing `#[miniextendr]` attribute
 
-Add the function to the appropriate `miniextendr_module!` block:
-
-```rust
-miniextendr_module! {
-    mod my_module;
-    fn my_new_function;  // Add this
-}
-```
-
-### Lint reports "has no #[miniextendr] attribute"
-
-Either add `#[miniextendr]` to the function, or remove it from the module declaration.
+Add `#[miniextendr]` to the function or impl block. Registration is automatic via linkme distributed slices.
 
 ### Lint passes but functions are still invisible to R
 
-The lint doesn't check that child modules are wired into the parent. Verify the parent module has `use child_module;` in its `miniextendr_module!`.
+Ensure the function is `pub` and has `#[miniextendr]`, then run `just devtools-document` to regenerate R wrappers.
 
 ---
 

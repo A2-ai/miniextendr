@@ -4,11 +4,11 @@
 
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::list::List;
+use miniextendr_api::miniextendr;
 use miniextendr_api::vctrs::{
     R_len_t, VctrsBuildError, VctrsError, is_vctrs_initialized, new_list_of, new_rcrd, new_vctr,
     obj_is_vector, short_vec_recycle, short_vec_size,
 };
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Check if vctrs support has been initialized.
 #[miniextendr]
@@ -130,20 +130,4 @@ fn test_vctrs_build_error_message(error_type: &str) -> String {
         _ => return "unknown error type".to_string(),
     };
     err.to_string()
-}
-
-miniextendr_module! {
-    mod vctrs_tests;
-    fn test_vctrs_is_initialized;
-    fn test_vctrs_obj_is_vector;
-    fn test_vctrs_short_vec_size;
-    fn test_vctrs_short_vec_recycle;
-    fn test_vctrs_error_message;
-    // Construction helper tests
-    fn test_new_vctr;
-    fn test_new_vctr_inherit;
-    fn test_new_rcrd;
-    fn test_new_list_of_ptype;
-    fn test_new_list_of_size;
-    fn test_vctrs_build_error_message;
 }

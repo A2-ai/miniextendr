@@ -114,7 +114,7 @@ view.increment();
 
 ## Multiple Traits Per Type
 
-A single type can implement multiple traits. Register them all in `miniextendr_module!`:
+A single type can implement multiple traits. All are automatically registered via `#[miniextendr]`:
 
 ```rust
 #[miniextendr]
@@ -141,16 +141,10 @@ impl Resettable for MyCounter {
     fn reset(&mut self) { self.value = 0; }
 }
 
-miniextendr_module! {
-    mod mymod;
-
-    // Register both trait impls for the same type
-    impl Counter for MyCounter;
-    impl Resettable for MyCounter;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
-The macro groups trait impls by concrete type. `MyCounter` gets a single wrapper with a query function that handles both traits:
+The framework groups trait impls by concrete type. `MyCounter` gets a single wrapper with a query function that handles both traits:
 
 ```rust
 unsafe extern "C" fn __mx_query_mycounter(
@@ -190,28 +184,24 @@ The trait ABI enables cross-package dispatch where:
 ```
 Every package (rpkg, producer.pkg, consumer.pkg, ...)
 ────────────────────────────────────────────────────
-mx_abi.c (compiled into each package's .so)
-  mx_abi_register()                  ← called from entrypoint.c
+mx_abi.rs (compiled into each package's staticlib via miniextendr-api)
+  mx_abi_register()                  ← called by package_init() via miniextendr_init!
     init_tag()                       ← Rf_install("miniextendr::mx_erased")
     R_RegisterCCallable(...)         ← registers for cross-package use
   mx_wrap() / mx_get() / mx_query() ← linked directly via extern "C"
 ```
 
-- Each package compiles its own `mx_abi.c` into its `.so`
+- Each package includes `mx_abi.rs` from miniextendr-api (compiled into the Rust staticlib)
 - Rust calls `mx_wrap`/`mx_get`/`mx_query` directly (no `R_GetCCallable` indirection)
 - Cross-package dispatch works because all packages share the same `Rf_install("miniextendr::mx_erased")` tag symbol
 
 ### Requirements
 
-1. **Call `mx_abi_register()` in `R_init_*`**: This initializes the tag symbol and registers C-callables.
+1. **Use `miniextendr_init!` in lib.rs**: This calls `package_init()` which includes `mx_abi_register()` automatically.
 
-```c
-void R_init_mypkg(DllInfo *dll) {
-    miniextendr_panic_hook();
-    miniextendr_runtime_init();
-    mx_abi_register();  // Required for trait ABI
-    // ...
-}
+```rust
+// lib.rs
+miniextendr_api::miniextendr_init!(mypkg);
 ```
 
 2. **Main thread only**: All trait ABI operations must happen on R's main thread (which is where `.Call` runs).
@@ -223,5 +213,5 @@ void R_init_mypkg(DllInfo *dll) {
 - `miniextendr-api/src/trait_abi/mod.rs` - Core types and traits
 - `miniextendr-api/src/trait_abi/ccall.rs` - C-callable wrappers and init
 - `miniextendr-api/src/abi.rs` - FFI-compatible struct definitions
-- `rpkg/src/mx_abi.c` - C implementation of mx_wrap/mx_get/mx_query
+- `miniextendr-api/src/mx_abi.rs` - Rust implementation of mx_wrap/mx_get/mx_query
 - `rpkg/inst/include/mx_abi.h` - C header for consumer packages

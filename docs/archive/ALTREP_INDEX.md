@@ -166,8 +166,7 @@ ALTREP Documentation
 1. Choose vector type from quick reference
 2. Copy minimal example from ALTREP.md
 3. Modify for your use case
-4. Add to `miniextendr_module!`
-5. Run `just devtools-document && just rcmdinstall`
+4. Run `just devtools-document && just rcmdinstall`
 6. Test in R
 
 ### Adding Optimizations
@@ -181,9 +180,8 @@ ALTREP Documentation
 ### Debugging
 
 1. Check: Troubleshooting section (ALTREP.md)
-2. Verify: miniextendr_module! registration
-3. Run: `just lint` to check consistency
-4. Enable: Debug logging if needed
+2. Run: `just lint` to check consistency
+3. Enable: Debug logging if needed
 
 ---
 

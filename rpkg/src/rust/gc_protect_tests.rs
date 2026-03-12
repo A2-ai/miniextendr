@@ -5,8 +5,8 @@
 use miniextendr_api::ffi::{Rf_allocVector, Rf_xlength, SEXPTYPE};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::{List, ListBuilder};
+use miniextendr_api::miniextendr;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 // =============================================================================
 // ListBuilder tests
@@ -209,17 +209,3 @@ pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod gc_protect_tests;
-    fn test_list_builder_length;
-    fn test_list_builder_set;
-    fn test_list_set_elt;
-    fn test_list_set_elt_with;
-    fn test_strvec_builder_length;
-    fn test_strvec_builder_set;
-    fn test_strvec_set_str;
-    fn test_reprotect_slot_accumulate;
-    fn test_reprotect_slot_count;
-    fn test_reprotect_slot_no_growth;
-}

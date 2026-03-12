@@ -2,7 +2,7 @@
 
 use miniextendr_api::externalptr::ErasedExternalPtr;
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// A simple test struct for ExternalPtr
 #[derive(miniextendr_api::ExternalPtr, Debug)]
@@ -175,20 +175,4 @@ pub fn test_extptr_on_main_thread() -> i32 {
     use miniextendr_api::externalptr::ExternalPtr;
     let ptr = ExternalPtr::new(Counter { value: 99 });
     ptr.value
-}
-
-miniextendr_module! {
-    mod externalptr_tests;
-
-    fn extptr_counter_new;
-    extern "C-unwind" fn C_extptr_counter_get;
-    extern "C-unwind" fn C_extptr_counter_increment;
-    fn extptr_point_new;
-    extern "C-unwind" fn C_extptr_point_get_x;
-    extern "C-unwind" fn C_extptr_point_get_y;
-    extern "C-unwind" fn C_extptr_type_mismatch_test;
-    extern "C-unwind" fn C_extptr_null_test;
-    extern "C-unwind" fn C_extptr_is_counter;
-    extern "C-unwind" fn C_extptr_is_point;
-    fn test_extptr_on_main_thread;
 }
