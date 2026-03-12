@@ -358,6 +358,15 @@ jobs:
             [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
           done || true
 
+      - name: Print 00check.log and 00install.out
+        if: always()
+        run: |
+          echo "=== 00install.out ==="
+          cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
+          echo ""
+          echo "=== 00check.log ==="
+          cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
+
       - name: Upload check results
         if: failure()
         uses: actions/upload-artifact@v6
@@ -456,6 +465,15 @@ jobs:
           for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
             [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
           done || true
+
+      - name: Print 00check.log and 00install.out
+        if: always()
+        run: |
+          echo "=== 00install.out ==="
+          cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
+          echo ""
+          echo "=== 00check.log ==="
+          cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
 
       - name: Upload check results
         if: failure()
@@ -587,17 +605,15 @@ jobs:
             [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
           done || true
 
-      - name: Print 00check.log and 00install.out on failure
-        if: failure()
+      - name: Print 00check.log and 00install.out
+        if: always()
         shell: bash
         run: |
-          echo "=== Check directory contents ==="
-          ls -la rpkg/check/ 2>/dev/null || echo "check dir not found"
-          ls -la rpkg/check/*.Rcheck/ 2>/dev/null || echo "Rcheck dir not found"
-          echo "=== 00check.log ==="
-          cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
           echo "=== 00install.out ==="
           cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
+          echo ""
+          echo "=== 00check.log ==="
+          cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
 
       - name: Upload check results
         if: failure()
@@ -898,6 +914,15 @@ jobs:
           for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
             [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
           done || true
+
+      - name: Print 00check.log and 00install.out
+        if: always()
+        run: |
+          echo "=== 00install.out ==="
+          cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
+          echo ""
+          echo "=== 00check.log ==="
+          cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
 
       - name: Upload check results
         if: failure()
