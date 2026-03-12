@@ -121,7 +121,6 @@ $(CARGO_CDYLIB): FORCE_CARGO
 	  --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR) \
-	  --crate-type cdylib \
-	  -- --print link-args --print native-static-libs
+	  --crate-type cdylib
 
 clean:
