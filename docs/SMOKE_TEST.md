@@ -159,7 +159,7 @@ just devtools-test FILTER=conversions
 ```
 
 **Pass criteria:**
-1. `configure` generates `src/Makevars`, `src/entrypoint.c`, `src/mx_abi.c`.
+1. `configure` generates `src/Makevars`.
 2. `R CMD INSTALL rpkg` succeeds.
 3. Both test filters pass with no failures.
 
@@ -386,7 +386,7 @@ grep -r "old_function_name" rpkg/tests/ minirextendr/tests/
 
 The plan file references `just lint-sync-check` in Phase A1. This recipe was
 never implemented. Skip it -- the lint itself runs via `just lint` and checks
-`#[miniextendr]` / `miniextendr_module!` consistency, which is a separate
+`#[miniextendr]` source-level attribute consistency, which is a separate
 concern from sync checking.
 
 ### Test filter names may not exactly match
@@ -474,4 +474,4 @@ Each platform runs in two modes:
 | `just minirextendr-install` | B1 prereq | Install minirextendr |
 | `just minirextendr-test` | B1 | Run minirextendr testthat suite |
 | `just minirextendr-check` | B1 | `devtools::check` on minirextendr |
-| `just lint` | optional | Check `#[miniextendr]` / `miniextendr_module!` consistency |
+| `just lint` | optional | Check `#[miniextendr]` source-level attributes |

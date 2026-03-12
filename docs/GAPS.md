@@ -93,15 +93,12 @@ See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) for the full dots guide, including 
 
 ---
 
-### 1.3 Feature-Gated Module Entries
+### 1.3 Feature-Gated Modules
 
 **Status:** By design
 **Impact:** Low
-**Location:** `miniextendr-macros/src/lib.rs:1207`
 
-`#[cfg(...)]` attributes on individual `fn` entries inside `miniextendr_module!` don't work because the macro generates a monolithic module registration block — individual entries can't be conditionally compiled independently.
-
-The **correct pattern** is path-based module switching, which keeps function definitions and their module registrations in sync:
+Feature-gated modules use path-based module switching with `#[cfg]` on `mod` declarations:
 
 ```rust
 // In lib.rs
@@ -112,22 +109,12 @@ mod rayon_tests;
 #[cfg(not(feature = "rayon"))]
 #[path = "rayon_tests_disabled.rs"]
 mod rayon_tests;
-
-miniextendr_module! {
-    mod mymod;
-    use rayon_tests;  // Always present, contents vary by feature
-}
 ```
 
 Create a stub for the disabled case:
 ```rust
 // rayon_tests_disabled.rs
-use miniextendr_api::miniextendr_module;
-
-miniextendr_module! {
-    mod rayon_tests;
-    // Empty when feature disabled
-}
+// Empty when feature disabled
 ```
 
 This pattern is used throughout the rpkg example package (e.g., `rayon_tests.rs` / `rayon_tests_disabled.rs`) and is documented in CLAUDE.md.
@@ -781,7 +768,6 @@ no inline snapshot tests for generated R code.
 ### Macro Implementation
 - `miniextendr-macros/src/miniextendr_fn.rs` - Function macro
 - `miniextendr-macros/src/miniextendr_impl.rs` - Impl block macro
-- `miniextendr-macros/src/miniextendr_module.rs` - Module macro
 - `miniextendr-macros/src/factor_derive.rs` - RFactor derive
 - `miniextendr-macros/src/rust_conversion_builder.rs` - Parameter conversion
 - `miniextendr-macros/src/r_wrapper_builder.rs` - R wrapper generation

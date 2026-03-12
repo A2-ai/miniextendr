@@ -578,40 +578,9 @@ pub enum Color { Red, Green, Blue }
 
 ---
 
-## `miniextendr_module!`
+## Automatic Registration
 
-Every `#[miniextendr]` item must be registered in a module declaration:
-
-```rust
-miniextendr_module! {
-    mod my_module;
-
-    // Functions
-    fn greet;
-    fn add;
-
-    // Impl blocks (covers all methods in all impl blocks for this type)
-    impl Counter;
-
-    // ALTREP structs (needed for class registration)
-    struct LazyInts;
-
-    // Sub-modules
-    use child_module;
-
-    // Conditional compilation
-    #[cfg(feature = "extras")]
-    use extras_module;
-}
-```
-
-**Rules:**
-- Functions → `fn name;`
-- Types with impl blocks → `impl TypeName;`
-- ALTREP structs → `struct TypeName;`
-- Sub-modules → `use module_name;`
-- Structs/enums without impl blocks (list, dataframe, factor, match_arg) do NOT need entries
-- `#[cfg(...)]` gates must match between `mod` declaration and `use` in parent
+All `#[miniextendr]` items are automatically registered via linkme distributed slices. No manual module declarations are needed -- simply annotate your items with `#[miniextendr]` and they will be available to R at load time.
 
 ---
 

@@ -8,7 +8,7 @@ Only `default` features are enabled automatically.
 | Feature | What it enables | Dependencies added |
 |---------|----------------|-------------------|
 | **Default** | | |
-| `doc-lint` | Build-time lint checking `#[miniextendr]` vs `miniextendr_module!` | (forwarded to miniextendr-macros) |
+| `doc-lint` | Build-time lint checking `#[miniextendr]` source-level attributes | (forwarded to miniextendr-macros) |
 | `refcount-fast-hash` | Fast hasher for refcount protect arenas | ahash |
 | **Core / R Integration** | | |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
@@ -67,8 +67,8 @@ Only `default` features are enabled automatically.
 
 ### `doc-lint`
 
-Enables the build-time lint that checks consistency between `#[miniextendr]` attributes
-and `miniextendr_module!` declarations. Warns on missing entries in either direction.
+Enables the build-time lint that checks `#[miniextendr]` source-level attributes
+for consistency. Warns on missing or mismatched annotations.
 
 Forwarded to `miniextendr-macros/doc-lint`. Disable with `default-features = false` if
 the lint causes issues during development.
@@ -959,7 +959,7 @@ Feature implications (automatically enabled):
 ## Known Limitations
 
 - **`connections` is experimental.** R reserves the right to change the connection ABI without backward compatibility. Always check `R_CONNECTIONS_VERSION`. See [GAPS.md](GAPS.md#41-r-connections-api-experimental).
-- **Feature-gated module entries** require path-based module switching, not `#[cfg]` on individual `fn` entries in `miniextendr_module!`. See [GAPS.md](GAPS.md#13-feature-gated-module-entries).
+- **Feature-gated modules** require path-based module switching with `#[cfg]` on `mod` declarations. See [GAPS.md](GAPS.md#13-feature-gated-module-entries).
 - **vctrs cross-package export** and inheritance are not yet implemented. See [GAPS.md](GAPS.md) section 4.2.
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations.

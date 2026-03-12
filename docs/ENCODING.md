@@ -22,24 +22,17 @@ platforms, so this only fails on very old or misconfigured R installations.
 3. If `FALSE`, raises an R error:
    `"miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)"`
 
-### Entrypoint Integration
+### Initialization Integration
 
-The assertion is wired into `entrypoint.c.in`:
+The assertion is called automatically by `package_init()` (via `miniextendr_init!`):
 
-```c
-extern void miniextendr_assert_utf8_locale(void);
-
-void R_init_mypkg(DllInfo *dll) {
-    miniextendr_panic_hook();
-    miniextendr_runtime_init();
-    miniextendr_assert_utf8_locale();  // <-- fails fast if not UTF-8
-    R_init_mypkg_miniextendr(dll);
-    // ...
-}
+```rust
+// lib.rs — the macro handles UTF-8 assertion automatically
+miniextendr_api::miniextendr_init!(mypkg);
 ```
 
-No user action is required -- the scaffolding templates include this call
-automatically.
+No user action is required — `miniextendr_init!` includes the UTF-8 locale
+check as part of the standard initialization sequence.
 
 ## Encoding Info (Non-API, Embedding Only)
 
@@ -52,8 +45,7 @@ embedding R** (via `miniextendr-engine`), not in R packages.
 `miniextendr_encoding_init()` reads non-API symbols from R's `Defn.h`
 (`utf8locale`, `latin1locale`, `known_to_be_utf8`, `R_nativeEncoding`). These
 symbols are not exported from R's shared library (`libR.so` / `R.dll`), so they
-are unavailable to packages loaded via `.Call`. The call is commented out in the
-default `entrypoint.c.in`.
+are unavailable to packages loaded via `.Call`.
 
 ### REncodingInfo
 
