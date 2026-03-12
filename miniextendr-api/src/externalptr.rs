@@ -202,9 +202,7 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
     }
 }
 
-// =============================================================================
-// TypedExternalPtr Trait
-// =============================================================================
+// region: TypedExternalPtr Trait
 
 /// Trait for types that can be stored in an ExternalPtr.
 ///
@@ -263,10 +261,9 @@ impl TypedExternal for () {
     // Unit type is special - same ID as name since it's only used for type-erased ptrs
     const TYPE_ID_CSTR: &'static [u8] = b"()\0";
 }
+// endregion
 
-// =============================================================================
-// ExternalPtr<T>
-// =============================================================================
+// region: ExternalPtr<T>
 
 /// An owned pointer stored in R's external pointer SEXP.
 ///
@@ -584,9 +581,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         value
     }
 
-    // =========================================================================
-    // Pin support (Box-equivalent)
-    // =========================================================================
+    // region: Pin support (Box-equivalent)
 
     /// Constructs a new `Pin<ExternalPtr<T>>`.
     ///
@@ -632,10 +627,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // SAFETY: T: Unpin, so it's always safe to pin
         Pin::new(this)
     }
+    // endregion
 
-    // =========================================================================
-    // Accessors
-    // =========================================================================
+    // region: Accessors
 
     /// Returns a reference to the underlying value.
     ///
@@ -680,10 +674,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
             other.cached_ptr.as_ptr().cast_const(),
         )
     }
+    // endregion
 
-    // =========================================================================
-    // R-specific accessors
-    // =========================================================================
+    // region: R-specific accessors
 
     /// Returns the underlying SEXP.
     ///
@@ -801,10 +794,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub fn is_null(&self) -> bool {
         unsafe { R_ExternalPtrAddr(self.sexp).is_null() }
     }
+    // endregion
 
-    // =========================================================================
-    // Type checking
-    // =========================================================================
+    // region: Type checking
 
     /// Attempt to wrap a SEXP as an ExternalPtr with type checking.
     ///
@@ -971,10 +963,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
             _marker: PhantomData,
         }
     }
+    // endregion
 
-    // =========================================================================
-    // Downcast support
-    // =========================================================================
+    // region: Downcast support
 
     /// Returns the type name for type T.
     #[inline]
@@ -1002,6 +993,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             Some(symbol_name(stored_sym))
         }
     }
+    // endregion
 }
 
 impl ExternalPtr<()> {
@@ -1093,10 +1085,9 @@ impl fmt::Display for TypeMismatchError {
 }
 
 impl std::error::Error for TypeMismatchError {}
+// endregion
 
-// =============================================================================
-// MaybeUninit support
-// =============================================================================
+// region: MaybeUninit support
 
 // We need a separate TypedExternal impl for MaybeUninit<T>
 // This is typically done via blanket impl or macro
@@ -1145,10 +1136,9 @@ where
 }
 /// Type-erased `ExternalPtr` for cases where the concrete `T` is not needed.
 pub type ErasedExternalPtr = ExternalPtr<()>;
+// endregion
 
-// =============================================================================
-// Trait Implementations
-// =============================================================================
+// region: Trait Implementations
 
 impl<T: TypedExternal> Deref for ExternalPtr<T> {
     type Target = T;
@@ -1341,10 +1331,9 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
         //   drop(unsafe { Box::from_raw(ExternalPtr::into_raw(ptr)) });
     }
 }
+// endregion
 
-// =============================================================================
-// Finalizer
-// =============================================================================
+// region: Finalizer
 
 /// C finalizer function called by R's garbage collector.
 ///
@@ -1371,10 +1360,9 @@ extern "C-unwind" fn release_raw<T>(sexp: SEXP) {
     // Reconstruct the Box and let it drop
     drop(unsafe { Box::from_raw(ptr) });
 }
+// endregion
 
-// =============================================================================
-// Utility: ExternalSlice (helper for slice data)
-// =============================================================================
+// region: Utility: ExternalSlice (helper for slice data)
 
 /// A slice stored as a standalone struct, suitable for wrapping in ExternalPtr.
 ///
@@ -1452,10 +1440,9 @@ impl<T: 'static> Drop for ExternalSlice<T> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// ALTREP Helpers
-// =============================================================================
+// region: ALTREP Helpers
 
 /// Extract the ALTREP data1 slot as a typed `ExternalPtr<T>`.
 ///
@@ -1576,10 +1563,9 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 }
 
 // Tests for ExternalPtr require R runtime, so they are in rpkg/src/rust/lib.rs
+// endregion
 
-// =============================================================================
-// Sidecar Marker Type for #[r_data] Fields
-// =============================================================================
+// region: Sidecar Marker Type for #[r_data] Fields
 
 /// Marker type for enabling R sidecar accessors in an `ExternalPtr` struct.
 ///
@@ -1626,3 +1612,4 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 /// - Multiple `RSidecar` fields in one struct is a compile error
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct RSidecar;
+// endregion

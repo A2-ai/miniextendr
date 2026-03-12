@@ -222,9 +222,7 @@ fn test_missing_type_formals_clean_signature() {
     assert_eq!(builder.build_formals(), "x, y");
 }
 
-// =============================================================================
-// Insta snapshot tests for builder output stability
-// =============================================================================
+// region: Insta snapshot tests for builder output stability
 
 #[test]
 fn snapshot_dot_call_variations() {
@@ -358,3 +356,4 @@ fn snapshot_formals_and_call_args() {
 
     insta::assert_snapshot!(output);
 }
+// endregion

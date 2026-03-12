@@ -6,9 +6,7 @@
 
 use miniextendr_api::miniextendr;
 
-// =============================================================================
-// Standalone functions
-// =============================================================================
+// region: Standalone functions
 
 /// Standalone function that panics -- error_in_r catches this.
 ///
@@ -82,10 +80,9 @@ pub fn error_in_r_i32_err() -> Result<i32, String> {
 pub fn error_in_r_panic_custom(msg: String) -> String {
     panic!("{}", msg)
 }
+// endregion
 
-// =============================================================================
-// Env class with error_in_r methods
-// =============================================================================
+// region: Env class with error_in_r methods
 
 /// Counter for testing error_in_r with env class system.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -124,10 +121,9 @@ impl ErrorInRCounter {
         Err("method error".to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// R6 class with error_in_r methods
-// =============================================================================
+// region: R6 class with error_in_r methods
 
 /// Widget for testing error_in_r with R6 class system.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -161,10 +157,9 @@ impl ErrorInRR6Widget {
         Err("R6 result error".to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// S7 class with error_in_r methods
-// =============================================================================
+// region: S7 class with error_in_r methods
 
 /// Gauge for testing error_in_r with S7 class system.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -204,10 +199,9 @@ impl ErrorInRS7Gauge {
         Err("S7 result error".to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Trait with error_in_r methods
-// =============================================================================
+// region: Trait with error_in_r methods
 
 /// Trait for testing error_in_r on trait impls.
 /// @noRd
@@ -252,3 +246,4 @@ impl Fallible for FallibleImpl {
         panic!("trait panic in error_in_r")
     }
 }
+// endregion

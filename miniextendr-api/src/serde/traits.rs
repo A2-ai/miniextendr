@@ -176,9 +176,7 @@ pub fn from_r<T: for<'de> serde::Deserialize<'de>>(sexp: SEXP) -> Result<T, RSer
     RDeserializer::from_sexp_to(sexp)
 }
 
-// =============================================================================
-// AsSerialize wrapper for IntoR
-// =============================================================================
+// region: AsSerialize wrapper for IntoR
 
 use crate::into_r::IntoR;
 
@@ -270,3 +268,4 @@ impl<T: serde::Serialize> IntoR for AsSerialize<T> {
         }))
     }
 }
+// endregion

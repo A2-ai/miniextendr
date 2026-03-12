@@ -113,9 +113,7 @@ use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Blanket implementations for ndarray types where T: RNativeType
-// =============================================================================
+// region: Blanket implementations for ndarray types where T: RNativeType
 
 /// Blanket impl for `Array0<T>` (0-dimensional scalar arrays)
 impl<T: RNativeType + Copy> TryFromSexp for Array0<T> {
@@ -319,10 +317,9 @@ impl<T: RNativeType + Copy> TryFromSexp for ArrayD<T> {
         Self::try_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Array0 conversions (0-dimensional scalar arrays)
-// =============================================================================
+// region: Array0 conversions (0-dimensional scalar arrays)
 
 /// Convert `Array0<T>` to R scalar (length-1 vector).
 impl<T: RNativeType + Clone> IntoR for Array0<T> {
@@ -337,10 +334,9 @@ impl<T: RNativeType + Clone> IntoR for Array0<T> {
         Ok(unsafe { vec![self.into_scalar()].into_sexp_unchecked() })
     }
 }
+// endregion
 
-// =============================================================================
-// Array1 conversions
-// =============================================================================
+// region: Array1 conversions
 
 /// Convert `Array1<T>` to R vector.
 impl<T: RNativeType> IntoR for Array1<T> {
@@ -356,10 +352,9 @@ impl<T: RNativeType> IntoR for Array1<T> {
         Ok(unsafe { vec.into_sexp_unchecked() })
     }
 }
+// endregion
 
-// =============================================================================
-// Coerced Array conversions via TryCoerce
-// =============================================================================
+// region: Coerced Array conversions via TryCoerce
 //
 // These macros implement TryFromSexp for Array*<T> where T is not an R native
 // type but can be coerced from one. This mirrors the pattern in into_r.rs
@@ -664,10 +659,9 @@ macro_rules! impl_all_arrays_try_from_sexp_coerce {
         impl_arrayd_try_from_sexp_coerce!($source => $target);
     };
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Integer coercions: R integer (i32) -> various Rust integer types
-// -----------------------------------------------------------------------------
+// region: Integer coercions: R integer (i32) -> various Rust integer types
 impl_all_arrays_try_from_sexp_coerce!(i32 => i8);
 impl_all_arrays_try_from_sexp_coerce!(i32 => i16);
 impl_all_arrays_try_from_sexp_coerce!(i32 => i64);
@@ -676,20 +670,17 @@ impl_all_arrays_try_from_sexp_coerce!(i32 => u16);
 impl_all_arrays_try_from_sexp_coerce!(i32 => u32);
 impl_all_arrays_try_from_sexp_coerce!(i32 => u64);
 impl_all_arrays_try_from_sexp_coerce!(i32 => usize);
+// endregion
 
-// -----------------------------------------------------------------------------
-// Float coercions: R numeric (f64) -> f32
-// -----------------------------------------------------------------------------
+// region: Float coercions: R numeric (f64) -> f32
 impl_all_arrays_try_from_sexp_coerce!(f64 => f32);
+// endregion
 
-// -----------------------------------------------------------------------------
-// Logical coercions: R logical (RLogical) -> bool
-// -----------------------------------------------------------------------------
+// region: Logical coercions: R logical (RLogical) -> bool
 impl_all_arrays_try_from_sexp_coerce!(crate::ffi::RLogical => bool);
+// endregion
 
-// =============================================================================
-// Array2 conversions
-// =============================================================================
+// region: Array2 conversions
 
 /// Convert `Array2<T>` to R matrix.
 ///
@@ -726,10 +717,9 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
         })
     }
 }
+// endregion
 
-// =============================================================================
-// Array3 conversions (3D arrays)
-// =============================================================================
+// region: Array3 conversions (3D arrays)
 
 /// Convert `Array3<T>` to R 3D array.
 ///
@@ -777,10 +767,9 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
         }) // scope drops here, calling UNPROTECT(2)
     }
 }
+// endregion
 
-// =============================================================================
-// Array4 conversions (4D arrays)
-// =============================================================================
+// region: Array4 conversions (4D arrays)
 
 /// Convert `Array4<T>` to R 4D array.
 impl<T: RNativeType + Clone> IntoR for Array4<T> {
@@ -821,10 +810,9 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
         })
     }
 }
+// endregion
 
-// =============================================================================
-// Array5 conversions (5D arrays)
-// =============================================================================
+// region: Array5 conversions (5D arrays)
 
 /// Convert `Array5<T>` to R 5D array.
 impl<T: RNativeType + Clone> IntoR for Array5<T> {
@@ -864,10 +852,9 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
         })
     }
 }
+// endregion
 
-// =============================================================================
-// Array6 conversions (6D arrays)
-// =============================================================================
+// region: Array6 conversions (6D arrays)
 
 /// Convert `Array6<T>` to R 6D array.
 impl<T: RNativeType + Clone> IntoR for Array6<T> {
@@ -907,10 +894,9 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
         })
     }
 }
+// endregion
 
-// =============================================================================
-// ArrayD conversions (N-dimensional arrays)
-// =============================================================================
+// region: ArrayD conversions (N-dimensional arrays)
 
 /// Convert `ArrayD<T>` to R N-dimensional array.
 ///
@@ -996,10 +982,9 @@ fn fortran_order_iter<F: FnMut(Vec<usize>)>(shape: &[usize], mut f: F) {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// ArcArray conversions (shared ownership)
-// =============================================================================
+// region: ArcArray conversions (shared ownership)
 
 /// Convert `ArcArray1<T>` to R vector.
 impl<T: RNativeType + Clone> IntoR for ArcArray1<T> {
@@ -1032,10 +1017,9 @@ impl<T: RNativeType + Clone> IntoR for ArcArray2<T> {
         Ok(unsafe { arr.into_sexp_unchecked() })
     }
 }
+// endregion
 
-// =============================================================================
-// ArrayView conversions (read-only views)
-// =============================================================================
+// region: ArrayView conversions (read-only views)
 
 /// Convert `ArrayView1<T>` to R vector by copying.
 ///
@@ -1175,10 +1159,9 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
         })
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Get array dimensions from R object as a Vec.
 ///
@@ -1233,10 +1216,9 @@ fn get_array3_dims(sexp: SEXP) -> Result<(usize, usize, usize), SexpError> {
         .into()),
     }
 }
+// endregion
 
-// =============================================================================
-// Zero-copy slice access
-// =============================================================================
+// region: Zero-copy slice access
 
 /// Create an `ArrayView1` from an R vector without copying.
 ///
@@ -1414,10 +1396,9 @@ pub unsafe fn from_r_array<T: RNativeType>(
 
     Ok(view)
 }
+// endregion
 
-// =============================================================================
-// RArray <-> ndarray conversions
-// =============================================================================
+// region: RArray <-> ndarray conversions
 //
 // These implementations allow converting between RArray (a view over R data)
 // and ndarray types using standard From/Into traits.
@@ -1447,10 +1428,9 @@ pub unsafe fn from_r_array<T: RNativeType>(
 // 3. The lifetime of views is bounded by the RArray reference
 
 use crate::rarray::{RArray, RArray3D, RMatrix, RVector};
+// endregion
 
-// =============================================================================
-// Zero-copy view conversions
-// =============================================================================
+// region: Zero-copy view conversions
 
 /// Convert `&RVector<T>` to `ArrayView1<T>` without copying.
 ///
@@ -1525,10 +1505,9 @@ impl<'a, T: RNativeType, const NDIM: usize> From<&'a RArray<T, NDIM>> for ArrayV
         unsafe { ArrayViewD::from_shape_ptr(shape.f(), slice.as_ptr()) }
     }
 }
+// endregion
 
-// =============================================================================
-// Copy-to-owned conversions
-// =============================================================================
+// region: Copy-to-owned conversions
 
 /// Copy `&RVector<T>` into an owned `Array1<T>`.
 ///
@@ -1593,10 +1572,9 @@ impl<T: RNativeType + Clone, const NDIM: usize> From<&RArray<T, NDIM>> for Array
         unsafe { ArrayD::from_shape_vec_unchecked(shape.f(), slice.to_vec()) }
     }
 }
+// endregion
 
-// =============================================================================
-// TypedExternal implementations for ExternalPtr support
-// =============================================================================
+// region: TypedExternal implementations for ExternalPtr support
 //
 // These allow storing ndarray arrays as R external pointers (zero-copy).
 // Use `ExternalPtr<Array1<f64>>` when you want to pass arrays without copying.
@@ -1678,10 +1656,9 @@ impl_te_ndarray!(ArcArray1<f64>, "ndarray::ArcArray1<f64>");
 impl_te_ndarray!(ArcArray1<i32>, "ndarray::ArcArray1<i32>");
 impl_te_ndarray!(ArcArray2<f64>, "ndarray::ArcArray2<f64>");
 impl_te_ndarray!(ArcArray2<i32>, "ndarray::ArcArray2<i32>");
+// endregion
 
-// =============================================================================
-// RNdArrayOps adapter trait
-// =============================================================================
+// region: RNdArrayOps adapter trait
 
 /// Adapter trait for ndarray array operations.
 ///
@@ -2081,10 +2058,9 @@ impl RNdArrayOps for ArrayD<i32> {
         self.var().sqrt()
     }
 }
+// endregion
 
-// =============================================================================
-// RNdSlice adapter trait for array indexing/slicing
-// =============================================================================
+// region: RNdSlice adapter trait for array indexing/slicing
 
 /// Adapter trait for ndarray slicing and indexing operations.
 ///
@@ -2330,10 +2306,9 @@ impl RNdSlice2D for Array2<i32> {
         self.view().ncols() as i32
     }
 }
+// endregion
 
-// =============================================================================
-// RNdIndex adapter trait for n-dimensional indexing
-// =============================================================================
+// region: RNdIndex adapter trait for n-dimensional indexing
 
 /// Adapter trait for n-dimensional array indexing and slicing.
 ///
@@ -3074,3 +3049,4 @@ mod tests {
         assert_eq!(RNdIndex::len_nd(&arr), 4);
     }
 }
+// endregion

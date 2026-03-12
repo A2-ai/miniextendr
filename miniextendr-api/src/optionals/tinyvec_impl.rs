@@ -67,9 +67,7 @@ use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Blanket implementations for TinyVec and ArrayVec
-// =============================================================================
+// region: Blanket implementations for TinyVec and ArrayVec
 //
 // Now that we have blanket impls for `&[T]` where T: RNativeType, we can write
 // blanket impls for containers instead of using macros. This provides maximum
@@ -273,10 +271,9 @@ where
         })
     }
 }
+// endregion
 
-// =============================================================================
-// Coerced element support
-// =============================================================================
+// region: Coerced element support
 //
 // Support for `TinyVec<[Coerced<T, R>; N]>` and `ArrayVec<[Coerced<T, R>; N]>`.
 // This allows reading R native types (i32, f64) and coercing to non-native types
@@ -452,3 +449,4 @@ mod tests {
         // Cannot push more - would panic
     }
 }
+// endregion

@@ -1,9 +1,7 @@
 use super::{AltrepLen, Logical, Sortedness, fill_region};
 use crate::ffi::{Rcomplex, SEXP};
 
-// =============================================================================
-// Integer ALTREP
-// =============================================================================
+// region: Integer ALTREP
 
 /// Trait for types that can back an ALTINTEGER vector.
 ///
@@ -51,10 +49,9 @@ pub trait AltIntegerData: AltrepLen {
         None
     }
 }
+// endregion
 
-// =============================================================================
-// Real ALTREP
-// =============================================================================
+// region: Real ALTREP
 
 /// Trait for types that can back an ALTREAL vector.
 pub trait AltRealData: AltrepLen {
@@ -96,10 +93,9 @@ pub trait AltRealData: AltrepLen {
         None
     }
 }
+// endregion
 
-// =============================================================================
-// Logical ALTREP
-// =============================================================================
+// region: Logical ALTREP
 
 /// Trait for types that can back an ALTLOGICAL vector.
 pub trait AltLogicalData: AltrepLen {
@@ -132,10 +128,9 @@ pub trait AltLogicalData: AltrepLen {
     }
     // Note: R's ALTREP API does not expose min/max for logical vectors
 }
+// endregion
 
-// =============================================================================
-// Raw ALTREP
-// =============================================================================
+// region: Raw ALTREP
 
 /// Trait for types that can back an ALTRAW vector.
 pub trait AltRawData: AltrepLen {
@@ -152,10 +147,9 @@ pub trait AltRawData: AltrepLen {
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
+// endregion
 
-// =============================================================================
-// Complex ALTREP
-// =============================================================================
+// region: Complex ALTREP
 
 /// Trait for types that can back an ALTCOMPLEX vector.
 pub trait AltComplexData: AltrepLen {
@@ -172,10 +166,9 @@ pub trait AltComplexData: AltrepLen {
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
+// endregion
 
-// =============================================================================
-// String ALTREP
-// =============================================================================
+// region: String ALTREP
 
 /// Trait for types that can back an ALTSTRING vector.
 ///
@@ -196,10 +189,9 @@ pub trait AltStringData: AltrepLen {
         None
     }
 }
+// endregion
 
-// =============================================================================
-// List ALTREP
-// =============================================================================
+// region: List ALTREP
 
 /// Trait for types that can back an ALTLIST vector.
 ///
@@ -210,3 +202,4 @@ pub trait AltListData: AltrepLen {
     /// Returns a SEXP (any R object).
     fn elt(&self, i: usize) -> SEXP;
 }
+// endregion

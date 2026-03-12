@@ -38,9 +38,7 @@ use crate::list::{List, ListFromSexpError};
 use std::collections::HashSet;
 use std::ffi::CStr;
 
-// =============================================================================
-// Type specification structures
-// =============================================================================
+// region: Type specification structures
 
 /// Specification for validating a typed list.
 ///
@@ -185,10 +183,9 @@ impl TypeSpec {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Error types
-// =============================================================================
+// region: Error types
 
 /// Error returned when list validation fails.
 #[derive(Debug, Clone)]
@@ -270,10 +267,9 @@ impl From<ListFromSexpError> for TypedListError {
         TypedListError::NotList(e)
     }
 }
+// endregion
 
-// =============================================================================
-// TypedList wrapper
-// =============================================================================
+// region: TypedList wrapper
 
 /// A validated list that matches a [`TypedListSpec`].
 ///
@@ -371,10 +367,9 @@ impl TypedList {
         "any".to_string()
     }
 }
+// endregion
 
-// =============================================================================
-// Validation
-// =============================================================================
+// region: Validation
 
 /// Validate a list against a specification.
 ///
@@ -653,10 +648,9 @@ fn check_length(name: &str, expected: Option<usize>, actual: isize) -> Result<()
     }
     Ok(())
 }
+// endregion
 
-// =============================================================================
-// Helper functions for type detection and diagnostics
-// =============================================================================
+// region: Helper functions for type detection and diagnostics
 
 /// Get a human-readable name for a SEXPTYPE.
 pub fn sexptype_name(stype: SEXPTYPE) -> String {
@@ -755,3 +749,4 @@ mod tests {
         assert_eq!(sexptype_name(SEXPTYPE::VECSXP), "list");
     }
 }
+// endregion

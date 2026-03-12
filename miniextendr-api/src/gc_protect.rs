@@ -165,9 +165,7 @@ pub type ProtectIndex = ::std::os::raw::c_int;
 /// Enforces `!Send + !Sync` (R API is not thread-safe).
 type NoSendSync = PhantomData<Rc<()>>;
 
-// =============================================================================
-// ProtectScope
-// =============================================================================
+// region: ProtectScope
 
 /// A scope that automatically balances `UNPROTECT(n)` on drop.
 ///
@@ -356,9 +354,7 @@ impl ProtectScope {
         self.armed.set(true);
     }
 
-    // =========================================================================
-    // Allocation + Protection Helpers
-    // =========================================================================
+    // region: Allocation + Protection Helpers
 
     /// Allocate a vector of the given type and length, and immediately protect it.
     ///
@@ -448,10 +444,9 @@ impl ProtectScope {
             _scope: PhantomData,
         }
     }
+    // endregion
 
-    // =========================================================================
-    // Iterator Collection
-    // =========================================================================
+    // region: Iterator Collection
 
     /// Collect an iterator into a typed R vector.
     ///
@@ -538,10 +533,9 @@ impl Default for ProtectScope {
         unsafe { Self::new() }
     }
 }
+// endregion
 
-// =============================================================================
-// Root
-// =============================================================================
+// region: Root
 
 /// A rooted SEXP tied to the lifetime of a [`ProtectScope`].
 ///
@@ -582,10 +576,9 @@ impl<'a> std::ops::Deref for Root<'a> {
         &self.sexp
     }
 }
+// endregion
 
-// =============================================================================
-// OwnedProtect
-// =============================================================================
+// region: OwnedProtect
 
 /// A single-object RAII guard: `PROTECT` on create, `UNPROTECT(1)` on drop.
 ///
@@ -671,10 +664,9 @@ impl std::ops::Deref for OwnedProtect {
         &self.sexp
     }
 }
+// endregion
 
-// =============================================================================
-// ReprotectSlot
-// =============================================================================
+// region: ReprotectSlot
 
 /// A protected slot created with `R_ProtectWithIndex` and updated with `R_Reprotect`.
 ///
@@ -948,10 +940,9 @@ impl<'a> ReprotectSlot<'a> {
 // The previous impl fabricated `&SEXP` from `Cell<SEXP>` via pointer cast,
 // which violates Cell's aliasing rules if `set()` is called while a
 // reference is live. Use `get()` instead, which returns SEXP by value.
+// endregion
 
-// =============================================================================
-// TLS-backed convenience API (optional)
-// =============================================================================
+// region: TLS-backed convenience API (optional)
 
 /// Thread-local convenience for protecting without explicit scope references.
 ///
@@ -1185,10 +1176,9 @@ pub mod tls {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// WorkerUnprotectGuard — Send-safe unprotect for worker threads
-// =============================================================================
+// region: WorkerUnprotectGuard — Send-safe unprotect for worker threads
 
 /// A `Send`-safe guard that calls `Rf_unprotect(n)` on drop via `with_r_thread`.
 ///
@@ -1236,10 +1226,9 @@ impl Drop for WorkerUnprotectGuard {
 // Safety: no SEXP field, just an integer count. The actual Rf_unprotect call
 // is dispatched to the R main thread via with_r_thread.
 unsafe impl Send for WorkerUnprotectGuard {}
+// endregion
 
-// =============================================================================
-// Typed Vector Collection
-// =============================================================================
+// region: Typed Vector Collection
 
 // NOTE: Typed vectors (INTSXP, REALSXP, RAWSXP, LGLSXP, CPLXSXP) do NOT need
 // complex protection patterns during construction. You allocate once, protect
@@ -1251,10 +1240,9 @@ unsafe impl Send for WorkerUnprotectGuard {}
 //
 // For typed vectors with unknown length, just collect to Vec<T> first, then
 // allocate the exact size. The brief doubling of memory is fine.
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests {
@@ -1262,10 +1250,9 @@ mod tests {
 
     // Note: These tests primarily verify compilation and basic invariants.
     // Full integration testing requires R to be initialized.
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // Basic invariants
-    // -------------------------------------------------------------------------
+    // region: Basic invariants
 
     #[test]
     fn protect_scope_has_nosend_marker() {
@@ -1291,10 +1278,9 @@ mod tests {
         fn assert_copy<T: Copy>() {}
         assert_copy::<tls::TlsRoot>();
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // Threading: compile-time !Send + !Sync checks
-    // -------------------------------------------------------------------------
+    // region: Threading: compile-time !Send + !Sync checks
 
     #[test]
     fn protect_scope_is_not_send() {
@@ -1333,10 +1319,9 @@ mod tests {
     // negative trait bounds. The PhantomData<Rc<()>> marker ensures these types
     // are !Send and !Sync. If you need compile-time verification, use the
     // static_assertions crate with `assert_not_impl_any!`.
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // TLS scope tests
-    // -------------------------------------------------------------------------
+    // region: TLS scope tests
 
     #[test]
     fn tls_no_active_scope_by_default() {
@@ -1366,10 +1351,9 @@ mod tests {
             let _ = tls::protect(crate::ffi::SEXP(std::ptr::null_mut()));
         }
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // Escape hatch tests
-    // -------------------------------------------------------------------------
+    // region: Escape hatch tests
 
     #[test]
     fn disarm_prevents_unprotect() {
@@ -1394,10 +1378,9 @@ mod tests {
             assert!(scope.armed.get());
         }
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // Counter tracking tests
-    // -------------------------------------------------------------------------
+    // region: Counter tracking tests
 
     #[test]
     fn scope_counter_starts_at_zero() {
@@ -1414,4 +1397,6 @@ mod tests {
     //
     // These should be tested in miniextendr-api/tests/gc_protect.rs with
     // embedded R.
+    // endregion
 }
+// endregion

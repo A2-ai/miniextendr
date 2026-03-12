@@ -1,6 +1,4 @@
-// =============================================================================
-// Iterator-backed ALTREP infrastructure
-// =============================================================================
+// region: Iterator-backed ALTREP infrastructure
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -654,10 +652,9 @@ impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltRaw for IterRawD
             .unwrap_or(0)
     }
 }
+// endregion
 
-// =============================================================================
-// Iterator-backed ALTREP with Coerce support
-// =============================================================================
+// region: Iterator-backed ALTREP with Coerce support
 
 /// Iterator-backed integer vector with coercion from any integer-like type.
 ///
@@ -1509,10 +1506,9 @@ impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> crate::altrep_traits::A
             .unwrap_or(0)
     }
 }
+// endregion
 
-// =============================================================================
-// Sparse Iterator-backed ALTREP (with skipping support)
-// =============================================================================
+// region: Sparse Iterator-backed ALTREP (with skipping support)
 
 /// Core state for sparse iterator-backed ALTREP vectors.
 ///
@@ -2249,10 +2245,9 @@ impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> crate::altrep_traits::A
             .unwrap_or(0)
     }
 }
+// endregion
 
-// =============================================================================
-// Windowed Iterator-backed ALTREP infrastructure
-// =============================================================================
+// region: Windowed Iterator-backed ALTREP infrastructure
 
 /// Core state for windowed iterator-backed ALTREP vectors.
 ///
@@ -2464,10 +2459,9 @@ where
         Self::new(iter, len, window_size)
     }
 }
+// endregion
 
-// =============================================================================
-// Windowed Iterator wrapper types
-// =============================================================================
+// region: Windowed Iterator wrapper types
 
 /// Windowed iterator-backed integer vector data.
 ///
@@ -2694,3 +2688,4 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for Window
             .unwrap_or(0)
     }
 }
+// endregion

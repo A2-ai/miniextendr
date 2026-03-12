@@ -61,9 +61,7 @@ pub trait RegisterAltrep {
     fn get_or_init_class() -> R_altrep_class_t;
 }
 
-// =============================================================================
-// Runtime dispatch helper for class creation
-// =============================================================================
+// region: Runtime dispatch helper for class creation
 
 /// Validate that an ALTREP class handle was successfully created.
 ///
@@ -115,3 +113,4 @@ pub unsafe fn make_class_by_base(
     let name_cstr = unsafe { CStr::from_ptr(class_name) };
     validate_altrep_class(cls, name_cstr, base)
 }
+// endregion

@@ -5,9 +5,7 @@
 
 use crate::miniextendr_impl::{ParsedMethod, ReceiverKind};
 
-// =============================================================================
-// Shared R error-check code for error_in_r mode
-// =============================================================================
+// region: Shared R error-check code for error_in_r mode
 
 /// Generate the R `if` block that checks for a tagged error value and raises a condition.
 ///
@@ -76,10 +74,9 @@ pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String
          {final_return}"
     )
 }
+// endregion
 
-// =============================================================================
-// Return strategy
-// =============================================================================
+// region: Return strategy
 
 /// Return handling strategy for class methods.
 ///
@@ -418,3 +415,4 @@ impl MethodReturnBuilder {
 
 #[cfg(test)]
 mod tests;
+// endregion

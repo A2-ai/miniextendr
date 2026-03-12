@@ -22,9 +22,7 @@ use miniextendr_api::ffi::{self, SEXP};
 
 pub mod bench_plan;
 
-// =============================================================================
-// Size matrix for parameterized benchmarks
-// =============================================================================
+// region: Size matrix for parameterized benchmarks
 
 /// Standard size constants for benchmark parameterization.
 pub const SIZES: &[usize] = &[1, 16, 256, 4096, 65536];
@@ -46,10 +44,9 @@ pub const MATRIX_DIMS: &[(usize, usize)] = &[(64, 64), (256, 256)];
 
 /// Labels for matrix dimensions.
 pub const MATRIX_DIM_LABELS: &[&str] = &["64x64", "256x256"];
+// endregion
 
-// =============================================================================
-// Fixtures
-// =============================================================================
+// region: Fixtures
 
 #[derive(Clone, Copy)]
 /// Pre-allocated R values used by benchmark cases.
@@ -331,3 +328,4 @@ unsafe fn init_fixtures_once() {
         }
     });
 }
+// endregion

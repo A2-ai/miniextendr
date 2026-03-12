@@ -20,9 +20,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
     miniextendr_bench::fixtures()
 }
 
-// =============================================================================
-// Scalar: Direct vs R-coerced access
-// =============================================================================
+// region: Scalar: Direct vs R-coerced access
 
 /// Direct read: INTSXP -> i32 (no coercion)
 #[divan::bench]
@@ -79,10 +77,9 @@ fn scalar_real_to_int_rust_coerce() {
     let coerced: i32 = val.try_coerce().unwrap();
     divan::black_box(coerced);
 }
+// endregion
 
-// =============================================================================
-// Vector: Direct vs R-coerced access
-// =============================================================================
+// region: Vector: Direct vs R-coerced access
 
 /// Direct slice: INTSXP -> &[i32] (zero-copy)
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -140,10 +137,9 @@ fn vec_real_to_int_rust_coerce(size_idx: usize) {
     let coerced: Vec<i32> = slice.iter().map(|&x| x.try_coerce().unwrap()).collect();
     divan::black_box(coerced);
 }
+// endregion
 
-// =============================================================================
-// Logical coercion (LGLSXP <-> INTSXP)
-// =============================================================================
+// region: Logical coercion (LGLSXP <-> INTSXP)
 
 /// Direct: LGLSXP -> &[RLogical]
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -176,10 +172,9 @@ fn vec_int_to_lgl_r_coerce(size_idx: usize) {
         divan::black_box(slice);
     }
 }
+// endregion
 
-// =============================================================================
-// Raw coercion (RAWSXP <-> other)
-// =============================================================================
+// region: Raw coercion (RAWSXP <-> other)
 
 /// Direct: RAWSXP -> &[u8]
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -208,10 +203,9 @@ fn vec_raw_to_int_rust_coerce(size_idx: usize) {
     let coerced: Vec<i32> = slice.coerce();
     divan::black_box(coerced);
 }
+// endregion
 
-// =============================================================================
-// Pure Rust coercion baselines (no R involved)
-// =============================================================================
+// region: Pure Rust coercion baselines (no R involved)
 
 /// Baseline: i32 -> f64 coercion in pure Rust
 #[divan::bench(args = SIZES)]
@@ -236,3 +230,4 @@ fn rust_only_u8_to_i32(n: usize) {
     let coerced: Vec<i32> = data.coerce();
     divan::black_box(coerced);
 }
+// endregion

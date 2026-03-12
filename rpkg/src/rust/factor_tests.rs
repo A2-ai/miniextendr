@@ -33,9 +33,7 @@ pub enum Priority {
     High,
 }
 
-// ============================================================================
-// Test functions demonstrating direct RFactor parameter/return usage
-// ============================================================================
+// region: Test functions demonstrating direct RFactor parameter/return usage
 
 /// @noRd
 #[miniextendr_api::miniextendr]
@@ -131,3 +129,4 @@ pub fn factor_colors_with_na(colors: miniextendr_api::FactorOptionVec<Color>) ->
 }
 
 // Module export for
+// endregion

@@ -21,9 +21,7 @@ use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::strvec::StrVecBuilder;
 use miniextendr_api::thread::RThreadBuilder;
 
-// =============================================================================
-// R initialization with small ppsize
-// =============================================================================
+// region: R initialization with small ppsize
 
 /// Small protect stack size for testing.
 /// R's default is 50000. We use 10000 to verify bounded patterns while
@@ -102,10 +100,9 @@ where
         Err(panic) => std::panic::resume_unwind(panic),
     }
 }
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 /// Test that ReprotectSlot can handle many iterations without growing the stack.
 ///
@@ -316,3 +313,4 @@ fn exceed_limit_without_reprotect() {
         // so we're close to the edge. The test succeeds if we didn't crash.
     });
 }
+// endregion

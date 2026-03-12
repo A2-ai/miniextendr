@@ -189,9 +189,7 @@ where
     f()
 }
 
-// =============================================================================
-// Thread spawning with R-compatible settings
-// =============================================================================
+// region: Thread spawning with R-compatible settings
 
 /// Default stack size for R-compatible threads (8 MiB).
 ///
@@ -418,3 +416,4 @@ mod tests {
         assert_eq!(get_r_cstack_limit(), original);
     }
 }
+// endregion

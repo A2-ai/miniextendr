@@ -291,9 +291,7 @@ pub(crate) fn collect_param_idents(
     params
 }
 
-// =============================================================================
-// Missing<T> detection for automatic defaults
-// =============================================================================
+// region: Missing<T> detection for automatic defaults
 
 /// Check if a type is `Missing<T>` by examining the last path segment.
 ///
@@ -360,10 +358,9 @@ pub fn build_missing_prelude(
         .map(|param| format!("if (missing({p})) {p} <- quote(expr=)", p = param))
         .collect()
 }
+// endregion
 
-// =============================================================================
-// DotCallBuilder - .Call() invocation formatting
-// =============================================================================
+// region: DotCallBuilder - .Call() invocation formatting
 
 /// Builder for formatting `.Call()` invocations in R wrapper code.
 ///
@@ -436,10 +433,9 @@ impl DotCallBuilder {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// RoxygenBuilder - roxygen2 documentation tag generation
-// =============================================================================
+// region: RoxygenBuilder - roxygen2 documentation tag generation
 
 /// Builder for generating roxygen2 documentation tags.
 ///
@@ -595,10 +591,10 @@ impl Default for RoxygenBuilder {
         Self::new()
     }
 }
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests;
+// endregion

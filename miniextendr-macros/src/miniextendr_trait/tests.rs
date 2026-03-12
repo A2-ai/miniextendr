@@ -6,9 +6,7 @@ fn validate_trait_str(input: proc_macro2::TokenStream) -> syn::Result<()> {
     validate_trait(&trait_item)
 }
 
-// ==========================================================================
-// Trait-level validation tests
-// ==========================================================================
+// region: Trait-level validation tests
 
 #[test]
 fn trait_accepts_basic_trait() {
@@ -52,10 +50,9 @@ fn trait_accepts_lifetime_bounds() {
     });
     assert!(result.is_ok());
 }
+// endregion
 
-// ==========================================================================
-// Method-level validation tests
-// ==========================================================================
+// region: Method-level validation tests
 
 #[test]
 fn method_accepts_immutable_self() {
@@ -186,10 +183,9 @@ fn method_rejects_box_self() {
         err
     );
 }
+// endregion
 
-// ==========================================================================
-// Code generation tests
-// ==========================================================================
+// region: Code generation tests
 
 #[test]
 fn generate_produces_tag_constant() {
@@ -295,10 +291,9 @@ fn generate_preserves_original_trait() {
     assert!(output_str.contains("pub trait Counter"));
     assert!(output_str.contains("fn value"));
 }
+// endregion
 
-// ==========================================================================
-// MethodInfo extraction tests
-// ==========================================================================
+// region: MethodInfo extraction tests
 
 #[test]
 fn extract_method_info_captures_name() {
@@ -358,3 +353,4 @@ fn extract_method_info_extracts_params() {
     assert_eq!(info.param_names[1].to_string(), "b");
     assert_eq!(info.param_types.len(), 2);
 }
+// endregion

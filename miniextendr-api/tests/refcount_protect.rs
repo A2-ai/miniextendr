@@ -5,9 +5,7 @@ mod r_test_utils;
 use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, SEXPTYPE};
 use miniextendr_api::refcount_protect::RefCountedArena;
 
-// =============================================================================
-// Basic protection tests
-// =============================================================================
+// region: Basic protection tests
 
 #[test]
 fn protect_single_value() {
@@ -54,10 +52,9 @@ fn unprotect_removes_value() {
         assert_eq!(arena.len(), 0);
     });
 }
+// endregion
 
-// =============================================================================
-// Reference counting tests
-// =============================================================================
+// region: Reference counting tests
 
 #[test]
 fn protect_same_value_increments_count() {
@@ -103,10 +100,9 @@ fn unprotect_decrements_count() {
         assert!(!arena.is_protected(x));
     });
 }
+// endregion
 
-// =============================================================================
-// Release order tests
-// =============================================================================
+// region: Release order tests
 
 #[test]
 fn release_in_any_order() {
@@ -133,10 +129,9 @@ fn release_in_any_order() {
         assert!(arena.is_empty());
     });
 }
+// endregion
 
-// =============================================================================
-// try_unprotect tests
-// =============================================================================
+// region: try_unprotect tests
 
 #[test]
 fn try_unprotect_returns_true_for_protected() {
@@ -158,10 +153,9 @@ fn try_unprotect_returns_false_for_unprotected() {
         assert!(!arena.try_unprotect(x));
     });
 }
+// endregion
 
-// =============================================================================
-// Guard tests
-// =============================================================================
+// region: Guard tests
 
 #[test]
 fn guard_protects_and_unprotects() {
@@ -203,10 +197,9 @@ fn multiple_guards_for_same_value() {
         assert!(!arena.is_protected(x));
     });
 }
+// endregion
 
-// =============================================================================
-// Capacity and growth tests
-// =============================================================================
+// region: Capacity and growth tests
 
 #[test]
 fn arena_grows_when_full() {
@@ -253,10 +246,9 @@ fn free_slots_are_reused() {
         arena.unprotect(d);
     });
 }
+// endregion
 
-// =============================================================================
-// Clear test
-// =============================================================================
+// region: Clear test
 
 #[test]
 fn clear_removes_all_protections() {
@@ -277,10 +269,9 @@ fn clear_removes_all_protections() {
         assert!(!arena.is_protected(c));
     });
 }
+// endregion
 
-// =============================================================================
-// Large scale test
-// =============================================================================
+// region: Large scale test
 
 #[test]
 fn many_protections() {
@@ -308,10 +299,9 @@ fn many_protections() {
         assert!(arena.is_empty());
     });
 }
+// endregion
 
-// =============================================================================
-// VECSXP allocation test
-// =============================================================================
+// region: VECSXP allocation test
 
 #[test]
 fn protect_vecsxp() {
@@ -330,3 +320,4 @@ fn protect_vecsxp() {
         arena.unprotect(vec);
     });
 }
+// endregion

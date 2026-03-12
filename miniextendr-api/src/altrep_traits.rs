@@ -20,9 +20,7 @@
 use crate::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use core::ffi::c_void;
 
-// =============================================================================
-// ALTREP GUARD MODE
-// =============================================================================
+// region: ALTREP GUARD MODE
 
 /// Controls the panic/error guard used around ALTREP trampoline callbacks.
 ///
@@ -53,10 +51,9 @@ pub enum AltrepGuard {
     /// Use when ALTREP callbacks invoke R API functions that might error.
     RUnwind,
 }
+// endregion
 
-// =============================================================================
-// ALTREP BASE
-// =============================================================================
+// region: ALTREP BASE
 
 /// Base ALTREP methods.
 ///
@@ -133,10 +130,9 @@ pub trait Altrep {
         unreachable!("HAS_INSPECT = false")
     }
 }
+// endregion
 
-// =============================================================================
-// ALTVEC - Vector-level methods (extends Altrep)
-// =============================================================================
+// region: ALTVEC - Vector-level methods (extends Altrep)
 
 /// Vector-level methods.
 ///
@@ -163,10 +159,9 @@ pub trait AltVec: Altrep {
         unreachable!("HAS_EXTRACT_SUBSET = false")
     }
 }
+// endregion
 
-// =============================================================================
-// ALTINTEGER - Integer vector methods
-// =============================================================================
+// region: ALTINTEGER - Integer vector methods
 
 /// Integer vector methods.
 ///
@@ -225,10 +220,9 @@ pub trait AltInteger: AltVec {
         unreachable!("HAS_MAX = false")
     }
 }
+// endregion
 
-// =============================================================================
-// ALTREAL - Real (double) vector methods
-// =============================================================================
+// region: ALTREAL - Real (double) vector methods
 
 /// Real vector methods.
 pub trait AltReal: AltVec {
@@ -281,10 +275,9 @@ pub trait AltReal: AltVec {
         unreachable!("HAS_MAX = false")
     }
 }
+// endregion
 
-// =============================================================================
-// ALTLOGICAL - Logical vector methods
-// =============================================================================
+// region: ALTLOGICAL - Logical vector methods
 
 /// Logical vector methods.
 pub trait AltLogical: AltVec {
@@ -324,10 +317,9 @@ pub trait AltLogical: AltVec {
     }
     // Note: R's ALTREP API does not expose min/max for logical vectors
 }
+// endregion
 
-// =============================================================================
-// ALTRAW - Raw (byte) vector methods
-// =============================================================================
+// region: ALTRAW - Raw (byte) vector methods
 
 /// Raw vector methods.
 pub trait AltRaw: AltVec {
@@ -345,10 +337,9 @@ pub trait AltRaw: AltVec {
         unreachable!("HAS_GET_REGION = false")
     }
 }
+// endregion
 
-// =============================================================================
-// ALTCOMPLEX - Complex vector methods
-// =============================================================================
+// region: ALTCOMPLEX - Complex vector methods
 
 /// Complex vector methods.
 pub trait AltComplex: AltVec {
@@ -366,10 +357,9 @@ pub trait AltComplex: AltVec {
         unreachable!("HAS_GET_REGION = false")
     }
 }
+// endregion
 
-// =============================================================================
-// ALTSTRING - String vector methods
-// =============================================================================
+// region: ALTSTRING - String vector methods
 
 /// String vector methods.
 ///
@@ -403,10 +393,9 @@ pub trait AltString: AltVec {
         unreachable!("HAS_NO_NA = false")
     }
 }
+// endregion
 
-// =============================================================================
-// ALTLIST - List (VECSXP) methods
-// =============================================================================
+// region: ALTLIST - List (VECSXP) methods
 
 /// List vector methods.
 ///
@@ -426,10 +415,9 @@ pub trait AltList: AltVec {
         unreachable!("HAS_SET_ELT = false")
     }
 }
+// endregion
 
-// =============================================================================
-// Constants
-// =============================================================================
+// region: Constants
 
 /// Unknown sortedness value (INT_MIN in R).
 pub const UNKNOWN_SORTEDNESS: i32 = i32::MIN;
@@ -454,3 +442,4 @@ pub const NA_INTEGER: i32 = i32::MIN;
 pub const NA_LOGICAL: i32 = i32::MIN;
 /// NA value for reals (IEEE NaN with R's NA payload).
 pub const NA_REAL: f64 = f64::from_bits(0x7FF0_0000_0000_07A2);
+// endregion

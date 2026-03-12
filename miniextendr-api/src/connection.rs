@@ -183,9 +183,7 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
     }
 }
 
-// =============================================================================
-// ConnectionCapabilities - query connection state
-// =============================================================================
+// region: ConnectionCapabilities - query connection state
 
 /// Capabilities and state of an R connection.
 ///
@@ -318,10 +316,9 @@ pub unsafe fn connection_description(conn_sexp: SEXP) -> String {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Rconn struct - mirrors R's struct Rconn from R_ext/Connections.h
-// =============================================================================
+// region: Rconn struct - mirrors R's struct Rconn from R_ext/Connections.h
 
 /// Callback type: open connection.
 /// Returns TRUE on success, FALSE on failure.
@@ -465,10 +462,9 @@ pub struct Rconn {
     pub buff_stored_len: usize,
     pub buff_pos: usize,
 }
+// endregion
 
-// =============================================================================
-// RConnectionImpl trait - user-facing trait for implementing connections
-// =============================================================================
+// region: RConnectionImpl trait - user-facing trait for implementing connections
 
 /// Trait for implementing custom R connections.
 ///
@@ -612,10 +608,9 @@ pub trait RConnectionImpl: Sized + 'static {
         -1
     }
 }
+// endregion
 
-// =============================================================================
-// Callback trampolines - bridge between C callbacks and Rust trait
-// =============================================================================
+// region: Callback trampolines - bridge between C callbacks and Rust trait
 
 /// Extract the Rust state from a connection's private pointer.
 ///
@@ -761,10 +756,9 @@ simple_trampoline!(seek_trampoline, f64, fallback = -1.0, where_: f64, origin: c
 simple_trampoline!(truncate_trampoline, (), fallback = () => truncate());
 simple_trampoline!(flush_trampoline, c_int, fallback = -1 => flush());
 simple_trampoline!(vfprintf_trampoline, c_int, fallback = -1, fmt: *const c_char, ap: *mut c_void => vfprintf(fmt, ap));
+// endregion
 
-// =============================================================================
-// RCustomConnection builder
-// =============================================================================
+// region: RCustomConnection builder
 
 /// Builder for creating custom R connections.
 ///
@@ -999,10 +993,9 @@ impl RCustomConnection {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions for working with connections
-// =============================================================================
+// region: Helper functions for working with connections
 
 /// Read data from an R connection.
 ///
@@ -1067,10 +1060,9 @@ pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
 pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
     unsafe { crate::ffi::R_GetConnection(sexp) }
 }
+// endregion
 
-// =============================================================================
-// std::io integration - capability-aware adapters
-// =============================================================================
+// region: std::io integration - capability-aware adapters
 
 /// Capability flags for I/O operations.
 ///
@@ -1726,3 +1718,4 @@ impl<T: std::io::BufRead + 'static> RConnectionIo<T> {
 
 #[cfg(test)]
 mod tests;
+// endregion

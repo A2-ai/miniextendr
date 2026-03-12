@@ -38,9 +38,7 @@ fn ordered_float_vector_and_option() {
     });
 }
 
-// =============================================================================
-// Coerce/TryCoerce tests for OrderedFloat
-// =============================================================================
+// region: Coerce/TryCoerce tests for OrderedFloat
 
 #[cfg(feature = "ordered-float")]
 #[test]
@@ -173,3 +171,4 @@ fn coerce_ordered_float_to_f64() {
     let f2: f64 = of32.coerce();
     assert_eq!(f2, 2.5);
 }
+// endregion

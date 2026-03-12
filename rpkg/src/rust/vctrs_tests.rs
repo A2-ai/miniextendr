@@ -58,9 +58,7 @@ fn test_vctrs_error_message(code: i32) -> String {
     err.to_string()
 }
 
-// =============================================================================
-// Construction helper tests
-// =============================================================================
+// region: Construction helper tests
 
 /// Test new_vctr with default inherit_base_type.
 ///
@@ -131,3 +129,4 @@ fn test_vctrs_build_error_message(error_type: &str) -> String {
     };
     err.to_string()
 }
+// endregion

@@ -146,9 +146,7 @@ fn test_with_r_vec_map() {
     }
 }
 
-// =============================================================================
-// par_map tests
-// =============================================================================
+// region: par_map tests
 
 fn test_par_map() {
     let input: Vec<f64> = (0..1000).map(|i| i as f64).collect();
@@ -202,10 +200,9 @@ fn test_par_map_empty() {
     let len = unsafe { Rf_xlength(sexp) } as usize;
     assert_eq!(len, 0);
 }
+// endregion
 
-// =============================================================================
-// Matrix tests
-// =============================================================================
+// region: Matrix tests
 
 fn test_with_r_matrix_basic() {
     // Create a 3x4 matrix (12 elements total)
@@ -265,10 +262,9 @@ fn test_with_r_matrix_parallel() {
     // [0,1] = 0+1000 = 1000
     assert_eq!(slice[nrow], 1000.0);
 }
+// endregion
 
-// =============================================================================
-// Array tests
-// =============================================================================
+// region: Array tests
 
 fn test_with_r_array_basic() {
     // Create a 2x3x4 array (4 slabs of 6 elements each)
@@ -321,10 +317,9 @@ fn test_with_r_array_parallel() {
     assert_eq!(slice[1], 2.0);
     assert_eq!(slice[100], 200.0);
 }
+// endregion
 
-// =============================================================================
-// Typed wrapper tests (new_r_matrix, new_r_array)
-// =============================================================================
+// region: Typed wrapper tests (new_r_matrix, new_r_array)
 
 fn test_new_r_matrix() {
     let matrix = new_r_matrix::<f64, _>(5, 3, |col, col_idx| {
@@ -354,3 +349,4 @@ fn test_new_r_array() {
     }
     assert_eq!(array.len(), 120);
 }
+// endregion

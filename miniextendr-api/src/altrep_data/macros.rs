@@ -123,8 +123,7 @@ macro_rules! impl_inferbase_list {
     };
 }
 
-// -------------------------------------------------------------------------
-// Logical enum tests
-// -------------------------------------------------------------------------
+// region: Logical enum tests
 #[cfg(test)]
 mod tests;
+// endregion

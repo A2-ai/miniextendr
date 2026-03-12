@@ -89,9 +89,7 @@ pub enum Command {
     },
 }
 
-// ---------------------------------------------------------------------------
-// Dev (framework development commands — behind `dev` feature)
-// ---------------------------------------------------------------------------
+// region: Dev (framework development commands — behind `dev` feature)
 
 #[cfg(feature = "dev")]
 #[derive(Subcommand)]
@@ -112,10 +110,9 @@ pub enum DevCmd {
         cmd: TemplatesCmd,
     },
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Init
-// ---------------------------------------------------------------------------
+// region: Init
 
 #[derive(Subcommand)]
 pub enum InitCmd {
@@ -160,10 +157,9 @@ pub enum InitCmd {
         local_path: Option<String>,
     },
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Workflow
-// ---------------------------------------------------------------------------
+// region: Workflow
 
 #[derive(Subcommand)]
 pub enum WorkflowCmd {
@@ -221,10 +217,9 @@ pub enum WorkflowCmd {
     /// Link package for development (devtools::load_all).
     DevLink,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Status
-// ---------------------------------------------------------------------------
+// region: Status
 
 #[derive(Subcommand)]
 pub enum StatusCmd {
@@ -235,10 +230,9 @@ pub enum StatusCmd {
     /// Validate miniextendr configuration is ready to build.
     Validate,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Cargo
-// ---------------------------------------------------------------------------
+// region: Cargo
 
 /// Shared build options for cargo commands.
 #[derive(clap::Args, Clone, Debug)]
@@ -423,10 +417,9 @@ pub enum CargoCmd {
     /// Clean cargo build artifacts.
     Clean,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Vendor
-// ---------------------------------------------------------------------------
+// region: Vendor
 
 #[derive(Subcommand)]
 pub enum VendorCmd {
@@ -474,10 +467,9 @@ pub enum VendorCmd {
         dev_path: Option<String>,
     },
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Feature
-// ---------------------------------------------------------------------------
+// region: Feature
 
 #[derive(Subcommand)]
 pub enum FeatureCmd {
@@ -531,10 +523,9 @@ pub enum FeatureRuleCmd {
     /// List current feature detection rules.
     List,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Render
-// ---------------------------------------------------------------------------
+// region: Render
 
 #[derive(Subcommand)]
 pub enum RenderCmd {
@@ -553,10 +544,9 @@ pub enum RenderCmd {
     /// Word document format with miniextendr sync.
     Word,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Rust
-// ---------------------------------------------------------------------------
+// region: Rust
 
 #[derive(Subcommand)]
 pub enum RustCmd {
@@ -573,10 +563,9 @@ pub enum RustCmd {
     /// Clean compiled Rust code.
     Clean,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
+// region: Config
 
 #[derive(Subcommand)]
 pub enum ConfigCmd {
@@ -585,10 +574,9 @@ pub enum ConfigCmd {
     /// Show default config values.
     Defaults,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Bench (dev feature)
-// ---------------------------------------------------------------------------
+// region: Bench (dev feature)
 
 #[cfg(feature = "dev")]
 #[derive(Subcommand)]
@@ -649,10 +637,9 @@ pub enum BenchCmd {
         args: Vec<String>,
     },
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Cross (dev feature)
-// ---------------------------------------------------------------------------
+// region: Cross (dev feature)
 
 #[cfg(feature = "dev")]
 #[derive(Subcommand)]
@@ -670,10 +657,9 @@ pub enum CrossCmd {
     /// Clean both packages.
     Clean,
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// Templates (dev feature)
-// ---------------------------------------------------------------------------
+// region: Templates (dev feature)
 
 #[cfg(feature = "dev")]
 #[derive(Subcommand)]
@@ -685,3 +671,4 @@ pub enum TemplatesCmd {
     /// Show template source mappings.
     Sources,
 }
+// endregion

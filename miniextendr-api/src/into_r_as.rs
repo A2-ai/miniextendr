@@ -38,9 +38,7 @@ use crate::ffi::{RLogical, SEXP};
 use crate::into_r::IntoR;
 use std::fmt;
 
-// =============================================================================
-// Error type
-// =============================================================================
+// region: Error type
 
 /// Error type for storage-directed conversion failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,10 +193,9 @@ impl StorageCoerceError {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Trait definition
-// =============================================================================
+// region: Trait definition
 
 /// Storage-directed conversion to R SEXP.
 ///
@@ -231,10 +228,9 @@ pub trait IntoRAs<Target> {
     /// Convert to R SEXP with the specified target storage type.
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError>;
 }
+// endregion
 
-// =============================================================================
-// Helper: try_coerce_scalar with error mapping
-// =============================================================================
+// region: Helper: try_coerce_scalar with error mapping
 
 /// Try to coerce a scalar value, mapping CoerceError to StorageCoerceError.
 #[inline]
@@ -294,10 +290,9 @@ fn map_coerce_error(
         CoerceErrorKind::Infallible => unreachable!(),
     }
 }
+// endregion
 
-// =============================================================================
-// Scalar implementations: -> i32 (R integer)
-// =============================================================================
+// region: Scalar implementations: -> i32 (R integer)
 
 macro_rules! impl_into_r_as_i32_scalar {
     ($from:ty, $from_name:literal) => {
@@ -343,10 +338,9 @@ impl IntoRAs<i32> for bool {
         Ok((self as i32).into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Scalar implementations: -> f64 (R numeric)
-// =============================================================================
+// region: Scalar implementations: -> f64 (R numeric)
 
 macro_rules! impl_into_r_as_f64_scalar {
     ($from:ty, $from_name:literal) => {
@@ -444,10 +438,9 @@ impl IntoRAs<f64> for bool {
         Ok((if self { 1.0 } else { 0.0 }).into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Scalar implementations: -> u8 (R raw)
-// =============================================================================
+// region: Scalar implementations: -> u8 (R raw)
 
 macro_rules! impl_into_r_as_u8_scalar {
     ($from:ty, $from_name:literal) => {
@@ -481,10 +474,9 @@ impl_into_r_as_u8_scalar!(u64, "u64");
 impl_into_r_as_u8_scalar!(usize, "usize");
 impl_into_r_as_u8_scalar!(f32, "f32");
 impl_into_r_as_u8_scalar!(f64, "f64");
+// endregion
 
-// =============================================================================
-// Scalar implementations: -> RLogical (R logical)
-// =============================================================================
+// region: Scalar implementations: -> RLogical (R logical)
 
 impl IntoRAs<RLogical> for bool {
     #[inline]
@@ -516,10 +508,9 @@ impl IntoRAs<RLogical> for i32 {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Scalar implementations: -> String (R character)
-// =============================================================================
+// region: Scalar implementations: -> String (R character)
 
 impl IntoRAs<String> for String {
     #[inline]
@@ -593,10 +584,9 @@ impl IntoRAs<String> for RLogical {
         Ok(s.into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Vec implementations: -> i32 (R integer vector)
-// =============================================================================
+// region: Vec implementations: -> i32 (R integer vector)
 
 macro_rules! impl_vec_into_r_as_i32 {
     ($from:ty, $from_name:literal) => {
@@ -667,10 +657,9 @@ impl IntoRAs<i32> for &[bool] {
         Ok(result.into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Vec implementations: -> f64 (R numeric vector)
-// =============================================================================
+// region: Vec implementations: -> f64 (R numeric vector)
 
 macro_rules! impl_vec_into_r_as_f64 {
     ($from:ty, $from_name:literal) => {
@@ -811,10 +800,9 @@ impl IntoRAs<f64> for &[bool] {
         Ok(result.into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Vec implementations: -> u8 (R raw vector)
-// =============================================================================
+// region: Vec implementations: -> u8 (R raw vector)
 
 macro_rules! impl_vec_into_r_as_u8 {
     ($from:ty, $from_name:literal) => {
@@ -870,10 +858,9 @@ impl_vec_into_r_as_u8!(u64, "u64");
 impl_vec_into_r_as_u8!(usize, "usize");
 impl_vec_into_r_as_u8!(f32, "f32");
 impl_vec_into_r_as_u8!(f64, "f64");
+// endregion
 
-// =============================================================================
-// Vec implementations: -> RLogical (R logical vector)
-// =============================================================================
+// region: Vec implementations: -> RLogical (R logical vector)
 
 impl IntoRAs<RLogical> for Vec<bool> {
     #[inline]
@@ -888,10 +875,9 @@ impl IntoRAs<RLogical> for &[bool] {
         Ok(self.into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Vec implementations: -> String (R character vector)
-// =============================================================================
+// region: Vec implementations: -> String (R character vector)
 
 impl IntoRAs<String> for Vec<String> {
     #[inline]
@@ -967,10 +953,9 @@ impl IntoRAs<String> for Vec<bool> {
         Ok(strings.into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests {
@@ -1033,3 +1018,4 @@ mod tests {
         _assert_into_r_as::<Vec<f64>, String>();
     }
 }
+// endregion

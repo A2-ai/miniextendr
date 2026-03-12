@@ -11,9 +11,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Scalar conversions
-// =============================================================================
+// region: Scalar conversions
 
 #[divan::bench]
 fn scalar_i32() -> SEXP {
@@ -56,10 +54,9 @@ fn scalar_option_f64_none() -> SEXP {
     let val: Option<f64> = None;
     divan::black_box(val.into_sexp())
 }
+// endregion
 
-// =============================================================================
-// Vector conversions - integers
-// =============================================================================
+// region: Vector conversions - integers
 
 /// Pre-generate Vec<i32> of given size for benchmarking.
 fn make_int_vec(n: usize) -> Vec<i32> {
@@ -80,10 +77,9 @@ fn slice_i32(bencher: divan::Bencher, n: usize) {
         divan::black_box(slice.into_sexp())
     });
 }
+// endregion
 
-// =============================================================================
-// Vector conversions - floats
-// =============================================================================
+// region: Vector conversions - floats
 
 fn make_real_vec(n: usize) -> Vec<f64> {
     (0..n).map(|i| i as f64).collect()
@@ -103,10 +99,9 @@ fn slice_f64(bencher: divan::Bencher, n: usize) {
         divan::black_box(slice.into_sexp())
     });
 }
+// endregion
 
-// =============================================================================
-// Vector conversions - logical (RLogical)
-// =============================================================================
+// region: Vector conversions - logical (RLogical)
 
 use miniextendr_api::ffi::RLogical;
 
@@ -127,10 +122,9 @@ fn vec_logical(n: usize) -> SEXP {
     let vec = make_logical_vec(n);
     divan::black_box(vec.into_sexp())
 }
+// endregion
 
-// =============================================================================
-// Vector conversions - raw bytes
-// =============================================================================
+// region: Vector conversions - raw bytes
 
 fn make_u8_vec(n: usize) -> Vec<u8> {
     (0..n).map(|i| (i % 256) as u8).collect()
@@ -150,10 +144,9 @@ fn slice_u8(bencher: divan::Bencher, n: usize) {
         divan::black_box(slice.into_sexp())
     });
 }
+// endregion
 
-// =============================================================================
-// Vector conversions - Option<T> (NA handling)
-// =============================================================================
+// region: Vector conversions - Option<T> (NA handling)
 
 fn make_option_i32_vec(n: usize, na_density: f64) -> Vec<Option<i32>> {
     (0..n)
@@ -208,10 +201,9 @@ fn vec_option_f64_10pct_na(n: usize) -> SEXP {
     let vec = make_option_f64_vec(n, 0.1);
     divan::black_box(vec.into_sexp())
 }
+// endregion
 
-// =============================================================================
-// String conversions
-// =============================================================================
+// region: String conversions
 
 fn make_string_vec(n: usize) -> Vec<String> {
     (0..n).map(|i| format!("item_{}", i)).collect()
@@ -260,19 +252,17 @@ fn vec_option_string_10pct_na(n: usize) -> SEXP {
     let vec = make_option_string_vec(n, 0.1);
     divan::black_box(vec.into_sexp())
 }
+// endregion
 
-// =============================================================================
-// Unit and special types
-// =============================================================================
+// region: Unit and special types
 
 #[divan::bench]
 fn unit_type() -> SEXP {
     divan::black_box(().into_sexp())
 }
+// endregion
 
-// =============================================================================
-// Large-scale benchmarks (A10: detect GC pressure / cache effects at 100K-1M)
-// =============================================================================
+// region: Large-scale benchmarks (A10: detect GC pressure / cache effects at 100K-1M)
 
 #[divan::bench(args = LARGE_SIZES)]
 fn scale_vec_i32(n: usize) -> SEXP {
@@ -297,3 +287,4 @@ fn scale_vec_option_i32_50pct_na(n: usize) -> SEXP {
     let vec = make_option_i32_vec(n, 0.5);
     divan::black_box(vec.into_sexp())
 }
+// endregion

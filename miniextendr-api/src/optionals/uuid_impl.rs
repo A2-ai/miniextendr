@@ -39,9 +39,7 @@ use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Scalar conversions
-// =============================================================================
+// region: Scalar conversions
 
 impl TryFromSexp for Uuid {
     type Error = SexpError;
@@ -64,10 +62,9 @@ impl IntoR for Uuid {
         self.to_string().into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// Option conversions (NA support)
-// =============================================================================
+// region: Option conversions (NA support)
 
 impl TryFromSexp for Option<Uuid> {
     type Error = SexpError;
@@ -95,10 +92,9 @@ impl IntoR for Option<Uuid> {
         self.map(|u| u.to_string()).into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// Vector conversions
-// =============================================================================
+// region: Vector conversions
 
 impl TryFromSexp for Vec<Uuid> {
     type Error = SexpError;
@@ -164,10 +160,9 @@ impl IntoR for Vec<Uuid> {
             .into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// Vec<Option<Uuid>> conversions (NA-aware vectors)
-// =============================================================================
+// region: Vec<Option<Uuid>> conversions (NA-aware vectors)
 
 impl TryFromSexp for Vec<Option<Uuid>> {
     type Error = SexpError;
@@ -202,10 +197,9 @@ impl IntoR for Vec<Option<Uuid>> {
             .into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// RUuidOps adapter trait
-// =============================================================================
+// region: RUuidOps adapter trait
 
 /// Adapter trait for [`Uuid`] operations.
 ///
@@ -418,3 +412,4 @@ mod tests {
         assert_eq!(parsed.to_string(), "550e8400-e29b-41d4-a716-446655440000");
     }
 }
+// endregion

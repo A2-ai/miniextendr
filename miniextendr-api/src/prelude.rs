@@ -41,9 +41,7 @@
 //! }
 //! ```
 
-// ---------------------------------------------------------------------------
-// Proc-macro re-exports
-// ---------------------------------------------------------------------------
+// region: Proc-macro re-exports
 pub use crate::{
     // Derive macros
     Altrep,
@@ -54,38 +52,32 @@ pub use crate::{
     miniextendr,
     typed_list,
 };
+// endregion
 
-// ---------------------------------------------------------------------------
-// Core traits
-// ---------------------------------------------------------------------------
+// region: Core traits
 pub use crate::{Coerce, IntoR, TryCoerce, TryFromSexp};
+// endregion
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// region: Types
 pub use crate::{
     List, ListBuilder, ListMut, Missing, NamedVector, OwnedProtect, ProtectScope, StrVec,
     StrVecBuilder,
 };
+// endregion
 
-// ---------------------------------------------------------------------------
-// Worker thread
-// ---------------------------------------------------------------------------
+// region: Worker thread
 pub use crate::{Sendable, with_r_thread};
+// endregion
 
-// ---------------------------------------------------------------------------
-// Error handling
-// ---------------------------------------------------------------------------
+// region: Error handling
 pub use crate::{r_stop, r_warning};
+// endregion
 
-// ---------------------------------------------------------------------------
-// FFI (SEXP is needed in almost every crate)
-// ---------------------------------------------------------------------------
+// region: FFI (SEXP is needed in almost every crate)
 pub use crate::ffi::SEXP;
+// endregion
 
-// ===========================================================================
-// Optional feature re-exports
-// ===========================================================================
+// region: Optional feature re-exports
 
 // --- either ---
 #[cfg(feature = "either")]
@@ -264,3 +256,4 @@ pub use indicatif;
 // --- vctrs ---
 #[cfg(feature = "vctrs")]
 pub use crate::{IntoVctrs, VctrsClass, init_vctrs};
+// endregion

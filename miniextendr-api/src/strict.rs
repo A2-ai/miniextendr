@@ -205,9 +205,7 @@ pub fn checked_option_usize_into_sexp(val: Option<usize>) -> SEXP {
     checked_option_u64_into_sexp(val.map(|x| x as u64))
 }
 
-// =============================================================================
-// Strict INPUT helpers — only accept INTSXP and REALSXP, reject RAWSXP/LGLSXP
-// =============================================================================
+// region: Strict INPUT helpers — only accept INTSXP and REALSXP, reject RAWSXP/LGLSXP
 
 /// Convert R SEXP to `i64` in strict mode.
 ///
@@ -419,3 +417,4 @@ mod tests {
         assert!(result.is_err());
     }
 }
+// endregion

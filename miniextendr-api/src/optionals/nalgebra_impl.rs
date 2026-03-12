@@ -69,9 +69,7 @@ use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use nalgebra::Scalar;
 
-// =============================================================================
-// Blanket implementations for DVector and DMatrix
-// =============================================================================
+// region: Blanket implementations for DVector and DMatrix
 //
 // Now that we have blanket impls for `&[T]` where T: RNativeType, we can write
 // blanket impls for nalgebra types instead of using macros.
@@ -131,10 +129,9 @@ where
         Ok(DMatrix::from_column_slice(nrow, ncol, slice))
     }
 }
+// endregion
 
-// =============================================================================
-// DVector conversions
-// =============================================================================
+// region: DVector conversions
 
 /// Convert `DVector<T>` to R vector.
 impl<T: RNativeType + Scalar> IntoR for DVector<T> {
@@ -150,10 +147,9 @@ impl<T: RNativeType + Scalar> IntoR for DVector<T> {
         Ok(unsafe { data.into_sexp_unchecked() })
     }
 }
+// endregion
 
-// =============================================================================
-// DMatrix conversions
-// =============================================================================
+// region: DMatrix conversions
 
 /// Convert `DMatrix<T>` to R matrix.
 ///
@@ -181,10 +177,9 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
         })
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Get matrix dimensions from R object.
 fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
@@ -216,10 +211,9 @@ fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
         Ok((nrow as usize, ncol as usize))
     }
 }
+// endregion
 
-// =============================================================================
-// Static (stack-allocated) vector and matrix: SVector and SMatrix
-// =============================================================================
+// region: Static (stack-allocated) vector and matrix: SVector and SMatrix
 //
 // SVector<T, D> and SMatrix<T, R, C> are stack-allocated, compile-time sized
 // nalgebra types. They're useful when dimensions are known at compile time:
@@ -275,10 +269,9 @@ where
         Ok(SMatrix::from_column_slice(slice))
     }
 }
+// endregion
 
-// =============================================================================
-// SMatrix IntoR (also covers SVector since SVector<T,D> = SMatrix<T,D,1>)
-// =============================================================================
+// region: SMatrix IntoR (also covers SVector since SVector<T,D> = SMatrix<T,D,1>)
 
 /// Convert `SMatrix<T, R, C>` to R matrix.
 ///
@@ -298,10 +291,9 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
         })
     }
 }
+// endregion
 
-// =============================================================================
-// Option<SVector> and Option<SMatrix> conversions
-// =============================================================================
+// region: Option<SVector> and Option<SMatrix> conversions
 
 // Note: Option<SVector<T, D>> is handled by Option<SMatrix<T, D, 1>> below
 // since SVector<T, D> = SMatrix<T, D, 1>.
@@ -348,10 +340,9 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<S
         })
     }
 }
+// endregion
 
-// =============================================================================
-// TypedExternal implementations for ExternalPtr support
-// =============================================================================
+// region: TypedExternal implementations for ExternalPtr support
 //
 // These allow storing nalgebra types as R external pointers (zero-copy).
 // Use `ExternalPtr<DVector<f64>>` when you want to pass vectors without copying.
@@ -406,10 +397,9 @@ impl_te_nalgebra!(SMatrix<f64, 4, 4>, "nalgebra::SMatrix<f64,4,4>");
 impl_te_nalgebra!(SMatrix<i32, 2, 2>, "nalgebra::SMatrix<i32,2,2>");
 impl_te_nalgebra!(SMatrix<i32, 3, 3>, "nalgebra::SMatrix<i32,3,3>");
 impl_te_nalgebra!(SMatrix<i32, 4, 4>, "nalgebra::SMatrix<i32,4,4>");
+// endregion
 
-// =============================================================================
-// RVectorOps adapter trait
-// =============================================================================
+// region: RVectorOps adapter trait
 
 /// Adapter trait for [`nalgebra::DVector`] operations.
 ///
@@ -576,10 +566,9 @@ impl RVectorOps for DVector<f64> {
         DVector::component_mul(self, other)
     }
 }
+// endregion
 
-// =============================================================================
-// RMatrixOps adapter trait
-// =============================================================================
+// region: RMatrixOps adapter trait
 
 /// Adapter trait for [`nalgebra::DMatrix`] operations.
 ///
@@ -815,10 +804,9 @@ impl RMatrixOps for DMatrix<f64> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Coerced element support
-// =============================================================================
+// region: Coerced element support
 //
 // Support for `DVector<Coerced<T, R>>` and `DMatrix<Coerced<T, R>>`.
 // This allows reading R native types (i32, f64) and coercing to non-native types
@@ -1126,9 +1114,7 @@ mod tests {
         assert!((c[(1, 1)] - 46.0).abs() < 1e-10);
     }
 
-    // =========================================================================
-    // SVector and SMatrix tests
-    // =========================================================================
+    // region: SVector and SMatrix tests
 
     #[test]
     fn svector_can_be_created() {
@@ -1191,4 +1177,6 @@ mod tests {
         assert_eq!(m[(0, 0)], 1);
         assert_eq!(m[(1, 1)], 4);
     }
+    // endregion
 }
+// endregion

@@ -10,9 +10,7 @@ use crate::ffi::{DllInfo, R_CallMethodDef};
 use linkme::distributed_slice;
 use std::os::raw::c_void;
 
-// =============================================================================
-// Distributed Slices
-// =============================================================================
+// region: Distributed Slices
 
 /// R `.Call` method registrations (function + method C wrappers).
 ///
@@ -40,10 +38,9 @@ pub static MX_ALTREP_REGISTRATIONS: [fn()];
 /// `(concrete_tag, trait_tag)` to the trait's vtable pointer.
 #[distributed_slice]
 pub static MX_TRAIT_DISPATCH: [TraitDispatchEntry];
+// endregion
 
-// =============================================================================
-// Entry Types
-// =============================================================================
+// region: Entry Types
 
 /// Ordering priority for R wrapper code fragments.
 ///
@@ -90,10 +87,9 @@ pub struct TraitDispatchEntry {
 // Tags are Copy values. All fields are safe to read from any thread.
 unsafe impl Sync for TraitDispatchEntry {}
 unsafe impl Send for TraitDispatchEntry {}
+// endregion
 
-// =============================================================================
-// Universal Query
-// =============================================================================
+// region: Universal Query
 
 /// Universal query function for trait dispatch.
 ///
@@ -116,10 +112,9 @@ pub unsafe extern "C" fn universal_query(ptr: *mut mx_erased, trait_tag: mx_tag)
     }
     std::ptr::null()
 }
+// endregion
 
-// =============================================================================
-// Initialization
-// =============================================================================
+// region: Initialization
 
 /// Register all `#[miniextendr]` routines and ALTREP classes with R.
 ///
@@ -266,10 +261,9 @@ fn sort_s7_classes(entries: &mut [&'static str]) {
         entries[s7_indices[slot]] = original[src];
     }
 }
+// endregion
 
-// =============================================================================
-// R Wrapper File Generation
-// =============================================================================
+// region: R Wrapper File Generation
 
 /// Write all R wrapper entries to a file.
 ///
@@ -304,10 +298,9 @@ pub fn write_r_wrappers_to_file(path: &str) {
     f.write_all(b"# nocov end\n# nolint end\n")
         .expect("write footer");
 }
+// endregion
 
-// =============================================================================
-// C-Callable Entry Points (cdylib)
-// =============================================================================
+// region: C-Callable Entry Points (cdylib)
 
 /// C-callable entry point for R wrapper generation via cdylib.
 ///
@@ -337,3 +330,4 @@ pub unsafe extern "C-unwind" fn miniextendr_write_wrappers(
         R_NilValue
     }
 }
+// endregion

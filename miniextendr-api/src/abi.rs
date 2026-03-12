@@ -238,9 +238,7 @@ pub struct mx_erased {
     pub base: *const mx_base_vtable,
 }
 
-// =============================================================================
-// Tag generation
-// =============================================================================
+// region: Tag generation
 
 /// FNV-1a 64-bit offset basis.
 const FNV1A_64_OFFSET: u64 = 0xcbf29ce484222325;
@@ -304,3 +302,4 @@ pub const fn mx_tag_from_path(path: &str) -> mx_tag {
 
 #[cfg(test)]
 mod tests;
+// endregion

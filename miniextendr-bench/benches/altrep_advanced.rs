@@ -11,10 +11,7 @@ use miniextendr_api::{IntoR, miniextendr};
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
-// =============================================================================
-// Guard mode types: constant-value integer ALTREP with different guard modes.
-// Using constant elt isolates guard overhead from data access cost.
-// =============================================================================
+// region: Guard mode types: constant-value integer ALTREP with different guard modes. (Using constant elt isolates guard overhead from data access cost.)
 
 #[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepInteger)]
 #[altrep(len = "len", elt = "value")]
@@ -45,10 +42,9 @@ struct BenchGuardUnsafe(GuardUnsafeData);
 
 #[miniextendr(class = "BenchGuardRUnwind", pkg = "miniextendr.bench")]
 struct BenchGuardRUnwind(GuardRUnwindData);
+// endregion
 
-// =============================================================================
-// Zero-allocation real ALTREP (constant value, no backing Vec).
-// =============================================================================
+// region: Zero-allocation real ALTREP (constant value, no backing Vec).
 
 #[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepReal)]
 #[altrep(len = "len", elt = "value")]
@@ -59,10 +55,9 @@ pub struct ConstantRealData {
 
 #[miniextendr(class = "BenchConstantReal", pkg = "miniextendr.bench")]
 struct BenchConstantReal(ConstantRealData);
+// endregion
 
-// =============================================================================
-// Vec-backed ALTREP types (simple newtype pattern, default guard).
-// =============================================================================
+// region: Vec-backed ALTREP types (simple newtype pattern, default guard).
 
 #[miniextendr(class = "BenchIntVec", pkg = "miniextendr.bench")]
 struct BenchIntVec(Vec<i32>);
@@ -80,10 +75,9 @@ fn main() {
     miniextendr_bench::init();
     divan::main();
 }
+// endregion
 
-// =============================================================================
-// Group 1: Guard mode comparison (full scan to amortize creation cost)
-// =============================================================================
+// region: Group 1: Guard mode comparison (full scan to amortize creation cost)
 
 mod guard_modes {
     use super::*;
@@ -147,10 +141,9 @@ mod guard_modes {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 2: Access patterns (Vec-backed integer ALTREP vs plain INTSXP)
-// =============================================================================
+// region: Group 2: Access patterns (Vec-backed integer ALTREP vs plain INTSXP)
 
 mod materialization {
     use super::*;
@@ -221,10 +214,9 @@ mod materialization {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 3: String ALTREP
-// =============================================================================
+// region: Group 3: String ALTREP
 
 mod string_altrep {
     use super::*;
@@ -289,10 +281,9 @@ mod string_altrep {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 4: Complex ALTREP
-// =============================================================================
+// region: Group 4: Complex ALTREP
 
 mod complex_altrep {
     use super::*;
@@ -352,10 +343,9 @@ mod complex_altrep {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 5: Zero-allocation ALTREP (constant value, no backing Vec)
-// =============================================================================
+// region: Group 5: Zero-allocation ALTREP (constant value, no backing Vec)
 
 mod zero_alloc {
     use super::*;
@@ -451,10 +441,9 @@ mod zero_alloc {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 6: ALTREP creation cost comparison
-// =============================================================================
+// region: Group 6: ALTREP creation cost comparison
 
 mod creation {
     use super::*;
@@ -512,3 +501,4 @@ mod creation {
         divan::black_box(BenchConstantReal(data).into_sexp());
     }
 }
+// endregion

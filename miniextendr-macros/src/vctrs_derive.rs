@@ -307,9 +307,7 @@ fn generate_r_wrappers(opts: &RWrapperOptions) -> String {
     let math = opts.math;
     let mut r_code = String::new();
 
-    // =========================================================================
-    // format.<class>
-    // =========================================================================
+    // region: format.<class>
     if base == "record" {
         // Record format: paste fields together with separator
         let field_formats: Vec<String> = record_fields
@@ -350,10 +348,9 @@ format.{class} <- function(x, ...) {{
 "#
         ));
     }
+    // endregion
 
-    // =========================================================================
-    // vec_ptype_abbr.<class>
-    // =========================================================================
+    // region: vec_ptype_abbr.<class>
     if let Some(abbr) = abbr {
         r_code.push_str(&format!(
             r#"
@@ -365,10 +362,9 @@ vec_ptype_abbr.{class} <- function(x, ...) {{
 "#
         ));
     }
+    // endregion
 
-    // =========================================================================
-    // vec_ptype_full.<class>
-    // =========================================================================
+    // region: vec_ptype_full.<class>
     r_code.push_str(&format!(
         r#"
 #' @importFrom vctrs vec_ptype_full
@@ -378,10 +374,9 @@ vec_ptype_full.{class} <- function(x, ...) {{
 }}
 "#
     ));
+    // endregion
 
-    // =========================================================================
-    // vec_proxy.<class> - strip class for operations
-    // =========================================================================
+    // region: vec_proxy.<class> - strip class for operations
     if base == "record" {
         // Record proxy: convert to data frame for vctrs operations
         // vctrs expects rcrd proxy to be a data frame with n = number of records
@@ -420,10 +415,9 @@ vec_proxy.{class} <- function(x, ...) {{
 "#
         ));
     }
+    // endregion
 
-    // =========================================================================
-    // vec_restore.<class> - restore class after subsetting
-    // =========================================================================
+    // region: vec_restore.<class> - restore class after subsetting
     if base == "record" {
         // Record restore: convert data frame back to rcrd
         // x is a data frame from vec_proxy, convert to list and wrap as rcrd
@@ -461,10 +455,9 @@ vec_restore.{class} <- function(x, to, ...) {{
 "#
         ));
     }
+    // endregion
 
-    // =========================================================================
-    // vec_ptype2.<class>.<class> - self-coercion returns empty prototype
-    // =========================================================================
+    // region: vec_ptype2.<class>.<class> - self-coercion returns empty prototype
     if base == "record" {
         // Record ptype2: extract prototype from x using vctrs::vec_ptype
         // This is the cleanest way since we don't know field types at compile time
@@ -504,10 +497,9 @@ vec_ptype2.{class}.{class} <- function(x, y, ...) {{
             base = base_to_r_constructor(base)
         ));
     }
+    // endregion
 
-    // =========================================================================
-    // vec_cast.<class>.<class> - self-cast is identity
-    // =========================================================================
+    // region: vec_cast.<class>.<class> - self-cast is identity
     r_code.push_str(&format!(
         r#"
 #' @importFrom vctrs vec_cast
@@ -517,10 +509,9 @@ vec_cast.{class}.{class} <- function(x, to, ...) {{
 }}
 "#
     ));
+    // endregion
 
-    // =========================================================================
-    // Generate coercion methods for other types (e.g., double, integer)
-    // =========================================================================
+    // region: Generate coercion methods for other types (e.g., double, integer)
     for other_type in coerce_with {
         // vec_ptype2.<class>.<other> - class wins, return class prototype
         let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
@@ -573,10 +564,9 @@ vec_cast.{other_type}.{class} <- function(x, to, ...) {{
             ));
         }
     }
+    // endregion
 
-    // =========================================================================
-    // vec_proxy_equal.<class> - proxy for equality testing
-    // =========================================================================
+    // region: vec_proxy_equal.<class> - proxy for equality testing
     if proxy_equal {
         if base == "record" {
             // For records, use the data frame proxy (already suitable for equality)
@@ -615,10 +605,9 @@ vec_proxy_equal.{class} <- function(x, ...) {{
             ));
         }
     }
+    // endregion
 
-    // =========================================================================
-    // vec_proxy_compare.<class> - proxy for comparison/sorting
-    // =========================================================================
+    // region: vec_proxy_compare.<class> - proxy for comparison/sorting
     if proxy_compare {
         if base == "record" {
             // For records, use the data frame proxy
@@ -656,10 +645,9 @@ vec_proxy_compare.{class} <- function(x, ...) {{
             ));
         }
     }
+    // endregion
 
-    // =========================================================================
-    // vec_proxy_order.<class> - proxy for ordering (may differ from compare)
-    // =========================================================================
+    // region: vec_proxy_order.<class> - proxy for ordering (may differ from compare)
     if proxy_order {
         if base == "record" {
             // For records, use the data frame proxy
@@ -697,10 +685,9 @@ vec_proxy_order.{class} <- function(x, ...) {{
             ));
         }
     }
+    // endregion
 
-    // =========================================================================
-    // vec_arith.<class> - arithmetic operations (double dispatch)
-    // =========================================================================
+    // region: vec_arith.<class> - arithmetic operations (double dispatch)
     if arith {
         // For numeric-backed vctrs, arithmetic returns the same class
         if base != "record" && base != "list" && base != "character" && base != "raw" {
@@ -789,10 +776,9 @@ vec_arith.{class}.MISSING <- function(op, x, y, ...) {{
             ));
         }
     }
+    // endregion
 
-    // =========================================================================
-    // vec_math.<class> - math operations (abs, sqrt, log, etc.)
-    // =========================================================================
+    // region: vec_math.<class> - math operations (abs, sqrt, log, etc.)
     if math {
         // For numeric-backed vctrs, math returns the same class
         if base != "record" && base != "list" && base != "character" && base != "raw" {
@@ -804,6 +790,7 @@ vec_arith.{class}.MISSING <- function(op, x, y, ...) {{
 vec_math.{class} <- function(.fn, .x, ...) {{
   result <- vctrs::vec_math_base(.fn, .x, ...)
   vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+    // endregion
 }}
 "#
             ));

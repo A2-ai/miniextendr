@@ -554,9 +554,7 @@ pub use refcount_protect::{
 pub mod allocator;
 pub use allocator::RAllocator;
 
-// =============================================================================
-// Trait ABI Support
-// =============================================================================
+// region: Trait ABI Support
 //
 // Cross-package trait dispatch using a stable C ABI.
 // See `trait_abi` module docs for details.
@@ -648,10 +646,9 @@ pub extern "C-unwind" fn miniextendr_init_vctrs() -> i32 {
 // Re-export key ABI types at crate root for convenience
 pub use abi::{mx_base_vtable, mx_erased, mx_meth, mx_tag};
 pub use trait_abi::TraitView;
+// endregion
 
-// =============================================================================
-// Marker Traits
-// =============================================================================
+// region: Marker Traits
 //
 // Marker traits for types derived with proc-macros.
 // These enable compile-time identification and blanket implementations.
@@ -659,10 +656,9 @@ pub use trait_abi::TraitView;
 /// Marker traits for proc-macro derived types.
 pub mod markers;
 pub use markers::{PrefersDataFrame, PrefersExternalPtr, PrefersList, PrefersRNativeType};
+// endregion
 
-// =============================================================================
-// Adapter Traits
-// =============================================================================
+// region: Adapter Traits
 //
 // Built-in adapter traits with blanket implementations for standard library traits.
 // These allow any Rust type implementing Debug, Display, Hash, Ord, etc. to be
@@ -702,10 +698,9 @@ extern crate self as miniextendr_api;
 #[cfg(feature = "macro-coverage")]
 #[doc(hidden)]
 pub mod macro_coverage;
+// endregion
 
-// =============================================================================
-// Optional integrations with external crates (feature-gated)
-// =============================================================================
+// region: Optional integrations with external crates (feature-gated)
 //
 // All optional feature integrations are organized in the `optionals` module.
 // Types are re-exported at crate root for backwards compatibility.
@@ -959,3 +954,4 @@ pub use factor::{
 /// A single `use miniextendr_api::prelude::*;` brings into scope the most
 /// commonly used macros, traits, types, and helpers.
 pub mod prelude;
+// endregion

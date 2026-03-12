@@ -83,9 +83,7 @@ pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<SEXP, RSerdeError> {
     Ok(unsafe { assemble_dataframe(&schema.fields, &columns, nrow) })
 }
 
-// =============================================================================
-// Schema discovery
-// =============================================================================
+// region: Schema discovery
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ColumnType {
@@ -333,10 +331,9 @@ impl ser::SerializeStruct for SchemaStructDiscoverer<'_> {
         Ok(())
     }
 }
+// endregion
 
-// =============================================================================
-// Type probe (discovers column type from a single value)
-// =============================================================================
+// region: Type probe (discovers column type from a single value)
 
 struct TypeProbe {
     col_type: ColumnType,
@@ -499,10 +496,9 @@ impl ser::Serializer for &mut TypeProbe {
         Err(RSerdeError::Message("probe complete".into()))
     }
 }
+// endregion
 
-// =============================================================================
-// Column buffers
-// =============================================================================
+// region: Column buffers
 
 enum ColumnBuffer {
     Logical(Vec<i32>),
@@ -571,10 +567,9 @@ impl ColumnBuffer {
         Ok(())
     }
 }
+// endregion
 
-// =============================================================================
-// Value extraction
-// =============================================================================
+// region: Value extraction
 
 #[derive(Default)]
 struct ValueExtractor {
@@ -757,10 +752,9 @@ impl ser::Serializer for &mut ValueExtractor {
         ))
     }
 }
+// endregion
 
-// =============================================================================
-// Column filler (second pass — fills column buffers by field position)
-// =============================================================================
+// region: Column filler (second pass — fills column buffers by field position)
 
 /// Serializer that fills pre-allocated column buffers.
 ///
@@ -925,10 +919,9 @@ impl ser::SerializeStruct for ColumnFiller<'_> {
         Ok(())
     }
 }
+// endregion
 
-// =============================================================================
-// Data.frame assembly
-// =============================================================================
+// region: Data.frame assembly
 
 /// Build an empty R data.frame (0 rows, 0 columns).
 fn empty_dataframe() -> SEXP {
@@ -1062,3 +1055,4 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
         }
     }
 }
+// endregion

@@ -141,9 +141,7 @@ use crate::abi::mx_tag;
 use crate::ffi::SEXP;
 use std::os::raw::c_void;
 
-// =============================================================================
-// TraitView - Trait for macro-generated View structs
-// =============================================================================
+// region: TraitView - Trait for macro-generated View structs
 
 /// Trait for view types that can be created from SEXP via trait dispatch.
 ///
@@ -280,3 +278,4 @@ pub trait TraitView: Sized {
         }
     }
 }
+// endregion

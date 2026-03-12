@@ -6,9 +6,7 @@
 //! Use `crate::altrep_data1_as` (re-exported from externalptr) to extract
 //! data from an ALTREP's data1 slot.
 
-// =============================================================================
-// Checked string-to-CHARSXP helper
-// =============================================================================
+// region: Checked string-to-CHARSXP helper
 
 /// Create a CHARSXP from a Rust string, with checked length conversion.
 ///
@@ -29,10 +27,9 @@ pub unsafe fn checked_mkchar(s: &str) -> crate::ffi::SEXP {
     });
     unsafe { crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::cetype_t::CE_UTF8) }
 }
+// endregion
 
-// =============================================================================
-// Centralized ALTREP buffer access helper
-// =============================================================================
+// region: Centralized ALTREP buffer access helper
 
 /// Create a mutable slice from an ALTREP `get_region` output buffer pointer.
 ///
@@ -50,10 +47,9 @@ pub unsafe fn checked_mkchar(s: &str) -> crate::ffi::SEXP {
 pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] {
     unsafe { std::slice::from_raw_parts_mut(buf, len) }
 }
+// endregion
 
-// =============================================================================
-// Macros for generating trait implementations
-// =============================================================================
+// region: Macros for generating trait implementations
 
 /// Generate ALTREP trait implementations for a type that implements AltIntegerData.
 ///
@@ -364,10 +360,9 @@ macro_rules! __impl_altvec_extract_subset {
         }
     };
 }
+// endregion
 
-// =============================================================================
-// Shared building-block macros for ALTREP trait implementations
-// =============================================================================
+// region: Shared building-block macros for ALTREP trait implementations
 //
 // These macros expand to associated items inside `impl` blocks. They are
 // invoked by the per-family `__impl_alt*_methods!` macros to eliminate
@@ -459,10 +454,9 @@ macro_rules! __impl_alt_no_na {
         }
     };
 }
+// endregion
 
-// =============================================================================
-// Parametric macro: __impl_alt_from_data!
-// =============================================================================
+// region: Parametric macro: __impl_alt_from_data!
 //
 // This internal macro generates the standard ALTREP trait implementations
 // (Altrep, AltVec, family-specific methods, InferBase) for a given type.
@@ -529,10 +523,9 @@ macro_rules! __impl_alt_from_data {
         $crate::$inferbase!($ty);
     };
 }
+// endregion
 
-// =============================================================================
-// Per-family method macros (using shared building blocks)
-// =============================================================================
+// region: Per-family method macros (using shared building blocks)
 
 /// Internal macro for AltInteger method implementations.
 #[macro_export]
@@ -1012,10 +1005,9 @@ macro_rules! impl_altcomplex_from_data {
         $crate::impl_altcomplex_from_data!($ty, subset, serialize);
     };
 }
+// endregion
 
-// =============================================================================
-// Built-in implementations for standard types
-// =============================================================================
+// region: Built-in implementations for standard types
 // These implementations are provided here to satisfy the orphan rules.
 // User crates can use these types directly with delegate_data.
 //
@@ -1044,10 +1036,9 @@ impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
 
 // Complex types - Vec<Rcomplex> supports dataptr
 impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
+// endregion
 
-// =============================================================================
-// Box<[T]> implementations
-// =============================================================================
+// region: Box<[T]> implementations
 // Box<[T]> is a fat pointer (Sized) that wraps a DST slice.
 // Unlike Vec<T>, it has no capacity field - just ptr + len (2 words).
 // Useful for fixed-size heap allocations.
@@ -1058,10 +1049,9 @@ impl_altlogical_from_data!(Box<[bool]>, serialize);
 impl_altraw_from_data!(Box<[u8]>, serialize);
 impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
 impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
+// endregion
 
-// =============================================================================
-// Array implementations (const generics - can't use macros)
-// =============================================================================
+// region: Array implementations (const generics - can't use macros)
 
 // Integer arrays
 impl<const N: usize> crate::altrep_traits::Altrep for [i32; N] {
@@ -1377,10 +1367,9 @@ impl<const N: usize> crate::altrep_traits::AltComplex for [crate::ffi::Rcomplex;
             .unwrap_or(0)
     }
 }
+// endregion
 
-// =============================================================================
-// InferBase implementations for arrays (const generics)
-// =============================================================================
+// region: InferBase implementations for arrays (const generics)
 //
 // These allow arrays to be registered as ALTREP classes.
 // Note: Macros don't work with const generics, so these are hand-written.
@@ -1510,10 +1499,9 @@ impl<const N: usize> crate::altrep_data::InferBase for [crate::ffi::Rcomplex; N]
         unsafe { crate::altrep_bridge::install_cplx::<Self>(cls) };
     }
 }
+// endregion
 
-// =============================================================================
-// Static slice implementations (&'static [T])
-// =============================================================================
+// region: Static slice implementations (&'static [T])
 //
 // `&'static [T]` is Sized (fat pointer: ptr + len) and satisfies 'static,
 // so it can be used DIRECTLY with ALTREP via ExternalPtr.
@@ -1923,10 +1911,9 @@ impl crate::altrep_traits::AltString for &'static [&'static str] {
 }
 
 crate::impl_inferbase_string!(&'static [&'static str]);
+// endregion
 
-// =============================================================================
-// RegisterAltrep implementations for builtin types
-// =============================================================================
+// region: RegisterAltrep implementations for builtin types
 //
 // These implementations provide ALTREP class registration for Vec<T>, Box<[T]>,
 // and Range<T> types. They allow using these types with ALTREP via wrapper structs.
@@ -1989,3 +1976,4 @@ impl_register_altrep_builtin!(Box<[bool]>, "Box_bool");
 impl_register_altrep_builtin!(Box<[u8]>, "Box_u8");
 impl_register_altrep_builtin!(Box<[String]>, "Box_String");
 impl_register_altrep_builtin!(Box<[crate::ffi::Rcomplex]>, "Box_Rcomplex");
+// endregion

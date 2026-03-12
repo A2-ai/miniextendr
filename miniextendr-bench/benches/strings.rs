@@ -17,9 +17,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
     miniextendr_bench::fixtures()
 }
 
-// =============================================================================
-// Into R: Empty string handling
-// =============================================================================
+// region: Into R: Empty string handling
 
 /// Current approach: Rf_mkCharLenCE with length 0
 #[divan::bench]
@@ -32,10 +30,9 @@ fn into_r_empty_mkcharlen() -> SEXP {
 fn into_r_empty_blankstring() -> SEXP {
     unsafe { ffi::R_BlankString }
 }
+// endregion
 
-// =============================================================================
-// Into R: Non-empty strings (baseline showing mkCharLenCE cost scales with size)
-// =============================================================================
+// region: Into R: Non-empty strings (baseline showing mkCharLenCE cost scales with size)
 
 /// Rf_mkCharLenCE with pre-allocated string (avoids allocation in benchmark)
 #[divan::bench(args = SIZES)]
@@ -49,10 +46,9 @@ fn into_r_str_mkcharlen(bencher: divan::Bencher, n: usize) {
         ))
     });
 }
+// endregion
 
-// =============================================================================
-// From R: String extraction approaches
-// =============================================================================
+// region: From R: String extraction approaches
 
 /// Current: CStr::from_ptr (O(n) strlen scan to find null terminator)
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -89,10 +85,9 @@ fn from_r_length_slice_validated(size_idx: usize) {
     let s = std::str::from_utf8(bytes).unwrap();
     divan::black_box(s);
 }
+// endregion
 
-// =============================================================================
-// CStr::from_ptr internals breakdown
-// =============================================================================
+// region: CStr::from_ptr internals breakdown
 
 /// Just the strlen part (CStr::from_ptr without to_str)
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -112,10 +107,9 @@ fn from_r_length_only(size_idx: usize) {
     let len = unsafe { ffi::LENGTH(charsxp) };
     divan::black_box(len);
 }
+// endregion
 
-// =============================================================================
-// Full TryFromSexp comparison (what users actually call)
-// =============================================================================
+// region: Full TryFromSexp comparison (what users actually call)
 
 /// Current TryFromSexp implementation path
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -125,3 +119,4 @@ fn tryfromsexp_str_current(size_idx: usize) {
     let s: &str = TryFromSexp::try_from_sexp(strsxp).unwrap();
     divan::black_box(s);
 }
+// endregion

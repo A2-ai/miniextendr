@@ -17,9 +17,7 @@ impl Drop for DropTracer {
     }
 }
 
-// =============================================================================
-// Basic return type variants
-// =============================================================================
+// region: Basic return type variants
 
 #[miniextendr]
 pub(crate) fn cov_fn_no_return() {
@@ -80,10 +78,9 @@ pub(crate) fn cov_fn_panic_path() -> i32 {
     let _ = DropTracer("panic");
     panic!("macro coverage panic branch");
 }
+// endregion
 
-// =============================================================================
-// Dots / variadic parameter coverage
-// =============================================================================
+// region: Dots / variadic parameter coverage
 
 #[miniextendr]
 pub(crate) fn cov_fn_named_dots(dots: ...) {
@@ -103,10 +100,9 @@ pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
 
 #[miniextendr]
 pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, ...) {}
+// endregion
 
-// =============================================================================
-// Invisible / visible return
-// =============================================================================
+// region: Invisible / visible return
 
 #[miniextendr]
 pub(crate) fn cov_fn_invisible_option() -> Option<()> {
@@ -117,10 +113,9 @@ pub(crate) fn cov_fn_invisible_option() -> Option<()> {
 pub(crate) fn cov_fn_invisible_result() -> Result<(), ()> {
     Ok(())
 }
+// endregion
 
-// =============================================================================
-// Attribute option: atomic coverage (one per option)
-// =============================================================================
+// region: Attribute option: atomic coverage (one per option)
 
 #[miniextendr(invisible)]
 pub(crate) fn cov_fn_attr_invisible() -> i32 {
@@ -169,10 +164,9 @@ pub(crate) fn cov_fn_lifecycle_full(x: i32) -> i32 {
 pub(crate) fn cov_fn_param_default(#[miniextendr(default = "1L")] x: i32) -> i32 {
     x
 }
+// endregion
 
-// =============================================================================
-// Attribute option: combinations
-// =============================================================================
+// region: Attribute option: combinations
 
 #[miniextendr(worker, invisible)]
 pub(crate) fn cov_combo_worker_invisible(x: i32) -> i32 {
@@ -209,10 +203,9 @@ pub(crate) fn cov_combo_mainthread_visible_interrupt() {}
 pub(crate) fn cov_combo_invisible_interrupt() -> i32 {
     99
 }
+// endregion
 
-// =============================================================================
-// Coercion coverage - scalars
-// =============================================================================
+// region: Coercion coverage - scalars
 
 #[miniextendr(coerce)]
 pub(crate) fn cov_coerce_u16(x: u16) -> i32 {
@@ -263,10 +256,9 @@ pub(crate) fn cov_coerce_bool(x: bool) -> i32 {
 pub(crate) fn cov_coerce_f32(x: f32) -> f64 {
     x as f64
 }
+// endregion
 
-// =============================================================================
-// Coercion coverage - Vec types
-// =============================================================================
+// region: Coercion coverage - Vec types
 
 #[miniextendr(coerce)]
 pub(crate) fn cov_coerce_vec_u16(x: Vec<u16>) -> i32 {
@@ -282,10 +274,9 @@ pub(crate) fn cov_coerce_vec_bool(x: Vec<bool>) -> i32 {
 pub(crate) fn cov_coerce_vec_f32(x: Vec<f32>) -> i32 {
     x.len() as i32
 }
+// endregion
 
-// =============================================================================
-// Per-parameter coercion
-// =============================================================================
+// region: Per-parameter coercion
 
 #[miniextendr]
 pub(crate) fn cov_coerce_per_param(#[miniextendr(coerce)] x: u16, y: i32) -> i32 {
@@ -300,10 +291,9 @@ pub(crate) fn cov_coerce_per_param_multiple(
 ) -> i32 {
     a as i32 + b + c as i32
 }
+// endregion
 
-// =============================================================================
-// Wildcard parameters
-// =============================================================================
+// region: Wildcard parameters
 
 #[miniextendr]
 pub(crate) fn cov_wildcard_single(_: i32) -> i32 {
@@ -319,10 +309,9 @@ pub(crate) fn cov_wildcard_multiple(_: i32, _: f64) -> i32 {
 pub(crate) fn cov_wildcard_with_coerce(#[miniextendr(coerce)] _: u16) -> i32 {
     3
 }
+// endregion
 
-// =============================================================================
-// Inline attribute preservation
-// =============================================================================
+// region: Inline attribute preservation
 
 #[miniextendr]
 #[inline(always)]
@@ -335,10 +324,9 @@ pub fn cov_explicit_inline_always() -> i32 {
 pub fn cov_explicit_inline() -> i32 {
     43
 }
+// endregion
 
-// =============================================================================
-// Extern C function variants
-// =============================================================================
+// region: Extern C function variants
 
 #[miniextendr]
 #[unsafe(no_mangle)]
@@ -352,12 +340,12 @@ pub(crate) extern "C-unwind" fn C_cov_direct() -> ffi::SEXP {
 pub(crate) extern "C-unwind" fn C_cov_indirect() -> ffi::SEXP {
     unsafe { ffi::R_NilValue }
 }
+// endregion
 
-// =============================================================================
-// S3 method coverage
-// =============================================================================
+// region: S3 method coverage
 
 #[miniextendr(s3(generic = "format", class = "cov_s3_type"))]
 pub(crate) fn cov_fn_s3_method(x: i32) -> String {
     format!("cov_s3: {x}")
 }
+// endregion

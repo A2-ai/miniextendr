@@ -166,9 +166,7 @@ impl RngCore for RRng {
     }
 }
 
-// =============================================================================
-// R's Native Distribution Functions
-// =============================================================================
+// region: R's Native Distribution Functions
 
 /// Direct access to R's native distribution functions.
 ///
@@ -241,10 +239,9 @@ impl RDistributions for RRng {
         unsafe { crate::ffi::unif_rand() }
     }
 }
+// endregion
 
-// =============================================================================
-// Adapter Traits for Exposing RNGs to R
-// =============================================================================
+// region: Adapter Traits for Exposing RNGs to R
 
 /// Adapter trait for exposing any [`rand::Rng`] to R.
 ///
@@ -712,3 +709,4 @@ mod tests {
         let _sample = dist.sample();
     }
 }
+// endregion

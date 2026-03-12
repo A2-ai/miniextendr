@@ -8,9 +8,7 @@ use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::miniextendr;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 
-// =============================================================================
-// ListBuilder tests
-// =============================================================================
+// region: ListBuilder tests
 
 /// @noRd
 #[miniextendr]
@@ -73,10 +71,9 @@ pub fn test_list_set_elt_with() -> List {
         list
     }
 }
+// endregion
 
-// =============================================================================
-// StrVecBuilder tests
-// =============================================================================
+// region: StrVecBuilder tests
 
 /// @noRd
 #[miniextendr]
@@ -128,10 +125,9 @@ pub fn test_strvec_set_str() -> Vec<Option<String>> {
         result
     }
 }
+// endregion
 
-// =============================================================================
-// ReprotectSlot tests
-// =============================================================================
+// region: ReprotectSlot tests
 
 /// @noRd
 #[miniextendr]
@@ -205,7 +201,7 @@ pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

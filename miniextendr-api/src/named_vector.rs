@@ -27,9 +27,7 @@ use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// AtomicElement trait
-// =============================================================================
+// region: AtomicElement trait
 
 /// Marker trait for types that can be elements of named atomic R vectors.
 ///
@@ -167,10 +165,9 @@ impl AtomicElement for Option<String> {
         <Vec<Option<String>>>::try_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// NamedVector wrapper
-// =============================================================================
+// region: NamedVector wrapper
 
 /// Wrapper that converts a map to/from a **named atomic R vector** instead of a
 /// named list.
@@ -205,10 +202,9 @@ impl<M> From<M> for NamedVector<M> {
         NamedVector(m)
     }
 }
+// endregion
 
-// =============================================================================
-// Helpers
-// =============================================================================
+// region: Helpers
 
 /// Set names attribute on an R SEXP from a slice of name-like values.
 ///
@@ -288,10 +284,9 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
 
     Ok(result)
 }
+// endregion
 
-// =============================================================================
-// IntoR impls
-// =============================================================================
+// region: IntoR impls
 
 impl<V: AtomicElement> IntoR for NamedVector<HashMap<String, V>> {
     type Error = std::convert::Infallible;
@@ -332,10 +327,9 @@ impl<V: AtomicElement> IntoR for NamedVector<BTreeMap<String, V>> {
         sexp
     }
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp impls
-// =============================================================================
+// region: TryFromSexp impls
 
 impl<V: AtomicElement> TryFromSexp for NamedVector<HashMap<String, V>> {
     type Error = SexpError;
@@ -366,3 +360,4 @@ impl<V: AtomicElement> TryFromSexp for NamedVector<BTreeMap<String, V>> {
         Ok(NamedVector(map))
     }
 }
+// endregion
