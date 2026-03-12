@@ -50,7 +50,7 @@ mypackage/
 Edit `src/rust/lib.rs`:
 
 ```rust
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// Add two integers.
 /// @param a First number
@@ -68,12 +68,7 @@ pub fn add(a: i32, b: i32) -> i32 {
 pub fn greet(name: &str) -> String {
     format!("Hello, {}!", name)
 }
-
-miniextendr_module! {
-    mod mypackage;
-    fn add;
-    fn greet;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 ### Step 3: Build and Test
@@ -126,22 +121,9 @@ The macro:
 - Manages error handling and panics
 - Extracts documentation from Rust doc comments
 
-### The `miniextendr_module!` Macro
+### Automatic Registration
 
-Register functions for R visibility:
-
-```rust
-miniextendr_module! {
-    mod mypackage;     // Module name (usually package name)
-
-    fn add;            // Functions to export
-    fn greet;
-
-    use submodule;     // Include functions from submodules
-
-    impl MyStruct;     // Export impl blocks (classes)
-}
-```
+Items annotated with `#[miniextendr]` are automatically registered via linkme distributed slices -- no manual module declarations needed.
 
 ### Type Conversions
 
@@ -367,7 +349,7 @@ automatically via `bootstrap.R` and the Makevars dependency chain. No manual
 
 - **Rust panics**: Set `MINIEXTENDR_BACKTRACE=1` for full backtraces
 - **Compilation errors**: Check `src/rust/Cargo.toml` dependencies
-- **R errors**: Check that functions are listed in `miniextendr_module!`
+- **R errors**: Check that functions have `#[miniextendr]` and are `pub`
 
 ---
 
@@ -451,7 +433,6 @@ cd mypackage && autoconf && ./configure
 Ensure the function is:
 1. Marked `pub`
 2. Has `#[miniextendr]` attribute
-3. Listed in `miniextendr_module!`
 
 Then rebuild: `./configure && R CMD INSTALL .`
 

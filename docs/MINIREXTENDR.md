@@ -39,9 +39,7 @@ mypackage/
 │   │   ├── Cargo.toml   # Rust dependencies
 │   │   ├── lib.rs       # Your Rust code
 │   │   ├── build.rs     # Build-time lint
-│   │   └── document.rs.in
-│   ├── entrypoint.c.in
-│   ├── mx_abi.c.in
+│   ├── stub.c            # Minimal C stub for R linker
 │   ├── Makevars.in
 │   └── win.def.in
 ├── vendor/              # Vendored miniextendr crates
@@ -142,9 +140,9 @@ pub fn double_vec(x: Vec<f64>) -> Vec<f64> {
 double_vec(c(1.0, 2.5, 3.0))
 #> [1] 2.0 5.0 6.0
 
-# Full source with multiple functions and explicit module
+# Full source with multiple functions
 rust_source(code = '
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 #[miniextendr]
 pub fn greet(name: &str) -> String {
@@ -153,12 +151,7 @@ pub fn greet(name: &str) -> String {
 
 #[miniextendr]
 pub fn add(a: f64, b: f64) -> f64 { a + b }
-
-miniextendr_module! {
-    mod placeholder;
-    fn greet;
-    fn add;
-}
+// Registration is automatic via #[miniextendr].
 ')
 greet("world")
 #> [1] "Hello, world!"

@@ -11,7 +11,7 @@ functions into R, ALTREP support, and safe threading patterns.
 - `miniextendr-api/` - Core runtime: R FFI bindings, conversions, worker-thread
   pattern, ALTREP traits, and macro re-exports.
 - `miniextendr-macros/` - Procedural macros (`#[miniextendr]`,
-  `miniextendr_module!`, `#[r_ffi_checked]`, `ExternalPtr`, `RNativeType`).
+  `#[r_ffi_checked]`, `ExternalPtr`, `RNativeType`).
 - `miniextendr-engine/` - Standalone R embedding engine for Rust-only
   binaries/tests; uses non-API R internals.
 - `miniextendr-bench/` - Benchmarks for conversions and R interop.
@@ -90,8 +90,7 @@ Proc-macro crate that generates the R-facing glue.
 Main macros:
 
 - `#[miniextendr]` – exports Rust functions to R, generates wrappers and
-  conversion glue.
-- `miniextendr_module!` – registers exported functions and ALTREP types.
+  conversion glue. Registration is automatic via linkme.
 - `#[r_ffi_checked]` – routes R FFI calls to the main thread when needed.
 - Derives: `ExternalPtr`, `RNativeType`.
 

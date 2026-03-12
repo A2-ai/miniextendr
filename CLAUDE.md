@@ -9,12 +9,26 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
 - **Edit `.in` templates, not generated files**: Many files in rpkg are generated from `.in` templates. Always edit the `.in` source file instead:
   - `rpkg/src/rust/.cargo/config.toml` → edit `rpkg/src/rust/cargo-config.toml.in`
-  - `rpkg/src/rust/document.rs` → edit `rpkg/src/rust/document.rs.in` (document.rs is tracked in git so `cargo check` works without configure, but configure still regenerates it)
   - `rpkg/src/Makevars` → edit `rpkg/src/Makevars.in`
-  - `rpkg/src/entrypoint.c` → edit `rpkg/src/entrypoint.c.in`
-  - `rpkg/src/mx_abi.c` → edit `rpkg/src/mx_abi.c.in`
   - `rpkg/src/miniextendr-win.def` → edit `rpkg/src/win.def.in`
   - `rpkg/configure` → edit `rpkg/configure.ac` (then run `autoconf`)
+  - `rpkg/src/stub.c` — static file (no configure substitution), just a linker stub
+
+## Capturing Command Output
+
+**Always redirect long-running R/Cargo command output to a log file**, then read the log. This ensures you see the full output (no truncation from `tail`) and can re-read sections as needed.
+
+```bash
+# Pattern: redirect to file, then read with Read tool
+just devtools-document 2>&1 > /tmp/devtools-doc.log
+just rcmdinstall 2>&1 > /tmp/rcmdinstall.log
+just r-cmd-check 2>&1 > /tmp/rcmdcheck.log
+just devtools-test 2>&1 > /tmp/devtools-test.log
+just vendor 2>&1 > /tmp/vendor.log
+just devtools-check 2>&1 > /tmp/devtools-check.log
+```
+
+After the command finishes, use the **Read tool** to read the log file. Start by reading the whole file (or the tail end for very long logs), and if you need more context, read earlier sections. **Do NOT use `tail` or `head`** — use the Read tool so you see the complete output and can go back for more.
 
 ## Sandbox Restrictions
 
@@ -36,8 +50,8 @@ R CMD check rpkg          # Checks include compilation
 ```sh
 miniextendr/
 ├── miniextendr-api/      # Runtime library (FFI, ExternalPtr, ALTREP, worker thread)
-├── miniextendr-macros/   # Proc macros (#[miniextendr], miniextendr_module!)
-├── miniextendr-macros-core/ # Shared parser types (used by macros + lint)
+├── miniextendr-macros/   # Proc macros (#[miniextendr], derives)
+├── miniextendr-macros-core/ # Shared naming helpers (used by macros)
 ├── miniextendr-bench/    # Benchmarks (separate workspace member)
 ├── miniextendr-lint/     # Static analysis tool
 ├── miniextendr-engine/   # Code generation engine
@@ -58,7 +72,7 @@ miniextendr/
 just check              # Run cargo check on all crates
 just test               # Run cargo tests
 just clippy             # Run clippy lints
-just lint               # Run miniextendr-lint (checks macro/module consistency)
+just lint               # Run miniextendr-lint (source-side checks)
 just fmt                # Format Rust code
 
 # R package development (rpkg)
@@ -66,7 +80,7 @@ just configure          # REQUIRED before any R CMD operations (dev mode, no ven
 just vendor             # Vendor deps for CRAN release prep (creates inst/vendor.tar.xz)
 just rcmdinstall        # Build and install `library(miniextendr)` package in `rpkg` directory
 just devtools-test      # Run R tests
-just devtools-document  # Regenerate R wrappers
+just devtools-document  # Run roxygen2 (NAMESPACE + man pages)
 
 # Full R CMD check workflow
 just configure          # 1. Configure (generates Makevars, etc.)
@@ -85,6 +99,11 @@ just devtools-check     # Runs devtools::check with output saved to rpkg-check-o
 #   - 00check.log: Main check log
 #   - 00install.out: Installation/compilation output
 #   - tests/: Test output files
+
+# IMPORTANT: When running `just r-cmd-check`, save output to a file and read it:
+#   just r-cmd-check 2>&1 | tee /tmp/rcmdcheck.log
+#   # Then read /tmp/rcmdcheck.log — do NOT tail the output, as warnings
+#   # and notes appear throughout and will be missed.
 
 # Cross-package tests
 just cross-install      # Build + install producer.pkg and consumer.pkg
@@ -157,17 +176,15 @@ For changes to fully propagate (especially macro changes):
 
 ```bash
 just configure          # 1. Configure build (generates Makevars, etc.)
-just rcmdinstall        # 2. Build and install (compiles Rust)
-just devtools-document  # 3. Regenerate R wrappers
-just rcmdinstall        # 4. Rebuild with updated R wrappers
+just rcmdinstall        # 2. Build and install (compiles Rust + auto-generates R wrappers)
+just devtools-document  # 3. Run roxygen2 (regenerate NAMESPACE + man pages)
 ```
 
 **Why this order matters:**
 
 - `just configure` generates build config files
-- First build compiles the new macros
-- `devtools-document` runs the macros to regenerate `rpkg/R/miniextendr_wrappers.R`
-- Second build incorporates the regenerated R code
+- Build compiles Rust, then auto-generates `rpkg/R/miniextendr-wrappers.R` via cdylib
+- `devtools-document` runs roxygen2 on the generated wrappers to update NAMESPACE
 
 ### Testing Changes
 
@@ -227,21 +244,19 @@ When adding new `#[miniextendr]` functions to rpkg:
 
 ### Requirements for R export
 
-1. **Function must be `pub`** - only `pub` functions get `@export` in R wrappers
-2. **Function must be in `miniextendr_module!`** - list it in the module declaration
-3. **Sub-modules must be `use`d** - if functions are in a sub-module, add `use module_name;` to the parent's `miniextendr_module!`
+1. **Function must have `#[miniextendr]`** — this attribute handles automatic registration via linkme's `#[distributed_slice]`
+2. **Function must be `pub`** — only `pub` functions get `@export` in R wrappers
+3. **No module declaration needed** — functions self-register automatically; there is no `miniextendr_module!`
 
 ### Workflow for new functions
 
 ```bash
 # 1. Add your #[miniextendr] function(s) to a .rs file
-# 2. Add fn declarations to miniextendr_module! in that file
-# 3. If new module, add `use module_name;` to lib.rs miniextendr_module!
-# 4. Rebuild and regenerate R wrappers:
-NOT_CRAN=true just configure
-NOT_CRAN=true just rcmdinstall
-NOT_CRAN=true just devtools-document   # Regenerates R/miniextendr_wrappers.R and NAMESPACE
-NOT_CRAN=true just rcmdinstall         # Rebuild with new wrappers
+# 2. Make sure the file is reachable via `mod` declarations from lib.rs
+# 3. Rebuild (R wrappers are auto-generated during build):
+just configure
+just rcmdinstall
+just devtools-document   # Regenerates NAMESPACE via roxygen2
 
 # If permission issues, use local library path:
 R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
@@ -252,30 +267,30 @@ R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
 For modules that only exist when a feature is enabled (like `rayon`):
 
 ```rust
-// In lib.rs - use #[cfg] on both mod and use
+// In lib.rs - use #[cfg] on the mod declaration
 #[cfg(feature = "my_feature")]
 mod my_module;
-
-miniextendr_module! {
-    mod rpkg;
-    #[cfg(feature = "my_feature")]
-    use my_module;
-}
 ```
 
-The `#[cfg]` must appear in **both** places — on the `mod` declaration and on the `use` entry
-in `miniextendr_module!`. The lint (MXL109) checks for mismatches between the two.
+The `#[cfg]` on the `mod` declaration is sufficient — functions inside the module
+self-register via linkme when the feature is enabled.
+
+### What happens during build (R CMD INSTALL)
+
+1. Makevars builds a **cdylib** via `cargo rustc --crate-type cdylib`
+2. Loads the cdylib via `dyn.load()` and calls `miniextendr_write_wrappers`
+3. Auto-generates `R/miniextendr-wrappers.R` with all R wrapper functions
+4. Builds the **staticlib** (linked into the final `.so`)
 
 ### What `just devtools-document` does
 
-- Runs the `document` binary which executes proc macros to generate R code
-- Regenerates `rpkg/R/miniextendr_wrappers.R` with R wrapper functions
-- Runs roxygen2 to regenerate `rpkg/NAMESPACE` with exports
+- Runs roxygen2 on all R files (including the auto-generated wrappers)
+- Regenerates `rpkg/NAMESPACE` with exports, S3method registrations, etc.
 
 ### Verifying your changes
 
 ```bash
-just lint                        # Check #[miniextendr] ↔ miniextendr_module! consistency
+just lint                        # Run source-side checks
 NOT_CRAN=true just devtools-test # Run R tests
 ```
 
@@ -500,19 +515,17 @@ just templates-approve  # Accept current delta as approved (after intentional ch
 
 ## miniextendr-lint
 
-The `miniextendr-lint` crate is a build-time static analysis tool that checks consistency between `#[miniextendr]` attributes and `miniextendr_module!` declarations.
+The `miniextendr-lint` crate is a build-time static analysis tool that checks source-level correctness of `#[miniextendr]` usage.
 
 ### What it checks
 
-- **Missing module entries**: `#[miniextendr]` / `#[derive(Altrep)]` / `#[derive(Vctrs)]` items not listed in `miniextendr_module!`
-- **Missing attributes**: Items in `miniextendr_module!` without matching `#[miniextendr]` or derive attribute
-- **Missing `use submodule;`**: Child modules with `miniextendr_module!` not wired into the parent (MXL006)
-- **Multiple impl blocks**: When a type has 2+ impl blocks, all must have distinct labels
-- **Class system compatibility**: Trait impls must be compatible with inherent impl class systems
-- **Cfg parity**: `#[cfg(...)]` mismatches between items and module entries, or between `mod` and `use` declarations
-- **Trait ABI registration**: Missing `TypedExternal` for trait dispatch, generic types in trait entries
-- **Function visibility**: Registered top-level functions that aren't `pub`
-- **Module graph**: Unreachable modules, duplicate entrypoint symbols, multiple root macros
+- **MXL008**: Trait impl class system compatibility with inherent impl
+- **MXL009**: Multiple impl blocks for a type without distinct labels
+- **MXL010**: Duplicate labels on impl blocks
+- **MXL106**: Non-`pub` function that would get `@export`
+- **MXL203**: Redundant `internal` + `noexport` on the same item
+- **MXL300**: Direct `Rf_error`/`Rf_errorcall` usage (should use `panic!()` instead)
+- **MXL301**: `_unchecked` FFI calls outside of known-safe contexts
 
 ### Running the lint
 
@@ -528,14 +541,14 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 
 ### Fixing lint errors
 
-1. **"#[miniextendr] fn X not listed in miniextendr_module!"**
-   - Add `fn X;` to the appropriate `miniextendr_module!` block
-
-2. **"fn X listed in miniextendr_module! but has no #[miniextendr] attribute"**
-   - Add `#[miniextendr]` to the function definition, or remove from module
-
-3. **"type T has N impl blocks but some are missing labels"**
+1. **"type T has N impl blocks but some are missing labels"** (MXL009)
    - Add `#[miniextendr(label = "...")]` with unique labels to each impl block
+
+2. **"non-pub function will not be exported"** (MXL106)
+   - Make the function `pub`, or add `#[miniextendr(noexport)]`
+
+3. **"direct Rf_error usage"** (MXL300)
+   - Replace `Rf_error()` with `panic!()` — the framework converts panics to R errors safely
 
 ## Common Issues
 
@@ -543,18 +556,18 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 
 Functions exist in Rust but aren't callable from R. Check:
 
-1. **Function is `pub`** - non-pub functions don't get `@export`
-2. **Function is in `miniextendr_module!`** - check the module declaration
-3. **Sub-module is `use`d** - check parent module's `miniextendr_module!` has `use submodule;`
-4. **NAMESPACE is stale** - run `just devtools-document` to regenerate
+1. **Function has `#[miniextendr]`** — required for automatic registration
+2. **Function is `pub`** — non-pub functions don't get `@export`
+3. **Module is reachable** — the `.rs` file must be reachable via `mod` declarations from `lib.rs`
+4. **NAMESPACE is stale** — run `just devtools-document` to regenerate
 
 Quick fix:
 
 ```bash
-NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
+just configure && just rcmdinstall && just devtools-document
 # Or with local library path if permission issues:
-R_LIBS=/tmp/claude/R_lib NOT_CRAN=true just devtools-document
 R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
+NOT_CRAN=true just devtools-document
 ```
 
 ### "configure: command not found"
@@ -567,10 +580,10 @@ cd rpkg && autoconf && bash ./configure
 
 ### Stale R wrappers after macro changes
 
-Run the full workflow:
+R wrappers are auto-generated during build, so just rebuild:
 
 ```bash
-just configure && just rcmdinstall && just devtools-document && just rcmdinstall
+just configure && just rcmdinstall && just devtools-document
 ```
 
 ### Tests fail with "package not found"
