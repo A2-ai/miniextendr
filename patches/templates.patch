@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-11 13:54:54
-+++ b/monorepo/rpkg/Makevars.in	2026-03-11 13:55:07
+--- a/monorepo/rpkg/Makevars.in	2026-03-12 10:46:16
++++ b/monorepo/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
@@ -70,8 +70,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-11 13:04:55
-+++ b/monorepo/rpkg/configure.ac	2026-03-11 13:55:07
+--- a/monorepo/rpkg/configure.ac	2026-03-12 07:03:30
++++ b/monorepo/rpkg/configure.ac	2026-03-12 12:44:11
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -406,7 +406,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -473,162 +362,104 @@
+@@ -473,162 +362,100 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -510,7 +510,10 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -
 -        echo "configure: restored Cargo.toml from vendored to git state"
--      fi
++      done
++      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+       fi
 -
 -      echo "configure: dev-detached — using git/network deps"
 -      ;;
@@ -527,12 +530,33 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
 -            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
 -          fi
--        else
++    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
++      dnl MINIEXTENDR_LOCAL set — use standalone vendor script
++      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
++      if test -f "$abs_rpkg_dir/tools/vendor-local.R"; then
++        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-local.R" "$MINIEXTENDR_LOCAL" "$VENDOR_OUT" 2>&1 || {
++          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
++        }
++      else
++        echo "configure: warning: tools/vendor-local.R not found — cannot sync vendor/" >&2
++      fi
++    elif test -f "$VENDOR_OUT/.vendor-source"; then
++      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
++      if test -d "$_recorded/miniextendr-api"; then
++        echo "configure: syncing vendor/ from recorded source: $_recorded"
++        if test -f "$abs_rpkg_dir/tools/vendor-local.R"; then
++          "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-local.R" "$_recorded" "$VENDOR_OUT" 2>&1 || {
++            echo "configure: warning: vendor sync failed, using existing vendor/" >&2
++          }
+         else
 -          echo "configure: error: $BUILD_CONTEXT requires vendored sources." >&2
 -          echo "configure:        Run 'just vendor' to create inst/vendor.tar.xz first." >&2
 -          exit 1
--        fi
--      fi
++          echo "configure: warning: tools/vendor-local.R not found — vendor/ may be stale" >&2
+         fi
++      else
++        echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
+       fi
 -
 -      dnl Vendor exists — rewrite deps for vendored build
 -      echo "configure: $BUILD_CONTEXT — vendor ready"
@@ -549,16 +573,14 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
 -        fi
-       done
+-      done
 -
 -      dnl Strip [patch] section (monorepo paths not available)
 -      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
 -        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
 -          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -        echo "configure: stripped [patch] section"
-+      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-       fi
+-      fi
 -
 -      dnl Add [patch.crates-io] for transitive miniextendr deps
 -      _patch_lines=""
@@ -576,34 +598,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      if test -n "$_patch_lines"; then
 -        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
 -        echo "configure: added [patch.crates-io] for transitive deps"
-+    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
-+      dnl Pass path via env var so backslashes (Windows) don't break R string parsing
-+      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-+      MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" "$R_HOME/bin/Rscript" -e "
-+        if (requireNamespace('minirextendr', quietly = TRUE)) {
-+          minirextendr::vendor_miniextendr(local_path = Sys.getenv('MINIEXTENDR_LOCAL'))
-+        } else {
-+          message('configure: minirextendr not installed — cannot auto-sync vendor/')
-+        }
-+      " 2>&1 || {
-+        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-+      }
-+    elif test -f "$VENDOR_OUT/.vendor-source"; then
-+      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-+      if test -d "$_recorded/miniextendr-api"; then
-+        echo "configure: syncing vendor/ from recorded source: $_recorded"
-+        _MX_VENDOR_SOURCE="$_recorded" "$R_HOME/bin/Rscript" -e "
-+          if (requireNamespace('minirextendr', quietly = TRUE)) {
-+            minirextendr::vendor_miniextendr(local_path = Sys.getenv('_MX_VENDOR_SOURCE'))
-+          } else {
-+            message('configure: minirextendr not installed — vendor/ may be stale')
-+          }
-+        " 2>&1 || {
-+          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-+        }
-+      else
-+        echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
-       fi
+-      fi
 -
 -      dnl Regenerate Cargo.lock from vendored sources
 -      rm -f src/rust/Cargo.lock
@@ -652,7 +647,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  
-@@ -642,5 +473,5 @@
+@@ -642,5 +469,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
@@ -660,8 +655,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-11 13:54:54
-+++ b/rpkg/Makevars.in	2026-03-11 13:55:07
+--- a/rpkg/Makevars.in	2026-03-12 10:46:16
++++ b/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
  CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
@@ -731,8 +726,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-11 13:04:55
-+++ b/rpkg/configure.ac	2026-03-11 13:55:07
+--- a/rpkg/configure.ac	2026-03-12 07:03:30
++++ b/rpkg/configure.ac	2026-03-12 12:43:49
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -1067,7 +1062,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -473,162 +362,107 @@
+@@ -473,162 +362,100 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -1171,7 +1166,10 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -
 -        echo "configure: restored Cargo.toml from vendored to git state"
--      fi
++      done
++      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+       fi
 -
 -      echo "configure: dev-detached — using git/network deps"
 -      ;;
@@ -1188,12 +1186,33 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
 -            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
 -          fi
--        else
++    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
++      dnl MINIEXTENDR_LOCAL set — use standalone vendor script
++      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
++      if test -f "$abs_rpkg_dir/tools/vendor-local.R"; then
++        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-local.R" "$MINIEXTENDR_LOCAL" "$VENDOR_OUT" 2>&1 || {
++          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
++        }
++      else
++        echo "configure: warning: tools/vendor-local.R not found — cannot sync vendor/" >&2
++      fi
++    elif test -f "$VENDOR_OUT/.vendor-source"; then
++      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
++      if test -d "$_recorded/miniextendr-api"; then
++        echo "configure: syncing vendor/ from recorded source: $_recorded"
++        if test -f "$abs_rpkg_dir/tools/vendor-local.R"; then
++          "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-local.R" "$_recorded" "$VENDOR_OUT" 2>&1 || {
++            echo "configure: warning: vendor sync failed, using existing vendor/" >&2
++          }
+         else
 -          echo "configure: error: $BUILD_CONTEXT requires vendored sources." >&2
 -          echo "configure:        Run 'just vendor' to create inst/vendor.tar.xz first." >&2
 -          exit 1
--        fi
--      fi
++          echo "configure: warning: tools/vendor-local.R not found — vendor/ may be stale" >&2
+         fi
++      else
++        echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
+       fi
 -
 -      dnl Vendor exists — rewrite deps for vendored build
 -      echo "configure: $BUILD_CONTEXT — vendor ready"
@@ -1210,16 +1229,14 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
 -        fi
-       done
+-      done
 -
 -      dnl Strip [patch] section (monorepo paths not available)
 -      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
 -        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
 -          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -        echo "configure: stripped [patch] section"
-+      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-       fi
+-      fi
 -
 -      dnl Add [patch.crates-io] for transitive miniextendr deps
 -      _patch_lines=""
@@ -1237,37 +1254,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      if test -n "$_patch_lines"; then
 -        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
 -        echo "configure: added [patch.crates-io] for transitive deps"
-+    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
-+      dnl MINIEXTENDR_LOCAL set — delegate to R for proper Cargo.toml patching
-+      dnl Pass path via env var so backslashes (Windows) don't break R string parsing
-+      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-+      MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" "$R_HOME/bin/Rscript" -e "
-+        if (requireNamespace('minirextendr', quietly = TRUE)) {
-+          minirextendr::vendor_miniextendr(local_path = Sys.getenv('MINIEXTENDR_LOCAL'))
-+        } else {
-+          message('configure: minirextendr not installed — cannot auto-sync vendor/')
-+          message('configure: install minirextendr or run vendor_miniextendr() manually')
-+        }
-+      " 2>&1 || {
-+        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-+      }
-+    elif test -f "$VENDOR_OUT/.vendor-source"; then
-+      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-+      if test -d "$_recorded/miniextendr-api"; then
-+        echo "configure: syncing vendor/ from recorded source: $_recorded"
-+        _MX_VENDOR_SOURCE="$_recorded" "$R_HOME/bin/Rscript" -e "
-+          if (requireNamespace('minirextendr', quietly = TRUE)) {
-+            minirextendr::vendor_miniextendr(local_path = Sys.getenv('_MX_VENDOR_SOURCE'))
-+          } else {
-+            message('configure: minirextendr not installed — vendor/ may be stale')
-+            message('configure: run: minirextendr::vendor_miniextendr(local_path = Sys.getenv(\"_MX_VENDOR_SOURCE\"))')
-+          }
-+        " 2>&1 || {
-+          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-+        }
-+      else
-+        echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
-       fi
+-      fi
 -
 -      dnl Regenerate Cargo.lock from vendored sources
 -      rm -f src/rust/Cargo.lock
@@ -1316,7 +1303,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  
-@@ -642,5 +476,5 @@
+@@ -642,5 +469,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])

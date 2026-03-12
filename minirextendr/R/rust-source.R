@@ -481,6 +481,12 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   fs::file_chmod(fs::path(pkg_dir, "tools", "config.guess"), "755")
   fs::file_chmod(fs::path(pkg_dir, "tools", "config.sub"), "755")
 
+  # tools/vendor-local.R (standalone workspace vendor script)
+  vendor_local_src <- template_path("vendor-local.R", subdir = "tools")
+  if (fs::file_exists(vendor_local_src)) {
+    fs::file_copy(vendor_local_src, fs::path(pkg_dir, "tools", "vendor-local.R"))
+  }
+
   # Symlink vendor/ into the package
   pkg_vendor <- fs::path(pkg_dir, "vendor")
   if (!fs::link_exists(pkg_vendor) && !fs::dir_exists(pkg_vendor)) {

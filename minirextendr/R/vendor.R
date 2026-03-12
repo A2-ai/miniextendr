@@ -89,8 +89,8 @@ download_miniextendr_archive <- function(version, dest_path) {
 #'
 #' Downloads miniextendr-api, miniextendr-macros, miniextendr-macros-core,
 #' miniextendr-lint, and miniextendr-engine from GitHub and vendors them
-#' into vendor/. Also
-#' patches Cargo.toml files to remove workspace inheritance.
+#' into vendor/. Workspace inheritance in Cargo.toml files is automatically
+#' resolved by reading the workspace root Cargo.toml.
 #'
 #' Downloaded archives are cached in `tools::R_user_dir("minirextendr", "cache")`
 #' to avoid repeated downloads of the same version.
@@ -187,10 +187,10 @@ vendor_miniextendr <- function(path = ".",
     # Strip build artifacts, tests, benchmarks, and hidden files
     strip_vendored_crate(dest_path)
 
-    # Patch Cargo.toml to remove workspace inheritance
+    # Resolve workspace inheritance using workspace root Cargo.toml
     cargo_toml <- fs::path(dest_path, "Cargo.toml")
     if (fs::file_exists(cargo_toml)) {
-      patch_cargo_toml(cargo_toml, crate)
+      resolve_workspace_cargo_toml(cargo_toml, extracted_dir)
     }
 
     cli::cli_alert_success("Vendored {crate}")
@@ -208,69 +208,65 @@ vendor_miniextendr <- function(path = ".",
   invisible(TRUE)
 }
 
-#' Patch Cargo.toml to remove workspace inheritance
+#' Resolve workspace inheritance in a crate's Cargo.toml
 #'
-#' @param path Path to Cargo.toml
-#' @param crate_name Name of the crate
+#' Reads the workspace root Cargo.toml and replaces all `workspace = true`
+#' entries with their resolved values. Works generically with any Cargo
+#' workspace — no hard-coded dependency names.
+#'
+#' For workspace dependencies that are also workspace members (identified by
+#' having a `path` key in `[workspace.dependencies]`), the resolved entry
+#' uses a relative path (`../crate-name`) so vendored crates can reference
+#' each other.
+#'
+#' @param path Path to the crate's Cargo.toml to patch
+#' @param workspace_root Path to the workspace root (containing the workspace Cargo.toml)
 #' @noRd
-patch_cargo_toml <- function(path, crate_name) {
+resolve_workspace_cargo_toml <- function(path, workspace_root) {
+  ws_toml <- file.path(workspace_root, "Cargo.toml")
+  if (!file.exists(ws_toml)) {
+    cli::cli_warn("Workspace Cargo.toml not found at {.path {ws_toml}}")
+    return(invisible())
+  }
+
+  ws <- parse_workspace_toml(ws_toml)
   content <- readLines(path, warn = FALSE)
 
-  # Replace workspace = true with actual values
-  replacements <- list(
-    'edition\\.workspace = true' = 'edition = "2024"',
-    'version\\.workspace = true' = 'version = "0.1.0"',
-    'license\\.workspace = true' = 'license = "MIT"',
-    'repository\\.workspace = true' = 'repository = "https://github.com/CGMossa/miniextendr"',
-    'homepage\\.workspace = true' = 'homepage = "https://github.com/CGMossa/miniextendr"',
-    'keywords\\.workspace = true' = 'keywords = ["r", "ffi", "bindings"]',
-    'categories\\.workspace = true' = 'categories = ["api-bindings", "external-ffi-bindings"]'
-  )
-
-  for (pattern in names(replacements)) {
-    content <- gsub(pattern, replacements[[pattern]], content)
+  # 1. Replace package-level workspace fields: key.workspace = true
+  for (key in names(ws$package)) {
+    pattern <- paste0(escape_regex(key), "\\.workspace\\s*=\\s*true")
+    replacement <- paste0(key, " = ", ws$package[[key]])
+    content <- gsub(pattern, replacement, content)
   }
 
-  # Replace workspace dependencies with path/version
-  dep_replacements <- list(
-    'miniextendr-macros = \\{ workspace = true \\}' =
-      'miniextendr-macros = { version = "0.1.0", path = "../miniextendr-macros" }',
-    'miniextendr-macros-core = \\{ workspace = true \\}' =
-      'miniextendr-macros-core = { version = "0.1.0", path = "../miniextendr-macros-core" }',
-    'miniextendr-engine = \\{ workspace = true \\}' =
-      'miniextendr-engine = { version = "0.1.0", path = "../miniextendr-engine" }',
-    'proc-macro2 = \\{ workspace = true \\}' =
-      'proc-macro2 = { version = "1.0", features = ["span-locations"] }',
-    'quote = \\{ workspace = true \\}' =
-      'quote = "1.0"',
-    'syn = \\{ workspace = true \\}' =
-      'syn = { version = "2.0", features = ["full", "extra-traits"] }',
-    'linkme = \\{ workspace = true \\}' =
-      'linkme = "0.3"'
-  )
-
-  for (pattern in names(dep_replacements)) {
-    content <- gsub(pattern, dep_replacements[[pattern]], content)
+  # 2. Replace dependency-level workspace entries: name = { workspace = true }
+  for (dep_name in names(ws$dependencies)) {
+    dep_val <- ws$dependencies[[dep_name]]
+    # Check if this is a workspace member (has path key) — use relative path
+    if (grepl("path\\s*=", dep_val)) {
+      # Rewrite path to be relative from vendor/crate/ to vendor/dep/
+      resolved <- rewrite_workspace_dep(dep_name, dep_val)
+    } else {
+      resolved <- dep_val
+    }
+    pattern <- paste0(
+      escape_regex(dep_name),
+      "\\s*=\\s*\\{\\s*workspace\\s*=\\s*true\\s*\\}"
+    )
+    replacement <- paste0(dep_name, " = ", resolved)
+    content <- gsub(pattern, replacement, content)
   }
 
-  # Remove dev-dependencies that create circular references or dangling paths when vendored
-  # miniextendr-api in miniextendr-macros dev-deps is only for workspace testing
-  content <- content[!grepl("^miniextendr-api = \\{ workspace = true \\}", content)]
-  # miniextendr-engine in miniextendr-api dev-deps is not used by scaffolded packages
-  content <- content[!grepl("^miniextendr-engine = ", content)]
-
-  # Remove [[bench]], [[test]], and [dev-dependencies] sections entirely.
-  # strip_vendored_crate() deletes benches/ and tests/ directories, so these
-
-  # TOML sections become dangling references that cause cargo errors.
+  # 3. Remove [dev-dependencies], [[bench]], [[test]] sections
+  #    (strip_vendored_crate deletes the actual dirs, so these become dangling)
   content <- strip_toml_sections(content,
     c("[[bench]]", "[[test]]", "[dev-dependencies]"))
 
-  # Validate: warn if any workspace = true entries remain unhandled
+  # 4. Validate: warn if any workspace = true entries remain
   remaining <- grep("workspace\\s*=\\s*true", content, value = TRUE)
   if (length(remaining) > 0) {
-    # Escape curly braces so cli doesn't interpret TOML inline tables as glue
-    escaped <- gsub("{", "{{", gsub("}", "}}", trimws(remaining), fixed = TRUE), fixed = TRUE)
+    escaped <- gsub("{", "{{", gsub("}", "}}", trimws(remaining),
+      fixed = TRUE), fixed = TRUE)
     cli::cli_warn(c(
       "Unhandled workspace inheritance in {.path {path}}",
       "i" = "The following lines still reference workspace:",
@@ -279,6 +275,76 @@ patch_cargo_toml <- function(path, crate_name) {
   }
 
   writeLines(content, path)
+}
+
+#' Parse workspace Cargo.toml for [workspace.package] and [workspace.dependencies]
+#'
+#' Returns a list with `$package` (named list of key = "toml_value_string")
+#' and `$dependencies` (named list of dep_name = "toml_value_string").
+#'
+#' @param ws_toml_path Path to workspace Cargo.toml
+#' @return List with `package` and `dependencies` components
+#' @noRd
+parse_workspace_toml <- function(ws_toml_path) {
+  lines <- readLines(ws_toml_path, warn = FALSE)
+  trimmed <- trimws(lines)
+
+  # Track current section
+  section <- ""
+  pkg <- list()
+  deps <- list()
+
+  for (line in trimmed) {
+    # Detect section headers
+    if (grepl("^\\[", line)) {
+      section <- line
+      next
+    }
+    # Skip blank/comment lines
+    if (nchar(line) == 0 || grepl("^#", line)) next
+
+    if (section == "[workspace.package]") {
+      # Parse: key = value (value is everything after first =)
+      m <- regmatches(line, regexec("^([a-zA-Z_-]+)\\s*=\\s*(.+)$", line))[[1]]
+      if (length(m) == 3) {
+        pkg[[m[2]]] <- m[3]
+      }
+    } else if (section == "[workspace.dependencies]") {
+      # Parse: dep-name = value (value can be "version" or { inline table })
+      m <- regmatches(line, regexec("^([a-zA-Z0-9_-]+)\\s*=\\s*(.+)$", line))[[1]]
+      if (length(m) == 3) {
+        deps[[m[2]]] <- m[3]
+      }
+    }
+  }
+
+  list(package = pkg, dependencies = deps)
+}
+
+#' Rewrite a workspace dependency with path to use relative vendor paths
+#'
+#' Workspace deps like `{ version = "*", path = "miniextendr-macros" }` need
+#' the path rewritten to `../miniextendr-macros` (relative between vendor dirs).
+#' The version `"*"` is replaced with the actual version from the dep's Cargo.toml
+#' if possible, or kept as-is.
+#'
+#' @param dep_name Dependency name
+#' @param dep_val Original TOML value string from workspace.dependencies
+#' @return Rewritten TOML value string with relative path
+#' @noRd
+rewrite_workspace_dep <- function(dep_name, dep_val) {
+  # Replace path = "crate-dir" with path = "../crate-dir"
+  gsub(
+    'path\\s*=\\s*"([^"]+)"',
+    paste0('path = "../\\1"'),
+    dep_val
+  )
+}
+
+#' Escape special regex characters in a string
+#' @noRd
+escape_regex <- function(x) {
+  gsub("([.\\\\|^$*+?{}()\\[\\]])", "\\\\\\1", x)
 }
 
 #' Vendor miniextendr crates from local path
@@ -323,10 +389,10 @@ vendor_miniextendr_local <- function(local_path, dest) {
     # Strip build artifacts, tests, benchmarks, and hidden files
     strip_vendored_crate(dest_path)
 
-    # Patch Cargo.toml to remove workspace inheritance
+    # Resolve workspace inheritance using workspace root Cargo.toml
     cargo_toml <- fs::path(dest_path, "Cargo.toml")
     if (fs::file_exists(cargo_toml)) {
-      patch_cargo_toml(cargo_toml, crate)
+      resolve_workspace_cargo_toml(cargo_toml, local_path)
     }
 
     # Create .cargo-checksum.json (required when crate is in a vendor directory

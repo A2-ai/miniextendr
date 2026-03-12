@@ -91,6 +91,15 @@ use_miniextendr_config_scripts <- function(path = ".") {
     bullet_created(file.path("tools", script), "Copied")
   }
 
+  # Copy vendor-local.R (standalone workspace vendor script for configure.ac)
+  vendor_local_src <- template_path("vendor-local.R", subdir = "tools")
+  if (fs::file_exists(vendor_local_src)) {
+    fs::file_copy(vendor_local_src,
+      usethis::proj_path("tools", "vendor-local.R"),
+      overwrite = TRUE)
+    bullet_created(file.path("tools", "vendor-local.R"), "Copied")
+  }
+
   invisible(TRUE)
 }
 

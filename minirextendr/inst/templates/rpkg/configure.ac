@@ -409,33 +409,26 @@ AC_CONFIG_COMMANDS([cargo-vendor],
         $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
       fi
     elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
-      dnl MINIEXTENDR_LOCAL set — delegate to R for proper Cargo.toml patching
-      dnl Pass path via env var so backslashes (Windows) don't break R string parsing
+      dnl MINIEXTENDR_LOCAL set — use standalone vendor script
       echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" "$R_HOME/bin/Rscript" -e "
-        if (requireNamespace('minirextendr', quietly = TRUE)) {
-          minirextendr::vendor_miniextendr(local_path = Sys.getenv('MINIEXTENDR_LOCAL'))
-        } else {
-          message('configure: minirextendr not installed — cannot auto-sync vendor/')
-          message('configure: install minirextendr or run vendor_miniextendr() manually')
+      if test -f "$abs_rpkg_dir/tools/vendor-local.R"; then
+        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-local.R" "$MINIEXTENDR_LOCAL" "$VENDOR_OUT" 2>&1 || {
+          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
         }
-      " 2>&1 || {
-        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-      }
+      else
+        echo "configure: warning: tools/vendor-local.R not found — cannot sync vendor/" >&2
+      fi
     elif test -f "$VENDOR_OUT/.vendor-source"; then
       _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
       if test -d "$_recorded/miniextendr-api"; then
         echo "configure: syncing vendor/ from recorded source: $_recorded"
-        _MX_VENDOR_SOURCE="$_recorded" "$R_HOME/bin/Rscript" -e "
-          if (requireNamespace('minirextendr', quietly = TRUE)) {
-            minirextendr::vendor_miniextendr(local_path = Sys.getenv('_MX_VENDOR_SOURCE'))
-          } else {
-            message('configure: minirextendr not installed — vendor/ may be stale')
-            message('configure: run: minirextendr::vendor_miniextendr(local_path = Sys.getenv(\"_MX_VENDOR_SOURCE\"))')
+        if test -f "$abs_rpkg_dir/tools/vendor-local.R"; then
+          "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-local.R" "$_recorded" "$VENDOR_OUT" 2>&1 || {
+            echo "configure: warning: vendor sync failed, using existing vendor/" >&2
           }
-        " 2>&1 || {
-          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-        }
+        else
+          echo "configure: warning: tools/vendor-local.R not found — vendor/ may be stale" >&2
+        fi
       else
         echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
       fi
