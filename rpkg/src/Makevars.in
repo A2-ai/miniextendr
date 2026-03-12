@@ -113,7 +113,7 @@ $(CARGO_CDYLIB): FORCE_CARGO
 	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	case "$(CARGO_BUILD_TARGET)" in \
-	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc"; ;; \
+	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRCDIR)/cdylib-exports.def"; ;; \
 	esac; \
 	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
 	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
