@@ -879,8 +879,6 @@ jobs:
           echo "TARBALL=$(ls -1 miniextendr_*.tar.gz)" >> $GITHUB_ENV
 
       - name: R CMD check (CRAN-like, from tarball)
-        env:
-          NOT_CRAN: false
         run: |
           # Check the tarball without NOT_CRAN (simulates CRAN)
           R CMD check --as-cran --no-manual ${{ env.TARBALL }}
