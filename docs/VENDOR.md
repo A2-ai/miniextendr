@@ -168,7 +168,7 @@ just vendor
 Runs `PREPARE_CRAN=true bash ./configure` which:
 
 1. Detects `PREPARE_CRAN=true` → sets `BUILD_CONTEXT=prepare-cran`
-2. Generates `Makevars`, `entrypoint.c`, `mx_abi.c`, `.cargo/config.toml` from templates
+2. Generates `Makevars`, `.cargo/config.toml` from templates
 3. Unpacks `inst/vendor.tar.xz` → `vendor/` (if not already present)
 4. Rewrites `Cargo.toml`:
    - Git deps (`miniextendr-api`, `miniextendr-lint`) → path deps to `vendor/`

@@ -1,6 +1,6 @@
 //! Tests for S4-style impl blocks (e.g., `#[miniextendr(s4)] impl Foo`).
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// A simple counter that demonstrates S4-style impl block support.
 /// This gets exported as an S4 class with setMethod dispatches.
@@ -39,10 +39,4 @@ impl S4Counter {
     pub fn default_counter() -> Self {
         S4Counter { value: 0 }
     }
-}
-
-miniextendr_module! {
-    mod s4_tests;
-
-    impl S4Counter;
 }

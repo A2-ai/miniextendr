@@ -142,7 +142,7 @@ pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
 
 // ── Collection expansion examples ────────────────────────────────────────────
 
-/// Struct with array expansion: [f64; 3] → coords_1, coords_2, coords_3.
+/// Struct with array expansion: [f64; 3] -> coords_1, coords_2, coords_3.
 #[derive(Clone, Debug, DataFrameRow)]
 pub struct PointExpanded {
     pub label: String,
@@ -231,17 +231,4 @@ pub fn create_sensor_readings_df() -> ToDataFrame<SensorReadingDataFrame> {
         },
     ];
     ToDataFrame(SensorReading::to_dataframe(rows))
-}
-
-use miniextendr_api::miniextendr_module;
-
-miniextendr_module! {
-    mod dataframe_examples;
-    fn create_points_df;
-    fn create_people_df;
-    fn create_events_df;
-    fn create_shapes_df;
-    fn create_expanded_points_df;
-    fn create_scored_items_df;
-    fn create_sensor_readings_df;
 }

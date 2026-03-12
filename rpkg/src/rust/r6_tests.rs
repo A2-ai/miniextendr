@@ -4,7 +4,7 @@
 //! - Standalone functions mixed with impl blocks
 //! - Multiple impl blocks in a single module
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @noRd
 #[miniextendr]
@@ -279,26 +279,4 @@ impl R6NonPortable {
     pub fn get_value(&self) -> i32 {
         self.value
     }
-}
-
-miniextendr_module! {
-    mod r6_tests;
-
-    // Standalone function
-    fn r6_standalone_add;
-
-    // Multiple impl blocks
-    impl R6Counter;
-    impl R6Accumulator;
-    impl R6Rectangle;
-    impl R6Temperature;
-    impl R6Cloneable;
-
-    // Inheritance tests
-    impl R6Animal;
-    impl R6Dog;
-    impl R6GoldenRetriever;
-
-    // Portable flag test
-    impl R6NonPortable;
 }

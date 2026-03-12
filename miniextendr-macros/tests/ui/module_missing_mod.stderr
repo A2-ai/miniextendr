@@ -1,5 +1,0 @@
-error: missing `mod <name>;` declaration in miniextendr_module!
- --> tests/ui/module_missing_mod.rs:6:8
-  |
-6 |     fn some_function;
-  |        ^^^^^^^^^^^^^

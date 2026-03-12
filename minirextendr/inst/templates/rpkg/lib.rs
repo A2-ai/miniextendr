@@ -1,20 +1,18 @@
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
+
+miniextendr_api::miniextendr_init!({{package_rs}});
 
 // ---- Adding new functions ----
 //
 // 1. Add your #[miniextendr] function below
-// 2. Register it in the miniextendr_module! block at the bottom
-// 3. Rebuild:
+// 2. Rebuild:
 //
 //      Rscript -e 'devtools::document()'  # Compiles Rust + generates R wrappers
 //      Rscript -e 'devtools::install()'   # Install the package
 //
 //    devtools::document() handles everything in one step: bootstrap.R runs
-//    ./configure, make compiles Rust, the document binary generates R wrappers,
+//    ./configure, make compiles Rust, R wrappers are generated via linkme,
 //    and roxygen2 updates NAMESPACE — no manual ./configure or two-pass install.
-//
-// NOTE: `cargo check` won't work until ./configure has been run at least once,
-// because document.rs contains template placeholders that need to be resolved.
 
 /// A simple function that adds two numbers
 ///
@@ -60,12 +58,4 @@ pub fn hello(name: &str) -> String {
 //           self.value
 //       }
 //   }
-//
-// Then register with: `impl Counter;` in the miniextendr_module! below.
 
-// Register the module with R
-miniextendr_module! {
-    mod {{package_rs}};
-    fn add;
-    fn hello;
-}

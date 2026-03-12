@@ -27,7 +27,7 @@
 //! ```
 
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
-use miniextendr_api::{Vctrs, miniextendr, miniextendr_module};
+use miniextendr_api::{Vctrs, miniextendr};
 
 // =============================================================================
 // Simple vctr: Percent backed by doubles
@@ -73,6 +73,8 @@ pub fn new_derived_percent(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, St
 }
 
 /// Verify VctrsClass trait constants.
+///
+/// @export
 #[miniextendr]
 pub fn derived_percent_class_info() -> Vec<String> {
     vec![
@@ -126,6 +128,8 @@ pub fn new_derived_rational(
 }
 
 /// Verify VctrsClass trait constants for rational.
+///
+/// @export
 #[miniextendr]
 pub fn derived_rational_class_info() -> Vec<String> {
     vec![
@@ -218,7 +222,7 @@ pub fn new_derived_point(x: Vec<f64>, y: Vec<f64>) -> Result<miniextendr_api::ff
 ///
 /// Demonstrates `arith` and `math` attributes for numeric vctrs.
 #[derive(Vctrs)]
-#[vctrs(class = "derived_temp", base = "double", abbr = "°", arith, math)]
+#[vctrs(class = "derived_temp", base = "double", abbr = "deg", arith, math)]
 pub struct DerivedTemp {
     #[vctrs(data)]
     values: Vec<f64>,
@@ -277,20 +281,3 @@ impl DerivedCurrency {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod vctrs_derive_example;
-    fn new_derived_percent;
-    fn derived_percent_class_info;
-    fn new_derived_rational;
-    fn derived_rational_class_info;
-    fn new_derived_int_lists;
-    fn new_derived_point;
-    fn new_derived_temp;
-    vctrs DerivedPercent;
-    vctrs DerivedRational;
-    vctrs DerivedIntLists;
-    vctrs DerivedPoint;
-    vctrs DerivedTemp;
-    impl DerivedCurrency;
-}

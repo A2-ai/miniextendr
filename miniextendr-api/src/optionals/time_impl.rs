@@ -735,11 +735,6 @@ pub use time::Duration;
 ///
 /// #[miniextendr]
 /// impl RDuration for MyDuration {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RDuration for MyDuration;
-/// }
 /// ```
 ///
 /// In R:

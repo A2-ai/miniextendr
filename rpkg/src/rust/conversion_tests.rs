@@ -1,6 +1,6 @@
 //! Scalar and slice conversion tests for R ↔ Rust type conversions.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // region: scalar conversion tests
 
@@ -257,42 +257,3 @@ impl StrictCounter {
 }
 
 // endregion
-
-miniextendr_module! {
-    mod conversion_tests;
-
-    // Scalar conversion tests
-    fn test_i32_identity;
-    fn test_i32_add_one;
-    fn test_i32_sum;
-    fn test_f64_identity;
-    fn test_f64_add_one;
-    fn test_f64_multiply;
-    fn test_u8_identity;
-    fn test_u8_add_one;
-    fn test_logical_identity;
-    fn test_logical_not;
-    fn test_logical_and;
-    fn test_i32_to_f64;
-    fn test_f64_to_i32;
-
-    // Slice conversion tests
-    fn test_i32_slice_len;
-    fn test_i32_slice_sum;
-    fn test_i32_slice_first;
-    fn test_i32_slice_last;
-    fn test_f64_slice_len;
-    fn test_f64_slice_sum;
-    fn test_f64_slice_mean;
-    fn test_u8_slice_len;
-    fn test_u8_slice_sum;
-    fn test_logical_slice_len;
-    fn test_logical_slice_any_true;
-    fn test_logical_slice_all_true;
-
-    // Strict conversion tests
-    fn strict_echo_i64;
-    fn strict_echo_vec_i64;
-    fn strict_echo_vec_option_i64;
-    impl StrictCounter;
-}

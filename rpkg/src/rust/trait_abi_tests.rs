@@ -1,9 +1,9 @@
 //! Trait ABI tests for cross-package trait dispatch.
 //!
 //! This module tests `#[miniextendr]` on traits and trait implementations,
-//! plus `miniextendr_module! { impl Trait for Type; }` wiring.
+//! plus `` wiring.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // =============================================================================
 // Define a trait with #[miniextendr]
@@ -364,23 +364,3 @@ impl R6TraitCounter {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod trait_abi_tests;
-
-    impl SimpleCounter;
-    impl PanickyCounter;
-    impl S3TraitCounter;
-    impl S4TraitCounter;
-    impl S7TraitCounter;
-    impl R6TraitCounter;
-
-    // Register trait implementations for cross-package dispatch
-    // The class system is determined by the #[miniextendr(...)] on the impl block
-    impl Counter for SimpleCounter;
-    impl Counter for PanickyCounter;
-    impl Counter for S3TraitCounter;
-    impl Counter for S4TraitCounter;
-    impl Counter for S7TraitCounter;
-    impl Counter for R6TraitCounter;
-}

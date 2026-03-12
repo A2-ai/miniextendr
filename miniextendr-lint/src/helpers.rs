@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use syn::{Attribute, Macro};
+use syn::Attribute;
 
 /// Returns true when the attribute list contains `#[miniextendr]`.
 pub fn has_miniextendr_attr(attrs: &[Attribute]) -> bool {
@@ -25,14 +25,6 @@ pub fn impl_type_name(ty: &syn::Type) -> Option<String> {
         syn::Type::Reference(type_ref) => impl_type_name(&type_ref.elem),
         _ => None,
     }
-}
-
-/// Returns true when `mac` is the `miniextendr_module!` macro.
-pub fn is_miniextendr_module_macro(mac: &Macro) -> bool {
-    mac.path
-        .segments
-        .last()
-        .is_some_and(|seg| seg.ident == "miniextendr_module")
 }
 
 /// Returns true if the attribute list contains `#[derive(ExternalPtr)]`

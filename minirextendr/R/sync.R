@@ -15,7 +15,7 @@ render_state_path <- function(path = usethis::proj_get()) {
 
 #' Compute hash of all build-relevant sources
 #'
-#' Hashes Rust sources, Cargo.toml, Cargo.lock, build.rs, document.rs.in,
+#' Hashes Rust sources, Cargo.toml, Cargo.lock, build.rs,
 #' DESCRIPTION, NAMESPACE, miniextendr.yml, and effective build knobs.
 #'
 #' @param path Project root
@@ -39,7 +39,6 @@ compute_source_hash <- function(path = usethis::proj_get()) {
     file.path(rust_dir, "Cargo.toml"),
     file.path(rust_dir, "Cargo.lock"),
     file.path(rust_dir, "build.rs"),
-    file.path(path, "src", "rust", "document.rs.in"),
     file.path(path, "DESCRIPTION"),
     file.path(path, "NAMESPACE"),
     file.path(path, "miniextendr.yml")

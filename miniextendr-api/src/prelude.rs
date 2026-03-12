@@ -39,11 +39,6 @@
 //! fn add(a: i32, b: i32) -> i32 {
 //!     a + b
 //! }
-//!
-//! miniextendr_module! {
-//!     mod mypkg;
-//!     fn add;
-//! }
 //! ```
 
 // ---------------------------------------------------------------------------
@@ -57,7 +52,6 @@ pub use crate::{
     RFactor,
     list,
     miniextendr,
-    miniextendr_module,
     typed_list,
 };
 

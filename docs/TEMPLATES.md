@@ -157,13 +157,11 @@ The following files in rpkg/ have corresponding template versions:
 | `cleanup`, `cleanup.win`, `cleanup.ucrt` | `inst/templates/*/cleanup*` |
 | `configure.ac` | `inst/templates/*/configure.ac` |
 | `configure.win`, `configure.ucrt` | `inst/templates/*/configure.*` |
-| `src/entrypoint.c.in` | `inst/templates/*/entrypoint.c.in` |
+| `src/stub.c` | `inst/templates/*/stub.c` |
 | `src/Makevars.in` | `inst/templates/*/Makevars.in` |
-| `src/mx_abi.c.in` | `inst/templates/*/mx_abi.c.in` |
 | `src/rust/build.rs` | `inst/templates/*/build.rs` |
 | `src/rust/Cargo.toml` | `inst/templates/*/Cargo.toml` |
 | `src/rust/cargo-config.toml.in` | `inst/templates/*/cargo-config.toml.in` |
-| `src/rust/document.rs.in` | `inst/templates/*/document.rs.in` |
 | `src/rust/lib.rs` | `inst/templates/*/lib.rs` (with `{{package_rs}}` substitution) |
 | `R/rpkg-package.R` | `inst/templates/*/package.R` |
 | `inst/include/mx_abi.h` | `inst/templates/*/inst_include/mx_abi.h` |

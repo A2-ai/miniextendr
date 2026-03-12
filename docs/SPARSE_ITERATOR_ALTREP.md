@@ -152,15 +152,7 @@ pub fn sparse_iter_int(from: i32, to: i32) -> SEXP {
 }
 ```
 
-### Step 5: Register in miniextendr_module!
-
-```rust
-miniextendr_module! {
-    mod my_package;
-    struct SparseIntIterClass;
-    fn sparse_iter_int;
-}
-```
+Registration is automatic via `#[miniextendr]` -- no manual module declarations needed.
 
 ---
 

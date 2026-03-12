@@ -5,7 +5,7 @@
 // - Implements Counter for SimpleCounter
 // - Objects can be passed to consumer package
 
-use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+use miniextendr_api::{miniextendr, ExternalPtr};
 
 // ============================================================================
 // Shared trait definition
@@ -53,10 +53,4 @@ impl Counter for SimpleCounter {
     fn add(&mut self, n: i32) {
         self.value += n;
     }
-}
-
-miniextendr_module! {
-    mod producer_pkg;
-    impl SimpleCounter;
-    impl Counter for SimpleCounter;
 }

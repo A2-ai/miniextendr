@@ -43,7 +43,7 @@ Create a new widget
 \if{html}{\out{<a id="method-ErrorInRR6Widget-get_name"></a>}}
 \if{latex}{\out{\hypertarget{method-ErrorInRR6Widget-get_name}{}}}
 \subsection{Method \code{get_name()}}{
-Get the name — should always succeed.
+Get the name -- should always succeed.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{ErrorInRR6Widget$get_name()}\if{html}{\out{</div>}}
 }

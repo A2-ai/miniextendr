@@ -1,5 +1,5 @@
 use miniextendr_api::convert::ToDataFrame;
-use miniextendr_api::{DataFrameRow, IntoList, miniextendr, miniextendr_module};
+use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
 
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
 pub struct ParPoint {
@@ -8,6 +8,10 @@ pub struct ParPoint {
     pub label: String,
 }
 
+/// Create a large parallel points data frame.
+///
+/// @param n Number of rows to create.
+/// @export
 #[miniextendr]
 pub fn create_large_par_points(n: i32) -> ToDataFrame<ParPointDataFrame> {
     let rows: Vec<ParPoint> = (0..n)
@@ -27,6 +31,10 @@ pub enum ParEvent {
     B { id: i32, name: String },
 }
 
+/// Create a large parallel events data frame.
+///
+/// @param n Number of rows to create.
+/// @export
 #[miniextendr]
 pub fn create_large_par_events(n: i32) -> ToDataFrame<ParEventDataFrame> {
     let rows: Vec<ParEvent> = (0..n)
@@ -45,10 +53,4 @@ pub fn create_large_par_events(n: i32) -> ToDataFrame<ParEventDataFrame> {
         })
         .collect();
     ToDataFrame(ParEvent::to_dataframe(rows))
-}
-
-miniextendr_module! {
-    mod dataframe_rayon_tests;
-    fn create_large_par_points;
-    fn create_large_par_events;
 }

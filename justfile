@@ -13,7 +13,7 @@
 #     just configure          - Configure R package build (dev mode, no vendoring)
 #     just vendor             - Vendor deps for CRAN release prep
 #     just devtools-test      - Run R package tests
-#     just devtools-document  - Generate R documentation
+#     just devtools-document  - Run roxygen2 (NAMESPACE + man pages)
 #     just rcmdinstall        - Build and install R package
 #
 #   minirextendr (helper R package):
@@ -158,11 +158,9 @@ clippy *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run miniextendr-lint on rpkg (checks #[miniextendr] ↔ miniextendr_module! consistency)
+# Run miniextendr-lint on rpkg (checks #[miniextendr] consistency)
 # The lint runs as a build script; this command triggers it via cargo check.
 # Lint output appears as cargo warnings. Errors indicate:
-# - #[miniextendr] items missing from miniextendr_module!
-# - miniextendr_module! items without #[miniextendr] attribute
 # - Multiple unlabeled impl blocks for the same type
 # - Class system incompatibilities between inherent and trait impls
 lint:
@@ -517,7 +515,8 @@ devtools-build: configure
 devtools-check: devtools-document
     Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
-# Document rpkg with devtools::document
+# Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages)
+# R wrappers are generated automatically by Makevars during R CMD INSTALL.
 devtools-document: configure
     Rscript -e 'devtools::document("rpkg")'
 
@@ -691,8 +690,7 @@ templates-sources:
     #   - monorepo/      : Rust workspace with embedded R package
     #
     # Only include files where rpkg is the source of truth.
-    # Templates with @PLACEHOLDER@ markers (document.rs.in, entrypoint.c.in)
-    # are NOT compared - they are the source, rpkg has expanded versions.
+    # Only include files where rpkg is the source of truth.
     cat <<'EOF'
     # rel	src
     # === R Package Template (rpkg/) ===

@@ -1,5 +1,0 @@
-error: unrecognized item in miniextendr_module!; expected: mod name;, use submodule;, fn name;, struct Name;, impl Type;, vctrs Name;
- --> tests/ui/module_unknown_keyword.rs:7:5
-  |
-7 |     trait Foo;
-  |     ^^^^^

@@ -32,7 +32,7 @@ Open `src/rust/lib.rs` (or `rpkg/src/rust/lib.rs` in a monorepo) and add a
 function annotated with `#[miniextendr]`:
 
 ```rust
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// Double a number.
 /// @param x An integer value.
@@ -41,21 +41,14 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 pub fn double_it(x: i32) -> i32 {
     x * 2
 }
-
-miniextendr_module! {
-    mod mypackage;
-    fn double_it;
-}
 ```
 
 Key elements:
 
 - **`#[miniextendr]`** -- tells the proc macro to generate an R-callable
-  wrapper for this function.
+  wrapper for this function. Registration happens automatically.
 - **`pub fn`** -- the function must be `pub` to receive an `@export` tag in
   the generated R documentation.
-- **`miniextendr_module!`** -- registers the function so the R package can
-  find it at load time. Every exported function must be listed here.
 - **Rust doc comments (`///`)** -- become roxygen2 documentation in R.
 
 ## Scalar Types
@@ -255,51 +248,23 @@ pub fn parse_int(s: &str) -> Result<i32, String> {
 }
 ```
 
-## Registering Functions in miniextendr_module!
+## Organizing into Sub-modules
 
-Every `#[miniextendr]` function must be listed in a `miniextendr_module!`
-block. This block tells the framework which functions to expose to R:
-
-```rust
-miniextendr_module! {
-    mod mypackage;
-    fn double_it;
-    fn greet;
-    fn rust_mean;
-    fn cumsum_int;
-    fn add_nullable;
-    fn counter_new;
-    fn counter_increment;
-    fn safe_divide;
-    fn parse_int;
-}
-```
-
-### Sub-modules
-
-For larger packages, organize functions into separate files. Each file gets
-its own `miniextendr_module!`, and the parent module uses `use`:
+For larger packages, organize functions into separate files. Each file
+just uses `#[miniextendr]` on its functions -- registration is automatic:
 
 ```rust
 // In src/rust/lib.rs
-miniextendr_module! {
-    mod mypackage;
-    use math;      // pulls in math.rs module
-    use strings;   // pulls in strings.rs module
-}
+mod math;
+mod strings;
 ```
 
 ```rust
 // In src/rust/math.rs
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 #[miniextendr]
 pub fn square(x: f64) -> f64 { x * x }
-
-miniextendr_module! {
-    mod math;
-    fn square;
-}
 ```
 
 ## Building and Testing
@@ -333,11 +298,7 @@ verify that it is:
 
 1. Marked `pub`
 2. Has `#[miniextendr]`
-3. Listed in `miniextendr_module!`
-4. Sub-module is `use`d in the parent module
-
-The `miniextendr-lint` tool catches mismatches between `#[miniextendr]`
-annotations and `miniextendr_module!` declarations during compilation.
+3. Sub-module is declared with `mod` in the parent module
 
 ## The Worker Thread Model
 

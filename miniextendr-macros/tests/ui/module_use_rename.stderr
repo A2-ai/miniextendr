@@ -1,5 +1,0 @@
-error: renamed imports (`use x as y`) are not supported in miniextendr_module!; the module name determines R wrapper names
- --> tests/ui/module_use_rename.rs:7:9
-  |
-7 |     use submod as renamed;
-  |         ^^^^^^^^^^^^^^^^^

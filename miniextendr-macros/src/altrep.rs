@@ -506,6 +506,22 @@ pub(crate) fn generate_altrep_impls(
         quote::quote! { #family_setters }
     };
 
+    // For non-generic types, emit a distributed_slice ALTREP registration entry
+    let altrep_reg_entry = if generics.params.is_empty() {
+        let reg_fn_name =
+            quote::format_ident!("__mx_altrep_reg_{}", ident.to_string().to_lowercase());
+        quote::quote! {
+            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALTREP_REGISTRATIONS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+            #[doc(hidden)]
+            fn #reg_fn_name() {
+                <#ident as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
+            }
+        }
+    } else {
+        quote::quote! {}
+    };
+
     Ok(quote::quote! {
         // Helper methods for creating ALTREP instances
         #data_helper_impl
@@ -542,6 +558,8 @@ pub(crate) fn generate_altrep_impls(
                 })
             }
         }
+
+        #altrep_reg_entry
     })
 }
 

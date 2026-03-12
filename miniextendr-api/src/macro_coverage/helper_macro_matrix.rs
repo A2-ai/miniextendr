@@ -5,7 +5,7 @@
 //! Exercises `r_ffi_checked`, `list!`, and `typed_list!` proc-macro entrypoints.
 
 use crate::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::{miniextendr, miniextendr_module, r_ffi_checked};
+use crate::{miniextendr, r_ffi_checked};
 
 // =============================================================================
 // r_ffi_checked: value-returning and pointer-returning wrappers
@@ -25,10 +25,4 @@ unsafe extern "C-unwind" {
 pub(crate) fn cov_list_macro() -> crate::ffi::SEXP {
     use crate::IntoR;
     crate::list!(a = 1i32, b = "x").into_sexp()
-}
-
-miniextendr_module! {
-    mod helper_macro_matrix;
-
-    fn cov_list_macro;
 }

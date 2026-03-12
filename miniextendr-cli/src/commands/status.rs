@@ -91,13 +91,9 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
                 "src/rust/lib.rs",
                 "src/rust/build.rs",
                 "src/rust/cargo-config.toml.in",
-                "src/rust/document.rs.in",
             ],
         ),
-        (
-            "Source Templates",
-            &["src/Makevars.in", "src/entrypoint.c.in"],
-        ),
+        ("Source Templates", &["src/Makevars.in", "src/stub.c"]),
     ];
 
     // Build vendored crate paths dynamically from constant
@@ -152,7 +148,7 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
     }
 
     // Generated files (including dynamic wrapper)
-    let generated = ["src/Makevars", "src/entrypoint.c", &wrapper_file];
+    let generated = ["src/Makevars", &wrapper_file];
     if !json {
         println!("-- Generated Files --");
     }
@@ -178,8 +174,6 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
     // Staleness check
     let template_pairs = [
         ("src/Makevars.in", "src/Makevars"),
-        ("src/entrypoint.c.in", "src/entrypoint.c"),
-        ("src/rust/document.rs.in", "src/rust/document.rs"),
         (
             "src/rust/cargo-config.toml.in",
             "src/rust/.cargo/config.toml",

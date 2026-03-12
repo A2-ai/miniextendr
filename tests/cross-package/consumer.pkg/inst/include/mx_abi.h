@@ -12,11 +12,11 @@
  *
  * USAGE:
  *
- * Each package compiles mx_abi.c (from mx_abi.c.in) into its own .so.
+ * Each package includes mx_abi.rs (from miniextendr-api) in its Rust staticlib.
  * The functions mx_wrap/mx_get/mx_query are linked directly — no
- * R_GetCCallable indirection needed. Call mx_abi_register() from
- * R_init_<yourpkg>() to initialize the tag symbol and register
- * C-callables for cross-package interop.
+ * R_GetCCallable indirection needed. miniextendr_init!() calls
+ * mx_abi_register() automatically to initialize the tag symbol and
+ * register C-callables for cross-package interop.
  *
  * THREAD SAFETY:
  * All functions must be called from R's main thread only.
@@ -184,7 +184,7 @@ struct mx_erased {
  * These functions are registered with R_RegisterCCallable and can be
  * obtained via R_GetCCallable("miniextendr", "mx_*").
  *
- * NOTE: Function bodies are defined in mx_abi.c (stubs for now).
+ * NOTE: Function bodies are defined in mx_abi.rs (miniextendr-api).
  */
 
 /**

@@ -28,6 +28,7 @@ miniextendr-api = { version = "*", path = "miniextendr-api" }
 miniextendr-macros = { version = "*", path = "miniextendr-macros" }
 miniextendr-macros-core = { version = "*", path = "miniextendr-macros-core" }
 miniextendr-engine = { version = "*", path = "miniextendr-engine" }
+linkme = "0.3"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "extra-traits"] }

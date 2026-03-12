@@ -1,6 +1,6 @@
 //! SHA-2 adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::sha2_impl::{sha256_str, sha512_str};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -55,16 +55,4 @@ pub fn sha2_sha256_binary_content() -> String {
 #[miniextendr]
 pub fn sha2_different_inputs_differ() -> bool {
     sha256_str("input1") != sha256_str("input2")
-}
-
-miniextendr_module! {
-    mod sha2_adapter_tests;
-    fn sha2_sha256;
-    fn sha2_sha512;
-    fn sha2_sha256_len;
-    fn sha2_sha512_len;
-    fn sha2_sha256_hello;
-    fn sha2_sha256_large;
-    fn sha2_sha256_binary_content;
-    fn sha2_different_inputs_differ;
 }

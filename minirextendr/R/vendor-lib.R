@@ -219,7 +219,7 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
       "    fi",
       "  fi",
       "],",
-      '[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" SED="$SED" CARGO_CMD="$CARGO_CMD" abs_rpkg_dir="$abs_top_srcdir"])',
+      '[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" SED="$SED" CARGO_CMD="$CARGO_CMD" abs_rpkg_dir="$abs_top_srcdir" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])',
       ""
     )
 

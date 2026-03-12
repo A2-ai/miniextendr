@@ -337,11 +337,6 @@ impl IntoR for Vec<Option<Complex<f64>>> {
 ///
 /// #[miniextendr]
 /// impl RComplexOps for MyComplex {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RComplexOps for MyComplex;
-/// }
 /// ```
 ///
 /// In R:

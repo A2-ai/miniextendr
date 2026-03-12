@@ -168,24 +168,23 @@ PKG_LIBS = ... -lws2_32 -lntdll ...   # Override with Windows system libs
 
 R auto-detects `.c` files in `src/` and compiles them:
 
-- `entrypoint.c` → `entrypoint.o` — R_init function, panic hook, worker init
-- `mx_abi.c` → `mx_abi.o` — Trait ABI C-callable registration
+- `stub.c` → `stub.o` — Empty file required by R's build system to invoke the linker
 
-These are the only C symbols in `$(OBJECTS)`. All Rust code lives in the static
-library referenced by `PKG_LIBS`.
+This is the only C file. All entry points (`R_init_*`), registration, and
+runtime initialization are defined in Rust via `miniextendr_init!`. The Rust
+code lives in the static library referenced by `PKG_LIBS`.
 
 ### Symbol visibility
 
 We use explicit symbol registration, not dynamic lookup:
 
-```c
-void R_init_miniextendr(DllInfo *dll) {
-    // ... init code ...
-    R_init_miniextendr_miniextendr(dll);  // Register .Call routines
-    R_useDynamicSymbols(dll, FALSE);       // Disable dynamic lookup
-    R_forceSymbols(dll, TRUE);             // Force .Call("symbol") usage
-}
+```rust
+// In lib.rs — generates R_init_miniextendr() with all registration
+miniextendr_api::miniextendr_init!(miniextendr);
 ```
+
+The generated `R_init_miniextendr()` calls `package_init()` which registers
+all `.Call` routines and locks down symbol visibility.
 
 This means:
 - R never uses `dlsym()` to find our symbols at runtime
@@ -197,19 +196,19 @@ This means:
 ```
 configure.ac → configure → Makevars (from Makevars.in)
                          → .cargo/config.toml (from cargo-config.toml.in)
-                         → entrypoint.c (from entrypoint.c.in)
 
 R CMD INSTALL:
   1. Run configure (generates Makevars, etc.)
   2. make all:
-     a. Compile entrypoint.c → entrypoint.o (R's CC)
-     b. Compile mx_abi.c → mx_abi.o (R's CC)
-     c. cargo build → librpkg.a (Rust staticlib)
-     d. cargo run --bin document → R wrappers (proc-macro output)
-     e. $(SHLIB_LINK) -o miniextendr.so *.o -lrpkg ... (R's linker)
+     a. Compile stub.c → stub.o (R's CC)
+     b. cargo build → librpkg.a (Rust staticlib, includes R_init_*)
+     c. $(SHLIB_LINK) -o miniextendr.so stub.o -force_load librpkg.a (R's linker)
   3. Install miniextendr.so to libs/
   4. Install R/ files, man/, etc.
 ```
+
+Note: R wrapper generation (`miniextendr-wrappers.R`) happens separately via
+`just devtools-document`, not during R CMD INSTALL.
 
 ## Build Contexts
 

@@ -6,7 +6,6 @@
 use miniextendr_api::as_coerce::AsCoerceError;
 use miniextendr_api::{
     ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, ffi, miniextendr,
-    miniextendr_module,
 };
 
 /// Test struct for as.<class> coercion methods.
@@ -31,9 +30,13 @@ pub struct AsCoerceErrorTest {
 /// @title as.<class>() Coercion Test Type
 /// @name AsCoerceTestData
 /// @description Test type for as.data.frame, as.list, and as.character methods
+/// @param x An object.
+/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl AsCoerceTestData {
     /// Create a new test data object.
+    /// @param names Character vector of names.
+    /// @param values Numeric vector of values.
     pub fn new(names: Vec<String>, values: Vec<f64>) -> Self {
         Self { names, values }
     }
@@ -191,14 +194,4 @@ impl AsCoerceErrorTest {
             "intentional error for testing".into(),
         ))
     }
-}
-
-miniextendr_module! {
-    mod as_coerce_tests;
-
-    // AsCoerceTestData - successful coercions
-    impl AsCoerceTestData;
-
-    // AsCoerceErrorTest - error handling
-    impl AsCoerceErrorTest;
 }

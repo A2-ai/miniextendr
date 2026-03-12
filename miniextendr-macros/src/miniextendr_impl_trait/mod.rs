@@ -83,21 +83,19 @@
 //!
 //! ## Integration with ExternalPtr / TypedExternal
 //!
-//! The generated vtable static is referenced by the wrapper emitted from
-//! `miniextendr_module! { impl Trait for Type; }`.
+//! The generated vtable static is automatically registered via linkme
+//! distributed slices.
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
 //! struct MyCounter { value: i32 }
 //!
-//! miniextendr_module! {
-//!     mod mypkg;
-//!     impl Counter for MyCounter;
-//! }
+//! #[miniextendr]
+//! impl Counter for MyCounter { /* ... */ }
 //! ```
 //!
-//! `ExternalPtr<T>` provides the type identity for the external pointer,
-//! while the module entry wires trait dispatch.
+//! `ExternalPtr<T>` provides the type identity for the external pointer.
+//! Trait dispatch is wired automatically.
 //!
 //! ## Thread Safety
 //!
@@ -710,25 +708,30 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     // Generate const names (same pattern as generate_vtable_static)
     let trait_name_upper = trait_name.to_string().to_uppercase();
-    let call_defs_const = format_ident!(
-        "{}_{}_CALL_DEFS",
-        type_ident.to_string().to_uppercase(),
-        trait_name_upper
-    );
+    let type_name_str = type_to_uppercase_name(&concrete_type);
     let r_wrappers_const = format_ident!(
         "R_WRAPPERS_{}_{}_IMPL",
         type_ident.to_string().to_uppercase(),
         trait_name_upper
     );
 
-    // Collect call method def identifiers
-    let call_def_idents: Vec<syn::Ident> = methods
-        .iter()
-        .map(|m| m.call_method_def_ident(&type_ident, trait_name))
-        .collect();
-    let call_defs_len = call_def_idents.len();
-    let call_defs_len_lit =
-        syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
+    // Generate trait dispatch entry name
+    let dispatch_entry_name = format_ident!(
+        "__MX_DISPATCH_{}_{}_FOR_{}",
+        trait_name_upper,
+        type_ident.to_string().to_uppercase(),
+        type_name_str
+    );
+
+    // Build TAG path for the trait
+    let mut trait_tag_path = trait_path.clone();
+    if let Some(last) = trait_tag_path.segments.last_mut() {
+        last.ident = format_ident!("TAG_{}", trait_name_upper);
+        last.arguments = syn::PathArguments::None;
+    }
+
+    // Build vtable static name (same as generate_vtable_static)
+    let vtable_static_name = format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_name_str);
 
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
@@ -741,26 +744,43 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         // C wrappers and call method defs for trait methods
         #(#c_wrappers)*
 
+        // R wrapper registration via distributed slice
         #[doc(hidden)]
-        const #r_wrappers_const: &str =
-            concat!(
-                "# Generated from Rust impl `",
-                stringify!(#trait_name),
-                "` for `",
-                stringify!(#type_ident),
-                "` (",
-                file!(),
-                ":",
-                #source_line_lit,
-                ":",
-                #source_col_lit,
-                ")",
-                #r_wrapper_str
-            );
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+        static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
+            ::miniextendr_api::registry::RWrapperEntry {
+                priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
+                content: concat!(
+                    "# Generated from Rust impl `",
+                    stringify!(#trait_name),
+                    "` for `",
+                    stringify!(#type_ident),
+                    "` (",
+                    file!(),
+                    ":",
+                    #source_line_lit,
+                    ":",
+                    #source_col_lit,
+                    ")",
+                    #r_wrapper_str
+                ),
+            };
 
+        // Trait dispatch entry for universal_query
         #[doc(hidden)]
-        const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
-            [#(#call_def_idents),*];
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_TRAIT_DISPATCH)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+        static #dispatch_entry_name: ::miniextendr_api::registry::TraitDispatchEntry =
+            ::miniextendr_api::registry::TraitDispatchEntry {
+                concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
+                    concat!(module_path!(), "::", stringify!(#type_ident))
+                ),
+                trait_tag: #trait_tag_path,
+                vtable: unsafe {
+                    ::std::ptr::from_ref(&#vtable_static_name).cast::<::std::os::raw::c_void>()
+                },
+            };
     };
 
     expanded.into()

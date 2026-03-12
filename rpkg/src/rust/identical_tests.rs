@@ -1,7 +1,7 @@
 //! Tests for R_compute_identical and SEXP equality semantics.
 
 use miniextendr_api::ffi::{IDENT_USE_CLOENV, R_compute_identical, SEXP};
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @noRd
 #[miniextendr]
@@ -32,9 +32,4 @@ pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {
 
         result
     }
-}
-
-miniextendr_module! {
-    mod identical_tests;
-    extern "C-unwind" fn C_test_sexp_equality;
 }

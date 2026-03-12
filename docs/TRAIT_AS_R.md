@@ -46,7 +46,7 @@ The trait ABI enables:
 
 | Future Lints | Purpose |
 |--------------|---------|
-| `missing_vtable` | `impl Trait for Type;` listed in `miniextendr_module!` without `#[miniextendr]` on the impl |
+| `missing_vtable` | `impl Trait for Type` without `#[miniextendr]` on the impl |
 | `tag_collision` | Duplicate `mx_tag` values across traits |
 | `unused_trait_impl` | Vtable generated but type not exposed via ExternalPtr |
 
@@ -55,7 +55,7 @@ The trait ABI enables:
 | File | Purpose |
 |------|---------|
 | `inst/include/mx_abi.h` | Public C header with ABI types |
-| `src/mx_abi.c` | C-callable implementations |
+| `miniextendr-api/src/mx_abi.rs` | Rust implementation of C-callable functions |
 
 ## Usage (Future)
 
@@ -92,9 +92,9 @@ Generates:
 
 - `__VTABLE_COUNTER_FOR_MYCOUNTER: CounterVTable`
 
-### 3. Register in Module
+### 3. Registration (Automatic)
 
-Register trait implementations in `miniextendr_module!` for cross-package dispatch:
+All `#[miniextendr]` items are automatically registered via linkme distributed slices:
 
 ```rust
 #[derive(ExternalPtr)]
@@ -104,16 +104,10 @@ struct MyCounter { value: i32 }
 impl MyCounter {
     fn new(initial: i32) -> Self { Self { value: initial } }
 }
-
-miniextendr_module! {
-    mod mypackage;
-
-    impl MyCounter;                   // Register impl block methods
-    impl Counter for MyCounter;       // Generate trait dispatch wrapper
-}
+// Registration is automatic via #[miniextendr].
 ```
 
-The `impl Trait for Type;` line generates:
+The trait impl registration generates:
 
 - `__MxWrapperMyCounter` - Type-erased wrapper struct
 - `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
@@ -153,9 +147,9 @@ pub struct mx_erased {
 - [x] `#[miniextendr]` routing for traits
 - [x] `#[miniextendr]` routing for trait impls
 - [x] Implement `mx_tag_from_path()` hash function (FNV-1a, const-compatible)
-- [x] Implement direct FFI linkage to `mx_abi.c` functions
+- [x] Implement direct FFI linkage to `mx_abi.rs` functions
 - [x] Implement `conv.rs` conversion helpers
-- [x] Implement C-callables in `mx_abi.c.in`
+- [x] Implement C-callables in `mx_abi.rs` (pure Rust, no C files)
 
 ### M1: Code Generation (Complete)
 
@@ -164,8 +158,8 @@ pub struct mx_erased {
 
 ### M2: Integration (Complete)
 
-- [x] `impl Trait for Type;` syntax in `miniextendr_module!` for trait registration
-- [x] `.Call` wrapper generation (via existing miniextendr_module! + impl blocks)
+- [x] Trait registration via `#[miniextendr]` (now automatic via linkme)
+- [x] `.Call` wrapper generation (via `#[miniextendr]` on impl blocks)
 - [x] Panic handling in shims (catch_unwind)
 - [x] Tests and examples (see `rpkg/src/rust/trait_abi_tests.rs`)
 
@@ -185,14 +179,6 @@ pub struct mx_erased {
 1. **Consistency**: Single attribute for all R interop
 2. **Auto-detection**: Macro detects item type (fn, impl, trait, struct)
 3. **Familiarity**: Users already know `#[miniextendr]`
-
-### Why `impl Trait for Type;` in miniextendr_module?
-
-The trait ABI wrapper generation is triggered by `impl Trait for Type;` in `miniextendr_module!` rather than a derive attribute because:
-
-1. **Explicit registration**: Only traits listed in the module are exposed to R
-2. **Single location**: All R-facing declarations in one place
-3. **Lint-friendly**: Easy to verify matching `#[miniextendr]` annotations
 
 ### Why C-callables instead of direct linking?
 
@@ -251,10 +237,10 @@ void R_init_mypackage(DllInfo *dll) {
 }
 ```
 
-### 3. C Side (via mx_abi.c)
+### 3. Rust Side (via mx_abi.rs)
 
-Each package compiles `mx_abi.c` which provides `mx_wrap`/`mx_get`/`mx_query` functions.
-The entrypoint calls `mx_abi_register()` to initialize the tag and register C-callables.
+Each package includes `mx_abi.rs` from miniextendr-api which provides `mx_wrap`/`mx_get`/`mx_query` functions.
+`package_init()` (called by `miniextendr_init!`) calls `mx_abi_register()` to initialize the tag and register C-callables.
 Rust code calls these directly via `extern "C"` linkage (no runtime dependency on miniextendr).
 
 ### Version Compatibility Warning
@@ -275,7 +261,7 @@ This example shows how package B (consumer) can use trait-based objects from pac
 **Rust code (`producer/src/rust/lib.rs`):**
 
 ```rust
-use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+use miniextendr_api::{miniextendr, ExternalPtr};
 
 // Define the trait
 #[miniextendr]
@@ -298,12 +284,7 @@ impl Counter for SimpleCounter {
 impl SimpleCounter {
     fn new(initial: i32) -> Self { Self { value: initial } }
 }
-
-miniextendr_module! {
-    mod producer;
-    impl SimpleCounter;
-    impl Counter for SimpleCounter;  // Registers trait dispatch
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 **Generated R wrappers (`producer/R/miniextendr-wrappers.R`):**

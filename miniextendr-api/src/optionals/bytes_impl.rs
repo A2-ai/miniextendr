@@ -12,8 +12,7 @@
 //! miniextendr-api = { version = "...", features = ["bytes"] }
 //! ```
 //!
-//! Then implement the adapter traits on your types and register them with
-//! `miniextendr_module!`:
+//! Then implement the adapter traits on your types:
 //!
 //! ```ignore
 //! use miniextendr_api::RBuf;
@@ -39,11 +38,6 @@
 //!     }
 //!
 //!     // ... implement other required methods ...
-//! }
-//!
-//! miniextendr_module! {
-//!     mod mymodule;
-//!     impl RBuf for MyBuffer;
 //! }
 //! ```
 //!
@@ -106,11 +100,6 @@ pub use bytes::{Buf, BufMut, Bytes, BytesMut};
 ///         buf.copy_to_slice(&mut dst);
 ///         dst
 ///     }
-/// }
-///
-/// miniextendr_module! {
-///     mod mybuffer;
-///     impl RBuf for ReadableBuffer;
 /// }
 /// ```
 ///
@@ -267,11 +256,6 @@ pub trait RBuf {
 ///     fn put_slice(&self, src: Vec<u8>) {
 ///         self.data.borrow_mut().put_slice(&src);
 ///     }
-/// }
-///
-/// miniextendr_module! {
-///     mod mybuffer;
-///     impl RBufMut for WritableBuffer;
 /// }
 /// ```
 pub trait RBufMut {

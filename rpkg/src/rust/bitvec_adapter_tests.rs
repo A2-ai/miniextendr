@@ -2,7 +2,7 @@
 use miniextendr_api::bitvec_impl::{
     RBitVec, bitvec_count_ones, bitvec_count_zeros, bitvec_from_bools, bitvec_to_bools,
 };
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @noRd
 #[miniextendr]
@@ -70,18 +70,4 @@ pub fn bitvec_toggle(bits: RBitVec) -> RBitVec {
         *bit = !*bit;
     }
     result
-}
-
-miniextendr_module! {
-    mod bitvec_adapter_tests;
-    fn bitvec_roundtrip;
-    fn bitvec_ones;
-    fn bitvec_zeros;
-    fn bitvec_from_vec;
-    fn bitvec_to_vec;
-    fn bitvec_len;
-    fn bitvec_empty;
-    fn bitvec_all_ones;
-    fn bitvec_all_zeros;
-    fn bitvec_toggle;
 }

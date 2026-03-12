@@ -86,12 +86,6 @@
 //!
 //! #[miniextendr]
 //! impl RDeserializeNative for Point {}
-//!
-//! miniextendr_module! {
-//!     mod mymodule;
-//!     impl RSerializeNative for Point;
-//!     impl RDeserializeNative for Point;
-//! }
 //! ```
 //!
 //! In R:

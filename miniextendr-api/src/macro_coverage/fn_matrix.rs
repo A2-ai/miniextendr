@@ -6,7 +6,7 @@
 //! and common combinations are also covered.
 
 use crate::ffi;
-use crate::{miniextendr, miniextendr_module};
+use crate::miniextendr;
 
 #[derive(Debug)]
 struct DropTracer(&'static str);
@@ -360,95 +360,4 @@ pub(crate) extern "C-unwind" fn C_cov_indirect() -> ffi::SEXP {
 #[miniextendr(s3(generic = "format", class = "cov_s3_type"))]
 pub(crate) fn cov_fn_s3_method(x: i32) -> String {
     format!("cov_s3: {x}")
-}
-
-// =============================================================================
-// Module registration
-// =============================================================================
-
-miniextendr_module! {
-    mod fn_matrix;
-
-    // Basic return types
-    fn cov_fn_no_return;
-    fn cov_fn_unit_return;
-    fn cov_fn_option_unit;
-    fn cov_fn_option_value;
-    fn cov_fn_result_unit;
-    fn cov_fn_result_value;
-    fn cov_fn_plain_value;
-    fn cov_fn_mut_argument;
-    fn cov_fn_reads_unit;
-    fn cov_fn_leading_underscore;
-    fn cov_fn_panic_path;
-
-    // Dots/variadic
-    fn cov_fn_named_dots;
-    fn cov_fn_unused_named_dots;
-    fn cov_fn_unnamed_dots;
-    fn cov_fn_arg_plus_dots;
-    fn cov_fn_arg_plus_unnamed_dots;
-
-    // Invisible return
-    fn cov_fn_invisible_option;
-    fn cov_fn_invisible_result;
-
-    // Attribute options
-    fn cov_fn_attr_invisible;
-    fn cov_fn_attr_visible;
-    fn cov_fn_attr_check_interrupt;
-    fn cov_fn_attr_main_thread;
-    fn cov_fn_attr_worker;
-    fn cov_fn_attr_rng;
-    fn cov_fn_attr_unwrap_in_r;
-    fn cov_fn_lifecycle_simple;
-    fn cov_fn_lifecycle_full;
-    fn cov_fn_param_default;
-
-    // Combinations
-    fn cov_combo_worker_invisible;
-    fn cov_combo_worker_visible;
-    fn cov_combo_worker_coerce;
-    fn cov_combo_worker_rng;
-    fn cov_combo_worker_unwrap;
-    fn cov_combo_mainthread_interrupt;
-    fn cov_combo_mainthread_visible_interrupt;
-    fn cov_combo_invisible_interrupt;
-
-    // Coercion - scalars
-    fn cov_coerce_u16;
-    fn cov_coerce_i16;
-    fn cov_coerce_i8;
-    fn cov_coerce_u32;
-    fn cov_coerce_u64;
-    fn cov_coerce_i64;
-    fn cov_coerce_isize;
-    fn cov_coerce_usize;
-    fn cov_coerce_bool;
-    fn cov_coerce_f32;
-
-    // Coercion - vecs
-    fn cov_coerce_vec_u16;
-    fn cov_coerce_vec_bool;
-    fn cov_coerce_vec_f32;
-
-    // Per-parameter coercion
-    fn cov_coerce_per_param;
-    fn cov_coerce_per_param_multiple;
-
-    // Wildcard parameters
-    fn cov_wildcard_single;
-    fn cov_wildcard_multiple;
-    fn cov_wildcard_with_coerce;
-
-    // Inline attributes
-    fn cov_explicit_inline_always;
-    fn cov_explicit_inline;
-
-    // Extern C
-    extern "C-unwind" fn C_cov_direct;
-    extern fn C_cov_indirect;
-
-    // S3 method
-    fn cov_fn_s3_method;
 }

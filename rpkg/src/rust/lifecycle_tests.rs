@@ -2,7 +2,7 @@
 //!
 //! Tests `#[deprecated]` and `#[miniextendr(lifecycle = "...")]` attributes.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // =============================================================================
 // Tests using #[deprecated] attribute
@@ -121,15 +121,3 @@ impl LifecycleDemo {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod lifecycle_tests;
-    fn old_deprecated_fn;
-    fn also_deprecated;
-    fn experimental_feature;
-    fn superseded_fn;
-    fn soft_deprecated_fn;
-    fn fully_deprecated;
-    fn defunct_fn;
-    impl LifecycleDemo;
-}

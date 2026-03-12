@@ -51,9 +51,9 @@ just rcmdinstall        # 4. Rebuild with updated wrappers
 ### Adding a new `#[miniextendr]` function
 
 1. Add `#[miniextendr]` to your `pub` function in a `.rs` file
-2. Add `fn your_function;` to the `miniextendr_module!` in that file
-3. If it's in a sub-module, add `use module_name;` to the parent's `miniextendr_module!`
-4. Run the macro-change workflow above
+2. Run the macro-change workflow above
+
+Registration is automatic via `#[miniextendr]` -- no manual module declarations needed.
 
 ### Running R CMD check
 
@@ -105,9 +105,8 @@ If running in a sandboxed environment, compilation commands need the sandbox dis
 The function exists in Rust but isn't callable from R. Check:
 
 1. Function is `pub`
-2. Function is listed in `miniextendr_module!`
-3. Sub-module is `use`d in parent module's `miniextendr_module!`
-4. Run `just devtools-document` to regenerate NAMESPACE
+2. Function has the `#[miniextendr]` attribute
+3. Run `just devtools-document` to regenerate NAMESPACE
 
 Quick fix:
 
@@ -131,9 +130,9 @@ Use a local library path:
 R_LIBS=/tmp/R_lib just rcmdinstall
 ```
 
-### Lint warnings about missing module entries
+### Lint warnings
 
-Run `just lint` to check consistency between `#[miniextendr]` attributes and `miniextendr_module!` declarations. See [MACRO_ERRORS.md](MACRO_ERRORS.md) for interpreting lint output.
+Run `just lint` to check source-level attributes for consistency. See [MACRO_ERRORS.md](MACRO_ERRORS.md) for interpreting lint output.
 
 ### Transient test failures in parallel runs
 
