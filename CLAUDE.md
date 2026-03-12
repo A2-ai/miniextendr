@@ -629,6 +629,18 @@ just devtools-install
 - Example: `builtins.rs` + `builtins/math.rs` + `builtins/strings.rs`
 - If you find existing `mod.rs` files, refactor them to the `foo.rs` pattern when touching that code
 
+### Section Comments
+
+**Use `// region:` / `// endregion`** for logical sections within a file. These are IDE-foldable in VS Code and RustRover.
+
+```rust
+// region: Scalar implementations
+...
+// endregion
+```
+
+When touching files that use other section patterns (`// =====` banners, `// ──` box drawing, `// ---`), migrate them to `// region:` / `// endregion`.
+
 ### Type Conversions
 
 **Prefer `From`/`TryFrom` over `as` casts** — use `TryFrom` and `From` trait conversions instead of `as`-casts. Propagate the error rather than silently truncating or wrapping. When you encounter `as` casts during development, flag them for replacement.
