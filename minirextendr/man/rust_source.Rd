@@ -16,7 +16,7 @@ rust_source(
 }
 \arguments{
 \item{file}{Path to a \code{.rs} file containing Rust code with \verb{#[miniextendr]}
-functions and a \verb{miniextendr_module!} block. Mutually exclusive with \code{code}.}
+functions. Mutually exclusive with \code{code}.}
 
 \item{code}{Character string of inline Rust code. Mutually exclusive with \code{file}.}
 
@@ -51,15 +51,10 @@ environment. Similar to Rcpp's \code{sourceCpp()}.
 \dontrun{
 # Compile inline Rust code
 rust_source(code = '
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 #[miniextendr]
 pub fn add_one(x: i32) -> i32 { x + 1 }
-
-miniextendr_module! {
-    mod placeholder;
-    fn add_one;
-}
 ')
 add_one(41L)
 #> [1] 42

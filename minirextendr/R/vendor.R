@@ -244,7 +244,9 @@ patch_cargo_toml <- function(path, crate_name) {
     'quote = \\{ workspace = true \\}' =
       'quote = "1.0"',
     'syn = \\{ workspace = true \\}' =
-      'syn = { version = "2.0", features = ["full", "extra-traits"] }'
+      'syn = { version = "2.0", features = ["full", "extra-traits"] }',
+    'linkme = \\{ workspace = true \\}' =
+      'linkme = "0.3"'
   )
 
   for (pattern in names(dep_replacements)) {

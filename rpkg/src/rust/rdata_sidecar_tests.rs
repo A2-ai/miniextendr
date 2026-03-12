@@ -4,7 +4,7 @@
 
 use miniextendr_api::externalptr::{ExternalPtr, RSidecar};
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // =============================================================================
 // Env (default) - standalone functions: Type_get_field(), Type_set_field()
@@ -349,26 +349,3 @@ pub fn rdata_sidecar_raw_new(byte_val: u8) -> ExternalPtr<SidecarRaw> {
 // =============================================================================
 // Module registration
 // =============================================================================
-
-miniextendr_module! {
-    mod rdata_sidecar_tests;
-
-    // Impl blocks trigger r_data call def collection
-    impl SidecarEnv;
-    impl SidecarR6;
-    impl SidecarS3;
-    impl SidecarS4;
-    impl SidecarS7;
-    impl SidecarVctrs;
-    impl SidecarRawSexp;
-    impl SidecarRaw;
-
-    fn rdata_sidecar_env_new;
-    fn rdata_sidecar_r6_new;
-    fn rdata_sidecar_s3_new;
-    fn rdata_sidecar_s4_new;
-    fn rdata_sidecar_s7_new;
-    fn rdata_sidecar_vctrs_new;
-    fn rdata_sidecar_rawsexp_new;
-    fn rdata_sidecar_raw_new;
-}

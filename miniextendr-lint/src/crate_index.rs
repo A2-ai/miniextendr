@@ -6,14 +6,13 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use miniextendr_macros_core::miniextendr_module;
 use syn::Item;
 use syn::spanned::Spanned;
 
 use crate::helpers::{
     extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_altrep_derive,
     has_external_ptr_derive, has_miniextendr_attr, has_vctrs_derive, impl_type_name,
-    is_altrep_struct, is_miniextendr_module_macro, parse_miniextendr_impl_attrs,
+    is_altrep_struct, parse_miniextendr_impl_attrs,
 };
 
 // ── Lint item types ─────────────────────────────────────────────────────────
@@ -69,49 +68,6 @@ impl LintItem {
             line,
         }
     }
-
-    /// Renders the item in module-declaration syntax for diagnostics.
-    pub fn display(&self) -> String {
-        match self.kind {
-            LintKind::Function => format!("fn {}", self.name),
-            LintKind::Impl => {
-                if let Some(ref label) = self.label {
-                    format!("impl {} as \"{}\"", self.name, label)
-                } else {
-                    format!("impl {}", self.name)
-                }
-            }
-            LintKind::Struct => format!("struct {}", self.name),
-            LintKind::TraitImpl => format!("impl {}", self.name),
-            LintKind::Vctrs => format!("vctrs {}", self.name),
-        }
-    }
-
-    /// Normalized key for duplicate detection (ignores line number).
-    pub fn dedup_key(&self) -> String {
-        match self.kind {
-            LintKind::Function => format!("fn:{}", self.name),
-            LintKind::Impl => match &self.label {
-                Some(label) => format!("impl:{}:{}", self.name, label),
-                None => format!("impl:{}", self.name),
-            },
-            LintKind::Struct => format!("struct:{}", self.name),
-            LintKind::TraitImpl => format!("trait_impl:{}", self.name),
-            LintKind::Vctrs => format!("vctrs:{}", self.name),
-        }
-    }
-}
-
-// ── Trait impl entries from miniextendr_module! ─────────────────────────────
-
-#[derive(Clone, Debug)]
-pub struct TraitImplEntry {
-    pub trait_name: String,
-    pub type_name: String,
-    pub type_name_sanitized: String,
-    pub is_generic: bool,
-    pub line: usize,
-    pub cfgs: Vec<String>,
 }
 
 // ── Attributed trait impls from source ──────────────────────────────────────
@@ -128,22 +84,14 @@ pub struct AttributedTraitImpl {
 
 #[derive(Debug, Default)]
 pub struct FileData {
-    // Source items
+    // Source items (functions, impls, structs with #[miniextendr])
     pub miniextendr_items: Vec<LintItem>,
-
-    // Module macro data
-    pub module_items: Vec<LintItem>,
-    pub module_macro_lines: Vec<usize>,
-    pub module_name: Option<String>,
-    pub module_uses: Vec<String>,
 
     // Type/derive information
     pub types_with_external_ptr: HashSet<String>,
     pub types_with_typed_external: HashSet<String>,
 
     // Impl block details
-    pub impl_type_entries: Vec<(String, usize)>,
-    pub trait_impl_entries: Vec<TraitImplEntry>,
     pub inherent_impl_class_systems: HashMap<String, (String, usize)>,
     pub attributed_trait_impls: Vec<AttributedTraitImpl>,
     pub impl_blocks_per_type: HashMap<String, Vec<(Option<String>, usize)>>,
@@ -151,19 +99,13 @@ pub struct FileData {
     // Function details
     pub fn_visibility: HashMap<String, bool>,
 
-    // cfg tracking
-    pub item_cfgs: HashMap<String, Vec<String>>,
-    pub module_entry_cfgs: HashMap<String, Vec<String>>,
-
-    // Module tree
+    // Module tree (for file discovery)
     /// Simple `mod child;` declarations (by ident name).
     pub declared_child_mods: Vec<String>,
     /// `#[path = "file.rs"] mod name;` declarations: (mod_name, file_path_str).
     pub path_redirected_mods: Vec<(String, String)>,
     /// cfg attrs on `mod child;` declarations: mod_name -> cfg strings.
     pub mod_decl_cfgs: HashMap<String, Vec<String>>,
-    /// cfg attrs on `use child;` entries in `miniextendr_module!`: use_name -> cfg strings.
-    pub use_entry_cfgs: HashMap<String, Vec<String>>,
 
     // Export control
     pub export_control: HashMap<String, (bool, bool)>,
@@ -177,23 +119,6 @@ pub struct FileData {
     pub rf_error_calls: Vec<(String, usize)>,
     /// Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
     pub ffi_unchecked_calls: Vec<(String, usize)>,
-}
-
-impl FileData {
-    /// Returns miniextendr_items as a HashSet for O(1) lookup.
-    pub fn miniextendr_items_set(&self) -> HashSet<&LintItem> {
-        self.miniextendr_items.iter().collect()
-    }
-
-    /// Returns module_items as a HashSet for O(1) lookup.
-    pub fn module_items_set(&self) -> HashSet<&LintItem> {
-        self.module_items.iter().collect()
-    }
-
-    /// Whether this file has a miniextendr_module! macro.
-    pub fn has_module_macro(&self) -> bool {
-        !self.module_macro_lines.is_empty()
-    }
 }
 
 // ── Crate index ─────────────────────────────────────────────────────────────
@@ -246,94 +171,6 @@ impl CrateIndex {
             files: rs_files,
             file_data,
         })
-    }
-
-    /// All files that have a `miniextendr_module!`.
-    pub fn files_with_module(&self) -> Vec<&Path> {
-        self.file_data
-            .iter()
-            .filter(|(_, data)| data.has_module_macro())
-            .map(|(path, _)| path.as_path())
-            .collect()
-    }
-
-    /// Collect all module names across all files.
-    pub fn all_module_names(&self) -> Vec<(&Path, &str)> {
-        self.file_data
-            .iter()
-            .filter_map(|(path, data)| {
-                data.module_name
-                    .as_deref()
-                    .map(|name| (path.as_path(), name))
-            })
-            .collect()
-    }
-
-    /// Returns the set of files that are in cfg-gated alternative modules.
-    ///
-    /// A file is cfg-gated if its parent declares the same module name multiple times
-    /// (via `declared_child_mods` and/or `path_redirected_mods`), indicating that
-    /// only one alternative is active at compile time.
-    pub fn cfg_gated_module_files(&self) -> HashSet<PathBuf> {
-        let mut result = HashSet::new();
-
-        for (parent_path, parent_data) in &self.file_data {
-            let parent_dir = match parent_path.parent() {
-                Some(dir) => dir,
-                None => continue,
-            };
-
-            // Count total declarations per module name
-            let mut name_counts: HashMap<&str, usize> = HashMap::new();
-            for name in &parent_data.declared_child_mods {
-                *name_counts.entry(name.as_str()).or_default() += 1;
-            }
-            for (mod_name, _) in &parent_data.path_redirected_mods {
-                *name_counts.entry(mod_name.as_str()).or_default() += 1;
-            }
-
-            // For names with 2+ declarations, mark all target files
-            // (old pattern: #[cfg(feat)] mod foo; #[cfg(not(feat))] mod foo;)
-            for (mod_name, count) in &name_counts {
-                if *count < 2 {
-                    continue;
-                }
-
-                if parent_data
-                    .declared_child_mods
-                    .iter()
-                    .any(|n| n == mod_name)
-                {
-                    result.insert(parent_dir.join(format!("{mod_name}.rs")));
-                    result.insert(parent_dir.join(mod_name).join("mod.rs"));
-                }
-
-                for (redir_name, file_path) in &parent_data.path_redirected_mods {
-                    if redir_name == mod_name {
-                        result.insert(parent_dir.join(file_path));
-                    }
-                }
-            }
-
-            // Also mark modules that have #[cfg] on their mod declaration
-            // (new pattern: #[cfg(feat)] mod foo; — single declaration, no stub)
-            for mod_name in parent_data.mod_decl_cfgs.keys() {
-                result.insert(parent_dir.join(format!("{mod_name}.rs")));
-                result.insert(parent_dir.join(mod_name).join("mod.rs"));
-            }
-        }
-
-        result
-    }
-
-    /// Collect all types with ExternalPtr derive or TypedExternal impl across all files.
-    pub fn all_typed_external_types(&self) -> HashSet<String> {
-        let mut types = HashSet::new();
-        for data in self.file_data.values() {
-            types.extend(data.types_with_external_ptr.iter().cloned());
-            types.extend(data.types_with_typed_external.iter().cloned());
-        }
-        types
     }
 }
 
@@ -455,14 +292,6 @@ fn discover_mod_declarations(
 }
 
 /// Evaluate whether a set of `#[cfg(...)]` attributes is active given the current features.
-///
-/// Handles:
-/// - `#[cfg(feature = "foo")]` → true if "foo" is in active_features
-/// - `#[cfg(not(feature = "foo"))]` → true if "foo" is NOT in active_features
-/// - Multiple cfg attrs → all must be satisfied (AND semantics, matching rustc)
-///
-/// Unknown cfg predicates (e.g., `cfg(target_os = "linux")`) are treated as active
-/// (conservative: include the module rather than exclude it).
 fn is_cfg_active(cfgs: &[String], active_features: &HashSet<String>) -> bool {
     for cfg_str in cfgs {
         if let Some(result) = eval_cfg_str(cfg_str, active_features)
@@ -470,45 +299,36 @@ fn is_cfg_active(cfgs: &[String], active_features: &HashSet<String>) -> bool {
         {
             return false;
         }
-        // Unknown cfg → treat as active (conservative)
     }
     true
 }
 
-/// Try to evaluate a single cfg string like `cfg(feature = "foo")` or `cfg(not(feature = "foo"))`.
-/// The string comes from `syn::Meta::to_token_stream().to_string()` which may insert spaces
-/// (e.g., `cfg (feature = "foo")` with a space after `cfg`).
-/// Returns `Some(bool)` if it can evaluate, `None` if it can't parse the predicate.
+/// Try to evaluate a single cfg string like `cfg(feature = "foo")`.
 fn eval_cfg_str(cfg_str: &str, active_features: &HashSet<String>) -> Option<bool> {
-    // Normalize: remove all spaces to handle varying token stream formatting
     let normalized: String = cfg_str.chars().filter(|c| !c.is_whitespace()).collect();
 
-    // Extract the inner content of cfg(...)
     let inner = normalized
         .strip_prefix("cfg(")
         .and_then(|s| s.strip_suffix(')'))?;
 
-    // Handle `not(feature="foo")`
     if let Some(not_inner) = inner.strip_prefix("not(").and_then(|s| s.strip_suffix(')')) {
         if let Some(feat) = extract_feature_name(not_inner) {
             return Some(!active_features.contains(&feat));
         }
-        return None; // Can't evaluate complex not()
+        return None;
     }
 
-    // Handle `feature="foo"`
     if let Some(feat) = extract_feature_name(inner) {
         return Some(active_features.contains(&feat));
     }
 
-    None // Unknown predicate
+    None
 }
 
-/// Extract the feature name from a string like `feature="foo"` (already whitespace-normalized).
+/// Extract the feature name from a string like `feature="foo"`.
 fn extract_feature_name(s: &str) -> Option<String> {
     let rest = s.strip_prefix("feature")?;
     let rest = rest.strip_prefix('=')?;
-    // Strip quotes: "foo" or \"foo\"
     let name = rest.trim_matches('"').trim_matches('\\');
     if name.is_empty() {
         None
@@ -543,7 +363,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
     for item in items {
         match item {
             Item::Fn(item_fn) => {
-                // Track visibility for all functions with #[miniextendr]
                 if has_miniextendr_attr(&item_fn.attrs) {
                     let line = item_fn.sig.ident.span().start().line;
                     let name = item_fn.sig.ident.to_string();
@@ -557,12 +376,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                     // Track visibility
                     let is_pub = matches!(item_fn.vis, syn::Visibility::Public(_));
                     data.fn_visibility.insert(name.clone(), is_pub);
-
-                    // Track cfg attrs
-                    let cfgs = extract_cfg_attrs(&item_fn.attrs);
-                    if !cfgs.is_empty() {
-                        data.item_cfgs.insert(format!("fn:{}", name), cfgs);
-                    }
 
                     // Track export control
                     let attrs = parse_miniextendr_impl_attrs(&item_fn.attrs);
@@ -579,11 +392,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 }
             }
             Item::Struct(item_struct) => {
-                // Only 1-field structs without explicit mode attrs are ALTREP
-                // (need `struct Name;` in miniextendr_module!). Multi-field structs
-                // and structs with list/dataframe/externalptr attrs generate derives
-                // that don't need module entries.
-                // ALTREP structs via #[miniextendr] or #[derive(Altrep)]
                 let is_miniextendr_altrep =
                     has_miniextendr_attr(&item_struct.attrs) && is_altrep_struct(item_struct);
                 let is_derive_altrep = has_altrep_derive(&item_struct.attrs);
@@ -658,16 +466,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                     line,
                                 ));
 
-                                // Track cfg attrs
-                                let cfgs = extract_cfg_attrs(&item_impl.attrs);
-                                let key = match &impl_attrs.label {
-                                    Some(label) => format!("impl:{}:{}", type_name, label),
-                                    None => format!("impl:{}", type_name),
-                                };
-                                if !cfgs.is_empty() {
-                                    data.item_cfgs.insert(key, cfgs);
-                                }
-
                                 // Track export control
                                 if impl_attrs.internal || impl_attrs.noexport {
                                     data.export_control.insert(
@@ -678,115 +476,6 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                             }
                         }
                         None => { /* unsupported impl type, skip */ }
-                    }
-                }
-            }
-            Item::Macro(item_macro) => {
-                if is_miniextendr_module_macro(&item_macro.mac) {
-                    let line = item_macro.mac.path.span().start().line;
-                    data.module_macro_lines.push(line);
-
-                    if let Ok(parsed) = syn::parse2::<miniextendr_module::MiniextendrModule>(
-                        item_macro.mac.tokens.clone(),
-                    ) {
-                        // Module name
-                        data.module_name = Some(parsed.module_name.ident.to_string());
-
-                        // Uses
-                        for use_entry in &parsed.uses {
-                            let name = use_entry.use_name.ident.to_string();
-                            let cfgs = extract_cfg_attrs(&use_entry.attrs);
-                            if !cfgs.is_empty() {
-                                data.use_entry_cfgs.insert(name.clone(), cfgs);
-                            }
-                            data.module_uses.push(name);
-                        }
-
-                        // Functions
-                        for func in &parsed.functions {
-                            let fn_line = func.ident.span().start().line;
-                            let name = func.ident.to_string();
-                            data.module_items.push(LintItem::new(
-                                LintKind::Function,
-                                name.clone(),
-                                fn_line,
-                            ));
-                            let cfgs = extract_cfg_attrs(&func.attrs);
-                            if !cfgs.is_empty() {
-                                data.module_entry_cfgs.insert(format!("fn:{}", name), cfgs);
-                            }
-                        }
-
-                        // Structs
-                        for strukt in &parsed.structs {
-                            let s_line = strukt.ident.span().start().line;
-                            data.module_items.push(LintItem::new(
-                                LintKind::Struct,
-                                strukt.ident.to_string(),
-                                s_line,
-                            ));
-                        }
-
-                        // Vctrs
-                        for vctrs in &parsed.vctrs {
-                            let v_line = vctrs.ident.span().start().line;
-                            data.module_items.push(LintItem::new(
-                                LintKind::Vctrs,
-                                vctrs.ident.to_string(),
-                                v_line,
-                            ));
-                        }
-
-                        // Impls
-                        for impl_block in &parsed.impls {
-                            let i_line = impl_block.ident.span().start().line;
-                            let name = impl_block.ident.to_string();
-                            data.module_items.push(LintItem::with_label(
-                                LintKind::Impl,
-                                name.clone(),
-                                impl_block.label.clone(),
-                                i_line,
-                            ));
-                            data.impl_type_entries.push((name.clone(), i_line));
-                            let cfgs = extract_cfg_attrs(&impl_block.attrs);
-                            let key = match &impl_block.label {
-                                Some(label) => {
-                                    format!("impl:{}:{}", name, label)
-                                }
-                                None => format!("impl:{}", name),
-                            };
-                            if !cfgs.is_empty() {
-                                data.module_entry_cfgs.insert(key, cfgs);
-                            }
-                        }
-
-                        // Trait impls
-                        for trait_impl in &parsed.trait_impls {
-                            let t_line = trait_impl.impl_type.span().start().line;
-                            let trait_name = trait_impl
-                                .trait_path
-                                .segments
-                                .last()
-                                .map(|s| s.ident.to_string())
-                                .unwrap_or_default();
-                            let type_name = trait_impl.type_name_sanitized();
-                            let full_name = format!("{} for {}", trait_name, type_name);
-                            data.module_items.push(LintItem::new(
-                                LintKind::TraitImpl,
-                                full_name,
-                                t_line,
-                            ));
-
-                            let is_generic = trait_impl.simple_type_ident().is_none();
-                            data.trait_impl_entries.push(TraitImplEntry {
-                                trait_name: trait_name.clone(),
-                                type_name: type_name.clone(),
-                                type_name_sanitized: trait_impl.type_name_sanitized(),
-                                is_generic,
-                                line: t_line,
-                                cfgs: extract_cfg_attrs(&trait_impl.attrs),
-                            });
-                        }
                     }
                 }
             }
@@ -827,17 +516,10 @@ const RF_ERROR_PATTERNS: &[&str] = &[
 ];
 
 /// Check if a lint code is suppressed via `// mxl::allow(MXL...)` comment.
-///
-/// Checks the current line for a trailing `// mxl::allow(MXLnnn)` comment,
-/// and also checks the immediately preceding line for a standalone
-/// `// mxl::allow(MXLnnn)` comment. Multiple codes can be comma-separated:
-/// `// mxl::allow(MXL300, MXL301)`.
 fn is_suppressed(lines: &[&str], line_idx: usize, code: &str) -> bool {
-    // Check current line for trailing comment
     if line_has_allow(lines[line_idx], code) {
         return true;
     }
-    // Check preceding line for standalone allow comment
     if line_idx > 0 && line_has_allow(lines[line_idx - 1], code) {
         return true;
     }
@@ -862,20 +544,16 @@ fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
     let lines: Vec<&str> = src.lines().collect();
     for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
-        // Skip comment lines
         if trimmed.starts_with("//") {
             continue;
         }
-        // Skip #[link_name] attributes (generated by #[r_ffi_checked])
         if trimmed.starts_with("#[") {
             continue;
         }
-        // Find ffi::*_unchecked( patterns
         let mut search_from = 0;
         while let Some(ffi_pos) = trimmed[search_from..].find("ffi::") {
             let abs_pos = search_from + ffi_pos;
             let after_ffi = &trimmed[abs_pos + 5..];
-            // Extract identifier after "ffi::"
             let ident_end = after_ffi
                 .find(|c: char| !c.is_alphanumeric() && c != '_')
                 .unwrap_or(after_ffi.len());
@@ -897,7 +575,6 @@ fn scan_rf_error_calls(src: &str, data: &mut FileData) {
     let lines: Vec<&str> = src.lines().collect();
     for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
-        // Skip comment lines
         if trimmed.starts_with("//") {
             continue;
         }

@@ -352,11 +352,6 @@ use ordered_float::FloatCore;
 ///
 /// #[miniextendr]
 /// impl ROrderedFloatOps for MyFloat {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl ROrderedFloatOps for MyFloat;
-/// }
 /// ```
 ///
 /// In R:

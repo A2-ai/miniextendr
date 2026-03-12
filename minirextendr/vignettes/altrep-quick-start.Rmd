@@ -60,7 +60,7 @@ elements are computed from `start + i * step`.
 
 ```rust
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 use miniextendr_api::altrep_data::{AltrepLen, AltRealData};
 
 #[derive(miniextendr_api::ExternalPtr)]
@@ -132,12 +132,6 @@ pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
         len: length_out as usize,
     };
     ArithSeqClass(data).into_sexp()
-}
-
-miniextendr_module! {
-    mod mypackage;
-    struct ArithSeqClass;
-    fn arith_seq;
 }
 ```
 
@@ -283,7 +277,7 @@ Here is a complete, self-contained example you can drop into `lib.rs`:
 
 ```rust
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 use miniextendr_api::altrep_data::{AltrepLen, AltIntegerData};
 
 // --- Data struct ---
@@ -322,12 +316,6 @@ pub fn constant_int(value: i32, n: i32) -> SEXP {
         len: n as usize,
     })
     .into_sexp()
-}
-
-miniextendr_module! {
-    mod mypackage;
-    struct ConstantInt;
-    fn constant_int;
 }
 ```
 

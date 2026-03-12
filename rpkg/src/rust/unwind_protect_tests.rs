@@ -1,8 +1,8 @@
 //! Tests for `with_r_unwind_protect` mechanism.
 
 use miniextendr_api::ffi::SEXP;
+use miniextendr_api::miniextendr;
 use miniextendr_api::unwind_protect::with_r_unwind_protect;
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Simple RAII type that prints when dropped (without using with_r to avoid deadlocks).
 /// This is used across multiple test modules.
@@ -86,12 +86,4 @@ pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
             None,
         )
     }
-}
-
-miniextendr_module! {
-    mod unwind_protect_tests;
-
-    extern "C-unwind" fn C_unwind_protect_normal;
-    extern "C-unwind" fn C_unwind_protect_r_error;
-    extern "C-unwind" fn C_unwind_protect_lowlevel_test;
 }

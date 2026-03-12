@@ -69,7 +69,7 @@ mypackage/
 │   │   ├── build.rs         # Build script (runs lint)
 │   │   └── vendor/          # Vendored miniextendr crates
 │   ├── Makevars.in          # Makefile template
-│   └── entrypoint.c.in      # C entry point template
+│   └── stub.c               # Minimal C stub for R linker
 ├── configure.ac              # Autoconf source
 └── tools/
     ├── config.guess
@@ -116,7 +116,7 @@ use_miniextendr()
 Edit `src/rust/lib.rs` (or `rpkg/src/rust/lib.rs` for monorepos):
 
 ```rust
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// Add two integers.
 /// @param a First number
@@ -134,19 +134,13 @@ pub fn add(a: i32, b: i32) -> i32 {
 pub fn greet(name: &str) -> String {
     format!("Hello, {}!", name)
 }
-
-miniextendr_module! {
-    mod mypackage;
-    fn add;
-    fn greet;
-}
 ```
 
 Key points:
 
 - **`#[miniextendr]`** marks functions for export to R
 - **`pub fn`** is required for the function to get `@export` in R
-- **`miniextendr_module!`** registers functions so R can find them
+- Registration is automatic -- just add `#[miniextendr]` and you're done
 - Rust doc comments (`///`) become roxygen2 documentation
 
 ## Building and Installing
@@ -304,7 +298,6 @@ edit the template, not the generated file:
 | Generated File | Edit This Instead |
 |------|------|
 | `src/Makevars` | `src/Makevars.in` |
-| `src/entrypoint.c` | `src/entrypoint.c.in` |
 | `configure` | `configure.ac` (then run `miniextendr_autoconf()`) |
 
 ### Iteration Cycle
@@ -319,8 +312,7 @@ edit the template, not the generated file:
 **"could not find function"** -- Ensure the function is:
 1. Marked `pub`
 2. Has `#[miniextendr]` attribute
-3. Listed in `miniextendr_module!`
-4. R wrappers regenerated with `miniextendr_document()`
+3. R wrappers regenerated with `miniextendr_document()`
 
 **"configure: command not found"** -- Run `miniextendr_autoconf()` first.
 

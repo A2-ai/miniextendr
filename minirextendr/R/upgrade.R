@@ -49,8 +49,7 @@ upgrade_miniextendr_package <- function(path = ".",
 
   # --- Build system templates ---
   cli::cli_h2("Updating build system templates")
-  use_miniextendr_document()
-  use_miniextendr_entrypoint()
+  use_miniextendr_stub()
   use_miniextendr_makevars()
   use_miniextendr_cargo_config()
   use_miniextendr_mx_abi()
@@ -121,14 +120,9 @@ check_scaffolding_clean <- function() {
 
   # Files that upgrade will overwrite
   scaffolding_files <- c(
-    "src/rust/document.rs.in",
-    "src/rust/document.rs",
+    "src/stub.c",
     "src/rust/build.rs",
     "src/rust/cargo-config.toml.in",
-    "src/entrypoint.c.in",
-    "src/entrypoint.c",
-    "src/mx_abi.c.in",
-    "src/mx_abi.c",
     "src/Makevars.in",
     "src/win.def.in",
     "inst/include/mx_abi.h",
@@ -170,7 +164,8 @@ upgrade_gitignore <- function() {
   if (!fs::file_exists(gitignore_path)) return(invisible())
 
   lines <- readLines(gitignore_path, warn = FALSE)
-  obsolete <- c("src/entrypoint.c", "src/mx_abi.c", "src/rust/document.rs")
+  obsolete <- c("src/entrypoint.c", "src/entrypoint.c.in", "src/mx_abi.c",
+                "src/mx_abi.c.in", "src/rust/document.rs")
 
   # Remove exact matches (trimmed)
   trimmed <- trimws(lines)

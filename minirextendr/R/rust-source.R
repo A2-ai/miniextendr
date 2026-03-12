@@ -7,7 +7,7 @@
 #' environment. Similar to Rcpp's `sourceCpp()`.
 #'
 #' @param file Path to a `.rs` file containing Rust code with `#[miniextendr]`
-#'   functions and a `miniextendr_module!` block. Mutually exclusive with `code`.
+#'   functions. Mutually exclusive with `code`.
 #' @param code Character string of inline Rust code. Mutually exclusive with `file`.
 #' @param env Environment to load compiled functions into (default: caller's environment).
 #' @param cache Logical. If `TRUE` (default), reuses previously compiled packages
@@ -28,15 +28,10 @@
 #' \dontrun{
 #' # Compile inline Rust code
 #' rust_source(code = '
-#' use miniextendr_api::{miniextendr, miniextendr_module};
+#' use miniextendr_api::miniextendr;
 #'
 #' #[miniextendr]
 #' pub fn add_one(x: i32) -> i32 { x + 1 }
-#'
-#' miniextendr_module! {
-#'     mod placeholder;
-#'     fn add_one;
-#' }
 #' ')
 #' add_one(41L)
 #' #> [1] 42
@@ -84,8 +79,7 @@ rust_source <- function(file = NULL, code = NULL, env = parent.frame(),
 #' Compile a single inline Rust function
 #'
 #' Convenience wrapper around [rust_source()] for compiling a single function.
-#' Automatically wraps the code with `use` imports and a `miniextendr_module!`
-#' block.
+#' Automatically wraps the code with `use` imports.
 #'
 #' @param code Character string containing a single `#[miniextendr]` function
 #'   definition (including the attribute).
@@ -104,7 +98,7 @@ rust_source <- function(file = NULL, code = NULL, env = parent.frame(),
 #' #> [1] 42
 #' }
 rust_function <- function(code, env = parent.frame(), ...) {
-  # Extract pub fn names for auto-module generation
+  # Verify there's at least one pub fn
   fn_names <- extract_pub_fn_names(code)
   if (length(fn_names) == 0) {
     cli::cli_abort(c(
@@ -113,26 +107,10 @@ rust_function <- function(code, env = parent.frame(), ...) {
     ))
   }
 
-  # Extract pub struct/impl names for auto-module generation
-  impl_names <- extract_impl_names(code)
-
-  # Build module entries
-  fn_entries <- paste0("    fn ", fn_names, ";", collapse = "\n")
-  impl_entries <- if (length(impl_names) > 0) {
-    paste0("    impl ", impl_names, ";", collapse = "\n")
-  } else {
-    NULL
-  }
-  module_entries <- paste(c(fn_entries, impl_entries), collapse = "\n")
-
-  # Wrap with imports and module
+  # Wrap with imports (registration is automatic via #[miniextendr])
   full_code <- paste0(
-    "use miniextendr_api::{miniextendr, miniextendr_module};\n\n",
-    code, "\n\n",
-    "miniextendr_module! {\n",
-    "    mod placeholder;\n",
-    module_entries, "\n",
-    "}\n"
+    "use miniextendr_api::miniextendr;\n\n",
+    code, "\n"
   )
 
   rust_source(code = full_code, env = env, ...)
@@ -317,61 +295,6 @@ detect_inline_local_crates <- function() {
   NULL
 }
 
-#' Parse module exports from Rust code
-#'
-#' Extracts function and impl names from a `miniextendr_module!` block
-#' using regex. Used to generate NAMESPACE exports.
-#'
-#' @param code Character string of Rust code
-#' @return List with `fns` (character vector of fn names) and
-#'   `impls` (character vector of impl type names)
-#' @noRd
-parse_module_exports <- function(code) {
-  # Extract the miniextendr_module! block
-  module_match <- regmatches(
-    code,
-    regexpr("miniextendr_module!\\s*\\{[^}]*\\}", code)
-  )
-
-  if (length(module_match) == 0 || is.na(module_match) || !nzchar(module_match)) {
-    return(list(fns = character(), impls = character()))
-  }
-
-  block <- module_match
-
-  # Extract fn names: "fn name;" patterns
-  fn_matches <- regmatches(
-    block,
-    gregexpr("\\bfn\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*;", block)
-  )[[1]]
-  fns <- sub("^fn\\s+", "", sub("\\s*;$", "", fn_matches))
-
-  # Extract impl names: "impl Type;" patterns
-  impl_matches <- regmatches(
-    block,
-    gregexpr("\\bimpl\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*;", block)
-  )[[1]]
-  impls <- sub("^impl\\s+", "", sub("\\s*;$", "", impl_matches))
-
-  list(fns = fns, impls = impls)
-}
-
-#' Rewrite module name in Rust code
-#'
-#' Replaces the module name in a `miniextendr_module! { mod <name>;` block
-#' with the computed package Rust name.
-#'
-#' @param code Character string of Rust code
-#' @param pkg_rs Rust-safe package name (e.g., "mxinline12345678")
-#' @return Modified code string
-#' @noRd
-rewrite_module_name <- function(code, pkg_rs) {
-  gsub(
-    "(miniextendr_module!\\s*\\{\\s*mod\\s+)[a-zA-Z_][a-zA-Z0-9_]*(\\s*;)",
-    paste0("\\1", pkg_rs, "\\2"),
-    code
-  )
-}
 
 #' Extract pub fn names from Rust code
 #'
@@ -409,7 +332,7 @@ extract_impl_names <- function(code) {
 #' Creates the complete directory structure for an inline miniextendr
 #' package, including all necessary template files.
 #'
-#' @param code Rust code string (already with rewritten module name)
+#' @param code Rust code string
 #' @param hash MD5 hash of the code
 #' @param features Character vector of cargo features
 #' @param pkg_name R package name (e.g., "mxinline12345678")
@@ -448,11 +371,12 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   writeLines(desc_content, fs::path(pkg_dir, "DESCRIPTION"))
 
   # ---- NAMESPACE ----
-  exports <- parse_module_exports(code)
+  fn_names <- extract_pub_fn_names(code)
+  impl_names <- extract_impl_names(code)
   ns_lines <- c(
     paste0('useDynLib(', pkg_name, ', .registration = TRUE)'),
-    paste0("export(", exports$fns, ")"),
-    if (length(exports$impls) > 0) paste0("export(", exports$impls, ")")
+    paste0("export(", fn_names, ")"),
+    if (length(impl_names) > 0) paste0("export(", impl_names, ")")
   )
   writeLines(ns_lines, fs::path(pkg_dir, "NAMESPACE"))
 
@@ -469,9 +393,12 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   writeLines(pkg_r, fs::path(pkg_dir, "R", paste0(pkg_name, "-package.R")))
 
   # ---- Rust source: lib.rs ----
-  # Rewrite module name to match package
-  lib_rs <- rewrite_module_name(code, pkg_rs)
-  writeLines(lib_rs, fs::path(pkg_dir, "src", "rust", "lib.rs"))
+  # Prepend miniextendr_init!() macro invocation (required for R_init_* entry point)
+  lib_rs_content <- paste0(
+    "miniextendr_api::miniextendr_init!(", pkg_rs, ");\n\n",
+    code, "\n"
+  )
+  writeLines(lib_rs_content, fs::path(pkg_dir, "src", "rust", "lib.rs"))
 
   # ---- Cargo.toml ----
   features_toml <- if (length(features) > 0) {
@@ -490,14 +417,9 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
     '\n',
     '[workspace]\n',
     '\n',
-    '[[bin]]\n',
-    'name = "document"\n',
-    'path = "document.rs"\n',
-    'bench = false\n',
-    '\n',
     '[lib]\n',
     'path = "lib.rs"\n',
-    'crate-type = ["rlib", "staticlib"]\n',
+    'crate-type = ["staticlib"]\n',
     '\n',
     '[features]\n',
     features_toml,
@@ -519,32 +441,9 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   # ---- Template files from minirextendr templates ----
   set_template_type("rpkg")
 
-  # document.rs.in → document.rs
-  doc_in <- template_path("document.rs.in")
-  fs::file_copy(doc_in, fs::path(pkg_dir, "src", "rust", "document.rs.in"))
-  generate_document_rs(
-    fs::path(pkg_dir, "src", "rust", "document.rs.in"),
-    fs::path(pkg_dir, "src", "rust", "document.rs"),
-    pkg_name
-  )
-
-  # entrypoint.c.in → entrypoint.c
-  entry_in <- template_path("entrypoint.c.in")
-  fs::file_copy(entry_in, fs::path(pkg_dir, "src", "entrypoint.c.in"))
-  generate_entrypoint_c(
-    fs::path(pkg_dir, "src", "entrypoint.c.in"),
-    fs::path(pkg_dir, "src", "entrypoint.c"),
-    pkg_name
-  )
-
-  # mx_abi.c.in → mx_abi.c
-  mx_abi_in <- template_path("mx_abi.c.in")
-  fs::file_copy(mx_abi_in, fs::path(pkg_dir, "src", "mx_abi.c.in"))
-  generate_mx_abi_c(
-    fs::path(pkg_dir, "src", "mx_abi.c.in"),
-    fs::path(pkg_dir, "src", "mx_abi.c"),
-    pkg_name
-  )
+  # stub.c — minimal C file so R's build system produces a shared library
+  stub_src <- template_path("stub.c")
+  fs::file_copy(stub_src, fs::path(pkg_dir, "src", "stub.c"), overwrite = TRUE)
 
   # mx_abi.h header
   mx_abi_h <- template_path("mx_abi.h", subdir = "inst_include")

@@ -3,7 +3,7 @@
 //! These demonstrate that `#[miniextendr]` on structs/enums produces the same
 //! trait implementations as the equivalent derive macros.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 // ============================================================================
 // 1. #[miniextendr] on multi-field struct → ExternalPtr
@@ -130,16 +130,3 @@ pub fn mx_derived_ints() -> MxDerivedInts {
 // ============================================================================
 // Module registration
 // ============================================================================
-
-miniextendr_module! {
-    mod macro_equivalence;
-    fn mx_point_new;
-    fn mx_point_sum;
-    fn mx_record_create;
-    fn mx_obs_create;
-    fn mx_season_summer;
-    fn mx_season_name;
-    fn mx_verbosity_check;
-    fn mx_derived_ints;
-    struct MxDerivedInts;
-}

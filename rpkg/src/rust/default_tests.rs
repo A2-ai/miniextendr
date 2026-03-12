@@ -1,6 +1,6 @@
 //! Tests for parameter default values via `#[miniextendr(default = "...")]`.
 
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @noRd
 #[miniextendr]
@@ -28,12 +28,4 @@ pub fn add_with_defaults(
 #[miniextendr]
 pub fn with_flag(#[miniextendr(default = "FALSE")] flag: bool) -> bool {
     flag
-}
-
-miniextendr_module! {
-    mod default_tests;
-    fn greet;
-    fn greet_hidden;
-    fn add_with_defaults;
-    fn with_flag;
 }

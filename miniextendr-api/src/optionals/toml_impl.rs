@@ -477,14 +477,8 @@ fn discriminant(v: &TomlValue) -> u8 {
 ///
 /// # Registration
 ///
-/// ```ignore
-/// use miniextendr_api::toml_impl::{TomlValue, RTomlOps};
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RTomlOps for TomlValue;
-/// }
-/// ```
+/// Registration is automatic when you annotate `impl RTomlOps for TomlValue`
+/// with `#[miniextendr]`.
 pub trait RTomlOps {
     /// Check if this is a string value.
     fn is_string(&self) -> bool;

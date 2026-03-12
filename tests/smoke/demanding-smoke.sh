@@ -436,16 +436,16 @@ phase_c1_stale_detection() {
   cd "$MX_ROOT"
   log_info "Testing stale generated-file detection..."
 
-  touch rpkg/src/entrypoint.c.in
+  touch rpkg/src/Makevars.in
   sleep 1
 
   log_info "Running configure to clear stale state..."
   just configure
 
-  if [ -f rpkg/src/entrypoint.c ]; then
+  if [ -f rpkg/src/Makevars ]; then
     local template_ts generated_ts
-    template_ts="$(stat -f %m rpkg/src/entrypoint.c.in 2>/dev/null || stat -c %Y rpkg/src/entrypoint.c.in 2>/dev/null)"
-    generated_ts="$(stat -f %m rpkg/src/entrypoint.c 2>/dev/null || stat -c %Y rpkg/src/entrypoint.c 2>/dev/null)"
+    template_ts="$(stat -f %m rpkg/src/Makevars.in 2>/dev/null || stat -c %Y rpkg/src/Makevars.in 2>/dev/null)"
+    generated_ts="$(stat -f %m rpkg/src/Makevars 2>/dev/null || stat -c %Y rpkg/src/Makevars 2>/dev/null)"
     if [ "$generated_ts" -ge "$template_ts" ]; then
       log_info "Stale detection: configure refreshed generated file correctly"
     else

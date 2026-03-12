@@ -7,10 +7,10 @@
 \alias{CounterTraitEnv$get_value}
 \alias{$.CounterTraitEnv}
 \alias{[[.CounterTraitEnv}
+\alias{CounterTraitEnv$StaticXParam$from_value}
 \alias{CounterTraitEnv$MatrixCounter$custom_get}
 \alias{CounterTraitEnv$MatrixCounter$custom_add}
 \alias{CounterTraitEnv$MatrixCounter$default_value}
-\alias{CounterTraitEnv$StaticXParam$from_value}
 \title{CounterTraitEnv  Class}
 \format{
 An object of class \code{environment} of length 4.

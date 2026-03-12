@@ -299,11 +299,6 @@ impl IntoR for Vec<Option<Url>> {
 ///
 /// #[miniextendr]
 /// impl RUrlOps for MyUrl {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RUrlOps for MyUrl;
-/// }
 /// ```
 ///
 /// In R:

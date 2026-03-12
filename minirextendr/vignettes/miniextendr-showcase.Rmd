@@ -28,7 +28,7 @@ automatic type conversion.
 **Rust:**
 
 ```rust
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @param a First number
 /// @param b Second number
@@ -43,12 +43,6 @@ pub fn add(a: f64, b: f64) -> f64 {
 #[miniextendr]
 pub fn hello(name: &str) -> String {
     format!("Hello, {}!", name)
-}
-
-miniextendr_module! {
-    mod mypackage;
-    fn add;
-    fn hello;
 }
 ```
 

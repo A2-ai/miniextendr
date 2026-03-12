@@ -5,7 +5,7 @@
 // - Provides generic functions that work with any Counter implementation
 // - Can operate on objects created by producer package
 
-use miniextendr_api::{miniextendr, miniextendr_module, externalptr::ErasedExternalPtr, ffi::SEXP};
+use miniextendr_api::{miniextendr, externalptr::ErasedExternalPtr, ffi::SEXP};
 
 // ============================================================================
 // Shared trait definition (must match producer exactly)
@@ -76,11 +76,4 @@ fn peek_value(counter_sexp: SEXP) -> i32 {
 
         counter.value()
     }
-}
-
-miniextendr_module! {
-    mod consumer_pkg;
-    fn increment_twice;
-    fn add_and_get;
-    fn peek_value;
 }

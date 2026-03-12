@@ -2,7 +2,7 @@
 use miniextendr_api::aho_corasick_impl::{
     aho_compile, aho_count_matches, aho_find_all_flat, aho_is_match, aho_replace_all,
 };
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @noRd
 #[miniextendr]
@@ -63,16 +63,4 @@ pub fn aho_test_unicode(patterns: Vec<String>, haystack: String) -> bool {
 pub fn aho_test_replace_empty(patterns: Vec<String>, haystack: String) -> String {
     let ac = aho_compile(&patterns).unwrap();
     aho_replace_all(&ac, &haystack, "")
-}
-
-miniextendr_module! {
-    mod aho_corasick_adapter_tests;
-    fn aho_test_is_match;
-    fn aho_test_count;
-    fn aho_test_find_flat;
-    fn aho_test_replace;
-    fn aho_test_no_match;
-    fn aho_test_overlapping;
-    fn aho_test_unicode;
-    fn aho_test_replace_empty;
 }

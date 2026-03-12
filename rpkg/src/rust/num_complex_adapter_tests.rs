@@ -1,6 +1,6 @@
 //! num-complex adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::num_complex_impl::{Complex, RComplexOps};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -54,17 +54,4 @@ pub fn complex_is_finite(c: Complex<f64>) -> bool {
 #[miniextendr]
 pub fn complex_from_parts(re: f64, im: f64) -> Complex<f64> {
     Complex::new(re, im)
-}
-
-miniextendr_module! {
-    mod num_complex_adapter_tests;
-    fn complex_roundtrip;
-    fn complex_add;
-    fn complex_norm;
-    fn complex_conj;
-    fn complex_re;
-    fn complex_im;
-    fn complex_roundtrip_vec;
-    fn complex_is_finite;
-    fn complex_from_parts;
 }

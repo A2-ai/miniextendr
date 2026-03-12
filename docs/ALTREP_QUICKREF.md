@@ -199,7 +199,6 @@ Do you have data in memory?
 
 ## Debugging Checklist
 
-- [ ] Function listed in `miniextendr_module!`?
 - [ ] Function is `pub`?
 - [ ] Struct has `#[miniextendr(class="...", pkg="...")]`?
 - [ ] Used correct macro for vector type?
@@ -226,17 +225,6 @@ Do you have data in memory?
 - [ ] Returned pointers valid for object lifetime
 - [ ] SEXPs in lists are protected
 - [ ] Thread safety: no async/threading in callbacks
-
-## Module Registration
-
-```rust
-miniextendr_module! {
-    mod mypkg;
-
-    struct MyClass;     // ALTREP wrapper
-    fn my_constructor;  // Function returning ALTREP
-}
-```
 
 ## Receiving ALTREP from R
 

@@ -6,7 +6,7 @@ use std::os::raw::c_void;
 
 use miniextendr_api::abi::{mx_erased, mx_tag_from_path};
 use miniextendr_api::trait_abi::TraitView;
-use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
+use miniextendr_api::{ExternalPtr, miniextendr};
 
 fn main() {
     miniextendr_bench::init();
@@ -38,13 +38,6 @@ impl Counter for SimpleCounter {
         self.value += 1;
     }
 }
-
-miniextendr_module! {
-    mod trait_abi_bench;
-    impl Counter for SimpleCounter;
-    impl MathOps for SimpleCounter;
-}
-
 // =============================================================================
 // Helpers
 // =============================================================================

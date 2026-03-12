@@ -1,7 +1,7 @@
 //! serde_json adapter tests
 use crate::serde::{Deserialize, Serialize};
+use miniextendr_api::miniextendr;
 use miniextendr_api::serde_impl::{JsonValue, RJsonValueOps, RSerialize};
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "crate::serde")]
@@ -45,14 +45,4 @@ pub fn json_serialize_point(x: f64, y: f64) -> String {
 #[miniextendr]
 pub fn json_to_pretty(value: JsonValue) -> String {
     value.to_json_string_pretty()
-}
-
-miniextendr_module! {
-    mod serde_json_adapter_tests;
-    fn json_roundtrip;
-    fn json_type_name;
-    fn json_is_object;
-    fn json_object_keys;
-    fn json_serialize_point;
-    fn json_to_pretty;
 }

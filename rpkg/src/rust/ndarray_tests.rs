@@ -7,7 +7,7 @@ use miniextendr_api::ndarray_impl::{
     Array1, Array2, ArrayD, ArrayView1, ArrayView2, IxDyn, RNdArrayOps, RNdIndex, RNdSlice,
     RNdSlice2D,
 };
-use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
+use miniextendr_api::{ExternalPtr, miniextendr};
 
 // =============================================================================
 // NdVec - Wrapper for Array1<f64>
@@ -454,19 +454,4 @@ pub fn ndarray_roundtrip_int_vec(data: Array1<i32>) -> Array1<i32> {
 #[miniextendr]
 pub fn ndarray_roundtrip_int_matrix(data: Array2<i32>) -> Array2<i32> {
     data
-}
-
-miniextendr_module! {
-    mod ndarray_tests;
-
-    impl NdVec;
-    impl NdMatrix;
-    impl NdArrayDyn;
-    impl NdIntVec;
-
-    fn ndarray_roundtrip_vec;
-    fn ndarray_roundtrip_matrix;
-    fn ndarray_roundtrip_array;
-    fn ndarray_roundtrip_int_vec;
-    fn ndarray_roundtrip_int_matrix;
 }

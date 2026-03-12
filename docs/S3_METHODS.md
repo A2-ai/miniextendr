@@ -5,7 +5,7 @@ How to implement S3 generics (`print`, `format`, etc.) with `#[miniextendr(s3)]`
 ## Quick Example
 
 ```rust
-use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+use miniextendr_api::{miniextendr, ExternalPtr};
 
 #[derive(ExternalPtr)]
 pub struct Person {
@@ -39,10 +39,7 @@ impl Person {
     }
 }
 
-miniextendr_module! {
-    mod my_module;
-    impl Person;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 Generated R code:

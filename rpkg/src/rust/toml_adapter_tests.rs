@@ -1,8 +1,8 @@
 //! TOML adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::toml_impl::{
     RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty,
 };
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -78,17 +78,4 @@ pub fn toml_mixed_types() -> String {
     let input = "flag = true\ncount = 42\nname = \"test\"";
     let v = toml_from_str(input).unwrap();
     toml_to_string_pretty(&v)
-}
-
-miniextendr_module! {
-    mod toml_adapter_tests;
-    fn toml_roundtrip;
-    fn toml_pretty;
-    fn toml_type_name;
-    fn toml_is_table;
-    fn toml_table_keys;
-    fn toml_nested_keys;
-    fn toml_array_of_tables;
-    fn toml_parse_invalid;
-    fn toml_mixed_types;
 }

@@ -161,34 +161,27 @@ pub(super) fn generate_vtable_static(
         Err(e) => return e.into_compile_error(),
     };
 
-    // Generate constant names for module registration
-    let call_defs_const = format_ident!(
-        "{}_{}_CALL_DEFS",
-        type_ident.to_string().to_uppercase(),
-        trait_name_upper
-    );
+    // Generate constant name for R wrapper registration
     let r_wrappers_const = format_ident!(
         "R_WRAPPERS_{}_{}_IMPL",
         type_ident.to_string().to_uppercase(),
         trait_name_upper
     );
 
-    // Collect call method def identifiers (non-skipped methods + consts)
-    let method_call_def_idents: Vec<syn::Ident> = methods
-        .iter()
-        .map(|m| m.call_method_def_ident(&type_ident, trait_name))
-        .collect();
-    let const_call_def_idents: Vec<syn::Ident> = consts
-        .iter()
-        .map(|c| c.call_method_def_ident(&type_ident, trait_name))
-        .collect();
-    let call_def_idents: Vec<syn::Ident> = method_call_def_idents
-        .into_iter()
-        .chain(const_call_def_idents)
-        .collect();
-    let call_defs_len = call_def_idents.len();
-    let call_defs_len_lit =
-        syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
+    // Generate trait dispatch entry name
+    let dispatch_entry_name = format_ident!(
+        "__MX_DISPATCH_{}_{}_FOR_{}",
+        trait_name_upper,
+        type_ident.to_string().to_uppercase(),
+        type_name_str
+    );
+
+    // Build TAG path for the trait (same module as trait, e.g. counter::TAG_COUNTER)
+    let mut trait_tag_path = trait_path.clone();
+    if let Some(last) = trait_tag_path.segments.last_mut() {
+        last.ident = format_ident!("TAG_{}", trait_name_upper);
+        last.arguments = syn::PathArguments::None;
+    }
 
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
@@ -278,6 +271,7 @@ pub(super) fn generate_vtable_static(
         // C wrappers and call method defs for trait methods
         #(#c_wrappers)*
 
+        // R wrapper registration via distributed slice
         #[doc = concat!(
             "R wrapper code for `",
             stringify!(#type_ident),
@@ -288,34 +282,51 @@ pub(super) fn generate_vtable_static(
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
-        const #r_wrappers_const: &str =
-            concat!(
-                "# Generated from Rust impl `",
-                stringify!(#trait_name),
-                "` for `",
-                stringify!(#type_ident),
-                "` (",
-                file!(),
-                ":",
-                #source_line_lit,
-                ":",
-                #source_col_lit,
-                ")",
-                #r_wrapper_str
-            );
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+        static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
+            ::miniextendr_api::registry::RWrapperEntry {
+                priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
+                content: concat!(
+                    "# Generated from Rust impl `",
+                    stringify!(#trait_name),
+                    "` for `",
+                    stringify!(#type_ident),
+                    "` (",
+                    file!(),
+                    ":",
+                    #source_line_lit,
+                    ":",
+                    #source_col_lit,
+                    ")",
+                    #r_wrapper_str
+                ),
+            };
 
+        // Trait dispatch entry for universal_query
         #[doc = concat!(
-            "Call method def array for `",
-            stringify!(#type_ident),
-            "` implementing `",
+            "Trait dispatch entry: `",
             stringify!(#trait_name),
+            "` for `",
+            stringify!(#type_ident),
             "`."
         )]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
-        const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
-            [#(#call_def_idents),*];
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_TRAIT_DISPATCH)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+        static #dispatch_entry_name: ::miniextendr_api::registry::TraitDispatchEntry =
+            ::miniextendr_api::registry::TraitDispatchEntry {
+                concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
+                    concat!(module_path!(), "::", stringify!(#type_ident))
+                ),
+                trait_tag: #trait_tag_path,
+                vtable: unsafe {
+                    // SAFETY: vtable is a static reference valid for program lifetime
+                    ::std::ptr::from_ref(&#vtable_static_name).cast::<::std::os::raw::c_void>()
+                },
+            };
     }
 }
 

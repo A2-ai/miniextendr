@@ -1,6 +1,6 @@
 //! Tests for R dots (`...`) handling.
 
-use miniextendr_api::{miniextendr, miniextendr_module, typed_list};
+use miniextendr_api::{miniextendr, typed_list};
 
 #[miniextendr]
 /// @title Dots Handling Tests
@@ -122,24 +122,4 @@ pub fn validate_attr_optional(_dots: ...) -> String {
     let greeting: Option<String> = dots_typed.get_opt("greeting").expect("greeting");
     let greeting = greeting.unwrap_or_else(|| "Hello".to_string());
     format!("{}, {}!", greeting, name)
-}
-
-miniextendr_module! {
-    mod dots_tests;
-
-    fn greetings_with_named_dots;
-    fn greetings_with_named_and_unused_dots;
-    fn greetings_with_nameless_dots;
-    fn greetings_last_as_named_dots;
-    fn greetings_last_as_named_and_unused_dots;
-    fn greetings_last_as_nameless_dots;
-
-    // typed_list examples
-    fn validate_numeric_args;
-    fn validate_strict_args;
-    fn validate_class_args;
-
-    // attribute sugar examples
-    fn validate_with_attribute;
-    fn validate_attr_optional;
 }

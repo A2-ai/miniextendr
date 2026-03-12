@@ -1,6 +1,6 @@
 //! Regex adapter tests
+use miniextendr_api::miniextendr;
 use miniextendr_api::regex_impl::Regex;
-use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd
 #[miniextendr]
@@ -49,14 +49,4 @@ pub fn regex_split(pattern: &str, text: &str) -> Vec<String> {
     Regex::new(pattern)
         .map(|re| re.split(text).map(|s| s.to_string()).collect())
         .unwrap_or_else(|_| vec![text.to_string()])
-}
-
-miniextendr_module! {
-    mod regex_adapter_tests;
-    fn regex_is_match;
-    fn regex_find;
-    fn regex_find_all;
-    fn regex_replace_first;
-    fn regex_replace_all;
-    fn regex_split;
 }

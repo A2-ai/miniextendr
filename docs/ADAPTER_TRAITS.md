@@ -63,11 +63,8 @@ impl RNum for MyNumber {
     // Uses the blanket impl above
 }
 
-// 4. Register in module
-miniextendr_module! {
-    mod mymath;
-    impl RNum for MyNumber;
-}
+// 4. Registration is automatic — #[miniextendr] items are registered via
+//    linkme distributed slices. No manual module declaration needed.
 ```
 
 ### Why This Works
@@ -123,11 +120,7 @@ impl RDebug for MyData {}
 #[miniextendr]
 impl RClone for MyData {}
 
-miniextendr_module! {
-    mod mymod;
-    impl RDebug for MyData;
-    impl RClone for MyData;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 ## Trait ABI Constraints
@@ -252,10 +245,7 @@ pub struct BigInt { ... }
 #[miniextendr]
 impl RNum for BigInt { ... }
 
-miniextendr_module! {
-    mod producer;
-    impl RNum for BigInt;
-}
+// Registration is automatic via #[miniextendr].
 ```
 
 **Consumer package** (uses trait):

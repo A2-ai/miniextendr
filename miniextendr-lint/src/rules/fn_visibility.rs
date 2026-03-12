@@ -8,7 +8,7 @@ use crate::lint_code::LintCode;
 
 pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
     for (path, data) in &index.file_data {
-        for item in &data.module_items {
+        for item in &data.miniextendr_items {
             if item.kind != LintKind::Function {
                 continue;
             }

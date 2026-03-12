@@ -764,7 +764,7 @@ pub mod perf {
 /// Adapter trait for exposing parallel iteration operations to R.
 ///
 /// This trait provides a way to expose Rayon's parallel iteration capabilities
-/// to R through the `miniextendr_module!` macro. Unlike the standard `ParallelIterator`
+/// to R via `#[miniextendr]`. Unlike the standard `ParallelIterator`
 /// trait, this adapter is designed to work with `ExternalPtr<T>` which only provides
 /// `&self` access.
 ///
@@ -803,11 +803,6 @@ pub mod perf {
 ///
 /// #[miniextendr]
 /// impl RParallelIterator for ParallelData {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RParallelIterator for ParallelData;
-/// }
 /// ```
 ///
 /// In R:
@@ -1136,11 +1131,6 @@ pub trait RParallelIterator {
 ///
 /// #[miniextendr]
 /// impl RParallelExtend<f64> for ParallelBuffer {}
-///
-/// miniextendr_module! {
-///     mod mymodule;
-///     impl RParallelExtend<f64> for ParallelBuffer;
-/// }
 /// ```
 #[cfg(feature = "rayon")]
 pub trait RParallelExtend<T: Send> {

@@ -605,11 +605,14 @@ PACKAGE_STRING='miniextendr 1.0'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL=''
 
-ac_unique_file="src/entrypoint.c.in"
+ac_unique_file="src/rust/lib.rs"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
+TAR_FORCE_LOCAL
+CDYLIB_EXT
+CDYLIB_PREFIX
 CARGO_STATICLIB_NAME
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
@@ -2553,7 +2556,19 @@ CARGO_STATICLIB_NAME="$pkg_rs"
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 
-ac_config_files="$ac_config_files src/rust/document.rs"
+case "$host_os" in
+  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
+esac
+
+
+
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+  *)                       TAR_FORCE_LOCAL="" ;;
+esac
+
 
 
 
@@ -2573,7 +2588,7 @@ VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
-ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/entrypoint.c:src/entrypoint.c.in src/mx_abi.c:src/mx_abi.c.in src/miniextendr-win.def:src/win.def.in"
+ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/miniextendr-win.def:src/win.def.in"
 
 
 ac_config_commands="$ac_config_commands dev-cargo-config"
@@ -3290,8 +3305,8 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 # INIT-COMMANDS
 #
 BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"
-CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
-CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"
+CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
+CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"
 
 _ACEOF
@@ -3302,11 +3317,8 @@ cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
 for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
-    "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
     "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars:src/Makevars.in" ;;
-    "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c:src/entrypoint.c.in" ;;
-    "src/mx_abi.c") CONFIG_FILES="$CONFIG_FILES src/mx_abi.c:src/mx_abi.c.in" ;;
     "src/miniextendr-win.def") CONFIG_FILES="$CONFIG_FILES src/miniextendr-win.def:src/win.def.in" ;;
     "dev-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS dev-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;

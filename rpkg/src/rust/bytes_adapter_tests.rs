@@ -1,6 +1,6 @@
 //! Bytes adapter tests
 use miniextendr_api::bytes_impl::{Bytes, BytesMut};
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::miniextendr;
 
 /// @noRd
 #[miniextendr]
@@ -62,17 +62,4 @@ pub fn bytes_large() -> Bytes {
 pub fn bytes_all_values() -> Bytes {
     let data: Vec<u8> = (0..=255).collect();
     Bytes::from(data)
-}
-
-miniextendr_module! {
-    mod bytes_adapter_tests;
-    fn bytes_roundtrip;
-    fn bytes_len;
-    fn bytes_mut_roundtrip;
-    fn bytes_concat;
-    fn bytes_slice;
-    fn bytes_empty;
-    fn bytes_empty_len;
-    fn bytes_large;
-    fn bytes_all_values;
 }
