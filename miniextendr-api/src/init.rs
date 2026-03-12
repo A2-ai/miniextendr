@@ -44,12 +44,17 @@ pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
         // The env var is set by Makevars before dyn.load().
         let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
 
-        // 1. Install panic hook for better error messages
-        crate::backtrace::miniextendr_panic_hook();
+        // 1. Record main thread ID (and optionally spawn worker thread)
+        // Always needed: checked FFI variants (R_useDynamicSymbols, etc.)
+        // route through with_r_thread() which requires runtime_init.
+        crate::worker::miniextendr_runtime_init();
 
         if !wrapper_gen {
-            // 2. Record main thread ID (and optionally spawn worker thread)
-            crate::worker::miniextendr_runtime_init();
+            // 2. Install panic hook for better error messages
+            // Skipped during wrapper-gen: on Windows, set_hook during DLL init
+            // can fail with "failed to initiate panic, error 5" because the
+            // panic infrastructure isn't fully available during DLL loading.
+            crate::backtrace::miniextendr_panic_hook();
 
             // 3. Assert UTF-8 locale
             crate::encoding::miniextendr_assert_utf8_locale();
@@ -65,7 +70,7 @@ pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
             crate::mx_abi::mx_abi_register(pkg_name);
         }
 
-        // 7. Register all #[miniextendr] routines and ALTREP classes
+        // 7. Register .Call routines (and ALTREP classes, unless wrapper-gen)
         crate::registry::miniextendr_register_routines(dll);
 
         // 8. Lock down dynamic symbols
