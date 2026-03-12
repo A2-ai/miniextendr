@@ -1,5 +1,5 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-12 09:32:41
+--- a/monorepo/rpkg/Makevars.in	2026-03-12 10:14:23
 +++ b/monorepo/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
@@ -28,7 +28,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
  	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
-@@ -86,41 +80,4 @@
+@@ -86,40 +80,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -56,7 +56,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 -	case "$(CARGO_BUILD_TARGET)" in \
 -	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRCDIR)/cdylib-exports.def"; ;; \
@@ -66,8 +66,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	  --lib --profile $(CARGO_PROFILE) \
 -	  --manifest-path $(CARGO_TOML) \
 -	  --target-dir $(CARGO_TARGET_DIR) \
--	  --crate-type cdylib \
--	  -- --print link-args --print native-static-libs
+-	  --crate-type cdylib
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
@@ -661,7 +660,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-12 09:32:41
+--- a/rpkg/Makevars.in	2026-03-12 10:14:23
 +++ b/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
@@ -690,7 +689,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
  	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
-@@ -86,41 +80,4 @@
+@@ -86,40 +80,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
 -
@@ -718,7 +717,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 -	case "$(CARGO_BUILD_TARGET)" in \
 -	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRCDIR)/cdylib-exports.def"; ;; \
@@ -728,8 +727,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	  --lib --profile $(CARGO_PROFILE) \
 -	  --manifest-path $(CARGO_TOML) \
 -	  --target-dir $(CARGO_TARGET_DIR) \
--	  --crate-type cdylib \
--	  -- --print link-args --print native-static-libs
+-	  --crate-type cdylib
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
