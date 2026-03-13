@@ -86,8 +86,8 @@ pub fn build_script() {
     }
 
     // Note: generate_link_registrations() was removed — the document binary
-    // was replaced by cdylib-based wrapper generation. The .so build uses
-    // -force_load in Makevars.in to preserve linkme distributed_slice entries.
+    // was replaced by cdylib-based wrapper generation. The staticlib build uses
+    // codegen-units = 1 so the linker pulls all linkme entries via stub.c anchor.
 }
 
 #[derive(Debug, Default)]

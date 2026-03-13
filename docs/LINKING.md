@@ -27,11 +27,12 @@ When building an R package, R's build system handles all linking:
 The `Makevars` (generated from `Makevars.in`) tells R how to link:
 
 ```makefile
-PKG_LIBS = -L$(LIBDIR) -lmypkg
+PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 ```
 
-Where `$(LIBDIR)` points to the Cargo target directory containing the compiled
-Rust static library.
+This uses the full path to the static archive (not `-L`/`-l` flags) to ensure
+the linker picks up the staticlib directly. On Windows, `Makevars.win` also
+adds system libraries (`-lws2_32`, `-lntdll`, etc.).
 
 ## Standalone Binaries (miniextendr-engine)
 
