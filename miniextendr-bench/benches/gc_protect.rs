@@ -19,9 +19,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// ProtectScope overhead
-// =============================================================================
+// region: ProtectScope overhead
 
 /// Baseline: raw Rf_protect/Rf_unprotect
 #[divan::bench]
@@ -183,10 +181,9 @@ fn raw_protect_multiple(n: usize) {
         Rf_unprotect(n as i32);
     }
 }
+// endregion
 
-// =============================================================================
-// Raw R API reference (expensive variants)
-// =============================================================================
+// region: Raw R API reference (expensive variants)
 
 /// Reference: direct R API calls that higher-level helpers stack together.
 #[divan::bench]
@@ -214,10 +211,9 @@ fn raw_expensive_reference() {
         divan::black_box((preserved, replaced));
     }
 }
+// endregion
 
-// =============================================================================
-// ReprotectSlot benchmarks
-// =============================================================================
+// region: ReprotectSlot benchmarks
 
 /// ReprotectSlot: repeated set() calls
 #[divan::bench(args = [10, 100, 1000])]
@@ -252,10 +248,9 @@ fn owned_protect_repeated(iterations: usize) {
         divan::black_box(current);
     }
 }
+// endregion
 
-// =============================================================================
-// List construction benchmarks
-// =============================================================================
+// region: List construction benchmarks
 
 const LIST_SIZES: [isize; 3] = [10, 100, 1000];
 
@@ -328,10 +323,9 @@ fn list_set_elt_unchecked(size_idx: usize) {
         divan::black_box(list.as_sexp());
     }
 }
+// endregion
 
-// =============================================================================
-// StrVec construction benchmarks
-// =============================================================================
+// region: StrVec construction benchmarks
 
 /// StrVecBuilder: allocate and set strings
 #[divan::bench(args = [0usize, 1, 2])]
@@ -391,10 +385,9 @@ fn strvec_set_str_safe(size_idx: usize) {
         divan::black_box(strvec.as_sexp());
     }
 }
+// endregion
 
-// =============================================================================
-// Mixed workload benchmarks
-// =============================================================================
+// region: Mixed workload benchmarks
 
 /// Realistic: build a named list with mixed types
 #[divan::bench]
@@ -440,10 +433,9 @@ fn accumulator_pattern(iterations: usize) {
         divan::black_box(slot.get());
     }
 }
+// endregion
 
-// =============================================================================
-// Stack pressure benchmarks (ppsize stress tests)
-// =============================================================================
+// region: Stack pressure benchmarks (ppsize stress tests)
 // These benchmarks test patterns at high iteration counts to demonstrate
 // the importance of bounded protect stack usage. R's --max-ppsize minimum
 // is 10000, so patterns that stay bounded can handle arbitrary workloads
@@ -568,10 +560,9 @@ fn list_constant_vs_growing(n: usize) {
         // scope2 drops: unprotect 1 + n
     }
 }
+// endregion
 
-// =============================================================================
-// New ergonomic features benchmarks
-// =============================================================================
+// region: New ergonomic features benchmarks
 
 /// ProtectScope::alloc_vector vs manual allocate + protect
 #[divan::bench]
@@ -627,10 +618,9 @@ fn reprotect_manual_pattern(iterations: usize) {
         divan::black_box(slot.get());
     }
 }
+// endregion
 
-// =============================================================================
-// ListAccumulator benchmarks (unknown-length list construction)
-// =============================================================================
+// region: ListAccumulator benchmarks (unknown-length list construction)
 
 /// ListAccumulator: unknown-length list with bounded stack
 #[divan::bench(args = [10, 100, 1000])]
@@ -731,10 +721,9 @@ fn list_accumulator_stack_pressure(n: usize) {
         divan::black_box(acc.into_sexp());
     }
 }
+// endregion
 
-// =============================================================================
-// Typed vector collection (scope.collect)
-// =============================================================================
+// region: Typed vector collection (scope.collect)
 //
 // For typed vectors (INTSXP, REALSXP, etc.), there's no need for complex
 // protection during construction. You allocate once, protect once, then
@@ -822,3 +811,4 @@ fn scope_collect_from_vec(n: usize) {
         divan::black_box(vec.get());
     }
 }
+// endregion

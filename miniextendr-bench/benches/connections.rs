@@ -98,9 +98,7 @@ fn connection_write(bencher: divan::Bencher) {
     });
 }
 
-// =============================================================================
-// Parameterized read/write benchmarks
-// =============================================================================
+// region: Parameterized read/write benchmarks
 
 #[cfg(feature = "connections")]
 const IO_SIZES: &[usize] = &[64, 256, 1024, 4096, 16384];
@@ -130,10 +128,9 @@ fn connection_write_sized(bencher: divan::Bencher, size: usize) {
         divan::black_box(written);
     });
 }
+// endregion
 
-// =============================================================================
-// Sequential writes — measure throughput under repeated writes
-// =============================================================================
+// region: Sequential writes — measure throughput under repeated writes
 
 #[cfg(feature = "connections")]
 const WRITE_COUNTS: &[usize] = &[1, 10, 50];
@@ -152,3 +149,4 @@ fn connection_burst_write(bencher: divan::Bencher, n_writes: usize) {
         divan::black_box(total);
     });
 }
+// endregion

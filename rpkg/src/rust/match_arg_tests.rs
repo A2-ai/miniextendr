@@ -31,9 +31,7 @@ pub enum Priority {
     High,
 }
 
-// ============================================================================
-// Test functions using #[miniextendr(match_arg)]
-// ============================================================================
+// region: Test functions using #[miniextendr(match_arg)]
 
 /// Set mode using match_arg.
 ///
@@ -115,10 +113,9 @@ pub fn match_arg_priority_choices() -> Vec<&'static str> {
 pub fn match_arg_return_mode(#[miniextendr(match_arg)] mode: Mode) -> Mode {
     mode
 }
+// endregion
 
-// ============================================================================
-// Test functions using #[miniextendr(choices(...))] for string parameters
-// ============================================================================
+// region: Test functions using #[miniextendr(choices(...))] for string parameters
 
 /// @param x First value.
 /// @param y Second value.
@@ -146,3 +143,4 @@ pub fn choices_mixed(
 ) -> String {
     format!("n={}, mode={}, verbose={}", n, mode, verbose)
 }
+// endregion

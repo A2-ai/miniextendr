@@ -57,9 +57,7 @@ use crate::into_r::IntoR;
 /// Uses `u8` storage with LSB-first ordering for consistent behavior.
 pub type RBitVec = BitVec<u8, Lsb0>;
 
-// =============================================================================
-// TryFromSexp for RBitVec
-// =============================================================================
+// region: TryFromSexp for RBitVec
 
 impl TryFromSexp for RBitVec {
     type Error = SexpError;
@@ -95,10 +93,9 @@ impl TryFromSexp for RBitVec {
 }
 
 impl_option_try_from_sexp!(RBitVec);
+// endregion
 
-// =============================================================================
-// IntoR for RBitVec
-// =============================================================================
+// region: IntoR for RBitVec
 
 impl IntoR for RBitVec {
     type Error = std::convert::Infallible;
@@ -138,10 +135,9 @@ impl IntoR for Option<RBitVec> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp / IntoR for BitVec<u8, Msb0>
-// =============================================================================
+// region: TryFromSexp / IntoR for BitVec<u8, Msb0>
 
 impl TryFromSexp for BitVec<u8, Msb0> {
     type Error = SexpError;
@@ -216,10 +212,9 @@ impl IntoR for Option<BitVec<u8, Msb0>> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Create a bit vector from a slice of booleans.
 #[inline]
@@ -244,10 +239,9 @@ pub fn bitvec_count_ones(bits: &RBitVec) -> usize {
 pub fn bitvec_count_zeros(bits: &RBitVec) -> usize {
     bits.count_zeros()
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -311,3 +305,4 @@ mod tests {
         assert!(bits[2]);
     }
 }
+// endregion

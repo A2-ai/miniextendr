@@ -11,9 +11,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Vector allocation benchmarks
-// =============================================================================
+// region: Vector allocation benchmarks
 
 #[divan::bench(args = SIZES)]
 fn alloc_intsxp(n: usize) -> SEXP {
@@ -54,10 +52,9 @@ fn alloc_strsxp(n: usize) -> SEXP {
         divan::black_box(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Scalar creation benchmarks
-// =============================================================================
+// region: Scalar creation benchmarks
 
 #[divan::bench]
 fn scalar_integer() -> SEXP {
@@ -82,10 +79,9 @@ fn scalar_logical() -> SEXP {
         divan::black_box(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Data pointer access benchmarks (no allocation, just pointer retrieval)
-// =============================================================================
+// region: Data pointer access benchmarks (no allocation, just pointer retrieval)
 
 #[divan::bench(args = [0, 2, 4])]
 fn integer_ptr(size_idx: usize) {
@@ -122,10 +118,9 @@ fn raw_ptr(size_idx: usize) {
         divan::black_box(ptr);
     }
 }
+// endregion
 
-// =============================================================================
-// PROTECT / UNPROTECT benchmarks
-// =============================================================================
+// region: PROTECT / UNPROTECT benchmarks
 
 #[divan::bench]
 fn protect_unprotect_single() {
@@ -147,10 +142,9 @@ fn protect_unprotect_n(n: i32) {
         ffi::Rf_unprotect(n);
     }
 }
+// endregion
 
-// =============================================================================
-// Length retrieval benchmarks
-// =============================================================================
+// region: Length retrieval benchmarks
 
 #[divan::bench(args = [0, 2, 4])]
 fn xlength(size_idx: usize) {
@@ -160,10 +154,9 @@ fn xlength(size_idx: usize) {
         divan::black_box(len);
     }
 }
+// endregion
 
-// =============================================================================
-// Element access benchmarks (INTEGER_ELT, REAL_ELT, etc.)
-// =============================================================================
+// region: Element access benchmarks (INTEGER_ELT, REAL_ELT, etc.)
 
 #[divan::bench(args = [0, 2, 4])]
 fn integer_elt(size_idx: usize) {
@@ -191,3 +184,4 @@ fn logical_elt(size_idx: usize) {
         divan::black_box(val);
     }
 }
+// endregion

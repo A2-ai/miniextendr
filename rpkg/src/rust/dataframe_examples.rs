@@ -74,7 +74,7 @@ pub fn create_people_df() -> ToDataFrame<PersonDataFrame> {
     ToDataFrame(Person::to_dataframe(rows))
 }
 
-// ── Enum align examples ──────────────────────────────────────────────────────
+// region: Enum align examples
 
 /// Enum with align: different event types become rows with NA fill.
 #[derive(Clone, Debug, DataFrameRow)]
@@ -139,8 +139,9 @@ pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
     ];
     ToDataFrame(ShapeRow::to_dataframe(rows))
 }
+// endregion
 
-// ── Collection expansion examples ────────────────────────────────────────────
+// region: Collection expansion examples
 
 /// Struct with array expansion: [f64; 3] -> coords_1, coords_2, coords_3.
 #[derive(Clone, Debug, DataFrameRow)]
@@ -232,3 +233,4 @@ pub fn create_sensor_readings_df() -> ToDataFrame<SensorReadingDataFrame> {
     ];
     ToDataFrame(SensorReading::to_dataframe(rows))
 }
+// endregion

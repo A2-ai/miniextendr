@@ -47,9 +47,7 @@ where
     }
 }
 
-// =============================================================================
-// ALTREP BASE TRAMPOLINES
-// =============================================================================
+// region: ALTREP BASE TRAMPOLINES
 
 /// Trampoline for Length method.
 /// # Safety
@@ -124,10 +122,9 @@ pub unsafe extern "C-unwind" fn t_unserialize_ex<T: Altrep>(
 pub unsafe extern "C-unwind" fn t_coerce<T: Altrep>(x: SEXP, to_type: SEXPTYPE) -> SEXP {
     guarded_altrep_call::<T, _, _>(|| T::coerce(x, to_type))
 }
+// endregion
 
-// =============================================================================
-// ALTVEC TRAMPOLINES
-// =============================================================================
+// region: ALTVEC TRAMPOLINES
 
 /// Trampoline for Dataptr method.
 /// # Safety
@@ -153,10 +150,9 @@ pub unsafe extern "C-unwind" fn t_extract_subset<T: AltVec>(
 ) -> SEXP {
     guarded_altrep_call::<T, _, _>(|| T::extract_subset(x, indx, call))
 }
+// endregion
 
-// =============================================================================
-// ALTINTEGER TRAMPOLINES
-// =============================================================================
+// region: ALTINTEGER TRAMPOLINES
 
 /// Trampoline for integer Elt method.
 /// # Safety
@@ -211,10 +207,9 @@ pub unsafe extern "C-unwind" fn t_int_min<T: AltInteger>(x: SEXP, narm: Rboolean
 pub unsafe extern "C-unwind" fn t_int_max<T: AltInteger>(x: SEXP, narm: Rboolean) -> SEXP {
     guarded_altrep_call::<T, _, _>(|| T::max(x, matches!(narm, Rboolean::TRUE)))
 }
+// endregion
 
-// =============================================================================
-// ALTREAL TRAMPOLINES
-// =============================================================================
+// region: ALTREAL TRAMPOLINES
 
 /// Trampoline for real Elt method.
 /// # Safety
@@ -269,10 +264,9 @@ pub unsafe extern "C-unwind" fn t_real_min<T: AltReal>(x: SEXP, narm: Rboolean) 
 pub unsafe extern "C-unwind" fn t_real_max<T: AltReal>(x: SEXP, narm: Rboolean) -> SEXP {
     guarded_altrep_call::<T, _, _>(|| T::max(x, matches!(narm, Rboolean::TRUE)))
 }
+// endregion
 
-// =============================================================================
-// ALTLOGICAL TRAMPOLINES
-// =============================================================================
+// region: ALTLOGICAL TRAMPOLINES
 
 /// Trampoline for logical Elt method.
 /// # Safety
@@ -315,10 +309,9 @@ pub unsafe extern "C-unwind" fn t_lgl_sum<T: AltLogical>(x: SEXP, narm: Rboolean
 }
 
 // Note: R's ALTREP API does not expose min/max for logical vectors
+// endregion
 
-// =============================================================================
-// ALTRAW TRAMPOLINES
-// =============================================================================
+// region: ALTRAW TRAMPOLINES
 
 /// Trampoline for raw Elt method.
 /// # Safety
@@ -338,10 +331,9 @@ pub unsafe extern "C-unwind" fn t_raw_get_region<T: AltRaw>(
 ) -> R_xlen_t {
     guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
 }
+// endregion
 
-// =============================================================================
-// ALTCOMPLEX TRAMPOLINES
-// =============================================================================
+// region: ALTCOMPLEX TRAMPOLINES
 
 /// Trampoline for complex Elt method.
 /// # Safety
@@ -361,10 +353,9 @@ pub unsafe extern "C-unwind" fn t_cplx_get_region<T: AltComplex>(
 ) -> R_xlen_t {
     guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
 }
+// endregion
 
-// =============================================================================
-// ALTSTRING TRAMPOLINES
-// =============================================================================
+// region: ALTSTRING TRAMPOLINES
 
 /// Trampoline for string Elt method (REQUIRED for ALTSTRING).
 /// # Safety
@@ -393,10 +384,9 @@ pub unsafe extern "C-unwind" fn t_str_is_sorted<T: AltString>(x: SEXP) -> i32 {
 pub unsafe extern "C-unwind" fn t_str_no_na<T: AltString>(x: SEXP) -> i32 {
     guarded_altrep_call::<T, _, _>(|| T::no_na(x))
 }
+// endregion
 
-// =============================================================================
-// ALTLIST TRAMPOLINES
-// =============================================================================
+// region: ALTLIST TRAMPOLINES
 
 /// Trampoline for list Elt method (REQUIRED for ALTLIST).
 /// # Safety
@@ -411,10 +401,9 @@ pub unsafe extern "C-unwind" fn t_list_elt<T: AltList>(x: SEXP, i: R_xlen_t) -> 
 pub unsafe extern "C-unwind" fn t_list_set_elt<T: AltList>(x: SEXP, i: R_xlen_t, v: SEXP) {
     guarded_altrep_call::<T, _, _>(|| T::set_elt(x, i, v))
 }
+// endregion
 
-// =============================================================================
-// INSTALLERS - Only install methods where HAS_* = true
-// =============================================================================
+// region: INSTALLERS - Only install methods where HAS_* = true
 
 /// Install base ALTREP methods (always installs length, conditionally installs optional).
 /// # Safety
@@ -585,3 +574,4 @@ def_installer! {
     }
     always { R_set_altlist_Elt_method, t_list_elt; }
 }
+// endregion

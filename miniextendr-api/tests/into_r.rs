@@ -81,7 +81,7 @@ fn test_string_slice() {
     assert_eq!(unsafe { string_elt(sexp, 1) }, Some("beta".to_string()));
 }
 
-// ── AsNamedList / AsNamedVector tests ────────────────────────────────────────
+// region: AsNamedList / AsNamedVector tests
 
 use miniextendr_api::ffi::{INTEGER, R_NamesSymbol, REAL, Rf_getAttrib, VECTOR_ELT};
 use miniextendr_api::{AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt};
@@ -188,3 +188,4 @@ fn test_as_named_vector_slice() {
     let data = unsafe { std::slice::from_raw_parts(REAL(sexp), 2) };
     assert_eq!(data, &[1.0, 2.0]);
 }
+// endregion

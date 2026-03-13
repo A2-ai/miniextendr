@@ -516,9 +516,7 @@ pub struct MethodAttrs {
     /// fn old_value(&self) -> i32 { self.value }
     /// ```
     pub s7_deprecated: Option<String>,
-    // =========================================================================
-    // S7 Phase 3: Generic dispatch control
-    // =========================================================================
+    // region: S7 Phase 3: Generic dispatch control
     /// S7 no_dots marker - removes `...` from generic signature.
     ///
     /// Use for strict generics like `length()` that don't accept extra args.
@@ -553,9 +551,8 @@ pub struct MethodAttrs {
     /// // Registers method for S7::class_any
     /// ```
     pub s7_fallback: bool,
-    // =========================================================================
-    // S7 Phase 4: Conversion support
-    // =========================================================================
+    // endregion
+    // region: S7 Phase 4: Conversion support
     /// S7 convert_from - marks a method that converts FROM another type.
     ///
     /// Use `#[miniextendr(s7(convert_from = "OtherType"))]` on a static method
@@ -584,9 +581,8 @@ pub struct MethodAttrs {
     /// // Generates: S7::method(convert, list(Point3D, Point2D)) <- function(from, to) ...
     /// ```
     pub s7_convert_to: Option<String>,
-    // =========================================================================
-    // Lifecycle support
-    // =========================================================================
+    // endregion
+    // region: Lifecycle support
     /// Lifecycle specification for deprecation/experimental status on methods.
     ///
     /// Use `#[miniextendr(lifecycle = "deprecated")]` or
@@ -720,9 +716,8 @@ pub struct ImplAttrs {
     pub label: Option<String>,
     /// vctrs-specific attributes (only used when class_system is Vctrs)
     pub vctrs_attrs: VctrsAttrs,
-    // =========================================================================
-    // R6-specific configuration
-    // =========================================================================
+    // endregion
+    // region: R6-specific configuration
     /// R6 parent class for inheritance.
     /// Use `#[miniextendr(r6(inherit = "ParentClass"))]` to specify the parent.
     pub r6_inherit: Option<String>,
@@ -734,24 +729,21 @@ pub struct ImplAttrs {
     pub r6_lock_objects: Option<bool>,
     /// R6 lock_class flag. Controls whether the class definition can be modified.
     pub r6_lock_class: Option<bool>,
-    // =========================================================================
-    // S7-specific configuration
-    // =========================================================================
+    // endregion
+    // region: S7-specific configuration
     /// S7 parent class for inheritance.
     /// Use `#[miniextendr(s7(parent = "ParentClass"))]` to specify the parent.
     pub s7_parent: Option<String>,
     /// S7 abstract class flag. Abstract classes cannot be instantiated.
     pub s7_abstract: bool,
-    // =========================================================================
-    // Sidecar integration
-    // =========================================================================
+    // endregion
+    // region: Sidecar integration
     /// When true, auto-include `#[r_data]` field accessors in the class definition.
     /// For R6: active bindings via `$set("active", ...)` post-creation.
     /// For S7: properties spliced from `.rdata_properties_{Type}`.
     pub r_data_accessors: bool,
-    // =========================================================================
-    // Strict conversion mode
-    // =========================================================================
+    // endregion
+    // region: Strict conversion mode
     /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
     /// use `strict::checked_*()` instead of `IntoR::into_sexp()`, panicking on overflow.
     pub strict: bool,
@@ -763,6 +755,7 @@ pub struct ImplAttrs {
     /// emitted (a blanket impl already provides it), but C wrappers and R wrappers
     /// ARE generated from the method signatures in the body.
     pub blanket: bool,
+    // endregion
 }
 
 impl syn::parse::Parse for ImplAttrs {
@@ -2244,9 +2237,7 @@ fn output_is_result(output: &syn::ReturnType) -> bool {
     }
 }
 
-// =============================================================================
-// Class-system R wrapper generators (sub-modules)
-// =============================================================================
+// region: Class-system R wrapper generators (sub-modules)
 
 /// Environment-based class wrapper generator (`obj$method()` dispatch).
 mod env_class;
@@ -2595,3 +2586,4 @@ pub fn expand_impl(
 
 #[cfg(test)]
 mod tests;
+// endregion

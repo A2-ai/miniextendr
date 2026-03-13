@@ -28,9 +28,7 @@ use crate::ffi::{self, SEXP};
 
 static R_MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 
-// ===========================================================================
-// Public API
-// ===========================================================================
+// region: Public API
 
 /// Wrapper to mark values as Send for main-thread routing.
 ///
@@ -109,10 +107,9 @@ where
         worker_channel::route_to_main_thread(f)
     }
 }
+// endregion
 
-// ===========================================================================
-// #[doc(hidden)] items for macro-generated code
-// ===========================================================================
+// region: #[doc(hidden)] items for macro-generated code
 
 /// Raise an R error from a panic message. Does not return.
 ///
@@ -198,10 +195,9 @@ pub extern "C-unwind" fn miniextendr_runtime_init() {
         });
     }
 }
+// endregion
 
-// ===========================================================================
-// pub(crate) internals
-// ===========================================================================
+// region: pub(crate) internals
 
 /// Check whether the current thread has a worker routing context.
 pub(crate) fn has_worker_context() -> bool {
@@ -233,10 +229,9 @@ fn assert_runtime_initialized() {
         );
     }
 }
+// endregion
 
-// ===========================================================================
-// Worker channel infrastructure (only with worker-thread feature)
-// ===========================================================================
+// region: Worker channel infrastructure (only with worker-thread feature)
 
 #[cfg(feature = "worker-thread")]
 mod worker_channel {
@@ -539,10 +534,9 @@ mod worker_channel {
         JOB_TX.set(job_tx).expect("worker already initialized");
     }
 }
+// endregion
 
-// ===========================================================================
-// Tests
-// ===========================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests {
@@ -584,9 +578,7 @@ mod tests {
         assert!(!has_worker_context());
     }
 
-    // -----------------------------------------------------------------------
-    // Feature-gated tests: worker-thread
-    // -----------------------------------------------------------------------
+    // region: Feature-gated tests: worker-thread
 
     #[cfg(feature = "worker-thread")]
     mod worker_tests {
@@ -629,10 +621,9 @@ mod tests {
             }
         }
     }
+    // endregion
 
-    // -----------------------------------------------------------------------
-    // Feature-gated tests: no worker-thread (stubs)
-    // -----------------------------------------------------------------------
+    // region: Feature-gated tests: no worker-thread (stubs)
 
     #[cfg(not(feature = "worker-thread"))]
     mod stub_tests {
@@ -669,4 +660,6 @@ mod tests {
             );
         }
     }
+    // endregion
 }
+// endregion

@@ -26,9 +26,7 @@ fn with_r_thread_main() {
     divan::black_box(out);
 }
 
-// =============================================================================
-// Channel saturation — many small requests in sequence through the worker
-// =============================================================================
+// region: Channel saturation — many small requests in sequence through the worker
 
 const SATURATION_COUNTS: &[usize] = &[1, 5, 20, 100];
 
@@ -39,10 +37,9 @@ fn worker_channel_saturation(n: usize) {
         divan::black_box(out);
     }
 }
+// endregion
 
-// =============================================================================
-// Batching — N with_r_thread calls inside one worker closure
-// =============================================================================
+// region: Batching — N with_r_thread calls inside one worker closure
 
 const BATCH_COUNTS: &[usize] = &[1, 5, 10, 50];
 
@@ -58,10 +55,9 @@ fn worker_batching(n: usize) {
     })
     .unwrap();
 }
+// endregion
 
-// =============================================================================
-// Payload sizes — measure cost as data size increases
-// =============================================================================
+// region: Payload sizes — measure cost as data size increases
 
 const PAYLOAD_SIZES: &[usize] = &[8, 256, 4096, 65536];
 
@@ -71,3 +67,4 @@ fn worker_payload_size(size: usize) {
     let out: usize = run_on_worker(move || data.len()).unwrap();
     divan::black_box(out);
 }
+// endregion

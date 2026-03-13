@@ -31,9 +31,7 @@ use crate::ffi::{
 };
 use std::ffi::{CStr, CString};
 
-// =========================================================================
-// RSymbol
-// =========================================================================
+// region: RSymbol
 
 /// A safe wrapper around R symbols (SYMSXP).
 ///
@@ -89,10 +87,9 @@ impl RSymbol {
         self.sexp
     }
 }
+// endregion
 
-// =========================================================================
-// REnv
-// =========================================================================
+// region: REnv
 
 /// Handle to a well-known R environment.
 ///
@@ -154,10 +151,9 @@ impl REnv {
         self.sexp
     }
 }
+// endregion
 
-// =========================================================================
-// RCall
-// =========================================================================
+// region: RCall
 
 /// Builder for constructing and evaluating R function calls.
 ///
@@ -350,10 +346,9 @@ impl RCall {
         unsafe { self.eval(R_BaseEnv) }
     }
 }
+// endregion
 
-// =========================================================================
-// Error message extraction
-// =========================================================================
+// region: Error message extraction
 
 /// Extract the most recent R error message.
 ///
@@ -391,10 +386,9 @@ unsafe fn get_r_error_message() -> String {
         "R error occurred".to_string()
     }
 }
+// endregion
 
-// =========================================================================
-// Tests
-// =========================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests {
@@ -443,3 +437,4 @@ mod tests {
         assert_sized::<REnv>();
     }
 }
+// endregion

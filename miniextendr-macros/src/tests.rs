@@ -288,9 +288,7 @@ fn list_attrs_error_on_unknown_options() {
     assert!(err.to_string().contains("unknown #[into_list(...)] option"));
 }
 
-// =============================================================================
-// ALTREP derive macro tests
-// =============================================================================
+// region: ALTREP derive macro tests
 
 #[test]
 fn test_derive_altrep_integer_basic() {
@@ -412,10 +410,9 @@ fn test_derive_altrep_logical_with_options() {
     // Should pass options to macro
     assert!(output_str.contains("dataptr"));
 }
+// endregion
 
-// =============================================================================
-// ALTREP guard mode tests
-// =============================================================================
+// region: ALTREP guard mode tests
 
 #[test]
 fn test_derive_altrep_integer_unsafe_guard() {
@@ -504,10 +501,9 @@ fn test_derive_altrep_list_with_guard() {
     assert!(output_str.contains("impl_altlist_from_data"));
     assert!(output_str.contains("RUnwind"));
 }
+// endregion
 
-// =============================================================================
-// ALTREP invalid option combo tests
-// =============================================================================
+// region: ALTREP invalid option combo tests
 
 #[test]
 fn test_derive_altrep_real_accepts_subset() {
@@ -631,3 +627,4 @@ fn test_derive_altrep_real_subset_accepted_with_guard_too() {
 
     crate::altrep_derive::derive_altrep_real(input).unwrap();
 }
+// endregion

@@ -23,9 +23,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
     miniextendr_bench::fixtures()
 }
 
-// =============================================================================
-// Integer conversions: RNative vs Coercion
-// =============================================================================
+// region: Integer conversions: RNative vs Coercion
 
 /// Baseline: INTSXP → &[i32] (zero-copy, O(1))
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -79,10 +77,9 @@ fn vec_usize_coerce(size_idx: usize) {
     let vec: Vec<usize> = slice.iter().map(|&x| x.try_coerce().unwrap()).collect();
     divan::black_box(vec);
 }
+// endregion
 
-// =============================================================================
-// Real (f64) conversions: RNative vs Coercion
-// =============================================================================
+// region: Real (f64) conversions: RNative vs Coercion
 
 /// Baseline: REALSXP → &[f64] (zero-copy, O(1))
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -109,10 +106,9 @@ fn vec_f32_coerce(size_idx: usize) {
     let vec: Vec<f32> = slice.iter().map(|&x| x as f32).collect();
     divan::black_box(vec);
 }
+// endregion
 
-// =============================================================================
-// Raw (u8) conversions: RNative vs Coercion
-// =============================================================================
+// region: Raw (u8) conversions: RNative vs Coercion
 
 /// Baseline: RAWSXP → &[u8] (zero-copy, O(1))
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -139,10 +135,9 @@ fn vec_i32_from_raw_coerce(size_idx: usize) {
     let vec: Vec<i32> = slice.iter().map(|&x| x as i32).collect();
     divan::black_box(vec);
 }
+// endregion
 
-// =============================================================================
-// Cross-type: Integer to Real coercion comparison
-// =============================================================================
+// region: Cross-type: Integer to Real coercion comparison
 
 /// RNative→RNative: INTSXP → Vec<i32> (memcpy)
 #[divan::bench(args = [0, 1, 2, 3, 4])]
@@ -170,3 +165,4 @@ fn real_to_vec_i32_coerce(size_idx: usize) {
     let vec: Vec<i32> = slice.iter().map(|&x| x as i32).collect();
     divan::black_box(vec);
 }
+// endregion

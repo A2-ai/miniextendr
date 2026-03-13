@@ -115,9 +115,7 @@ impl List {
         None
     }
 
-    // =========================================================================
-    // Attribute getters (equivalent to R's GET_* macros)
-    // =========================================================================
+    // region: Attribute getters (equivalent to R's GET_* macros)
 
     /// Get an arbitrary attribute by symbol (unchecked internal helper).
     ///
@@ -224,10 +222,9 @@ impl List {
         // Safety: R_TspSymbol is a known symbol
         unsafe { self.get_attr_impl_unchecked(ffi::R_TspSymbol) }
     }
+    // endregion
 
-    // =========================================================================
-    // Attribute setters (equivalent to R's SET_* macros)
-    // =========================================================================
+    // region: Attribute setters (equivalent to R's SET_* macros)
 
     /// Set the `names` attribute; returns the same list for chaining.
     ///
@@ -273,10 +270,9 @@ impl List {
         unsafe { ffi::Rf_setAttrib(self.0, ffi::R_LevelsSymbol, levels) };
         self
     }
+    // endregion
 
-    // =========================================================================
-    // Convenience setters (string-based)
-    // =========================================================================
+    // region: Convenience setters (string-based)
 
     /// Set the `class` attribute from a slice of class names.
     ///
@@ -399,10 +395,9 @@ impl List {
         }
         self
     }
+    // endregion
 
-    // =========================================================================
-    // Safe element insertion
-    // =========================================================================
+    // region: Safe element insertion
 
     /// Set an element at the given index, protecting the child during insertion.
     ///
@@ -496,11 +491,10 @@ impl List {
             ffi::SET_VECTOR_ELT(self.0, idx, child.get());
         }
     }
+    // endregion
 }
 
-// =============================================================================
-// ListBuilder - efficient batch list construction
-// =============================================================================
+// region: ListBuilder - efficient batch list construction
 
 use crate::gc_protect::ProtectScope;
 
@@ -628,10 +622,9 @@ impl<'a> ListBuilder<'a> {
         self.len() == 0
     }
 }
+// endregion
 
-// =============================================================================
-// ListAccumulator - unknown-length list construction with bounded stack usage
-// =============================================================================
+// region: ListAccumulator - unknown-length list construction with bounded stack usage
 
 use crate::gc_protect::{ReprotectSlot, Root};
 
@@ -1000,10 +993,9 @@ impl ListMut {
         Ok(())
     }
 }
+// endregion
 
-// =============================================================================
-// NamedList - O(1) name-indexed access
-// =============================================================================
+// region: NamedList - O(1) name-indexed access
 
 /// A named list with O(1) name-based element lookup.
 ///
@@ -1224,10 +1216,9 @@ where
         Ok(out)
     }
 }
+// endregion
 
-// =============================================================================
-// HashMap conversions
-// =============================================================================
+// region: HashMap conversions
 
 impl<K, V> IntoList for HashMap<K, V>
 where
@@ -1278,10 +1269,9 @@ where
         Ok(map)
     }
 }
+// endregion
 
-// =============================================================================
-// BTreeMap conversions
-// =============================================================================
+// region: BTreeMap conversions
 
 impl<K, V> IntoList for BTreeMap<K, V>
 where
@@ -1332,10 +1322,9 @@ where
         Ok(map)
     }
 }
+// endregion
 
-// =============================================================================
-// HashSet conversions (unnamed list <-> set)
-// =============================================================================
+// region: HashSet conversions (unnamed list <-> set)
 
 impl<T> IntoList for HashSet<T>
 where
@@ -1358,10 +1347,9 @@ where
         Ok(vec.into_iter().collect())
     }
 }
+// endregion
 
-// =============================================================================
-// BTreeSet conversions (unnamed list <-> set)
-// =============================================================================
+// region: BTreeSet conversions (unnamed list <-> set)
 
 impl<T> IntoList for BTreeSet<T>
 where
@@ -1622,3 +1610,4 @@ impl TryFromSexp for ListMut {
         Ok(ListMut(sexp))
     }
 }
+// endregion

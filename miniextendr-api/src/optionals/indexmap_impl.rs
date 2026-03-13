@@ -59,9 +59,7 @@ use crate::ffi::{
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// TryFromSexp for IndexMap<String, T>
-// =============================================================================
+// region: TryFromSexp for IndexMap<String, T>
 
 impl<T> TryFromSexp for IndexMap<String, T>
 where
@@ -124,10 +122,9 @@ where
         Ok(map)
     }
 }
+// endregion
 
-// =============================================================================
-// IntoR for IndexMap<String, T>
-// =============================================================================
+// region: IntoR for IndexMap<String, T>
 
 impl<T> IntoR for IndexMap<String, T>
 where
@@ -162,10 +159,9 @@ where
         })
     }
 }
+// endregion
 
-// =============================================================================
-// RIndexMapOps adapter trait
-// =============================================================================
+// region: RIndexMapOps adapter trait
 
 /// Adapter trait for [`IndexMap`] operations.
 ///
@@ -401,3 +397,4 @@ mod tests {
         assert_eq!(RIndexMapOps::get_index_of(&map, "d"), -1);
     }
 }
+// endregion

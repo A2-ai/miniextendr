@@ -120,9 +120,7 @@ fn system_realloc_shrink(case: (usize, usize)) {
     }
 }
 
-// =============================================================================
-// Batch allocations: allocate N objects, then free all (arena-like pattern)
-// =============================================================================
+// region: Batch allocations: allocate N objects, then free all (arena-like pattern)
 
 /// Batch allocate 64-byte objects with RAllocator, then free all.
 #[divan::bench(args = BATCH_COUNTS)]
@@ -170,10 +168,9 @@ fn system_batch_alloc(count: usize) {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Vec-like growth: repeated doubling reallocs (simulates Vec::push pattern)
-// =============================================================================
+// region: Vec-like growth: repeated doubling reallocs (simulates Vec::push pattern)
 
 /// Simulate Vec growth pattern: start small, double until target size.
 #[divan::bench(args = VEC_GROWTH)]
@@ -239,10 +236,9 @@ fn system_vec_growth(case: (usize, usize)) {
         System.dealloc(ptr, layout);
     }
 }
+// endregion
 
-// =============================================================================
-// Zeroed allocation comparison
-// =============================================================================
+// region: Zeroed allocation comparison
 
 /// Zeroed allocation with RAllocator.
 #[divan::bench(args = ALLOC_SIZES)]
@@ -270,10 +266,9 @@ fn system_alloc_zeroed(size: usize) {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Mixed workload: interleaved alloc/dealloc of varying sizes
-// =============================================================================
+// region: Mixed workload: interleaved alloc/dealloc of varying sizes
 
 /// Mixed workload: interleaved allocations and deallocations.
 /// Simulates real-world usage where objects have varying lifetimes.
@@ -340,3 +335,4 @@ fn system_mixed_workload() {
         }
     }
 }
+// endregion

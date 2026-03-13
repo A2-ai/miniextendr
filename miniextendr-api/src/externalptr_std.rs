@@ -43,9 +43,7 @@ macro_rules! impl_te_generic {
     };
 }
 
-// =============================================================================
-// Primitives
-// =============================================================================
+// region: Primitives
 
 impl_te!(bool, "bool");
 impl_te!(char, "char");
@@ -63,19 +61,17 @@ impl_te!(u128, "u128");
 impl_te!(usize, "usize");
 impl_te!(f32, "f32");
 impl_te!(f64, "f64");
+// endregion
 
-// =============================================================================
-// Strings
-// =============================================================================
+// region: Strings
 
 impl_te!(String, "String");
 impl_te!(std::ffi::CString, "CString");
 impl_te!(std::ffi::OsString, "OsString");
 impl_te!(std::path::PathBuf, "PathBuf");
+// endregion
 
-// =============================================================================
-// Collections
-// =============================================================================
+// region: Collections
 
 impl_te_generic!(<T> Vec<T>, "Vec");
 impl_te_generic!(<T> std::collections::VecDeque<T>, "VecDeque");
@@ -85,10 +81,9 @@ impl_te_generic!(<K, V> std::collections::HashMap<K, V>, "HashMap");
 impl_te_generic!(<K, V> std::collections::BTreeMap<K, V>, "BTreeMap");
 impl_te_generic!(<T> std::collections::HashSet<T>, "HashSet");
 impl_te_generic!(<T> std::collections::BTreeSet<T>, "BTreeSet");
+// endregion
 
-// =============================================================================
-// Smart Pointers
-// =============================================================================
+// region: Smart Pointers
 
 impl_te_generic!(<T> Box<T>, "Box");
 
@@ -121,17 +116,15 @@ impl<T: TypedExternal> TypedExternal for std::mem::ManuallyDrop<T> {
 }
 impl_te_generic!(<T> std::mem::MaybeUninit<T>, "MaybeUninit");
 impl_te_generic!(<T> std::marker::PhantomData<T>, "PhantomData");
+// endregion
 
-// =============================================================================
-// Option / Result
-// =============================================================================
+// region: Option / Result
 
 impl_te_generic!(<T> Option<T>, "Option");
 impl_te_generic!(<T, E> Result<T, E>, "Result");
+// endregion
 
-// =============================================================================
-// Ranges
-// =============================================================================
+// region: Ranges
 
 impl_te_generic!(<T> std::ops::Range<T>, "Range");
 impl_te_generic!(<T> std::ops::RangeInclusive<T>, "RangeInclusive");
@@ -139,27 +132,24 @@ impl_te_generic!(<T> std::ops::RangeFrom<T>, "RangeFrom");
 impl_te_generic!(<T> std::ops::RangeTo<T>, "RangeTo");
 impl_te_generic!(<T> std::ops::RangeToInclusive<T>, "RangeToInclusive");
 impl_te!(std::ops::RangeFull, "RangeFull");
+// endregion
 
-// =============================================================================
-// I/O
-// =============================================================================
+// region: I/O
 
 impl_te!(std::fs::File, "File");
 impl_te_generic!(<R: std::io::Read> std::io::BufReader<R>, "BufReader");
 impl_te_generic!(<W: std::io::Write> std::io::BufWriter<W>, "BufWriter");
 impl_te_generic!(<T> std::io::Cursor<T>, "Cursor");
+// endregion
 
-// =============================================================================
-// Time
-// =============================================================================
+// region: Time
 
 impl_te!(std::time::Duration, "Duration");
 impl_te!(std::time::Instant, "Instant");
 impl_te!(std::time::SystemTime, "SystemTime");
+// endregion
 
-// =============================================================================
-// Networking
-// =============================================================================
+// region: Networking
 
 impl_te!(std::net::TcpStream, "TcpStream");
 impl_te!(std::net::TcpListener, "TcpListener");
@@ -170,10 +160,9 @@ impl_te!(std::net::Ipv6Addr, "Ipv6Addr");
 impl_te!(std::net::SocketAddr, "SocketAddr");
 impl_te!(std::net::SocketAddrV4, "SocketAddrV4");
 impl_te!(std::net::SocketAddrV6, "SocketAddrV6");
+// endregion
 
-// =============================================================================
-// Threading
-// =============================================================================
+// region: Threading
 
 impl_te!(std::thread::Thread, "Thread");
 impl_te_generic!(<T> std::thread::JoinHandle<T>, "JoinHandle");
@@ -182,10 +171,9 @@ impl_te_generic!(<T> std::sync::mpsc::SyncSender<T>, "SyncSender");
 impl_te_generic!(<T> std::sync::mpsc::Receiver<T>, "Receiver");
 impl_te!(std::sync::Barrier, "Barrier");
 impl_te!(std::sync::BarrierWaitResult, "BarrierWaitResult");
+// endregion
 
-// =============================================================================
-// Atomics
-// =============================================================================
+// region: Atomics
 
 impl_te!(std::sync::atomic::AtomicBool, "AtomicBool");
 impl_te!(std::sync::atomic::AtomicI8, "AtomicI8");
@@ -198,10 +186,9 @@ impl_te!(std::sync::atomic::AtomicU16, "AtomicU16");
 impl_te!(std::sync::atomic::AtomicU32, "AtomicU32");
 impl_te!(std::sync::atomic::AtomicU64, "AtomicU64");
 impl_te!(std::sync::atomic::AtomicUsize, "AtomicUsize");
+// endregion
 
-// =============================================================================
-// Numeric wrappers
-// =============================================================================
+// region: Numeric wrappers
 
 // Note: NonZero<T> requires T: ZeroablePrimitive (sealed trait), so we use aliases
 impl_te!(std::num::NonZeroI8, "NonZero");
@@ -218,10 +205,9 @@ impl_te!(std::num::NonZeroU128, "NonZero");
 impl_te!(std::num::NonZeroUsize, "NonZero");
 impl_te_generic!(<T> std::num::Wrapping<T>, "Wrapping");
 impl_te_generic!(<T> std::num::Saturating<T>, "Saturating");
+// endregion
 
-// =============================================================================
-// Tuples (1-12 elements)
-// =============================================================================
+// region: Tuples (1-12 elements)
 
 impl_te_generic!(<A> (A,), "Tuple1");
 impl_te_generic!(<A, B> (A, B), "Tuple2");
@@ -235,20 +221,18 @@ impl_te_generic!(<A, B, C, D, E, F, G, H, I> (A, B, C, D, E, F, G, H, I), "Tuple
 impl_te_generic!(<A, B, C, D, E, F, G, H, I, J> (A, B, C, D, E, F, G, H, I, J), "Tuple10");
 impl_te_generic!(<A, B, C, D, E, F, G, H, I, J, K> (A, B, C, D, E, F, G, H, I, J, K), "Tuple11");
 impl_te_generic!(<A, B, C, D, E, F, G, H, I, J, K, L> (A, B, C, D, E, F, G, H, I, J, K, L), "Tuple12");
+// endregion
 
-// =============================================================================
-// Arrays (const generic)
-// =============================================================================
+// region: Arrays (const generic)
 
 impl<T: 'static, const N: usize> TypedExternal for [T; N] {
     const TYPE_NAME: &'static str = "Array";
     const TYPE_NAME_CSTR: &'static [u8] = b"Array\0";
     const TYPE_ID_CSTR: &'static [u8] = b"std::Array\0";
 }
+// endregion
 
-// =============================================================================
-// Static slices
-// =============================================================================
+// region: Static slices
 //
 // `&'static [T]` is Sized (it's a fat pointer: ptr + len, 2 words) and satisfies
 // 'static, so it can be stored directly in ExternalPtr.
@@ -272,3 +256,4 @@ impl<T: 'static> TypedExternal for &'static mut [T] {
     const TYPE_NAME_CSTR: &'static [u8] = b"StaticMutSlice\0";
     const TYPE_ID_CSTR: &'static [u8] = b"std::StaticMutSlice\0";
 }
+// endregion

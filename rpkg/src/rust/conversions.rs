@@ -996,9 +996,7 @@ pub fn conv_result_vec_i32_err() -> Result<Vec<i32>, ()> {
     Err(())
 }
 
-// =============================================================================
-// Extended conversions - nested types, coercion, char
-// =============================================================================
+// region: Extended conversions - nested types, coercion, char
 
 // --- char conversions (char ↔ length-1 string) ---
 /// @noRd
@@ -1382,10 +1380,9 @@ pub fn conv_option_f32_some() -> Option<f32> {
 pub fn conv_option_u32_some() -> Option<u32> {
     Some(100)
 }
+// endregion
 
-// =============================================================================
-// Named pair wrappers (AsNamedList / AsNamedVector)
-// =============================================================================
+// region: Named pair wrappers (AsNamedList / AsNamedVector)
 
 use miniextendr_api::{AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt};
 
@@ -1543,3 +1540,4 @@ pub fn conv_named_list_len(config: NamedList) -> Vec<i32> {
 pub fn conv_named_list_roundtrip(config: NamedList) -> miniextendr_api::list::List {
     config.into_list()
 }
+// endregion

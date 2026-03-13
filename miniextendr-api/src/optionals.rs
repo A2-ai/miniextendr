@@ -34,9 +34,7 @@
 //! | `tinyvec` | `tinyvec_impl` | Small-vector optimized types |
 //! | `borsh` | `borsh_impl` | Binary serialization |
 
-// =============================================================================
-// Rayon - Parallel computation
-// =============================================================================
+// region: Rayon - Parallel computation
 
 /// Rayon integration for parallel computation with R interop.
 ///
@@ -56,10 +54,9 @@
 pub mod rayon_bridge;
 #[cfg(feature = "rayon")]
 pub use rayon_bridge::{RParallelExtend, RParallelIterator};
+// endregion
 
-// =============================================================================
-// Rand - Random number generation
-// =============================================================================
+// region: Rand - Random number generation
 
 /// Integration with the `rand` crate for R's RNG.
 ///
@@ -80,10 +77,9 @@ pub use rand_impl::{RDistributionOps, RDistributions, RRng, RRngOps};
 /// with [`RRng`]. Enable with `features = ["rand_distr"]`.
 #[cfg(feature = "rand_distr")]
 pub use rand_distr;
+// endregion
 
-// =============================================================================
-// Either - Sum type
-// =============================================================================
+// region: Either - Sum type
 
 /// Integration with the `either` crate.
 ///
@@ -94,10 +90,9 @@ pub use rand_distr;
 pub mod either_impl;
 #[cfg(feature = "either")]
 pub use either_impl::{Either, Left, Right};
+// endregion
 
-// =============================================================================
-// Ndarray - N-dimensional arrays
-// =============================================================================
+// region: Ndarray - N-dimensional arrays
 
 /// Integration with the `ndarray` crate.
 ///
@@ -156,10 +151,9 @@ pub use ndarray_impl::{
     // Shape builder
     ShapeBuilder,
 };
+// endregion
 
-// =============================================================================
-// Nalgebra - Linear algebra
-// =============================================================================
+// region: Nalgebra - Linear algebra
 
 /// Integration with the `nalgebra` crate.
 ///
@@ -171,10 +165,9 @@ pub use ndarray_impl::{
 pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
 pub use nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps, SMatrix, SVector};
+// endregion
 
-// =============================================================================
-// Numeric types
-// =============================================================================
+// region: Numeric types
 
 /// Integration with the `num-bigint` crate.
 ///
@@ -230,10 +223,9 @@ pub use num_complex_impl::{Complex, RComplexOps};
 pub mod num_traits_impl;
 #[cfg(feature = "num-traits")]
 pub use num_traits_impl::{RFloat, RNum, RSigned};
+// endregion
 
-// =============================================================================
-// String/Text types
-// =============================================================================
+// region: String/Text types
 
 /// UUID support via the `uuid` crate.
 ///
@@ -277,10 +269,9 @@ pub use aho_corasick_impl::{
     AhoCorasick, RAhoCorasickOps, aho_compile, aho_count_matches, aho_find_all, aho_find_all_flat,
     aho_find_first, aho_is_match, aho_replace_all,
 };
+// endregion
 
-// =============================================================================
-// Collections
-// =============================================================================
+// region: Collections
 
 /// IndexMap support via the `indexmap` crate.
 ///
@@ -291,10 +282,9 @@ pub use aho_corasick_impl::{
 pub mod indexmap_impl;
 #[cfg(feature = "indexmap")]
 pub use indexmap_impl::{IndexMap, RIndexMapOps};
+// endregion
 
-// =============================================================================
-// Date/Time
-// =============================================================================
+// region: Date/Time
 
 /// Time and date support via the `time` crate.
 ///
@@ -305,10 +295,9 @@ pub use indexmap_impl::{IndexMap, RIndexMapOps};
 pub mod time_impl;
 #[cfg(feature = "time")]
 pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
+// endregion
 
-// =============================================================================
-// Serialization
-// =============================================================================
+// region: Serialization
 
 /// Integration with `serde_json` for JSON string serialization.
 ///
@@ -343,10 +332,9 @@ pub use borsh_impl::{Borsh, RBorshOps, borsh_from_raw, borsh_to_raw};
 pub mod toml_impl;
 #[cfg(feature = "toml")]
 pub use toml_impl::{RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty};
+// endregion
 
-// =============================================================================
-// Byte/Binary handling
-// =============================================================================
+// region: Byte/Binary handling
 
 /// Integration with the `bytes` crate for byte buffer operations.
 ///
@@ -367,10 +355,9 @@ pub use bytes_impl::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};
 pub mod sha2_impl;
 #[cfg(feature = "sha2")]
 pub use sha2_impl::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
+// endregion
 
-// =============================================================================
-// Bit manipulation
-// =============================================================================
+// region: Bit manipulation
 
 /// Integration with the `bitflags` crate.
 ///
@@ -391,10 +378,9 @@ pub use bitflags_impl::{Flags, RFlags};
 pub mod bitvec_impl;
 #[cfg(feature = "bitvec")]
 pub use bitvec_impl::{BitVec, Lsb0, Msb0, RBitVec};
+// endregion
 
-// =============================================================================
-// Formatting
-// =============================================================================
+// region: Formatting
 
 /// Integration with the `tabled` crate for table formatting.
 ///
@@ -408,10 +394,9 @@ pub use tabled_impl::{
     Builder, Table, Tabled, builder_to_string, table_from_vecs, table_to_string,
     table_to_string_opts, table_to_string_styled,
 };
+// endregion
 
-// =============================================================================
-// TinyVec - Small vector optimization
-// =============================================================================
+// region: TinyVec - Small vector optimization
 
 /// Integration with the `tinyvec` crate for small-vector optimization.
 ///
@@ -424,3 +409,4 @@ pub use tabled_impl::{
 pub mod tinyvec_impl;
 #[cfg(feature = "tinyvec")]
 pub use tinyvec_impl::{Array, ArrayVec, TinyVec};
+// endregion

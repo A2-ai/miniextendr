@@ -16,9 +16,7 @@
 
 use miniextendr_api::miniextendr;
 
-// =============================================================================
-// Shared trait for all counter types
-// =============================================================================
+// region: Shared trait for all counter types
 
 #[miniextendr]
 pub trait MatrixCounter {
@@ -26,10 +24,9 @@ pub trait MatrixCounter {
     fn custom_add(&mut self, n: i32);
     fn default_value() -> i32;
 }
+// endregion
 
-// =============================================================================
-// Env inherent impl × Env trait impl
-// =============================================================================
+// region: Env inherent impl × Env trait impl
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CounterTraitEnv {
@@ -58,10 +55,9 @@ impl MatrixCounter for CounterTraitEnv {
         1
     }
 }
+// endregion
 
-// =============================================================================
-// Env inherent impl × S3 trait impl
-// =============================================================================
+// region: Env inherent impl × S3 trait impl
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CounterTraitS3 {
@@ -92,10 +88,9 @@ impl MatrixCounter for CounterTraitS3 {
         2
     }
 }
+// endregion
 
-// =============================================================================
-// Env inherent impl × S4 trait impl
-// =============================================================================
+// region: Env inherent impl × S4 trait impl
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CounterTraitS4 {
@@ -128,10 +123,9 @@ impl MatrixCounter for CounterTraitS4 {
         3
     }
 }
+// endregion
 
-// =============================================================================
-// Env inherent impl × S7 trait impl
-// =============================================================================
+// region: Env inherent impl × S7 trait impl
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CounterTraitS7 {
@@ -160,10 +154,9 @@ impl MatrixCounter for CounterTraitS7 {
         4
     }
 }
+// endregion
 
-// =============================================================================
-// Env inherent impl × R6 trait impl
-// =============================================================================
+// region: Env inherent impl × R6 trait impl
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CounterTraitR6 {
@@ -194,10 +187,9 @@ impl MatrixCounter for CounterTraitR6 {
         5
     }
 }
+// endregion
 
-// =============================================================================
-// Static method with first param named 'x' (regression test for dispatch)
-// =============================================================================
+// region: Static method with first param named 'x' (regression test for dispatch)
 
 /// Trait with a static method whose first param is `x`.
 /// The old formals heuristic would misclassify this as an instance method.
@@ -212,7 +204,7 @@ impl StaticXParam for CounterTraitEnv {
         x * 2
     }
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

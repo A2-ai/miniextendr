@@ -88,9 +88,7 @@ use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use core::marker::PhantomData;
 
-// =============================================================================
-// Type aliases
-// =============================================================================
+// region: Type aliases
 
 /// A 1-dimensional R vector with explicit dim attribute.
 pub type RVector<T> = RArray<T, 1>;
@@ -100,10 +98,9 @@ pub type RMatrix<T> = RArray<T, 2>;
 
 /// A 3-dimensional R array.
 pub type RArray3D<T> = RArray<T, 3>;
+// endregion
 
-// =============================================================================
-// RArray
-// =============================================================================
+// region: RArray
 
 /// An N-dimensional R array.
 ///
@@ -126,10 +123,9 @@ pub struct RArray<T, const NDIM: usize> {
     // PhantomData<*const T> keeps T in the type AND makes this !Send + !Sync
     _marker: PhantomData<*const T>,
 }
+// endregion
 
-// =============================================================================
-// Basic methods (no T bounds - available for all RArray types)
-// =============================================================================
+// region: Basic methods (no T bounds - available for all RArray types)
 
 impl<T, const NDIM: usize> RArray<T, NDIM> {
     /// Create an RArray from a SEXP without validation.
@@ -224,10 +220,9 @@ impl<T, const NDIM: usize> RArray<T, NDIM> {
         linear
     }
 }
+// endregion
 
-// =============================================================================
-// Native type methods (T: RNativeType - slice access, mutation, etc.)
-// =============================================================================
+// region: Native type methods (T: RNativeType - slice access, mutation, etc.)
 
 impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// Create an RArray from a SEXP, validating type and dimensions.
@@ -363,10 +358,9 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Matrix-specific methods (NDIM = 2)
-// =============================================================================
+// region: Matrix-specific methods (NDIM = 2)
 
 impl<T: RNativeType> RMatrix<T> {
     /// Get the number of rows.
@@ -451,15 +445,12 @@ impl<T: RNativeType> RMatrix<T> {
         unsafe { &mut self.as_slice_mut()[start..start + nrow] }
     }
 }
+// endregion
 
-// =============================================================================
-// Attribute access (equivalent to R's GET_*/SET_* macros)
-// =============================================================================
+// region: Attribute access (equivalent to R's GET_*/SET_* macros)
 
 impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
-    // -------------------------------------------------------------------------
-    // Attribute getters
-    // -------------------------------------------------------------------------
+    // region: Attribute getters
 
     /// Get an arbitrary attribute by symbol (unchecked internal helper).
     ///
@@ -559,10 +550,9 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
             }
         }
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // Attribute setters
-    // -------------------------------------------------------------------------
+    // region: Attribute setters
 
     /// Set an arbitrary attribute by symbol (unchecked internal helper).
     ///
@@ -603,11 +593,11 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     pub unsafe fn set_dimnames(&mut self, dimnames: SEXP) {
         unsafe { ffi::Rf_setAttrib(self.sexp, ffi::R_DimNamesSymbol, dimnames) };
     }
+    // endregion
 }
+// endregion
 
-// =============================================================================
-// Construction helpers
-// =============================================================================
+// region: Construction helpers
 
 impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// Allocate a new R array with the given dimensions.
@@ -679,10 +669,9 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp implementation
-// =============================================================================
+// region: TryFromSexp implementation
 
 impl<T: RNativeType, const NDIM: usize> TryFromSexp for RArray<T, NDIM> {
     type Error = SexpError;
@@ -695,10 +684,9 @@ impl<T: RNativeType, const NDIM: usize> TryFromSexp for RArray<T, NDIM> {
         unsafe { Self::from_sexp(sexp) }
     }
 }
+// endregion
 
-// =============================================================================
-// Direct coercion TryFromSexp implementations
-// =============================================================================
+// region: Direct coercion TryFromSexp implementations
 //
 // These implement TryFromSexp for RArray<T, NDIM> where T is not an R native type
 // but can be coerced from one. The RArray wraps the source SEXP directly (zero-copy).
@@ -805,10 +793,9 @@ impl_rarray_try_from_sexp_coerce!(f64 => f32);
 
 // Logical coercions: R logical (RLogical) -> bool
 impl_rarray_try_from_sexp_coerce!(RLogical => bool);
+// endregion
 
-// =============================================================================
-// IntoR implementation
-// =============================================================================
+// region: IntoR implementation
 
 impl<T: RNativeType, const NDIM: usize> IntoR for RArray<T, NDIM> {
     type Error = std::convert::Infallible;
@@ -826,10 +813,9 @@ impl<T: RNativeType, const NDIM: usize> IntoR for RArray<T, NDIM> {
         self.sexp
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Get number of dimensions from SEXP.
 fn get_ndim(sexp: SEXP) -> usize {
@@ -892,10 +878,9 @@ unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
         ffi::Rf_unprotect(1);
     }
 }
+// endregion
 
-// =============================================================================
-// Debug implementation
-// =============================================================================
+// region: Debug implementation
 
 impl<T: RNativeType, const NDIM: usize> std::fmt::Debug for RArray<T, NDIM> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -906,10 +891,9 @@ impl<T: RNativeType, const NDIM: usize> std::fmt::Debug for RArray<T, NDIM> {
             .finish()
     }
 }
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests {
@@ -939,3 +923,4 @@ mod tests {
     // This is verified by the compiler - attempting to send RArray across
     // threads will fail to compile.
 }
+// endregion

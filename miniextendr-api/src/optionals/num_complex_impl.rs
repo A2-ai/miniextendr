@@ -46,9 +46,7 @@ use crate::ffi::{Rcomplex, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Convert `Complex<f64>` to R's `Rcomplex`.
 #[inline]
@@ -87,10 +85,9 @@ pub fn is_na_complex(c: &Complex<f64>) -> bool {
     let na_bits = NA_REAL.to_bits();
     c.re.to_bits() == na_bits || c.im.to_bits() == na_bits
 }
+// endregion
 
-// =============================================================================
-// Scalar conversions
-// =============================================================================
+// region: Scalar conversions
 
 impl TryFromSexp for Complex<f64> {
     type Error = SexpError;
@@ -139,10 +136,9 @@ impl IntoR for Complex<f64> {
         unsafe { Rf_ScalarComplex(to_rcomplex(self)) }
     }
 }
+// endregion
 
-// =============================================================================
-// Option conversions (NA support)
-// =============================================================================
+// region: Option conversions (NA support)
 
 impl TryFromSexp for Option<Complex<f64>> {
     type Error = SexpError;
@@ -196,10 +192,9 @@ impl IntoR for Option<Complex<f64>> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Vector conversions
-// =============================================================================
+// region: Vector conversions
 
 impl TryFromSexp for Vec<Complex<f64>> {
     type Error = SexpError;
@@ -255,10 +250,9 @@ impl IntoR for Vec<Complex<f64>> {
         sexp
     }
 }
+// endregion
 
-// =============================================================================
-// Vec<Option<Complex>> conversions (NA-aware vectors)
-// =============================================================================
+// region: Vec<Option<Complex>> conversions (NA-aware vectors)
 
 impl TryFromSexp for Vec<Option<Complex<f64>>> {
     type Error = SexpError;
@@ -316,10 +310,9 @@ impl IntoR for Vec<Option<Complex<f64>>> {
         sexp
     }
 }
+// endregion
 
-// =============================================================================
-// RComplexOps adapter trait
-// =============================================================================
+// region: RComplexOps adapter trait
 
 /// Adapter trait for [`Complex<f64>`] operations.
 ///
@@ -428,10 +421,9 @@ impl RComplexOps for Complex<f64> {
         Complex::inv(self)
     }
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -519,3 +511,4 @@ mod tests {
         assert!(!RComplexOps::is_finite(&nan));
     }
 }
+// endregion

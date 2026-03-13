@@ -204,9 +204,7 @@ where
     T::try_from_sexp(x)
 }
 
-// =============================================================================
-// Argument extraction helpers
-// =============================================================================
+// region: Argument extraction helpers
 
 /// Extract and convert an argument from argv with bounds checking.
 ///
@@ -285,3 +283,4 @@ pub unsafe fn check_arity(argc: i32, expected: i32, method_name: &str) {
         };
     }
 }
+// endregion

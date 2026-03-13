@@ -46,9 +46,7 @@
 use miniextendr_api::{ExternalPtr, miniextendr};
 use std::sync::atomic::{AtomicI32, Ordering};
 
-// ============================================================================
-// Shared trait definition
-// ============================================================================
+// region: Shared trait definition
 
 #[miniextendr]
 pub trait SharedCounter {
@@ -57,10 +55,9 @@ pub trait SharedCounter {
     fn add(&mut self, n: i32);
     fn reset(&mut self);
 }
+// endregion
 
-// ============================================================================
-// Producer package - SimpleCounter
-// ============================================================================
+// region: Producer package - SimpleCounter
 
 #[derive(ExternalPtr)]
 pub struct SharedSimpleCounter {
@@ -96,10 +93,9 @@ impl SharedCounter for SharedSimpleCounter {
         self.value = 0;
     }
 }
+// endregion
 
-// ============================================================================
-// Producer package - AtomicCounter (alternative implementation)
-// ============================================================================
+// region: Producer package - AtomicCounter (alternative implementation)
 
 #[derive(ExternalPtr)]
 pub struct AtomicCounter {
@@ -133,7 +129,7 @@ impl SharedCounter for AtomicCounter {
         self.value.store(0, Ordering::SeqCst);
     }
 }
+// endregion
 
-// ============================================================================
-// Module registration
-// ============================================================================
+// region: Module registration
+// endregion

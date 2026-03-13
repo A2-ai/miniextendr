@@ -9,9 +9,7 @@ use std::collections::BTreeMap;
 
 use super::{AltIntegerData, AltRealData, AltrepLen, InferBase};
 
-// =============================================================================
-// StreamingRealData
-// =============================================================================
+// region: StreamingRealData
 
 /// Streaming ALTREP for real (f64) vectors.
 ///
@@ -176,10 +174,9 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltReal
             .unwrap_or(0)
     }
 }
+// endregion
 
-// =============================================================================
-// StreamingIntData
-// =============================================================================
+// region: StreamingIntData
 
 /// Streaming ALTREP for integer (i32) vectors.
 ///
@@ -344,3 +341,4 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltInteg
             .unwrap_or(0)
     }
 }
+// endregion

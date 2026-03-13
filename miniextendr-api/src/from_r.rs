@@ -35,9 +35,7 @@ fn is_na_real(value: f64) -> bool {
     value.to_bits() == NA_REAL.to_bits()
 }
 
-// =============================================================================
-// CHARSXP to &str conversion helpers
-// =============================================================================
+// region: CHARSXP to &str conversion helpers
 
 /// Convert CHARSXP to `&str` using LENGTH (O(1)) instead of strlen (O(n)).
 ///
@@ -425,10 +423,9 @@ impl TryFromSexp for Option<SEXP> {
         Self::try_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Logical conversions
-// =============================================================================
+// region: Logical conversions
 
 impl TryFromSexp for Rboolean {
     type Error = SexpError;
@@ -683,10 +680,9 @@ impl TryFromSexp for Option<crate::ffi::Rcomplex> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Coerced scalar conversions (multi-source numeric)
-// =============================================================================
+// region: Coerced scalar conversions (multi-source numeric)
 
 #[inline]
 fn coerce_value<R, T>(value: R) -> Result<T, SexpError>
@@ -1128,10 +1124,9 @@ impl TryFromSexp for Option<f32> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Large integer scalar conversions (via f64)
-// =============================================================================
+// region: Large integer scalar conversions (via f64)
 //
 // R doesn't have native 64-bit integers, so these read from REALSXP (f64)
 // and convert with range/precision checking.
@@ -1437,10 +1432,9 @@ impl TryFromSexp for Option<isize> {
         Self::try_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Reference conversions (borrowed views)
-// =============================================================================
+// region: Reference conversions (borrowed views)
 
 macro_rules! impl_ref_conversions_for {
     ($t:ty) => {
@@ -1869,10 +1863,9 @@ impl_ref_conversions_for!(f64);
 impl_ref_conversions_for!(u8);
 impl_ref_conversions_for!(RLogical);
 impl_ref_conversions_for!(crate::ffi::Rcomplex);
+// endregion
 
-// =============================================================================
-// Blanket implementations for slices with arbitrary lifetimes
-// =============================================================================
+// region: Blanket implementations for slices with arbitrary lifetimes
 
 /// Blanket impl for `&[T]` where T: RNativeType
 ///
@@ -2005,10 +1998,9 @@ where
         Ok(Some(slice))
     }
 }
+// endregion
 
-// =============================================================================
-// String conversions - STRSXP requires special handling via STRING_ELT
-// =============================================================================
+// region: String conversions - STRSXP requires special handling via STRING_ELT
 
 /// Convert R character vector (STRSXP) to Rust &str.
 ///
@@ -2396,10 +2388,9 @@ impl TryFromSexp for Option<String> {
         Self::try_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Result conversions (NULL -> Err(()))
-// =============================================================================
+// region: Result conversions (NULL -> Err(()))
 
 impl<T> TryFromSexp for Result<T, ()>
 where
@@ -2426,10 +2417,9 @@ where
         Ok(Ok(value))
     }
 }
+// endregion
 
-// =============================================================================
-// NA-aware vector conversions
-// =============================================================================
+// region: NA-aware vector conversions
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {
@@ -2784,10 +2774,9 @@ impl_vec_option_try_from_sexp_numeric!(u64);
 impl_vec_option_try_from_sexp_numeric!(isize);
 impl_vec_option_try_from_sexp_numeric!(usize);
 impl_vec_option_try_from_sexp_numeric!(f32);
+// endregion
 
-// =============================================================================
-// Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
-// =============================================================================
+// region: Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -2999,10 +2988,9 @@ impl_vec_try_from_sexp_native!(f64);
 impl_vec_try_from_sexp_native!(u8);
 impl_vec_try_from_sexp_native!(RLogical);
 impl_vec_try_from_sexp_native!(crate::ffi::Rcomplex);
+// endregion
 
-// =============================================================================
-// Fixed-size array conversions
-// =============================================================================
+// region: Fixed-size array conversions
 
 /// Blanket impl: Convert R vector to `[T; N]` where T: RNativeType.
 ///
@@ -3036,10 +3024,9 @@ where
         Self::try_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// VecDeque conversions
-// =============================================================================
+// region: VecDeque conversions
 
 use std::collections::VecDeque;
 
@@ -3060,10 +3047,9 @@ where
         Ok(VecDeque::from(slice.to_vec()))
     }
 }
+// endregion
 
-// =============================================================================
-// BinaryHeap conversions
-// =============================================================================
+// region: BinaryHeap conversions
 
 use std::collections::BinaryHeap;
 
@@ -3086,10 +3072,9 @@ where
         Ok(BinaryHeap::from(slice.to_vec()))
     }
 }
+// endregion
 
-// =============================================================================
-// Cow conversions
-// =============================================================================
+// region: Cow conversions
 
 use std::borrow::Cow;
 
@@ -3286,10 +3271,9 @@ impl_set_string_try_from_sexp!(
     /// Convert R character vector to `BTreeSet<String>`.
     BTreeSet
 );
+// endregion
 
-// =============================================================================
-// String-wrapper type conversions (PathBuf, OsString)
-// =============================================================================
+// region: String-wrapper type conversions (PathBuf, OsString)
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -3421,10 +3405,9 @@ impl_string_wrapper_try_from_sexp!(
     /// `NA_character_` elements are converted to `None`.
     vec_option: OsString;
 );
+// endregion
 
-// =============================================================================
-// Option<Collection> conversions
-// =============================================================================
+// region: Option<Collection> conversions
 //
 // These convert NULL → None, and non-NULL to Some(collection).
 // This differs from Option<scalar> which converts NA → None.
@@ -3522,10 +3505,9 @@ impl_option_set_try_from_sexp!(
     /// Convert R value to `Option<BTreeSet<T>>`: NULL -> None, otherwise Some(set).
     BTreeSet
 );
+// endregion
 
-// =============================================================================
-// Nested vector conversions (list of vectors)
-// =============================================================================
+// region: Nested vector conversions (list of vectors)
 
 /// Convert R list (VECSXP) to `Vec<Vec<T>>`.
 ///
@@ -3586,10 +3568,9 @@ where
         Ok(result)
     }
 }
+// endregion
 
-// =============================================================================
-// Coerced wrapper - bridge between TryFromSexp and TryCoerce
-// =============================================================================
+// region: Coerced wrapper - bridge between TryFromSexp and TryCoerce
 
 use crate::coerce::Coerced;
 
@@ -3633,10 +3614,9 @@ where
         Ok(Coerced::new(value))
     }
 }
+// endregion
 
-// =============================================================================
-// Direct Vec coercion conversions
-// =============================================================================
+// region: Direct Vec coercion conversions
 //
 // These provide direct `TryFromSexp for Vec<T>` where T is not an R native type
 // but can be coerced from one. This mirrors the `impl_into_r_via_coerce!` pattern
@@ -3743,10 +3723,9 @@ impl TryFromSexp for Vec<bool> {
         Self::try_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Direct HashSet / BTreeSet coercion conversions
-// =============================================================================
+// region: Direct HashSet / BTreeSet coercion conversions
 
 /// Convert numeric/logical/raw vectors to a set type with element-wise coercion.
 #[inline]
@@ -3817,10 +3796,9 @@ macro_rules! impl_set_try_from_sexp_bool {
 
 impl_set_try_from_sexp_bool!(HashSet);
 impl_set_try_from_sexp_bool!(BTreeSet);
+// endregion
 
-// =============================================================================
-// ExternalPtr conversions
-// =============================================================================
+// region: ExternalPtr conversions
 
 use crate::externalptr::{ExternalPtr, TypeMismatchError, TypedExternal};
 
@@ -3905,10 +3883,9 @@ impl<T: TypedExternal + Send> TryFromSexp for Option<ExternalPtr<T>> {
         Ok(Some(ptr))
     }
 }
+// endregion
 
-// =============================================================================
-// Helper macros for feature-gated modules
-// =============================================================================
+// region: Helper macros for feature-gated modules
 
 /// Implement `TryFromSexp for Option<T>` where T already implements TryFromSexp.
 ///
@@ -4071,3 +4048,4 @@ macro_rules! impl_vec_option_try_from_sexp_list {
         }
     };
 }
+// endregion

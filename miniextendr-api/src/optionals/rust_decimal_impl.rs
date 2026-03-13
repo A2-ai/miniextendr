@@ -52,9 +52,7 @@ use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::IntoR;
 use std::str::FromStr;
 
-// =============================================================================
-// Coerce/TryCoerce impls for Decimal
-// =============================================================================
+// region: Coerce/TryCoerce impls for Decimal
 
 /// `i32` → `Decimal`: lossless, i32 fits exactly in Decimal
 impl Coerce<Decimal> for i32 {
@@ -343,10 +341,9 @@ impl IntoR for Vec<Option<Decimal>> {
             .into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// RDecimalOps adapter trait
-// =============================================================================
+// region: RDecimalOps adapter trait
 
 use rust_decimal::prelude::*;
 
@@ -666,3 +663,4 @@ mod tests {
         assert!(RDecimalOps::rem_str(&d, "0").is_err());
     }
 }
+// endregion

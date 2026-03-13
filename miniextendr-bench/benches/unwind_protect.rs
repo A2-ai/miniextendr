@@ -20,19 +20,16 @@ fn direct_noop() {
     divan::black_box(out);
 }
 
-// =============================================================================
-// Closure with a trivial R API call inside unwind protection
-// =============================================================================
+// region: Closure with a trivial R API call inside unwind protection
 
 #[divan::bench]
 fn unwind_r_call() {
     let out = with_r_unwind_protect(|| unsafe { ffi::Rf_ScalarInteger(1) }, None);
     divan::black_box(out);
 }
+// endregion
 
-// =============================================================================
-// catch_unwind overhead — measures the cost of panic-catching infrastructure
-// =============================================================================
+// region: catch_unwind overhead — measures the cost of panic-catching infrastructure
 
 /// Baseline: std::panic::catch_unwind on a non-panicking closure.
 #[divan::bench]
@@ -55,10 +52,9 @@ fn catch_unwind_panic(bencher: divan::Bencher) {
     });
     std::panic::set_hook(prev);
 }
+// endregion
 
-// =============================================================================
-// Nested unwind protection — measures cost of stacking protection layers
-// =============================================================================
+// region: Nested unwind protection — measures cost of stacking protection layers
 
 #[divan::bench]
 fn unwind_nested_2() {
@@ -101,3 +97,4 @@ fn unwind_nested_5() {
 // NOTE: R error path (Rf_error inside with_r_unwind_protect) and panic-through-R-unwind
 // benchmarks require subprocess isolation since the error/panic longjmps past the divan
 // harness. These paths are tested for correctness in rpkg/tests/testthat/test-subprocess-isolated.R.
+// endregion

@@ -16,9 +16,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Enum definitions
-// =============================================================================
+// region: Enum definitions
 
 /// Uses `#[derive(RFactor)]` which generates IntoR with inline OnceLock caching.
 /// The levels STRSXP is allocated once and reused for all subsequent conversions.
@@ -123,10 +121,9 @@ impl IntoR for ColorUncached {
         build_factor(&[self.to_level_index()], build_levels_sexp(Self::CHOICES))
     }
 }
+// endregion
 
-// =============================================================================
-// Single factor conversion (primary use case)
-// =============================================================================
+// region: Single factor conversion (primary use case)
 
 /// Single enum → factor with cached levels (~4x faster).
 #[divan::bench]
@@ -139,10 +136,9 @@ fn single_cached() -> SEXP {
 fn single_uncached() -> SEXP {
     divan::black_box(ColorUncached::Green.into_sexp())
 }
+// endregion
 
-// =============================================================================
-// Repeated single conversions (shows amortized benefit)
-// =============================================================================
+// region: Repeated single conversions (shows amortized benefit)
 
 /// 100 conversions with caching - levels allocated once.
 #[divan::bench]
@@ -163,10 +159,9 @@ fn repeated_100_uncached() -> SEXP {
     }
     divan::black_box(last)
 }
+// endregion
 
-// =============================================================================
-// Vector factor conversion (levels overhead is minimal)
-// =============================================================================
+// region: Vector factor conversion (levels overhead is minimal)
 
 const VEC_SIZES: &[usize] = &[1, 16, 256, 4096];
 
@@ -183,3 +178,4 @@ fn vec_factor_vec(n: usize) -> SEXP {
     let vec = make_color_vec(n);
     divan::black_box(FactorVec(vec).into_sexp())
 }
+// endregion

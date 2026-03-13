@@ -47,9 +47,7 @@ use crate::{
     impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
 };
 
-// =============================================================================
-// TryFromSexp for AhoCorasick (from Vec<String> patterns)
-// =============================================================================
+// region: TryFromSexp for AhoCorasick (from Vec<String> patterns)
 
 /// Build an `AhoCorasick` automaton from a character vector of patterns.
 ///
@@ -104,10 +102,9 @@ impl TryFromSexp for AhoCorasick {
 impl_option_try_from_sexp!(AhoCorasick);
 impl_vec_try_from_sexp_list!(AhoCorasick);
 impl_vec_option_try_from_sexp_list!(AhoCorasick);
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Compile an Aho-Corasick automaton from patterns.
 ///
@@ -270,10 +267,9 @@ pub fn aho_replace_all_with(
     let refs: Vec<&str> = replacements.iter().map(|s| s.as_str()).collect();
     Ok(ac.replace_all(haystack, &refs))
 }
+// endregion
 
-// =============================================================================
-// Adapter trait for AhoCorasick
-// =============================================================================
+// region: Adapter trait for AhoCorasick
 
 /// Adapter trait for exposing `AhoCorasick` operations to R.
 ///
@@ -340,10 +336,9 @@ impl RAhoCorasickOps for AhoCorasick {
         aho_replace_all(self, haystack, replacement)
     }
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -431,3 +426,4 @@ mod tests {
         assert_eq!(RAhoCorasickOps::count_matches(&ac, "xyx"), 3);
     }
 }
+// endregion

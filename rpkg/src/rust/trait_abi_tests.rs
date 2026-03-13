@@ -5,9 +5,7 @@
 
 use miniextendr_api::miniextendr;
 
-// =============================================================================
-// Define a trait with #[miniextendr]
-// =============================================================================
+// region: Define a trait with #[miniextendr]
 
 /// @noRd
 #[miniextendr]
@@ -27,10 +25,9 @@ pub trait Counter {
     /// Static method: Returns the default initial value for this counter type.
     fn default_initial() -> i32;
 }
+// endregion
 
-// =============================================================================
-// Implement the trait for a concrete type
-// =============================================================================
+// region: Implement the trait for a concrete type
 
 /// A simple counter implementation.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -65,10 +62,9 @@ impl Counter for SimpleCounter {
         0 // SimpleCounter defaults to 0
     }
 }
+// endregion
 
-// =============================================================================
-// R-exposed functions for testing (using impl block pattern)
-// =============================================================================
+// region: R-exposed functions for testing (using impl block pattern)
 
 #[miniextendr]
 impl SimpleCounter {
@@ -88,10 +84,9 @@ impl SimpleCounter {
         Counter::checked_add(self, n);
     }
 }
+// endregion
 
-// =============================================================================
-// Test panic handling in shims - separate struct
-// =============================================================================
+// region: Test panic handling in shims - separate struct
 
 /// A counter that panics when you try to decrement below zero.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -149,10 +144,9 @@ impl PanickyCounter {
         Counter::checked_add(self, n);
     }
 }
+// endregion
 
-// =============================================================================
-// S3 trait impl test - uses S3 dispatch for trait methods
-// =============================================================================
+// region: S3 trait impl test - uses S3 dispatch for trait methods
 
 /// A counter that uses S3 dispatch for its trait methods.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -201,10 +195,9 @@ impl S3TraitCounter {
         self.value
     }
 }
+// endregion
 
-// =============================================================================
-// S4 trait impl test - uses S4 dispatch for trait methods
-// =============================================================================
+// region: S4 trait impl test - uses S4 dispatch for trait methods
 
 /// A counter that uses S4 dispatch for its trait methods.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -254,10 +247,9 @@ impl S4TraitCounter {
         self.value
     }
 }
+// endregion
 
-// =============================================================================
-// S7 trait impl test - uses S7 dispatch for trait methods
-// =============================================================================
+// region: S7 trait impl test - uses S7 dispatch for trait methods
 
 /// A counter that uses S7 dispatch for its trait methods.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -307,10 +299,9 @@ impl S7TraitCounter {
         self.value
     }
 }
+// endregion
 
-// =============================================================================
-// R6 trait impl test - uses R6 dispatch for trait methods
-// =============================================================================
+// region: R6 trait impl test - uses R6 dispatch for trait methods
 
 /// A counter that uses R6 dispatch (standalone functions) for its trait methods.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -360,7 +351,7 @@ impl R6TraitCounter {
         self.value
     }
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

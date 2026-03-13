@@ -12,9 +12,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
     miniextendr_bench::fixtures()
 }
 
-// ---------------------------------------------------------------------------
-// Helpers that mirror the two strategies
-// ---------------------------------------------------------------------------
+// region: Helpers that mirror the two strategies
 
 #[inline(always)]
 unsafe fn charsxp_to_string_r_char_utf8_only(charsxp: SEXP) -> String {
@@ -44,10 +42,9 @@ unsafe fn charsxp_to_string_translate_utf8(charsxp: SEXP) -> String {
 unsafe fn sexp_to_string_translate_utf8(sexp: SEXP) -> String {
     <String as miniextendr_api::TryFromSexp>::try_from_sexp(sexp).expect("TryFromSexp<String>")
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// CHARSXP-level microbenchmarks (isolate R API call cost)
-// ---------------------------------------------------------------------------
+// region: CHARSXP-level microbenchmarks (isolate R API call cost)
 
 #[divan::bench]
 fn charsxp_r_char_ptr_utf8() {
@@ -72,10 +69,9 @@ fn charsxp_translate_ptr_latin1() {
         divan::black_box(ptr);
     }
 }
+// endregion
 
-// ---------------------------------------------------------------------------
-// End-to-end conversions (include Rust String allocation)
-// ---------------------------------------------------------------------------
+// region: End-to-end conversions (include Rust String allocation)
 
 #[divan::bench]
 fn charsxp_r_char_to_string_utf8() {
@@ -116,3 +112,4 @@ fn sexp_tryfrom_string_translate_latin1() {
         divan::black_box(s);
     }
 }
+// endregion

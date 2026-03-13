@@ -67,9 +67,7 @@ pub use serde_json::Value as JsonValue;
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 
-// =============================================================================
-// JSON conversion options
-// =============================================================================
+// region: JSON conversion options
 
 /// How to handle NA values when converting R to JSON.
 #[derive(Debug, Clone, Default)]
@@ -281,10 +279,9 @@ impl<T: for<'de> Deserialize<'de>> RDeserialize for T {
         serde_json::from_str(s).map_err(|e| e.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// serde_json::Value <-> R Bridge
-// =============================================================================
+// region: serde_json::Value <-> R Bridge
 
 /// Convert an R object to a JSON value with custom options.
 ///
@@ -568,10 +565,9 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
         Ok(JsonValue::Array(arr?))
     }
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp for JsonValue
-// =============================================================================
+// region: TryFromSexp for JsonValue
 
 impl TryFromSexp for JsonValue {
     type Error = SexpError;
@@ -580,19 +576,17 @@ impl TryFromSexp for JsonValue {
         json_from_sexp(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// Option / Vec conversions
-// =============================================================================
+// region: Option / Vec conversions
 
 // Use macros to implement Option/Vec conversions
 impl_option_try_from_sexp!(JsonValue);
 impl_vec_try_from_sexp_list!(JsonValue);
 impl_vec_option_try_from_sexp_list!(JsonValue);
+// endregion
 
-// =============================================================================
-// IntoR for JsonValue
-// =============================================================================
+// region: IntoR for JsonValue
 
 impl IntoR for JsonValue {
     type Error = std::convert::Infallible;
@@ -924,10 +918,9 @@ impl RJsonValueOps for JsonValue {
             .unwrap_or_default()
     }
 }
+// endregion
 
-// =============================================================================
-// RJsonBridge: Direct struct <-> R list via serde_json::Value
-// =============================================================================
+// region: RJsonBridge: Direct struct <-> R list via serde_json::Value
 
 /// Bridge trait for direct Rust struct to R list conversion via `serde_json::Value`.
 ///
@@ -1144,9 +1137,7 @@ mod tests {
         assert!(json.contains("\\\""));
     }
 
-    // =========================================================================
-    // JsonValue tests
-    // =========================================================================
+    // region: JsonValue tests
 
     #[test]
     fn json_value_adapter_null() {
@@ -1246,10 +1237,9 @@ mod tests {
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));
     }
+    // endregion
 
-    // =========================================================================
-    // NA_integer_ exclusion
-    // =========================================================================
+    // region: NA_integer_ exclusion
 
     #[test]
     fn json_number_fits_i32_excludes_na_integer() {
@@ -1269,10 +1259,9 @@ mod tests {
         let n = serde_json::Number::from(i32::MAX as i64 + 1);
         assert!(!json_number_fits_i32(&n));
     }
+    // endregion
 
-    // =========================================================================
-    // json_discriminant
-    // =========================================================================
+    // region: json_discriminant
 
     #[test]
     fn discriminant_coverage() {
@@ -1283,10 +1272,9 @@ mod tests {
         assert_eq!(json_discriminant(&serde_json::json!([1])), 4);
         assert_eq!(json_discriminant(&serde_json::json!({"a": 1})), 5);
     }
+    // endregion
 
-    // =========================================================================
-    // RJsonBridge roundtrip tests (pure Rust, no R runtime)
-    // =========================================================================
+    // region: RJsonBridge roundtrip tests (pure Rust, no R runtime)
 
     #[test]
     fn bridge_to_value_roundtrip() {
@@ -1405,4 +1393,6 @@ mod tests {
         let parsed: Vec<TestStruct> = serde_json::from_value(value).unwrap();
         assert_eq!(items, parsed);
     }
+    // endregion
 }
+// endregion

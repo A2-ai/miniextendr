@@ -12,9 +12,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Row type definitions
-// =============================================================================
+// region: Row type definitions
 
 /// Simple 3-column named struct (point data).
 #[derive(Clone, IntoList, DataFrameRow)]
@@ -56,10 +54,9 @@ enum EventRow {
     Click { id: i64, x: f64, y: f64 },
     View { id: i64, page: String },
 }
+// endregion
 
-// =============================================================================
-// Fixture builders
-// =============================================================================
+// region: Fixture builders
 
 fn make_point3(n: usize) -> Vec<Point3> {
     (0..n)
@@ -127,10 +124,9 @@ fn make_events(n: usize) -> Vec<EventRow> {
 }
 
 const ROW_COUNTS: &[usize] = &[100, 10_000, 100_000];
+// endregion
 
-// =============================================================================
-// Group 1: Named struct transposition (Vec<Row> → Companion)
-// =============================================================================
+// region: Group 1: Named struct transposition (Vec<Row> → Companion)
 
 mod transpose {
     use super::*;
@@ -167,10 +163,9 @@ mod transpose {
         divan::black_box(df);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 2: Full pipeline (Vec<Row> → DataFrame → SEXP)
-// =============================================================================
+// region: Group 2: Full pipeline (Vec<Row> → DataFrame → SEXP)
 
 mod full_pipeline {
     use super::*;
@@ -199,10 +194,9 @@ mod full_pipeline {
         divan::black_box(df.into_data_frame().as_sexp().into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Group 3: Companion → SEXP only (isolate SEXP conversion cost)
-// =============================================================================
+// region: Group 3: Companion → SEXP only (isolate SEXP conversion cost)
 
 mod sexp_conversion {
     use super::*;
@@ -221,10 +215,9 @@ mod sexp_conversion {
         divan::black_box(df.into_data_frame().as_sexp().into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Group 4: Row construction cost (isolate allocation from transposition)
-// =============================================================================
+// region: Group 4: Row construction cost (isolate allocation from transposition)
 
 mod row_construction {
     use super::*;
@@ -250,3 +243,4 @@ mod row_construction {
         divan::black_box(rows);
     }
 }
+// endregion
