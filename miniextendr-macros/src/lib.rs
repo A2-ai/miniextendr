@@ -2713,7 +2713,7 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         /// this single member contains all linkme distributed_slice entries.
         /// The name is package-independent so stub.c doesn't need configure substitution.
         #[unsafe(no_mangle)]
-        pub static miniextendr_force_link: u8 = 0;
+        pub static miniextendr_force_link: ::std::ffi::c_char = 0;
     };
 
     expanded.into()

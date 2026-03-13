@@ -1,5 +1,5 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-13 12:03:02
+--- a/monorepo/rpkg/Makevars.in	2026-03-13 19:23:15
 +++ b/monorepo/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -9,5 +9,4 @@
  ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
@@ -34,9 +34,11 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
  	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
-@@ -87,40 +80,4 @@
+@@ -87,45 +80,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
+-	@# On Windows, remove cdylib .dll.a import lib so MinGW linker uses the staticlib.
+-	@rm -f '$(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).dll.a'
 -
 -# Automatic R wrapper generation.
 -# Builds a cdylib (shared library) containing all linkme distributed_slice
@@ -51,7 +53,9 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 -	  _wrappers=$$(cygpath -m "$$_wrappers"); \
 -	fi; \
--	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+-	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+-	@echo "Removing cdylib to prevent linker collision with staticlib..."
+-	@rm -f '$(CARGO_CDYLIB)'
 -
 -# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
 -$(CARGO_CDYLIB): FORCE_CARGO
@@ -62,17 +66,18 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
+-	CDYLIB_LINK_ARGS=""; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
--	case "$(CARGO_BUILD_TARGET)" in \
--	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def"; ;; \
--	esac; \
--	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
+-	if [ "$(CDYLIB_EXT)" = "dll" ]; then \
+-	  CDYLIB_LINK_ARGS="-C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
+-	fi; \
+-	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 -	  --lib --profile $(CARGO_PROFILE) \
 -	  --manifest-path $(CARGO_TOML) \
 -	  --target-dir $(CARGO_TARGET_DIR) \
--	  --crate-type cdylib
+-	  --crate-type cdylib \
+-	  -- $$CDYLIB_LINK_ARGS
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
@@ -663,7 +668,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-13 12:03:02
+--- a/rpkg/Makevars.in	2026-03-13 19:23:15
 +++ b/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -9,5 +9,4 @@
  ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
@@ -698,9 +703,11 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 +	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
  	  echo "Unpacking vendor.tar.xz from inst/..."; \
  	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
-@@ -87,40 +80,4 @@
+@@ -87,45 +80,4 @@
  	  --target-dir $(CARGO_TARGET_DIR); \
  	test -f "$(CARGO_AR)"
+-	@# On Windows, remove cdylib .dll.a import lib so MinGW linker uses the staticlib.
+-	@rm -f '$(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).dll.a'
 -
 -# Automatic R wrapper generation.
 -# Builds a cdylib (shared library) containing all linkme distributed_slice
@@ -715,7 +722,9 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 -	  _wrappers=$$(cygpath -m "$$_wrappers"); \
 -	fi; \
--	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+-	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+-	@echo "Removing cdylib to prevent linker collision with staticlib..."
+-	@rm -f '$(CARGO_CDYLIB)'
 -
 -# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
 -$(CARGO_CDYLIB): FORCE_CARGO
@@ -726,17 +735,18 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
+-	CDYLIB_LINK_ARGS=""; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
--	case "$(CARGO_BUILD_TARGET)" in \
--	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def"; ;; \
--	esac; \
--	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
+-	if [ "$(CDYLIB_EXT)" = "dll" ]; then \
+-	  CDYLIB_LINK_ARGS="-C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
+-	fi; \
+-	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 -	  --lib --profile $(CARGO_PROFILE) \
 -	  --manifest-path $(CARGO_TOML) \
 -	  --target-dir $(CARGO_TARGET_DIR) \
--	  --crate-type cdylib
+-	  --crate-type cdylib \
+-	  -- $$CDYLIB_LINK_ARGS
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
