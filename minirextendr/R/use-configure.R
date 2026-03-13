@@ -91,6 +91,11 @@ use_miniextendr_config_scripts <- function(path = ".") {
     bullet_created(file.path("tools", script), "Copied")
   }
 
+  # vendor-crates.R: self-contained vendoring script for CRAN release prep
+  vendor_src <- template_path("vendor-crates.R", subdir = "tools")
+  fs::file_copy(vendor_src, usethis::proj_path("tools", "vendor-crates.R"), overwrite = TRUE)
+  bullet_created(file.path("tools", "vendor-crates.R"), "Copied")
+
   invisible(TRUE)
 }
 
@@ -107,5 +112,12 @@ use_miniextendr_makevars <- function(path = ".") {
   ensure_dir(usethis::proj_path("src"))
   use_template("Makevars.in", save_as = "src/Makevars.in")
   use_template("win.def.in", save_as = "src/win.def.in")
+
+  # cdylib-exports.def: Windows DLL symbol export for wrapper generation
+  cdylib_src <- template_path("cdylib-exports.def")
+  cdylib_dest <- usethis::proj_path("src", "cdylib-exports.def")
+  fs::file_copy(cdylib_src, cdylib_dest, overwrite = TRUE)
+  bullet_created("src/cdylib-exports.def")
+
   invisible(TRUE)
 }

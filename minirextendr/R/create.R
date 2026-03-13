@@ -235,6 +235,10 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   fs::file_copy(stub_src, usethis::proj_path(rpkg_name, "src", "stub.c"), overwrite = TRUE)
   bullet_created(file.path(rpkg_name, "src", "stub.c"))
   use_template("win.def.in", save_as = file.path(rpkg_name, "src", "win.def.in"), subdir = "rpkg")
+  # cdylib-exports.def: Windows DLL symbol export for wrapper generation
+  cdylib_src <- template_path("cdylib-exports.def", subdir = "rpkg")
+  fs::file_copy(cdylib_src, usethis::proj_path(rpkg_name, "src", "cdylib-exports.def"), overwrite = TRUE)
+  bullet_created(file.path(rpkg_name, "src", "cdylib-exports.def"))
 
   # inst/include/ for cross-package header
   ensure_dir(usethis::proj_path(rpkg_name, "inst", "include"))
