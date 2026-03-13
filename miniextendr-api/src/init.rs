@@ -26,10 +26,9 @@ use std::ffi::CStr;
 /// 2. Record main thread ID (and optionally spawn worker thread)
 /// 3. Assert UTF-8 locale
 /// 4. Set ALTREP package name
-/// 5. Initialize vctrs C API (if feature enabled)
-/// 6. Register mx_abi C-callables for cross-package trait dispatch
-/// 7. Register all `#[miniextendr]` routines and ALTREP classes
-/// 8. Lock down dynamic symbols
+/// 5. Register mx_abi C-callables for cross-package trait dispatch
+/// 6. Register all `#[miniextendr]` routines and ALTREP classes
+/// 7. Lock down dynamic symbols
 ///
 /// # Safety
 ///
@@ -62,35 +61,15 @@ pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
             // 4. Set ALTREP package name
             crate::miniextendr_set_altrep_pkg_name(pkg_name.as_ptr());
 
-            // 5. Initialize vctrs C API (if feature enabled)
-            // Status 1 (not available) is fine — vctrs is optional
-            let _ = miniextendr_init_vctrs_wrapper();
-
-            // 6. Register mx_abi C-callables
+            // 5. Register mx_abi C-callables
             crate::mx_abi::mx_abi_register(pkg_name);
         }
 
-        // 7. Register .Call routines (and ALTREP classes, unless wrapper-gen)
+        // 6. Register .Call routines (and ALTREP classes, unless wrapper-gen)
         crate::registry::miniextendr_register_routines(dll);
 
-        // 8. Lock down dynamic symbols
+        // 7. Lock down dynamic symbols
         R_useDynamicSymbols(dll, Rboolean::FALSE);
         R_forceSymbols(dll, Rboolean::TRUE);
-    }
-}
-
-/// Wrapper for vctrs initialization that works regardless of feature flag.
-#[inline]
-unsafe fn miniextendr_init_vctrs_wrapper() -> i32 {
-    #[cfg(feature = "vctrs")]
-    {
-        match crate::vctrs::init_vctrs() {
-            Ok(()) => 0,
-            Err(_) => 1,
-        }
-    }
-    #[cfg(not(feature = "vctrs"))]
-    {
-        1 // Not available
     }
 }

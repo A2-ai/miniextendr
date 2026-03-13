@@ -144,6 +144,16 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
 
     // 2. Build call method defs with null sentinel
     let mut call_defs: Vec<R_CallMethodDef> = MX_CALL_DEFS.iter().copied().collect();
+    // Always register miniextendr_write_wrappers so it's visible via
+    // getNativeSymbolInfo even when R_forceSymbols(TRUE) is set.
+    // SAFETY: DL_FUNC is Option<extern "C-unwind" fn() -> *mut c_void> — R's
+    // standard erased function pointer. The actual signature (SEXP -> SEXP) is
+    // ABI-compatible; R dispatches based on numArgs.
+    call_defs.push(R_CallMethodDef {
+        name: c"miniextendr_write_wrappers".as_ptr(),
+        fun: unsafe { std::mem::transmute(miniextendr_write_wrappers as *const ()) },
+        numArgs: 1,
+    });
     call_defs.push(R_CallMethodDef {
         name: std::ptr::null(),
         fun: None,
