@@ -555,9 +555,17 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
             $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
           fi
+        elif test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
+          dnl No tarball — try vendor-crates.R to populate vendor/
+          echo "configure: no inst/vendor.tar.xz — calling tools/vendor-crates.R sync"
+          "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
+            sync --path "$abs_rpkg_dir" 2>&1 || {
+            echo "configure: error: vendor-crates.R sync failed" >&2
+            exit 1
+          }
         else
           echo "configure: error: $BUILD_CONTEXT requires vendored sources." >&2
-          echo "configure:        Run 'just vendor' to create inst/vendor.tar.xz first." >&2
+          echo "configure:        Provide inst/vendor.tar.xz or tools/vendor-crates.R." >&2
           exit 1
         fi
       fi
