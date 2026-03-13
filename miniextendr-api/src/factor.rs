@@ -37,9 +37,7 @@ use crate::ffi::{
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Cached "factor" class STRSXP
-// =============================================================================
+// region: Cached "factor" class STRSXP
 
 static FACTOR_CLASS: OnceLock<SEXP> = OnceLock::new();
 
@@ -53,10 +51,9 @@ fn factor_class_sexp() -> SEXP {
         class_sexp
     })
 }
+// endregion
 
-// =============================================================================
-// RFactor trait
-// =============================================================================
+// region: RFactor trait
 
 /// Trait for mapping Rust enums to R factors.
 ///
@@ -69,10 +66,9 @@ pub trait RFactor: crate::match_arg::MatchArg + Copy + 'static {
     /// Convert 1-based level index to variant, or `None` if out of range.
     fn from_level_index(idx: i32) -> Option<Self>;
 }
+// endregion
 
-// =============================================================================
-// Core building functions
-// =============================================================================
+// region: Core building functions
 
 /// Build a levels STRSXP using symbol PRINTNAMEs for permanent CHARSXP protection.
 ///
@@ -110,10 +106,9 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
         sexp
     }
 }
+// endregion
 
-// =============================================================================
-// Factor - view into an R factor's data
-// =============================================================================
+// region: Factor - view into an R factor's data
 
 /// A borrowed view into an R factor's integer indices.
 ///
@@ -208,10 +203,9 @@ impl<'a> TryFromSexp for Factor<'a> {
         Self::try_new(sexp)
     }
 }
+// endregion
 
-// =============================================================================
-// FactorMut - mutable view into an R factor's data
-// =============================================================================
+// region: FactorMut - mutable view into an R factor's data
 
 /// A mutable borrowed view into an R factor's integer indices.
 ///
@@ -301,10 +295,9 @@ impl std::ops::DerefMut for FactorMut<'_> {
         self.indices
     }
 }
+// endregion
 
-// =============================================================================
-// Validation helper
-// =============================================================================
+// region: Validation helper
 
 /// Validate that a factor has the expected levels.
 pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<(), SexpError> {
@@ -341,10 +334,9 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
 
     Ok(())
 }
+// endregion
 
-// =============================================================================
-// Conversion helpers (used by derive macro)
-// =============================================================================
+// region: Conversion helpers (used by derive macro)
 
 /// Convert an R factor SEXP to a single enum value.
 #[inline]
@@ -412,10 +404,9 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
 
     Ok(result)
 }
+// endregion
 
-// =============================================================================
-// Newtype wrappers (for orphan rule workaround)
-// =============================================================================
+// region: Newtype wrappers (for orphan rule workaround)
 
 /// Wrapper for `Vec<T: RFactor>` enabling `IntoR`/`TryFromSexp`.
 #[derive(Debug, Clone)]
@@ -532,10 +523,9 @@ impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
         factor_option_vec_from_sexp(sexp).map(FactorOptionVec)
     }
 }
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests {
@@ -791,3 +781,4 @@ mod tests {
         }
     }
 }
+// endregion

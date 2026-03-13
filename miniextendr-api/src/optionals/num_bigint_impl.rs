@@ -19,9 +19,7 @@ use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::IntoR;
 use std::str::FromStr;
 
-// =============================================================================
-// Coerce/TryCoerce impls for BigInt and BigUint
-// =============================================================================
+// region: Coerce/TryCoerce impls for BigInt and BigUint
 
 /// `i32` → `BigInt`: lossless
 impl Coerce<BigInt> for i32 {
@@ -420,10 +418,9 @@ impl IntoR for Vec<Option<BigUint>> {
             .into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// RBigIntOps adapter trait
-// =============================================================================
+// region: RBigIntOps adapter trait
 
 use num_bigint::Sign;
 
@@ -597,10 +594,9 @@ impl RBigIntOps for BigInt {
         bytes
     }
 }
+// endregion
 
-// =============================================================================
-// RBigUintOps adapter trait
-// =============================================================================
+// region: RBigUintOps adapter trait
 
 /// Adapter trait for [`BigUint`] operations.
 ///
@@ -719,10 +715,9 @@ impl RBigUintOps for BigUint {
         BigUint::to_bytes_le(self)
     }
 }
+// endregion
 
-// =============================================================================
-// RBigIntBitOps adapter trait
-// =============================================================================
+// region: RBigIntBitOps adapter trait
 
 /// Adapter trait for [`BigInt`] bitwise operations.
 ///
@@ -1157,3 +1152,4 @@ mod tests {
         assert_eq!(ToString::to_string(&not_one), "-2"); // ~1 = -2
     }
 }
+// endregion

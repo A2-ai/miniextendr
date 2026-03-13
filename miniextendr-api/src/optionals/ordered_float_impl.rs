@@ -18,9 +18,7 @@ use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Coerce/TryCoerce impls for OrderedFloat
-// =============================================================================
+// region: Coerce/TryCoerce impls for OrderedFloat
 
 /// `f64` → `OrderedFloat<f64>`: infallible wrapping
 impl Coerce<OrderedFloat<f64>> for f64 {
@@ -323,10 +321,9 @@ impl IntoR for Vec<Option<OrderedFloat<f32>>> {
             .into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// ROrderedFloatOps adapter trait
-// =============================================================================
+// region: ROrderedFloatOps adapter trait
 
 use ordered_float::FloatCore;
 
@@ -571,3 +568,4 @@ mod tests {
         assert!((ROrderedFloatOps::floor(&of) - 3.0).abs() < 0.001);
     }
 }
+// endregion

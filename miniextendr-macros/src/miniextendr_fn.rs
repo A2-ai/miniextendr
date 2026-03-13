@@ -9,9 +9,7 @@
 
 use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
-// =============================================================================
-// Coercion analysis
-// =============================================================================
+// region: Coercion analysis
 
 /// Result of coercion analysis for a type.
 /// Contains the R native type to extract from SEXP and the target type to coerce to.
@@ -255,10 +253,9 @@ pub(crate) fn parse_choices_attr(attr: &syn::Attribute) -> Option<Vec<String>> {
 pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<(String, proc_macro2::Span)> {
     parse_per_param_attr(attr).and_then(|a| a.default_value)
 }
+// endregion
 
-// =============================================================================
-// Function parsing
-// =============================================================================
+// region: Function parsing
 
 /// Parsed + normalized Rust function item for `#[miniextendr]`.
 ///
@@ -556,9 +553,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
 /// Codegen helpers produce identifiers and perform mutations needed by the
 /// `#[miniextendr]` expansion pipeline.
 impl MiniextendrFunctionParsed {
-    // -------------------------------------------------------------------------
-    // Accessors for parsed metadata
-    // -------------------------------------------------------------------------
+    // region: Accessors for parsed metadata
 
     /// Whether the original function had `...` (variadic).
     pub(crate) fn has_dots(&self) -> bool {
@@ -606,10 +601,9 @@ impl MiniextendrFunctionParsed {
     pub(crate) fn param_defaults(&self) -> &std::collections::HashMap<String, String> {
         &self.per_param_defaults
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // Accessors for signature components
-    // -------------------------------------------------------------------------
+    // region: Accessors for signature components
 
     /// Original attributes on the function item (doc comments, cfgs, etc.).
     pub(crate) fn attrs(&self) -> &[syn::Attribute] {
@@ -660,10 +654,9 @@ impl MiniextendrFunctionParsed {
         item.attrs = crate::roxygen::strip_roxygen_from_attrs(&item.attrs);
         item
     }
+    // endregion
 
-    // -------------------------------------------------------------------------
-    // Codegen helpers
-    // -------------------------------------------------------------------------
+    // region: Codegen helpers
 
     /// Returns `true` if this function needs an internal C wrapper (`C_<name>` function).
     ///
@@ -757,11 +750,11 @@ impl MiniextendrFunctionParsed {
             self.item.attrs.push(syn::parse_quote!(#[inline(never)]));
         }
     }
+    // endregion
 }
+// endregion
 
-// =============================================================================
-// Attribute parsing
-// =============================================================================
+// region: Attribute parsing
 
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
@@ -1574,3 +1567,4 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         })
     }
 }
+// endregion

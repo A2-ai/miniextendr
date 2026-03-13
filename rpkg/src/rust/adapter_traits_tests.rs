@@ -16,10 +16,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::str::FromStr;
 
-// =============================================================================
-// Test type: Point
-// Implements Debug, Display, Hash, PartialOrd, Ord, Clone, Default, FromStr
-// =============================================================================
+// region: Test type: Point (Debug, Display, Hash, PartialOrd, Ord, Clone, Default, FromStr)
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default, ExternalPtr)]
 pub struct Point {
@@ -106,11 +103,9 @@ impl miniextendr_api::adapter_traits::RCopy for Point {}
 /// @noRd
 #[miniextendr]
 impl miniextendr_api::adapter_traits::ROrd for Point {}
+// endregion
 
-// =============================================================================
-// Test type: MyFloat
-// Demonstrates RPartialOrd (partial ordering with NaN)
-// =============================================================================
+// region: Test type: MyFloat (Demonstrates RPartialOrd (partial ordering with NaN))
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, ExternalPtr)]
 pub struct MyFloat(f64);
@@ -134,11 +129,9 @@ impl MyFloat {
 /// @noRd
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RPartialOrd for MyFloat {}
+// endregion
 
-// =============================================================================
-// Test type: ChainedError
-// Demonstrates RError (error chain walking)
-// =============================================================================
+// region: Test type: ChainedError (Demonstrates RError (error chain walking))
 
 #[derive(Debug)]
 struct InnerError {
@@ -215,12 +208,9 @@ impl ChainedError {
 /// @noRd
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RError for ChainedError {}
+// endregion
 
-// =============================================================================
-// Test type: IntVecIter
-// Demonstrates RIterator (with interior mutability)
-// Non-blanket trait with associated type — full impl required
-// =============================================================================
+// region: Test type: IntVecIter
 
 #[derive(ExternalPtr)]
 pub struct IntVecIter(RefCell<std::vec::IntoIter<i32>>);
@@ -289,12 +279,9 @@ impl IntVecIter {
         IntVecIter(RefCell::new(data.into_iter()))
     }
 }
+// endregion
 
-// =============================================================================
-// Test type: GrowableVec
-// Demonstrates RExtend (collection extension with interior mutability)
-// Non-blanket generic trait — full impl required
-// =============================================================================
+// region: Test type: GrowableVec
 
 #[derive(ExternalPtr)]
 pub struct GrowableVec(RefCell<Vec<i32>>);
@@ -334,11 +321,9 @@ impl GrowableVec {
         self.0.borrow_mut().clear();
     }
 }
+// endregion
 
-// =============================================================================
-// Test type: IntSet
-// Demonstrates RFromIter and RToVec (collection creation and extraction)
-// =============================================================================
+// region: Test type: IntSet (Demonstrates RFromIter and RToVec (collection creation and extraction))
 
 use std::collections::HashSet;
 
@@ -380,11 +365,9 @@ impl IntSet {
         self.0.contains(&value)
     }
 }
+// endregion
 
-// =============================================================================
-// Test type: IterableVec and IterableVecIter
-// Demonstrates RMakeIter (iterator factory)
-// =============================================================================
+// region: Test type: IterableVec and IterableVecIter (Demonstrates RMakeIter (iterator factory))
 
 #[derive(ExternalPtr)]
 pub struct IterableVec(Vec<i32>);
@@ -472,11 +455,9 @@ impl IterableVecIter {
         result
     }
 }
+// endregion
 
-// =============================================================================
-// Test type: ExportControlTraitPoint
-// Demonstrates internal/noexport on trait impls
-// =============================================================================
+// region: Test type: ExportControlTraitPoint (Demonstrates internal/noexport on trait impls)
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, ExternalPtr)]
 pub struct ExportControlTraitPoint {
@@ -504,7 +485,7 @@ impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint {}
 /// Noexport trait impl: should have docs but no @export
 #[miniextendr(noexport)]
 impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint {}
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

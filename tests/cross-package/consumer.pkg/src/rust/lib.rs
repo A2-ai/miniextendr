@@ -18,9 +18,7 @@ pub use shared_traits::{
     __resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
 };
 
-// ============================================================================
-// Cross-package ExternalPtr pass-through utilities
-// ============================================================================
+// region: Cross-package ExternalPtr pass-through utilities
 
 /// Pass an ExternalPtr through consumer without knowing its type.
 /// This tests that ExternalPtr can cross package boundaries as opaque SEXP.
@@ -79,10 +77,9 @@ pub fn has_class(x: SEXP, class_name: String) -> bool {
         false
     }
 }
+// endregion
 
-// ============================================================================
-// Consumer's own Counter implementation: DoubleCounter
-// ============================================================================
+// region: Consumer's own Counter implementation: DoubleCounter
 
 /// A counter that increments by 2 (consumer's own implementation)
 #[derive(ExternalPtr)]
@@ -128,10 +125,9 @@ pub fn new_double_counter(initial: i32) -> SEXP {
     let erased = __mx_wrap_doublecounter(counter);
     unsafe { ccall::mx_wrap(erased) }
 }
+// endregion
 
-// ============================================================================
-// Generic functions working with Counter trait
-// ============================================================================
+// region: Generic functions working with Counter trait
 
 /// Increment a counter twice (generic over Counter trait)
 /// This function works with Counter objects from ANY package.
@@ -176,10 +172,9 @@ pub fn peek_value(counter_sexp: SEXP) -> i32 {
 pub fn is_counter(sexp: SEXP) -> bool {
     unsafe { CounterView::try_from_sexp(sexp).is_some() }
 }
+// endregion
 
-// ============================================================================
-// Generic functions working with Resettable trait
-// ============================================================================
+// region: Generic functions working with Resettable trait
 
 /// Reset an object and check if it's in default state
 /// This function works with Resettable objects from ANY package.
@@ -211,10 +206,9 @@ pub fn check_is_default(sexp: SEXP) -> bool {
 pub fn is_resettable(sexp: SEXP) -> bool {
     unsafe { ResettableView::try_from_sexp(sexp).is_some() }
 }
+// endregion
 
-// ============================================================================
-// Combined trait usage (Counter + Resettable on same object)
-// ============================================================================
+// region: Combined trait usage (Counter + Resettable on same object)
 
 /// Increment a Counter twice, then reset it via Resettable, return is_default
 /// Tests combined trait usage on the same object across packages.
@@ -256,10 +250,9 @@ pub fn get_reset_get(sexp: SEXP) -> i32 {
 pub fn debug_consumer_tag_resettable() -> String {
     format!("{:016x}{:016x}", TAG_RESETTABLE.hi, TAG_RESETTABLE.lo)
 }
+// endregion
 
-// ============================================================================
-// Simple utility functions for testing
-// ============================================================================
+// region: Simple utility functions for testing
 
 /// Greet with a message demonstrating consumer package is working
 /// @param name Name to greet
@@ -284,3 +277,4 @@ pub fn consumer_magic_number() -> i32 {
 pub fn debug_consumer_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
 }
+// endregion

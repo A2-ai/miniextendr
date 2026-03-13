@@ -16,9 +16,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
     miniextendr_bench::fixtures()
 }
 
-// =============================================================================
-// Scalar conversions
-// =============================================================================
+// region: Scalar conversions
 
 #[divan::bench]
 fn scalar_i32() {
@@ -64,10 +62,9 @@ fn scalar_option_i32_na() {
         divan::black_box(val);
     }
 }
+// endregion
 
-// =============================================================================
-// Slice conversions - zero-copy
-// =============================================================================
+// region: Slice conversions - zero-copy
 
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn slice_i32(size_idx: usize) {
@@ -89,10 +86,9 @@ fn slice_u8(size_idx: usize) {
     let val: &[u8] = TryFromSexp::try_from_sexp(sexp).unwrap();
     divan::black_box(val);
 }
+// endregion
 
-// =============================================================================
-// Manual pointer access comparison (baseline)
-// =============================================================================
+// region: Manual pointer access comparison (baseline)
 
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn manual_slice_i32(size_idx: usize) {
@@ -126,10 +122,9 @@ fn manual_slice_u8(size_idx: usize) {
         divan::black_box(slice);
     }
 }
+// endregion
 
-// =============================================================================
-// String conversions
-// =============================================================================
+// region: String conversions
 
 #[divan::bench]
 fn string_utf8() {
@@ -144,10 +139,9 @@ fn string_latin1() {
     let val: String = TryFromSexp::try_from_sexp(sexp).unwrap();
     divan::black_box(val);
 }
+// endregion
 
-// =============================================================================
-// Element-by-element iteration (using raw pointers)
-// =============================================================================
+// region: Element-by-element iteration (using raw pointers)
 
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn iterate_int_elt(size_idx: usize) {
@@ -183,10 +177,9 @@ fn iterate_int_slice(size_idx: usize) {
     let sum: i64 = slice.iter().map(|&x| x as i64).sum();
     divan::black_box(sum);
 }
+// endregion
 
-// =============================================================================
-// Collection conversions (sets + maps)
-// =============================================================================
+// region: Collection conversions (sets + maps)
 
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn hashset_i32(size_idx: usize) {
@@ -215,3 +208,4 @@ fn named_list_btreemap_i32(size_idx: usize) {
     let map: BTreeMap<String, i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
     divan::black_box(map.len());
 }
+// endregion

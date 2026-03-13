@@ -316,9 +316,7 @@ fn extract_trait_and_type(impl_item: &ItemImpl) -> syn::Result<(syn::Path, syn::
     Ok((trait_path.clone(), concrete_type))
 }
 
-// =============================================================================
-// Sub-modules
-// =============================================================================
+// region: Sub-modules
 
 mod r_wrappers;
 mod vtable;
@@ -364,10 +362,9 @@ fn type_to_uppercase_name(ty: &syn::Type) -> String {
         _ => "UNKNOWN".to_string(),
     }
 }
+// endregion
 
-// =============================================================================
-// TPIE: Trait-Provided Impl Expansion
-// =============================================================================
+// region: TPIE: Trait-Provided Impl Expansion
 
 /// Input to the `__mx_trait_impl_expand!` proc macro.
 ///
@@ -873,3 +870,4 @@ fn generate_tpie_invocation(
 
 #[cfg(test)]
 mod tests;
+// endregion

@@ -51,9 +51,7 @@ use crate::ffi::{Rf_allocVector, SET_STRING_ELT, SEXP, SEXPTYPE};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Format rows as a table string.
 ///
@@ -190,10 +188,9 @@ pub fn table_to_string_styled<T: Tabled>(rows: &[T], style: &str) -> String {
 
     table.to_string()
 }
+// endregion
 
-// =============================================================================
-// IntoR for Table
-// =============================================================================
+// region: IntoR for Table
 
 impl IntoR for Table {
     type Error = std::convert::Infallible;
@@ -216,10 +213,9 @@ impl IntoR for Table {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -323,3 +319,4 @@ mod tests {
         assert!(table.contains("name"));
     }
 }
+// endregion

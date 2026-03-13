@@ -82,9 +82,7 @@
 
 use std::fmt;
 
-// =============================================================================
-// Error Types
-// =============================================================================
+// region: Error Types
 
 /// Error type for `as.<class>()` coercion failures.
 ///
@@ -158,10 +156,9 @@ impl From<&str> for AsCoerceError {
         AsCoerceError::Custom(s.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Coercion Traits
-// =============================================================================
+// region: Coercion Traits
 
 /// Trait for types that can be coerced to `data.frame` via `as.data.frame()`.
 ///
@@ -316,10 +313,9 @@ pub trait AsFunction {
     /// Convert to an R function.
     fn as_function(&self) -> Result<crate::ffi::SEXP, AsCoerceError>;
 }
+// endregion
 
-// =============================================================================
-// Helper Functions
-// =============================================================================
+// region: Helper Functions
 
 /// Maps an R generic name to the corresponding trait method name.
 ///
@@ -421,3 +417,4 @@ mod tests {
         assert_eq!(r_generic_to_method("foo"), None);
     }
 }
+// endregion

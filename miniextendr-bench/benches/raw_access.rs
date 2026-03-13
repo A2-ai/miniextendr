@@ -15,9 +15,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Group 1: Integer slice access
-// =============================================================================
+// region: Group 1: Integer slice access
 
 mod integer {
     use super::*;
@@ -76,10 +74,9 @@ mod integer {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 2: Real slice access
-// =============================================================================
+// region: Group 2: Real slice access
 
 mod real {
     use super::*;
@@ -117,10 +114,9 @@ mod real {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 3: Raw (u8) slice access
-// =============================================================================
+// region: Group 3: Raw (u8) slice access
 
 mod raw_bytes {
     use super::*;
@@ -149,10 +145,9 @@ mod raw_bytes {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Group 4: Empty vector edge case (where r_slice safety matters most)
-// =============================================================================
+// region: Group 4: Empty vector edge case (where r_slice safety matters most)
 
 mod empty_vec {
     use super::*;
@@ -181,10 +176,9 @@ mod empty_vec {
         divan::black_box(slice);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 5: TryFromSexp vs as_slice for Vec<T> conversion
-// =============================================================================
+// region: Group 5: TryFromSexp vs as_slice for Vec<T> conversion
 
 mod conversion {
     use super::*;
@@ -224,3 +218,4 @@ mod conversion {
         divan::black_box(val);
     }
 }
+// endregion

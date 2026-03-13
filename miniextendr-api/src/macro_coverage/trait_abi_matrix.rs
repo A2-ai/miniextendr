@@ -25,9 +25,7 @@ impl CovTrait for CovEnv {
     }
 }
 
-// =============================================================================
-// Over-aligned types for alignment regression tests
-// =============================================================================
+// region: Over-aligned types for alignment regression tests
 
 /// Type with 32-byte alignment -- exposes alignment padding bugs in data
 /// pointer computation.
@@ -65,10 +63,9 @@ impl CovTrait for Aligned64Counter {
         self.value
     }
 }
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests {
@@ -169,3 +166,4 @@ mod tests {
         }
     }
 }
+// endregion

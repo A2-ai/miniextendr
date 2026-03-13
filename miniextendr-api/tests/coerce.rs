@@ -27,9 +27,7 @@ fn coerce_suite() {
     ));
 }
 
-// =============================================================================
-// Tests for marker trait blanket implementations
-// =============================================================================
+// region: Tests for marker trait blanket implementations
 
 #[test]
 fn widen_to_i32_marker_i8() {
@@ -85,10 +83,9 @@ fn widen_to_f64_marker_all_integer_types() {
     assert_eq!(Coerce::<f64>::coerce(5u16), 5.0f64);
     assert_eq!(Coerce::<f64>::coerce(6u32), 6.0f64);
 }
+// endregion
 
-// =============================================================================
-// Tests for container element-wise coercion
-// =============================================================================
+// region: Tests for container element-wise coercion
 
 #[test]
 fn vec_element_coerce_i8_to_i32() {
@@ -158,3 +155,4 @@ fn arrayvec_element_coerce_u8_to_i32() {
     assert_eq!(coerced[1], 20i32);
     assert_eq!(coerced[2], 255i32);
 }
+// endregion

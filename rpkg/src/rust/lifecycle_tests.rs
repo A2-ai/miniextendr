@@ -4,9 +4,7 @@
 
 use miniextendr_api::miniextendr;
 
-// =============================================================================
-// Tests using #[deprecated] attribute
-// =============================================================================
+// region: Tests using #[deprecated] attribute
 
 /// A deprecated function using Rust's built-in deprecated attribute.
 /// This should generate lifecycle::deprecate_warn in the R wrapper.
@@ -24,10 +22,9 @@ pub fn old_deprecated_fn(x: i32) -> i32 {
 pub fn also_deprecated() -> String {
     "deprecated".to_string()
 }
+// endregion
 
-// =============================================================================
-// Tests using #[miniextendr(lifecycle = "...")]
-// =============================================================================
+// region: Tests using #[miniextendr(lifecycle = "...")]
 
 /// An experimental function that may change.
 /// @noRd
@@ -49,10 +46,9 @@ pub fn superseded_fn(x: i32) -> i32 {
 pub fn soft_deprecated_fn(x: i32) -> i32 {
     x - 1
 }
+// endregion
 
-// =============================================================================
-// Tests using full lifecycle(...) syntax
-// =============================================================================
+// region: Tests using full lifecycle(...) syntax
 
 /// A deprecated function with full lifecycle spec.
 /// @noRd
@@ -71,10 +67,9 @@ pub fn fully_deprecated(x: i32) -> i32 {
 pub fn defunct_fn(_x: i32) -> i32 {
     panic!("This should never be called")
 }
+// endregion
 
-// =============================================================================
-// Method-level lifecycle tests (R6)
-// =============================================================================
+// region: Method-level lifecycle tests (R6)
 
 /// An R6 class demonstrating lifecycle on methods.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -117,7 +112,7 @@ impl LifecycleDemo {
         self.value
     }
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

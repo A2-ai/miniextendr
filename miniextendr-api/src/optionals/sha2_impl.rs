@@ -34,9 +34,7 @@
 // Re-export core types for advanced usage
 pub use sha2::{Digest, Sha256, Sha512};
 
-// =============================================================================
-// Core hashing functions
-// =============================================================================
+// region: Core hashing functions
 
 /// Compute SHA-256 hash of raw bytes.
 ///
@@ -103,10 +101,9 @@ pub fn sha512_bytes(data: &[u8]) -> String {
 pub fn sha512_str(s: &str) -> String {
     sha512_bytes(s.as_bytes())
 }
+// endregion
 
-// =============================================================================
-// Vector helpers
-// =============================================================================
+// region: Vector helpers
 
 /// Compute SHA-256 hashes for a vector of byte slices.
 ///
@@ -135,10 +132,9 @@ pub fn sha512_bytes_vec(data: &[&[u8]]) -> Vec<String> {
 pub fn sha512_str_vec(strings: &[&str]) -> Vec<String> {
     strings.iter().map(|s| sha512_str(s)).collect()
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Encode bytes as lowercase hex string.
 #[inline]
@@ -150,10 +146,9 @@ fn hex_encode(bytes: &[u8]) -> String {
     }
     s
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -238,3 +233,4 @@ mod tests {
         assert_eq!(hex_encode(&[]), "");
     }
 }
+// endregion

@@ -137,9 +137,7 @@ pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+// region: Internal helpers
 
 /// Create a scalar R character string from a Rust `&str`.
 ///
@@ -174,3 +172,4 @@ mod tests {
         assert_fn(|s| unsafe { s4_class_name(s) });
     }
 }
+// endregion

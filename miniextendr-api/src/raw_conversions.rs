@@ -65,9 +65,7 @@ use crate::ffi::{
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Error type
-// =============================================================================
+// region: Error type
 
 /// Errors that can occur during raw conversion.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,10 +107,9 @@ impl fmt::Display for RawError {
 }
 
 impl std::error::Error for RawError {}
+// endregion
 
-// =============================================================================
-// Header for tagged format
-// =============================================================================
+// region: Header for tagged format
 
 /// Header for tagged raw format.
 ///
@@ -192,10 +189,9 @@ impl RawHeader {
         Ok(())
     }
 }
+// endregion
 
-// =============================================================================
-// Wrapper types
-// =============================================================================
+// region: Wrapper types
 
 /// Wrapper for a single POD value (headerless, native layout).
 ///
@@ -292,10 +288,9 @@ impl<T: Pod> RawSliceTagged<T> {
         self.0.is_empty()
     }
 }
+// endregion
 
-// =============================================================================
-// Helper: get raw bytes from SEXP
-// =============================================================================
+// region: Helper: get raw bytes from SEXP
 
 /// Validate the `mx_raw_type` attribute matches the expected type `T`.
 fn validate_raw_type_tag<T>(sexp: SEXP) -> Result<(), SexpError> {
@@ -405,10 +400,9 @@ fn align_slice<T: Pod>(bytes: &[u8]) -> Result<Vec<T>, RawError> {
     }
     Ok(result)
 }
+// endregion
 
-// =============================================================================
-// IntoR implementations
-// =============================================================================
+// region: IntoR implementations
 
 impl<T: Pod> IntoR for Raw<T> {
     type Error = std::convert::Infallible;
@@ -501,10 +495,9 @@ impl<T: Pod> IntoR for RawSliceTagged<T> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp implementations
-// =============================================================================
+// region: TryFromSexp implementations
 
 impl<T: Pod> TryFromSexp for Raw<T> {
     type Error = SexpError;
@@ -608,10 +601,9 @@ impl<T: Pod> TryFromSexp for RawSliceTagged<T> {
         Ok(RawSliceTagged(values))
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Encode a POD value to raw bytes.
 pub fn raw_to_bytes<T: Pod>(value: &T) -> Vec<u8> {
@@ -632,10 +624,9 @@ pub fn raw_slice_to_bytes<T: Pod>(values: &[T]) -> Vec<u8> {
 pub fn raw_slice_from_bytes<T: Pod>(bytes: &[u8]) -> Result<Vec<T>, RawError> {
     align_slice(bytes)
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -772,3 +763,4 @@ mod tests {
         assert_eq!(raw.len(), 0);
     }
 }
+// endregion

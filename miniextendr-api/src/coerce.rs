@@ -87,9 +87,7 @@ impl std::fmt::Display for CoerceError {
 
 impl std::error::Error for CoerceError {}
 
-// =============================================================================
-// Blanket: Coerce implies TryCoerce
-// =============================================================================
+// region: Blanket: Coerce implies TryCoerce
 
 impl<T, R> TryCoerce<R> for T
 where
@@ -102,10 +100,9 @@ where
         Ok(self.coerce())
     }
 }
+// endregion
 
-// =============================================================================
-// Identity coercions
-// =============================================================================
+// region: Identity coercions
 //
 // Note: Can't use blanket `impl<T> Coerce<T> for T` because it would conflict
 // with container coercion impls like `impl<T: Coerce<R>> Coerce<Vec<R>> for Vec<T>`.
@@ -127,10 +124,9 @@ impl_identity!(f64);
 impl_identity!(Rboolean);
 impl_identity!(u8);
 impl_identity!(Rcomplex);
+// endregion
 
-// =============================================================================
-// Widening conversions (blanket impls using marker traits)
-// =============================================================================
+// region: Widening conversions (blanket impls using marker traits)
 
 /// Blanket impl: Any type that widens to i32 can be coerced to i32.
 ///
@@ -153,10 +149,9 @@ impl<T: crate::markers::WidensToF64> Coerce<f64> for T {
         self.into()
     }
 }
+// endregion
 
-// =============================================================================
-// Widening from u8 to larger integer/float types
-// =============================================================================
+// region: Widening from u8 to larger integer/float types
 
 impl Coerce<i64> for u8 {
     #[inline(always)]
@@ -199,10 +194,9 @@ impl Coerce<f32> for i32 {
         self as f32
     }
 }
+// endregion
 
-// =============================================================================
-// bool coercions
-// =============================================================================
+// region: bool coercions
 
 impl Coerce<Rboolean> for bool {
     #[inline(always)]
@@ -235,10 +229,9 @@ impl Coerce<i32> for Rboolean {
         self as i32
     }
 }
+// endregion
 
-// =============================================================================
-// Option<T> to R-native with None → NA
-// =============================================================================
+// region: Option<T> to R-native with None → NA
 
 /// `Option<f64>` → `f64` with `None` → `NA_real_`.
 impl Coerce<f64> for Option<f64> {
@@ -278,10 +271,9 @@ impl Coerce<i32> for Option<Rboolean> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// i32 to larger/unsigned types (for argument coercion from R integers)
-// =============================================================================
+// region: i32 to larger/unsigned types (for argument coercion from R integers)
 
 /// i32 -> i64: widening, always safe
 impl Coerce<i64> for i32 {
@@ -328,10 +320,9 @@ impl TryCoerce<usize> for i32 {
         self.try_into().map_err(|_| CoerceError::Overflow)
     }
 }
+// endregion
 
-// =============================================================================
-// NonZero conversions (fallible - zero check)
-// =============================================================================
+// region: NonZero conversions (fallible - zero check)
 
 use core::num::{
     NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroIsize, NonZeroU8, NonZeroU16, NonZeroU32,
@@ -459,10 +450,9 @@ impl TryCoerce<NonZeroU16> for i32 {
         NonZeroU16::new(u).ok_or(CoerceError::Zero)
     }
 }
+// endregion
 
-// =============================================================================
-// i32/Rboolean to bool (fallible - NA handling)
-// =============================================================================
+// region: i32/Rboolean to bool (fallible - NA handling)
 
 /// Error type for logical coercion failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -516,10 +506,9 @@ impl TryCoerce<bool> for crate::ffi::RLogical {
         self.to_i32().try_coerce()
     }
 }
+// endregion
 
-// =============================================================================
-// Narrowing to i32 (fallible)
-// =============================================================================
+// region: Narrowing to i32 (fallible)
 
 macro_rules! impl_try_i32 {
     ($t:ty) => {
@@ -538,10 +527,9 @@ impl_try_i32!(u64);
 impl_try_i32!(usize);
 impl_try_i32!(i64);
 impl_try_i32!(isize);
+// endregion
 
-// =============================================================================
-// Narrowing to u8 (fallible)
-// =============================================================================
+// region: Narrowing to u8 (fallible)
 
 macro_rules! impl_try_u8 {
     ($t:ty) => {
@@ -564,10 +552,9 @@ impl_try_u8!(u32);
 impl_try_u8!(u64);
 impl_try_u8!(usize);
 impl_try_u8!(isize);
+// endregion
 
-// =============================================================================
-// Widening to u16/i16/u32 (infallible)
-// =============================================================================
+// region: Widening to u16/i16/u32 (infallible)
 
 impl Coerce<u16> for u8 {
     #[inline(always)]
@@ -603,10 +590,9 @@ impl Coerce<u32> for u16 {
         self.into()
     }
 }
+// endregion
 
-// =============================================================================
-// Narrowing to u16 (fallible)
-// =============================================================================
+// region: Narrowing to u16 (fallible)
 
 macro_rules! impl_try_u16 {
     ($t:ty) => {
@@ -628,10 +614,9 @@ impl_try_u16!(u32);
 impl_try_u16!(u64);
 impl_try_u16!(usize);
 impl_try_u16!(isize);
+// endregion
 
-// =============================================================================
-// Narrowing to i16 (fallible)
-// =============================================================================
+// region: Narrowing to i16 (fallible)
 
 macro_rules! impl_try_i16 {
     ($t:ty) => {
@@ -652,10 +637,9 @@ impl_try_i16!(u32);
 impl_try_i16!(u64);
 impl_try_i16!(usize);
 impl_try_i16!(isize);
+// endregion
 
-// =============================================================================
-// Narrowing to i8 (fallible)
-// =============================================================================
+// region: Narrowing to i8 (fallible)
 
 macro_rules! impl_try_i8 {
     ($t:ty) => {
@@ -678,10 +662,9 @@ impl_try_i8!(u32);
 impl_try_i8!(u64);
 impl_try_i8!(usize);
 impl_try_i8!(isize);
+// endregion
 
-// =============================================================================
-// Float to smaller integers (fallible)
-// =============================================================================
+// region: Float to smaller integers (fallible)
 
 impl TryCoerce<u16> for f64 {
     type Error = CoerceError;
@@ -745,10 +728,9 @@ impl TryCoerce<i8> for f64 {
         Ok(self as i8)
     }
 }
+// endregion
 
-// =============================================================================
-// Float to i32 (fallible)
-// =============================================================================
+// region: Float to i32 (fallible)
 
 impl TryCoerce<i32> for f64 {
     type Error = CoerceError;
@@ -787,10 +769,9 @@ impl Coerce<f32> for f64 {
         self as f32
     }
 }
+// endregion
 
-// =============================================================================
-// Float to u8 (fallible) - for RAWSXP
-// =============================================================================
+// region: Float to u8 (fallible) - for RAWSXP
 
 impl TryCoerce<u8> for f64 {
     type Error = CoerceError;
@@ -821,10 +802,9 @@ impl TryCoerce<u8> for f32 {
         f64::from(self).try_coerce()
     }
 }
+// endregion
 
-// =============================================================================
-// Float to u32 (fallible)
-// =============================================================================
+// region: Float to u32 (fallible)
 
 impl TryCoerce<u32> for f64 {
     type Error = CoerceError;
@@ -846,10 +826,9 @@ impl TryCoerce<u32> for f64 {
         Ok(self as u32)
     }
 }
+// endregion
 
-// =============================================================================
-// Float to i64/u64 (fallible)
-// =============================================================================
+// region: Float to i64/u64 (fallible)
 //
 // These conversions validate that the f64 can be exactly represented as an integer.
 //
@@ -953,10 +932,9 @@ impl TryCoerce<usize> for f64 {
         Ok(self as usize)
     }
 }
+// endregion
 
-// =============================================================================
-// Large int to f64 (fallible - precision)
-// =============================================================================
+// region: Large int to f64 (fallible - precision)
 //
 // These conversions only succeed if the integer can be exactly represented
 // in f64. This is stricter than Rust's `as f64` which silently rounds.
@@ -1019,10 +997,9 @@ impl TryCoerce<f64> for usize {
         (self as u64).try_coerce()
     }
 }
+// endregion
 
-// =============================================================================
-// Coerced wrapper type
-// =============================================================================
+// region: Coerced wrapper type
 
 use std::marker::PhantomData;
 
@@ -1092,10 +1069,9 @@ impl<T, R> std::ops::DerefMut for Coerced<T, R> {
         &mut self.value
     }
 }
+// endregion
 
-// =============================================================================
-// Slice coercions (element-wise)
-// =============================================================================
+// region: Slice coercions (element-wise)
 
 /// Coerce a slice element-wise to a Vec.
 impl<T: Copy + Coerce<R>, R> Coerce<Vec<R>> for &[T] {
@@ -1124,10 +1100,9 @@ impl<T: Coerce<R>, R> Coerce<std::collections::VecDeque<R>> for std::collections
 // `impl<T: Coerce<R>> TryCoerce<R> for T`. For types that only implement
 // TryCoerce (not Coerce), use manual iteration:
 // slice.iter().map(|x| x.try_coerce()).collect::<Result<Vec<_>, _>>()
+// endregion
 
-// =============================================================================
-// TinyVec coercions (element-wise)
-// =============================================================================
+// region: TinyVec coercions (element-wise)
 
 #[cfg(feature = "tinyvec")]
 /// Element-wise coercion for TinyVec.
@@ -1158,10 +1133,9 @@ where
         self.into_iter().map(Coerce::coerce).collect()
     }
 }
+// endregion
 
-// =============================================================================
-// Tuple coercions (element-wise)
-// =============================================================================
+// region: Tuple coercions (element-wise)
 
 /// Macro to implement element-wise Coerce for tuples.
 macro_rules! impl_tuple_coerce {
@@ -1198,10 +1172,10 @@ impl_tuple_coerce!(
     (RA, RB, RC, RD, RE, RF, RG, RH),
     (0, 1, 2, 3, 4, 5, 6, 7)
 );
+// endregion
 
-// =============================================================================
-// Tests
-// =============================================================================
+// region: Tests
 
 #[cfg(test)]
 mod tests;
+// endregion

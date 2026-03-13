@@ -53,9 +53,7 @@ fn list_get_index_last_i32(size_idx: usize) {
     divan::black_box(val);
 }
 
-// =============================================================================
-// Derive-based conversions
-// =============================================================================
+// region: Derive-based conversions
 
 #[derive(miniextendr_api::IntoList, miniextendr_api::TryFromList)]
 struct Named4 {
@@ -136,3 +134,4 @@ fn derive_try_from_list_tuple(bencher: divan::Bencher) {
             divan::black_box(out.0);
         });
 }
+// endregion

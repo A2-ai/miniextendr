@@ -63,9 +63,7 @@ pub use regex::Regex;
 use crate::ffi::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 
-// =============================================================================
-// Scalar conversions
-// =============================================================================
+// region: Scalar conversions
 
 impl TryFromSexp for Regex {
     type Error = SexpError;
@@ -80,10 +78,9 @@ impl TryFromSexp for Regex {
 // Note: IntoR is intentionally not implemented for Regex.
 // A compiled regex cannot be meaningfully converted back to R.
 // If you need the pattern, keep the original String.
+// endregion
 
-// =============================================================================
-// Option conversions (NA support)
-// =============================================================================
+// region: Option conversions (NA support)
 
 impl TryFromSexp for Option<Regex> {
     type Error = SexpError;
@@ -98,10 +95,9 @@ impl TryFromSexp for Option<Regex> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Vec conversions
-// =============================================================================
+// region: Vec conversions
 
 impl TryFromSexp for Vec<Regex> {
     type Error = SexpError;
@@ -137,10 +133,9 @@ impl TryFromSexp for Vec<Option<Regex>> {
             .collect()
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Compile a regex pattern and return an error-typed Result.
 ///
@@ -163,10 +158,9 @@ impl TryFromSexp for Vec<Option<Regex>> {
 pub fn try_compile(pattern: &str) -> Result<Regex, regex::Error> {
     Regex::new(pattern)
 }
+// endregion
 
-// =============================================================================
-// RRegexOps adapter trait
-// =============================================================================
+// region: RRegexOps adapter trait
 
 /// Adapter trait for [`Regex`] operations.
 ///
@@ -248,10 +242,9 @@ impl RRegexOps for Regex {
         self.captures_len() as i32
     }
 }
+// endregion
 
-// =============================================================================
-// RCaptures adapter trait
-// =============================================================================
+// region: RCaptures adapter trait
 
 /// Wrapper for regex capture groups.
 ///
@@ -446,3 +439,4 @@ mod tests {
         assert_eq!(all[3], Some("com".to_string()));
     }
 }
+// endregion

@@ -845,9 +845,7 @@ struct MethodInfo {
     r_name: Option<String>,
 }
 
-// =============================================================================
-// Self-type detection helpers
-// =============================================================================
+// region: Self-type detection helpers
 
 /// Check if a type syntactically contains `Self`.
 ///
@@ -1251,3 +1249,4 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
 
 #[cfg(test)]
 mod tests;
+// endregion

@@ -16,9 +16,7 @@ use miniextendr_api::serde::{RSerdeError, from_r, to_r};
 use miniextendr_api::{ExternalPtr, miniextendr};
 use std::collections::{BTreeMap, HashMap};
 
-// =============================================================================
-// Basic struct types
-// =============================================================================
+// region: Basic struct types
 
 /// Simple 2D point for serde_r testing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
@@ -69,10 +67,9 @@ impl SerdeRPoint3D {
         from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Nested struct types
-// =============================================================================
+// region: Nested struct types
 
 /// Rectangle defined by two points.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
@@ -163,10 +160,9 @@ impl DeepNest {
         from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Struct with collections
-// =============================================================================
+// region: Struct with collections
 
 /// Struct containing various collection types.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
@@ -212,10 +208,9 @@ impl Collections {
         from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Struct with maps
-// =============================================================================
+// region: Struct with maps
 
 /// Struct containing HashMap and BTreeMap.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
@@ -257,10 +252,9 @@ impl Maps {
         from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Enum types
-// =============================================================================
+// region: Enum types
 
 /// Simple unit enum (like R factor).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -315,10 +309,9 @@ impl WithEnums {
         from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Option/NA handling
-// =============================================================================
+// region: Option/NA handling
 
 /// Struct with optional fields for NA testing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ExternalPtr)]
@@ -371,10 +364,9 @@ impl WithOptionals {
         from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
+// endregion
 
-// =============================================================================
-// Standalone test functions
-// =============================================================================
+// region: Standalone test functions
 
 /// @noRd
 #[miniextendr]
@@ -541,10 +533,9 @@ pub fn serde_r_deserialize_wrong_type(sexp: SEXP) -> Result<i32, String> {
 pub fn serde_r_deserialize_missing_field(sexp: SEXP) -> Result<SerdeRPoint, String> {
     from_r::<SerdeRPoint>(sexp).map_err(|e: RSerdeError| e.to_string())
 }
+// endregion
 
-// =============================================================================
-// Tuple and tuple struct tests
-// =============================================================================
+// region: Tuple and tuple struct tests
 
 /// @noRd
 #[miniextendr]
@@ -564,10 +555,9 @@ pub fn serde_r_serialize_tuple_struct() -> SEXP {
     let pair = Pair(42, "answer".to_string());
     to_r(&pair).expect("serialize tuple struct")
 }
+// endregion
 
-// =============================================================================
-// Complex integration tests
-// =============================================================================
+// region: Complex integration tests
 
 /// @noRd
 #[miniextendr]
@@ -629,7 +619,7 @@ pub fn serde_r_deserialize_complex(sexp: SEXP) -> String {
         Err(e) => format!("error: {}", e),
     }
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

@@ -16,9 +16,7 @@ use miniextendr_api::into_r::IntoR;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, TestRunner};
 
-// =============================================================================
-// Helper: run proptest inside with_r_thread
-// =============================================================================
+// region: Helper: run proptest inside with_r_thread
 
 /// Run a property test inside the R thread.
 /// This avoids issues with proptest forking and R's single-threaded runtime.
@@ -62,10 +60,9 @@ where
         result
     }
 }
+// endregion
 
-// =============================================================================
-// Scalar roundtrips
-// =============================================================================
+// region: Scalar roundtrips
 
 #[test]
 fn prop_i32_roundtrip() {
@@ -114,10 +111,9 @@ fn prop_u8_roundtrip() {
         assert_eq!(val, recovered);
     });
 }
+// endregion
 
-// =============================================================================
-// Option<T> roundtrips (NA handling)
-// =============================================================================
+// region: Option<T> roundtrips (NA handling)
 
 #[test]
 fn prop_option_i32_roundtrip() {
@@ -170,10 +166,9 @@ fn prop_option_string_roundtrip() {
         assert_eq!(val, recovered);
     });
 }
+// endregion
 
-// =============================================================================
-// Vec<T> roundtrips
-// =============================================================================
+// region: Vec<T> roundtrips
 
 #[test]
 fn prop_vec_i32_roundtrip() {
@@ -239,10 +234,9 @@ fn prop_vec_u8_roundtrip() {
         },
     );
 }
+// endregion
 
-// =============================================================================
-// Vec<Option<T>> roundtrips (NA-aware vectors)
-// =============================================================================
+// region: Vec<Option<T>> roundtrips (NA-aware vectors)
 
 fn opt_i32_strategy() -> impl Strategy<Value = Option<i32>> {
     prop_oneof![
@@ -323,10 +317,9 @@ fn prop_vec_option_string_roundtrip() {
         },
     );
 }
+// endregion
 
-// =============================================================================
-// Vec<HashMap<String, T>> roundtrip
-// =============================================================================
+// region: Vec<HashMap<String, T>> roundtrip
 
 #[test]
 fn prop_vec_hashmap_string_i32_roundtrip() {
@@ -345,10 +338,9 @@ fn prop_vec_hashmap_string_i32_roundtrip() {
         assert_eq!(vals, recovered);
     });
 }
+// endregion
 
-// =============================================================================
-// NamedVector<HashMap<String, T>> roundtrip (named atomic vectors)
-// =============================================================================
+// region: NamedVector<HashMap<String, T>> roundtrip (named atomic vectors)
 
 #[test]
 fn prop_named_vector_hashmap_i32_roundtrip() {
@@ -404,10 +396,9 @@ fn prop_named_vector_btreemap_i32_roundtrip() {
         assert_eq!(vals, recovered.into_inner());
     });
 }
+// endregion
 
-// =============================================================================
-// i64 safe-range roundtrip (via f64 representation)
-// =============================================================================
+// region: i64 safe-range roundtrip (via f64 representation)
 
 #[test]
 fn prop_i64_safe_range_roundtrip() {
@@ -418,10 +409,9 @@ fn prop_i64_safe_range_roundtrip() {
         assert_eq!(val, recovered);
     });
 }
+// endregion
 
-// =============================================================================
-// Edge case deterministic tests
-// =============================================================================
+// region: Edge case deterministic tests
 
 #[test]
 fn edge_case_i32_boundaries() {
@@ -557,3 +547,4 @@ fn edge_case_unicode_strings() {
         assert_eq!(unicode_strings, recovered);
     });
 }
+// endregion

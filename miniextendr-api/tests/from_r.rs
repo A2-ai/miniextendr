@@ -248,9 +248,7 @@ fn test_error_cases() {
     }
 }
 
-// =============================================================================
-// Feature-gated tests for macro-based conversions
-// =============================================================================
+// region: Feature-gated tests for macro-based conversions
 
 /// Helper to create a VECSXP (R list) from SEXPs
 #[cfg(any(feature = "serde", feature = "aho-corasick"))]
@@ -263,10 +261,9 @@ unsafe fn make_list(elements: &[SEXP], guard: &mut ProtectCount) -> SEXP {
     }
     sexp
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// aho-corasick feature tests
-// -----------------------------------------------------------------------------
+// region: aho-corasick feature tests
 
 #[cfg(feature = "aho-corasick")]
 #[test]
@@ -338,10 +335,9 @@ fn aho_corasick_vec_option_from_list() {
         }
     });
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// serde (JSON) feature tests
-// -----------------------------------------------------------------------------
+// region: serde (JSON) feature tests
 
 #[cfg(feature = "serde")]
 #[test]
@@ -417,10 +413,9 @@ fn json_value_vec_option_from_list() {
         }
     });
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// toml feature tests
-// -----------------------------------------------------------------------------
+// region: toml feature tests
 
 #[cfg(feature = "toml")]
 #[test]
@@ -452,10 +447,9 @@ fn toml_value_option_from_string() {
         }
     });
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// bitvec feature tests
-// -----------------------------------------------------------------------------
+// region: bitvec feature tests
 
 #[cfg(feature = "bitvec")]
 #[test]
@@ -522,10 +516,9 @@ fn bitvec_msb0_option_from_logical() {
         }
     });
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test try_from_sexp_unchecked propagation
-// -----------------------------------------------------------------------------
+// region: Test try_from_sexp_unchecked propagation
 
 #[cfg(feature = "aho-corasick")]
 #[test]
@@ -605,10 +598,9 @@ fn bitvec_unchecked_option() {
         }
     });
 }
+// endregion
 
-// =============================================================================
-// Tests for blanket impl with arbitrary lifetimes
-// =============================================================================
+// region: Tests for blanket impl with arbitrary lifetimes
 
 #[test]
 fn slice_arbitrary_lifetime_i32() {
@@ -701,3 +693,4 @@ fn option_slice_mut_arbitrary_lifetime() {
         }
     });
 }
+// endregion

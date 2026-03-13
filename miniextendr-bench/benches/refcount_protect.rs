@@ -18,9 +18,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Raw R_PreserveObject/R_ReleaseObject baseline
-// =============================================================================
+// region: Raw R_PreserveObject/R_ReleaseObject baseline
 // NOTE: R_ReleaseObject is O(n) - it scans the precious list to find the object.
 // This makes protect+release cycles O(n²) at scale, which is why RefCountedArena
 // (with hash table for O(1) lookup) is much faster for large numbers of objects.
@@ -111,10 +109,9 @@ fn raw_preserve_release_scale(n: usize) {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Single value protection
-// =============================================================================
+// region: Single value protection
 
 /// ProtectScope: protect single value
 #[divan::bench]
@@ -145,10 +142,9 @@ fn refcount_arena_guard_single() {
         divan::black_box(guard.get());
     }
 }
+// endregion
 
-// =============================================================================
-// Multiple value protection
-// =============================================================================
+// region: Multiple value protection
 
 /// ProtectScope: protect N values
 #[divan::bench(args = [10, 100, 1000])]
@@ -173,10 +169,9 @@ fn refcount_arena_multiple(n: usize) {
         divan::black_box(arena.len());
     }
 }
+// endregion
 
-// =============================================================================
-// Reference counting (same value multiple times)
-// =============================================================================
+// region: Reference counting (same value multiple times)
 
 /// RefCountedArena: protect same value N times
 #[divan::bench(args = [10, 100, 1000])]
@@ -207,10 +202,9 @@ fn protect_scope_same_value(n: usize) {
         divan::black_box(scope.count());
     }
 }
+// endregion
 
-// =============================================================================
-// Protect + unprotect cycles
-// =============================================================================
+// region: Protect + unprotect cycles
 
 /// RefCountedArena: protect then unprotect N values
 #[divan::bench(args = [10, 100, 1000])]
@@ -259,10 +253,9 @@ fn refcount_arena_unprotect_random_order(n: usize) {
         divan::black_box(arena.is_empty());
     }
 }
+// endregion
 
-// =============================================================================
-// Large scale tests
-// =============================================================================
+// region: Large scale tests
 
 /// RefCountedArena: protect many values (stress test)
 #[divan::bench(args = [1000, 5000, 10000])]
@@ -292,10 +285,9 @@ fn protect_scope_many_values(n: usize) {
         divan::black_box(scope.count());
     }
 }
+// endregion
 
-// =============================================================================
-// Guard vs manual protect/unprotect
-// =============================================================================
+// region: Guard vs manual protect/unprotect
 
 /// RefCountedArena: guard pattern
 #[divan::bench(args = [10, 100])]
@@ -326,10 +318,9 @@ fn refcount_arena_manual(n: usize) {
         divan::black_box(arena.is_empty());
     }
 }
+// endregion
 
-// =============================================================================
-// Mixed workload
-// =============================================================================
+// region: Mixed workload
 
 /// RefCountedArena: realistic workload with vectors
 #[divan::bench]
@@ -373,10 +364,9 @@ fn protect_scope_realistic() {
         // All unprotected on scope drop
     }
 }
+// endregion
 
-// =============================================================================
-// BTreeMap vs HashMap comparison
-// =============================================================================
+// region: BTreeMap vs HashMap comparison
 
 /// BTreeMap (RefCountedArena): single protect
 #[divan::bench]
@@ -509,10 +499,9 @@ fn hashmap_many(n: usize) {
         divan::black_box(arena.len());
     }
 }
+// endregion
 
-// =============================================================================
-// ThreadLocalArena benchmarks
-// =============================================================================
+// region: ThreadLocalArena benchmarks
 
 /// ThreadLocalArena: single protect
 #[divan::bench]
@@ -578,10 +567,9 @@ fn thread_local_many(n: usize) {
         ThreadLocalArena::clear();
     }
 }
+// endregion
 
-// =============================================================================
-// ThreadLocalHashArena benchmarks
-// =============================================================================
+// region: ThreadLocalHashArena benchmarks
 
 /// ThreadLocalHashArena: single protect
 #[divan::bench]
@@ -649,10 +637,9 @@ fn thread_local_hash_many(n: usize) {
         ThreadLocalHashArena::clear();
     }
 }
+// endregion
 
-// =============================================================================
-// R ppsize range benchmarks (min=10000, default=50000, max=500000)
-// =============================================================================
+// region: R ppsize range benchmarks (min=10000, default=50000, max=500000)
 // These test the arena implementations at R's --max-ppsize boundaries.
 // ProtectScope is limited by ppsize, arenas are not.
 //
@@ -725,10 +712,9 @@ fn ppsize_thread_local_hash(n: usize) {
         ThreadLocalHashArena::clear();
     }
 }
+// endregion
 
-// =============================================================================
-// Fast API benchmarks (skip init check)
-// =============================================================================
+// region: Fast API benchmarks (skip init check)
 
 /// ThreadLocalArena: protect_fast (no init check) vs protect
 #[divan::bench(args = [10, 100, 1000])]
@@ -797,10 +783,9 @@ fn thread_local_hash_fast_cycle(n: usize) {
         divan::black_box(ThreadLocalHashArena::is_empty());
     }
 }
+// endregion
 
-// =============================================================================
-// init_with_capacity benchmarks
-// =============================================================================
+// region: init_with_capacity benchmarks
 
 /// ThreadLocalArena: default init vs init_with_capacity (10000)
 #[divan::bench(args = [100, 1000, 10000])]
@@ -826,10 +811,9 @@ fn hashmap_with_capacity(n: usize) {
         divan::black_box(arena.len());
     }
 }
+// endregion
 
-// =============================================================================
-// Fast hash arena benchmarks (feature-gated)
-// =============================================================================
+// region: Fast hash arena benchmarks (feature-gated)
 
 #[cfg(feature = "refcount-fast-hash")]
 mod fast_hash_benches {
@@ -963,3 +947,4 @@ mod fast_hash_benches {
         }
     }
 }
+// endregion

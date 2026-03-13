@@ -7,9 +7,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields};
 
-// =============================================================================
-// Attribute parsing
-// =============================================================================
+// region: Attribute parsing
 
 /// Parsed container-level `#[dataframe(...)]` attributes.
 pub(super) struct DataFrameAttrs {
@@ -117,10 +115,9 @@ fn parse_dataframe_attrs(input: &DeriveInput) -> syn::Result<DataFrameAttrs> {
 
     Ok(attrs)
 }
+// endregion
 
-// =============================================================================
-// Field-level attribute parsing
-// =============================================================================
+// region: Field-level attribute parsing
 
 /// Parsed field-level `#[dataframe(...)]` attributes.
 ///
@@ -205,10 +202,9 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
 
     Ok(attrs)
 }
+// endregion
 
-// =============================================================================
-// Type classification
-// =============================================================================
+// region: Type classification
 
 /// Classification of a field type for DataFrame column expansion.
 ///
@@ -289,10 +285,9 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
 
     FieldTypeKind::Scalar
 }
+// endregion
 
-// =============================================================================
-// Resolved field model (struct path)
-// =============================================================================
+// region: Resolved field model (struct path)
 
 /// A resolved struct field ready for codegen -- determines how this field maps
 /// to DataFrame companion struct columns.
@@ -477,10 +472,9 @@ fn resolve_struct_field(
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Top-level dispatch
-// =============================================================================
+// region: Top-level dispatch
 
 /// Derive `DataFrameRow`: generates a companion DataFrame type with collection fields.
 ///
@@ -552,10 +546,9 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         )),
     }
 }
+// endregion
 
-// =============================================================================
-// Struct path (existing logic, extracted)
-// =============================================================================
+// region: Struct path (existing logic, extracted)
 
 /// Generate `DataFrameRow` expansion for struct types.
 ///
@@ -629,7 +622,7 @@ fn derive_struct_dataframe(
     let has_tag = attrs.tag.is_some();
     let row_name_str = row_name.to_string();
 
-    // ── Build flat column lists from resolved fields ─────────────────────
+    // region: Build flat column lists from resolved fields
     // Each resolved field may produce 1..N columns.
     struct FlatCol {
         /// Companion struct field name.
@@ -691,8 +684,9 @@ fn derive_struct_dataframe(
             ResolvedField::AutoExpandVec { .. } => {}
         }
     }
+    // endregion
 
-    // ── Collect auto-expand fields ──────────────────────────────────────
+    // region: Collect auto-expand fields
     struct AutoExpandCol {
         /// Companion struct field name.
         df_field: syn::Ident,
@@ -719,8 +713,9 @@ fn derive_struct_dataframe(
         })
         .collect();
     let has_auto_expand = !auto_expand_cols.is_empty();
+    // endregion
 
-    // ── Companion struct ────────────────────────────────────────────────
+    // region: Companion struct
     let tag_field_decl = if has_tag {
         quote! { pub _tag: Vec<String>, }
     } else {
@@ -755,8 +750,9 @@ fn derive_struct_dataframe(
             #(#df_fields_tokens),*
         }
     };
+    // endregion
 
-    // ── IntoDataFrame ───────────────────────────────────────────────────
+    // region: IntoDataFrame
     let length_ref = if has_tag {
         quote! { self._tag.len() }
     } else if !flat_cols.is_empty() {
@@ -924,8 +920,9 @@ fn derive_struct_dataframe(
             }
         }
     };
+    // endregion
 
-    // ── From<Vec<RowType>> ──────────────────────────────────────────────
+    // region: From<Vec<RowType>>
     let mut col_vec_inits: Vec<TokenStream> = flat_cols
         .iter()
         .map(|fc| {
@@ -1083,8 +1080,9 @@ fn derive_struct_dataframe(
             }
         }
     };
+    // endregion
 
-    // ── Generate from_rows_par (parallel scatter-write via ColumnWriter) ──
+    // region: Generate from_rows_par (parallel scatter-write via ColumnWriter)
     let from_rows_par_method = if !flat_cols.is_empty() || !auto_expand_cols.is_empty() || has_tag {
         // Column declarations: Vec::with_capacity(len) + set_len(len)
         let mut par_col_decls = Vec::new();
@@ -1375,8 +1373,9 @@ fn derive_struct_dataframe(
     } else {
         TokenStream::new()
     };
+    // endregion
 
-    // ── Associated methods ──────────────────────────────────────────────
+    // region: Associated methods
     let from_dataframe_method = if can_iterate {
         quote! {
             /// Convert a DataFrame back into a vector of rows.
@@ -1389,8 +1388,9 @@ fn derive_struct_dataframe(
     } else {
         TokenStream::new()
     };
+    // endregion
 
-    // ── DataFrame type methods (from_rows, from_rows_par) ────────────────
+    // region: DataFrame type methods (from_rows, from_rows_par)
     let df_methods = quote! {
         impl #impl_generics #df_name #ty_generics #where_clause {
             /// Sequential row→column transposition.
@@ -1443,11 +1443,11 @@ fn derive_struct_dataframe(
         #row_methods
         #trait_check
     })
+    // endregion
 }
+// endregion
 
-// =============================================================================
-// Enum align path
-// =============================================================================
+// region: Enum align path
 
 /// A resolved column in the unified schema across all enum variants.
 ///
@@ -1626,10 +1626,10 @@ pub(super) struct VariantInfo {
     /// Original Rust field names (for named variants) — needed for skipped fields in destructure.
     pub(super) skipped_fields: Vec<syn::Ident>,
 }
+// endregion
 
-// =============================================================================
-// Enum-specific expansion (in sub-module)
-// =============================================================================
+// region: Enum-specific expansion (in sub-module)
 
 mod enum_expansion;
 use enum_expansion::derive_enum_dataframe;
+// endregion

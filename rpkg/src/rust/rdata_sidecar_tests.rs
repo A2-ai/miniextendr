@@ -6,9 +6,7 @@ use miniextendr_api::externalptr::{ExternalPtr, RSidecar};
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::miniextendr;
 
-// =============================================================================
-// Env (default) - standalone functions: Type_get_field(), Type_set_field()
-// =============================================================================
+// region: Env (default) - standalone functions: Type_get_field(), Type_set_field()
 
 /// Demonstrates env class system (default).
 /// Generates: SidecarEnv_get_count(), SidecarEnv_set_count(), etc.
@@ -68,10 +66,9 @@ pub fn rdata_sidecar_env_new(
         raw_slot: unsafe { R_NilValue },
     })
 }
+// endregion
 
-// =============================================================================
-// R6 - active bindings: obj$field, obj$field <- value
-// =============================================================================
+// region: R6 - active bindings: obj$field, obj$field <- value
 
 /// Demonstrates R6 class system.
 /// Generates active bindings that integrate with R6Class.
@@ -110,10 +107,9 @@ pub fn rdata_sidecar_r6_new(value: i32, label: String) -> ExternalPtr<SidecarR6>
         label,
     })
 }
+// endregion
 
-// =============================================================================
-// S3 - $ method dispatch: obj$field, obj$field <- value
-// =============================================================================
+// region: S3 - $ method dispatch: obj$field, obj$field <- value
 
 /// Demonstrates S3 class system.
 /// Generates $.class and $<-.class methods.
@@ -136,10 +132,9 @@ impl SidecarS3 {}
 pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
     ExternalPtr::new(SidecarS3 { _r: RSidecar, data })
 }
+// endregion
 
-// =============================================================================
-// S4 - slot accessors via setMethod
-// =============================================================================
+// region: S4 - slot accessors via setMethod
 
 /// Demonstrates S4 class system.
 /// Generates setMethod() calls for slot accessors.
@@ -177,10 +172,9 @@ pub fn rdata_sidecar_s4_new(
         slot_str,
     })
 }
+// endregion
 
-// =============================================================================
-// S7 - properties via new_property()
-// =============================================================================
+// region: S7 - properties via new_property()
 
 /// Demonstrates S7 class system.
 /// Generates standalone accessors that can be wrapped with S7::new_property().
@@ -228,10 +222,9 @@ pub fn rdata_sidecar_s7_new(
         prop_name,
     })
 }
+// endregion
 
-// =============================================================================
-// Vctrs - S3-style $ dispatch for vctrs compatibility
-// =============================================================================
+// region: Vctrs - S3-style $ dispatch for vctrs compatibility
 
 /// Demonstrates vctrs class system.
 /// Generates S3-style $.class and $<-.class methods like S3.
@@ -261,10 +254,9 @@ pub fn rdata_sidecar_vctrs_new(vec_data: Vec<f64>, vec_label: String) -> Externa
         vec_label,
     })
 }
+// endregion
 
-// =============================================================================
-// Raw SEXP slot comprehensive tests
-// =============================================================================
+// region: Raw SEXP slot comprehensive tests
 
 /// Tests raw SEXP slot functionality with various R types.
 #[derive(miniextendr_api::ExternalPtr, Debug)]
@@ -317,10 +309,9 @@ pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
         env_val: unsafe { R_NilValue },
     })
 }
+// endregion
 
-// =============================================================================
-// u8 (raw) scalar test
-// =============================================================================
+// region: u8 (raw) scalar test
 
 /// Tests u8 scalar field (maps to R raw).
 #[derive(miniextendr_api::ExternalPtr, Debug)]
@@ -345,7 +336,7 @@ pub fn rdata_sidecar_raw_new(byte_val: u8) -> ExternalPtr<SidecarRaw> {
         byte_val,
     })
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

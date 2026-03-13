@@ -7,9 +7,7 @@
 
 use miniextendr_api::{miniextendr, ExternalPtr};
 
-// ============================================================================
-// Shared trait definition
-// ============================================================================
+// region: Shared trait definition
 
 #[miniextendr]
 pub trait Counter {
@@ -17,10 +15,9 @@ pub trait Counter {
     fn increment(&mut self);
     fn add(&mut self, n: i32);
 }
+// endregion
 
-// ============================================================================
-// SimpleCounter implementation
-// ============================================================================
+// region: SimpleCounter implementation
 
 #[derive(ExternalPtr)]
 pub struct SimpleCounter {
@@ -54,3 +51,4 @@ impl Counter for SimpleCounter {
         self.value += n;
     }
 }
+// endregion

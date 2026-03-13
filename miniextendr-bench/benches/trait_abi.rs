@@ -13,9 +13,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Test trait + type
-// =============================================================================
+// region: Test trait + type
 
 #[miniextendr]
 pub trait Counter {
@@ -38,9 +36,8 @@ impl Counter for SimpleCounter {
         self.value += 1;
     }
 }
-// =============================================================================
-// Helpers
-// =============================================================================
+// endregion
+// region: Helpers
 
 struct ErasedCounter {
     ptr: *mut mx_erased,
@@ -107,10 +104,9 @@ impl OwnedCounterView {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Benchmarks
-// =============================================================================
+// region: Benchmarks
 
 #[divan::bench]
 fn baseline_direct_value(bencher: divan::Bencher) {
@@ -166,10 +162,9 @@ fn query_view_value(bencher: divan::Bencher) {
             divan::black_box(view.value());
         });
 }
+// endregion
 
-// =============================================================================
-// Vtable miss — query with a non-matching trait tag
-// =============================================================================
+// region: Vtable miss — query with a non-matching trait tag
 
 #[divan::bench]
 fn query_vtable_miss(bencher: divan::Bencher) {
@@ -180,10 +175,9 @@ fn query_vtable_miss(bencher: divan::Bencher) {
             divan::black_box(result);
         });
 }
+// endregion
 
-// =============================================================================
-// Repeated dispatch on same erased object (cache-hot)
-// =============================================================================
+// region: Repeated dispatch on same erased object (cache-hot)
 
 #[divan::bench]
 fn dispatch_repeated_hot(bencher: divan::Bencher) {
@@ -196,10 +190,9 @@ fn dispatch_repeated_hot(bencher: divan::Bencher) {
             }
         });
 }
+// endregion
 
-// =============================================================================
-// &self vs &mut self dispatch comparison
-// =============================================================================
+// region: &self vs &mut self dispatch comparison
 
 /// Dispatch through vtable calling `value()` (&self method).
 #[divan::bench]
@@ -221,10 +214,9 @@ fn dispatch_self_mut_increment(bencher: divan::Bencher) {
             divan::black_box(());
         });
 }
+// endregion
 
-// =============================================================================
-// Multi-method trait — measures dispatch cost with a larger vtable
-// =============================================================================
+// region: Multi-method trait — measures dispatch cost with a larger vtable
 
 #[miniextendr]
 pub trait MathOps {
@@ -312,3 +304,4 @@ fn dispatch_multi_method_hot(bencher: divan::Bencher) {
             }
         });
 }
+// endregion

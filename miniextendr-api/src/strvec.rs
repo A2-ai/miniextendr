@@ -74,9 +74,7 @@ impl StrVec {
         }
     }
 
-    // =========================================================================
-    // Safe element insertion
-    // =========================================================================
+    // region: Safe element insertion
 
     /// Set a CHARSXP at the given index, protecting it during insertion.
     ///
@@ -178,11 +176,10 @@ impl StrVec {
             None => unsafe { self.set_na(idx) },
         }
     }
+    // endregion
 }
 
-// =============================================================================
-// StrVecBuilder - efficient batch string vector construction
-// =============================================================================
+// region: StrVecBuilder - efficient batch string vector construction
 
 /// Builder for constructing string vectors with efficient protection management.
 ///
@@ -289,10 +286,9 @@ impl<'a> StrVecBuilder<'a> {
         self.len() == 0
     }
 }
+// endregion
 
-// =============================================================================
-// Trait implementations
-// =============================================================================
+// region: Trait implementations
 
 impl IntoR for StrVec {
     type Error = std::convert::Infallible;
@@ -323,3 +319,4 @@ impl TryFromSexp for StrVec {
         Ok(StrVec(sexp))
     }
 }
+// endregion

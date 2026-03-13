@@ -24,9 +24,7 @@ use crate::abi::{mx_erased, mx_tag};
 use crate::ffi::SEXP;
 use std::os::raw::c_void;
 
-// =============================================================================
-// Direct extern declarations to mx_abi.rs functions (same .so)
-// =============================================================================
+// region: Direct extern declarations to mx_abi.rs functions (same .so)
 
 mod ffi {
     use super::*;
@@ -37,10 +35,9 @@ mod ffi {
         pub(super) fn mx_query(sexp: SEXP, tag: mx_tag) -> *const c_void;
     }
 }
+// endregion
 
-// =============================================================================
-// Wrapper functions
-// =============================================================================
+// region: Wrapper functions
 
 /// Wrap an erased object pointer in an R external pointer.
 ///
@@ -183,3 +180,4 @@ pub unsafe fn mx_query_as<V>(sexp: SEXP, tag: mx_tag) -> Option<&'static V> {
         Some(unsafe { &*vtable.cast::<V>() })
     }
 }
+// endregion

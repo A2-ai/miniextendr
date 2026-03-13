@@ -7,9 +7,7 @@
 
 use crate::miniextendr;
 
-// =============================================================================
-// Env-style class
-// =============================================================================
+// region: Env-style class
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CovEnv {
@@ -26,10 +24,9 @@ impl CovEnv {
         self.v
     }
 }
+// endregion
 
-// =============================================================================
-// R6-style class
-// =============================================================================
+// region: R6-style class
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CovR6 {
@@ -51,10 +48,9 @@ impl CovR6 {
         self.v
     }
 }
+// endregion
 
-// =============================================================================
-// S3-style class
-// =============================================================================
+// region: S3-style class
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CovS3 {
@@ -71,10 +67,9 @@ impl CovS3 {
         self.v
     }
 }
+// endregion
 
-// =============================================================================
-// S4-style class
-// =============================================================================
+// region: S4-style class
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CovS4 {
@@ -91,10 +86,9 @@ impl CovS4 {
         self.v
     }
 }
+// endregion
 
-// =============================================================================
-// S7-style class (with property patterns)
-// =============================================================================
+// region: S7-style class (with property patterns)
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CovS7 {
@@ -122,3 +116,4 @@ impl CovS7 {
         format!("CovS7({})", self.v)
     }
 }
+// endregion

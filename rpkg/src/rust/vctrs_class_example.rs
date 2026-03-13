@@ -20,9 +20,7 @@ use miniextendr_api::gc_protect::OwnedProtect;
 use miniextendr_api::miniextendr;
 use miniextendr_api::vctrs::new_vctr;
 
-// =============================================================================
-// Constructor
-// =============================================================================
+// region: Constructor
 
 /// Create a new percent vector.
 ///
@@ -39,10 +37,9 @@ pub fn new_percent(x: SEXP, _dots: ...) -> Result<SEXP, String> {
     // Create the vctrs vctr with "percent" class
     new_vctr(x, &["percent"], &[], Some(false)).map_err(|e| e.to_string())
 }
+// endregion
 
-// =============================================================================
-// S3 Methods for vctrs generics
-// =============================================================================
+// region: S3 Methods for vctrs generics
 
 /// Print abbreviation for percent vectors.
 ///
@@ -156,7 +153,7 @@ pub fn vec_cast_double_percent(x: SEXP, _to: SEXP, _dots: ...) -> SEXP {
     // OwnedProtect drops here, unprotecting. Safe because R captures return value.
     out.get()
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

@@ -15,7 +15,7 @@ use crate::helpers::{
     is_altrep_struct, parse_miniextendr_impl_attrs,
 };
 
-// ── Lint item types ─────────────────────────────────────────────────────────
+// region: Lint item types
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LintKind {
@@ -69,8 +69,9 @@ impl LintItem {
         }
     }
 }
+// endregion
 
-// ── Attributed trait impls from source ──────────────────────────────────────
+// region: Attributed trait impls from source
 
 #[derive(Clone, Debug)]
 pub struct AttributedTraitImpl {
@@ -79,8 +80,9 @@ pub struct AttributedTraitImpl {
     pub class_system: Option<String>,
     pub line: usize,
 }
+// endregion
 
-// ── Per-file parsed data ────────────────────────────────────────────────────
+// region: Per-file parsed data
 
 #[derive(Debug, Default)]
 pub struct FileData {
@@ -120,8 +122,9 @@ pub struct FileData {
     /// Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
     pub ffi_unchecked_calls: Vec<(String, usize)>,
 }
+// endregion
 
-// ── Crate index ─────────────────────────────────────────────────────────────
+// region: Crate index
 
 /// Shared parsed state for all lint rules.
 pub struct CrateIndex {
@@ -173,8 +176,9 @@ impl CrateIndex {
         })
     }
 }
+// endregion
 
-// ── File collection (module-tree walker) ────────────────────────────────────
+// region: File collection (module-tree walker)
 
 /// Collect Rust source files by walking the module tree from `lib.rs`,
 /// following `mod child;` declarations and respecting `#[cfg(feature = "...")]`
@@ -336,8 +340,9 @@ fn extract_feature_name(s: &str) -> Option<String> {
         Some(name.to_string())
     }
 }
+// endregion
 
-// ── Single-file parsing ─────────────────────────────────────────────────────
+// region: Single-file parsing
 
 fn parse_file(path: &Path) -> Result<FileData, String> {
     let src = fs::read_to_string(path)
@@ -587,3 +592,4 @@ fn scan_rf_error_calls(src: &str, data: &mut FileData) {
         }
     }
 }
+// endregion

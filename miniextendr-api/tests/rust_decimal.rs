@@ -99,9 +99,7 @@ fn decimal_option_from_numeric_na() {
     });
 }
 
-// =============================================================================
-// Coerce/TryCoerce tests for Decimal
-// =============================================================================
+// region: Coerce/TryCoerce tests for Decimal
 
 #[cfg(feature = "rust_decimal")]
 #[test]
@@ -241,3 +239,4 @@ fn try_coerce_decimal_to_i32() {
     let large_result: Result<i32, CoerceError> = large.try_coerce();
     assert_eq!(large_result, Err(CoerceError::Overflow));
 }
+// endregion

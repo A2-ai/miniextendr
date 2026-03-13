@@ -242,9 +242,7 @@ impl<T> From<Missing<T>> for Option<T> {
     }
 }
 
-// =============================================================================
-// TryFromSexp implementation
-// =============================================================================
+// region: TryFromSexp implementation
 
 /// Check if a SEXP is the missing argument sentinel.
 #[inline]
@@ -332,3 +330,4 @@ mod tests {
         assert_eq!(none, Missing::Absent);
     }
 }
+// endregion

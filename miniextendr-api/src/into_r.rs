@@ -223,9 +223,7 @@ impl_into_r_via_coerce!(u16 => i32);
 impl_into_r_via_coerce!(f32 => f64);
 impl_into_r_via_coerce!(u32 => f64); // all u32 exactly representable in f64
 
-// =============================================================================
-// Large integer types → REALSXP (f64)
-// =============================================================================
+// region: Large integer types → REALSXP (f64)
 //
 // R doesn't have native 64-bit integers. These types convert to f64 (REALSXP)
 // which may lose precision for values outside the "safe integer" range.
@@ -838,10 +836,9 @@ where
 }
 
 use crate::gc_protect::OwnedProtect;
+// endregion
 
-// =============================================================================
-// Vector conversions
-// =============================================================================
+// region: Vector conversions
 
 impl<T> IntoR for Vec<T>
 where
@@ -912,10 +909,9 @@ unsafe fn vec_to_sexp_unchecked<T: crate::ffi::RNativeType>(slice: &[T]) -> crat
         vec
     }
 }
+// endregion
 
-// =============================================================================
-// Vec coercion for non-native types (i8, i16, u16 → i32; f32 → f64)
-// =============================================================================
+// region: Vec coercion for non-native types (i8, i16, u16 → i32; f32 → f64)
 
 /// Macro for `Vec<T>` where `T` coerces to a native R type.
 macro_rules! impl_vec_coerce_into_r {
@@ -1013,10 +1009,9 @@ impl_vec_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
 impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
     && x <= i32::MAX as isize);
 impl_vec_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
+// endregion
 
-// =============================================================================
-// Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
-// =============================================================================
+// region: Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
@@ -1198,10 +1193,9 @@ impl_set_string_into_r!(
     /// Convert `BTreeSet<String>` to R character vector.
     BTreeSet
 );
+// endregion
 
-// =============================================================================
-// Fixed-size array conversions
-// =============================================================================
+// region: Fixed-size array conversions
 
 /// Blanket impl for `[T; N]` where T: RNativeType.
 ///
@@ -1226,10 +1220,9 @@ impl<T: crate::ffi::RNativeType, const N: usize> IntoR for [T; N] {
         unsafe { self.as_slice().into_sexp_unchecked() }
     }
 }
+// endregion
 
-// =============================================================================
-// VecDeque conversions
-// =============================================================================
+// region: VecDeque conversions
 
 use std::collections::VecDeque;
 
@@ -1254,10 +1247,9 @@ where
         unsafe { vec.into_sexp_unchecked() }
     }
 }
+// endregion
 
-// =============================================================================
-// BinaryHeap conversions
-// =============================================================================
+// region: BinaryHeap conversions
 
 use std::collections::BinaryHeap;
 
@@ -1283,10 +1275,9 @@ where
         unsafe { self.into_vec().into_sexp_unchecked() }
     }
 }
+// endregion
 
-// =============================================================================
-// Cow conversions
-// =============================================================================
+// region: Cow conversions
 
 use std::borrow::Cow;
 
@@ -1332,19 +1323,17 @@ impl IntoR for Cow<'_, str> {
         unsafe { self.as_ref().into_sexp_unchecked() }
     }
 }
+// endregion
 
-// =============================================================================
-// Box conversions (skipped - conflicts with IntoExternalPtr blanket impl)
-// =============================================================================
+// region: Box conversions (skipped - conflicts with IntoExternalPtr blanket impl)
 //
 // We can't add `impl<T: IntoR> IntoR for Box<T>` because it conflicts with
 // the blanket impl `impl<T: IntoExternalPtr> IntoR for T`. If downstream
 // crates implement `IntoExternalPtr for Box<SomeType>`, we'd have overlapping
 // impls. Users can manually unbox with `*boxed_value` before conversion.
+// endregion
 
-// =============================================================================
-// PathBuf / OsString conversions
-// =============================================================================
+// region: PathBuf / OsString conversions
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -1513,10 +1502,9 @@ impl_lossy_string_into_r!(
     /// Convert `Vec<Option<OsString>>` to R character vector with NA support.
     vec_option: OsString;
 );
+// endregion
 
-// =============================================================================
-// Set coercion for non-native types (i8, i16, u16 → i32)
-// =============================================================================
+// region: Set coercion for non-native types (i8, i16, u16 → i32)
 
 /// Macro for `HashSet<T>`/`BTreeSet<T>` where `T` coerces to i32 (R's native integer type).
 macro_rules! impl_set_coerce_into_r {
@@ -1555,10 +1543,9 @@ macro_rules! impl_set_coerce_into_r {
 impl_set_coerce_into_r!(i8);
 impl_set_coerce_into_r!(i16);
 impl_set_coerce_into_r!(u16);
+// endregion
 
-// =============================================================================
-// Option<Collection> conversions
-// =============================================================================
+// region: Option<Collection> conversions
 //
 // These return NULL (R_NilValue) for None, and the converted collection for Some.
 // This differs from Option<scalar> which returns NA for None.
@@ -1871,10 +1858,9 @@ impl IntoR for Vec<&str> {
         unsafe { self.as_slice().into_sexp_unchecked() }
     }
 }
+// endregion
 
-// =============================================================================
-// Nested vector conversions (list of vectors)
-// =============================================================================
+// region: Nested vector conversions (list of vectors)
 
 /// Convert `Vec<Vec<T>>` to R list of vectors (VECSXP of typed vectors).
 impl<T> IntoR for Vec<Vec<T>>
@@ -1970,10 +1956,9 @@ impl IntoR for Vec<Vec<String>> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// NA-aware vector conversions
-// =============================================================================
+// region: NA-aware vector conversions
 
 /// Macro for NA-aware `Vec<Option<T>> → R` vector conversions.
 macro_rules! impl_vec_option_into_r {
@@ -2285,10 +2270,9 @@ impl IntoR for Vec<Option<String>> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Tuple to list conversions
-// =============================================================================
+// region: Tuple to list conversions
 
 /// Macro to implement IntoR for tuples of various sizes.
 /// Converts Rust tuples to unnamed R lists (VECSXP).
@@ -2356,10 +2340,9 @@ impl_tuple_into_r!((A, B, C, D, E), (0, 1, 2, 3, 4), 5);
 impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
 impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
 impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
+// endregion
 
-// =============================================================================
-// Result conversions
-// =============================================================================
+// region: Result conversions
 
 /// Convert `Result<T, E>` to R (value-style, for `#[miniextendr(unwrap_in_r)]`).
 ///
@@ -2481,10 +2464,9 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// ALTREP zero-copy extension trait
-// =============================================================================
+// region: ALTREP zero-copy extension trait
 
 /// Extension trait for ALTREP conversions.
 ///
@@ -2578,10 +2560,9 @@ where
         unsafe { Altrep(self).into_sexp_unchecked() }
     }
 }
+// endregion
 
-// =============================================================================
-// ALTREP marker type
-// =============================================================================
+// region: ALTREP marker type
 
 /// Marker type to opt-in to ALTREP representation for types that have both
 /// eager-copy and ALTREP implementations.
@@ -2741,10 +2722,9 @@ impl IntoR for crate::altrep_sexp::AltrepSexp {
         unsafe { self.as_raw() }
     }
 }
+// endregion
 
-// =============================================================================
-// Additional collection type conversions for DataFrameRow support
-// =============================================================================
+// region: Additional collection type conversions for DataFrameRow support
 
 /// Convert `Vec<Box<[T]>>` to R list of vectors (for RNativeType elements).
 /// Each boxed slice becomes an R vector.
@@ -2962,3 +2942,4 @@ fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::ffi::SEXP {
         list
     }
 }
+// endregion

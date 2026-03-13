@@ -9,9 +9,7 @@ use miniextendr_api::ndarray_impl::{
 };
 use miniextendr_api::{ExternalPtr, miniextendr};
 
-// =============================================================================
-// NdVec - Wrapper for Array1<f64>
-// =============================================================================
+// region: NdVec - Wrapper for Array1<f64>
 
 /// A 1D numeric array wrapper for testing RNdArrayOps and RNdSlice.
 #[derive(ExternalPtr)]
@@ -115,10 +113,9 @@ impl NdVec {
         view.iter().cloned().collect()
     }
 }
+// endregion
 
-// =============================================================================
-// NdMatrix - Wrapper for Array2<f64>
-// =============================================================================
+// region: NdMatrix - Wrapper for Array2<f64>
 
 /// A 2D numeric array (matrix) wrapper for testing RNdArrayOps and RNdSlice2D.
 #[derive(ExternalPtr)]
@@ -226,10 +223,9 @@ impl NdMatrix {
         view.to_owned()
     }
 }
+// endregion
 
-// =============================================================================
-// NdArrayDyn - Wrapper for ArrayD<f64>
-// =============================================================================
+// region: NdArrayDyn - Wrapper for ArrayD<f64>
 
 /// An N-dimensional array wrapper for testing RNdIndex.
 #[derive(ExternalPtr)]
@@ -338,10 +334,9 @@ impl NdArrayDyn {
         self.0.clone()
     }
 }
+// endregion
 
-// =============================================================================
-// NdIntVec - Wrapper for Array1<i32> (tests i32 implementations)
-// =============================================================================
+// region: NdIntVec - Wrapper for Array1<i32> (tests i32 implementations)
 
 /// A 1D integer array wrapper for testing i32 adapter traits.
 #[derive(ExternalPtr)]
@@ -421,10 +416,9 @@ impl NdIntVec {
         self.0.clone()
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions for testing conversions
-// =============================================================================
+// region: Helper functions for testing conversions
 
 /// @noRd
 #[miniextendr]
@@ -455,3 +449,4 @@ pub fn ndarray_roundtrip_int_vec(data: Array1<i32>) -> Array1<i32> {
 pub fn ndarray_roundtrip_int_matrix(data: Array2<i32>) -> Array2<i32> {
     data
 }
+// endregion

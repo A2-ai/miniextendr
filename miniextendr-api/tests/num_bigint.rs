@@ -37,9 +37,7 @@ fn biguint_vector_with_na() {
     });
 }
 
-// =============================================================================
-// Coerce/TryCoerce tests for BigInt/BigUint
-// =============================================================================
+// region: Coerce/TryCoerce tests for BigInt/BigUint
 
 #[cfg(feature = "num-bigint")]
 #[test]
@@ -250,3 +248,4 @@ fn try_coerce_bigint_to_f64() {
     // The current impl uses ToPrimitive which succeeds but loses precision
     assert!(huge_result.is_ok() || huge_result == Err(CoerceError::PrecisionLoss));
 }
+// endregion

@@ -5,9 +5,7 @@ use miniextendr_api::into_r::IntoR;
 use std::borrow::Cow;
 use std::collections::BinaryHeap;
 
-// =============================================================================
-// BinaryHeap tests
-// =============================================================================
+// region: BinaryHeap tests
 
 #[test]
 fn binaryheap_i32_roundtrip() {
@@ -57,10 +55,9 @@ fn binaryheap_empty() {
         assert!(back.is_empty());
     });
 }
+// endregion
 
-// =============================================================================
-// Cow tests
-// =============================================================================
+// region: Cow tests
 
 #[test]
 fn cow_slice_borrowed() {
@@ -166,3 +163,4 @@ fn cow_slice_f64() {
         assert_eq!(back, vec![1.5, 2.5, 3.5]);
     });
 }
+// endregion

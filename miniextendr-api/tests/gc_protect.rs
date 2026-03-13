@@ -8,9 +8,7 @@ mod r_test_utils;
 use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, SEXPTYPE};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope, tls};
 
-// =============================================================================
-// Balance tests
-// =============================================================================
+// region: Balance tests
 
 #[test]
 fn protect_scope_balance_basic() {
@@ -50,10 +48,9 @@ fn protect_scope_balance_large() {
         assert_eq!(scope.count(), 100);
     });
 }
+// endregion
 
-// =============================================================================
-// Nested scope tests
-// =============================================================================
+// region: Nested scope tests
 
 #[test]
 fn nested_scopes_independent() {
@@ -98,10 +95,9 @@ fn deeply_nested_scopes() {
         assert_eq!(s1.count(), 1);
     });
 }
+// endregion
 
-// =============================================================================
-// Reprotect slot tests
-// =============================================================================
+// region: Reprotect slot tests
 
 #[test]
 fn reprotect_slot_count_stays_one() {
@@ -140,10 +136,9 @@ fn reprotect_slot_value_updates() {
         assert!(std::ptr::eq(root.0, updated.0));
     });
 }
+// endregion
 
-// =============================================================================
-// Escape hatch tests
-// =============================================================================
+// region: Escape hatch tests
 
 #[test]
 fn disarm_scope_no_unprotect() {
@@ -164,10 +159,9 @@ fn disarm_scope_no_unprotect() {
         miniextendr_api::ffi::Rf_unprotect(2);
     });
 }
+// endregion
 
-// =============================================================================
-// TLS convenience tests
-// =============================================================================
+// region: TLS convenience tests
 
 #[test]
 fn tls_with_protect_scope_basic() {
@@ -223,10 +217,9 @@ fn tls_protect_multiple_values() {
         });
     });
 }
+// endregion
 
-// =============================================================================
-// OwnedProtect tests
-// =============================================================================
+// region: OwnedProtect tests
 
 #[test]
 fn owned_protect_basic() {
@@ -249,10 +242,9 @@ fn owned_protect_deref() {
         assert!(!sexp.is_null());
     });
 }
+// endregion
 
-// =============================================================================
-// Convenience method tests
-// =============================================================================
+// region: Convenience method tests
 
 #[test]
 fn protect2_convenience() {
@@ -293,10 +285,9 @@ fn protect_raw_convenience() {
         assert_eq!(scope.count(), 1);
     });
 }
+// endregion
 
-// =============================================================================
-// TLS panic cleanup tests
-// =============================================================================
+// region: TLS panic cleanup tests
 
 #[test]
 fn tls_cleanup_on_panic() {
@@ -370,10 +361,9 @@ fn tls_nested_cleanup_on_panic() {
         assert_eq!(tls::scope_depth(), 0);
     });
 }
+// endregion
 
-// =============================================================================
-// ReprotectSlot invalidation tests
-// =============================================================================
+// region: ReprotectSlot invalidation tests
 
 #[test]
 fn reprotect_slot_old_value_unprotected() {
@@ -435,3 +425,4 @@ fn reprotect_slot_multiple_replacements() {
         assert!(std::ptr::eq(slot.get().0, values[4].0));
     });
 }
+// endregion

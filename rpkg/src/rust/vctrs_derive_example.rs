@@ -29,9 +29,7 @@
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
 use miniextendr_api::{Vctrs, miniextendr};
 
-// =============================================================================
-// Simple vctr: Percent backed by doubles
-// =============================================================================
+// region: Simple vctr: Percent backed by doubles
 
 /// A percentage type backed by doubles.
 ///
@@ -84,10 +82,9 @@ pub fn derived_percent_class_info() -> Vec<String> {
         format!("ABBR: {:?}", DerivedPercent::ABBR),
     ]
 }
+// endregion
 
-// =============================================================================
-// Record type: Rational numbers
-// =============================================================================
+// region: Record type: Rational numbers
 
 /// A rational number type (numerator/denominator) as a vctrs record.
 ///
@@ -138,10 +135,9 @@ pub fn derived_rational_class_info() -> Vec<String> {
         format!("INHERIT_BASE_TYPE: {}", DerivedRational::INHERIT_BASE_TYPE),
     ]
 }
+// endregion
 
-// =============================================================================
-// List-of type: IntegerLists (list of integer vectors)
-// =============================================================================
+// region: List-of type: IntegerLists (list of integer vectors)
 
 /// A list of integer vectors as a vctrs list_of type.
 ///
@@ -172,10 +168,9 @@ pub fn new_derived_int_lists(
     let int_lists = DerivedIntLists::new(lists);
     int_lists.into_vctrs().map_err(|e| e.to_string())
 }
+// endregion
 
-// =============================================================================
-// Type with proxy methods: ComparablePoint
-// =============================================================================
+// region: Type with proxy methods: ComparablePoint
 
 /// A 2D point with custom equality and comparison behavior.
 ///
@@ -213,10 +208,9 @@ pub fn new_derived_point(x: Vec<f64>, y: Vec<f64>) -> Result<miniextendr_api::ff
     let point = DerivedPoint::new(x, y)?;
     point.into_vctrs().map_err(|e| e.to_string())
 }
+// endregion
 
-// =============================================================================
-// Type with arithmetic: Temperature
-// =============================================================================
+// region: Type with arithmetic: Temperature
 
 /// A temperature type with arithmetic and math support.
 ///
@@ -243,10 +237,9 @@ pub fn new_derived_temp(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, Strin
     let temp = DerivedTemp::new(x);
     temp.into_vctrs().map_err(|e| e.to_string())
 }
+// endregion
 
-// =============================================================================
-// Vctrs impl block with protocol method override: Currency
-// =============================================================================
+// region: Vctrs impl block with protocol method override: Currency
 
 /// A currency type demonstrating Rust-backed vctrs protocol methods.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -277,7 +270,7 @@ impl DerivedCurrency {
             .collect()
     }
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

@@ -12,9 +12,7 @@ use miniextendr_api::miniextendr;
 #[cfg(feature = "connections")]
 use std::io::Cursor;
 
-// =============================================================================
-// Example 1: In-memory buffer connection (Read + Write + Seek)
-// =============================================================================
+// region: Example 1: In-memory buffer connection (Read + Write + Seek)
 
 /// In-memory buffer that can be used as an R connection.
 #[cfg(feature = "connections")]
@@ -158,10 +156,9 @@ pub fn string_input_connection(content: &str) -> SEXP {
         .text(true)
         .build(MemoryBuffer::with_data(content.as_bytes().to_vec()))
 }
+// endregion
 
-// =============================================================================
-// Example 2: Counter connection (generates numeric data on-the-fly)
-// =============================================================================
+// region: Example 2: Counter connection (generates numeric data on-the-fly)
 
 /// A connection that generates sequential integers as text lines.
 #[cfg(feature = "connections")]
@@ -235,10 +232,9 @@ pub fn counter_connection(start: i32, end: i32) -> SEXP {
         .text(true)
         .build(CounterConnection::new(start, end))
 }
+// endregion
 
-// =============================================================================
-// Example 3: std::io adapter (using Cursor for in-memory Read+Write+Seek)
-// =============================================================================
+// region: Example 3: std::io adapter (using Cursor for in-memory Read+Write+Seek)
 
 /// Create a connection using Rust's std::io Cursor.
 ///
@@ -290,10 +286,9 @@ pub fn empty_cursor_connection() -> SEXP {
         .class_name("cursorConnection")
         .build_read_write_seek()
 }
+// endregion
 
-// =============================================================================
-// Example 4: Transform connection (applies a transformation on read)
-// =============================================================================
+// region: Example 4: Transform connection (applies a transformation on read)
 
 /// A connection that transforms input data.
 #[cfg(feature = "connections")]
@@ -401,3 +396,4 @@ pub fn rot13_connection(text: &str) -> SEXP {
         .text(true)
         .build(TransformConnection::new(data, transform))
 }
+// endregion
