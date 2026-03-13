@@ -85,8 +85,9 @@ linker. Since all entry points are now defined in Rust, we include a minimal
 // All entry points (R_init_*) are defined in Rust via miniextendr_init!().
 ```
 
-This file compiles to an empty object file — it exists solely to satisfy R's
-build system requirement.
+The `extern` reference to `miniextendr_force_link` forces the linker to pull
+in the Rust archive member containing `R_init_<pkg>` and all linkme entries.
+Without it, the linker would extract nothing from the staticlib.
 
 ## Linkme Distributed Slices
 
@@ -104,16 +105,14 @@ slice. During `package_init()`, this slice is iterated to build the
               R_registerRoutines(dll, NULL, call_methods, NULL, NULL)
 ```
 
-### Force-loading
+### Linker Anchor (`codegen-units = 1`)
 
 Static libraries (`.a`) strip unreferenced archive members during linking.
-Since linkme entries are in separate object files, they'd be discarded without
-special linker flags:
-
-- **macOS**: `-Wl,-force_load,libmypkg.a`
-- **Linux**: `-Wl,--whole-archive -lmypkg -Wl,--no-whole-archive`
-
-These flags are set in `Makevars.in`.
+With `codegen-units = 1` in `Cargo.toml`, the entire user crate compiles
+into a single `.o` file inside the staticlib archive. `stub.c` references
+`miniextendr_force_link` (emitted by `miniextendr_init!`), which forces the
+linker to pull in that single archive member — bringing all linkme
+distributed_slice entries along. No platform-specific force-load flags needed.
 
 ## R Wrapper Generation
 
@@ -204,4 +203,4 @@ and Cargo.toml. The crate name must use underscores (not hyphens) for the
 - [ARCHITECTURE.md](ARCHITECTURE.md) — High-level crate and call flow overview
 - [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) — Complete `#[miniextendr]` reference
 - [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) — How R builds packages with compiled code
-- [LINKING.md](LINKING.md) — Shared library linking strategy (force-load details)
+- [LINKING.md](LINKING.md) — Shared library linking strategy (libR discovery)
