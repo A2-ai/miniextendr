@@ -591,15 +591,8 @@ pub mod trait_abi;
 pub mod vctrs;
 #[cfg(feature = "vctrs")]
 pub use vctrs::{
-    IntoVctrs,
-    VctrsBuildError,
-    VctrsClass,
-    VctrsKind,
-    VctrsListOf,
-    VctrsRecord,
-    new_list_of,
-    new_rcrd,
-    new_vctr,
+    IntoVctrs, VctrsBuildError, VctrsClass, VctrsKind, VctrsListOf, VctrsRecord, new_list_of,
+    new_rcrd, new_vctr,
 };
 
 // Re-export key ABI types at crate root for convenience
