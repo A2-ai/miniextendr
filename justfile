@@ -708,15 +708,11 @@ templates-check-ci:
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)
 # ==============================================================================
-# After `just configure`, rpkg/vendor/ should contain synced copies of:
-#   - miniextendr-api
-#   - miniextendr-macros
-#   - miniextendr-macros-core
-#   - miniextendr-lint
-#   - miniextendr-engine
+# After `just vendor`, rpkg/vendor/ should contain synced copies of workspace
+# crates (miniextendr-api, miniextendr-macros, etc.) alongside external deps.
 #
 # This check verifies the vendored copies haven't drifted from the workspace.
-# Run `just configure` to refresh vendored copies if this check fails.
+# Run `just vendor` to refresh if this check fails.
 
 # Check that vendored miniextendr crates match workspace sources
 vendor-sync-check:
@@ -742,7 +738,7 @@ vendor-sync-check:
     if [[ $drift_found -eq 1 ]]; then
       echo ""
       echo "Vendored crates have drifted from workspace sources."
-      echo "Run 'just configure' to refresh vendored copies."
+      echo "Run 'just vendor' to refresh vendored copies."
       exit 1
     else
       echo "Vendor sync check passed: all miniextendr crates match."
