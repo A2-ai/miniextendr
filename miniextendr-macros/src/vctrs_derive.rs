@@ -790,7 +790,6 @@ vec_arith.{class}.MISSING <- function(op, x, y, ...) {{
 vec_math.{class} <- function(.fn, .x, ...) {{
   result <- vctrs::vec_math_base(.fn, .x, ...)
   vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
-    // endregion
 }}
 "#
             ));
