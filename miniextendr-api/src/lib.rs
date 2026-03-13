@@ -97,7 +97,7 @@
 //! | `rayon` | Parallel iterators via Rayon. Adds `RParallelIterator`, `RParallelExtend`. |
 //! | `connections` | Experimental R connection framework. **Unstable R API.** |
 //! | `indicatif` | Progress bars via R console. Requires `nonapi`. |
-//! | `vctrs` | Access to vctrs C API (`obj_is_vector`, `short_vec_size`, `short_vec_recycle`). |
+//! | `vctrs` | vctrs class construction (`new_vctr`, `new_rcrd`, `new_list_of`) and `#[derive(Vctrs)]`. |
 //!
 //! ### Type Conversions (Scalars & Vectors)
 //!
@@ -581,67 +581,26 @@ pub mod init;
 /// Provides C-callable loading and type conversion helpers for trait ABI support.
 pub mod trait_abi;
 
-/// Optional vctrs C API support.
+/// vctrs class construction and trait support.
 ///
-/// Provides access to vctrs' maturing C API functions for vector operations.
-/// This is an optional dependency - if vctrs is not available at runtime,
-/// [`init_vctrs`] will return an error.
-///
-/// Available functions:
-/// - [`obj_is_vector`](vctrs::obj_is_vector) - Check if object is a vector
-/// - [`short_vec_size`](vctrs::short_vec_size) - Get vector size
-/// - [`short_vec_recycle`](vctrs::short_vec_recycle) - Recycle to target size
+/// Provides helpers for building vctrs-compatible R objects and traits
+/// for describing vctrs class metadata from Rust types.
 ///
 /// Enable with `features = ["vctrs"]`.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::vctrs::{init_vctrs, obj_is_vector, short_vec_size};
-///
-/// // In R_init_<pkg>:
-/// if init_vctrs().is_ok() {
-///     // vctrs support enabled
-/// }
-///
-/// // Later:
-/// if obj_is_vector(x)? {
-///     let n = short_vec_size(x)?;
-/// }
-/// ```
 #[cfg(feature = "vctrs")]
 pub mod vctrs;
 #[cfg(feature = "vctrs")]
 pub use vctrs::{
-    // Phase C traits
     IntoVctrs,
-    // Error types
     VctrsBuildError,
     VctrsClass,
-    VctrsError,
     VctrsKind,
     VctrsListOf,
     VctrsRecord,
-    // Extension trait
-    VctrsSexpExt,
-    // Initialization
-    init_vctrs,
-    // Construction helpers
     new_list_of,
     new_rcrd,
     new_vctr,
 };
-
-// Stub for miniextendr_init_vctrs when vctrs feature is disabled.
-// Always returns 1 (NotAvailable) so C code can call it unconditionally.
-#[cfg(not(feature = "vctrs"))]
-#[unsafe(no_mangle)]
-/// C entrypoint used by generated registration code when `vctrs` is disabled.
-///
-/// Returns `1` to indicate "not available" while keeping a stable symbol.
-pub extern "C-unwind" fn miniextendr_init_vctrs() -> i32 {
-    1 // NotAvailable
-}
 
 // Re-export key ABI types at crate root for convenience
 pub use abi::{mx_base_vtable, mx_erased, mx_meth, mx_tag};

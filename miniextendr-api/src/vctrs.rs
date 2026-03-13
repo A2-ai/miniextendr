@@ -1,536 +1,11 @@
-//! Optional vctrs C API support.
+//! vctrs class construction and trait support.
 //!
-//! Provides access to vctrs' maturing C API functions via `R_GetCCallable`.
-//! This is an optional dependency - if vctrs is not available, all calls will
-//! return errors (no fallback behavior).
+//! Provides helpers for building vctrs-compatible R objects (vctr, rcrd, list_of)
+//! and traits for describing vctrs class metadata from Rust types.
 //!
-//! # Available Functions
-//!
-//! | Function | Purpose |
-//! |----------|---------|
-//! | `obj_is_vector` | Check if an object is a vector |
-//! | `short_vec_size` | Get the size of a short vector |
-//! | `short_vec_recycle` | Recycle a vector to a given size |
-//!
-//! # Initialization
-//!
-//! Call [`init_vctrs`] from `R_init_<pkg>` to load the C-callable function
-//! pointers. This is optional - packages that don't use vctrs don't need to
-//! call it.
-//!
-//! ```ignore
-//! #[unsafe(no_mangle)]
-//! pub extern "C" fn R_init_mypackage(info: *mut DllInfo) {
-//!     miniextendr_runtime_init();
-//!
-//!     // Optional: initialize vctrs support
-//!     if let Err(e) = init_vctrs() {
-//!         // vctrs not available - that's OK if we don't need it
-//!     }
-//! }
-//! ```
-//!
-//! # Usage
-//!
-//! ```ignore
-//! use miniextendr_api::vctrs::{init_vctrs, obj_is_vector, short_vec_size};
-//!
-//! // In R_init_<pkg>:
-//! init_vctrs()?;
-//!
-//! // Later, in a function:
-//! let is_vec = obj_is_vector(sexp)?;
-//! let size = short_vec_size(sexp)?;
-//! ```
-//!
-//! # Thread Safety
-//!
-//! - [`init_vctrs`] must be called from R's main thread
-//! - All wrapper functions must be called from R's main thread
-//! - Function pointers are stored in static `OnceLock` for thread-safe init
-//!
-//! # R Package Configuration
-//!
-//! To use vctrs support, add to your DESCRIPTION:
-//!
-//! ```text
-//! Imports: vctrs
-//! ```
-//!
-//! And to NAMESPACE:
-//!
-//! ```text
-//! importFrom(vctrs, obj_is_vector)
-//! ```
-//!
-//! This ensures vctrs is loaded before your package's `.onLoad` runs.
+//! No runtime initialization is required — construction helpers use only base R FFI.
 
 use crate::ffi::SEXP;
-use std::sync::OnceLock;
-
-// region: Type aliases
-
-/// R's short vector length type (32-bit signed integer).
-///
-/// This corresponds to `R_len_t` in R's C API. For long vector support,
-/// use `R_xlen_t` instead.
-#[allow(non_camel_case_types)]
-pub type R_len_t = i32;
-
-/// Function pointer type for `obj_is_vector`.
-type ObjIsVectorFn = unsafe extern "C" fn(SEXP) -> bool;
-
-/// Function pointer type for `short_vec_size`.
-type ShortVecSizeFn = unsafe extern "C" fn(SEXP) -> R_len_t;
-
-/// Function pointer type for `short_vec_recycle`.
-type ShortVecRecycleFn = unsafe extern "C" fn(SEXP, R_len_t) -> SEXP;
-// endregion
-
-// region: Global function pointers (loaded once)
-
-/// Loaded `obj_is_vector` function pointer.
-static P_OBJ_IS_VECTOR: OnceLock<ObjIsVectorFn> = OnceLock::new();
-
-/// Loaded `short_vec_size` function pointer.
-static P_SHORT_VEC_SIZE: OnceLock<ShortVecSizeFn> = OnceLock::new();
-
-/// Loaded `short_vec_recycle` function pointer.
-static P_SHORT_VEC_RECYCLE: OnceLock<ShortVecRecycleFn> = OnceLock::new();
-// endregion
-
-// region: Error types
-
-/// Error type for vctrs operations.
-///
-/// # Examples
-///
-/// ```ignore
-/// use miniextendr_api::vctrs::{obj_is_vector, VctrsError};
-///
-/// match obj_is_vector(sexp) {
-///     Ok(true) => println!("It's a vector"),
-///     Ok(false) => println!("Not a vector"),
-///     Err(VctrsError::NotInitialized) => {
-///         eprintln!("Call init_vctrs() first");
-///     }
-///     Err(e) => eprintln!("Error: {}", e),
-/// }
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VctrsError {
-    /// vctrs support has not been initialized.
-    ///
-    /// Call [`init_vctrs`] from `R_init_<pkg>` first.
-    NotInitialized,
-
-    /// A required vctrs callable was not found.
-    ///
-    /// This usually means vctrs is not installed or not loaded.
-    NotAvailable {
-        /// The name of the callable that was not found.
-        name: &'static str,
-    },
-
-    /// [`init_vctrs`] was called multiple times.
-    ///
-    /// This is not necessarily an error - the second call is a no-op.
-    AlreadyInitialized,
-
-    /// [`init_vctrs`] was called from a non-main thread.
-    NotMainThread,
-}
-
-impl std::fmt::Display for VctrsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VctrsError::NotInitialized => {
-                write!(f, "vctrs not initialized - call init_vctrs() first")
-            }
-            VctrsError::NotAvailable { name } => {
-                write!(
-                    f,
-                    "vctrs callable '{}' not found - is vctrs installed and loaded?",
-                    name
-                )
-            }
-            VctrsError::AlreadyInitialized => {
-                write!(f, "vctrs already initialized")
-            }
-            VctrsError::NotMainThread => {
-                write!(f, "init_vctrs must be called from R's main thread")
-            }
-        }
-    }
-}
-
-impl std::error::Error for VctrsError {}
-// endregion
-
-// region: Initialization
-
-/// Initialize vctrs C-callable function pointers.
-///
-/// Loads `obj_is_vector`, `short_vec_size`, and `short_vec_recycle` from
-/// vctrs' callable table via `R_GetCCallable("vctrs", ...)`.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Called from a non-main thread ([`VctrsError::NotMainThread`])
-/// - Any callable is not found ([`VctrsError::NotAvailable`])
-/// - Called multiple times ([`VctrsError::AlreadyInitialized`])
-///
-/// # Thread Safety
-///
-/// Must be called from R's main thread during package initialization.
-///
-/// # Example
-///
-/// ```ignore
-/// // In R_init_<pkg> or .onLoad:
-/// match init_vctrs() {
-///     Ok(()) => println!("vctrs support enabled"),
-///     Err(VctrsError::NotAvailable { .. }) => {
-///         // vctrs not available - OK if we don't need it
-///     }
-///     Err(e) => panic!("vctrs init failed: {}", e),
-/// }
-/// ```
-pub fn init_vctrs() -> Result<(), VctrsError> {
-    // Check we're on main thread
-    if !crate::worker::is_r_main_thread() {
-        return Err(VctrsError::NotMainThread);
-    }
-
-    // Check for double-init before doing any work
-    if is_vctrs_initialized() {
-        return Err(VctrsError::AlreadyInitialized);
-    }
-
-    // Stage 1: Load ALL callables into local variables first.
-    // If any lookup fails, we return the error without committing anything
-    // to the OnceLocks. This prevents partial initialization where
-    // is_vctrs_initialized() returns true but some callables are missing.
-
-    let obj_is_vector_ptr =
-        unsafe { crate::ffi::R_GetCCallable(c"vctrs".as_ptr(), c"obj_is_vector".as_ptr()) };
-    if obj_is_vector_ptr.is_none() {
-        return Err(VctrsError::NotAvailable {
-            name: "obj_is_vector",
-        });
-    }
-    let obj_is_vector_fn: ObjIsVectorFn = unsafe { std::mem::transmute(obj_is_vector_ptr) };
-
-    let short_vec_size_ptr =
-        unsafe { crate::ffi::R_GetCCallable(c"vctrs".as_ptr(), c"short_vec_size".as_ptr()) };
-    if short_vec_size_ptr.is_none() {
-        return Err(VctrsError::NotAvailable {
-            name: "short_vec_size",
-        });
-    }
-    let short_vec_size_fn: ShortVecSizeFn = unsafe { std::mem::transmute(short_vec_size_ptr) };
-
-    let short_vec_recycle_ptr =
-        unsafe { crate::ffi::R_GetCCallable(c"vctrs".as_ptr(), c"short_vec_recycle".as_ptr()) };
-    if short_vec_recycle_ptr.is_none() {
-        return Err(VctrsError::NotAvailable {
-            name: "short_vec_recycle",
-        });
-    }
-    let short_vec_recycle_fn: ShortVecRecycleFn =
-        unsafe { std::mem::transmute(short_vec_recycle_ptr) };
-
-    // Stage 2: All lookups succeeded. Commit all OnceLocks atomically.
-    // P_OBJ_IS_VECTOR is committed last because is_vctrs_initialized()
-    // checks it — this ensures all callables are available before we
-    // advertise initialization as complete.
-    let _ = P_SHORT_VEC_SIZE.set(short_vec_size_fn);
-    let _ = P_SHORT_VEC_RECYCLE.set(short_vec_recycle_fn);
-    if P_OBJ_IS_VECTOR.set(obj_is_vector_fn).is_err() {
-        return Err(VctrsError::AlreadyInitialized);
-    }
-
-    Ok(())
-}
-
-/// Check if vctrs support has been initialized.
-///
-/// Returns `true` if [`init_vctrs`] has been successfully called.
-///
-/// # Examples
-///
-/// ```ignore
-/// use miniextendr_api::vctrs::{init_vctrs, is_vctrs_initialized};
-///
-/// // Before initialization
-/// assert!(!is_vctrs_initialized());
-///
-/// // After initialization
-/// init_vctrs().ok();
-/// // is_vctrs_initialized() == true if vctrs is available
-/// ```
-#[inline]
-pub fn is_vctrs_initialized() -> bool {
-    P_OBJ_IS_VECTOR.get().is_some()
-}
-// endregion
-
-// region: Wrapper functions
-
-/// Check if an R object is a vector according to vctrs.
-///
-/// This is vctrs' definition of "vector", which is broader than base R's
-/// `is.vector()`. It includes:
-/// - Atomic vectors (logical, integer, double, character, raw, complex)
-/// - Lists (including data frames)
-/// - S3/S4 objects with a `vec_proxy()` method
-///
-/// # Arguments
-///
-/// * `sexp` - The R object to check
-///
-/// # Returns
-///
-/// `true` if the object is a vector, `false` otherwise.
-///
-/// # Errors
-///
-/// Returns [`VctrsError::NotInitialized`] if [`init_vctrs`] hasn't been called.
-///
-/// # Example
-///
-/// ```ignore
-/// let x = some_r_object();
-/// if obj_is_vector(x)? {
-///     let size = short_vec_size(x)?;
-///     println!("Vector of size {}", size);
-/// }
-/// ```
-#[inline]
-pub fn obj_is_vector(sexp: SEXP) -> Result<bool, VctrsError> {
-    let f = P_OBJ_IS_VECTOR.get().ok_or(VctrsError::NotInitialized)?;
-    Ok(unsafe { f(sexp) })
-}
-
-/// Get the size (length) of a short vector.
-///
-/// Returns the number of observations in the vector. For data frames,
-/// this is the number of rows. For atomic vectors, this is the length.
-///
-/// # Arguments
-///
-/// * `sexp` - The R vector (must be a vector according to [`obj_is_vector`])
-///
-/// # Returns
-///
-/// The size of the vector as an `R_len_t` (32-bit integer).
-///
-/// # Errors
-///
-/// Returns [`VctrsError::NotInitialized`] if [`init_vctrs`] hasn't been called.
-///
-/// # Panics
-///
-/// The underlying vctrs function may error if `sexp` is not a vector.
-///
-/// # Example
-///
-/// ```ignore
-/// let df = create_data_frame();
-/// let nrow = short_vec_size(df)?;
-/// ```
-#[inline]
-pub fn short_vec_size(sexp: SEXP) -> Result<R_len_t, VctrsError> {
-    let f = P_SHORT_VEC_SIZE.get().ok_or(VctrsError::NotInitialized)?;
-    Ok(unsafe { f(sexp) })
-}
-
-/// Recycle a vector to a specified size.
-///
-/// Implements vctrs' recycling rules:
-/// - Size 1 vectors are recycled to any size
-/// - Other vectors must match the target size exactly
-///
-/// # Arguments
-///
-/// * `sexp` - The R vector to recycle
-/// * `size` - The target size
-///
-/// # Returns
-///
-/// The recycled vector. May return the original vector if no recycling
-/// was needed, or a new vector if recycling occurred.
-///
-/// # Errors
-///
-/// Returns [`VctrsError::NotInitialized`] if [`init_vctrs`] hasn't been called.
-///
-/// # Safety
-///
-/// The returned SEXP must be protected by the caller if it will be used
-/// across potential R allocations. Use [`OwnedProtect`] or similar.
-///
-/// # Panics
-///
-/// The underlying vctrs function may error if:
-/// - `sexp` is not a vector
-/// - The vector cannot be recycled to the target size
-///
-/// # Example
-///
-/// ```ignore
-/// // Recycle a length-1 vector to length 10
-/// let x = Rf_ScalarInteger(42);
-/// let recycled = short_vec_recycle(x, 10)?;
-/// // recycled is now an integer vector of length 10, all 42s
-/// ```
-///
-/// [`OwnedProtect`]: crate::gc_protect::OwnedProtect
-#[inline]
-pub fn short_vec_recycle(sexp: SEXP, size: R_len_t) -> Result<SEXP, VctrsError> {
-    let f = P_SHORT_VEC_RECYCLE
-        .get()
-        .ok_or(VctrsError::NotInitialized)?;
-    Ok(unsafe { f(sexp, size) })
-}
-// endregion
-
-// region: SexpExt extension trait
-
-/// Extension trait for vctrs operations on SEXP values.
-///
-/// This trait provides convenient methods for calling vctrs functions
-/// on R objects. All methods require [`init_vctrs`] to have been called first.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::vctrs::{init_vctrs, VctrsSexpExt};
-///
-/// // In R_init_<pkg>:
-/// init_vctrs()?;
-///
-/// // Later, in a function:
-/// fn process_vector(x: SEXP) -> Result<(), VctrsError> {
-///     if x.vctrs_is_vector()? {
-///         let size = x.vctrs_size()?;
-///         println!("Vector of size {}", size);
-///     }
-///     Ok(())
-/// }
-/// ```
-pub trait VctrsSexpExt {
-    /// Check if this object is a vector according to vctrs.
-    ///
-    /// Returns `true` for atomic vectors, lists (including data frames),
-    /// and S3/S4 objects with a `vec_proxy()` method.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use miniextendr_api::vctrs::VctrsSexpExt;
-    ///
-    /// let x: SEXP = some_r_object();
-    /// if x.vctrs_is_vector()? {
-    ///     println!("x is a vctrs vector");
-    /// }
-    /// ```
-    fn vctrs_is_vector(&self) -> Result<bool, VctrsError>;
-
-    /// Get the size of this vector.
-    ///
-    /// Returns the number of observations: length for atomic vectors,
-    /// number of rows for data frames.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use miniextendr_api::vctrs::VctrsSexpExt;
-    ///
-    /// let x: SEXP = some_r_integer_vector();
-    /// let n = x.vctrs_size()?;
-    /// println!("vector has {} elements", n);
-    /// ```
-    fn vctrs_size(&self) -> Result<R_len_t, VctrsError>;
-
-    /// Recycle this vector to a target size.
-    ///
-    /// Size-1 vectors are recycled to any size; others must match exactly.
-    ///
-    /// # Safety
-    ///
-    /// The returned SEXP must be protected by the caller if it will be used
-    /// across potential R allocations.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use miniextendr_api::vctrs::VctrsSexpExt;
-    ///
-    /// // Recycle a scalar to length 5
-    /// let scalar: SEXP = Rf_ScalarInteger(42);
-    /// let recycled = scalar.vctrs_recycle_to(5)?;
-    /// // recycled is now c(42L, 42L, 42L, 42L, 42L)
-    /// ```
-    fn vctrs_recycle_to(&self, size: R_len_t) -> Result<SEXP, VctrsError>;
-}
-
-impl VctrsSexpExt for SEXP {
-    #[inline]
-    fn vctrs_is_vector(&self) -> Result<bool, VctrsError> {
-        obj_is_vector(*self)
-    }
-
-    #[inline]
-    fn vctrs_size(&self) -> Result<R_len_t, VctrsError> {
-        short_vec_size(*self)
-    }
-
-    #[inline]
-    fn vctrs_recycle_to(&self, size: R_len_t) -> Result<SEXP, VctrsError> {
-        short_vec_recycle(*self, size)
-    }
-}
-// endregion
-
-// region: C-callable initialization shim
-
-/// C-callable shim for initializing vctrs support.
-///
-/// This function is intended to be called from C code (e.g., `R_init_<pkg>`).
-///
-/// # Returns
-///
-/// - `0`: Success
-/// - `1`: vctrs not available (callable not found)
-/// - `2`: Not on main thread
-/// - `3`: Already initialized
-///
-/// # Example (C)
-///
-/// ```c
-/// extern int miniextendr_init_vctrs(void);
-///
-/// void R_init_mypackage(DllInfo *info) {
-///     miniextendr_runtime_init();
-///     int status = miniextendr_init_vctrs();
-///     if (status == 1) {
-///         // vctrs not available - OK if optional
-///     }
-/// }
-/// ```
-#[unsafe(no_mangle)]
-pub extern "C-unwind" fn miniextendr_init_vctrs() -> i32 {
-    match init_vctrs() {
-        Ok(()) => 0,
-        Err(VctrsError::NotAvailable { .. }) => 1,
-        Err(VctrsError::NotMainThread) => 2,
-        Err(VctrsError::AlreadyInitialized) => 3,
-        Err(VctrsError::NotInitialized) => unreachable!(),
-    }
-}
-// endregion
 
 // region: Construction helpers (Phase A)
 
@@ -559,10 +34,7 @@ use crate::list::List;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VctrsBuildError {
-    /// vctrs support has not been initialized.
-    VctrsNotInitialized,
-
-    /// The data is not a vector according to vctrs.
+    /// The data is not a vector type (atomic, list, or expression).
     NotAVector,
 
     /// List data requires `inherit_base_type = true`.
@@ -609,11 +81,8 @@ pub enum VctrsBuildError {
 impl std::fmt::Display for VctrsBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VctrsBuildError::VctrsNotInitialized => {
-                write!(f, "vctrs not initialized - call init_vctrs() first")
-            }
             VctrsBuildError::NotAVector => {
-                write!(f, "data is not a vector according to vctrs")
+                write!(f, "data is not a vector type (atomic, list, or expression)")
             }
             VctrsBuildError::ListRequiresInheritBaseType => {
                 write!(
@@ -658,6 +127,24 @@ impl std::error::Error for VctrsBuildError {}
 // endregion
 
 // region: Helper functions
+
+/// Check if a SEXPTYPE is a vector type suitable for vctrs construction.
+///
+/// Accepts atomic types (logical, integer, real, complex, character, raw),
+/// lists (VECSXP), and expression vectors (EXPRSXP).
+fn is_vector_type(sexptype: SEXPTYPE) -> bool {
+    matches!(
+        sexptype,
+        SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::RAWSXP
+            | SEXPTYPE::VECSXP
+            | SEXPTYPE::EXPRSXP
+    )
+}
 
 /// Build a class vector (STRSXP) from a slice of class names.
 ///
@@ -799,19 +286,11 @@ pub fn new_vctr(
     attrs: &[(&str, SEXP)],
     inherit_base_type: Option<bool>,
 ) -> Result<SEXP, VctrsBuildError> {
-    // Check vctrs is initialized
-    if !is_vctrs_initialized() {
-        return Err(VctrsBuildError::VctrsNotInitialized);
-    }
-
-    // Validate: data must be a vector
-    let is_vector = obj_is_vector(data).map_err(|_| VctrsBuildError::VctrsNotInitialized)?;
-    if !is_vector {
+    // Validate: data must be a vector type
+    let data_type = unsafe { TYPEOF(data) };
+    if !is_vector_type(data_type) {
         return Err(VctrsBuildError::NotAVector);
     }
-
-    // Determine inherit_base_type
-    let data_type = unsafe { TYPEOF(data) };
     let is_list = data_type == SEXPTYPE::VECSXP;
 
     let inherit = match inherit_base_type {
@@ -1283,37 +762,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_vctrs_error_display() {
-        assert_eq!(
-            VctrsError::NotInitialized.to_string(),
-            "vctrs not initialized - call init_vctrs() first"
-        );
-        assert_eq!(
-            VctrsError::NotAvailable {
-                name: "obj_is_vector"
-            }
-            .to_string(),
-            "vctrs callable 'obj_is_vector' not found - is vctrs installed and loaded?"
-        );
-        assert_eq!(
-            VctrsError::AlreadyInitialized.to_string(),
-            "vctrs already initialized"
-        );
-        assert_eq!(
-            VctrsError::NotMainThread.to_string(),
-            "init_vctrs must be called from R's main thread"
-        );
-    }
-
-    #[test]
     fn test_vctrs_build_error_display() {
         assert_eq!(
-            VctrsBuildError::VctrsNotInitialized.to_string(),
-            "vctrs not initialized - call init_vctrs() first"
-        );
-        assert_eq!(
             VctrsBuildError::NotAVector.to_string(),
-            "data is not a vector according to vctrs"
+            "data is not a vector type (atomic, list, or expression)"
         );
         assert_eq!(
             VctrsBuildError::ListRequiresInheritBaseType.to_string(),
@@ -1355,13 +807,6 @@ mod tests {
             VctrsBuildError::EmptyClass.to_string(),
             "class vector must not be empty"
         );
-    }
-
-    #[test]
-    fn test_is_vctrs_initialized_initially_false() {
-        // Note: This test may fail if run after init_vctrs() in the same process
-        // In a fresh process, vctrs should not be initialized
-        // We can't reliably test this without controlling the test environment
     }
 
     // region: Phase C: VctrsKind tests
