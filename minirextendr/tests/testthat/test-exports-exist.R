@@ -7,7 +7,7 @@ exported_funs <- c(
   "miniextendr_available_versions", "miniextendr_build", "miniextendr_cache_info",
   "miniextendr_check", "miniextendr_check_rust", "miniextendr_clear_cache",
   "miniextendr_configure", "miniextendr_dev_link",
-  "miniextendr_doctor", "miniextendr_document", "miniextendr_validate",
+  "miniextendr_doctor", "miniextendr_validate",
   "miniextendr_vendor",
   "mx_config", "mx_config_defaults",
   "upgrade_miniextendr_package",

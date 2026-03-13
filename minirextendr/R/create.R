@@ -366,6 +366,17 @@ use_miniextendr <- function(path = ".",
       local_path = local_path
     )
 
+    # Auto-run autoconf if available
+    if (nzchar(Sys.which("autoconf"))) {
+      cli::cli_h2("Generating configure script")
+      tryCatch(
+        miniextendr_autoconf(usethis::proj_path(rpkg_name)),
+        error = function(e) {
+          cli::cli_alert_warning("autoconf failed: {conditionMessage(e)}")
+        }
+      )
+    }
+
     # Configuration file at workspace root
     cli::cli_h2("Creating configuration")
     use_miniextendr_config()

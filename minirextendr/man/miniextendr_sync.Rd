@@ -7,7 +7,7 @@
 miniextendr_sync(
   path = ".",
   mode = c("if_stale", "always", "never"),
-  stage = c("install", "wrappers", "build"),
+  stage = c("install", "build"),
   force = FALSE,
   quiet = FALSE
 )
@@ -25,9 +25,8 @@ Controls whether to rebuild:
 
 \item{stage}{How far to rebuild. One of:
 \itemize{
-\item \code{"install"} (default): full rebuild (configure + install + document + install)
-\item \code{"wrappers"}: only regenerate R wrappers (document step)
-\item \code{"build"}: configure + compile, but don't install
+\item \code{"install"} (default): full rebuild (configure + install + roxygen2)
+\item \code{"build"}: configure only, no install
 }}
 
 \item{force}{Logical. If \code{TRUE}, equivalent to \code{mode = "always"}.}
@@ -45,7 +44,7 @@ Invisibly returns a list with:
 \description{
 Detects staleness of Rust sources and build artifacts, then rebuilds
 as needed. Designed as a single entry point before rendering vignettes
-(Rmd/qmd). Dispatches to \code{\link[=miniextendr_build]{miniextendr_build()}}, \code{\link[=miniextendr_document]{miniextendr_document()}},
+(Rmd/qmd). Dispatches to \code{\link[=miniextendr_build]{miniextendr_build()}}
 and related workflow functions.
 }
 \examples{
@@ -56,7 +55,7 @@ miniextendr_sync()
 # Force full rebuild
 miniextendr_sync(force = TRUE)
 
-# Only regenerate wrappers
-miniextendr_sync(stage = "wrappers")
+# Configure only (no install)
+miniextendr_sync(stage = "build")
 }
 }

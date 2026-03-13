@@ -274,14 +274,11 @@ After adding new functions, rebuild and regenerate R wrappers:
 ```{r}
 library(minirextendr)
 
-# 1. Compile the Rust code
+# 1. Install the package (compiles Rust + auto-generates R wrappers via cdylib)
 devtools::install()
 
-# 2. Generate R wrapper functions from Rust signatures
-miniextendr_document()
-
-# 3. Reinstall with the new wrappers
-devtools::install()
+# 2. Run roxygen2 to update NAMESPACE and man pages
+devtools::document()
 ```
 
 Or use the all-in-one command:
@@ -292,8 +289,8 @@ miniextendr_build()
 
 ### Verifying exports
 
-Check that your function appears in `R/miniextendr_wrappers.R` and
-`NAMESPACE` after running `miniextendr_document()`. If a function is missing,
+Check that your function appears in `R/{pkgname}-wrappers.R` and
+`NAMESPACE` after running `devtools::document()`. If a function is missing,
 verify that it is:
 
 1. Marked `pub`
