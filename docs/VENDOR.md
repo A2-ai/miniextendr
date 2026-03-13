@@ -281,6 +281,18 @@ just r-cmd-check
 # 6. Fix any issues, repeat from step 1
 ```
 
+## Known Limitations
+
+### cargo tree text parsing
+
+`vendor-crates.R` discovers local path-dependencies by parsing `cargo tree
+--format {p}` output. `cargo metadata --format-version=1` would provide the
+same information as stable JSON, but parsing it requires the `jsonlite` R
+package (base R has no JSON parser). Since `vendor-crates.R` is copied into
+scaffolded packages via `tools/`, it must remain zero-external-dependency.
+If `cargo tree` output format changes in a future Cargo release, the
+`parse_tree_packages()` function will need to be updated.
+
 ## See Also
 
 - [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) — How R builds packages with compiled code

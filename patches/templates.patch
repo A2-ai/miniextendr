@@ -1,5 +1,5 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-03-12 10:14:23
+--- a/monorepo/rpkg/Makevars.in	2026-03-12 10:46:16
 +++ b/monorepo/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
@@ -56,10 +56,10 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 -	case "$(CARGO_BUILD_TARGET)" in \
--	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRCDIR)/cdylib-exports.def"; ;; \
+-	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc"; ;; \
 -	esac; \
 -	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
@@ -71,7 +71,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 --- a/monorepo/rpkg/configure.ac	2026-03-12 07:03:30
-+++ b/monorepo/rpkg/configure.ac	2026-03-12 07:03:30
++++ b/monorepo/rpkg/configure.ac	2026-03-13 08:09:43
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -406,7 +406,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -473,162 +362,104 @@
+@@ -473,162 +362,93 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -576,29 +576,18 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      if test -n "$_patch_lines"; then
 -        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
 -        echo "configure: added [patch.crates-io] for transitive deps"
-+    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
-+      dnl Pass path via env var so backslashes (Windows) don't break R string parsing
++    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
 +      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-+      MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" "$R_HOME/bin/Rscript" -e "
-+        if (requireNamespace('minirextendr', quietly = TRUE)) {
-+          minirextendr::vendor_miniextendr(local_path = Sys.getenv('MINIEXTENDR_LOCAL'))
-+        } else {
-+          message('configure: minirextendr not installed — cannot auto-sync vendor/')
-+        }
-+      " 2>&1 || {
++      "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
++        sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
 +        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
 +      }
 +    elif test -f "$VENDOR_OUT/.vendor-source"; then
 +      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-+      if test -d "$_recorded/miniextendr-api"; then
++      if test -d "$_recorded"; then
 +        echo "configure: syncing vendor/ from recorded source: $_recorded"
-+        _MX_VENDOR_SOURCE="$_recorded" "$R_HOME/bin/Rscript" -e "
-+          if (requireNamespace('minirextendr', quietly = TRUE)) {
-+            minirextendr::vendor_miniextendr(local_path = Sys.getenv('_MX_VENDOR_SOURCE'))
-+          } else {
-+            message('configure: minirextendr not installed — vendor/ may be stale')
-+          }
-+        " 2>&1 || {
++        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
++          sync --path "$abs_rpkg_dir" --source-root "$_recorded" 2>&1 || {
 +          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
 +        }
 +      else
@@ -652,7 +641,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  
-@@ -642,5 +473,5 @@
+@@ -642,5 +462,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
@@ -660,7 +649,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-03-12 10:14:23
+--- a/rpkg/Makevars.in	2026-03-12 10:46:16
 +++ b/rpkg/Makevars.in	2026-03-12 07:03:30
 @@ -14,6 +14,4 @@
  NOT_CRAN_FLAG = @NOT_CRAN@
@@ -717,10 +706,10 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -	fi
 -	@set -e; \
 -	TARGET_OPT=""; \
--	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS) --print link-args --print native-static-libs"; \
+-	CDYLIB_RUSTFLAGS="$(ENV_RUSTFLAGS)"; \
 -	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 -	case "$(CARGO_BUILD_TARGET)" in \
--	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRCDIR)/cdylib-exports.def"; ;; \
+-	  *-windows-gnu) CDYLIB_RUSTFLAGS="$$CDYLIB_RUSTFLAGS -C link-arg=-static-libgcc"; ;; \
 -	esac; \
 -	RUSTFLAGS="$$CDYLIB_RUSTFLAGS" \
 -	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
@@ -732,7 +721,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 --- a/rpkg/configure.ac	2026-03-12 07:03:30
-+++ b/rpkg/configure.ac	2026-03-12 07:03:30
++++ b/rpkg/configure.ac	2026-03-13 08:09:32
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -1067,7 +1056,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -473,162 +362,107 @@
+@@ -473,162 +362,94 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -1237,32 +1226,19 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      if test -n "$_patch_lines"; then
 -        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
 -        echo "configure: added [patch.crates-io] for transitive deps"
-+    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
-+      dnl MINIEXTENDR_LOCAL set — delegate to R for proper Cargo.toml patching
-+      dnl Pass path via env var so backslashes (Windows) don't break R string parsing
++    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
++      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
 +      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-+      MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" "$R_HOME/bin/Rscript" -e "
-+        if (requireNamespace('minirextendr', quietly = TRUE)) {
-+          minirextendr::vendor_miniextendr(local_path = Sys.getenv('MINIEXTENDR_LOCAL'))
-+        } else {
-+          message('configure: minirextendr not installed — cannot auto-sync vendor/')
-+          message('configure: install minirextendr or run vendor_miniextendr() manually')
-+        }
-+      " 2>&1 || {
++      "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
++        sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
 +        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
 +      }
 +    elif test -f "$VENDOR_OUT/.vendor-source"; then
 +      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-+      if test -d "$_recorded/miniextendr-api"; then
++      if test -d "$_recorded"; then
 +        echo "configure: syncing vendor/ from recorded source: $_recorded"
-+        _MX_VENDOR_SOURCE="$_recorded" "$R_HOME/bin/Rscript" -e "
-+          if (requireNamespace('minirextendr', quietly = TRUE)) {
-+            minirextendr::vendor_miniextendr(local_path = Sys.getenv('_MX_VENDOR_SOURCE'))
-+          } else {
-+            message('configure: minirextendr not installed — vendor/ may be stale')
-+            message('configure: run: minirextendr::vendor_miniextendr(local_path = Sys.getenv(\"_MX_VENDOR_SOURCE\"))')
-+          }
-+        " 2>&1 || {
++        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
++          sync --path "$abs_rpkg_dir" --source-root "$_recorded" 2>&1 || {
 +          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
 +        }
 +      else
@@ -1316,7 +1292,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  
-@@ -642,5 +476,5 @@
+@@ -642,5 +463,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
