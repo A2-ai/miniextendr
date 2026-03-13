@@ -13,6 +13,8 @@ A Rust-R interoperability framework for building R packages with Rust backends.
   - `rpkg/src/miniextendr-win.def` → edit `rpkg/src/win.def.in`
   - `rpkg/configure` → edit `rpkg/configure.ac` (then run `autoconf`)
   - `rpkg/src/stub.c` — static file (no configure substitution), just a linker stub
+- **configure.ac must not depend on minirextendr**: Template `configure.ac` files should not call `minirextendr::*` functions. Instead, put helper R scripts in `tools/` (included in templates) and invoke them via `Rscript tools/my-helper.R` from configure.ac.
+- **`cargo package` for workspace resolution**: When vendoring workspace crates, use `cargo package` to produce resolved Cargo.toml files (workspace inheritance already expanded). Do not hard-code workspace dependency replacements — the vendoring strategy must work with any workspace-monorepo project.
 
 ## Capturing Command Output
 
