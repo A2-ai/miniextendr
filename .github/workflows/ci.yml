@@ -585,7 +585,9 @@ jobs:
           # Windows needs explicit target for GNU toolchain (msys != windows-gnu)
           CARGO_BUILD_TARGET=x86_64-pc-windows-gnu ./configure
           cd "$(cygpath -u "$GITHUB_WORKSPACE")"
-          just vendor
+          # Call Rscript directly instead of `just vendor` because just's
+          # shell resolution on Windows finds the WSL sh shim before rtools'.
+          cd rpkg && Rscript tools/vendor-crates.R pack
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
