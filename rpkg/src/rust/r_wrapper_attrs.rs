@@ -2,7 +2,7 @@
 
 use miniextendr_api::{ExternalPtr, miniextendr};
 
-// ── Standalone function: r_name ──
+// region: Standalone function: r_name
 
 /// Check if an object is a widget.
 ///
@@ -12,8 +12,9 @@ use miniextendr_api::{ExternalPtr, miniextendr};
 pub fn is_widget(x: i32) -> bool {
     x > 0
 }
+// endregion
 
-// ── Standalone function: r_entry ──
+// region: Standalone function: r_entry
 
 /// Coerce x to integer before passing to Rust.
 ///
@@ -23,8 +24,9 @@ pub fn is_widget(x: i32) -> bool {
 pub fn r_entry_demo(x: i32) -> i32 {
     x * 2
 }
+// endregion
 
-// ── Standalone function: r_post_checks ──
+// region: Standalone function: r_post_checks
 
 /// Log a message after checks pass.
 ///
@@ -34,8 +36,9 @@ pub fn r_entry_demo(x: i32) -> i32 {
 pub fn r_post_checks_demo(x: i32) -> i32 {
     x + 1
 }
+// endregion
 
-// ── Standalone function: all three combined ──
+// region: Standalone function: all three combined
 
 /// Combined test: r_name + r_entry + r_post_checks.
 ///
@@ -49,8 +52,9 @@ pub fn r_post_checks_demo(x: i32) -> i32 {
 pub fn create_widget(n: i32) -> i32 {
     n * 10
 }
+// endregion
 
-// ── Standalone function: r_on_exit (short form) ──
+// region: Standalone function: r_on_exit (short form)
 
 /// Test on.exit cleanup with short form.
 ///
@@ -60,8 +64,9 @@ pub fn create_widget(n: i32) -> i32 {
 pub fn on_exit_short(x: i32) -> i32 {
     x + 1
 }
+// endregion
 
-// ── Standalone function: r_on_exit (long form, add = false) ──
+// region: Standalone function: r_on_exit (long form, add = false)
 
 /// Test on.exit cleanup with add = false (overwrite previous).
 ///
@@ -71,8 +76,9 @@ pub fn on_exit_short(x: i32) -> i32 {
 pub fn on_exit_no_add(x: i32) -> i32 {
     x + 2
 }
+// endregion
 
-// ── Standalone function: r_on_exit (long form, after = false) ──
+// region: Standalone function: r_on_exit (long form, after = false)
 
 /// Test on.exit cleanup with after = false (LIFO order).
 ///
@@ -82,8 +88,9 @@ pub fn on_exit_no_add(x: i32) -> i32 {
 pub fn on_exit_lifo(x: i32) -> i32 {
     x + 3
 }
+// endregion
 
-// ── R6 class with r_name on method ──
+// region: R6 class with r_name on method
 
 #[derive(ExternalPtr)]
 pub struct WrapperDemo {
@@ -118,3 +125,4 @@ impl WrapperDemo {
         self.value
     }
 }
+// endregion

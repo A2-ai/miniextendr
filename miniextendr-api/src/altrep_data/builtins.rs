@@ -8,9 +8,7 @@ use super::{
     AltrepDataptr, AltrepLen, AltrepSerialize, Logical, Sortedness,
 };
 
-// =============================================================================
-// Helper macros to reduce repetition
-// =============================================================================
+// region: Helper macros to reduce repetition
 
 /// Implement AltrepLen for Vec<$elem>
 macro_rules! impl_len_vec {
@@ -105,10 +103,9 @@ macro_rules! impl_serialize {
         }
     };
 }
+// endregion
 
-// =============================================================================
-// AltrepSerialize implementations for Vec<T>
-// =============================================================================
+// region: AltrepSerialize implementations for Vec<T>
 
 impl_serialize!(Vec<i32>);
 impl_serialize!(Vec<f64>);
@@ -117,10 +114,9 @@ impl_serialize!(Vec<bool>);
 impl_serialize!(Vec<String>);
 impl_serialize!(Vec<Option<String>>);
 impl_serialize!(Vec<Rcomplex>);
+// endregion
 
-// =============================================================================
-// AltrepSerialize implementations for Box<[T]>
-// =============================================================================
+// region: AltrepSerialize implementations for Box<[T]>
 
 // Box<[T]> types don't have direct TryFromSexp implementations, so we manually
 // implement serialization by converting to Vec and back.
@@ -208,10 +204,9 @@ impl AltrepSerialize for Box<[Rcomplex]> {
             .map(|v| v.into_boxed_slice())
     }
 }
+// endregion
 
-// =============================================================================
-// Built-in implementations for Vec<T>
-// =============================================================================
+// region: Built-in implementations for Vec<T>
 
 impl_len_vec!(i32);
 
@@ -425,10 +420,9 @@ impl AltLogicalData for Vec<bool> {
         Some(self.iter().filter(|&&x| x).count() as i64)
     }
 }
+// endregion
 
-// =============================================================================
-// Built-in implementations for Box<[T]> (owned slices)
-// =============================================================================
+// region: Built-in implementations for Box<[T]> (owned slices)
 // Box<[T]> is a fat pointer (Sized) that wraps a DST slice.
 // Unlike Vec<T>, it has no capacity field - just ptr + len (2 words).
 // This makes it more memory-efficient for fixed-size data.
@@ -641,10 +635,9 @@ impl AltStringData for Box<[String]> {
         Some(true) // String can't be NA
     }
 }
+// endregion
 
-// =============================================================================
-// AltrepSerialize implementations for Range types
-// =============================================================================
+// region: AltrepSerialize implementations for Range types
 // Ranges serialize to a 2-element integer/real vector [start, end].
 
 impl AltrepSerialize for Range<i32> {
@@ -695,10 +688,9 @@ impl AltrepSerialize for Range<f64> {
         if v.len() == 2 { Some(v[0]..v[1]) } else { None }
     }
 }
+// endregion
 
-// =============================================================================
-// Built-in implementations for Range types
-// =============================================================================
+// region: Built-in implementations for Range types
 
 impl AltrepLen for Range<i32> {
     fn len(&self) -> usize {
@@ -988,10 +980,9 @@ impl AltRealData for Range<f64> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Built-in implementations for slices (read-only)
-// =============================================================================
+// region: Built-in implementations for slices (read-only)
 
 impl_len_slice!(i32);
 
@@ -1168,10 +1159,9 @@ impl AltStringData for &[&str] {
         Some(self[i])
     }
 }
+// endregion
 
-// =============================================================================
-// NOTE on &'static [T] (static slices)
-// =============================================================================
+// region: NOTE on &'static [T] (static slices)
 //
 // `&'static [T]` is Sized (fat pointer: ptr + len) and satisfies 'static,
 // so it can be used DIRECTLY with ALTREP via ExternalPtr.
@@ -1184,10 +1174,9 @@ impl AltStringData for &[&str] {
 // - Const arrays: `static DATA: [i32; 5] = [1, 2, 3, 4, 5]; create_altrep(&DATA[..])`
 // - Leaked data: `let s: &'static [i32] = Box::leak(vec.into_boxed_slice());`
 // - Memory-mapped files with 'static lifetime
+// endregion
 
-// =============================================================================
-// Built-in implementations for arrays (owned, fixed-size)
-// =============================================================================
+// region: Built-in implementations for arrays (owned, fixed-size)
 
 impl_len_array!(i32);
 
@@ -1279,10 +1268,9 @@ impl<const N: usize> AltStringData for [String; N] {
         Some(self[i].as_str())
     }
 }
+// endregion
 
-// =============================================================================
-// Built-in implementations for Vec<Rcomplex> (complex numbers)
-// =============================================================================
+// region: Built-in implementations for Vec<Rcomplex> (complex numbers)
 
 impl_len_vec!(Rcomplex);
 
@@ -1306,10 +1294,9 @@ impl AltComplexData for Vec<Rcomplex> {
 }
 
 impl_dataptr_vec!(Rcomplex);
+// endregion
 
-// =============================================================================
-// Built-in implementations for Box<[Rcomplex]>
-// =============================================================================
+// region: Built-in implementations for Box<[Rcomplex]>
 
 impl_len_boxed!(Rcomplex);
 
@@ -1333,10 +1320,9 @@ impl AltComplexData for Box<[Rcomplex]> {
 }
 
 impl_dataptr_boxed!(Rcomplex);
+// endregion
 
-// =============================================================================
-// Built-in implementations for [Rcomplex; N] (complex arrays)
-// =============================================================================
+// region: Built-in implementations for [Rcomplex; N] (complex arrays)
 
 impl_len_array!(Rcomplex);
 
@@ -1358,10 +1344,9 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
         actual_len
     }
 }
+// endregion
 
-// =============================================================================
-// Low-level ALTREP trait implementations
-// =============================================================================
+// region: Low-level ALTREP trait implementations
 //
 // The low-level trait impls (Altrep, AltVec, Alt*, InferBase) for builtin types
 // are located in altrep_impl.rs. This is because the impl_alt*_from_data! macros
@@ -1371,3 +1356,4 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
 // - Vec<i32>, Vec<f64>, Vec<bool>, Vec<u8>, Vec<String>, Vec<Rcomplex>
 // - Box<[i32]>, Box<[f64]>, Box<[bool]>, Box<[u8]>, Box<[String]>, Box<[Rcomplex]>
 // - Range<i32>, Range<i64>, Range<f64>
+// endregion

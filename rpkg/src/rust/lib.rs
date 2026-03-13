@@ -209,10 +209,9 @@ mod worker_tests;
 // 3. A 1-field wrapper struct with #[miniextendr] macro
 
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
+// endregion
 
-// -----------------------------------------------------------------------------
-// ConstantInt: An ALTREP integer that always returns the same value
-// -----------------------------------------------------------------------------
+// region: ConstantInt: An ALTREP integer that always returns the same value
 
 /// Data type that stores a constant value and length
 #[derive(miniextendr_api::ExternalPtr)]
@@ -279,10 +278,9 @@ pub fn constant_int() -> ConstantIntClass {
 use miniextendr_api::altrep_data::{
     AltListData, AltLogicalData, AltRawData, AltRealData, AltStringData, Logical,
 };
+// endregion
 
-// -----------------------------------------------------------------------------
-// ConstantReal: All elements are PI
-// -----------------------------------------------------------------------------
+// region: ConstantReal: All elements are PI
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct ConstantRealData {
@@ -318,10 +316,9 @@ pub fn constant_real() -> ConstantRealClass {
         len: 10,
     })
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// ArithSeq: Arithmetic sequence (like R's seq())
-// -----------------------------------------------------------------------------
+// region: ArithSeq: Arithmetic sequence (like R's seq())
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct ArithSeqData {
@@ -618,10 +615,9 @@ pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
     };
     result.into_sexp()
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// ALTREP helper functions
-// -----------------------------------------------------------------------------
+// region: ALTREP helper functions
 
 /// @title ALTREP Helpers
 /// @name rpkg_altrep_helpers
@@ -696,10 +692,9 @@ pub fn altrep_from_list(x: SEXP) -> ListDataClass {
     let len = unsafe { Rf_xlength(x) } as usize;
     ListDataClass(ListData { list: x, len })
 }
+// endregion
 
-// =============================================================================
-// ALTREP Convenience Helpers Examples
-// =============================================================================
+// region: ALTREP Convenience Helpers Examples
 
 /// Example: Small data - regular copy is fine
 ///
@@ -748,10 +743,9 @@ pub fn boxed_data_altrep(n: i32) -> SEXP {
     let data = (0..n).collect::<Vec<i32>>().into_boxed_slice();
     data.into_altrep().into_sexp()
 }
+// endregion
 
-// =============================================================================
-// Benchmark Functions - Direct Comparison
-// =============================================================================
+// region: Benchmark Functions - Direct Comparison
 
 /// Create a vector of given size using regular copy (IntoR)
 ///
@@ -777,10 +771,9 @@ pub fn bench_vec_altrep(n: i32) -> SEXP {
     }
     vec![0; n as usize].into_sexp_altrep() // Zero-copy
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// ConstantLogical: All TRUE or all FALSE
-// -----------------------------------------------------------------------------
+// region: ConstantLogical: All TRUE or all FALSE
 
 #[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepLogical)]
 #[altrep(len = "len", elt = "value", dataptr)]
@@ -822,10 +815,9 @@ fn constant_logical(value: i32, n: i32) -> SEXP {
     };
     ConstantLogicalClass(data).into_sexp()
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// LogicalVec: Vec<Logical> wrapper (preserves NA)
-// -----------------------------------------------------------------------------
+// region: LogicalVec: Vec<Logical> wrapper (preserves NA)
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct LogicalVecData {
@@ -912,10 +904,9 @@ miniextendr_api::impl_altlogical_from_data!(LogicalVecData, serialize);
 
 #[miniextendr(class = "LogicalVec")]
 pub struct LogicalVecClass(pub LogicalVecData);
+// endregion
 
-// -----------------------------------------------------------------------------
-// LazyString: Lazily-generated strings
-// -----------------------------------------------------------------------------
+// region: LazyString: Lazily-generated strings
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct LazyStringData {
@@ -954,10 +945,9 @@ fn lazy_string(prefix: &str, n: i32) -> SEXP {
     };
     LazyStringClass(data).into_sexp()
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// RepeatingRaw: Repeating byte pattern
-// -----------------------------------------------------------------------------
+// region: RepeatingRaw: Repeating byte pattern
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct RepeatingRawData {
@@ -1097,17 +1087,15 @@ pub fn integer_sequence_list(n: i32) -> SEXP {
     let data = IntegerSequenceListData { n: n as usize };
     IntegerSequenceListClass(data).into_sexp()
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// SimpleVecInt: Vec<i32> wrapper (simplest example)
-// -----------------------------------------------------------------------------
+// region: SimpleVecInt: Vec<i32> wrapper (simplest example)
 
 #[miniextendr(class = "SimpleVecInt")]
 pub struct SimpleVecIntClass(pub Vec<i32>);
+// endregion
 
-// -----------------------------------------------------------------------------
-// SimpleVecString: Vec<Option<String>> wrapper (preserves NA)
-// -----------------------------------------------------------------------------
+// region: SimpleVecString: Vec<Option<String>> wrapper (preserves NA)
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct StringVecData {
@@ -1134,25 +1122,22 @@ miniextendr_api::impl_altstring_from_data!(StringVecData, dataptr);
 
 #[miniextendr(class = "SimpleVecString")]
 pub struct SimpleVecStringClass(pub StringVecData);
+// endregion
 
-// -----------------------------------------------------------------------------
-// SimpleVecRaw: Vec<u8> wrapper
-// -----------------------------------------------------------------------------
+// region: SimpleVecRaw: Vec<u8> wrapper
 
 #[miniextendr(class = "SimpleVecRaw")]
 pub struct SimpleVecRawClass(pub Vec<u8>);
+// endregion
 
-// -----------------------------------------------------------------------------
-// InferredVecReal: Vec<f64> wrapper with base type inferred from inner type
-// -----------------------------------------------------------------------------
+// region: InferredVecReal: Vec<f64> wrapper with base type inferred from inner type
 
 /// @noRd
 #[miniextendr(class = "InferredVecReal")]
 pub struct InferredVecRealClass(pub Vec<f64>);
+// endregion
 
-// -----------------------------------------------------------------------------
-// BoxedInts: Box<[i32]> wrapper (owned slice example)
-// -----------------------------------------------------------------------------
+// region: BoxedInts: Box<[i32]> wrapper (owned slice example)
 
 /// @noRd
 #[miniextendr(class = "BoxedInts")]
@@ -1164,6 +1149,7 @@ pub fn boxed_ints(n: i32) -> SEXP {
     let data: Box<[i32]> = (1..=n).collect::<Vec<_>>().into_boxed_slice();
     BoxedIntsClass(data).into_sexp()
 }
+// endregion
 
 // region: StaticInts: &'static [i32] wrapper (static slice example)
 
@@ -1193,9 +1179,7 @@ pub fn leaked_ints(n: i32) -> SEXP {
 
 // endregion
 
-// -----------------------------------------------------------------------------
-// StaticStrings: &'static [&'static str] wrapper
-// -----------------------------------------------------------------------------
+// region: StaticStrings: &'static [&'static str] wrapper
 
 /// Static string data
 ///
@@ -1214,9 +1198,7 @@ pub fn static_strings() -> SEXP {
 
 // endregion
 
-// -----------------------------------------------------------------------------
-// ListData: list-backed ALTREP (stores original list SEXP)
-// -----------------------------------------------------------------------------
+// region: ListData: list-backed ALTREP (stores original list SEXP)
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct ListData {
@@ -1250,6 +1232,7 @@ miniextendr_api::impl_altlist_from_data!(ListData);
 
 #[miniextendr(class = "ListData")]
 pub struct ListDataClass(pub ListData);
+// endregion
 
 // region: Builtin ALTREP test fixtures
 //

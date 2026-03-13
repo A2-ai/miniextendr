@@ -9,9 +9,7 @@ use miniextendr_api::ffi::{R_unif_index, exp_rand, norm_rand, unif_rand};
 use miniextendr_api::miniextendr;
 use miniextendr_api::rng::{RngGuard, with_rng};
 
-// =============================================================================
-// Standalone function tests
-// =============================================================================
+// region: Standalone function tests
 
 /// @noRd
 #[miniextendr(rng)]
@@ -51,10 +49,9 @@ pub fn rng_with_interrupt(n: i32) -> Vec<f64> {
 pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
+// endregion
 
-// =============================================================================
-// Manual RNG management tests
-// =============================================================================
+// region: Manual RNG management tests
 
 /// @noRd
 #[miniextendr]
@@ -68,10 +65,9 @@ fn rng_guard_test(n: i32) -> Vec<f64> {
 fn rng_with_rng_test(n: i32) -> Vec<f64> {
     with_rng(|| (0..n).map(|_| unsafe { unif_rand() }).collect())
 }
+// endregion
 
-// =============================================================================
-// Impl method tests
-// =============================================================================
+// region: Impl method tests
 
 /// A struct to test RNG in impl methods.
 /// @rdname rpkg_rng
@@ -111,7 +107,7 @@ impl RngSampler {
         (0..n).map(|_| unsafe { unif_rand() }).collect()
     }
 }
+// endregion
 
-// =============================================================================
-// Module registration
-// =============================================================================
+// region: Module registration
+// endregion

@@ -5,9 +5,7 @@
 
 use miniextendr_api::miniextendr;
 
-// ============================================================================
-// 1. #[miniextendr] on multi-field struct → ExternalPtr
-// ============================================================================
+// region: 1. #[miniextendr] on multi-field struct → ExternalPtr
 
 /// Multi-field struct: `#[miniextendr]` generates ExternalPtr + TypedExternal.
 #[miniextendr]
@@ -27,10 +25,9 @@ pub fn mx_point_new(x: f64, y: f64) -> MxPoint {
 pub fn mx_point_sum(p: miniextendr_api::externalptr::ExternalPtr<MxPoint>) -> f64 {
     p.x + p.y
 }
+// endregion
 
-// ============================================================================
-// 2. #[miniextendr(list)] on struct → IntoList + TryFromList + PreferList
-// ============================================================================
+// region: 2. #[miniextendr(list)] on struct → IntoList + TryFromList + PreferList
 
 /// Struct with list mode: generates IntoList + TryFromList + PreferList.
 /// PreferList includes IntoR that routes through IntoList, so this type
@@ -46,10 +43,9 @@ pub struct MxRecord {
 pub fn mx_record_create(name: String, value: i32) -> MxRecord {
     MxRecord { name, value }
 }
+// endregion
 
-// ============================================================================
-// 3. #[miniextendr(dataframe)] on struct → DataFrameRow + PreferDataFrame
-// ============================================================================
+// region: 3. #[miniextendr(dataframe)] on struct → DataFrameRow + PreferDataFrame
 
 /// Struct with dataframe mode: generates IntoList + DataFrameRow + IntoR on companion.
 /// The companion MxObsDataFrame type can be returned directly from #[miniextendr] functions.
@@ -67,10 +63,9 @@ pub fn mx_obs_create() -> MxObsDataFrame {
         MxObs { id: 2, score: 0.8 },
     ])
 }
+// endregion
 
-// ============================================================================
-// 4. #[miniextendr] on fieldless enum → RFactor
-// ============================================================================
+// region: 4. #[miniextendr] on fieldless enum → RFactor
 
 /// Fieldless enum: `#[miniextendr]` generates RFactor + IntoR + TryFromSexp.
 #[miniextendr]
@@ -93,10 +88,9 @@ pub fn mx_season_summer() -> MxSeason {
 pub fn mx_season_name(s: MxSeason) -> String {
     format!("{:?}", s)
 }
+// endregion
 
-// ============================================================================
-// 5. #[miniextendr(match_arg)] on fieldless enum → MatchArg
-// ============================================================================
+// region: 5. #[miniextendr(match_arg)] on fieldless enum → MatchArg
 
 /// Fieldless enum with match_arg: generates MatchArg + IntoR + TryFromSexp.
 #[miniextendr(match_arg)]
@@ -112,10 +106,9 @@ pub enum MxVerbosity {
 pub fn mx_verbosity_check(v: MxVerbosity) -> String {
     format!("{:?}", v)
 }
+// endregion
 
-// ============================================================================
-// 6. #[derive(Altrep)] on 1-field struct → ALTREP registration
-// ============================================================================
+// region: 6. #[derive(Altrep)] on 1-field struct → ALTREP registration
 
 /// 1-field struct via derive: generates ALTREP class registration.
 #[derive(miniextendr_api::Altrep)]
@@ -126,7 +119,7 @@ pub struct MxDerivedInts(Vec<i32>);
 pub fn mx_derived_ints() -> MxDerivedInts {
     MxDerivedInts(vec![10, 20, 30])
 }
+// endregion
 
-// ============================================================================
-// Module registration
-// ============================================================================
+// region: Module registration
+// endregion

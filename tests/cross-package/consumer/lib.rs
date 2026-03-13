@@ -7,9 +7,7 @@
 
 use miniextendr_api::{miniextendr, externalptr::ErasedExternalPtr, ffi::SEXP};
 
-// ============================================================================
-// Shared trait definition (must match producer exactly)
-// ============================================================================
+// region: Shared trait definition (must match producer exactly)
 
 #[miniextendr]
 pub trait Counter {
@@ -17,10 +15,9 @@ pub trait Counter {
     fn increment(&mut self);
     fn add(&mut self, n: i32);
 }
+// endregion
 
-// ============================================================================
-// Generic functions working with Counter trait
-// ============================================================================
+// region: Generic functions working with Counter trait
 
 /// Increment a counter twice (generic over Counter trait)
 ///
@@ -77,3 +74,4 @@ fn peek_value(counter_sexp: SEXP) -> i32 {
         counter.value()
     }
 }
+// endregion

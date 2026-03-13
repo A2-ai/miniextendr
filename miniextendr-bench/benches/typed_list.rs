@@ -14,9 +14,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Fixture builders — create named R lists matching various spec sizes
-// =============================================================================
+// region: Fixture builders — create named R lists matching various spec sizes
 
 /// Build a named VECSXP with `n` numeric(1) entries named "f0", "f1", ..., "f{n-1}".
 fn make_numeric_list(n: usize) -> SEXP {
@@ -124,10 +122,9 @@ fn make_mixed_list(n: usize) -> SEXP {
 }
 
 const FIELD_COUNTS: &[usize] = &[3, 10, 50];
+// endregion
 
-// =============================================================================
-// Group 1: Homogeneous numeric validation (happy path)
-// =============================================================================
+// region: Group 1: Homogeneous numeric validation (happy path)
 
 mod numeric_validation {
     use super::*;
@@ -154,10 +151,9 @@ mod numeric_validation {
         let _ = divan::black_box(result);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 2: Mixed-type validation
-// =============================================================================
+// region: Group 2: Mixed-type validation
 
 mod mixed_validation {
     use super::*;
@@ -173,10 +169,9 @@ mod mixed_validation {
         let _ = divan::black_box(result);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 3: Failure paths (validation rejects the list)
-// =============================================================================
+// region: Group 3: Failure paths (validation rejects the list)
 
 mod failure_paths {
     use super::*;
@@ -238,10 +233,9 @@ mod failure_paths {
         let _ = divan::black_box(result);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 4: Optional fields
-// =============================================================================
+// region: Group 4: Optional fields
 
 mod optional_fields {
     use super::*;
@@ -291,10 +285,9 @@ mod optional_fields {
         let _ = divan::black_box(result);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 5: Length-constrained validation
-// =============================================================================
+// region: Group 5: Length-constrained validation
 
 mod length_check {
     use super::*;
@@ -340,10 +333,9 @@ mod length_check {
         let _ = divan::black_box(result);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 6: Spec construction cost (baseline)
-// =============================================================================
+// region: Group 6: Spec construction cost (baseline)
 
 mod spec_construction {
     use super::*;
@@ -369,3 +361,4 @@ mod spec_construction {
         divan::black_box(spec);
     }
 }
+// endregion

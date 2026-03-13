@@ -23,9 +23,7 @@ pub struct AsCoerceErrorTest {
     is_empty: bool,
 }
 
-// =============================================================================
-// AsCoerceTestData impl
-// =============================================================================
+// region: AsCoerceTestData impl
 
 /// @title as.<class>() Coercion Test Type
 /// @name AsCoerceTestData
@@ -139,10 +137,9 @@ impl AsCoerceTestData {
         Ok(ints.into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// AsCoerceErrorTest impl - tests error handling
-// =============================================================================
+// region: AsCoerceErrorTest impl - tests error handling
 
 /// @title as.<class>() Error Test Type
 /// @name AsCoerceErrorTest
@@ -195,3 +192,4 @@ impl AsCoerceErrorTest {
         ))
     }
 }
+// endregion

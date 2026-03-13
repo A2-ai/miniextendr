@@ -620,6 +620,48 @@ Alternatively, use `devtools::install()` which handles library paths:
 just devtools-install
 ```
 
+## Code Style
+
+### Module Structure
+
+**Never use the `mod.rs` pattern** (`foo/mod.rs`) — always use the `foo.rs` alongside `foo/` directory pattern instead.
+
+- Example: `builtins.rs` + `builtins/math.rs` + `builtins/strings.rs`
+- If you find existing `mod.rs` files, refactor them to the `foo.rs` pattern when touching that code
+
+### Section Comments
+
+**Use `// region:` / `// endregion`** for logical sections within a file. These are IDE-foldable in VS Code and RustRover.
+
+```rust
+// region: Scalar implementations
+...
+// endregion
+```
+
+When touching files that use other section patterns (`// =====` banners, `// ──` box drawing, `// ---`), migrate them to `// region:` / `// endregion`.
+
+### Type Conversions
+
+**Prefer `From`/`TryFrom` over `as` casts** — use `TryFrom` and `From` trait conversions instead of `as`-casts. Propagate the error rather than silently truncating or wrapping. When you encounter `as` casts during development, flag them for replacement.
+
+## Reviews
+
+When things go wrong during development (test failures, runtime errors, CI breakage, unexpected behavior), write a short markdown file in `reviews/` describing:
+
+1. **What was attempted** — the change or operation
+2. **What went wrong** — the error, failure mode, or unexpected behavior
+3. **Root cause** — why it happened
+4. **Fix** — what resolved it (or what's still open)
+
+Name files descriptively, e.g. `reviews/cdylib-vctrs-init-crash.md`, `reviews/filter-repo-pr-destruction.md`.
+
+These accumulate institutional knowledge about non-obvious failure modes that aren't captured by tests or docs.
+
+## Vendor Audit
+
+When dependencies change (new crates added, `just vendor` run), audit `vendor/` for crates that could be useful in miniextendr. Write a `plans/` file for any vendored crate worth integrating (e.g. a crate that provides R-relevant functionality like better error types, serialization, or data structures).
+
 ## Using Codex for Reviews
 
 OpenAI's Codex CLI can be used for non-interactive code reviews and plan generation.

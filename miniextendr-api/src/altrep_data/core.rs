@@ -36,9 +36,7 @@ pub trait AltrepLen {
     }
 }
 
-// =============================================================================
-// Logical value type
-// =============================================================================
+// region: Logical value type
 
 /// Logical value: TRUE, FALSE, or NA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,10 +111,9 @@ impl From<Logical> for crate::ffi::RLogical {
         crate::ffi::RLogical::from_i32(l.to_r_int())
     }
 }
+// endregion
 
-// =============================================================================
-// Sortedness hint
-// =============================================================================
+// region: Sortedness hint
 
 /// Sortedness hint for ALTREP vectors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,10 +179,9 @@ impl From<i32> for Sortedness {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Dataptr / serialization / subset helpers
-// =============================================================================
+// region: Dataptr / serialization / subset helpers
 
 /// Trait for ALTREP types that can expose a data pointer.
 pub trait AltrepDataptr<T> {
@@ -226,10 +222,9 @@ pub trait AltrepExtractSubset {
     /// Return `None` to fall back to R's default subsetting.
     fn extract_subset(&self, indices: &[i32]) -> Option<SEXP>;
 }
+// endregion
 
-// =============================================================================
-// InferBase trait - automatic base type inference from data traits
-// =============================================================================
+// region: InferBase trait - automatic base type inference from data traits
 
 /// Trait for inferring the R base type from a data type's implemented traits.
 ///
@@ -255,3 +250,4 @@ pub trait InferBase {
     /// Must be called during R initialization with a valid class handle.
     unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t);
 }
+// endregion

@@ -46,9 +46,7 @@ use crate::from_r::{
 };
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Scalar conversions
-// =============================================================================
+// region: Scalar conversions
 
 impl TryFromSexp for Url {
     type Error = SexpError;
@@ -97,10 +95,9 @@ impl IntoR for Url {
         self.as_str().into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// Option conversions (NA support)
-// =============================================================================
+// region: Option conversions (NA support)
 
 impl TryFromSexp for Option<Url> {
     type Error = SexpError;
@@ -155,10 +152,9 @@ impl IntoR for Option<Url> {
         self.map(|u| u.as_str().to_string()).into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// Vector conversions
-// =============================================================================
+// region: Vector conversions
 
 impl TryFromSexp for Vec<Url> {
     type Error = SexpError;
@@ -216,10 +212,9 @@ impl IntoR for Vec<Url> {
         strings.into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// Vec<Option<Url>> conversions (NA-aware vectors)
-// =============================================================================
+// region: Vec<Option<Url>> conversions (NA-aware vectors)
 
 impl TryFromSexp for Vec<Option<Url>> {
     type Error = SexpError;
@@ -278,10 +273,9 @@ impl IntoR for Vec<Option<Url>> {
         strings.into_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// RUrlOps adapter trait
-// =============================================================================
+// region: RUrlOps adapter trait
 
 /// Adapter trait for [`Url`] operations.
 ///
@@ -399,10 +393,9 @@ impl RUrlOps for Url {
         self.origin().ascii_serialization()
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// URL helper functions for common operations.
 pub mod url_helpers {
@@ -423,10 +416,9 @@ pub mod url_helpers {
         Url::parse(s).is_ok()
     }
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -488,3 +480,4 @@ mod tests {
         assert_eq!(RUrlOps::password(&url), None);
     }
 }
+// endregion

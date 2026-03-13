@@ -34,9 +34,7 @@ pub trait PrefersExternalPtr: crate::externalptr::IntoExternalPtr {}
 /// Implemented by the `PreferRNativeType` derive; currently informational.
 pub trait PrefersRNativeType: crate::ffi::RNativeType {}
 
-// =============================================================================
-// Coercion marker traits
-// =============================================================================
+// region: Coercion marker traits
 
 /// Marker trait for types that can widen to `i32` without loss.
 ///
@@ -63,3 +61,4 @@ impl WidensToF64 for i32 {}
 impl WidensToF64 for u8 {}
 impl WidensToF64 for u16 {}
 impl WidensToF64 for u32 {}
+// endregion

@@ -51,7 +51,7 @@ pub(super) fn derive_enum_dataframe(
 ) -> syn::Result<TokenStream> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    // ── Validate variants ────────────────────────────────────────────────
+    // region: Validate variants
     if data.variants.is_empty() {
         return Err(syn::Error::new_spanned(
             row_name,
@@ -238,8 +238,9 @@ pub(super) fn derive_enum_dataframe(
             }
         }
     }
+    // endregion
 
-    // ── Resolve unified schema ───────────────────────────────────────────
+    // region: Resolve unified schema
     // Collect all unique column names, check type consistency.
     // Expanded fields contribute multiple columns to the schema.
     let coerce_to_string = attrs.conflicts.as_deref() == Some("string");
@@ -294,8 +295,9 @@ pub(super) fn derive_enum_dataframe(
         }
     }
     let columns = registry.columns;
+    // endregion
 
-    // ── Collect auto-expand fields ──────────────────────────────────────
+    // region: Collect auto-expand fields
     struct EnumAutoExpandCol {
         df_field: syn::Ident,
         base_name: String,
@@ -362,8 +364,9 @@ pub(super) fn derive_enum_dataframe(
         }
     }
     let has_enum_auto_expand = !auto_expand_cols.is_empty();
+    // endregion
 
-    // ── Generate companion struct ────────────────────────────────────────
+    // region: Generate companion struct
     let has_tag = attrs.tag.is_some();
 
     let tag_field = if has_tag {
@@ -394,8 +397,9 @@ pub(super) fn derive_enum_dataframe(
             #(#df_fields),*
         }
     };
+    // endregion
 
-    // ── Generate IntoDataFrame ───────────────────────────────────────────
+    // region: Generate IntoDataFrame
     // The first "real" column for length reference. If tag exists, use _tag.
     let length_ref = if has_tag {
         quote! { self._tag.len() }
@@ -540,8 +544,9 @@ pub(super) fn derive_enum_dataframe(
             }
         }
     };
+    // endregion
 
-    // ── Generate From<Vec<Enum>> ─────────────────────────────────────────
+    // region: Generate From<Vec<Enum>>
     let mut col_vec_inits: Vec<TokenStream> = columns
         .iter()
         .map(|col| {
@@ -745,8 +750,9 @@ pub(super) fn derive_enum_dataframe(
             }
         }
     };
+    // endregion
 
-    // ── Generate from_rows_par (parallel scatter-write via ColumnWriter) ──
+    // region: Generate from_rows_par (parallel scatter-write via ColumnWriter)
     let from_rows_par_method = if !columns.is_empty() || !auto_expand_cols.is_empty() || has_tag {
         // Column declarations
         let mut par_col_decls = Vec::new();
@@ -983,8 +989,9 @@ pub(super) fn derive_enum_dataframe(
     } else {
         TokenStream::new()
     };
+    // endregion
 
-    // ── Generate DataFrame type methods (from_rows, from_rows_par) ────────
+    // region: Generate DataFrame type methods (from_rows, from_rows_par)
     let df_methods = quote! {
         impl #impl_generics #df_name #ty_generics #where_clause {
             /// Sequential row→column transposition.
@@ -995,8 +1002,9 @@ pub(super) fn derive_enum_dataframe(
             #from_rows_par_method
         }
     };
+    // endregion
 
-    // ── Generate associated methods ──────────────────────────────────────
+    // region: Generate associated methods
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             /// Name of the generated DataFrame companion type.
@@ -1021,4 +1029,5 @@ pub(super) fn derive_enum_dataframe(
         #df_methods
         #row_methods
     })
+    // endregion
 }

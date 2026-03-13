@@ -46,9 +46,7 @@ pub fn greetings_last_as_named_dots(_exclamations: i32, dots: ...) {
 #[miniextendr]
 pub fn greetings_last_as_nameless_dots(_exclamations: i32, _dots: ...) {}
 
-// =============================================================================
-// typed_list! macro examples
-// =============================================================================
+// region: typed_list! macro examples
 
 /// @noRd
 #[miniextendr]
@@ -99,10 +97,9 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
 
     Ok(ncol as i32)
 }
+// endregion
 
-// =============================================================================
-// Attribute sugar for typed_list validation
-// =============================================================================
+// region: Attribute sugar for typed_list validation
 
 /// @noRd
 #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
@@ -123,3 +120,4 @@ pub fn validate_attr_optional(_dots: ...) -> String {
     let greeting = greeting.unwrap_or_else(|| "Hello".to_string());
     format!("{}, {}!", greeting, name)
 }
+// endregion

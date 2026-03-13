@@ -9,9 +9,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Test types for ExternalPtr benchmarks
-// =============================================================================
+// region: Test types for ExternalPtr benchmarks
 
 /// Small payload type (8 bytes).
 #[derive(miniextendr_api::ExternalPtr)]
@@ -36,10 +34,9 @@ pub struct LargePayload {
 struct OtherPayload {
     _value: i64,
 }
+// endregion
 
-// =============================================================================
-// ExternalPtr creation benchmarks
-// =============================================================================
+// region: ExternalPtr creation benchmarks
 
 #[divan::bench]
 fn create_small_payload() {
@@ -63,10 +60,9 @@ fn create_large_payload() {
     let ptr = ExternalPtr::new(payload);
     divan::black_box(ptr);
 }
+// endregion
 
-// =============================================================================
-// ExternalPtr access benchmarks (using bench_local_refs for !Sync types)
-// =============================================================================
+// region: ExternalPtr access benchmarks (using bench_local_refs for !Sync types)
 
 #[divan::bench]
 fn access_as_ref(bencher: divan::Bencher) {
@@ -106,10 +102,9 @@ fn access_as_ptr(bencher: divan::Bencher) {
             divan::black_box(raw);
         });
 }
+// endregion
 
-// =============================================================================
-// ExternalPtr SEXP conversion benchmarks
-// =============================================================================
+// region: ExternalPtr SEXP conversion benchmarks
 
 #[divan::bench]
 fn as_sexp(bencher: divan::Bencher) {
@@ -123,10 +118,9 @@ fn as_sexp(bencher: divan::Bencher) {
             divan::black_box(sexp);
         });
 }
+// endregion
 
-// =============================================================================
-// From trait usage benchmarks
-// =============================================================================
+// region: From trait usage benchmarks
 
 #[divan::bench]
 fn from_value() {
@@ -141,10 +135,9 @@ fn from_box() {
     let ptr: ExternalPtr<SmallPayload> = boxed.into();
     divan::black_box(ptr);
 }
+// endregion
 
-// =============================================================================
-// Protection/tagging benchmarks
-// =============================================================================
+// region: Protection/tagging benchmarks
 
 #[divan::bench]
 fn set_protected(bencher: divan::Bencher) {
@@ -173,10 +166,9 @@ fn get_tag(bencher: divan::Bencher) {
             divan::black_box(tag);
         });
 }
+// endregion
 
-// =============================================================================
-// Comparison: Box vs ExternalPtr creation
-// =============================================================================
+// region: Comparison: Box vs ExternalPtr creation
 
 #[divan::bench]
 fn baseline_box_small() {
@@ -197,10 +189,9 @@ fn baseline_box_large() {
     });
     divan::black_box(boxed);
 }
+// endregion
 
-// =============================================================================
-// Type-erased checks + downcasts
-// =============================================================================
+// region: Type-erased checks + downcasts
 
 struct ProtectedSexp {
     sexp: miniextendr_api::ffi::SEXP,
@@ -274,10 +265,9 @@ fn erased_downcast_mut_hit(bencher: divan::Bencher) {
             divan::black_box(r.value);
         });
 }
+// endregion
 
-// =============================================================================
-// Parameterized payload creation (A11: payload size scaling)
-// =============================================================================
+// region: Parameterized payload creation (A11: payload size scaling)
 
 const PAYLOAD_BYTES: &[usize] = &[8, 64, 512, 4096, 65536];
 
@@ -296,10 +286,9 @@ fn baseline_box_sized(size: usize) {
     let boxed = Box::new(data);
     divan::black_box(boxed);
 }
+// endregion
 
-// =============================================================================
-// Multiple ExternalPtrs (collection stress)
-// =============================================================================
+// region: Multiple ExternalPtrs (collection stress)
 
 const COLLECTION_COUNTS: &[usize] = &[1, 10, 100, 1000];
 
@@ -324,3 +313,4 @@ fn create_and_check_n_ptrs(bencher: divan::Bencher, n: usize) {
         }
     });
 }
+// endregion

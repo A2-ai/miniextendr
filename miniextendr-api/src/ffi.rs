@@ -1036,9 +1036,7 @@ unsafe extern "C-unwind" {
     pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
     pub fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
 
-    // =========================================================================
-    // Cons Cell (Pairlist) Accessors
-    // =========================================================================
+    // region: Cons Cell (Pairlist) Accessors
     //
     // R's pairlists (LISTSXP) are cons cells like in Lisp/Scheme. Each node has:
     // - CAR: The value/head element

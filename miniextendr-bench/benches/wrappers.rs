@@ -165,9 +165,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// wrapper_call_overhead: R wrapper -> base R function
-// =============================================================================
+// region: wrapper_call_overhead: R wrapper -> base R function
 
 /// Baseline: evaluate a pre-built call to sum() directly via Rf_eval.
 #[divan::bench]
@@ -248,10 +246,9 @@ fn wrapper_call_realvec(bencher: divan::Bencher) {
             divan::black_box(out);
         });
 }
+// endregion
 
-// =============================================================================
-// argument_coercion: wrapper path with type conversion
-// =============================================================================
+// region: argument_coercion: wrapper path with type conversion
 
 /// Wrapper with as.integer() coercion on a real scalar.
 #[divan::bench]
@@ -316,10 +313,9 @@ fn coerce_int_vec256(bencher: divan::Bencher) {
             divan::black_box(out);
         });
 }
+// endregion
 
-// =============================================================================
-// class_methods: compare class system dispatch overhead
-// =============================================================================
+// region: class_methods: compare class system dispatch overhead
 
 /// Env-style: obj$value() via `$` dispatch.
 #[divan::bench]
@@ -398,3 +394,4 @@ fn class_baseline_plain_fn(bencher: divan::Bencher) {
             divan::black_box(out);
         });
 }
+// endregion

@@ -65,9 +65,7 @@ use crate::gc_protect::OwnedProtect;
 use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Parse a TOML document string into a `TomlValue`.
 ///
@@ -106,10 +104,9 @@ pub fn toml_to_string(v: &TomlValue) -> String {
 pub fn toml_to_string_pretty(v: &TomlValue) -> String {
     toml::to_string_pretty(v).unwrap_or_else(|e| format!("# Error serializing: {}", e))
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp for TomlValue
-// =============================================================================
+// region: TryFromSexp for TomlValue
 
 impl TryFromSexp for TomlValue {
     type Error = SexpError;
@@ -151,10 +148,9 @@ impl TryFromSexp for TomlValue {
         toml_from_str(s)
     }
 }
+// endregion
 
-// =============================================================================
-// Option / Vec conversions
-// =============================================================================
+// region: Option / Vec conversions
 
 // Use macro for Option<TomlValue>
 impl_option_try_from_sexp!(TomlValue);
@@ -200,10 +196,9 @@ impl TryFromSexp for Vec<Option<TomlValue>> {
             .collect()
     }
 }
+// endregion
 
-// =============================================================================
-// IntoR for TomlValue
-// =============================================================================
+// region: IntoR for TomlValue
 
 impl IntoR for TomlValue {
     type Error = std::convert::Infallible;
@@ -468,10 +463,9 @@ fn discriminant(v: &TomlValue) -> u8 {
         TomlValue::Table(_) => 6,
     }
 }
+// endregion
 
-// =============================================================================
-// Adapter trait
-// =============================================================================
+// region: Adapter trait
 
 /// Adapter trait for TOML value inspection.
 ///
@@ -604,10 +598,9 @@ impl RTomlOps for TomlValue {
             .unwrap_or_default()
     }
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -685,3 +678,4 @@ mod tests {
         assert!(keys.contains(&"beta".to_string()));
     }
 }
+// endregion

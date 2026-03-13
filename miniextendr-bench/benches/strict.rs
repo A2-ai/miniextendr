@@ -20,9 +20,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Helpers: create R vectors with values that fit in i32 (valid for both paths)
-// =============================================================================
+// region: Helpers: create R vectors with values that fit in i32 (valid for both paths)
 
 /// Create an INTSXP of given length filled with 0..len.
 fn make_intsxp(len: usize) -> SEXP {
@@ -35,10 +33,9 @@ fn make_realsxp(len: usize) -> SEXP {
     let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
     data.into_sexp()
 }
+// endregion
 
-// =============================================================================
-// Group 1: Scalar output (Rust → R)
-// =============================================================================
+// region: Group 1: Scalar output (Rust → R)
 
 mod scalar_output {
     use super::*;
@@ -97,10 +94,9 @@ mod scalar_output {
         divan::black_box(strict::checked_into_sexp_usize(42))
     }
 }
+// endregion
 
-// =============================================================================
-// Group 2: Scalar input (R → Rust)
-// =============================================================================
+// region: Group 2: Scalar input (R → Rust)
 
 mod scalar_input {
     use super::*;
@@ -153,10 +149,9 @@ mod scalar_input {
         divan::black_box(val);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 3: Vec output (Rust → R)
-// =============================================================================
+// region: Group 3: Vec output (Rust → R)
 
 mod vec_output {
     use super::*;
@@ -217,10 +212,9 @@ mod vec_output {
         divan::black_box(strict::checked_vec_usize_into_sexp(data))
     }
 }
+// endregion
 
-// =============================================================================
-// Group 4: Vec input (R → Rust)
-// =============================================================================
+// region: Group 4: Vec input (R → Rust)
 
 mod vec_input {
     use super::*;
@@ -305,10 +299,9 @@ mod vec_input {
         divan::black_box(val);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 5: Option scalar output (Rust → R)
-// =============================================================================
+// region: Group 5: Option scalar output (Rust → R)
 
 mod option_output {
     use super::*;
@@ -337,10 +330,9 @@ mod option_output {
         divan::black_box(strict::checked_option_i64_into_sexp(None))
     }
 }
+// endregion
 
-// =============================================================================
-// Group 6: Vec<Option<T>> output (Rust → R)
-// =============================================================================
+// region: Group 6: Vec<Option<T>> output (Rust → R)
 
 mod vec_option_output {
     use super::*;
@@ -377,3 +369,4 @@ mod vec_option_output {
         divan::black_box(strict::checked_vec_option_i64_into_sexp(data))
     }
 }
+// endregion

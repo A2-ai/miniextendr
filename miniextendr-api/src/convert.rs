@@ -256,9 +256,7 @@ pub trait IntoDataFrame {
     fn into_data_frame(self) -> List;
 }
 
-// =============================================================================
-// Serde Row Wrapper
-// =============================================================================
+// region: Serde Row Wrapper
 
 /// Wrap a serde-serializable value for use as a data frame row.
 ///
@@ -349,10 +347,9 @@ impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
 /// ```
 #[cfg(feature = "serde")]
 pub type SerializeDataFrame<T> = DataFrame<AsSerializeRow<T>>;
+// endregion
 
-// =============================================================================
-// Data Frame Row Conversion
-// =============================================================================
+// region: Data Frame Row Conversion
 
 /// Convert row-oriented data into a column-oriented R data.frame.
 ///
@@ -668,10 +665,9 @@ impl<T: RNativeType> IntoR for AsRNative<T> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Named pair wrappers
-// =============================================================================
+// region: Named pair wrappers
 
 /// Wrap a tuple pair collection and convert it to a **named R list** (VECSXP).
 ///
@@ -871,10 +867,9 @@ where
     }
     sexp
 }
+// endregion
 
-// =============================================================================
-// Extension traits for ergonomic wrapping
-// =============================================================================
+// region: Extension traits for ergonomic wrapping
 //
 // These extension traits provide method-style wrapping that works even when
 // the destination type isn't constrained (i.e., `value.as_list()` instead of
@@ -1040,3 +1035,4 @@ pub trait AsNamedVectorExt: Sized {
 impl<K: AsRef<str>, V: AtomicElement> AsNamedVectorExt for Vec<(K, V)> {}
 impl<K: AsRef<str>, V: AtomicElement, const N: usize> AsNamedVectorExt for [(K, V); N] {}
 impl<K: AsRef<str>, V: Clone + AtomicElement> AsNamedVectorExt for &[(K, V)] {}
+// endregion

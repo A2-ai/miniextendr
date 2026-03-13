@@ -48,13 +48,10 @@ pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
     unsafe { R_NilValue }
 }
 
-// =============================================================================
-// Comprehensive worker/with_r_thread tests
-// =============================================================================
+// region: Comprehensive worker/with_r_thread tests
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 1: Simple worker execution - no R API calls
-// -----------------------------------------------------------------------------
+// region: Test 1: Simple worker execution - no R API calls
 
 /// @noRd
 #[miniextendr]
@@ -68,10 +65,9 @@ pub extern "C-unwind" fn C_test_worker_simple() -> SEXP {
     });
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 2: Worker with with_r_thread - call R API from worker
-// -----------------------------------------------------------------------------
+// region: Test 2: Worker with with_r_thread - call R API from worker
 
 /// @noRd
 #[miniextendr]
@@ -121,10 +117,9 @@ pub extern "C-unwind" fn C_test_worker_multiple_r_calls() -> SEXP {
         vec
     }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 3: Panic scenarios
-// -----------------------------------------------------------------------------
+// region: Test 3: Panic scenarios
 
 /// @noRd
 #[miniextendr]
@@ -178,10 +173,9 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops() -> SEXP {
     });
     unsafe { R_NilValue }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 4: R error scenarios (via with_r_thread)
-// -----------------------------------------------------------------------------
+// region: Test 4: R error scenarios (via with_r_thread)
 
 /// @noRd
 #[miniextendr]
@@ -213,10 +207,9 @@ pub extern "C-unwind" fn C_test_worker_r_error_with_drops() -> SEXP {
     });
     unsafe { R_NilValue }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 5: Mixed scenarios - some R calls succeed, then error/panic
-// -----------------------------------------------------------------------------
+// region: Test 5: Mixed scenarios - some R calls succeed, then error/panic
 
 /// @noRd
 #[miniextendr]
@@ -261,10 +254,9 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
     });
     unsafe { R_NilValue }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 6: Return value propagation
-// -----------------------------------------------------------------------------
+// region: Test 6: Return value propagation
 
 /// @noRd
 #[miniextendr]
@@ -311,10 +303,9 @@ pub fn test_worker_return_string() -> String {
 pub fn test_worker_return_f64() -> f64 {
     std::f64::consts::PI * 2.0
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 7: ExternalPtr creation (must be main thread - ExternalPtr is !Send)
-// -----------------------------------------------------------------------------
+// region: Test 7: ExternalPtr creation (must be main thread - ExternalPtr is !Send)
 
 /// @noRd
 #[miniextendr]
@@ -373,10 +364,9 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
         list
     }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 8: Main thread functions (via attribute)
-// -----------------------------------------------------------------------------
+// region: Test 8: Main thread functions (via attribute)
 
 /// @noRd
 #[miniextendr(unsafe(main_thread))]
@@ -407,10 +397,9 @@ pub fn test_main_thread_r_error_with_drops() -> i32 {
         )
     }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 9: Calling checked R APIs from worker thread (routed to main thread)
-// -----------------------------------------------------------------------------
+// region: Test 9: Calling checked R APIs from worker thread (routed to main thread)
 
 /// @noRd
 #[miniextendr]
@@ -425,10 +414,9 @@ pub extern "C-unwind" fn C_test_wrong_thread_r_api() -> SEXP {
     });
     unsafe { R_NilValue }
 }
+// endregion
 
-// -----------------------------------------------------------------------------
-// Test 10: Nested wrappers - calling miniextendr functions from miniextendr functions
-// -----------------------------------------------------------------------------
+// region: Test 10: Nested wrappers - calling miniextendr functions from miniextendr functions
 
 /// Helper that calls with_r_thread and returns a Send-able value.
 fn helper_r_call_value(value: i32) -> i32 {
@@ -579,3 +567,4 @@ pub extern "C-unwind" fn C_test_deep_with_r_thread_sequence() -> SEXP {
 
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(sum) }
 }
+// endregion

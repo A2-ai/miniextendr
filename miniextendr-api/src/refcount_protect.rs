@@ -60,9 +60,7 @@ use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::rc::Rc;
 
-// =============================================================================
-// Entry type
-// =============================================================================
+// region: Entry type
 
 /// Entry in the reference count map.
 ///
@@ -75,10 +73,9 @@ pub struct Entry {
     /// Index in the backing VECSXP
     index: usize,
 }
+// endregion
 
-// =============================================================================
-// MapStorage trait
-// =============================================================================
+// region: MapStorage trait
 
 /// Trait abstracting over map implementations for arena storage.
 ///
@@ -252,10 +249,9 @@ macro_rules! impl_hashmap_map_storage {
 }
 
 impl_hashmap_map_storage!(HashMap<usize, Entry>);
+// endregion
 
-// =============================================================================
-// Core arena state (shared between RefCell and thread_local variants)
-// =============================================================================
+// region: Core arena state (shared between RefCell and thread_local variants)
 
 /// Core arena state without interior mutability.
 ///
@@ -571,10 +567,9 @@ impl<M: MapStorage> ArenaState<M> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Arena<M> - RefCell-based generic arena
-// =============================================================================
+// region: Arena<M> - RefCell-based generic arena
 
 /// Enforces `!Send + !Sync` (R API is not thread-safe).
 type NoSendSync = PhantomData<Rc<()>>;
@@ -724,20 +719,18 @@ impl<M: MapStorage> Default for Arena<M> {
         unsafe { Self::new() }
     }
 }
+// endregion
 
-// =============================================================================
-// Type aliases for common arena types
-// =============================================================================
+// region: Type aliases for common arena types
 
 /// BTreeMap-based arena (default, good for reference counting).
 pub type RefCountedArena = Arena<BTreeMap<usize, Entry>>;
 
 /// HashMap-based arena (faster for large collections).
 pub type HashMapArena = Arena<HashMap<usize, Entry>>;
+// endregion
 
-// =============================================================================
-// Fast hash types (feature-gated)
-// =============================================================================
+// region: Fast hash types (feature-gated)
 
 /// HashMap with ahash for faster hashing (not DOS-resistant).
 ///
@@ -755,10 +748,9 @@ impl_hashmap_map_storage!(FastHashMap);
 /// Not DOS-resistant, suitable for local, non-hostile environments.
 #[cfg(feature = "refcount-fast-hash")]
 pub type FastHashMapArena = Arena<FastHashMap>;
+// endregion
 
-// =============================================================================
-// RAII Guard
-// =============================================================================
+// region: RAII Guard
 
 /// An RAII guard that unprotects a SEXP when dropped.
 pub struct ArenaGuard<'a, M: MapStorage> {
@@ -802,10 +794,9 @@ impl<M: MapStorage> std::ops::Deref for ArenaGuard<'_, M> {
 
 /// Legacy type alias for backwards compatibility.
 pub type RefCountedGuard<'a> = ArenaGuard<'a, BTreeMap<usize, Entry>>;
+// endregion
 
-// =============================================================================
-// Thread-local arena trait + macro
-// =============================================================================
+// region: Thread-local arena trait + macro
 
 /// Trait providing default implementations for all thread-local arena methods.
 ///
@@ -1111,10 +1102,9 @@ impl<M: MapStorage> Drop for ThreadLocalState<M> {
         // lifetime via R_PreserveObject.
     }
 }
+// endregion
 
-// =============================================================================
-// Built-in thread-local arenas
-// =============================================================================
+// region: Built-in thread-local arenas
 
 define_thread_local_arena!(
     /// Thread-local BTreeMap-based arena.
@@ -1135,10 +1125,9 @@ define_thread_local_arena!(
     HashMap<usize, Entry>,
     THREAD_LOCAL_HASH_STATE
 );
+// endregion
 
-// =============================================================================
-// Fast hash thread-local arena (feature-gated)
-// =============================================================================
+// region: Fast hash thread-local arena (feature-gated)
 
 #[cfg(feature = "refcount-fast-hash")]
 define_thread_local_arena!(
@@ -1156,3 +1145,4 @@ define_thread_local_arena!(
 );
 
 // Tests are in tests/refcount_protect.rs (requires R runtime via miniextendr-engine)
+// endregion

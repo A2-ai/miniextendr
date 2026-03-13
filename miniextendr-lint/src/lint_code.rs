@@ -9,27 +9,31 @@ use std::fmt;
 /// Display format is `MXL###`, derived directly from the variant name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LintCode {
-    // ── Source-side validation ────────────────────────────────────────
+    // region: Source-side validation
     /// Trait impl class system incompatible with inherent impl class system.
     MXL008,
     /// Multiple impl blocks for one type without labels.
     MXL009,
     /// Duplicate labels on impl blocks for one type.
     MXL010,
+    // endregion
 
-    // ── P0: High Impact ─────────────────────────────────────────────
+    // region: P0: High Impact
     /// Registered top-level function is not `pub`.
     MXL106,
+    // endregion
 
-    // ── P1: Important ───────────────────────────────────────────────
+    // region: P1: Important
     /// `internal` + `noexport` redundancy.
     MXL203,
+    // endregion
 
-    // ── P2: Safety ──────────────────────────────────────────────────
+    // region: P2: Safety
     /// Direct `Rf_error`/`Rf_errorcall` call in user code.
     MXL300,
     /// `_unchecked` FFI call outside guard context.
     MXL301,
+    // endregion
 }
 
 impl fmt::Display for LintCode {

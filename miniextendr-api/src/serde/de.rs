@@ -679,9 +679,7 @@ impl RDeserializer {
     }
 }
 
-// =============================================================================
-// SeqAccess implementations
-// =============================================================================
+// region: SeqAccess implementations
 
 /// Empty sequence access (for NULL -> empty vec).
 struct EmptySeqAccess;
@@ -834,10 +832,9 @@ impl<'de> SeqAccess<'de> for ListSeqAccess {
         seed.deserialize(RDeserializer::from_sexp(elem)).map(Some)
     }
 }
+// endregion
 
-// =============================================================================
-// MapAccess implementation
-// =============================================================================
+// region: MapAccess implementation
 
 /// Access named list as a map/struct.
 struct NamedListMapAccess {
@@ -925,10 +922,9 @@ impl<'de, 'a> de::Deserializer<'de> for StrDeserializer<'a> {
         enum identifier ignored_any
     }
 }
+// endregion
 
-// =============================================================================
-// EnumAccess implementation
-// =============================================================================
+// region: EnumAccess implementation
 
 /// Access for unit enum variants (from character scalar).
 struct UnitVariantAccess {
@@ -1044,3 +1040,4 @@ impl<'de> de::VariantAccess<'de> for DataVariantDeserializer {
         de.deserialize_map(visitor)
     }
 }
+// endregion

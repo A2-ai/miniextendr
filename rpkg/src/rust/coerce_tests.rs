@@ -112,9 +112,7 @@ pub fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
     }
 }
 
-// =============================================================================
-// #[miniextendr(coerce)] attribute tests
-// =============================================================================
+// region: #[miniextendr(coerce)] attribute tests
 
 // Test 6: Coerce attribute - scalar i32 → u16
 // R: test_coerce_attr_u16(100L) should return 100
@@ -152,10 +150,9 @@ pub fn test_coerce_attr_f32(x: f32) -> f64 {
 pub fn test_coerce_attr_with_invisible(x: u16) -> i32 {
     x as i32
 }
+// endregion
 
-// =============================================================================
-// Per-argument #[miniextendr(coerce)] attribute tests
-// =============================================================================
+// region: Per-argument #[miniextendr(coerce)] attribute tests
 
 // Test 11: Per-argument coerce - only first argument is coerced
 /// @noRd
@@ -187,3 +184,4 @@ pub fn test_per_arg_coerce_both(
 pub fn test_per_arg_coerce_vec(#[miniextendr(coerce)] x: Vec<u16>, y: i32) -> i32 {
     x.iter().map(|&v| v as i32).sum::<i32>() + y
 }
+// endregion

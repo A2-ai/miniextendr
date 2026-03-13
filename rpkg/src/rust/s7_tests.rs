@@ -176,9 +176,7 @@ impl S7Strict {
     }
 }
 
-// =============================================================================
-// S7 Phase 4: convert() methods - type coercion between S7 classes
-// =============================================================================
+// region: S7 Phase 4: convert() methods - type coercion between S7 classes
 
 /// Temperature in Celsius - demonstrates convert_to pattern.
 /// Note: This class is defined first, so it cannot use convert_from
@@ -278,10 +276,9 @@ impl S7Circle {
         std::f64::consts::PI * self.radius * self.radius
     }
 }
+// endregion
 
-// =============================================================================
-// S7 Multi-Level Inheritance: S7Animal (abstract) → S7Dog → S7GoldenRetriever
-// =============================================================================
+// region: S7 Multi-Level Inheritance: S7Animal (abstract) → S7Dog → S7GoldenRetriever
 
 /// Abstract base: all animals have a kind and a number of legs.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -356,3 +353,4 @@ impl S7GoldenRetriever {
         "golden".to_string()
     }
 }
+// endregion

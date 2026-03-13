@@ -11,9 +11,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Fixture generators
-// =============================================================================
+// region: Fixture generators
 
 /// Generate a file with `n_fns` miniextendr functions.
 fn generate_module_file(n_fns: usize, mod_name: &str) -> String {
@@ -89,10 +87,9 @@ fn create_impl_fixture(n_modules: usize, methods_per_type: usize) -> TempDir {
 
     dir
 }
+// endregion
 
-// =============================================================================
-// Group 1: Full lint scan (index build + all rules)
-// =============================================================================
+// region: Group 1: Full lint scan (index build + all rules)
 
 mod full_scan {
     use super::*;
@@ -125,10 +122,9 @@ mod full_scan {
         divan::black_box(report.diagnostics.len());
     }
 }
+// endregion
 
-// =============================================================================
-// Group 2: Impl-heavy scan (struct + method blocks)
-// =============================================================================
+// region: Group 2: Impl-heavy scan (struct + method blocks)
 
 mod impl_scan {
     use super::*;
@@ -154,10 +150,9 @@ mod impl_scan {
         divan::black_box(report.diagnostics.len());
     }
 }
+// endregion
 
-// =============================================================================
-// Group 3: Index build only (isolate parsing cost from rule execution)
-// =============================================================================
+// region: Group 3: Index build only (isolate parsing cost from rule execution)
 
 mod index_build {
     use super::*;
@@ -184,10 +179,9 @@ mod index_build {
         divan::black_box(index.files.len());
     }
 }
+// endregion
 
-// =============================================================================
-// Group 4: Scaling comparison
-// =============================================================================
+// region: Group 4: Scaling comparison
 
 mod scaling {
     use super::*;
@@ -220,3 +214,4 @@ mod scaling {
         divan::black_box(report.diagnostics.len());
     }
 }
+// endregion

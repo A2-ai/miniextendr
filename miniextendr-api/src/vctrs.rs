@@ -68,9 +68,7 @@
 use crate::ffi::SEXP;
 use std::sync::OnceLock;
 
-// =============================================================================
-// Type aliases
-// =============================================================================
+// region: Type aliases
 
 /// R's short vector length type (32-bit signed integer).
 ///
@@ -87,10 +85,9 @@ type ShortVecSizeFn = unsafe extern "C" fn(SEXP) -> R_len_t;
 
 /// Function pointer type for `short_vec_recycle`.
 type ShortVecRecycleFn = unsafe extern "C" fn(SEXP, R_len_t) -> SEXP;
+// endregion
 
-// =============================================================================
-// Global function pointers (loaded once)
-// =============================================================================
+// region: Global function pointers (loaded once)
 
 /// Loaded `obj_is_vector` function pointer.
 static P_OBJ_IS_VECTOR: OnceLock<ObjIsVectorFn> = OnceLock::new();
@@ -100,10 +97,9 @@ static P_SHORT_VEC_SIZE: OnceLock<ShortVecSizeFn> = OnceLock::new();
 
 /// Loaded `short_vec_recycle` function pointer.
 static P_SHORT_VEC_RECYCLE: OnceLock<ShortVecRecycleFn> = OnceLock::new();
+// endregion
 
-// =============================================================================
-// Error types
-// =============================================================================
+// region: Error types
 
 /// Error type for vctrs operations.
 ///
@@ -169,10 +165,9 @@ impl std::fmt::Display for VctrsError {
 }
 
 impl std::error::Error for VctrsError {}
+// endregion
 
-// =============================================================================
-// Initialization
-// =============================================================================
+// region: Initialization
 
 /// Initialize vctrs C-callable function pointers.
 ///
@@ -279,10 +274,9 @@ pub fn init_vctrs() -> Result<(), VctrsError> {
 pub fn is_vctrs_initialized() -> bool {
     P_OBJ_IS_VECTOR.get().is_some()
 }
+// endregion
 
-// =============================================================================
-// Wrapper functions
-// =============================================================================
+// region: Wrapper functions
 
 /// Check if an R object is a vector according to vctrs.
 ///
@@ -400,10 +394,9 @@ pub fn short_vec_recycle(sexp: SEXP, size: R_len_t) -> Result<SEXP, VctrsError> 
         .ok_or(VctrsError::NotInitialized)?;
     Ok(unsafe { f(sexp, size) })
 }
+// endregion
 
-// =============================================================================
-// SexpExt extension trait
-// =============================================================================
+// region: SexpExt extension trait
 
 /// Extension trait for vctrs operations on SEXP values.
 ///
@@ -499,10 +492,9 @@ impl VctrsSexpExt for SEXP {
         short_vec_recycle(*self, size)
     }
 }
+// endregion
 
-// =============================================================================
-// C-callable initialization shim
-// =============================================================================
+// region: C-callable initialization shim
 
 /// C-callable shim for initializing vctrs support.
 ///
@@ -538,10 +530,9 @@ pub extern "C-unwind" fn miniextendr_init_vctrs() -> i32 {
         Err(VctrsError::NotInitialized) => unreachable!(),
     }
 }
+// endregion
 
-// =============================================================================
-// Construction helpers (Phase A)
-// =============================================================================
+// region: Construction helpers (Phase A)
 
 use crate::ffi::{
     R_BlankString, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
@@ -664,10 +655,9 @@ impl std::fmt::Display for VctrsBuildError {
 }
 
 impl std::error::Error for VctrsBuildError {}
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Build a class vector (STRSXP) from a slice of class names.
 ///
@@ -766,10 +756,9 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
     // Return the SEXP - guard drops and unprotects
     repaired.get()
 }
+// endregion
 
-// =============================================================================
-// new_vctr
-// =============================================================================
+// region: new_vctr
 
 /// Create a new vctrs vector object.
 ///
@@ -866,10 +855,9 @@ pub fn new_vctr(
 
     Ok(data)
 }
+// endregion
 
-// =============================================================================
-// new_rcrd
-// =============================================================================
+// region: new_rcrd
 
 /// Create a new vctrs record object.
 ///
@@ -971,10 +959,9 @@ pub fn new_rcrd(
 
     Ok(data)
 }
+// endregion
 
-// =============================================================================
-// new_list_of
-// =============================================================================
+// region: new_list_of
 
 /// Create a new vctrs list_of object.
 ///
@@ -1058,10 +1045,9 @@ pub fn new_list_of(
 
     Ok(data)
 }
+// endregion
 
-// =============================================================================
-// Phase C: Traits for ergonomic vctrs type creation
-// =============================================================================
+// region: Phase C: Traits for ergonomic vctrs type creation
 
 /// The kind of vctrs class being created.
 ///
@@ -1288,10 +1274,9 @@ pub trait VctrsListOf: VctrsClass {
         None
     }
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -1379,9 +1364,7 @@ mod tests {
         // We can't reliably test this without controlling the test environment
     }
 
-    // =========================================================================
-    // Phase C: VctrsKind tests
-    // =========================================================================
+    // region: Phase C: VctrsKind tests
 
     #[test]
     fn test_vctrs_kind_default() {
@@ -1410,10 +1393,9 @@ mod tests {
         assert_eq!(format!("{:?}", VctrsKind::Rcrd), "Rcrd");
         assert_eq!(format!("{:?}", VctrsKind::ListOf), "ListOf");
     }
+    // endregion
 
-    // =========================================================================
-    // Phase C: VctrsClass trait tests (compile-time verification)
-    // =========================================================================
+    // region: Phase C: VctrsClass trait tests (compile-time verification)
 
     // Test struct implementing VctrsClass
     struct TestPercent;
@@ -1526,4 +1508,6 @@ mod tests {
         assert_eq!(TestSubPercent::CLASS_NAME, "test_sub_percent");
         assert_eq!(TestSubPercent::additional_classes(), &["test_percent"]);
     }
+    // endregion
 }
+// endregion

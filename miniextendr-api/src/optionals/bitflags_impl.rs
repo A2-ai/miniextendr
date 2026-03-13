@@ -65,9 +65,7 @@ use crate::into_r::IntoR;
 use std::fmt;
 use std::ops::{BitAnd, BitOr, BitXor, Deref, Not};
 
-// =============================================================================
-// RFlags<T> wrapper type
-// =============================================================================
+// region: RFlags<T> wrapper type
 
 /// Wrapper for bitflags types that implements R conversions.
 ///
@@ -167,10 +165,9 @@ impl<T: Flags + Not<Output = T>> Not for RFlags<T> {
         RFlags(!self.0)
     }
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp / IntoR for RFlags<T>
-// =============================================================================
+// region: TryFromSexp / IntoR for RFlags<T>
 
 impl<T> TryFromSexp for RFlags<T>
 where
@@ -421,10 +418,9 @@ where
         Ok(ints.into_sexp())
     }
 }
+// endregion
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Convert an `i32` to a bitflags type (strict - unknown bits cause error).
 ///
@@ -478,10 +474,9 @@ where
 {
     flags.bits().try_into().ok()
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -558,3 +553,4 @@ mod tests {
         assert_eq!(int, Some(0b0011));
     }
 }
+// endregion

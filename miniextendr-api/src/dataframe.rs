@@ -25,9 +25,7 @@ use crate::list::{List, NamedList};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
 use std::ffi::CStr;
 
-// =============================================================================
-// Error type
-// =============================================================================
+// region: Error type
 
 /// Error returned when constructing or validating an [`DataFrameView`].
 #[derive(Debug, Clone)]
@@ -74,10 +72,9 @@ impl std::fmt::Display for DataFrameError {
 }
 
 impl std::error::Error for DataFrameError {}
+// endregion
 
-// =============================================================================
-// DataFrameView
-// =============================================================================
+// region: DataFrameView
 
 /// A validated R `data.frame` backed by [`NamedList`] for O(1) column access.
 ///
@@ -147,9 +144,7 @@ impl DataFrameView {
         Self { inner, nrow }
     }
 
-    // =========================================================================
-    // Column access
-    // =========================================================================
+    // region: Column access
 
     /// Get a column by name, converting each element to type `T`.
     ///
@@ -188,10 +183,9 @@ impl DataFrameView {
     pub fn column_raw(&self, name: &str) -> Option<SEXP> {
         self.inner.get_raw(name)
     }
+    // endregion
 
-    // =========================================================================
-    // Accessors
-    // =========================================================================
+    // region: Accessors
 
     /// Number of rows.
     #[inline]
@@ -215,10 +209,9 @@ impl DataFrameView {
     pub fn contains_column(&self, name: &str) -> bool {
         self.inner.contains(name)
     }
+    // endregion
 
-    // =========================================================================
-    // Validation
-    // =========================================================================
+    // region: Validation
 
     /// Validate the data frame's column types against a [`TypedListSpec`].
     ///
@@ -235,10 +228,9 @@ impl DataFrameView {
     pub fn validate(&self, spec: &TypedListSpec) -> Result<TypedList, TypedListError> {
         validate_list(self.inner.as_list(), spec)
     }
+    // endregion
 
-    // =========================================================================
-    // Conversions
-    // =========================================================================
+    // region: Conversions
 
     /// Convert to the underlying [`NamedList`], consuming the data frame wrapper.
     ///
@@ -259,11 +251,11 @@ impl DataFrameView {
     pub fn as_sexp(&self) -> SEXP {
         self.inner.as_list().as_sexp()
     }
+    // endregion
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp for DataFrameView
-// =============================================================================
+// region: TryFromSexp for DataFrameView
 
 impl TryFromSexp for DataFrameView {
     type Error = SexpError;
@@ -272,10 +264,9 @@ impl TryFromSexp for DataFrameView {
         DataFrameView::from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))
     }
 }
+// endregion
 
-// =============================================================================
-// IntoR for DataFrameView — returns the backing SEXP unchanged
-// =============================================================================
+// region: IntoR for DataFrameView — returns the backing SEXP unchanged
 
 impl IntoR for DataFrameView {
     type Error = std::convert::Infallible;
@@ -290,10 +281,9 @@ impl IntoR for DataFrameView {
         self.inner.as_list().as_sexp()
     }
 }
+// endregion
 
-// =============================================================================
-// nrow extraction from row.names
-// =============================================================================
+// region: nrow extraction from row.names
 
 /// Extract `nrow` from R's `row.names` attribute.
 ///
@@ -358,10 +348,9 @@ fn nrow_from_first_column(sexp: SEXP) -> Result<usize, DataFrameError> {
         ))
     }
 }
+// endregion
 
-// =============================================================================
-// NamedList → DataFrameView promotion
-// =============================================================================
+// region: NamedList → DataFrameView promotion
 
 /// Validate that all columns in a NamedList have equal length, returning the common length.
 fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
@@ -446,10 +435,9 @@ impl List {
         named.as_data_frame()
     }
 }
+// endregion
 
-// =============================================================================
-// Debug impl
-// =============================================================================
+// region: Debug impl
 
 impl std::fmt::Debug for DataFrameView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -480,3 +468,4 @@ mod tests {
         assert_eq!(err.to_string(), "column \"y\" has length 5 (expected 3)");
     }
 }
+// endregion

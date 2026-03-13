@@ -23,19 +23,16 @@ use crate::ffi::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 
-// =============================================================================
-// Borsh<T> wrapper type
-// =============================================================================
+// region: Borsh<T> wrapper type
 
 /// Wrapper for borsh-serializable types.
 ///
 /// Converts between R raw vectors (RAWSXP) and borsh binary format.
 /// Use `Borsh(value)` to wrap a value for conversion.
 pub struct Borsh<T>(pub T);
+// endregion
 
-// =============================================================================
-// IntoR: Borsh<T> -> RAWSXP
-// =============================================================================
+// region: IntoR: Borsh<T> -> RAWSXP
 
 /// Convert `Borsh<T>` to R raw vector (RAWSXP) via borsh serialization.
 impl<T: borsh::BorshSerialize> IntoR for Borsh<T> {
@@ -51,10 +48,9 @@ impl<T: borsh::BorshSerialize> IntoR for Borsh<T> {
         Ok(unsafe { bytes.into_sexp_unchecked() })
     }
 }
+// endregion
 
-// =============================================================================
-// TryFromSexp: RAWSXP -> Borsh<T>
-// =============================================================================
+// region: TryFromSexp: RAWSXP -> Borsh<T>
 
 /// Convert R raw vector (RAWSXP) to `Borsh<T>` via borsh deserialization.
 impl<T: borsh::BorshDeserialize> TryFromSexp for Borsh<T> {
@@ -74,10 +70,9 @@ impl<T: borsh::BorshDeserialize> TryFromSexp for Borsh<T> {
         Ok(Borsh(value))
     }
 }
+// endregion
 
-// =============================================================================
-// RBorshOps adapter trait
-// =============================================================================
+// region: RBorshOps adapter trait
 
 /// Adapter trait for borsh serialization from R.
 ///
@@ -111,10 +106,9 @@ impl<T: borsh::BorshSerialize + borsh::BorshDeserialize> RBorshOps for T {
             .len()
     }
 }
+// endregion
 
-// =============================================================================
-// Standalone helper functions
-// =============================================================================
+// region: Standalone helper functions
 
 /// Serialize a borsh value to R raw vector.
 #[inline]
@@ -130,10 +124,9 @@ pub fn borsh_from_raw<T: borsh::BorshDeserialize>(sexp: SEXP) -> Result<T, SexpE
     borsh::from_slice(&bytes)
         .map_err(|e| SexpError::InvalidValue(format!("borsh deserialization failed: {e}")))
 }
+// endregion
 
-// =============================================================================
-// Unit tests
-// =============================================================================
+// region: Unit tests
 
 #[cfg(test)]
 mod tests {
@@ -220,3 +213,4 @@ mod tests {
         assert_eq!(none_val, recovered_none);
     }
 }
+// endregion

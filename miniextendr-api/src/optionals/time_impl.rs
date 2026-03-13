@@ -63,9 +63,7 @@ const UNIX_EPOCH: OffsetDateTime = time::macros::datetime!(1970-01-01 0:00 UTC);
 /// Unix epoch as a Date constant.
 const UNIX_EPOCH_DATE: Date = time::macros::date!(1970 - 01 - 01);
 
-// =============================================================================
-// OffsetDateTime <-> POSIXct
-// =============================================================================
+// region: OffsetDateTime <-> POSIXct
 
 impl TryFromSexp for OffsetDateTime {
     type Error = SexpError;
@@ -149,10 +147,9 @@ impl IntoR for OffsetDateTime {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Option<OffsetDateTime>
-// =============================================================================
+// region: Option<OffsetDateTime>
 
 impl TryFromSexp for Option<OffsetDateTime> {
     type Error = SexpError;
@@ -232,10 +229,9 @@ impl IntoR for Option<OffsetDateTime> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Vec<OffsetDateTime>
-// =============================================================================
+// region: Vec<OffsetDateTime>
 
 impl TryFromSexp for Vec<OffsetDateTime> {
     type Error = SexpError;
@@ -320,10 +316,9 @@ impl IntoR for Vec<OffsetDateTime> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Vec<Option<OffsetDateTime>>
-// =============================================================================
+// region: Vec<Option<OffsetDateTime>>
 
 impl TryFromSexp for Vec<Option<OffsetDateTime>> {
     type Error = SexpError;
@@ -412,10 +407,9 @@ impl IntoR for Vec<Option<OffsetDateTime>> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Date <-> R Date
-// =============================================================================
+// region: Date <-> R Date
 
 impl TryFromSexp for Date {
     type Error = SexpError;
@@ -480,10 +474,9 @@ impl IntoR for Date {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Option<Date>
-// =============================================================================
+// region: Option<Date>
 
 impl TryFromSexp for Option<Date> {
     type Error = SexpError;
@@ -550,10 +543,9 @@ impl IntoR for Option<Date> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Vec<Date>
-// =============================================================================
+// region: Vec<Date>
 
 impl TryFromSexp for Vec<Date> {
     type Error = SexpError;
@@ -623,10 +615,9 @@ impl IntoR for Vec<Date> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// Vec<Option<Date>>
-// =============================================================================
+// region: Vec<Option<Date>>
 
 impl TryFromSexp for Vec<Option<Date>> {
     type Error = SexpError;
@@ -700,10 +691,9 @@ impl IntoR for Vec<Option<Date>> {
         }
     }
 }
+// endregion
 
-// =============================================================================
-// RDuration adapter trait
-// =============================================================================
+// region: RDuration adapter trait
 
 pub use time::Duration;
 
@@ -817,10 +807,9 @@ impl RDuration for Duration {
         Duration::abs(*self)
     }
 }
+// endregion
 
-// =============================================================================
-// RDateTimeFormat adapter trait
-// =============================================================================
+// region: RDateTimeFormat adapter trait
 
 /// Adapter trait for formatting and parsing datetime types.
 ///
@@ -1012,3 +1001,4 @@ mod tests {
         assert!(result.is_err());
     }
 }
+// endregion

@@ -1,8 +1,6 @@
 use super::*;
 
-// =============================================================================
-// Doc-lint feature tests (implicit title/description extraction)
-// =============================================================================
+// region: Doc-lint feature tests (implicit title/description extraction)
 
 #[cfg(feature = "doc-lint")]
 mod doc_lint_tests {
@@ -108,10 +106,9 @@ mod doc_lint_tests {
         assert_eq!(implicit_description_from_attrs(&attrs), None);
     }
 }
+// endregion
 
-// =============================================================================
-// Tag extraction tests
-// =============================================================================
+// region: Tag extraction tests
 
 #[test]
 fn test_format_single_line_tags() {
@@ -149,10 +146,9 @@ fn test_has_roxygen_tag_multiline() {
     assert!(has_roxygen_tag(&tags, "description"));
     assert!(!has_roxygen_tag(&tags, "param"));
 }
+// endregion
 
-// =============================================================================
-// has_roxygen_tag: single-word and multi-word matching
-// =============================================================================
+// region: has_roxygen_tag: single-word and multi-word matching
 
 #[test]
 fn test_has_roxygen_tag_single_word() {
@@ -195,10 +191,9 @@ fn test_has_roxygen_tag_param_with_name() {
     // the full content after @ is "param x An input", not "param x"
     assert!(!has_roxygen_tag(&tags, "param x"));
 }
+// endregion
 
-// =============================================================================
-// tag_names: extraction tests
-// =============================================================================
+// region: tag_names: extraction tests
 
 #[test]
 fn test_tag_names_extracts_first_word() {
@@ -260,3 +255,4 @@ fn test_normalize_for_comparison() {
         "hello world"
     );
 }
+// endregion

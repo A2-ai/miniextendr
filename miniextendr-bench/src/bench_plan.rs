@@ -44,8 +44,8 @@
 //! - Reuse fixtures where possible; avoid allocating per-iteration unless that
 //!   is what is being measured.
 //! - Use `divan` groups with clear parameter sets and labels.
-//! - For allocation-heavy benchmarks, separate “allocation included” and
-//!   “allocation excluded” cases.
+//! - For allocation-heavy benchmarks, separate "allocation included" and
+//!   "allocation excluded" cases.
 //! - Keep NA density and size fixed within a benchmark to avoid noisy results.
 //!
 //! ---------------------------------------------------------------------------

@@ -44,9 +44,7 @@ use core::{
     mem, ptr,
 };
 
-// ============================================================================
-// SendableDataPtr - Thread-safe wrapper for allocator pointers
-// ============================================================================
+// region: SendableDataPtr - Thread-safe wrapper for allocator pointers
 
 /// Wrapper to make `*mut u8` pointers `Send` for cross-thread routing.
 ///
@@ -80,10 +78,9 @@ const fn sendable_data_ptr_is_null(ptr: SendableDataPtr) -> bool {
 const fn sendable_data_ptr_null() -> SendableDataPtr {
     crate::worker::Sendable(ptr::null_mut())
 }
+// endregion
 
-// ============================================================================
-// Thread routing helper
-// ============================================================================
+// region: Thread routing helper
 
 /// Routes a closure to the R main thread if not already there.
 ///
@@ -108,10 +105,9 @@ fn with_r_thread_or_inline<R: Send + 'static, F: FnOnce() -> R + Send + 'static>
         )
     }
 }
+// endregion
 
-// ============================================================================
-// Header and constants
-// ============================================================================
+// region: Header and constants
 
 /// Metadata stored immediately before the returned user pointer.
 #[repr(C)]
@@ -122,10 +118,9 @@ struct Header {
 
 const HEADER_SIZE: usize = mem::size_of::<Header>();
 const HEADER_ALIGN: usize = mem::align_of::<Header>();
+// endregion
 
-// ============================================================================
-// RAllocator
-// ============================================================================
+// region: RAllocator
 
 /// R-backed global allocator.
 ///
@@ -195,10 +190,9 @@ unsafe impl GlobalAlloc for RAllocator {
         p
     }
 }
+// endregion
 
-// ============================================================================
-// Main-thread helpers
-// ============================================================================
+// region: Main-thread helpers
 
 /// Allocate memory on the R main thread.
 ///
@@ -335,3 +329,4 @@ unsafe fn realloc_main_thread(
 
     new_ptr
 }
+// endregion

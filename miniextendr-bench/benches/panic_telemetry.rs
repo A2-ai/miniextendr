@@ -17,9 +17,7 @@ fn main() {
     divan::main();
 }
 
-// =============================================================================
-// Synthetic RwLock matching the exact pattern in fire()
-// =============================================================================
+// region: Synthetic RwLock matching the exact pattern in fire()
 
 type Hook = Arc<dyn Fn(&str) + Send + Sync>;
 static BENCH_HOOK: RwLock<Option<Hook>> = RwLock::new(None);
@@ -36,10 +34,9 @@ fn synthetic_fire(msg: &str) {
         let _ = catch_unwind(AssertUnwindSafe(|| hook(msg)));
     }
 }
+// endregion
 
-// =============================================================================
-// Group 1: Read lock cost (the hot-path overhead at panic boundaries)
-// =============================================================================
+// region: Group 1: Read lock cost (the hot-path overhead at panic boundaries)
 
 mod read_lock {
     use super::*;
@@ -88,10 +85,9 @@ mod read_lock {
         divan::black_box(&*guard);
     }
 }
+// endregion
 
-// =============================================================================
-// Group 2: Write lock cost (set/clear hook — infrequent operation)
-// =============================================================================
+// region: Group 2: Write lock cost (set/clear hook — infrequent operation)
 
 mod write_lock {
     use super::*;
@@ -115,3 +111,4 @@ mod write_lock {
         panic_telemetry::clear_panic_telemetry_hook();
     }
 }
+// endregion

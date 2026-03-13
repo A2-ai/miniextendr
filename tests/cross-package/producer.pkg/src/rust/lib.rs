@@ -20,9 +20,7 @@ pub use shared_traits::{
     __resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
 };
 
-// ============================================================================
-// Env-style types (default class system)
-// ============================================================================
+// region: Env-style types (default class system)
 
 /// A simple data container for testing cross-package ExternalPtr dispatch.
 /// Uses the default Env-style class system.
@@ -107,10 +105,9 @@ impl EnvPoint {
         self.y += dy;
     }
 }
+// endregion
 
-// ============================================================================
-// R6-style type
-// ============================================================================
+// region: R6-style type
 
 /// A 2D point using R6-style class system.
 #[derive(ExternalPtr)]
@@ -159,10 +156,9 @@ impl R6Point {
         self.y += dy;
     }
 }
+// endregion
 
-// ============================================================================
-// S3-style type
-// ============================================================================
+// region: S3-style type
 
 /// A 2D point using S3-style class system.
 #[derive(ExternalPtr)]
@@ -208,10 +204,9 @@ impl S3Point {
         self.y += dy;
     }
 }
+// endregion
 
-// ============================================================================
-// S4-style type
-// ============================================================================
+// region: S4-style type
 
 /// A 2D point using S4-style class system.
 #[derive(ExternalPtr)]
@@ -257,10 +252,9 @@ impl S4Point {
         self.y += dy;
     }
 }
+// endregion
 
-// ============================================================================
-// S7-style type
-// ============================================================================
+// region: S7-style type
 
 /// A 2D point using S7-style class system.
 #[derive(ExternalPtr)]
@@ -306,10 +300,9 @@ impl S7Point {
         self.y += dy;
     }
 }
+// endregion
 
-// ============================================================================
-// SimpleCounter with trait dispatch (for cross-package trait testing)
-// ============================================================================
+// region: SimpleCounter with trait dispatch (for cross-package trait testing)
 
 #[derive(ExternalPtr)]
 pub struct SimpleCounter {
@@ -355,10 +348,9 @@ impl Resettable for SimpleCounter {
         self.value == 0
     }
 }
+// endregion
 
-// ============================================================================
-// StatefulCounter: tracks history and implements both Counter and Resettable
-// ============================================================================
+// region: StatefulCounter: tracks history and implements both Counter and Resettable
 
 #[derive(ExternalPtr)]
 pub struct StatefulCounter {
@@ -450,10 +442,9 @@ pub fn counter_get_value(counter_sexp: SEXP) -> i32 {
         .expect("Object does not implement Counter trait");
     view.value()
 }
+// endregion
 
-// ============================================================================
-// Debug/utility functions
-// ============================================================================
+// region: Debug/utility functions
 
 /// Debug: Get TAG_COUNTER as hex string
 /// @export
@@ -485,3 +476,4 @@ pub fn debug_shared_data_type_name() -> String {
 pub fn get_r_class(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_getAttrib(x, miniextendr_api::ffi::R_ClassSymbol) }
 }
+// endregion

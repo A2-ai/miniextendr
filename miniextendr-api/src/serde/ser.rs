@@ -466,9 +466,7 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
     }
 }
 
-// =============================================================================
-// Helper functions
-// =============================================================================
+// region: Helper functions
 
 /// Try to coalesce scalar SEXPs into an atomic vector.
 /// Returns None if coalescing is not possible.
@@ -599,3 +597,4 @@ fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
     let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
     Ok(s.to_string())
 }
+// endregion

@@ -125,9 +125,7 @@ fn dvector_empty() {
     });
 }
 
-// =============================================================================
-// SVector tests (statically-sized vectors)
-// =============================================================================
+// region: SVector tests (statically-sized vectors)
 
 #[cfg(feature = "nalgebra")]
 #[test]
@@ -193,10 +191,9 @@ fn svector_length_mismatch() {
         }
     });
 }
+// endregion
 
-// =============================================================================
-// SMatrix tests (statically-sized matrices)
-// =============================================================================
+// region: SMatrix tests (statically-sized matrices)
 
 #[cfg(feature = "nalgebra")]
 #[test]
@@ -331,3 +328,4 @@ fn option_smatrix_none() {
         assert!(back.is_none());
     });
 }
+// endregion

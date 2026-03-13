@@ -350,9 +350,7 @@ pub trait RBufMut {
     fn clear(&self) {}
 }
 
-// =============================================================================
-// IntoR and TryFromSexp conversions for Bytes and BytesMut
-// =============================================================================
+// region: IntoR and TryFromSexp conversions for Bytes and BytesMut
 
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
@@ -877,3 +875,4 @@ mod tests {
         assert_eq!(buf.len(), 1);
     }
 }
+// endregion
