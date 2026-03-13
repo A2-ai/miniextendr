@@ -121,6 +121,7 @@ check_scaffolding_clean <- function() {
   # Files that upgrade will overwrite
   scaffolding_files <- c(
     "src/stub.c",
+    "src/cdylib-exports.def",
     "src/rust/build.rs",
     "src/rust/cargo-config.toml.in",
     "src/Makevars.in",
@@ -134,6 +135,7 @@ check_scaffolding_clean <- function() {
     "configure.ucrt",
     "tools/config.guess",
     "tools/config.sub",
+    "tools/vendor-crates.R",
     ".Rbuildignore",
     ".gitignore"
   )
