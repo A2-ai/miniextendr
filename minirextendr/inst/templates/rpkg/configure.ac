@@ -408,32 +408,19 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
         $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
       fi
-    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
-      dnl MINIEXTENDR_LOCAL set — delegate to R for proper Cargo.toml patching
-      dnl Pass path via env var so backslashes (Windows) don't break R string parsing
+    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
+      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
       echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" "$R_HOME/bin/Rscript" -e "
-        if (requireNamespace('minirextendr', quietly = TRUE)) {
-          minirextendr::vendor_miniextendr(local_path = Sys.getenv('MINIEXTENDR_LOCAL'))
-        } else {
-          message('configure: minirextendr not installed — cannot auto-sync vendor/')
-          message('configure: install minirextendr or run vendor_miniextendr() manually')
-        }
-      " 2>&1 || {
+      "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
+        sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
         echo "configure: warning: vendor sync failed, using existing vendor/" >&2
       }
     elif test -f "$VENDOR_OUT/.vendor-source"; then
       _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-      if test -d "$_recorded/miniextendr-api"; then
+      if test -d "$_recorded"; then
         echo "configure: syncing vendor/ from recorded source: $_recorded"
-        _MX_VENDOR_SOURCE="$_recorded" "$R_HOME/bin/Rscript" -e "
-          if (requireNamespace('minirextendr', quietly = TRUE)) {
-            minirextendr::vendor_miniextendr(local_path = Sys.getenv('_MX_VENDOR_SOURCE'))
-          } else {
-            message('configure: minirextendr not installed — vendor/ may be stale')
-            message('configure: run: minirextendr::vendor_miniextendr(local_path = Sys.getenv(\"_MX_VENDOR_SOURCE\"))')
-          }
-        " 2>&1 || {
+        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
+          sync --path "$abs_rpkg_dir" --source-root "$_recorded" 2>&1 || {
           echo "configure: warning: vendor sync failed, using existing vendor/" >&2
         }
       else

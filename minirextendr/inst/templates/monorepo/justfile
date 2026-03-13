@@ -95,8 +95,16 @@ devtools-install: configure
 rbuild *args: configure
     cd {{rpkg}} && R CMD build {{args}} .
 
+# Build R package tarball in CRAN/offline mode
+rbuild-cran *args: configure-cran
+    cd {{rpkg}} && R CMD build {{args}} .
+
 # Run R CMD check
 rcheck: configure
+    Rscript -e "rcmdcheck::rcmdcheck('{{rpkg}}', args = c('--as-cran', '--no-manual'), error_on = 'warning')"
+
+# Run R CMD check in CRAN/offline mode
+rcheck-cran: configure-cran
     Rscript -e "rcmdcheck::rcmdcheck('{{rpkg}}', args = c('--as-cran', '--no-manual'), error_on = 'warning')"
 
 # Run devtools::check
@@ -116,7 +124,7 @@ reinstall: install
 # Vendor all dependencies for CRAN submission
 # Downloads external crates and compresses into inst/vendor.tar.xz
 vendor:
-    Rscript -e 'minirextendr::miniextendr_vendor("{{{rpkg_name}}}")'
+    Rscript "{{{rpkg_name}}}/tools/vendor-crates.R" pack
 
 # Vendor monorepo library crates for CRAN (use_vendor_lib)
 # Call this for each monorepo crate that your R package depends on.
@@ -126,7 +134,7 @@ vendor-lib crate dev_path:
     cd {{rpkg}} && autoconf -vif
 
 # Prepare for CRAN submission: vendor deps, configure in CRAN mode, build, check
-cran-prep: vendor configure-cran rbuild rcheck
+cran-prep: vendor rbuild-cran rcheck-cran
 
 # ============================================================================
 # Version management

@@ -134,9 +134,14 @@ Creates `rpkg/inst/vendor.tar.xz` containing all dependencies:
 ```
 just vendor
   │
-  ├─ cargo package (workspace crates → .crate archives)
-  │   miniextendr-api, miniextendr-macros, miniextendr-macros-core,
-  │   miniextendr-lint, miniextendr-engine
+  ├─ Rscript rpkg/tools/vendor-crates.R pack
+  │
+  ├─ cargo tree (discover reachable local path crates)
+  │
+  ├─ generate temporary cargo config
+  │   ([patch.crates-io] for unpublished local crates)
+  │
+  ├─ cargo package --no-verify (local crates → .crate archives)
   │
   ├─ cargo vendor (crates.io deps → rpkg/vendor/)
   │
@@ -152,9 +157,18 @@ just vendor
 
 **Key design decisions:**
 
-- Workspace crates are `cargo package`d first, then extracted into the vendor
-  directory created by `cargo vendor`. This ensures they look like any other
-  vendored crate (with `.cargo-checksum.json`).
+- End-user vendoring goes through `rpkg/tools/vendor-crates.R`, so `configure`
+  and the generated package can use the same entrypoint instead of relying on
+  the miniextendr CLI.
+
+- Local path/workspace crates are discovered from the resolved Cargo dependency
+  graph, then packaged with a generated cargo config that patches unpublished
+  sibling crates by path during the packaging step. This avoids hand-copying
+  crate sources or hard-coding workspace metadata into the vendor pipeline.
+
+- The resulting `.crate` archives are extracted into the vendor directory
+  created by `cargo vendor`, so local crates look like any other vendored crate
+  (with `.cargo-checksum.json` and versioned directory names).
 
 - Checksum lines are stripped from `Cargo.lock` because vendored crates have
   `{"files":{}}` checksums (cargo vendor convention). Cargo regenerates
