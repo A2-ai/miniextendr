@@ -255,5 +255,5 @@ pub use indicatif;
 
 // --- vctrs ---
 #[cfg(feature = "vctrs")]
-pub use crate::{IntoVctrs, VctrsClass, init_vctrs};
+pub use crate::{IntoVctrs, VctrsClass};
 // endregion

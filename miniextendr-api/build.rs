@@ -94,23 +94,39 @@ fn link_to_r() {
     println!("cargo:rerun-if-env-changed=R_HOME");
 
     // Link to libR.
-    let r_arch = env::var("R_ARCH").unwrap_or_default();
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-
-    // On Windows, R's library is in bin/ not lib/
-    let r_libdir = if target_os == "windows" {
-        format!("{}/bin{}", r_home, r_arch)
-    } else {
-        format!("{}/lib{}", r_home, r_arch)
-    };
+    let r_libdir = r_libdir(&r_home, &target_os);
     println!("cargo:rustc-link-search=native={}", r_libdir);
     println!("cargo:rustc-link-lib=R");
 
     // Mirror `R CMD LINK` behavior: add runtime search path for libR.
     // Only emit rpath for non-library targets (bins/tests/benches/examples).
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os != "windows" && should_emit_rpath() {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", r_libdir);
+    }
+}
+
+/// Determines the directory containing R's shared library.
+///
+/// On Windows, R.dll lives in `bin/x64/` (or `bin/` for single-arch installs).
+/// On Unix, libR.so lives in `lib/`.
+/// Uses `R_ARCH` if set, otherwise probes the filesystem under `r_home`.
+fn r_libdir(r_home: &str, target_os: &str) -> String {
+    let r_arch = env::var("R_ARCH").unwrap_or_default();
+
+    if target_os == "windows" {
+        // Try R_ARCH first (e.g. "/x64")
+        if !r_arch.is_empty() {
+            return format!("{}/bin{}", r_home, r_arch);
+        }
+        // Probe for R.dll: bin/x64 (multi-arch) then bin/ (single-arch)
+        let bin_x64 = format!("{}/bin/x64", r_home);
+        if std::path::Path::new(&bin_x64).join("R.dll").exists() {
+            return bin_x64;
+        }
+        format!("{}/bin", r_home)
+    } else {
+        format!("{}/lib{}", r_home, r_arch)
     }
 }
 
