@@ -73,7 +73,8 @@ miniextendr_configure <- function(path = ".") {
   cli::cli_alert("Running ./configure...")
 
   result <- run_with_logging(
-    "./configure",
+    "bash",
+    args = c("./configure"),
     log_prefix = "configure",
     wd = usethis::proj_get(),
     env = if (requireNamespace("devtools", quietly = TRUE)) devtools::r_env_vars() else character()
@@ -91,67 +92,16 @@ miniextendr_configure <- function(path = ".") {
   invisible(TRUE)
 }
 
-#' Generate R wrapper functions from Rust
-#'
-#' Runs the document binary to generate miniextendr_wrappers.R from
-#' the Rust source. Requires the package to be built first.
-#'
-#' @param path Path to the R package root, or `NULL` to use the active project.
-#' @return Invisibly returns TRUE on success
-#' @export
-miniextendr_document <- function(path = ".") {
-  with_project(path)
-  check_rust()
-
-  cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")
-  if (!fs::file_exists(cargo_toml)) {
-    cli::cli_abort(c(
-      "Cargo.toml not found",
-      "i" = "Run {.code minirextendr::miniextendr_configure()} first"
-    ))
-  }
-
-  cli::cli_alert("Running document binary...")
-
-  result <- run_with_logging(
-    "cargo",
-    args = c("run", "--bin", "document", "--release"),
-    log_prefix = "document",
-    wd = usethis::proj_path("src", "rust")
-  )
-
-  check_result(result, "document binary")
-
-  # Copy generated wrappers to R/
-  # The document binary writes {pkg_name}-wrappers.R in src/rust/
-  pkg_name <- tryCatch(
-    mx_desc_get_field("Package", file = usethis::proj_path("DESCRIPTION")),
-    error = function(e) NULL
-  )
-  if (!is.null(pkg_name)) {
-    wrapper_name <- paste0(pkg_name, "-wrappers.R")
-    src_wrappers <- usethis::proj_path("src", "rust", wrapper_name)
-    r_wrappers <- usethis::proj_path("R", wrapper_name)
-
-    if (fs::file_exists(src_wrappers)) {
-      fs::file_copy(src_wrappers, r_wrappers, overwrite = TRUE)
-      cli::cli_alert_success("Generated {.path {file.path('R', wrapper_name)}}")
-    }
-  }
-
-  invisible(TRUE)
-}
-
 #' Full miniextendr build workflow
 #'
-#' Runs the complete two-pass install: autoconf -> configure -> install
-#' (compiles Rust) -> document (generates R wrappers) -> install again
-#' (incorporates wrappers). The two installs are needed because R wrapper
-#' generation requires the compiled Rust `document` binary.
+#' Runs the complete build: autoconf -> configure -> install
+#' (compiles Rust + generates R wrappers via cdylib) -> roxygen2.
+#' R wrappers are auto-generated during installation by the cdylib
+#' build step, so only a single install pass is needed.
 #'
 #' @param path Path to the R package root, or `NULL` to use the active project.
-#' @param install Whether to run `R CMD INSTALL` steps. If `FALSE`, only
-#'   runs autoconf + configure + document.
+#' @param install Whether to run `R CMD INSTALL` step. If `FALSE`, only
+#'   runs autoconf + configure.
 #' @param not_cran Logical. If `TRUE` (the default), sets `NOT_CRAN=true`
 #'   for configure and install steps.
 #' @return Invisibly returns TRUE on success
@@ -170,7 +120,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
   with_envvars(env_vars, miniextendr_configure())
 
   if (install) {
-    cli::cli_h2("Step 3: first install (compile Rust)")
+    cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
     if (!requireNamespace("devtools", quietly = TRUE)) {
       cli::cli_warn("devtools not installed, skipping install step")
     } else {
@@ -185,35 +135,16 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
           ))
         }
       )
-      cli::cli_alert_success("Installed package (first pass)")
+      cli::cli_alert_success("Installed package")
     }
   }
 
-  cli::cli_h2("Step 4: document (generate R wrappers)")
-  miniextendr_document()
-
-  cli::cli_h2("Step 5: roxygen2 (update NAMESPACE + man pages)")
+  cli::cli_h2("Step 4: roxygen2 (update NAMESPACE + man pages)")
   if (!requireNamespace("devtools", quietly = TRUE)) {
     cli::cli_warn("devtools not installed, skipping roxygen2 step")
   } else {
     devtools::document(pkg_path)
     cli::cli_alert_success("Updated NAMESPACE and documentation")
-  }
-
-  if (install) {
-    cli::cli_h2("Step 6: final install (with R wrappers + NAMESPACE)")
-    tryCatch(
-      with_envvars(env_vars, {
-        devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
-      }),
-      error = function(e) {
-        cli::cli_abort(c(
-          "Package installation failed",
-          "i" = conditionMessage(e)
-        ))
-      }
-    )
-    cli::cli_alert_success("Installed package (final pass)")
   }
 
   cli::cli_alert_success("Build complete!")
@@ -330,7 +261,7 @@ miniextendr_check <- function(path = ".",
   cli::cli_h1("miniextendr check workflow")
   pkg_path <- usethis::proj_get()
 
-  cli::cli_h2("Step 1: build (autoconf + configure + install + document)")
+  cli::cli_h2("Step 1: build (autoconf + configure + install + roxygen2)")
   miniextendr_build(install = TRUE, not_cran = TRUE)
 
   # Check for path dependencies that will fail R CMD check without vendor-lib

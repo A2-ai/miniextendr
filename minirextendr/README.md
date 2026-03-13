@@ -43,12 +43,13 @@ library(minirextendr)
 use_miniextendr()
 ```
 
-Generate build files and wrappers:
+Generate build files and install (R wrappers are auto-generated via cdylib during install):
 
 ```r
 miniextendr_autoconf()
 miniextendr_configure()
-miniextendr_document()
+devtools::install()
+devtools::document()
 ```
 
 Or run the full workflow:

@@ -156,20 +156,17 @@ miniextendr_autoconf()
 # 2. Run configure to generate Makevars, Cargo.toml, etc.
 miniextendr_configure()
 
-# 3. Install the package (compiles Rust code)
+# 3. Install the package (compiles Rust + auto-generates R wrappers via cdylib)
 devtools::install()
 
-# 4. Generate R wrapper functions from Rust signatures
-miniextendr_document()
-
-# 5. Reinstall with generated wrappers
-devtools::install()
+# 4. Run roxygen2 to update NAMESPACE and man pages
+devtools::document()
 ```
 
 ### All-in-One
 
 ```{r}
-# Runs autoconf -> configure -> install -> document
+# Runs autoconf -> configure -> install -> roxygen2
 miniextendr_build()
 ```
 
@@ -303,8 +300,8 @@ edit the template, not the generated file:
 ### Iteration Cycle
 
 1. Edit Rust code in `src/rust/lib.rs`
-2. Run `devtools::install()` to compile and install
-3. If you added new functions, run `miniextendr_document()` and reinstall
+2. Run `devtools::install()` to compile (R wrappers are auto-generated via cdylib)
+3. If you added new functions, run `devtools::document()` to update NAMESPACE
 4. Test in R
 
 ### Common Issues
@@ -312,7 +309,7 @@ edit the template, not the generated file:
 **"could not find function"** -- Ensure the function is:
 1. Marked `pub`
 2. Has `#[miniextendr]` attribute
-3. R wrappers regenerated with `miniextendr_document()`
+3. NAMESPACE updated with `devtools::document()`
 
 **"configure: command not found"** -- Run `miniextendr_autoconf()` first.
 
