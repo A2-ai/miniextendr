@@ -151,7 +151,11 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // ABI-compatible; R dispatches based on numArgs.
     call_defs.push(R_CallMethodDef {
         name: c"miniextendr_write_wrappers".as_ptr(),
-        fun: unsafe { std::mem::transmute(miniextendr_write_wrappers as *const ()) },
+        fun: unsafe {
+            std::mem::transmute::<*const (), Option<unsafe extern "C-unwind" fn() -> *mut c_void>>(
+                miniextendr_write_wrappers as *const (),
+            )
+        },
         numArgs: 1,
     });
     call_defs.push(R_CallMethodDef {
