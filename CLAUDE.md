@@ -7,6 +7,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **No backwards compatibility**: This is an unreleased project. Remove deprecated code, don't shim around it.
 - **Simple over complex**: Avoid over-engineering. Only make changes directly requested or clearly necessary.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
+- **just is for maintainers, not end users**: `just`/`justfile` is a convenience tool for miniextendr authors/maintainers only. End-user R packages built with miniextendr must NOT require `just`. Any build logic that end users need (vendoring, configure, etc.) must work through `configure.ac`, `tools/*.R` scripts, or standard R package mechanisms. Mitigate any reliance on `just` in generated/scaffolded packages.
 - **Edit `.in` templates, not generated files**: Many files in rpkg are generated from `.in` templates. Always edit the `.in` source file instead:
   - `rpkg/src/rust/.cargo/config.toml` → edit `rpkg/src/rust/cargo-config.toml.in`
   - `rpkg/src/Makevars` → edit `rpkg/src/Makevars.in`
