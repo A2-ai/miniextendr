@@ -9,8 +9,8 @@ miniextendr_build(path = ".", install = TRUE, not_cran = TRUE)
 \arguments{
 \item{path}{Path to the R package root, or \code{NULL} to use the active project.}
 
-\item{install}{Whether to run \verb{R CMD INSTALL} steps. If \code{FALSE}, only
-runs autoconf + configure + document.}
+\item{install}{Whether to run \verb{R CMD INSTALL} step. If \code{FALSE}, only
+runs autoconf + configure.}
 
 \item{not_cran}{Logical. If \code{TRUE} (the default), sets \code{NOT_CRAN=true}
 for configure and install steps.}
@@ -19,8 +19,8 @@ for configure and install steps.}
 Invisibly returns TRUE on success
 }
 \description{
-Runs the complete two-pass install: autoconf -> configure -> install
-(compiles Rust) -> document (generates R wrappers) -> install again
-(incorporates wrappers). The two installs are needed because R wrapper
-generation requires the compiled Rust \code{document} binary.
+Runs the complete build: autoconf -> configure -> install
+(compiles Rust + generates R wrappers via cdylib) -> roxygen2.
+R wrappers are auto-generated during installation by the cdylib
+build step, so only a single install pass is needed.
 }

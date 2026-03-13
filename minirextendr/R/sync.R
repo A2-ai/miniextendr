@@ -115,7 +115,7 @@ write_render_state <- function(hash, stage_run, path = usethis::proj_get()) {
 #'
 #' Detects staleness of Rust sources and build artifacts, then rebuilds
 #' as needed. Designed as a single entry point before rendering vignettes
-#' (Rmd/qmd). Dispatches to [miniextendr_build()], [miniextendr_document()],
+#' (Rmd/qmd). Dispatches to [miniextendr_build()]
 #' and related workflow functions.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
@@ -125,9 +125,8 @@ write_render_state <- function(hash, stage_run, path = usethis::proj_get()) {
 #'   - `"always"`: rebuild unconditionally
 #'   - `"never"`: skip rebuild entirely (useful for pre-built packages)
 #' @param stage How far to rebuild. One of:
-#'   - `"install"` (default): full rebuild (configure + install + document + install)
-#'   - `"wrappers"`: only regenerate R wrappers (document step)
-#'   - `"build"`: configure + compile, but don't install
+#'   - `"install"` (default): full rebuild (configure + install + roxygen2)
+#'   - `"build"`: configure only, no install
 #' @param force Logical. If `TRUE`, equivalent to `mode = "always"`.
 #' @param quiet Logical. If `TRUE`, suppress progress messages.
 #' @return Invisibly returns a list with:
@@ -144,12 +143,12 @@ write_render_state <- function(hash, stage_run, path = usethis::proj_get()) {
 #' # Force full rebuild
 #' miniextendr_sync(force = TRUE)
 #'
-#' # Only regenerate wrappers
-#' miniextendr_sync(stage = "wrappers")
+#' # Configure only (no install)
+#' miniextendr_sync(stage = "build")
 #' }
 miniextendr_sync <- function(path = ".",
                               mode = c("if_stale", "always", "never"),
-                              stage = c("install", "wrappers", "build"),
+                              stage = c("install", "build"),
                               force = FALSE,
                               quiet = FALSE) {
   with_project(path)
@@ -179,10 +178,6 @@ miniextendr_sync <- function(path = ".",
   if (!quiet) cli::cli_alert("miniextendr_sync: rebuilding (stage = {.val {stage}})")
 
   stage_run <- switch(stage,
-    wrappers = {
-      miniextendr_document(path = pkg_path)
-      "wrappers"
-    },
     build = {
       miniextendr_build(path = pkg_path, install = FALSE)
       "build"

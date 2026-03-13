@@ -41,7 +41,8 @@ miniextendr_status <- function(path = ".") {
       "configure.win",
       "configure.ucrt",
       "tools/config.guess",
-      "tools/config.sub"
+      "tools/config.sub",
+      "tools/vendor-crates.R"
     ),
     "Rust Project" = c(
       "src/rust/Cargo.toml",
@@ -51,7 +52,8 @@ miniextendr_status <- function(path = ".") {
     ),
     "Source Files" = c(
       "src/Makevars.in",
-      "src/stub.c"
+      "src/stub.c",
+      "src/cdylib-exports.def"
     ),
     "Vendored Crates" = c(
       "vendor/miniextendr-api",

@@ -193,6 +193,11 @@ vendor_miniextendr <- function(path = ".",
       patch_cargo_toml(cargo_toml, crate)
     }
 
+    # Create .cargo-checksum.json (required when crate is in a vendor directory
+    # that replaces crates-io via .cargo/config.toml)
+    checksum_file <- fs::path(dest_path, ".cargo-checksum.json")
+    writeLines('{"files": {}, "package": null}', checksum_file)
+
     cli::cli_alert_success("Vendored {crate}")
   }
 
