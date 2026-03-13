@@ -490,7 +490,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
         dnl 1) Rewrite vendor path deps back to git deps
         for _crate in miniextendr-api miniextendr-lint; do
-          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+          "$SED" "s|$_crate = { path = \"../../vendor/$_crate@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
             src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         done
 
@@ -525,7 +525,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
         dnl 1) Rewrite vendor path deps back to git deps
         for _crate in miniextendr-api miniextendr-lint; do
-          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+          "$SED" "s|$_crate = { path = \"../../vendor/$_crate@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
             src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
         done
 
@@ -574,13 +574,19 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       echo "configure: $BUILD_CONTEXT — vendor ready"
 
       dnl Rewrite git deps to path deps
+      dnl vendor-crates.R creates unversioned dirs (miniextendr-api/);
+      dnl cargo vendor creates versioned dirs (crate-0.1.0/). Check both.
       for _crate in miniextendr-api miniextendr-lint; do
-        _versioned_dir=""
-        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
-          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
-        done
-        if test -n "$_versioned_dir"; then
-          _dirname="$(basename "$_versioned_dir")"
+        _vendor_dir=""
+        if test -d "$VENDOR_OUT/$_crate"; then
+          _vendor_dir="$VENDOR_OUT/$_crate"
+        else
+          for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
+            if test -d "$_d"; then _vendor_dir="$_d"; break; fi
+          done
+        fi
+        if test -n "$_vendor_dir"; then
+          _dirname="$(basename "$_vendor_dir")"
           "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
             src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
           echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
@@ -597,12 +603,16 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       dnl Add [patch.crates-io] for transitive miniextendr deps
       _patch_lines=""
       for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
-        _versioned_dir=""
-        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
-          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
-        done
-        if test -n "$_versioned_dir"; then
-          _dirname="$(basename "$_versioned_dir")"
+        _vendor_dir=""
+        if test -d "$VENDOR_OUT/$_crate"; then
+          _vendor_dir="$VENDOR_OUT/$_crate"
+        else
+          for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
+            if test -d "$_d"; then _vendor_dir="$_d"; break; fi
+          done
+        fi
+        if test -n "$_vendor_dir"; then
+          _dirname="$(basename "$_vendor_dir")"
           _patch_lines="$_patch_lines
 $_crate = { path = \"../../vendor/$_dirname\" }"
         fi
