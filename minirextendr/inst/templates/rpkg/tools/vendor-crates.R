@@ -427,6 +427,34 @@ write_patch_config <- function(packages, target_dir) {
   config_path
 }
 
+strip_toml_sections <- function(lines, headers) {
+  trimmed <- trimws(lines)
+  is_target <- trimmed %in% headers
+  # Also match table subsections: [dev-dependencies.X] for header [dev-dependencies]
+  for (h in headers) {
+    if (!startsWith(h, "[[") && endsWith(h, "]")) {
+      prefix <- paste0(substr(h, 1, nchar(h) - 1), ".")
+      is_target <- is_target | startsWith(trimmed, prefix)
+    }
+  }
+  is_any_header <- grepl("^\\[", trimmed)
+  keep <- rep(TRUE, length(lines))
+  in_section <- FALSE
+  for (i in seq_along(lines)) {
+    if (is_target[i]) {
+      in_section <- TRUE
+      keep[i] <- FALSE
+    } else if (in_section) {
+      if (is_any_header[i]) {
+        in_section <- FALSE
+      } else {
+        keep[i] <- FALSE
+      }
+    }
+  }
+  lines[keep]
+}
+
 strip_vendored_crate <- function(crate_path) {
   unwanted_dirs <- c(
     "target", ".git", ".github", ".circleci", "tests", "benches",
@@ -446,6 +474,13 @@ strip_vendored_crate <- function(crate_path) {
   if (length(dotfiles) > 0) {
     unlink(dotfiles, recursive = TRUE, force = TRUE)
   }
+
+  manifest <- file.path(crate_path, "Cargo.toml")
+  if (file.exists(manifest)) {
+    lines <- readLines(manifest, warn = FALSE)
+    lines <- strip_toml_sections(lines, c("[[bench]]", "[[test]]", "[dev-dependencies]"))
+    writeLines(lines, manifest)
+  }
 }
 
 extract_crate_archive <- function(crate_file, vendor_dir, name, version) {
@@ -459,7 +494,7 @@ extract_crate_archive <- function(crate_file, vendor_dir, name, version) {
     stop(sprintf("Unexpected archive layout for %s", basename(crate_file)), call. = FALSE)
   }
 
-  destination <- file.path(vendor_dir, sprintf("%s-%s", name, version))
+  destination <- file.path(vendor_dir, name)
   if (dir.exists(destination)) {
     unlink(destination, recursive = TRUE, force = TRUE)
   }
@@ -595,6 +630,65 @@ swap_vendor_directory <- function(staging_vendor, vendor_dir) {
   }
 }
 
+rewrite_local_deps <- function(vendor_dir, local_crate_names) {
+  for (name in local_crate_names) {
+    manifest <- file.path(vendor_dir, name, "Cargo.toml")
+    if (!file.exists(manifest)) next
+
+    lines <- readLines(manifest, warn = FALSE)
+    inserts <- list()
+
+    for (sibling in local_crate_names) {
+      if (sibling == name) next
+      escaped <- regex_escape(sibling)
+
+      for (j in seq_along(lines)) {
+        line <- trimws(lines[[j]])
+
+        # Table section: [dependencies.sibling] or [build-dependencies.sibling]
+        section_pat <- sprintf("^\\[.*dependencies\\.%s\\]$", escaped)
+        if (grepl(section_pat, line)) {
+          has_path <- FALSE
+          for (k in (j + 1L):min(j + 20L, length(lines))) {
+            nxt <- trimws(lines[[k]])
+            if (startsWith(nxt, "[")) break
+            if (grepl("^path\\s*=", nxt)) { has_path <- TRUE; break }
+          }
+          if (!has_path) {
+            inserts[[length(inserts) + 1L]] <- list(after = j, line = sprintf('path = "../%s"', sibling))
+          }
+          break
+        }
+
+        # Inline simple: sibling = "version"
+        m <- regexec(sprintf("^(%s)\\s*=\\s*\"([^\"]+)\"$", escaped), line)
+        if (length(regmatches(line, m)[[1]]) == 3) {
+          ver <- regmatches(line, m)[[1]][[3]]
+          lines[[j]] <- sprintf('%s = { version = "%s", path = "../%s" }', sibling, ver, sibling)
+          break
+        }
+
+        # Inline table without path: sibling = { version = "...", ... }
+        if (grepl(sprintf("^%s\\s*=\\s*\\{", escaped), line) &&
+            grepl("version\\s*=", line) &&
+            !grepl("path\\s*=", line)) {
+          lines[[j]] <- sub("\\}\\s*$", sprintf(', path = "../%s" }', sibling), lines[[j]])
+          break
+        }
+      }
+    }
+
+    if (length(inserts) > 0) {
+      positions <- vapply(inserts, `[[`, integer(1), "after")
+      for (ins in inserts[order(positions, decreasing = TRUE)]) {
+        lines <- append(lines, ins$line, after = ins$after)
+      }
+    }
+
+    writeLines(lines, manifest)
+  }
+}
+
 build_vendor_tree <- function(package_root, source_root = NULL) {
   manifest_path <- file.path(package_root, "src", "rust", "Cargo.toml")
   if (!file.exists(manifest_path)) {
@@ -630,6 +724,7 @@ build_vendor_tree <- function(package_root, source_root = NULL) {
         packaged$version[[i]]
       )
     }
+    rewrite_local_deps(staging_vendor, packaged$name)
   }
 
   crate_dirs <- list.dirs(staging_vendor, recursive = FALSE, full.names = TRUE)

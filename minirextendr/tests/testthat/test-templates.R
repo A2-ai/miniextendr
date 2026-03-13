@@ -454,7 +454,8 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     # Combine devtools env vars with FORCE_VENDOR
     config_env <- c(devtools::r_env_vars(), c("FORCE_VENDOR" = "1"))
     result <- run_with_logging(
-      "./configure",
+      "bash",
+      args = c("./configure"),
       log_prefix = "configure-vendor",
       wd = pkg_path,
       env = config_env
