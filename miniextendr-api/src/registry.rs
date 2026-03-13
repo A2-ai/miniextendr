@@ -131,10 +131,20 @@ pub unsafe extern "C" fn universal_query(ptr: *mut mx_erased, trait_tag: mx_tag)
 /// Must be called from R's main thread during `R_init_*`.
 /// `dll` must be a valid pointer provided by R.
 #[unsafe(no_mangle)]
-pub unsafe extern "C-unwind" fn miniextendr_register_routines(dll: *mut DllInfo) {
-    // 1. Register ALTREP classes
-    for reg_fn in MX_ALTREP_REGISTRATIONS.iter() {
-        reg_fn();
+pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
+    // 1. Register ALTREP classes (skip during cdylib wrapper generation)
+    //
+    // During wrapper-gen, the cdylib is loaded temporarily via dyn.load() then
+    // unloaded via dyn.unload(). ALTREP class registration creates R-global entries
+    // with method pointers into the cdylib code. After dyn.unload(), those pointers
+    // become dangling. When the staticlib later re-registers, R may still have the
+    // stale entries, leading to heap corruption (e.g., "malloc(): unsorted double
+    // linked list corrupted" on Linux).
+    let wrapper_gen = std::env::var_os("MINIEXTENDR_CDYLIB_WRAPPERS").is_some();
+    if !wrapper_gen {
+        for reg_fn in MX_ALTREP_REGISTRATIONS.iter() {
+            reg_fn();
+        }
     }
 
     // 2. Build call method defs with null sentinel
@@ -320,7 +330,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
 ///
 /// `path_sexp` must be a valid STRSXP of length >= 1.
 #[unsafe(no_mangle)]
-pub unsafe extern "C-unwind" fn miniextendr_write_wrappers(
+pub unsafe extern "C" fn miniextendr_write_wrappers(
     path_sexp: crate::ffi::SEXP,
 ) -> crate::ffi::SEXP {
     unsafe {
