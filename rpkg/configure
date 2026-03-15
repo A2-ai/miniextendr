@@ -2535,6 +2535,9 @@ ac_config_commands="$ac_config_commands cargo-vendor"
 ac_config_commands="$ac_config_commands post-vendor"
 
 
+ac_config_commands="$ac_config_commands vendor-tarball"
+
+
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
 # tests run on this system so they can be shared between configure
@@ -3239,6 +3242,7 @@ NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"
+abs_rpkg_dir="$abs_top_srcdir" VENDOR_OUT="$VENDOR_OUT" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 
 _ACEOF
 
@@ -3255,6 +3259,7 @@ do
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
     "post-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS post-vendor" ;;
+    "vendor-tarball") CONFIG_COMMANDS="$CONFIG_COMMANDS vendor-tarball" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
   esac
@@ -3861,6 +3866,16 @@ $_crate = { path = \"../../vendor/$_dirname\" }"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
      ;;
+    "vendor-tarball":C)
+  _tarball="$abs_rpkg_dir/inst/vendor.tar.xz"
+  if test ! -f "$_tarball"; then
+    if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      mkdir -p "$abs_rpkg_dir/inst"
+      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
+      echo "configure: created inst/vendor.tar.xz"
+    fi
+  fi
+ ;;
 
   esac
 done # for ac_tag
