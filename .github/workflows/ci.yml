@@ -117,6 +117,8 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.r == 'true'
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Install just
         uses: taiki-e/install-action@just
@@ -235,6 +237,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Install just
         uses: taiki-e/install-action@just
@@ -402,6 +406,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Install just
         run: |
@@ -502,6 +508,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -635,6 +643,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Install just
         uses: taiki-e/install-action@just
@@ -700,6 +710,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Install just
         uses: taiki-e/install-action@just
@@ -766,6 +778,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Install just
         uses: taiki-e/install-action@just
@@ -831,6 +845,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Install just
         uses: taiki-e/install-action@just

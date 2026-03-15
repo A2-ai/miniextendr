@@ -52,17 +52,6 @@ miniextendr_configure <- function(path = ".") {
     ))
   }
 
-  # Auto-sync vendor/ from local monorepo (dev mode only)
-  not_cran <- Sys.getenv("NOT_CRAN", unset = "")
-  if (identical(not_cran, "true") || identical(not_cran, "TRUE") || identical(not_cran, "1")) {
-    tryCatch(
-      vendor_sync(),
-      error = function(e) {
-        cli::cli_alert_warning("vendor_sync failed: {conditionMessage(e)}")
-      }
-    )
-  }
-
   # Ensure configure is executable
   perms <- fs::file_info(configure_path)$permissions
   if (!grepl("x", as.character(perms))) {
