@@ -21,3 +21,5 @@ Imports:
 Suggests:
     producer.pkg,
     testthat (>= 3.0.0)
+Config/build/never-clean: true
+Config/build/extra-sources: src/rust/Cargo.lock
