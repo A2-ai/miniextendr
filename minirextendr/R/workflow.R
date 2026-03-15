@@ -115,7 +115,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
     } else {
       tryCatch(
         with_envvars(env_vars, {
-          devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
+          devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE)
         }),
         error = function(e) {
           cli::cli_abort(c(
