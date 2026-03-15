@@ -255,6 +255,15 @@ case "$host_os" in
 esac
 AC_SUBST([TAR_FORCE_LOCAL])
 
+dnl ---- cdylib platform extension (for R wrapper generation) ----
+case "$host_os" in
+  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
+esac
+AC_SUBST([CDYLIB_PREFIX])
+AC_SUBST([CDYLIB_EXT])
+
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
