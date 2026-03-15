@@ -444,6 +444,13 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       echo "configure:        Run 'just vendor' before CRAN submission." >&2
       exit 1
     fi
+    dnl Strip [patch] section — git sources don't work offline;
+    dnl vendored-sources replacement in .cargo/config.toml handles resolution
+    if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+      "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+      echo "configure: stripped @<:@patch@:>@ section for offline build"
+    fi
     echo "configure: CRAN build — vendor ready"
   fi
 ],

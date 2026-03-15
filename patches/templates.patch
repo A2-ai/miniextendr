@@ -1,6 +1,16 @@
+diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
+--- a/monorepo/rpkg/Makevars.in	2026-03-13 19:23:15
++++ b/monorepo/rpkg/Makevars.in	2026-03-15 13:03:37
+@@ -26,5 +26,5 @@
+ 
+ CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+-WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
++WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
+ 
+ # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-15 09:57:06
-+++ b/monorepo/rpkg/configure.ac	2026-03-15 09:57:10
+--- a/monorepo/rpkg/configure.ac	2026-03-15 11:24:37
++++ b/monorepo/rpkg/configure.ac	2026-03-15 13:22:58
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -132,11 +142,9 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
        echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-@@ -450,62 +443,4 @@
-       echo "configure: error: CRAN build requires vendored sources." >&2
-       echo "configure:        Run 'just vendor' before CRAN submission." >&2
--      exit 1
--    fi
+@@ -452,61 +445,10 @@
+       exit 1
+     fi
 -
 -    dnl Rewrite git deps to vendor/ path deps for offline builds.
 -    dnl Cargo.toml uses git deps for development; vendored builds need path deps.
@@ -160,9 +168,11 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -    done
 -
 -    dnl Strip [patch] section (monorepo paths not available in tarball)
--    if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
--      "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
--        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
++    dnl Strip [patch] section — git sources don't work offline;
++    dnl vendored-sources replacement in .cargo/config.toml handles resolution
+     if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+       "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+         && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -      echo "configure: stripped @<:@patch@:>@ section"
 -    fi
 -
@@ -193,11 +203,23 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
 -    if test $? -ne 0; then
 -      echo "configure: error: failed to generate lockfile from vendored sources" >&2
-       exit 1
+-      exit 1
++      echo "configure: stripped @<:@patch@:>@ section for offline build"
      fi
+     echo "configure: CRAN build — vendor ready"
+diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
+--- a/rpkg/Makevars.in	2026-03-13 19:23:15
++++ b/rpkg/Makevars.in	2026-03-15 13:03:35
+@@ -26,5 +26,5 @@
+ 
+ CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+-WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
++WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
+ 
+ # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-15 09:57:06
-+++ b/rpkg/configure.ac	2026-03-15 09:57:08
+--- a/rpkg/configure.ac	2026-03-15 11:24:37
++++ b/rpkg/configure.ac	2026-03-15 13:22:45
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -323,11 +345,9 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -450,62 +444,4 @@
-       echo "configure: error: CRAN build requires vendored sources." >&2
-       echo "configure:        Run 'just vendor' before CRAN submission." >&2
--      exit 1
--    fi
+@@ -452,61 +446,10 @@
+       exit 1
+     fi
 -
 -    dnl Rewrite git deps to vendor/ path deps for offline builds.
 -    dnl Cargo.toml uses git deps for development; vendored builds need path deps.
@@ -351,9 +371,11 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -    done
 -
 -    dnl Strip [patch] section (monorepo paths not available in tarball)
--    if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
--      "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
--        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
++    dnl Strip [patch] section — git sources don't work offline;
++    dnl vendored-sources replacement in .cargo/config.toml handles resolution
+     if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+       "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+         && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -      echo "configure: stripped @<:@patch@:>@ section"
 -    fi
 -
@@ -384,5 +406,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
 -    if test $? -ne 0; then
 -      echo "configure: error: failed to generate lockfile from vendored sources" >&2
-       exit 1
+-      exit 1
++      echo "configure: stripped @<:@patch@:>@ section for offline build"
      fi
+     echo "configure: CRAN build — vendor ready"
