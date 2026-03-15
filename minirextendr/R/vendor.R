@@ -354,6 +354,27 @@ vendor_miniextendr_local <- function(local_path, dest) {
   writeLines(local_path, fs::path(dest, ".vendor-source"))
 
   cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")
+
+  # If vendor-crates.R is available, rebuild vendor/ with cargo-package resolution.
+  # This replaces the regex-patched copies with properly resolved crates.
+  vendor_script <- file.path(dirname(dest), "tools", "vendor-crates.R")
+  if (file.exists(vendor_script)) {
+    pkg_root <- dirname(dest)
+    tryCatch({
+      result <- system2("Rscript", c(vendor_script, "sync",
+        "--path", pkg_root, "--source-root", local_path),
+        stdout = TRUE, stderr = TRUE)
+      status <- attr(result, "status")
+      if (is.null(status) || status == 0L) {
+        cli::cli_alert_success("Rebuilt vendor/ with cargo-package resolution")
+      } else {
+        cli::cli_alert_warning("vendor-crates.R sync exited with status {status}, using patched copies")
+      }
+    }, error = function(e) {
+      cli::cli_alert_warning("vendor-crates.R sync failed, using patched copies: {conditionMessage(e)}")
+    })
+  }
+
   invisible(TRUE)
 }
 
@@ -527,6 +548,13 @@ strip_toml_sections <- function(lines, headers) {
 
   # Check if a line matches any target header (exact match after trim)
   is_target <- trimmed %in% headers
+  # Also match table subsections: [dev-dependencies.X] for header [dev-dependencies]
+  for (h in headers) {
+    if (!startsWith(h, "[[") && endsWith(h, "]")) {
+      prefix <- paste0(substr(h, 1, nchar(h) - 1), ".")
+      is_target <- is_target | startsWith(trimmed, prefix)
+    }
+  }
 
   # Check if a line starts any TOML section (single or double bracket)
   is_any_header <- grepl("^\\[", trimmed)
