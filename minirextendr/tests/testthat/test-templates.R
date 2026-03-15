@@ -4,36 +4,100 @@
 # that can be built with the miniextendr toolchain.
 
 # -----------------------------------------------------------------------------
+# Shared helpers
+# -----------------------------------------------------------------------------
+
+# Build a cdylib, generate R wrappers, and roxygenise.
+# Returns invisible(TRUE) on success, stops on failure.
+generate_r_wrappers <- function(pkg_path) {
+  rust_dir <- file.path(pkg_path, "src", "rust")
+  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
+                        value = TRUE)
+  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
+  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
+  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
+  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
+
+  cdylib_result <- system2(
+    "cargo",
+    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
+      "--target-dir", file.path(rust_dir, "target"),
+      if (nzchar(features_flag)) features_flag,
+      "--crate-type", "cdylib"),
+    stdout = TRUE, stderr = TRUE
+  )
+  cdylib_status <- attr(cdylib_result, "status")
+  if (!is.null(cdylib_status) && cdylib_status != 0) {
+    stop("cdylib build failed: ", paste(cdylib_result, collapse = "\n"))
+  }
+
+  cdylib_ext <- if (.Platform$OS.type == "windows") "dll"
+                else if (Sys.info()[["sysname"]] == "Darwin") "dylib"
+                else "so"
+  cdylib_path <- file.path(rust_dir, "target", "debug",
+    paste0("lib", crate_name, ".", cdylib_ext))
+
+  pkg_name <- desc::desc(file.path(pkg_path, "DESCRIPTION"))$get_field("Package")
+  wrapper_path <- file.path(pkg_path, "R", paste0(pkg_name, "-wrappers.R"))
+
+  lib <- dyn.load(cdylib_path)
+  on.exit(dyn.unload(cdylib_path), add = TRUE)
+  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
+
+  suppressMessages(roxygen2::roxygenise(pkg_path))
+  invisible(TRUE)
+}
+
+# R CMD INSTALL to a temp library. Returns the lib_path.
+install_to_templib <- function(pkg_path, tmp) {
+  lib_path <- file.path(tmp, "library")
+  dir.create(lib_path, showWarnings = FALSE)
+
+  result <- system2(
+    file.path(R.home("bin"), "R"),
+    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
+    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
+    stdout = TRUE, stderr = TRUE
+  )
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    stop("R CMD INSTALL failed: ", paste(result, collapse = "\n"))
+  }
+  lib_path
+}
+
+# Standard e2e skip guards
+skip_e2e <- function() {
+  skip_on_ci()
+  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
+  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
+  skip_if_not(nzchar(Sys.which("R")), "R not available")
+  skip_if_no_local_repo()
+}
+
+# -----------------------------------------------------------------------------
 # Templates patch sync check
 # -----------------------------------------------------------------------------
 
 test_that("templates patch is in sync with rpkg sources", {
   skip_if_not(nzchar(Sys.which("just")), "just not available")
 
-  # Find the miniextendr repo root (parent of minirextendr)
-  pkg_path <- tryCatch(
-    rprojroot::find_package_root_file(),
-    error = function(e) NULL
-  )
+  pkg_path <- tryCatch(rprojroot::find_package_root_file(), error = function(e) NULL)
   skip_if(is.null(pkg_path), "Cannot find package root")
 
   repo_root <- dirname(pkg_path)
-  skip_if(!file.exists(file.path(repo_root, "justfile")),
-          "Not in miniextendr monorepo")
+  skip_if(!file.exists(file.path(repo_root, "justfile")), "Not in miniextendr monorepo")
 
-  # Run `just templates-check` from repo root
   result <- withr::with_dir(repo_root, {
     system2("just", c("templates-check"), stdout = TRUE, stderr = TRUE)
   })
   status <- attr(result, "status")
 
-  # If status is non-zero, the templates have drifted
   if (!is.null(status) && status != 0) {
-    output <- paste(result, collapse = "\n")
     fail(paste0(
       "Templates patch is out of sync with rpkg sources.\n",
       "Run `just templates-approve` to update the patch.\n\n",
-      "Diff output:\n", output
+      "Diff output:\n", paste(result, collapse = "\n")
     ))
   }
 
@@ -41,105 +105,131 @@ test_that("templates patch is in sync with rpkg sources", {
 })
 
 # -----------------------------------------------------------------------------
-# Monorepo template tests
+# Monorepo template tests (shared fixture)
 # -----------------------------------------------------------------------------
 
-test_that("create_miniextendr_monorepo creates correct directory structure", {
-  skip_if_no_local_repo()
-  tmp <- tempfile("monorepo-")
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+# Create one monorepo fixture for all structure/content tests.
+# The fixture is created once and reused across tests in this block.
+monorepo_fixture <- NULL
+monorepo_fixture_cleanup <- NULL
 
-  # Create monorepo
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
-                              local_path = find_miniextendr_repo(), open = FALSE)
+local({
+  setup_monorepo_fixture <- function() {
+    if (!is.null(monorepo_fixture)) return(monorepo_fixture)
+    repo <- find_miniextendr_repo()
+    if (is.null(repo)) return(NULL)
 
-  # Check root files
-  expect_true(file.exists(file.path(tmp, "Cargo.toml")))
-  expect_true(file.exists(file.path(tmp, "justfile")))
-  expect_true(file.exists(file.path(tmp, ".gitignore")))
-  expect_true(dir.exists(file.path(tmp, ".git")))
+    tmp <- tempfile("monorepo-shared-")
+    suppressMessages(
+      create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
+                                  local_path = repo, open = FALSE)
+    )
+    monorepo_fixture <<- tmp
+    monorepo_fixture_cleanup <<- withr::defer(
+      unlink(tmp, recursive = TRUE),
+      envir = testthat::teardown_env()
+    )
+    tmp
+  }
 
-  # Check main crate
-  expect_true(file.exists(file.path(tmp, "testpkg-rs", "Cargo.toml")))
-  expect_true(file.exists(file.path(tmp, "testpkg-rs", "src", "lib.rs")))
+  get_fixture <- function() {
+    skip_if_no_local_repo()
+    path <- setup_monorepo_fixture()
+    skip_if(is.null(path), "Failed to create monorepo fixture")
+    path
+  }
 
-  # Check rpkg structure
-  expect_true(file.exists(file.path(tmp, "testpkg", "DESCRIPTION")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "configure.ac")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "Makevars.in")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "stub.c")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "lib.rs")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "Cargo.toml")))
-  expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "build.rs")))
-  expect_true(dir.exists(file.path(tmp, "testpkg", "vendor")))
+  test_that("create_miniextendr_monorepo creates correct directory structure", {
+    tmp <- get_fixture()
+
+    # Root files
+    expect_true(file.exists(file.path(tmp, "Cargo.toml")))
+    expect_true(file.exists(file.path(tmp, "justfile")))
+    expect_true(file.exists(file.path(tmp, ".gitignore")))
+    expect_true(dir.exists(file.path(tmp, ".git")))
+
+    # Main crate
+    expect_true(file.exists(file.path(tmp, "testpkg-rs", "Cargo.toml")))
+    expect_true(file.exists(file.path(tmp, "testpkg-rs", "src", "lib.rs")))
+
+    # rpkg structure
+    expect_true(file.exists(file.path(tmp, "testpkg", "DESCRIPTION")))
+    expect_true(file.exists(file.path(tmp, "testpkg", "configure.ac")))
+    expect_true(file.exists(file.path(tmp, "testpkg", "src", "Makevars.in")))
+    expect_true(file.exists(file.path(tmp, "testpkg", "src", "stub.c")))
+    expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "lib.rs")))
+    expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "Cargo.toml")))
+    expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "build.rs")))
+    expect_true(dir.exists(file.path(tmp, "testpkg", "vendor")))
+  })
+
+  test_that("monorepo root Cargo.toml has valid workspace configuration", {
+    tmp <- get_fixture()
+
+    cargo_text <- paste(readLines(file.path(tmp, "Cargo.toml")), collapse = "\n")
+    expect_true(grepl("\\[workspace\\]", cargo_text))
+    expect_true(grepl('resolver = "3"', cargo_text))
+    expect_true(grepl("testpkg-rs", cargo_text))
+    expect_true(grepl('exclude = \\["testpkg/src/rust"', cargo_text))
+    expect_true(grepl("\\[workspace\\.package\\]", cargo_text))
+    expect_true(grepl('version = "0\\.1\\.0"', cargo_text))
+  })
+
+  test_that("monorepo rpkg DESCRIPTION has correct miniextendr config", {
+    tmp <- get_fixture()
+
+    desc <- desc::desc(file.path(tmp, "testpkg", "DESCRIPTION"))
+    expect_equal(desc$get_field("Config/build/bootstrap"), "TRUE")
+    expect_equal(desc$get_field("Config/build/never-clean"), "true")
+    expect_equal(desc$get_field("Config/build/extra-sources"), "src/rust/Cargo.lock")
+    expect_true(grepl("Rust", desc$get_field("SystemRequirements")))
+  })
+
+  test_that("monorepo can run autoconf and configure", {
+    skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
+    skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
+    tmp <- get_fixture()
+
+    result <- withr::with_dir(file.path(tmp, "testpkg"), {
+      system2("autoconf", c("-v", "-i", "-f"), stdout = TRUE, stderr = TRUE)
+    })
+    status <- attr(result, "status")
+    expect_true(is.null(status) || status == 0)
+    expect_true(file.exists(file.path(tmp, "testpkg", "configure")))
+  })
+
+  test_that("monorepo workspace can cargo check", {
+    skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
+    tmp <- get_fixture()
+
+    result <- suppressWarnings(
+      withr::with_dir(file.path(tmp, "testpkg-rs"), {
+        system2("cargo", c("check"), stdout = TRUE, stderr = TRUE)
+      })
+    )
+    status <- attr(result, "status")
+    output <- paste(result, collapse = "\n")
+    valid_outcome <- is.null(status) || status == 0 ||
+                     grepl("miniextendr-api", output) ||
+                     grepl("Compiling", output) ||
+                     grepl("Checking", output)
+    expect_true(valid_outcome)
+  })
 })
 
+# Substitution test needs different params — separate fixture
 test_that("create_miniextendr_monorepo performs correct template substitution", {
+  skip_if_no_local_repo()
   tmp <- tempfile("monorepo-subst-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  skip_if_no_local_repo()
   create_miniextendr_monorepo(tmp, package = "myPkg", crate_name = "my-pkg",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
-  # Root Cargo.toml should reference crate_name
-  root_cargo <- readLines(file.path(tmp, "Cargo.toml"))
-  expect_true(any(grepl("my-pkg", root_cargo)))
-
-  # Crate Cargo.toml should have correct name
-  crate_cargo <- readLines(file.path(tmp, "my-pkg", "Cargo.toml"))
-  expect_true(any(grepl('name = "my-pkg"', crate_cargo)))
-
-  # rpkg lib.rs should exist with #[miniextendr] functions
-  rpkg_lib <- readLines(file.path(tmp, "myPkg", "src", "rust", "lib.rs"))
-  expect_true(any(grepl("#\\[miniextendr\\]", rpkg_lib)))
-
-  # rpkg DESCRIPTION should have package name
-  desc <- readLines(file.path(tmp, "myPkg", "DESCRIPTION"))
-  expect_true(any(grepl("Package: myPkg", desc)))
-})
-
-test_that("monorepo root Cargo.toml has valid workspace configuration", {
-  tmp <- tempfile("monorepo-cargo-")
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-
-  skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
-                              local_path = find_miniextendr_repo(), open = FALSE)
-
-  cargo <- readLines(file.path(tmp, "Cargo.toml"))
-  cargo_text <- paste(cargo, collapse = "\n")
-
-  # Check workspace section exists
-  expect_true(grepl("\\[workspace\\]", cargo_text))
-  expect_true(grepl('resolver = "3"', cargo_text))
-  expect_true(grepl("testpkg-rs", cargo_text))
-  expect_true(grepl('exclude = \\["testpkg/src/rust"', cargo_text))
-
-  # Check workspace package section (version, edition)
-  expect_true(grepl("\\[workspace\\.package\\]", cargo_text))
-  expect_true(grepl('version = "0\\.1\\.0"', cargo_text))
-})
-
-test_that("monorepo rpkg DESCRIPTION has correct miniextendr config", {
-  tmp <- tempfile("monorepo-desc-")
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-
-  skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
-                              local_path = find_miniextendr_repo(), open = FALSE)
-
-  desc_path <- file.path(tmp, "testpkg", "DESCRIPTION")
-  desc <- desc::desc(desc_path)
-
-  # Check Config fields
-  expect_equal(desc$get_field("Config/build/bootstrap"), "TRUE")
-  expect_equal(desc$get_field("Config/build/never-clean"), "true")
-  expect_equal(desc$get_field("Config/build/extra-sources"), "src/rust/Cargo.lock")
-
-  # Check SystemRequirements
-  sys_req <- desc$get_field("SystemRequirements")
-  expect_true(grepl("Rust", sys_req))
+  expect_true(any(grepl("my-pkg", readLines(file.path(tmp, "Cargo.toml")))))
+  expect_true(any(grepl('name = "my-pkg"', readLines(file.path(tmp, "my-pkg", "Cargo.toml")))))
+  expect_true(any(grepl("#\\[miniextendr\\]", readLines(file.path(tmp, "myPkg", "src", "rust", "lib.rs")))))
+  expect_true(any(grepl("Package: myPkg", readLines(file.path(tmp, "myPkg", "DESCRIPTION")))))
 })
 
 # -----------------------------------------------------------------------------
@@ -150,37 +240,21 @@ test_that("use_template works with rpkg template type", {
   tmp <- tempfile("rpkg-template-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  # Create minimal package structure
   dir.create(tmp)
   usethis::proj_set(tmp, force = TRUE)
+  writeLines("Package: testpkg\nTitle: Test\nVersion: 0.0.1\n", file.path(tmp, "DESCRIPTION"))
 
-  # Write minimal DESCRIPTION
-  desc_content <- "Package: testpkg\nTitle: Test\nVersion: 0.0.1\n"
-  writeLines(desc_content, file.path(tmp, "DESCRIPTION"))
-
-  # Set template type and test
   set_template_type("rpkg")
-
-  data <- list(
-    package = "testpkg",
-    package_rs = "testpkg",
-    Package = "Testpkg",
-    year = "2025"
-  )
-
+  data <- list(package = "testpkg", package_rs = "testpkg", Package = "Testpkg", year = "2025")
   ensure_dir(usethis::proj_path("src", "rust"))
   use_template("lib.rs", save_as = "src/rust/lib.rs", data = data)
   use_template("build.rs", save_as = "src/rust/build.rs")
   use_template("Makevars.in", save_as = "src/Makevars.in")
 
-  # Verify files exist
   expect_true(file.exists(file.path(tmp, "src", "rust", "lib.rs")))
   expect_true(file.exists(file.path(tmp, "src", "rust", "build.rs")))
   expect_true(file.exists(file.path(tmp, "src", "Makevars.in")))
-
-  # Verify lib.rs was created with #[miniextendr] functions
-  lib_rs <- readLines(file.path(tmp, "src", "rust", "lib.rs"))
-  expect_true(any(grepl("#\\[miniextendr\\]", lib_rs)))
+  expect_true(any(grepl("#\\[miniextendr\\]", readLines(file.path(tmp, "src", "rust", "lib.rs")))))
 })
 
 test_that("use_template performs mustache substitution correctly", {
@@ -192,235 +266,82 @@ test_that("use_template performs mustache substitution correctly", {
   writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
 
   set_template_type("rpkg")
-
-  data <- list(
-    package = "specialPkg",
-    package_rs = "special_pkg"
-  )
-
+  data <- list(package = "specialPkg", package_rs = "special_pkg")
   ensure_dir(usethis::proj_path("src", "rust"))
   use_template("lib.rs", save_as = "src/rust/lib.rs", data = data)
 
   content <- paste(readLines(file.path(tmp, "src", "rust", "lib.rs")), collapse = "\n")
-
-  # Should have no leftover {{...}} markers and contain expected content
   expect_true(grepl("#\\[miniextendr\\]", content))
   expect_false(grepl("\\{\\{package", content))
 })
 
 # -----------------------------------------------------------------------------
-# Build integration tests (require Rust toolchain)
-# -----------------------------------------------------------------------------
-
-test_that("monorepo can run autoconf and configure", {
-  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
-  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
-
-  tmp <- tempfile("monorepo-build-")
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-
-  skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
-                              local_path = find_miniextendr_repo(), open = FALSE)
-
-  # Run autoconf in rpkg/
-  result <- withr::with_dir(file.path(tmp, "testpkg"), {
-    system2("autoconf", c("-v", "-i", "-f"), stdout = TRUE, stderr = TRUE)
-  })
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0)
-
-  # Configure script should now exist
-  expect_true(file.exists(file.path(tmp, "testpkg", "configure")))
-})
-
-test_that("monorepo workspace can cargo check", {
-  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
-
-  tmp <- tempfile("monorepo-cargo-check-")
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-
-  skip_if_no_local_repo()
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
-                              local_path = find_miniextendr_repo(), open = FALSE)
-
-  # The main crate should be checkable (rpkg needs configure first)
-  # suppressWarnings: cargo check may fail if miniextendr-api isn't on crates.io
-  result <- suppressWarnings(
-    withr::with_dir(file.path(tmp, "testpkg-rs"), {
-      system2("cargo", c("check"), stdout = TRUE, stderr = TRUE)
-    })
-  )
-  status <- attr(result, "status")
-
-  # This may fail if miniextendr-api is not available, which is expected
-  # The test mainly verifies the Cargo.toml structure is valid
-  # We check that it at least attempted to resolve dependencies
-  output <- paste(result, collapse = "\n")
-  # Either succeeds or fails trying to find miniextendr-api (which is expected)
-  valid_outcome <- is.null(status) || status == 0 ||
-                   grepl("miniextendr-api", output) ||
-                   grepl("Compiling", output) ||
-                   grepl("Checking", output)
-  expect_true(valid_outcome)
-})
-
-# -----------------------------------------------------------------------------
-# End-to-end scaffolding test (full build and test)
+# End-to-end scaffolding tests (full build and test)
 # -----------------------------------------------------------------------------
 
 test_that("rpkg scaffolding builds and functions work end-to-end", {
-  skip_on_ci()  # Complex build environment requirements; test locally
-  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
-  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
-  skip_if_not(nzchar(Sys.which("R")), "R not available")
-  skip_if_no_local_repo()
-
+  skip_e2e()
   miniextendr_path <- find_miniextendr_repo()
 
   tmp <- tempfile("rpkg-e2e-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   dir.create(tmp)
-
-  # Create package inside temp dir with a valid name
   pkg_path <- file.path(tmp, "testpkg")
 
-  # Create basic R package
-  # suppressWarnings: use_miniextendr() warns about git root != working dir in test context
   suppressWarnings(suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
     use_miniextendr(path = pkg_path, local_path = miniextendr_path)
-    # Add package-level documentation for useDynLib
     usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
   }))
 
-  # Run autoconf and configure using minirextendr functions
   suppressMessages({
     miniextendr_autoconf(path = pkg_path)
     miniextendr_configure(path = pkg_path)
-    # Generate NAMESPACE from package doc (useDynLib)
     devtools::document(pkg = pkg_path)
   })
 
-  # Get package name
   pkg_name <- desc::desc(file.path(pkg_path, "DESCRIPTION"))$get_field("Package")
+  lib_path <- install_to_templib(pkg_path, tmp)
+  generate_r_wrappers(pkg_path)
+  lib_path <- install_to_templib(pkg_path, tmp)
 
-  # Build and install to temp library using R CMD INSTALL
-  # This will compile Rust code
-  lib_path <- file.path(tmp, "library")
-  dir.create(lib_path)
-
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
-
-  # Generate R wrappers via cdylib (loads distributed_slice entries)
-  rust_dir <- file.path(pkg_path, "src", "rust")
-  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
-                        value = TRUE)
-  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
-  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
-  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
-  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
-  cdylib_result <- system2(
-    "cargo",
-    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
-      "--target-dir", file.path(rust_dir, "target"),
-      if (nzchar(features_flag)) features_flag,
-      "--crate-type", "cdylib"),
-    stdout = TRUE, stderr = TRUE
-  )
-  cdylib_status <- attr(cdylib_result, "status")
-  expect_true(is.null(cdylib_status) || cdylib_status == 0,
-              info = paste("cdylib build failed:", paste(cdylib_result, collapse = "\n")))
-  cdylib_path <- file.path(rust_dir, "target", "debug",
-    paste0("lib", crate_name, if (.Platform$OS.type == "windows") ".dll" else if (Sys.info()["sysname"] == "Darwin") ".dylib" else ".so"))
-  wrapper_path <- file.path(pkg_path, "R", paste0(pkg_name, "-wrappers.R"))
-  lib <- dyn.load(cdylib_path)
-  on.exit(dyn.unload(cdylib_path), add = TRUE)
-  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
-
-  # Regenerate NAMESPACE with exports from generated R wrappers
-  # Use roxygen2::roxygenise directly to avoid pkgload compilation
-  suppressMessages({
-    roxygen2::roxygenise(pkg_path)
-  })
-
-  # Reinstall with updated NAMESPACE
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
-
-  # Test the functions work
   withr::with_libpaths(lib_path, action = "prefix", {
-    # Load the package
     library(pkg_name, character.only = TRUE)
-
-    # Test add function
     expect_equal(add(1, 2), 3)
     expect_equal(add(10, 20), 30)
-
-    # Test hello function
     expect_equal(hello("World"), "Hello, World!")
     expect_equal(hello("Test"), "Hello, Test!")
-
-    # Unload
     detach(paste0("package:", pkg_name), character.only = TRUE, unload = TRUE)
   })
 })
 
 test_that("rpkg scaffolding with external cargo dependency works", {
-  skip_on_ci()  # Complex build environment requirements; test locally
-  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
-  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
-  skip_if_not(nzchar(Sys.which("R")), "R not available")
-  skip_if_no_local_repo()
-
+  skip_e2e()
   miniextendr_path <- find_miniextendr_repo()
 
   tmp <- tempfile("rpkg-cargo-dep-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   dir.create(tmp)
-
   pkg_path <- file.path(tmp, "testpkg")
 
-  # Create package and add miniextendr
-  # suppressWarnings: use_miniextendr() warns about git root != working dir in test context
   suppressWarnings(suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
     use_miniextendr(path = pkg_path, local_path = miniextendr_path)
-    # Add package-level documentation for useDynLib
     usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
   }))
 
-  # Run autoconf and configure using minirextendr functions
   suppressMessages({
     miniextendr_autoconf(path = pkg_path)
     miniextendr_configure(path = pkg_path)
   })
 
-  # Add itertools dependency to Cargo.toml
+  # Add itertools dependency
   cargo_toml <- file.path(pkg_path, "src", "rust", "Cargo.toml")
   cargo_content <- readLines(cargo_toml)
   deps_idx <- grep("^\\[dependencies\\]", cargo_content)[1]
   if (!is.na(deps_idx)) {
-    # Insert itertools right after [dependencies] header
     cargo_content <- c(
       cargo_content[1:deps_idx],
       "itertools = \"0.13\"",
@@ -429,7 +350,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     writeLines(cargo_content, cargo_toml)
   }
 
-  # Update lib.rs to use itertools
+  # Add itertools usage to lib.rs
   lib_rs <- file.path(pkg_path, "src", "rust", "lib.rs")
   lib_content <- readLines(lib_rs)
   use_idx <- grep("use miniextendr_api", lib_content)[1]
@@ -449,97 +370,29 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   )
   writeLines(lib_content, lib_rs)
 
-  # Reconfigure to vendor itertools (with FORCE_VENDOR environment variable)
+  # Reconfigure with FORCE_VENDOR to vendor itertools
   suppressMessages({
-    # Combine devtools env vars with FORCE_VENDOR
     config_env <- c(devtools::r_env_vars(), c("FORCE_VENDOR" = "1"))
     result <- run_with_logging(
-      "bash",
-      args = c("./configure"),
-      log_prefix = "configure-vendor",
-      wd = pkg_path,
-      env = config_env
+      "bash", args = c("./configure"),
+      log_prefix = "configure-vendor", wd = pkg_path, env = config_env
     )
     expect_true(result$success,
                 info = paste("configure with FORCE_VENDOR failed:", paste(result$output, collapse = "\n")))
   })
 
-  # Verify itertools was vendored
   expect_true(dir.exists(file.path(pkg_path, "vendor", "itertools")),
               info = "itertools was not vendored")
 
-  # Build and install
-  lib_path <- file.path(tmp, "library")
-  dir.create(lib_path)
+  lib_path <- install_to_templib(pkg_path, tmp)
+  generate_r_wrappers(pkg_path)
+  lib_path <- install_to_templib(pkg_path, tmp)
 
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
-
-  # Generate R wrappers via cdylib (loads distributed_slice entries)
-  rust_dir <- file.path(pkg_path, "src", "rust")
-  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
-                        value = TRUE)
-  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
-  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
-  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
-  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
-  cdylib_result <- system2(
-    "cargo",
-    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
-      "--target-dir", file.path(rust_dir, "target"),
-      if (nzchar(features_flag)) features_flag,
-      "--crate-type", "cdylib"),
-    stdout = TRUE, stderr = TRUE
-  )
-  cdylib_status <- attr(cdylib_result, "status")
-  expect_true(is.null(cdylib_status) || cdylib_status == 0,
-              info = paste("cdylib build failed:", paste(cdylib_result, collapse = "\n")))
-  cdylib_path <- file.path(rust_dir, "target", "debug",
-    paste0("lib", crate_name, if (.Platform$OS.type == "windows") ".dll" else if (Sys.info()["sysname"] == "Darwin") ".dylib" else ".so"))
-  wrapper_path <- file.path(pkg_path, "R", "testpkg-wrappers.R")
-  lib <- dyn.load(cdylib_path)
-  on.exit(dyn.unload(cdylib_path), add = TRUE)
-  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
-
-  # Generate NAMESPACE from the R wrappers created during build
-  # Use roxygen2::roxygenise directly to avoid pkgload compilation
-  suppressMessages({
-    roxygen2::roxygenise(pkg_path)
-  })
-
-  # Reinstall with updated NAMESPACE
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
-
-  # Test that the functions work
   withr::with_libpaths(lib_path, action = "prefix", {
-    # Load the package
     library(testpkg)
-
-    # Test basic functions
     expect_equal(add(1, 2), 3)
     expect_equal(hello("Test"), "Hello, Test!")
-
-    # Test itertools function
     expect_equal(join_strings(c("a", "b", "c")), "a, b, c")
-
-    # Unload
     detach("package:testpkg", character.only = TRUE, unload = TRUE)
   })
 })
@@ -549,67 +402,47 @@ test_that("rpkg scaffolding with external cargo dependency works", {
 # -----------------------------------------------------------------------------
 
 test_that("monorepo handles dots in package names", {
+  skip_if_no_local_repo()
   tmp <- tempfile("monorepo-dots-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  skip_if_no_local_repo()
-  # Dots in R package names should convert to hyphens in crate names
   create_miniextendr_monorepo(tmp, package = "my.pkg", crate_name = "my-pkg",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
-  # Rust crate should use hyphens
-  crate_cargo <- readLines(file.path(tmp, "my-pkg", "Cargo.toml"))
-  expect_true(any(grepl('name = "my-pkg"', crate_cargo)))
-
-  # R package should keep dots
-  desc <- readLines(file.path(tmp, "my.pkg", "DESCRIPTION"))
-  expect_true(any(grepl("Package: my.pkg", desc)))
-
-  # rpkg lib.rs should exist with #[miniextendr] functions
-  rpkg_lib <- readLines(file.path(tmp, "my.pkg", "src", "rust", "lib.rs"))
-  expect_true(any(grepl("#\\[miniextendr\\]", rpkg_lib)))
+  expect_true(any(grepl('name = "my-pkg"', readLines(file.path(tmp, "my-pkg", "Cargo.toml")))))
+  expect_true(any(grepl("Package: my.pkg", readLines(file.path(tmp, "my.pkg", "DESCRIPTION")))))
+  expect_true(any(grepl("#\\[miniextendr\\]", readLines(file.path(tmp, "my.pkg", "src", "rust", "lib.rs")))))
 })
 
 test_that("monorepo handles hyphens in crate names", {
+  skip_if_no_local_repo()
   tmp <- tempfile("monorepo-hyphens-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  skip_if_no_local_repo()
   create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "test-pkg",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
-  # Crate name should have hyphens
-  crate_cargo <- readLines(file.path(tmp, "test-pkg", "Cargo.toml"))
-  expect_true(any(grepl('name = "test-pkg"', crate_cargo)))
+  expect_true(any(grepl('name = "test-pkg"', readLines(file.path(tmp, "test-pkg", "Cargo.toml")))))
 })
 
 test_that("create_miniextendr_package rejects invalid R package names", {
   tmp <- tempfile("invalid-name-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  # Package names starting with a digit are invalid
-  expect_error(
-    create_miniextendr_package(file.path(tmp, "1badname"), open = FALSE)
-  )
+  expect_error(create_miniextendr_package(file.path(tmp, "1badname"), open = FALSE))
 })
 
 # -----------------------------------------------------------------------------
-# End-to-end scaffolding tests (continued)
+# Monorepo end-to-end
 # -----------------------------------------------------------------------------
 
 test_that("monorepo scaffolding builds and functions work end-to-end", {
-  skip_on_ci()  # Complex build environment requirements; test locally
-  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
-  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
-  skip_if_not(nzchar(Sys.which("R")), "R not available")
-  skip_if_no_local_repo()
-
+  skip_e2e()
   miniextendr_path <- find_miniextendr_repo()
 
   tmp <- tempfile("monorepo-e2e-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  # Create monorepo with valid package name (local_path vendors miniextendr crates)
   suppressMessages({
     create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                                 local_path = miniextendr_path, open = FALSE)
@@ -618,15 +451,11 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   rpkg_path <- file.path(tmp, "testpkg")
 
   suppressMessages({
-    # Add package-level documentation for useDynLib
     usethis::proj_set(rpkg_path, force = TRUE)
     usethis::use_package_doc()
   })
 
-  # Pre-vendor crates.io dependencies manually
-  # (Cargo.toml already has correct values from mustache substitution at scaffolding time)
-
-  # Run cargo vendor to fetch crates.io deps (proc-macro2, syn, quote, etc.)
+  # Vendor crates.io deps (miniextendr crates already vendored by scaffolding)
   suppressWarnings({
     withr::with_dir(rpkg_path, {
       system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "vendor"),
@@ -634,7 +463,6 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     })
   })
 
-  # Run autoconf and configure using minirextendr functions
   suppressMessages({
     usethis::proj_set(rpkg_path, force = TRUE)
     usethis::use_package_doc()
@@ -642,82 +470,17 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     miniextendr_configure(path = rpkg_path)
   })
 
-  # Get package name
   pkg_name <- desc::desc(file.path(rpkg_path, "DESCRIPTION"))$get_field("Package")
+  lib_path <- install_to_templib(rpkg_path, tmp)
+  generate_r_wrappers(rpkg_path)
+  lib_path <- install_to_templib(rpkg_path, tmp)
 
-  # Build and install - this compiles Rust and generates R wrappers
-  lib_path <- file.path(tmp, "library")
-  dir.create(lib_path)
-
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, rpkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
-
-  # Generate R wrappers via cdylib (loads distributed_slice entries)
-  rust_dir <- file.path(rpkg_path, "src", "rust")
-  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(rpkg_path, "src", "Makevars")),
-                        value = TRUE)
-  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
-  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
-  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
-  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
-  cdylib_result <- system2(
-    "cargo",
-    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
-      "--target-dir", file.path(rust_dir, "target"),
-      if (nzchar(features_flag)) features_flag,
-      "--crate-type", "cdylib"),
-    stdout = TRUE, stderr = TRUE
-  )
-  cdylib_status <- attr(cdylib_result, "status")
-  expect_true(is.null(cdylib_status) || cdylib_status == 0,
-              info = paste("cdylib build failed:", paste(cdylib_result, collapse = "\n")))
-  cdylib_path <- file.path(rust_dir, "target", "debug",
-    paste0("lib", crate_name, if (.Platform$OS.type == "windows") ".dll" else if (Sys.info()["sysname"] == "Darwin") ".dylib" else ".so"))
-  wrapper_path <- file.path(rpkg_path, "R", paste0(pkg_name, "-wrappers.R"))
-  lib <- dyn.load(cdylib_path)
-  on.exit(dyn.unload(cdylib_path), add = TRUE)
-  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
-
-  # Generate NAMESPACE from the R wrappers created during build
-  # Use roxygen2::roxygenise directly to avoid pkgload compilation
-  suppressMessages({
-    roxygen2::roxygenise(rpkg_path)
-  })
-
-  # Reinstall with updated NAMESPACE
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, rpkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
-
-  # Test the functions work
   withr::with_libpaths(lib_path, action = "prefix", {
-    # Load the package
     library(pkg_name, character.only = TRUE)
-
-    # Test add function
     expect_equal(add(1, 2), 3)
     expect_equal(add(10, 20), 30)
-
-    # Test hello function
     expect_equal(hello("World"), "Hello, World!")
     expect_equal(hello("Test"), "Hello, Test!")
-
-    # Unload
     detach(paste0("package:", pkg_name), character.only = TRUE, unload = TRUE)
   })
 })

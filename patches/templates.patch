@@ -81,7 +81,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-13 12:03:01
+--- a/monorepo/rpkg/configure.ac	2026-03-13 21:21:42
 +++ b/monorepo/rpkg/configure.ac	2026-03-13 12:03:01
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -417,7 +417,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -473,170 +362,93 @@
+@@ -473,180 +362,93 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -450,7 +450,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
 -        dnl 1) Rewrite vendor path deps back to git deps
 -        for _crate in miniextendr-api miniextendr-lint; do
--          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+-          "$SED" "s|$_crate = { path = \"../../vendor/$_crate@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -        done
 -
@@ -497,7 +497,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
 -        dnl 1) Rewrite vendor path deps back to git deps
 -        for _crate in miniextendr-api miniextendr-lint; do
--          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+-          "$SED" "s|$_crate = { path = \"../../vendor/$_crate@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -        done
 -
@@ -505,18 +505,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -        if grep -q '^\@<:@patch\.crates-io\@:>@' src/rust/Cargo.toml 2>/dev/null; then
 -          "$SED" '/^\@<:@patch\.crates-io\@:>@/,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
 -            && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
-+      for _crate_dir in "$VENDOR_OUT"/*/; do
-+        if test -d "$_crate_dir"; then
-+          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-+                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-+          for _dotfile in "$_crate_dir"/.*; do
-+            case "$(basename "$_dotfile")" in
-+              .|..|.cargo-checksum.json) ;;
-+              *) rm -rf "$_dotfile" ;;
-+            esac
-+          done
-+          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
-         fi
+-        fi
 -        "$SED" -e :a -e '/^$/{$d' -e N -e ba -e '}' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
 -          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -
@@ -557,13 +546,29 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      echo "configure: $BUILD_CONTEXT — vendor ready"
 -
 -      dnl Rewrite git deps to path deps
+-      dnl vendor-crates.R creates unversioned dirs (miniextendr-api/);
+-      dnl cargo vendor creates versioned dirs (crate-0.1.0/). Check both.
 -      for _crate in miniextendr-api miniextendr-lint; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
+-        _vendor_dir=""
+-        if test -d "$VENDOR_OUT/$_crate"; then
+-          _vendor_dir="$VENDOR_OUT/$_crate"
+-        else
+-          for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
+-            if test -d "$_d"; then _vendor_dir="$_d"; break; fi
++      for _crate_dir in "$VENDOR_OUT"/*/; do
++        if test -d "$_crate_dir"; then
++          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
++                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
++          for _dotfile in "$_crate_dir"/.*; do
++            case "$(basename "$_dotfile")" in
++              .|..|.cargo-checksum.json) ;;
++              *) rm -rf "$_dotfile" ;;
++            esac
+           done
++          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+         fi
+-        if test -n "$_vendor_dir"; then
+-          _dirname="$(basename "$_vendor_dir")"
 -          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
@@ -582,12 +587,16 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -      dnl Add [patch.crates-io] for transitive miniextendr deps
 -      _patch_lines=""
 -      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
+-        _vendor_dir=""
+-        if test -d "$VENDOR_OUT/$_crate"; then
+-          _vendor_dir="$VENDOR_OUT/$_crate"
+-        else
+-          for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
+-            if test -d "$_d"; then _vendor_dir="$_d"; break; fi
+-          done
+-        fi
+-        if test -n "$_vendor_dir"; then
+-          _dirname="$(basename "$_vendor_dir")"
 -          _patch_lines="$_patch_lines
 -$_crate = { path = \"../../vendor/$_dirname\" }"
 -        fi
@@ -660,7 +669,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  
-@@ -650,5 +462,5 @@
+@@ -660,5 +462,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
@@ -750,7 +759,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-13 12:03:01
+--- a/rpkg/configure.ac	2026-03-13 21:21:42
 +++ b/rpkg/configure.ac	2026-03-13 12:03:01
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -1086,7 +1095,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -473,170 +362,94 @@
+@@ -473,180 +362,94 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
@@ -1119,7 +1128,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
 -        dnl 1) Rewrite vendor path deps back to git deps
 -        for _crate in miniextendr-api miniextendr-lint; do
--          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+-          "$SED" "s|$_crate = { path = \"../../vendor/$_crate@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -        done
 -
@@ -1166,7 +1175,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      if grep -q 'path = "../../vendor/' src/rust/Cargo.toml 2>/dev/null; then
 -        dnl 1) Rewrite vendor path deps back to git deps
 -        for _crate in miniextendr-api miniextendr-lint; do
--          "$SED" "s|$_crate = { path = \"../../vendor/$_crate-@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
+-          "$SED" "s|$_crate = { path = \"../../vendor/$_crate@<:@^\"@:>@*\" }|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|" \
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -        done
 -
@@ -1174,18 +1183,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -        if grep -q '^\@<:@patch\.crates-io\@:>@' src/rust/Cargo.toml 2>/dev/null; then
 -          "$SED" '/^\@<:@patch\.crates-io\@:>@/,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
 -            && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
-+      for _crate_dir in "$VENDOR_OUT"/*/; do
-+        if test -d "$_crate_dir"; then
-+          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-+                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-+          for _dotfile in "$_crate_dir"/.*; do
-+            case "$(basename "$_dotfile")" in
-+              .|..|.cargo-checksum.json) ;;
-+              *) rm -rf "$_dotfile" ;;
-+            esac
-+          done
-+          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
-         fi
+-        fi
 -        "$SED" -e :a -e '/^$/{$d' -e N -e ba -e '}' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
 -          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -
@@ -1226,13 +1224,29 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      echo "configure: $BUILD_CONTEXT — vendor ready"
 -
 -      dnl Rewrite git deps to path deps
+-      dnl vendor-crates.R creates unversioned dirs (miniextendr-api/);
+-      dnl cargo vendor creates versioned dirs (crate-0.1.0/). Check both.
 -      for _crate in miniextendr-api miniextendr-lint; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
+-        _vendor_dir=""
+-        if test -d "$VENDOR_OUT/$_crate"; then
+-          _vendor_dir="$VENDOR_OUT/$_crate"
+-        else
+-          for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
+-            if test -d "$_d"; then _vendor_dir="$_d"; break; fi
++      for _crate_dir in "$VENDOR_OUT"/*/; do
++        if test -d "$_crate_dir"; then
++          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
++                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
++          for _dotfile in "$_crate_dir"/.*; do
++            case "$(basename "$_dotfile")" in
++              .|..|.cargo-checksum.json) ;;
++              *) rm -rf "$_dotfile" ;;
++            esac
+           done
++          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+         fi
+-        if test -n "$_vendor_dir"; then
+-          _dirname="$(basename "$_vendor_dir")"
 -          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
 -            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
@@ -1251,12 +1265,16 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -      dnl Add [patch.crates-io] for transitive miniextendr deps
 -      _patch_lines=""
 -      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
+-        _vendor_dir=""
+-        if test -d "$VENDOR_OUT/$_crate"; then
+-          _vendor_dir="$VENDOR_OUT/$_crate"
+-        else
+-          for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
+-            if test -d "$_d"; then _vendor_dir="$_d"; break; fi
+-          done
+-        fi
+-        if test -n "$_vendor_dir"; then
+-          _dirname="$(basename "$_vendor_dir")"
 -          _patch_lines="$_patch_lines
 -$_crate = { path = \"../../vendor/$_dirname\" }"
 -        fi
@@ -1330,7 +1348,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  
-@@ -650,5 +463,5 @@
+@@ -660,5 +463,5 @@
    dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
  ],
 -[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
