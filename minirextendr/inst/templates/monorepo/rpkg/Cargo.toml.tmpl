@@ -17,13 +17,13 @@ nonapi = ["miniextendr-api/nonapi"]
 connections = ["miniextendr-api/connections"]
 
 [dependencies]
-miniextendr-api = { version = "*" }
+miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
 
 [build-dependencies]
-miniextendr-lint = { version = "*" }
+miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
 
 # Development: resolve miniextendr crates from git
-# configure strips this section for CRAN builds (vendor/ paths used instead)
+# configure's cargo config handles CRAN/offline builds via source replacement
 [patch.crates-io]
 miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
 miniextendr-macros = { git = "https://github.com/CGMossa/miniextendr" }
