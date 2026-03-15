@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 --- a/monorepo/rpkg/Makevars.in	2026-03-13 19:23:15
-+++ b/monorepo/rpkg/Makevars.in	2026-03-15 13:03:37
++++ b/monorepo/rpkg/Makevars.in	2026-03-15 16:37:16
 @@ -26,5 +26,5 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -10,7 +10,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 --- a/monorepo/rpkg/configure.ac	2026-03-15 11:24:37
-+++ b/monorepo/rpkg/configure.ac	2026-03-15 13:22:58
++++ b/monorepo/rpkg/configure.ac	2026-03-15 16:37:16
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -110,39 +110,56 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -305,9 +299,9 @@
+@@ -305,9 +299,11 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
 +  src/{{package}}-win.def:src/win.def.in
  ])
  
- dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
+-dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
 -dnl    In dev mode, Cargo.toml uses path deps to vendor/ directly
-+dnl    In dev mode, Cargo.toml uses git deps directly
++dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
++dnl    Dev mode: remove cargo config so cargo uses normal git/crates-io resolution
++dnl    CRAN mode: keep cargo config and append source replacements for any git deps
++dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -318,5 +312,5 @@
+@@ -318,9 +314,18 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
 +      echo "configure: removed cargo config (dev mode - using git deps)"
      fi
++  elif test -f "$RPKG_CFG"; then
++    dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
++    dnl so [patch.crates-io] git entries also resolve to vendor/
++    for _url in $("$SED" -n 's/.*git = "\(https:\/\/@<:@^"@:>@*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
++      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
++        printf '\n@<:@source."git+%s"@:>@\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
++        echo "configure: added source replacement for git dep: $_url"
++      fi
++    done
    fi
-@@ -380,5 +374,5 @@
+ ],
+-[NOT_CRAN="$NOT_CRAN"])
++[NOT_CRAN="$NOT_CRAN" SED="$SED"])
+ 
+ dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
+@@ -380,5 +385,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -425,5 +419,4 @@
+@@ -425,5 +430,4 @@
        fi
      elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
 -      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
        echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-@@ -452,61 +445,10 @@
+@@ -452,61 +456,10 @@
        exit 1
      fi
 -
@@ -209,7 +226,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
      echo "configure: CRAN build — vendor ready"
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 --- a/rpkg/Makevars.in	2026-03-13 19:23:15
-+++ b/rpkg/Makevars.in	2026-03-15 13:03:35
++++ b/rpkg/Makevars.in	2026-03-15 16:37:16
 @@ -26,5 +26,5 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -219,7 +236,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 --- a/rpkg/configure.ac	2026-03-15 11:24:37
-+++ b/rpkg/configure.ac	2026-03-15 13:22:45
++++ b/rpkg/configure.ac	2026-03-15 16:37:16
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -319,33 +336,50 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -305,9 +299,9 @@
+@@ -305,9 +299,11 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
 +  src/{{package}}-win.def:src/win.def.in
  ])
  
- dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
+-dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
 -dnl    In dev mode, Cargo.toml uses path deps to vendor/ directly
-+dnl    In dev mode, Cargo.toml uses git deps directly
++dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
++dnl    Dev mode: remove cargo config so cargo uses normal git/crates-io resolution
++dnl    CRAN mode: keep cargo config and append source replacements for any git deps
++dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -318,5 +312,5 @@
+@@ -318,9 +314,18 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
 +      echo "configure: removed cargo config (dev mode - using git deps)"
      fi
++  elif test -f "$RPKG_CFG"; then
++    dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
++    dnl so [patch.crates-io] git entries also resolve to vendor/
++    for _url in $("$SED" -n 's/.*git = "\(https:\/\/@<:@^"@:>@*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
++      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
++        printf '\n@<:@source."git+%s"@:>@\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
++        echo "configure: added source replacement for git dep: $_url"
++      fi
++    done
    fi
-@@ -380,5 +374,5 @@
+ ],
+-[NOT_CRAN="$NOT_CRAN"])
++[NOT_CRAN="$NOT_CRAN" SED="$SED"])
+ 
+ dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
+@@ -380,5 +385,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -452,61 +446,10 @@
+@@ -452,61 +457,10 @@
        exit 1
      fi
 -

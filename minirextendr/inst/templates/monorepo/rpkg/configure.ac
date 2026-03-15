@@ -301,8 +301,10 @@ AC_CONFIG_FILES([
   src/{{package}}-win.def:src/win.def.in
 ])
 
-dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
-dnl    In dev mode, Cargo.toml uses git deps directly
+dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
+dnl    Dev mode: remove cargo config so cargo uses normal git/crates-io resolution
+dnl    CRAN mode: keep cargo config and append source replacements for any git deps
+dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
 AC_CONFIG_COMMANDS([dev-cargo-config],
 [
   RPKG_CFG="src/rust/.cargo/config.toml"
@@ -313,9 +315,18 @@ AC_CONFIG_COMMANDS([dev-cargo-config],
       rm "$RPKG_CFG"
       echo "configure: removed cargo config (dev mode - using git deps)"
     fi
+  elif test -f "$RPKG_CFG"; then
+    dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
+    dnl so [patch.crates-io] git entries also resolve to vendor/
+    for _url in $("$SED" -n 's/.*git = "\(https:\/\/@<:@^"@:>@*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
+      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
+        printf '\n@<:@source."git+%s"@:>@\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
+        echo "configure: added source replacement for git dep: $_url"
+      fi
+    done
   fi
 ],
-[NOT_CRAN="$NOT_CRAN"])
+[NOT_CRAN="$NOT_CRAN" SED="$SED"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 dnl Order matters: lockfile-compat, then cargo-vendor, then post-vendor
