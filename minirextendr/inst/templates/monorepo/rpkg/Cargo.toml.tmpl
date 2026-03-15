@@ -17,10 +17,18 @@ nonapi = ["miniextendr-api/nonapi"]
 connections = ["miniextendr-api/connections"]
 
 [dependencies]
-miniextendr-api = { path = "../../vendor/miniextendr-api" }
+miniextendr-api = { version = "*" }
 
 [build-dependencies]
-miniextendr-lint = { path = "../../vendor/miniextendr-lint" }
+miniextendr-lint = { version = "*" }
+
+# Development: resolve miniextendr crates from git
+# configure strips this section for CRAN builds (vendor/ paths used instead)
+[patch.crates-io]
+miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
+miniextendr-macros = { git = "https://github.com/CGMossa/miniextendr" }
+miniextendr-macros-core = { git = "https://github.com/CGMossa/miniextendr" }
+miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
 
 # codegen-units = 1 ensures the entire user crate compiles into a single .o file
 # inside the staticlib archive. This is required for linkme's distributed_slice:
