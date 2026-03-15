@@ -25,7 +25,7 @@ CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 PKG_LIBS = $(CARGO_AR)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
-WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
+WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
 
 # cdylib for R wrapper generation (platform-specific extension)
 CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
