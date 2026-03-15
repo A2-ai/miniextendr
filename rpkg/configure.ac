@@ -292,9 +292,10 @@ esac
 VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 AC_SUBST([VENDOR_OUT_CARGO])
 
-dnl Cargo.toml uses path dependencies to vendor/ for both dev and CRAN builds.
+dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
+dnl configure rewrites them to vendor/ path deps (see cargo-vendor block below).
 dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
-dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+dnl In dev mode, we remove the cargo config so cargo uses [patch] resolution.
 
 dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)

@@ -81,7 +81,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-15 07:53:06
+--- a/monorepo/rpkg/configure.ac	2026-03-15 08:27:19
 +++ b/monorepo/rpkg/configure.ac	2026-03-13 12:03:01
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -158,14 +158,18 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -
  dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
-@@ -293,5 +279,5 @@
+@@ -293,8 +279,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
--dnl Cargo.toml uses path dependencies to vendor/ for both dev and CRAN builds.
+-dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
+-dnl configure rewrites them to vendor/ path deps (see cargo-vendor block below).
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
- dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -304,9 +290,9 @@
+-dnl In dev mode, we remove the cargo config so cargo uses [patch] resolution.
++dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+ 
+ dnl ---- output files ----
+@@ -305,9 +290,9 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -177,27 +181,27 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl    In dev mode, Cargo.toml uses git deps directly
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -317,5 +303,5 @@
+@@ -318,5 +303,5 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
 +      echo "configure: removed cargo config (dev mode - using git deps)"
      fi
    fi
-@@ -379,5 +365,5 @@
+@@ -380,5 +365,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -424,5 +410,4 @@
+@@ -425,5 +410,4 @@
        fi
      elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
 -      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
        echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-@@ -449,62 +434,4 @@
+@@ -450,62 +434,4 @@
        echo "configure: error: CRAN build requires vendored sources." >&2
        echo "configure:        Run 'just vendor' before CRAN submission." >&2
 -      exit 1
@@ -343,7 +347,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  clean:
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-15 07:53:06
+--- a/rpkg/configure.ac	2026-03-15 08:27:19
 +++ b/rpkg/configure.ac	2026-03-13 12:03:01
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -420,14 +424,18 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -
  dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
-@@ -293,5 +279,5 @@
+@@ -293,8 +279,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
--dnl Cargo.toml uses path dependencies to vendor/ for both dev and CRAN builds.
+-dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
+-dnl configure rewrites them to vendor/ path deps (see cargo-vendor block below).
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
- dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -304,9 +290,9 @@
+-dnl In dev mode, we remove the cargo config so cargo uses [patch] resolution.
++dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+ 
+ dnl ---- output files ----
+@@ -305,9 +290,9 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -439,21 +447,21 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl    In dev mode, Cargo.toml uses git deps directly
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -317,5 +303,5 @@
+@@ -318,5 +303,5 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
 +      echo "configure: removed cargo config (dev mode - using git deps)"
      fi
    fi
-@@ -379,5 +365,5 @@
+@@ -380,5 +365,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -449,62 +435,4 @@
+@@ -450,62 +435,4 @@
        echo "configure: error: CRAN build requires vendored sources." >&2
        echo "configure:        Run 'just vendor' before CRAN submission." >&2
 -      exit 1
