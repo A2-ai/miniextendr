@@ -100,7 +100,6 @@ RUST_SRC_DIR="$abs_rpkg_src/rust"
 
 dnl Canonical path two levels above src (rpkg/src → miniextendr)
 root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
@@ -111,9 +110,7 @@ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
-AC_SUBST([RUSTC])
-AC_SUBST([SED])
-AC_SUBST([CYGPATH])
+dnl RUSTC, SED, CYGPATH used only within configure.ac — no AC_SUBST needed
 
 dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
 dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
@@ -151,7 +148,6 @@ AC_SUBST([RUST_TOOLCHAIN])
 
 dnl Convenience: cargo command that includes optional toolchain selector
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
-AC_SUBST([CARGO_CMD])
 
 dnl ---- Cargo configuration ----
 dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
@@ -235,7 +231,6 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
       [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
 AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
-AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 AS_IF([test -n "$MINIEXTENDR_FEATURES"],
       [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
 

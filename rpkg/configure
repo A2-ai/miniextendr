@@ -620,14 +620,12 @@ ENV_RUSTFLAGS
 CARGO_PROFILE
 CARGO_TARGET_DIR_CARGO
 CARGO_TARGET_DIR
-CARGO_CMD
 RUST_TOOLCHAIN
 ABS_RPKG_SRC_CARGO
 CYGPATH
 SED
 RUSTC
 CARGO
-ROOT_MINIEXTENDR_REPO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURES_FLAG
@@ -2018,8 +2016,6 @@ ABS_RPKG_SRCDIR="$abs_rpkg_src"
 RUST_SRC_DIR="$abs_rpkg_src/rust"
 
 root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
-
 
 if test -n "$ac_tool_prefix"; then
   # Extract the first word of "${ac_tool_prefix}cargo", so it can be a program name with args.
@@ -2349,9 +2345,6 @@ then :
 fi
 
 
-
-
-
 abs_rpkg_src_cargo="$abs_rpkg_src"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
@@ -2382,7 +2375,6 @@ fi
 
 
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
-
 
 
 : ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
@@ -2465,8 +2457,6 @@ then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&5
 printf "%s\n" "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
 fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
-printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
 if test -n "$MINIEXTENDR_FEATURES"
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
