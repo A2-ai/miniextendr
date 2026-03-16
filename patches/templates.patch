@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 --- a/monorepo/rpkg/Makevars.in	2026-03-13 19:23:15
-+++ b/monorepo/rpkg/Makevars.in	2026-03-15 16:37:16
++++ b/monorepo/rpkg/Makevars.in	2026-03-15 18:12:03
 @@ -26,5 +26,5 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -9,8 +9,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-15 11:24:37
-+++ b/monorepo/rpkg/configure.ac	2026-03-15 16:37:16
+--- a/monorepo/rpkg/configure.ac	2026-03-16 19:21:23
++++ b/monorepo/rpkg/configure.ac	2026-03-16 19:23:53
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -62,7 +62,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
  else
    CARGO_FEATURES_FLAG=""
-@@ -237,6 +233,6 @@
+@@ -237,17 +233,29 @@
        [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
  AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 -AS_IF([test -n "$MINIEXTENDR_FEATURES"],
@@ -71,7 +71,17 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
-@@ -253,7 +249,13 @@
+ dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
+ dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
+-CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
++pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
++AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
++pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
++AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
++
++dnl Staticlib name matches the Rust crate name (= pkg_rs)
++CARGO_STATICLIB_NAME="$pkg_rs"
+ AC_SUBST([CARGO_STATICLIB_NAME])
  AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
  
 -dnl Platform-specific cdylib naming (for wrapper generation via cargo rustc --crate-type cdylib)
@@ -87,7 +97,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +case "$host_os" in
    darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
    *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-@@ -263,11 +265,4 @@
+@@ -257,11 +265,4 @@
  AC_SUBST([CDYLIB_EXT])
  
 -dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
@@ -99,7 +109,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -
  AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-@@ -293,8 +288,7 @@
+@@ -293,8 +294,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
@@ -110,7 +120,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -305,9 +299,11 @@
+@@ -305,9 +305,11 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -125,7 +135,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -318,9 +314,18 @@
+@@ -318,9 +320,18 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
@@ -146,22 +156,18 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +[NOT_CRAN="$NOT_CRAN" SED="$SED"])
  
  dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
-@@ -380,5 +385,5 @@
+@@ -380,5 +391,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -425,5 +430,4 @@
-       fi
-     elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
--      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
-       echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-       "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-@@ -452,61 +456,10 @@
-       exit 1
-     fi
+@@ -429,62 +440,4 @@
+       echo "configure: error: CRAN build requires vendored sources." >&2
+       echo "configure:        Run 'just vendor' before CRAN submission." >&2
+-      exit 1
+-    fi
 -
 -    dnl Rewrite git deps to vendor/ path deps for offline builds.
 -    dnl Cargo.toml uses git deps for development; vendored builds need path deps.
@@ -185,11 +191,9 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -    done
 -
 -    dnl Strip [patch] section (monorepo paths not available in tarball)
-+    dnl Strip [patch] section — git sources don't work offline;
-+    dnl vendored-sources replacement in .cargo/config.toml handles resolution
-     if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
-       "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
-         && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-    if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+-      "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+-        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -      echo "configure: stripped @<:@patch@:>@ section"
 -    fi
 -
@@ -220,13 +224,11 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
 -    if test $? -ne 0; then
 -      echo "configure: error: failed to generate lockfile from vendored sources" >&2
--      exit 1
-+      echo "configure: stripped @<:@patch@:>@ section for offline build"
+       exit 1
      fi
-     echo "configure: CRAN build — vendor ready"
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 --- a/rpkg/Makevars.in	2026-03-13 19:23:15
-+++ b/rpkg/Makevars.in	2026-03-15 16:37:16
++++ b/rpkg/Makevars.in	2026-03-15 18:12:03
 @@ -26,5 +26,5 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -235,8 +237,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-15 11:24:37
-+++ b/rpkg/configure.ac	2026-03-15 16:37:16
+--- a/rpkg/configure.ac	2026-03-16 19:21:23
++++ b/rpkg/configure.ac	2026-03-16 19:22:50
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -288,7 +290,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
  else
    CARGO_FEATURES_FLAG=""
-@@ -237,6 +233,6 @@
+@@ -237,17 +233,29 @@
        [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
  AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 -AS_IF([test -n "$MINIEXTENDR_FEATURES"],
@@ -297,7 +299,17 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
-@@ -253,7 +249,13 @@
+ dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
+ dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
+-CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
++pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
++AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
++pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
++AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
++
++dnl Staticlib name matches the Rust crate name (= pkg_rs)
++CARGO_STATICLIB_NAME="$pkg_rs"
+ AC_SUBST([CARGO_STATICLIB_NAME])
  AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
  
 -dnl Platform-specific cdylib naming (for wrapper generation via cargo rustc --crate-type cdylib)
@@ -313,7 +325,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +case "$host_os" in
    darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
    *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-@@ -263,11 +265,4 @@
+@@ -257,11 +265,4 @@
  AC_SUBST([CDYLIB_EXT])
  
 -dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
@@ -325,7 +337,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -
  AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-@@ -293,8 +288,7 @@
+@@ -293,8 +294,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
@@ -336,7 +348,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -305,9 +299,11 @@
+@@ -305,9 +305,11 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -351,7 +363,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -318,9 +314,18 @@
+@@ -318,9 +320,18 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
@@ -372,16 +384,18 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +[NOT_CRAN="$NOT_CRAN" SED="$SED"])
  
  dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
-@@ -380,5 +385,5 @@
+@@ -380,5 +391,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -452,61 +457,10 @@
-       exit 1
-     fi
+@@ -429,62 +440,4 @@
+       echo "configure: error: CRAN build requires vendored sources." >&2
+       echo "configure:        Run 'just vendor' before CRAN submission." >&2
+-      exit 1
+-    fi
 -
 -    dnl Rewrite git deps to vendor/ path deps for offline builds.
 -    dnl Cargo.toml uses git deps for development; vendored builds need path deps.
@@ -405,11 +419,9 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -    done
 -
 -    dnl Strip [patch] section (monorepo paths not available in tarball)
-+    dnl Strip [patch] section — git sources don't work offline;
-+    dnl vendored-sources replacement in .cargo/config.toml handles resolution
-     if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
-       "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
-         && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-    if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+-      "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+-        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
 -      echo "configure: stripped @<:@patch@:>@ section"
 -    fi
 -
@@ -440,7 +452,5 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
 -    if test $? -ne 0; then
 -      echo "configure: error: failed to generate lockfile from vendored sources" >&2
--      exit 1
-+      echo "configure: stripped @<:@patch@:>@ section for offline build"
+       exit 1
      fi
-     echo "configure: CRAN build — vendor ready"
