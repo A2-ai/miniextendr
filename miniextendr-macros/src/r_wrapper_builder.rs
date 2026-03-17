@@ -297,7 +297,7 @@ pub(crate) fn collect_param_idents(
 ///
 /// `Missing<T>` is the miniextendr wrapper for R's "missing argument" concept,
 /// allowing Rust functions to accept optional arguments that R callers can omit.
-fn is_missing_type(ty: &syn::Type) -> bool {
+pub(crate) fn is_missing_type(ty: &syn::Type) -> bool {
     match ty {
         syn::Type::Path(tp) => tp
             .path
@@ -343,9 +343,8 @@ pub fn collect_missing_params(
 /// signature clean (no `quote(expr=)` in formals) while still passing the
 /// `R_MissingArg` sentinel through to Rust when the caller omits the argument.
 ///
-/// Skips parameters that already have a user-specified default (from
-/// `#[miniextendr(default = "...")]`), since those appear in formals with that
-/// default and `missing()` would never be true for them.
+/// Note: `Missing<T>` + `default` is a compile error (checked in `miniextendr_fn.rs`
+/// and `miniextendr_impl.rs`), so the `user_defaults` filter is a safety net only.
 ///
 /// Returns a vector of R code lines, one per `Missing<T>` parameter.
 pub fn build_missing_prelude(
