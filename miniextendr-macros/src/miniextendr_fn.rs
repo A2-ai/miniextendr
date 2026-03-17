@@ -114,6 +114,156 @@ impl CoercionMapping {
     }
 }
 
+// endregion
+
+// region: Type inspection helpers
+
+/// Check if a type path ends with the given identifier (e.g., "Dots", "Missing").
+///
+/// Handles fully-qualified paths like `miniextendr_api::dots::Dots` as well as
+/// bare `Dots`.
+fn type_ends_with(ty: &syn::Type, name: &str) -> bool {
+    match ty {
+        syn::Type::Path(tp) => tp
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident == name)
+            .unwrap_or(false),
+        syn::Type::Reference(r) => type_ends_with(&r.elem, name),
+        _ => false,
+    }
+}
+
+/// Check if a type is `Dots` or `&Dots` (the variadic `...` parameter type).
+pub(crate) fn is_dots_type(ty: &syn::Type) -> bool {
+    type_ends_with(ty, "Dots")
+}
+
+/// Check if a type is `Missing<T>`.
+pub(crate) fn is_missing_type(ty: &syn::Type) -> bool {
+    type_ends_with(ty, "Missing")
+}
+
+/// Extract the inner type `T` from `Missing<T>`, if the type is `Missing<T>`.
+///
+/// Returns `None` if the type is not `Missing<T>` or has no generic argument.
+pub(crate) fn get_missing_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(tp) = ty else {
+        return None;
+    };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "Missing" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return None;
+    };
+    if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+        Some(inner)
+    } else {
+        None
+    }
+}
+
+/// Validate a parameter's type for `Missing` and `Dots` conflicts.
+///
+/// Returns `Err` if:
+/// - `Missing<Missing<T>>` (nested Missing)
+/// - `Missing<Dots>` or `Missing<&Dots>`
+pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> syn::Result<()> {
+    if let Some(inner) = get_missing_inner_type(ty) {
+        if is_missing_type(inner) {
+            return Err(syn::Error::new(
+                span,
+                "Missing<T> cannot be nested; use Missing<T> with the inner type directly",
+            ));
+        }
+        if is_dots_type(inner) {
+            return Err(syn::Error::new(
+                span,
+                "Missing<T> cannot wrap Dots; variadic parameters (...) are always present when called",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Validate per-parameter attribute conflicts.
+///
+/// Returns `Err` if:
+/// - `coerce` + `match_arg` on the same parameter
+/// - `coerce` + `choices(...)` on the same parameter
+/// - `choices(...)` + explicit `default` on the same parameter
+/// - `default` on a `&Dots` parameter
+pub(crate) fn validate_per_param_attr_conflicts(
+    attr: &PerParamMiniextendrAttr,
+    param_name: &str,
+    is_dots: bool,
+    ty: Option<&syn::Type>,
+    span: proc_macro2::Span,
+) -> syn::Result<()> {
+    if attr.has_coerce && attr.has_match_arg {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "cannot combine coerce and match_arg on parameter `{}`; \
+                 coerce converts the R type while match_arg validates string values",
+                param_name
+            ),
+        ));
+    }
+    if attr.has_coerce && attr.choices.is_some() {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "cannot combine coerce and choices on parameter `{}`; \
+                 coerce converts the R type while choices validates string values",
+                param_name
+            ),
+        ));
+    }
+    if attr.choices.is_some() && attr.default_value.is_some() {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "cannot combine choices() and default on parameter `{}`; \
+                 choices auto-generates its default from the first choice value",
+                param_name
+            ),
+        ));
+    }
+    if is_dots && attr.default_value.is_some() {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "variadic (...) parameter `{}` cannot have a default value",
+                param_name
+            ),
+        ));
+    }
+    if let Some(ty) = ty
+        && is_missing_type(ty)
+        && attr.default_value.is_some()
+    {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "`Missing<T>` parameter `{}` cannot have a default value. \
+                 `Missing<T>` detects omitted arguments via `missing()` in R, \
+                 which is incompatible with default values in the R function signature. \
+                 Use `Option<T>` with `#[miniextendr(default = \"...\")]` instead.",
+                param_name
+            ),
+        ));
+    }
+    Ok(())
+}
+
+// endregion
+
+// region: Per-parameter attribute parsing
+
 /// Parsed per-parameter `#[miniextendr(...)]` attribute content.
 ///
 /// A single attribute can contain multiple items, e.g.
@@ -379,9 +529,14 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     && parse_default_attr(attr).is_none()
             });
 
+            // Validate type-based constraints (Missing nesting, Missing<Dots>)
+            validate_param_type(pat_type.ty.as_ref(), pat_type.ty.span())?;
+
+            let param_name_for_validation: String;
             match pat_type.pat.as_ref() {
                 syn::Pat::Ident(pat_ident) => {
                     let param_name = pat_ident.ident.to_string();
+                    param_name_for_validation = param_name.clone();
                     if had_coerce_attr {
                         per_param_coerce.insert(param_name.clone());
                     }
@@ -391,19 +546,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     if let Some(choices) = had_choices.clone() {
                         per_param_choices.insert(param_name.clone(), choices);
                     }
-                    if let Some((default, span)) = default_with_span {
-                        if crate::r_wrapper_builder::is_missing_type(pat_type.ty.as_ref()) {
-                            return Err(syn::Error::new(
-                                span,
-                                format!(
-                                    "`Missing<T>` parameter `{}` cannot have a default value. \
-                                     `Missing<T>` detects omitted arguments via `missing()` in R, \
-                                     which is incompatible with default values in the R function signature. \
-                                     Use `Option<T>` with `#[miniextendr(default = \"...\")]` instead.",
-                                    param_name
-                                ),
-                            ));
-                        }
+                    if let Some((default, span)) = default_with_span.clone() {
                         per_param_defaults.insert(param_name.clone(), default);
                         per_param_default_spans.insert(param_name, span);
                     }
@@ -419,6 +562,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                         ident: synthetic_ident,
                         subpat: None,
                     });
+                    param_name_for_validation = synthetic_name.clone();
                     if had_coerce_attr {
                         per_param_coerce.insert(synthetic_name.clone());
                     }
@@ -428,7 +572,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     if let Some(choices) = had_choices.clone() {
                         per_param_choices.insert(synthetic_name.clone(), choices);
                     }
-                    if let Some((default, span)) = default_with_span {
+                    if let Some((default, span)) = default_with_span.clone() {
                         per_param_defaults.insert(synthetic_name.clone(), default);
                         per_param_default_spans.insert(synthetic_name, span);
                     }
@@ -446,16 +590,17 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                         subpat: None,
                     });
                     pattern_destructures.push((original_pat, synthetic_ident.clone()));
+                    param_name_for_validation = synthetic_name.clone();
                     if had_coerce_attr {
                         per_param_coerce.insert(synthetic_name.clone());
                     }
                     if had_match_arg_attr {
                         per_param_match_arg.insert(synthetic_name.clone());
                     }
-                    if let Some(choices) = had_choices {
+                    if let Some(choices) = had_choices.clone() {
                         per_param_choices.insert(synthetic_name.clone(), choices);
                     }
-                    if let Some((default, span)) = default_with_span {
+                    if let Some((default, span)) = default_with_span.clone() {
                         per_param_defaults.insert(synthetic_name.clone(), default);
                         per_param_default_spans.insert(synthetic_name, span);
                     }
@@ -467,6 +612,21 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     ));
                 }
             }
+
+            // Validate per-parameter attribute conflicts (coerce+match_arg, coerce+choices, etc.)
+            let per_param_combined = PerParamMiniextendrAttr {
+                has_coerce: had_coerce_attr,
+                has_match_arg: had_match_arg_attr,
+                default_value: default_with_span,
+                choices: had_choices,
+            };
+            validate_per_param_attr_conflicts(
+                &per_param_combined,
+                &param_name_for_validation,
+                is_dots_type(pat_type.ty.as_ref()),
+                Some(pat_type.ty.as_ref()),
+                pat_type.ty.span(),
+            )?;
         }
 
         // Insert destructuring let-bindings for pattern parameters at the start of the function body
