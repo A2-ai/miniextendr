@@ -269,6 +269,12 @@ AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
 
+dnl Normalize FORCE_VENDOR (accept 1/true/TRUE/yes)
+case "$FORCE_VENDOR" in
+  1|true|TRUE|yes) FORCE_VENDOR=1 ;;
+  *)               FORCE_VENDOR="" ;;
+esac
+
 dnl ---- vendoring (at package root, outside src/) ----
 dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
 dnl thousands of .rs files in vendor/ during needs_compile() checks (same reasoning
@@ -405,49 +411,28 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 
   if test "$NOT_CRAN" = "true"; then
     if test "$FORCE_VENDOR" = "1"; then
-      echo "configure: FORCE_VENDOR — running cargo vendor"
-      mkdir -p "$VENDOR_OUT"
-      $CARGO_CMD vendor --manifest-path src/rust/Cargo.toml "$VENDOR_OUT"
-      if test $? -ne 0; then
-        echo "configure: error: cargo vendor failed" >&2
-        exit 1
-      fi
-      for _crate_dir in "$VENDOR_OUT"/*/; do
-        if test -d "$_crate_dir"; then
-          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-          for _dotfile in "$_crate_dir"/.*; do
-            case "$(basename "$_dotfile")" in
-              .|..|.cargo-checksum.json) ;;
-              *) rm -rf "$_dotfile" ;;
-            esac
-          done
-          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+      echo "configure: FORCE_VENDOR — running vendor-crates.R pack"
+      if test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
+        _vendor_src=""
+        if test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
+          _vendor_src="--source-root $MINIEXTENDR_LOCAL"
+        elif test -f "$VENDOR_OUT/.vendor-source"; then
+          _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
+          if test -d "$_recorded"; then
+            _vendor_src="--source-root $_recorded"
+          fi
         fi
-      done
-      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-      fi
-    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
-      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
-      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-        sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
-        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-      }
-    elif test -f "$VENDOR_OUT/.vendor-source"; then
-      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-      if test -d "$_recorded"; then
-        echo "configure: syncing vendor/ from recorded source: $_recorded"
         "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-          sync --path "$abs_rpkg_dir" --source-root "$_recorded" 2>&1 || {
-          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
+          pack --path "$abs_rpkg_dir" $_vendor_src 2>&1 || {
+          echo "configure: error: vendor-crates.R pack failed" >&2
+          exit 1
         }
       else
-        echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
+        echo "configure: error: tools/vendor-crates.R not found" >&2
+        exit 1
       fi
     else
-      echo "configure: dev mode — using vendor/ from scaffolding"
+      echo "configure: dev mode — using existing vendor/"
     fi
   else
     dnl CRAN/offline mode: vendor/ must exist
@@ -455,13 +440,6 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       echo "configure: error: CRAN build requires vendored sources." >&2
       echo "configure:        Run 'just vendor' before CRAN submission." >&2
       exit 1
-    fi
-    dnl Strip [patch] section — git sources don't work offline;
-    dnl vendored-sources replacement in .cargo/config.toml handles resolution
-    if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
-      "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
-        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
-      echo "configure: stripped @<:@patch@:>@ section for offline build"
     fi
     echo "configure: CRAN build — vendor ready"
   fi

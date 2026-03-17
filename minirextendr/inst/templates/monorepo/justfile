@@ -14,6 +14,8 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+export NOT_CRAN := "true"
+
 # R package subdirectory
 rpkg := "{{{rpkg_name}}}"
 
@@ -59,16 +61,18 @@ clean:
 # 2. Sets up cargo config for vendored sources (CRAN mode only)
 # Note: vendor/ has miniextendr crates from scaffolding. Run 'just vendor' for full CRAN prep.
 configure:
-    cd {{rpkg}} && NOT_CRAN=true ./configure
+    cd {{rpkg}} && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    bash ./configure
 
 # Configure in CRAN mode (for testing CRAN submission)
 # Uses vendored sources in offline mode
 configure-cran:
-    cd {{rpkg}} && ./configure
+    cd {{rpkg}} && NOT_CRAN=false bash ./configure
 
 # Build and install R package with R CMD INSTALL
 install *args: configure
-    cd {{rpkg}} && NOT_CRAN=true R CMD INSTALL {{args}} .
+    cd {{rpkg}} && R CMD INSTALL {{args}} .
 
 # Run R package tests with devtools
 rtest FILTER="": configure
@@ -109,7 +113,7 @@ rcheck-cran: configure-cran
 
 # Run devtools::check
 devtools-check: configure
-    NOT_CRAN=true Rscript -e 'devtools::check("{{rpkg}}", error_on = "error")'
+    Rscript -e 'devtools::check("{{rpkg}}", error_on = "error")'
 
 # ============================================================================
 # Development workflow shortcuts
