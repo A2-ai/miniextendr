@@ -96,7 +96,6 @@ RUST_SRC_DIR="$abs_rpkg_src/rust"
 
 dnl Canonical path two levels above src (rpkg/src → miniextendr)
 root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
@@ -107,9 +106,7 @@ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
-AC_SUBST([RUSTC])
-AC_SUBST([SED])
-AC_SUBST([CYGPATH])
+dnl RUSTC, SED, CYGPATH used only within configure.ac — no AC_SUBST needed
 
 dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
 dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
@@ -147,7 +144,6 @@ AC_SUBST([RUST_TOOLCHAIN])
 
 dnl Convenience: cargo command that includes optional toolchain selector
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
-AC_SUBST([CARGO_CMD])
 
 dnl ---- Cargo configuration ----
 dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
@@ -231,20 +227,15 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
       [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
 AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
-AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 AS_IF([test -n "${{{features_var}}}"],
       [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
 
 dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
 dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
-pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
-AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
-pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
-AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
+CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 
 dnl Staticlib name matches the Rust crate name (= pkg_rs)
-CARGO_STATICLIB_NAME="$pkg_rs"
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
