@@ -392,6 +392,18 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                         per_param_choices.insert(param_name.clone(), choices);
                     }
                     if let Some((default, span)) = default_with_span {
+                        if crate::r_wrapper_builder::is_missing_type(pat_type.ty.as_ref()) {
+                            return Err(syn::Error::new(
+                                span,
+                                format!(
+                                    "`Missing<T>` parameter `{}` cannot have a default value. \
+                                     `Missing<T>` detects omitted arguments via `missing()` in R, \
+                                     which is incompatible with default values in the R function signature. \
+                                     Use `Option<T>` with `#[miniextendr(default = \"...\")]` instead.",
+                                    param_name
+                                ),
+                            ));
+                        }
                         per_param_defaults.insert(param_name.clone(), default);
                         per_param_default_spans.insert(param_name, span);
                     }
