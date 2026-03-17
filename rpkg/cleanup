@@ -42,8 +42,6 @@ rm -f src/rust/.cargo/config.toml
 
 # Remove generated files (configure recreates them from .in templates)
 rm -f src/Makevars
-rm -f src/entrypoint.c
-rm -f src/mx_abi.c
 rm -f src/*-wrappers.R
 # Note: Cargo.toml is NOT removed - it's a source file, not generated
 

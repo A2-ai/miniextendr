@@ -614,22 +614,18 @@ TAR_FORCE_LOCAL
 CDYLIB_EXT
 CDYLIB_PREFIX
 CARGO_STATICLIB_NAME
-PACKAGE_TARNAME_RS_UPPERCASE
-PACKAGE_TARNAME_RS
 CARGO_LIBDIR
 CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
 CARGO_PROFILE
 CARGO_TARGET_DIR_CARGO
 CARGO_TARGET_DIR
-CARGO_CMD
 RUST_TOOLCHAIN
 ABS_RPKG_SRC_CARGO
 CYGPATH
 SED
 RUSTC
 CARGO
-ROOT_MINIEXTENDR_REPO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURES_FLAG
@@ -2020,8 +2016,6 @@ ABS_RPKG_SRCDIR="$abs_rpkg_src"
 RUST_SRC_DIR="$abs_rpkg_src/rust"
 
 root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
-
 
 if test -n "$ac_tool_prefix"; then
   # Extract the first word of "${ac_tool_prefix}cargo", so it can be a program name with args.
@@ -2351,9 +2345,6 @@ then :
 fi
 
 
-
-
-
 abs_rpkg_src_cargo="$abs_rpkg_src"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
@@ -2384,7 +2375,6 @@ fi
 
 
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
-
 
 
 : ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
@@ -2467,22 +2457,13 @@ then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&5
 printf "%s\n" "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
 fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
-printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
 if test -n "$MINIEXTENDR_FEATURES"
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
 printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
 fi
 
-pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
-PACKAGE_TARNAME_RS=$pkg_rs
-
-pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
-PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
-
-
-CARGO_STATICLIB_NAME="$pkg_rs"
+CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
@@ -2502,6 +2483,11 @@ esac
 
 
 
+
+case "$FORCE_VENDOR" in
+  1|true|TRUE|yes) FORCE_VENDOR=1 ;;
+  *)               FORCE_VENDOR="" ;;
+esac
 
 VENDOR_OUT="$abs_top_srcdir/vendor"
 
@@ -3750,48 +3736,28 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 
   if test "$NOT_CRAN" = "true"; then
     if test "$FORCE_VENDOR" = "1"; then
-      echo "configure: FORCE_VENDOR — running cargo vendor"
-      mkdir -p "$VENDOR_OUT"
-      $CARGO_CMD vendor --manifest-path src/rust/Cargo.toml "$VENDOR_OUT"
-      if test $? -ne 0; then
-        echo "configure: error: cargo vendor failed" >&2
-        exit 1
-      fi
-      for _crate_dir in "$VENDOR_OUT"/*/; do
-        if test -d "$_crate_dir"; then
-          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-          for _dotfile in "$_crate_dir"/.*; do
-            case "$(basename "$_dotfile")" in
-              .|..|.cargo-checksum.json) ;;
-              *) rm -rf "$_dotfile" ;;
-            esac
-          done
-          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+      echo "configure: FORCE_VENDOR — running vendor-crates.R pack"
+      if test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
+        _vendor_src=""
+        if test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
+          _vendor_src="--source-root $MINIEXTENDR_LOCAL"
+        elif test -f "$VENDOR_OUT/.vendor-source"; then
+          _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
+          if test -d "$_recorded"; then
+            _vendor_src="--source-root $_recorded"
+          fi
         fi
-      done
-      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-      fi
-    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
-            echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-        sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
-        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-      }
-    elif test -f "$VENDOR_OUT/.vendor-source"; then
-      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-      if test -d "$_recorded"; then
-        echo "configure: syncing vendor/ from recorded source: $_recorded"
         "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-          sync --path "$abs_rpkg_dir" --source-root "$_recorded" 2>&1 || {
-          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
+          pack --path "$abs_rpkg_dir" $_vendor_src 2>&1 || {
+          echo "configure: error: vendor-crates.R pack failed" >&2
+          exit 1
         }
       else
-        echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
+        echo "configure: error: tools/vendor-crates.R not found" >&2
+        exit 1
       fi
     else
-      echo "configure: dev mode — using vendor/ from scaffolding"
+      echo "configure: dev mode — using existing vendor/"
     fi
   else
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
