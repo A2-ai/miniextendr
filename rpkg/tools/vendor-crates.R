@@ -117,6 +117,10 @@ parse_tree_packages <- function(lines) {
     path <- NA_character_
     if (grepl(" \\([^()]*[/\\\\][^()]*\\)$", line)) {
       path <- sub("^.* \\(([^()]*[/\\\\][^()]*)\\)$", "\\1", line)
+      # Filter out git URLs (cargo tree shows them as paths too)
+      if (grepl("^https?://", path) || grepl("^git[+@]", path)) {
+        path <- NA_character_
+      }
     }
 
     data.frame(

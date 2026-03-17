@@ -100,7 +100,6 @@ RUST_SRC_DIR="$abs_rpkg_src/rust"
 
 dnl Canonical path two levels above src (rpkg/src → miniextendr)
 root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
@@ -111,9 +110,7 @@ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
-AC_SUBST([RUSTC])
-AC_SUBST([SED])
-AC_SUBST([CYGPATH])
+dnl RUSTC, SED, CYGPATH used only within configure.ac — no AC_SUBST needed
 
 dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
 dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
@@ -151,7 +148,6 @@ AC_SUBST([RUST_TOOLCHAIN])
 
 dnl Convenience: cargo command that includes optional toolchain selector
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
-AC_SUBST([CARGO_CMD])
 
 dnl ---- Cargo configuration ----
 dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
@@ -235,20 +231,13 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
       [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
 AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
-AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 AS_IF([test -n "$MINIEXTENDR_FEATURES"],
       [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
 dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
-pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
-AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
-pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
-AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
-
-dnl Staticlib name matches the Rust crate name (= pkg_rs)
-CARGO_STATICLIB_NAME="$pkg_rs"
+CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
@@ -273,6 +262,12 @@ AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
+
+dnl Normalize FORCE_VENDOR (accept 1/true/TRUE/yes)
+case "$FORCE_VENDOR" in
+  1|true|TRUE|yes) FORCE_VENDOR=1 ;;
+  *)               FORCE_VENDOR="" ;;
+esac
 
 dnl ---- vendoring (at package root, outside src/) ----
 dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
@@ -400,49 +395,28 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 
   if test "$NOT_CRAN" = "true"; then
     if test "$FORCE_VENDOR" = "1"; then
-      echo "configure: FORCE_VENDOR — running cargo vendor"
-      mkdir -p "$VENDOR_OUT"
-      $CARGO_CMD vendor --manifest-path src/rust/Cargo.toml "$VENDOR_OUT"
-      if test $? -ne 0; then
-        echo "configure: error: cargo vendor failed" >&2
-        exit 1
-      fi
-      for _crate_dir in "$VENDOR_OUT"/*/; do
-        if test -d "$_crate_dir"; then
-          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-          for _dotfile in "$_crate_dir"/.*; do
-            case "$(basename "$_dotfile")" in
-              .|..|.cargo-checksum.json) ;;
-              *) rm -rf "$_dotfile" ;;
-            esac
-          done
-          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+      echo "configure: FORCE_VENDOR — running vendor-crates.R pack"
+      if test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
+        _vendor_src=""
+        if test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
+          _vendor_src="--source-root $MINIEXTENDR_LOCAL"
+        elif test -f "$VENDOR_OUT/.vendor-source"; then
+          _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
+          if test -d "$_recorded"; then
+            _vendor_src="--source-root $_recorded"
+          fi
         fi
-      done
-      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-      fi
-    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
-      dnl MINIEXTENDR_LOCAL set — delegate vendoring to the package-local script
-      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-        sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
-        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-      }
-    elif test -f "$VENDOR_OUT/.vendor-source"; then
-      _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-      if test -d "$_recorded"; then
-        echo "configure: syncing vendor/ from recorded source: $_recorded"
         "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-          sync --path "$abs_rpkg_dir" --source-root "$_recorded" 2>&1 || {
-          echo "configure: warning: vendor sync failed, using existing vendor/" >&2
+          pack --path "$abs_rpkg_dir" $_vendor_src 2>&1 || {
+          echo "configure: error: vendor-crates.R pack failed" >&2
+          exit 1
         }
       else
-        echo "configure: dev mode — using vendor/ from scaffolding (recorded source not found)"
+        echo "configure: error: tools/vendor-crates.R not found" >&2
+        exit 1
       fi
     else
-      echo "configure: dev mode — using vendor/ from scaffolding"
+      echo "configure: dev mode — using existing vendor/"
     fi
   else
     dnl CRAN/offline mode: vendor/ must exist

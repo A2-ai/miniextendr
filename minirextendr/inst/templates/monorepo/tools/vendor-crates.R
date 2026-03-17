@@ -117,6 +117,9 @@ parse_tree_packages <- function(lines) {
     path <- NA_character_
     if (grepl(" \\([^()]*[/\\\\][^()]*\\)$", line)) {
       path <- sub("^.* \\(([^()]*[/\\\\][^()]*)\\)$", "\\1", line)
+      if (grepl("^https?://", path) || grepl("^git[+@]", path)) {
+        path <- NA_character_
+      }
     }
 
     data.frame(
