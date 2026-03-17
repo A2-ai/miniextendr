@@ -1719,6 +1719,30 @@ impl ParsedMethod {
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 
+        // Validate: Missing<T> parameters must not have defaults
+        for arg in item.sig.inputs.iter() {
+            if let syn::FnArg::Typed(pt) = arg {
+                if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
+                    let name = pat_ident.ident.to_string();
+                    if crate::r_wrapper_builder::is_missing_type(pt.ty.as_ref())
+                        && param_defaults.contains_key(&name)
+                    {
+                        let span = method_attrs.defaults_span.unwrap_or(item.sig.ident.span());
+                        return Err(syn::Error::new(
+                            span,
+                            format!(
+                                "`Missing<T>` parameter `{}` cannot have a default value. \
+                                 `Missing<T>` detects omitted arguments via `missing()` in R, \
+                                 which is incompatible with default values in the R function signature. \
+                                 Use `Option<T>` with a default instead.",
+                                name
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
         // Validate: `self` by value (consuming) methods are not fully supported
         // They're either: constructor (returns Self), finalizer (marked or inferred), or error
         if env == ReceiverKind::Value {
