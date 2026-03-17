@@ -1651,6 +1651,7 @@ impl ParsedMethod {
     ///
     /// Regular doc comments are auto-converted to `@description` for all class systems.
     pub fn from_impl_item(item: syn::ImplItemFn, _class_system: ClassSystem) -> syn::Result<Self> {
+        use syn::spanned::Spanned;
         let env = Self::detect_env(&item.sig);
         let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
@@ -1700,6 +1701,35 @@ impl ParsedMethod {
             ));
         }
 
+        // Validate type-based constraints on each parameter
+        for input in &item.sig.inputs {
+            let syn::FnArg::Typed(pat_type) = input else {
+                continue;
+            };
+            let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+                continue;
+            };
+            let param_name = pat_ident.ident.to_string();
+
+            // Validate Missing nesting and Missing<Dots>
+            crate::miniextendr_fn::validate_param_type(pat_type.ty.as_ref(), pat_type.ty.span())?;
+
+            // Validate: no defaults on Dots-type parameters
+            if crate::miniextendr_fn::is_dots_type(pat_type.ty.as_ref())
+                && method_attrs.defaults.contains_key(&param_name)
+            {
+                return Err(syn::Error::new(
+                    method_attrs
+                        .defaults_span
+                        .unwrap_or_else(|| pat_ident.ident.span()),
+                    format!(
+                        "variadic (...) parameter `{}` cannot have a default value",
+                        param_name
+                    ),
+                ));
+            }
+        }
+
         // Extract lifecycle from #[deprecated] attribute if not already set via #[miniextendr(lifecycle = ...)]
         if method_attrs.lifecycle.is_none() {
             method_attrs.lifecycle = item
@@ -1721,24 +1751,24 @@ impl ParsedMethod {
 
         // Validate: Missing<T> parameters must not have defaults
         for arg in item.sig.inputs.iter() {
-            if let syn::FnArg::Typed(pt) = arg {
-                if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                    let name = pat_ident.ident.to_string();
-                    if crate::r_wrapper_builder::is_missing_type(pt.ty.as_ref())
-                        && param_defaults.contains_key(&name)
-                    {
-                        let span = method_attrs.defaults_span.unwrap_or(item.sig.ident.span());
-                        return Err(syn::Error::new(
-                            span,
-                            format!(
-                                "`Missing<T>` parameter `{}` cannot have a default value. \
-                                 `Missing<T>` detects omitted arguments via `missing()` in R, \
-                                 which is incompatible with default values in the R function signature. \
-                                 Use `Option<T>` with a default instead.",
-                                name
-                            ),
-                        ));
-                    }
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                let name = pat_ident.ident.to_string();
+                if crate::r_wrapper_builder::is_missing_type(pt.ty.as_ref())
+                    && param_defaults.contains_key(&name)
+                {
+                    let span = method_attrs.defaults_span.unwrap_or(item.sig.ident.span());
+                    return Err(syn::Error::new(
+                        span,
+                        format!(
+                            "`Missing<T>` parameter `{}` cannot have a default value. \
+                             `Missing<T>` detects omitted arguments via `missing()` in R, \
+                             which is incompatible with default values in the R function signature. \
+                             Use `Option<T>` with a default instead.",
+                            name
+                        ),
+                    ));
                 }
             }
         }
