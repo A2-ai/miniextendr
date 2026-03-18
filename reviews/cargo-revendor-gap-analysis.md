@@ -12,75 +12,42 @@ Comparison of cargo-revendor vs vendor-crates.R + configure.ac for vendor respon
 | cargo vendor (externals) | Y | Y | — |
 | Extract .crate archives | Y | Y | — |
 | Path dep rewriting | toml_edit | regex | sed |
-| Strip test/bench dirs | opt-in | always | — |
+| Strip test/bench dirs | opt-in (`--strip-*`) | always | — |
 | TOML section stripping | Y | Y | — |
 | Empty checksum gen | Y | Y | — |
 | Cargo.lock checksum strip | Y | Y | Y |
 | .cargo/config.toml gen | Y | — | template |
 | Git source replacement | Y (auto-detect) | — | Y (sed scan) |
 | Caching | Y (Cargo.lock hash) | — | — |
-| Source tracking (.vendor-source) | **NO** | Y | — |
-| JSON output | Y | — | — |
-| Compress to tarball | **NO** | Y | Y (if missing) |
-| Unpack vendor.tar.xz | **NO** | — | Y |
-| CRAN Cargo.toml rewriting | **NO** | — | Y (git→path, strip [patch]) |
-| Lockfile regeneration | **NO** | — | Y (generate-lockfile --offline) |
-| .md file blanking | **NO** | Y | — |
+| Source tracking (.vendor-source) | Y (`--source-marker`) | Y | — |
+| JSON output | Y (`--json`) | — | — |
+| Compress to tarball | Y (`--compress`) | Y | Y (if missing) |
+| Unpack vendor.tar.xz | — (build-time) | — | Y |
+| Freeze manifest for offline | Y (`--freeze`) | — | Y (git→path, strip [patch]) |
+| Lockfile regeneration | Y (part of `--freeze`) | — | Y (generate-lockfile --offline) |
+| .md file blanking | Y (`--blank-md`) | Y | — |
 | Fallback for package failure | Y (direct copy) | — | — |
 | Workspace inheritance (fallback) | Y (toml_edit) | regex | — |
 | Atomic vendor swap | — | Y (backup+rename) | — |
 
-## Gaps to close
+## Status
 
-### 1. Tarball output (critical)
-cargo-revendor produces vendor/ but doesn't compress to inst/vendor.tar.xz.
-**Fix**: Add `--compress` flag that produces the tarball directly.
+All critical gaps are closed. cargo-revendor can now fully replace `vendor-crates.R pack`:
 
-### 2. CRAN mode (critical)
-configure.ac does three things cargo-revendor doesn't:
-- Rewrites `git = "..."` deps to `path = "../../vendor/<name>"` in Cargo.toml
-- Strips `[patch.crates-io]` section
-- Adds `[patch.crates-io]` with vendor path entries for transitive deps
-- Regenerates Cargo.lock from vendored sources offline
+```sh
+cargo revendor \
+  --manifest-path src/rust/Cargo.toml \
+  --strip-all --freeze \
+  --compress inst/vendor.tar.xz \
+  --blank-md --source-marker -v
+```
 
-**Fix**: Add `--cran` flag that performs these rewrites on the vendored output.
-Or: generate a CRAN-ready Cargo.toml alongside the vendor directory.
+## What stays in configure.ac
 
-### 3. Source tracking
-vendor-crates.R writes `.vendor-source` marker to record where vendor/ came from.
-cargo-revendor doesn't track provenance.
-**Fix**: Write source info to `.revendor-cache` or a separate marker.
+- **Unpack** vendor.tar.xz at build time (CRAN installs don't have vendor/)
+- **Dev/CRAN mode detection** (NOT_CRAN env var)
+- **Git source replacement** in .cargo/config.toml (CRAN mode, dynamic scan)
+- **Cargo.lock compatibility** check (older cargo versions)
 
-### 4. Unpack tarball
-configure.ac unpacks inst/vendor.tar.xz into vendor/ during CRAN builds.
-cargo-revendor doesn't have an unpack mode.
-**Fix**: Not needed — this stays in configure.ac (it's a build-time concern).
-
-### 5. .md blanking
-vendor-crates.R blanks .md files before tarball (avoids CRAN NOTEs).
-cargo-revendor doesn't touch .md files.
-**Fix**: Add to the `--compress` implementation.
-
-### 6. Lockfile regeneration
-configure.ac runs `cargo generate-lockfile --offline` in CRAN mode.
-cargo-revendor only strips checksums.
-**Fix**: Add `--regenerate-lockfile` flag or include in `--cran` mode.
-
-## What can cargo-revendor replace today?
-
-**Can replace**: vendor-crates.R's `sync` command (dependency discovery, packaging,
-extraction, stripping, path rewriting, checksum clearing).
-
-**Cannot replace yet**:
-- Tarball creation (vendor-crates.R's `pack` = sync + compress)
-- CRAN Cargo.toml rewriting (configure.ac)
-- Lockfile regeneration (configure.ac)
-- Tarball unpacking (configure.ac / Makevars)
-
-## Recommended next steps
-
-1. Add `--compress <path>` to produce inst/vendor.tar.xz directly
-2. Add `--cran` mode that rewrites Cargo.toml for offline builds
-3. Add `--source-marker` to write .vendor-source
-4. Then: vendor-crates.R `pack` becomes `cargo revendor --compress inst/vendor.tar.xz --strip-all`
-5. configure.ac cargo-vendor block becomes: unpack tarball + `cargo revendor --cran` (or stays as-is)
+These are build-time concerns, not vendor-time. cargo-revendor handles vendor-time;
+configure.ac handles build-time.

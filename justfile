@@ -341,10 +341,24 @@ configure-cran:
     NOT_CRAN=false bash ./configure
 
 # Vendor dependencies for CRAN release preparation.
-# Uses the package-local vendoring script that configure and generated packages
-# can rely on directly.
+# Falls back to vendor-crates.R if cargo-revendor is not installed.
 vendor:
-    cd rpkg && Rscript tools/vendor-crates.R pack
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v cargo-revendor >/dev/null 2>&1; then
+      cargo revendor \
+        --manifest-path rpkg/src/rust/Cargo.toml \
+        --output rpkg/vendor \
+        --strip-all \
+        --freeze \
+        --compress rpkg/inst/vendor.tar.xz \
+        --blank-md \
+        --source-marker \
+        -v
+    else
+      echo "cargo-revendor not found, using vendor-crates.R"
+      cd rpkg && Rscript tools/vendor-crates.R pack
+    fi
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": devtools-document

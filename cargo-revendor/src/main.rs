@@ -162,21 +162,11 @@ fn main() -> Result<()> {
         );
     }
 
-    // Resolve output path
+    // Resolve output path (relative to CWD)
     let output = if cli.output.is_absolute() {
         cli.output.clone()
     } else {
-        // Relative to the manifest's package root (parent of src/rust/)
-        let pkg_root = manifest_path
-            .parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
-            .unwrap_or(
-                manifest_path
-                    .parent()
-                    .context("manifest path has no parent")?,
-            );
-        pkg_root.join(&cli.output)
+        std::env::current_dir()?.join(&cli.output)
     };
 
     // Step 0: Check cache — skip if Cargo.lock unchanged
@@ -315,15 +305,12 @@ fn main() -> Result<()> {
         vendor::regenerate_lockfile(&manifest_path, v)?;
     }
 
-    // Step 13: Compress to tarball
+    // Step 13: Compress to tarball (relative paths resolve from CWD)
     if let Some(ref tarball_path) = cli.compress {
         let tarball = if tarball_path.is_absolute() {
             tarball_path.clone()
         } else {
-            output
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .join(tarball_path)
+            std::env::current_dir()?.join(tarball_path)
         };
         vendor::compress_vendor(&output, &tarball, cli.blank_md, v)?;
     }

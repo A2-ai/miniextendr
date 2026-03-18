@@ -58,6 +58,7 @@ miniextendr/
 ├── miniextendr-bench/    # Benchmarks (separate workspace member)
 ├── miniextendr-lint/     # Static analysis tool
 ├── miniextendr-engine/   # Code generation engine
+├── cargo-revendor/      # Standalone cargo subcommand for vendoring (not in workspace)
 ├── rpkg/                 # Example R package demonstrating all features (named `miniextendr`)
 ├── minirextendr/         # Helper R package for scaffolding new projects
 ├── tests/cross-package/  # Cross-package trait ABI tests
@@ -91,7 +92,7 @@ just r-cmd-build        # 2. Build tarball (R CMD build)
 just r-cmd-check        # 3. Check the built tarball (R CMD check)
 
 # CRAN release prep (vendors deps into tarball)
-just vendor             # Package workspace crates + vendor external deps
+just vendor             # Uses cargo-revendor: vendor, strip, freeze, compress
 just configure-cran     # Configure with PREPARE_CRAN=true (unpacks vendor.tar.xz)
 # IMPORTANT: Always check the built tarball, not the source directory.
 # R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.

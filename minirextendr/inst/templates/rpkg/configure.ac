@@ -429,7 +429,8 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     dnl CRAN/offline mode: vendor/ must exist
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
       echo "configure: error: CRAN build requires vendored sources." >&2
-      echo "configure:        Run 'just vendor' before CRAN submission." >&2
+      echo "configure:        Run 'just vendor' or 'Rscript tools/vendor-crates.R pack'" >&2
+      echo "configure:        Or install cargo-revendor (cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor)" >&2
       exit 1
     fi
     echo "configure: CRAN build — vendor ready"

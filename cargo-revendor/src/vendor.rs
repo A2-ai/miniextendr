@@ -18,21 +18,19 @@ pub fn run_cargo_vendor(
 
     std::fs::create_dir_all(vendor_dir)?;
 
-    // Create temp .cargo/config.toml with [patch.crates-io] so cargo vendor
-    // can resolve the dependency graph even with unpublished local crates
-    let rust_dir = manifest_path.parent().unwrap();
-    let cargo_config_dir = rust_dir.join(".cargo");
-    let cargo_config_path = cargo_config_dir.join("config.toml");
-    let had_existing = cargo_config_path.exists();
-    let existing_content = if had_existing {
-        Some(std::fs::read_to_string(&cargo_config_path)?)
-    } else {
-        None
-    };
+    // Add [patch.crates-io] to workspace root Cargo.toml so cargo vendor
+    // can resolve the dependency graph even with unpublished local crates.
+    // NOTE: [patch] only works in Cargo.toml, NOT in .cargo/config.toml.
+    let ws_root = crate::find_workspace_root(
+        manifest_path
+            .parent()
+            .context("manifest has no parent")?,
+    )?;
+    let ws_manifest = ws_root.join("Cargo.toml");
+    let ws_original = std::fs::read_to_string(&ws_manifest)?;
 
-    if !local_pkgs.is_empty() {
-        std::fs::create_dir_all(&cargo_config_dir)?;
-        let mut patch = String::from("[patch.crates-io]\n");
+    if !local_pkgs.is_empty() && !ws_original.contains("[patch.crates-io]") {
+        let mut patch = String::from("\n[patch.crates-io]\n");
         for pkg in local_pkgs {
             patch.push_str(&format!(
                 "{} = {{ path = \"{}\" }}\n",
@@ -40,12 +38,7 @@ pub fn run_cargo_vendor(
                 pkg.path.display()
             ));
         }
-        let content = if let Some(ref existing) = existing_content {
-            format!("{}\n{}", existing, patch)
-        } else {
-            patch
-        };
-        std::fs::write(&cargo_config_path, &content)?;
+        std::fs::write(&ws_manifest, format!("{}{}", ws_original, patch))?;
     }
 
     let output = Command::new("cargo")
@@ -56,13 +49,8 @@ pub fn run_cargo_vendor(
         .output()
         .context("failed to run cargo vendor")?;
 
-    // Restore config
-    if let Some(ref original) = existing_content {
-        std::fs::write(&cargo_config_path, original)?;
-    } else if cargo_config_path.exists() {
-        let _ = std::fs::remove_file(&cargo_config_path);
-        let _ = std::fs::remove_dir(&cargo_config_dir);
-    }
+    // Restore original workspace Cargo.toml
+    std::fs::write(&ws_manifest, &ws_original)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -190,30 +178,30 @@ pub fn rewrite_local_path_deps(
     Ok(())
 }
 
-/// Add `path = "../<name>"` to a dependency entry if not already present
+/// Set `path = "../<name>"` on a dependency entry (adds or overwrites)
 fn add_path_to_dep(dep: &mut toml_edit::Item, name: &str) -> bool {
+    let correct_path = format!("../{}", name);
     match dep {
         toml_edit::Item::Value(toml_edit::Value::String(version_str)) => {
-            // Simple: name = "0.1.0" → name = { version = "0.1.0", path = "../name" }
             let version = version_str.value().to_string();
             let mut inline = toml_edit::InlineTable::new();
             inline.insert("version", toml_edit::value(&version).into_value().unwrap());
             inline.insert(
                 "path",
-                toml_edit::value(format!("../{}", name))
-                    .into_value()
-                    .unwrap(),
+                toml_edit::value(&correct_path).into_value().unwrap(),
             );
             *dep = toml_edit::Item::Value(toml_edit::Value::InlineTable(inline));
             true
         }
         toml_edit::Item::Value(toml_edit::Value::InlineTable(table)) => {
-            if !table.contains_key("path") {
+            let current = table
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            if current.as_deref() != Some(&correct_path) {
                 table.insert(
                     "path",
-                    toml_edit::value(format!("../{}", name))
-                        .into_value()
-                        .unwrap(),
+                    toml_edit::value(&correct_path).into_value().unwrap(),
                 );
                 true
             } else {
@@ -221,8 +209,12 @@ fn add_path_to_dep(dep: &mut toml_edit::Item, name: &str) -> bool {
             }
         }
         toml_edit::Item::Table(table) => {
-            if !table.contains_key("path") {
-                table.insert("path", toml_edit::value(format!("../{}", name)));
+            let current = table
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            if current.as_deref() != Some(&correct_path) {
+                table.insert("path", toml_edit::value(&correct_path));
                 true
             } else {
                 false
