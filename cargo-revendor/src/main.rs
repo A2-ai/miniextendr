@@ -11,7 +11,6 @@
 //! - JSON output for machine consumption
 
 mod cache;
-mod cargo_ops;
 mod metadata;
 mod package;
 mod strip;
@@ -96,10 +95,6 @@ struct Cli {
     #[arg(long)]
     force: bool,
 
-    /// Use cargo library API directly instead of shelling out.
-    /// Faster and more reliable, but uses cargo's unstable internal API.
-    #[arg(long)]
-    use_cargo_lib: bool,
 }
 
 impl Cli {
@@ -217,58 +212,25 @@ fn main() -> Result<()> {
         }
     }
 
+    // Step 2: Package local crates via `cargo package`
     let staging = tempfile::tempdir().context("failed to create staging dir")?;
     let vendor_staging = staging.path().join("vendor");
-    let packaged;
 
-    if cli.use_cargo_lib {
-        // Library API path: use cargo directly (faster, single process)
-        if v.info() {
-            eprintln!("  Using cargo library API");
-        }
+    let packaged = package::package_local_crates(
+        &local_pkgs,
+        &patch_pkgs,
+        &manifest_path,
+        staging.path(),
+        cli.allow_dirty,
+        v,
+    )?;
 
-        // Step 2: Vendor external deps via cargo library
-        cargo_ops::vendor_via_library(&manifest_path, &vendor_staging, v)?;
+    // Step 3: Run `cargo vendor` for external deps
+    vendor::run_cargo_vendor(&manifest_path, &vendor_staging, &patch_pkgs, v)?;
 
-        // Step 3: Package and extract local crates
-        // (cargo vendor skips path deps, so we still need to handle them)
-        let mut pkg_results = Vec::new();
-        for pkg in &local_pkgs {
-            match cargo_ops::package_via_library(&pkg.manifest_path, cli.allow_dirty, v) {
-                Ok(crate_path) => {
-                    vendor::extract_crate_archive(&crate_path, &vendor_staging, &pkg.name, v)?;
-                    pkg_results.push((pkg.name.clone(), crate_path));
-                }
-                Err(_) => {
-                    // Fallback to direct copy
-                    if v.info() {
-                        eprintln!("  cargo library package failed for {}, using direct copy", pkg.name);
-                    }
-                    vendor::extract_crate_archive(&pkg.path, &vendor_staging, &pkg.name, v)?;
-                    pkg_results.push((pkg.name.clone(), pkg.path.clone()));
-                }
-            }
-        }
-        packaged = pkg_results;
-    } else {
-        // CLI path: shell out to cargo commands
-        // Step 2: Package local crates via `cargo package`
-        packaged = package::package_local_crates(
-            &local_pkgs,
-            &patch_pkgs,
-            &manifest_path,
-            staging.path(),
-            cli.allow_dirty,
-            v,
-        )?;
-
-        // Step 3: Run `cargo vendor` for external deps
-        vendor::run_cargo_vendor(&manifest_path, &vendor_staging, &patch_pkgs, v)?;
-
-        // Step 4: Extract packaged local crates into vendor staging
-        for (pkg_name, crate_path) in &packaged {
-            vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, v)?;
-        }
+    // Step 4: Extract packaged local crates into vendor staging
+    for (pkg_name, crate_path) in &packaged {
+        vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, v)?;
     }
 
     // Step 5: Strip directories (opt-in)
