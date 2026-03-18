@@ -137,6 +137,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
       - name: Configure and vendor
         run: |
           just configure
@@ -278,6 +281,9 @@ jobs:
       - name: Configure Linux
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
+
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
 
       - name: Configure and vendor
         run: |
@@ -450,6 +456,9 @@ jobs:
           shared-key: r-macos-${{ matrix.arch }}
           cache-on-failure: true
 
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
       - name: Configure and vendor
         run: |
           just configure
@@ -568,6 +577,9 @@ jobs:
           $config = "[target.x86_64-pc-windows-gnu]`nlinker = `"x86_64-w64-mingw32.static.posix-gcc.exe`"`n`n[env]`nLIBRARY_PATH = `"$pwd_slash/libgcc_mock`""
           [System.IO.File]::WriteAllText("$PWD\.cargo\config.toml", $config)
 
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
       - name: Configure and vendor
         shell: C:\rtools45\usr\bin\bash.exe -e -o pipefail {0}
         run: |
@@ -578,9 +590,12 @@ jobs:
           cd "$(cygpath -u "$GITHUB_WORKSPACE")/rpkg"
           CARGO_BUILD_TARGET=x86_64-pc-windows-gnu bash ./configure
           cd "$(cygpath -u "$GITHUB_WORKSPACE")"
-          # Call Rscript directly — just's shell resolution on Windows
-          # finds the WSL sh shim before rtools' bash.
-          cd rpkg && Rscript tools/vendor-crates.R pack
+          cargo revendor \
+            --manifest-path rpkg/src/rust/Cargo.toml \
+            --output rpkg/vendor \
+            --strip-all \
+            --compress rpkg/inst/vendor.tar.xz \
+            --source-marker -v
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -679,6 +694,9 @@ jobs:
           shared-key: r-tests
           cache-on-failure: true
 
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
       - name: Configure and vendor
         run: |
           just configure
@@ -751,6 +769,9 @@ jobs:
       - name: Configure Linux
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
+
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
 
       - name: Configure and vendor
         run: |
@@ -884,6 +905,9 @@ jobs:
       - name: Configure Linux
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
+
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
 
       - name: Configure and vendor
         run: |
