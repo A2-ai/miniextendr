@@ -302,8 +302,11 @@ AC_CONFIG_FILES([
   src/miniextendr-win.def:src/win.def.in
 ])
 
-dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
-dnl    In dev mode, Cargo.toml uses path deps to vendor/ directly
+dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
+dnl    Dev mode: remove cargo config so cargo uses normal git/crates-io resolution
+dnl    CRAN mode: keep cargo config and append source replacements for any git deps
+dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
+dnl    Also rewrite external path deps to point to vendor/
 AC_CONFIG_COMMANDS([dev-cargo-config],
 [
   RPKG_CFG="src/rust/.cargo/config.toml"
@@ -312,11 +315,33 @@ AC_CONFIG_COMMANDS([dev-cargo-config],
     dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
     if test -f "$RPKG_CFG"; then
       rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode)"
+      echo "configure: removed cargo config (dev mode - using git deps)"
     fi
+  elif test -f "$RPKG_CFG"; then
+    dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
+    dnl so [patch.crates-io] git entries also resolve to vendor/
+    for _url in $("$SED" -n 's/.*git = "\(https:\/\/@<:@^"@:>@*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
+      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
+        printf '\n@<:@source."git+%s"@:>@\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
+        echo "configure: added source replacement for git dep: $_url"
+      fi
+    done
+    dnl CRAN mode: rewrite external path deps in Cargo.toml to point to vendor/
+    dnl Path deps are resolved directly by cargo before source replacement,
+    dnl so we must rewrite the paths in Cargo.toml itself.
+    _cargo_toml="src/rust/Cargo.toml"
+    for _path in $("$SED" -n 's/.*path = "\(\.\.\/@<:@^"@:>@*\)".*/\1/p' "$_cargo_toml" | sort -u); do
+      _escaped_path=$(echo "$_path" | "$SED" 's/\//\\\//g')
+      _name=$("$SED" -n "s/^\(@<:@A-Za-z0-9_-@:>@*\).*path = \"${_escaped_path}\".*/\1/p" "$_cargo_toml" | head -1)
+      if test -n "$_name" && test -d "$VENDOR_OUT/$_name"; then
+        _vendor_rel="../../vendor/$_name"
+        "$SED" -i.bak "s|path = \"$_path\"|path = \"$_vendor_rel\"|" "$_cargo_toml" && rm -f "$_cargo_toml.bak"
+        echo "configure: rewrote path dep: $_path -> $_vendor_rel"
+      fi
+    done
   fi
 ],
-[NOT_CRAN="$NOT_CRAN"])
+[NOT_CRAN="$NOT_CRAN" SED="$SED" VENDOR_OUT="$VENDOR_OUT"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 dnl Order matters: lockfile-compat, then cargo-vendor, then post-vendor
