@@ -207,7 +207,7 @@ cfg-if = "1"
 fn workspace_sibling_dep() {
     let proj = create_workspace(
         r#"[workspace]
-members = ["rpkg", "helper"]
+members = ["rpkg", "myhelper"]
 "#,
         &[
             (
@@ -219,17 +219,15 @@ edition = "2021"
 [lib]
 path = "lib.rs"
 [dependencies]
-helper = { version = "*" }
+myhelper = { path = "../myhelper" }
 cfg-if = "1"
-[patch.crates-io]
-helper = { path = "../helper" }
 "#,
                 "pub fn go() {}",
             ),
             (
-                "helper",
+                "myhelper",
                 r#"[package]
-name = "helper"
+name = "myhelper"
 version = "0.1.0"
 edition = "2021"
 [lib]
@@ -254,9 +252,9 @@ path = "lib.rs"
         .assert()
         .success();
 
-    assert_vendor_has(&vendor, "helper");
+    assert_vendor_has(&vendor, "myhelper");
     assert_vendor_has(&vendor, "cfg-if");
-    assert_empty_checksum(&vendor, "helper");
+    assert_empty_checksum(&vendor, "myhelper");
     assert_vendor_missing(&vendor, "rpkg");
 }
 
@@ -468,7 +466,7 @@ mylib = { path = "../../../mylib" }
 fn workspace_version_inheritance() {
     let proj = create_workspace(
         r#"[workspace]
-members = ["rpkg", "helper"]
+members = ["rpkg", "myhelper"]
 [workspace.package]
 version = "1.2.3"
 edition = "2021"
@@ -483,16 +481,14 @@ edition.workspace = true
 [lib]
 path = "lib.rs"
 [dependencies]
-helper = { version = "*" }
-[patch.crates-io]
-helper = { path = "../helper" }
+myhelper = { path = "../myhelper" }
 "#,
                 "pub fn go() {}",
             ),
             (
-                "helper",
+                "myhelper",
                 r#"[package]
-name = "helper"
+name = "myhelper"
 version.workspace = true
 edition.workspace = true
 [lib]
@@ -517,14 +513,12 @@ path = "lib.rs"
         .assert()
         .success();
 
-    assert_vendor_has(&vendor, "helper");
-    // When cargo package succeeds, workspace inheritance is resolved.
-    // When fallback (direct copy) is used, it may still have workspace refs.
-    // Just verify it was vendored and has a Cargo.toml.
-    let helper_toml = read_vendor_toml(&vendor, "helper");
+    assert_vendor_has(&vendor, "myhelper");
+    // Workspace inheritance should be resolved by the direct-copy fallback
+    let helper_toml = read_vendor_toml(&vendor, "myhelper");
     assert!(
-        helper_toml.contains("name = \"helper\""),
-        "helper should have package name:\n{}",
+        helper_toml.contains("\"1.2.3\""),
+        "workspace version should be resolved to 1.2.3:\n{}",
         helper_toml
     );
 }
@@ -577,7 +571,7 @@ fn stripping_removes_test_bench_dirs() {
     // Create workspace where local crate has tests/ and benches/
     let proj = create_workspace(
         r#"[workspace]
-members = ["rpkg", "helper"]
+members = ["rpkg", "myhelper"]
 "#,
         &[
             (
@@ -589,16 +583,14 @@ edition = "2021"
 [lib]
 path = "lib.rs"
 [dependencies]
-helper = { version = "*" }
-[patch.crates-io]
-helper = { path = "../helper" }
+myhelper = { path = "../myhelper" }
 "#,
                 "pub fn go() {}",
             ),
             (
-                "helper",
+                "myhelper",
                 r#"[package]
-name = "helper"
+name = "myhelper"
 version = "0.1.0"
 edition = "2021"
 [lib]
@@ -620,12 +612,11 @@ criterion = "0.5"
         ],
     );
     // Create the actual test/bench directories
-    let helper_dir = proj.root().join("helper");
+    let helper_dir = proj.root().join("myhelper");
     std::fs::create_dir_all(helper_dir.join("tests")).unwrap();
     std::fs::write(helper_dir.join("tests/integration.rs"), "#[test] fn t() {}").unwrap();
     std::fs::create_dir_all(helper_dir.join("benches")).unwrap();
     std::fs::write(helper_dir.join("benches/perf.rs"), "fn main() {}").unwrap();
-    // Re-commit after adding files
     git_init(proj.root());
 
     let vendor = proj.root().join("vendor");
@@ -644,18 +635,16 @@ criterion = "0.5"
         .assert()
         .success();
 
-    assert_vendor_has(&vendor, "helper");
-    // Verify directories are stripped
+    assert_vendor_has(&vendor, "myhelper");
     assert!(
-        !vendor.join("helper/tests").exists(),
+        !vendor.join("myhelper/tests").exists(),
         "tests/ should be stripped"
     );
     assert!(
-        !vendor.join("helper/benches").exists(),
+        !vendor.join("myhelper/benches").exists(),
         "benches/ should be stripped"
     );
-    // Verify TOML sections are stripped
-    let toml = read_vendor_toml(&vendor, "helper");
+    let toml = read_vendor_toml(&vendor, "myhelper");
     assert!(!toml.contains("[[test]]"), "[[test]] should be stripped");
     assert!(!toml.contains("[[bench]]"), "[[bench]] should be stripped");
     assert!(
@@ -800,8 +789,6 @@ edition = "2021"
 [lib]
 path = "lib.rs"
 [dependencies]
-broken = { version = "*" }
-[patch.crates-io]
 broken = { path = "../broken" }
 "#,
                 "pub fn go() {}",
