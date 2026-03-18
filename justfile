@@ -795,7 +795,11 @@ cli-install *cargo_flags:
 # cargo-revendor (standalone workspace, not part of miniextendr workspace)
 # ============================================================================
 
-# Build cargo-revendor
+# Install cargo-revendor
+revendor-install:
+    cargo install --path cargo-revendor
+
+# Build cargo-revendor (without installing)
 revendor-build *cargo_flags:
     cargo build --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
 
