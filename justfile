@@ -785,25 +785,25 @@ cli-install *cargo_flags:
     cargo install --path miniextendr-cli --features dev {{cargo_flags}}
 
 # ============================================================================
-# cargo-revendor
+# cargo-revendor (standalone workspace, not part of miniextendr workspace)
 # ============================================================================
 
 # Build cargo-revendor
 revendor-build *cargo_flags:
-    cargo build -p cargo-revendor {{cargo_flags}}
+    cargo build --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
 
 # Clean build cargo-revendor with timing analysis
 revendor-timings:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Cleaning..."
-    cargo clean -p cargo-revendor 2>/dev/null || true
+    cd cargo-revendor && cargo clean 2>/dev/null || true
     echo "Building with --timings..."
-    cargo build -p cargo-revendor --timings 2>&1 | tail -3
+    cd cargo-revendor && cargo build --timings 2>&1 | tail -3
     echo ""
     python3 -c "
     import re, json
-    html = open('target/cargo-timings/cargo-timing.html').read()
+    html = open('cargo-revendor/target/cargo-timings/cargo-timing.html').read()
     m = re.search(r'UNIT_DATA\s*=\s*(\[.+?\]);\s', html, re.DOTALL)
     if not m:
         print('Could not parse timing data')
@@ -820,38 +820,10 @@ revendor-timings:
         print(f'  {d.get(\"duration\", 0):5.1f}s  {d.get(\"name\", \"?\")} {d.get(\"version\", \"\")}')
     "
 
-# Full clean build of cargo-revendor with timing analysis
-revendor-timings-full:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "Full clean..."
-    cargo clean
-    echo "Building with --timings..."
-    cargo build -p cargo-revendor --timings 2>&1 | tail -3
-    echo ""
-    python3 -c "
-    import re, json
-    html = open('target/cargo-timings/cargo-timing.html').read()
-    m = re.search(r'UNIT_DATA\s*=\s*(\[.+?\]);\s', html, re.DOTALL)
-    if not m:
-        print('Could not parse timing data')
-        exit()
-    data = json.loads(m.group(1))
-    data.sort(key=lambda x: x.get('duration', 0), reverse=True)
-    total = sum(d.get('duration', 0) for d in data)
-    print(f'Compile units: {len(data)}')
-    print(f'Total CPU time: {total:.1f}s')
-    print()
-    print(f'{\"TIME\":>6}  CRATE')
-    print('-' * 50)
-    for d in data[:20]:
-        print(f'  {d.get(\"duration\", 0):5.1f}s  {d.get(\"name\", \"?\")} {d.get(\"version\", \"\")}')
-    "
-
 # Run cargo-revendor tests (offline only)
 revendor-test:
-    cargo test -p cargo-revendor
+    cargo test --manifest-path cargo-revendor/Cargo.toml
 
 # Run cargo-revendor tests (including network tests)
 revendor-test-all:
-    cargo test -p cargo-revendor -- --include-ignored --test-threads=1
+    cargo test --manifest-path cargo-revendor/Cargo.toml -- --include-ignored --test-threads=1

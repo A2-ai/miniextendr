@@ -8,9 +8,9 @@ members = [
     "miniextendr-bench",
     "miniextendr-lint",
     "miniextendr-cli",
-    "cargo-revendor",
 ]
 exclude = [
+    "cargo-revendor",
     "rpkg",
     "rpkg/src/rust",
     "rpkg/vendor",

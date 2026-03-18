@@ -6,6 +6,10 @@ description = "Vendor Rust dependencies for R packages, including workspace/path
 license = "MIT"
 publish = false
 
+# Standalone workspace — not part of the miniextendr workspace
+# This keeps cargo-revendor's deps out of the main Cargo.lock
+[workspace]
+
 [[bin]]
 name = "cargo-revendor"
 path = "src/main.rs"
