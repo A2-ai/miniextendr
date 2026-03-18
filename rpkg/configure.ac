@@ -395,24 +395,24 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 
   if test "$NOT_CRAN" = "true"; then
     if test "$FORCE_VENDOR" = "1"; then
-      echo "configure: FORCE_VENDOR — running vendor-crates.R pack"
-      if test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
-        _vendor_src=""
+      echo "configure: FORCE_VENDOR — running cargo revendor"
+      if command -v cargo-revendor >/dev/null 2>&1; then
+        _source_root=""
         if test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
-          _vendor_src="--source-root $MINIEXTENDR_LOCAL"
-        elif test -f "$VENDOR_OUT/.vendor-source"; then
-          _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-          if test -d "$_recorded"; then
-            _vendor_src="--source-root $_recorded"
-          fi
+          _source_root="--source-root $MINIEXTENDR_LOCAL"
         fi
-        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-          pack --path "$abs_rpkg_dir" $_vendor_src 2>&1 || {
-          echo "configure: error: vendor-crates.R pack failed" >&2
+        cargo revendor \
+          --manifest-path src/rust/Cargo.toml \
+          --output "$VENDOR_OUT" \
+          --strip-all \
+          --source-marker \
+          $_source_root -v || {
+          echo "configure: error: cargo revendor failed" >&2
           exit 1
         }
       else
-        echo "configure: error: tools/vendor-crates.R not found" >&2
+        echo "configure: error: cargo-revendor not found" >&2
+        echo "configure:        Install: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
         exit 1
       fi
     else
@@ -422,8 +422,8 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     dnl CRAN/offline mode: vendor/ must exist
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
       echo "configure: error: CRAN build requires vendored sources." >&2
-      echo "configure:        Run 'just vendor' or 'Rscript tools/vendor-crates.R pack'" >&2
-      echo "configure:        Or install cargo-revendor (cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor)" >&2
+      echo "configure:        Run 'just vendor' to vendor deps." >&2
+      echo "configure:        Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
       exit 1
     fi
 
