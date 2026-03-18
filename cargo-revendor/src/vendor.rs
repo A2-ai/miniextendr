@@ -511,3 +511,82 @@ fn find_single_subdir(dir: &Path) -> Result<PathBuf> {
 
     Ok(entries.remove(0).path())
 }
+
+/// Generate a .cargo/config.toml for source replacement.
+///
+/// Returns the config content as a string. Also writes it to
+/// `<vendor_dir>/../src/rust/.cargo/config.toml` if that path exists.
+pub fn generate_cargo_config(
+    manifest_path: &Path,
+    vendor_dir: &Path,
+    _local_pkgs: &[LocalPackage],
+) -> Result<String> {
+    let vendor_path = vendor_dir
+        .canonicalize()
+        .unwrap_or_else(|_| vendor_dir.to_path_buf());
+
+    let mut config = String::new();
+    config.push_str("[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n");
+
+    // Add git source replacements for any git deps in Cargo.toml
+    let manifest_content = std::fs::read_to_string(manifest_path)?;
+    let mut git_urls: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in manifest_content.lines() {
+        // Match: git = "https://..."
+        if let Some(start) = line.find("git = \"https://") {
+            let url_start = start + 7; // skip `git = "`
+            if let Some(end) = line[url_start..].find('"') {
+                git_urls.insert(line[url_start..url_start + end].to_string());
+            }
+        }
+    }
+    for url in &git_urls {
+        config.push_str(&format!(
+            "[source.\"git+{}\"]\ngit = \"{}\"\nreplace-with = \"vendored-sources\"\n\n",
+            url, url
+        ));
+    }
+
+    config.push_str(&format!(
+        "[source.vendored-sources]\ndirectory = \"{}\"\n",
+        vendor_path.display()
+    ));
+
+    // Write to vendor dir for reference
+    let config_path = vendor_dir.join(".cargo-config.toml");
+    std::fs::write(&config_path, &config)?;
+
+    Ok(config)
+}
+
+/// Strip checksums from Cargo.lock and copy to vendor dir.
+///
+/// Vendored crates have empty checksums, so the lockfile's `checksum = "..."`
+/// lines need to be removed for `--locked` builds to work.
+pub fn strip_lock_checksums(
+    lockfile: &Path,
+    vendor_dir: &Path,
+    v: crate::Verbosity,
+) -> Result<()> {
+    if !lockfile.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(lockfile)?;
+    let stripped: String = content
+        .lines()
+        .filter(|line| !line.starts_with("checksum = "))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Write stripped lockfile to vendor dir
+    let dest = vendor_dir.join("Cargo.lock");
+    std::fs::write(&dest, &stripped)?;
+
+    if v.debug() {
+        let removed = content.lines().count() - stripped.lines().count();
+        eprintln!("  Stripped {} checksum lines from Cargo.lock", removed);
+    }
+
+    Ok(())
+}

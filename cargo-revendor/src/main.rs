@@ -151,7 +151,11 @@ fn main() -> Result<()> {
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
-            .unwrap_or(manifest_path.parent().unwrap());
+            .unwrap_or(
+                manifest_path
+                    .parent()
+                    .context("manifest path has no parent")?,
+            );
         pkg_root.join(&cli.output)
     };
 
@@ -250,7 +254,19 @@ fn main() -> Result<()> {
         .or_else(|_| copy_dir_recursive(&vendor_staging, &output))
         .with_context(|| format!("failed to move vendor to {}", output.display()))?;
 
-    // Step 9: Save cache
+    // Step 9: Generate .cargo/config.toml for source replacement
+    let config_toml = vendor::generate_cargo_config(&manifest_path, &output, &local_pkgs)?;
+    if v.info() {
+        eprintln!("  Generated .cargo/config.toml for source replacement");
+    }
+    if v.debug() {
+        eprintln!("{}", config_toml);
+    }
+
+    // Step 10: Strip checksums from Cargo.lock (vendored crates have empty checksums)
+    vendor::strip_lock_checksums(&lockfile, &output, v)?;
+
+    // Step 11: Save cache
     cache::save_cache(&lockfile, &output)?;
 
     // Count total crates
