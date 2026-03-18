@@ -94,6 +94,26 @@ struct Cli {
     /// Force re-vendoring even if Cargo.lock hasn't changed
     #[arg(long)]
     force: bool,
+
+    /// Compress vendor/ into a tarball (e.g., vendor.tar.xz)
+    #[arg(long)]
+    compress: Option<PathBuf>,
+
+    /// Blank .md files in vendor/ before compression
+    #[arg(long)]
+    blank_md: bool,
+
+    /// Freeze: rewrite Cargo.toml so all sources resolve from vendor/.
+    /// Rewrites git deps to vendor/ path deps, strips [patch.*] sections,
+    /// adds [patch.crates-io] for transitive local deps, and regenerates
+    /// Cargo.lock offline. Makes the manifest self-contained for hermetic
+    /// offline builds with no network, git, or workspace context.
+    #[arg(long)]
+    freeze: bool,
+
+    /// Write .vendor-source marker file recording provenance
+    #[arg(long)]
+    source_marker: bool,
 }
 
 impl Cli {
@@ -276,7 +296,39 @@ fn main() -> Result<()> {
     // Step 10: Strip checksums from Cargo.lock (vendored crates have empty checksums)
     vendor::strip_lock_checksums(&lockfile, &output, v)?;
 
-    // Step 11: Save cache
+    // Step 11: Write source marker
+    if cli.source_marker {
+        let source_info = cli
+            .source_root
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "auto-detected".to_string());
+        std::fs::write(output.join(".vendor-source"), &source_info)?;
+        if v.info() {
+            eprintln!("  Wrote .vendor-source marker: {}", source_info);
+        }
+    }
+
+    // Step 12: Freeze — rewrite manifest so all sources resolve from vendor/
+    if cli.freeze {
+        vendor::freeze_manifest(&manifest_path, &output, &local_pkgs, v)?;
+        vendor::regenerate_lockfile(&manifest_path, v)?;
+    }
+
+    // Step 13: Compress to tarball
+    if let Some(ref tarball_path) = cli.compress {
+        let tarball = if tarball_path.is_absolute() {
+            tarball_path.clone()
+        } else {
+            output
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .join(tarball_path)
+        };
+        vendor::compress_vendor(&output, &tarball, cli.blank_md, v)?;
+    }
+
+    // Step 14: Save cache
     cache::save_cache(&lockfile, &output)?;
 
     // Count total crates
