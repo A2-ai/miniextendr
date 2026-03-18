@@ -14,9 +14,12 @@ mod cache;
 mod metadata;
 mod package;
 
-/// Convert a path to a TOML-safe string (forward slashes on all platforms)
+/// Convert a path to a TOML-safe string (forward slashes, no \\?\ prefix)
 pub fn path_to_toml(path: &std::path::Path) -> String {
-    path.display().to_string().replace('\\', "/")
+    let s = path.display().to_string();
+    // Strip Windows extended-length path prefix (\\?\) that canonicalize() adds
+    let s = s.strip_prefix(r"\\?\").unwrap_or(&s);
+    s.replace('\\', "/")
 }
 mod strip;
 mod vendor;

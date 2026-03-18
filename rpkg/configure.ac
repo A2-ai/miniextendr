@@ -238,18 +238,10 @@ dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
 dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
 CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
+
+dnl Staticlib name matches the Rust crate name (= pkg_rs)
 AC_SUBST([CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
-
-dnl Platform-specific cdylib naming (for wrapper generation via cargo rustc --crate-type cdylib)
-dnl Rust cdylibs: lib<name>.so (Linux), lib<name>.dylib (macOS), <name>.dll (Windows — no lib prefix)
-case "$host_os" in
-  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
-  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
-esac
-AC_SUBST([CDYLIB_PREFIX])
-AC_SUBST([CDYLIB_EXT])
 
 dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
 case "$host_os" in
@@ -257,6 +249,15 @@ case "$host_os" in
   *)                       TAR_FORCE_LOCAL="" ;;
 esac
 AC_SUBST([TAR_FORCE_LOCAL])
+
+dnl ---- cdylib platform extension (for R wrapper generation) ----
+case "$host_os" in
+  darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
+  *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
+  *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
+esac
+AC_SUBST([CDYLIB_PREFIX])
+AC_SUBST([CDYLIB_EXT])
 
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
@@ -287,10 +288,8 @@ esac
 VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 AC_SUBST([VENDOR_OUT_CARGO])
 
-dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
-dnl configure rewrites them to vendor/ path deps (see cargo-vendor block below).
 dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
-dnl In dev mode, we remove the cargo config so cargo uses [patch] resolution.
+dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
 
 dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)
@@ -302,8 +301,10 @@ AC_CONFIG_FILES([
   src/miniextendr-win.def:src/win.def.in
 ])
 
-dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
-dnl    In dev mode, Cargo.toml uses path deps to vendor/ directly
+dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
+dnl    Dev mode: remove cargo config so cargo uses normal git/crates-io resolution
+dnl    CRAN mode: keep cargo config and append source replacements for any git deps
+dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
 AC_CONFIG_COMMANDS([dev-cargo-config],
 [
   RPKG_CFG="src/rust/.cargo/config.toml"
@@ -312,11 +313,20 @@ AC_CONFIG_COMMANDS([dev-cargo-config],
     dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
     if test -f "$RPKG_CFG"; then
       rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode)"
+      echo "configure: removed cargo config (dev mode - using git deps)"
     fi
+  elif test -f "$RPKG_CFG"; then
+    dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
+    dnl so [patch.crates-io] git entries also resolve to vendor/
+    for _url in $("$SED" -n 's/.*git = "\(https:\/\/@<:@^"@:>@*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
+      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
+        printf '\n@<:@source."git+%s"@:>@\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
+        echo "configure: added source replacement for git dep: $_url"
+      fi
+    done
   fi
 ],
-[NOT_CRAN="$NOT_CRAN"])
+[NOT_CRAN="$NOT_CRAN" SED="$SED"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 dnl Order matters: lockfile-compat, then cargo-vendor, then post-vendor
@@ -374,7 +384,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
 dnl 3) Ensure vendor/ exists for offline builds
-dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
+dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
 dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
 dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
 AC_CONFIG_COMMANDS([cargo-vendor],
@@ -424,64 +434,6 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       echo "configure: error: CRAN build requires vendored sources." >&2
       echo "configure:        Run 'just vendor' to vendor deps." >&2
       echo "configure:        Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
-      exit 1
-    fi
-
-    dnl Rewrite git deps to vendor/ path deps for offline builds.
-    dnl Cargo.toml uses git deps for development; vendored builds need path deps.
-    dnl vendor-crates.R creates unversioned dirs (miniextendr-api/);
-    dnl cargo vendor creates versioned dirs (crate-0.1.0/). Check both.
-    for _crate in miniextendr-api miniextendr-lint; do
-      _vendor_dir=""
-      if test -d "$VENDOR_OUT/$_crate"; then
-        _vendor_dir="$VENDOR_OUT/$_crate"
-      else
-        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
-          if test -d "$_d"; then _vendor_dir="$_d"; break; fi
-        done
-      fi
-      if test -n "$_vendor_dir"; then
-        _dirname="$(basename "$_vendor_dir")"
-        "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
-          src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
-        echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
-      fi
-    done
-
-    dnl Strip [patch] section (monorepo paths not available in tarball)
-    if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
-      "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
-        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
-      echo "configure: stripped @<:@patch@:>@ section"
-    fi
-
-    dnl Add [patch.crates-io] for transitive miniextendr deps
-    _patch_lines=""
-    for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
-      _vendor_dir=""
-      if test -d "$VENDOR_OUT/$_crate"; then
-        _vendor_dir="$VENDOR_OUT/$_crate"
-      else
-        for _d in "$VENDOR_OUT/$_crate"-@<:@0-9@:>@*/; do
-          if test -d "$_d"; then _vendor_dir="$_d"; break; fi
-        done
-      fi
-      if test -n "$_vendor_dir"; then
-        _dirname="$(basename "$_vendor_dir")"
-        _patch_lines="$_patch_lines
-$_crate = { path = \"../../vendor/$_dirname\" }"
-      fi
-    done
-    if test -n "$_patch_lines"; then
-      printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
-      echo "configure: added @<:@patch.crates-io@:>@ for transitive deps"
-    fi
-
-    dnl Regenerate Cargo.lock from vendored sources
-    rm -f src/rust/Cargo.lock
-    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
-    if test $? -ne 0; then
-      echo "configure: error: failed to generate lockfile from vendored sources" >&2
       exit 1
     fi
     echo "configure: CRAN build — vendor ready"
