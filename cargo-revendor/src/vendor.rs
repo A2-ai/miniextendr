@@ -90,6 +90,8 @@ pub fn extract_crate_archive(
     if crate_path.is_dir() {
         // Direct copy fallback (when cargo package failed)
         copy_crate_dir(crate_path, &dest)?;
+        // Resolve workspace inheritance in the copied Cargo.toml
+        resolve_workspace_inheritance(&dest, crate_path, v)?;
         if v.info() {
             eprintln!("  Copied {} to vendor/{}", pkg_name, pkg_name);
         }
@@ -227,6 +229,225 @@ fn add_path_to_dep(dep: &mut toml_edit::Item, name: &str) -> bool {
             }
         }
         _ => false,
+    }
+}
+
+/// Resolve `*.workspace = true` fields in a directly-copied crate's Cargo.toml
+///
+/// When cargo package can't run (unpublished deps), we copy the crate directly.
+/// But workspace inheritance (`version.workspace = true`, etc.) won't resolve
+/// outside the workspace. This function reads the workspace root's
+/// `[workspace.package]` and replaces the inherited fields.
+fn resolve_workspace_inheritance(
+    vendor_crate_dir: &Path,
+    original_crate_dir: &Path,
+    v: crate::Verbosity,
+) -> Result<()> {
+    let cargo_toml = vendor_crate_dir.join("Cargo.toml");
+    if !cargo_toml.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&cargo_toml)?;
+    if !content.contains("workspace = true") && !content.contains("workspace=true") {
+        return Ok(()); // no workspace inheritance to resolve
+    }
+
+    // Find workspace root
+    let ws_root = match crate::find_workspace_root(original_crate_dir) {
+        Ok(r) => r,
+        Err(_) => return Ok(()), // not in a workspace, nothing to resolve
+    };
+
+    let ws_manifest = ws_root.join("Cargo.toml");
+    if !ws_manifest.exists() {
+        return Ok(());
+    }
+
+    let ws_content = std::fs::read_to_string(&ws_manifest)?;
+    let ws_doc: toml_edit::DocumentMut = ws_content.parse().unwrap_or_default();
+    let mut doc: toml_edit::DocumentMut = content.parse().unwrap_or_default();
+
+    // Resolve [package] fields: version, edition, authors, etc.
+    if let Some(ws_pkg) = ws_doc.get("workspace").and_then(|w| w.get("package")) {
+        if let Some(pkg) = doc.get_mut("package") {
+            resolve_table_workspace_fields(pkg, ws_pkg);
+        }
+    }
+
+    // Resolve [dependencies] workspace refs
+    if let Some(ws_deps) = ws_doc
+        .get("workspace")
+        .and_then(|w| w.get("dependencies"))
+    {
+        for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
+            if let Some(deps) = doc.get_mut(section) {
+                resolve_dep_workspace_fields(deps, ws_deps);
+            }
+        }
+    }
+
+    let new_content = doc.to_string();
+    if new_content != content {
+        std::fs::write(&cargo_toml, &new_content)?;
+        if v.debug() {
+            eprintln!(
+                "    Resolved workspace inheritance in {}/Cargo.toml",
+                vendor_crate_dir.file_name().unwrap().to_string_lossy()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Replace `field.workspace = true` with the actual value from workspace package
+fn resolve_table_workspace_fields(pkg: &mut toml_edit::Item, ws_pkg: &toml_edit::Item) {
+    let Some(pkg_table) = pkg.as_table_mut() else {
+        return;
+    };
+    let Some(ws_table) = ws_pkg.as_table() else {
+        return;
+    };
+
+    let fields = [
+        "version",
+        "edition",
+        "authors",
+        "description",
+        "documentation",
+        "readme",
+        "homepage",
+        "repository",
+        "license",
+        "license-file",
+        "keywords",
+        "categories",
+        "rust-version",
+        "exclude",
+        "include",
+        "publish",
+    ];
+
+    for field in fields {
+        if let Some(val) = pkg_table.get(field) {
+            // Check if it's { workspace = true }
+            let is_ws = val
+                .as_table()
+                .and_then(|t| t.get("workspace"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+                || val
+                    .as_inline_table()
+                    .and_then(|t| t.get("workspace"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                || val.as_bool().unwrap_or(false)
+                    && pkg_table
+                        .get(&format!("{}.workspace", field))
+                        .is_some();
+
+            // Also handle the dotted key form: version.workspace = true
+            // toml_edit parses this as a subtable with key "workspace"
+            let is_ws_dotted = val
+                .as_table()
+                .map(|t| t.len() == 1 && t.contains_key("workspace"))
+                .unwrap_or(false);
+
+            if is_ws || is_ws_dotted {
+                if let Some(ws_val) = ws_table.get(field) {
+                    pkg_table.insert(field, ws_val.clone());
+                }
+            }
+        }
+    }
+}
+
+/// Replace dependency `dep.workspace = true` with the workspace dependency definition
+fn resolve_dep_workspace_fields(deps: &mut toml_edit::Item, ws_deps: &toml_edit::Item) {
+    let Some(deps_table) = deps.as_table_mut() else {
+        return;
+    };
+    let Some(ws_table) = ws_deps.as_table() else {
+        return;
+    };
+
+    let keys: Vec<String> = deps_table.iter().map(|(k, _)| k.to_string()).collect();
+    for key in keys {
+        let is_ws_ref = deps_table
+            .get(&key)
+            .and_then(|v| {
+                v.as_table()
+                    .and_then(|t| t.get("workspace"))
+                    .and_then(|v| v.as_bool())
+                    .or_else(|| {
+                        v.as_inline_table()
+                            .and_then(|t| t.get("workspace"))
+                            .and_then(|v| v.as_bool())
+                    })
+            })
+            .unwrap_or(false);
+
+        if is_ws_ref {
+            if let Some(ws_dep) = ws_table.get(&key) {
+                // Get extra fields from the crate's dep (like features, optional)
+                let extra_features: Option<toml_edit::Array> = deps_table
+                    .get(&key)
+                    .and_then(|v| {
+                        v.as_table()
+                            .and_then(|t| t.get("features"))
+                            .and_then(|f| f.as_array())
+                            .or_else(|| {
+                                v.as_inline_table()
+                                    .and_then(|t| t.get("features"))
+                                    .and_then(|f| f.as_array())
+                            })
+                    })
+                    .cloned();
+
+                let extra_optional: Option<bool> = deps_table.get(&key).and_then(|v| {
+                    v.as_table()
+                        .and_then(|t| t.get("optional"))
+                        .and_then(|f| f.as_bool())
+                        .or_else(|| {
+                            v.as_inline_table()
+                                .and_then(|t| t.get("optional"))
+                                .and_then(|f| f.as_bool())
+                        })
+                });
+
+                // Replace with workspace definition
+                deps_table.insert(&key, ws_dep.clone());
+
+                // Re-add extra fields
+                if let Some(features) = extra_features {
+                    let val = toml_edit::Value::Array(features);
+                    if let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut()) {
+                        t.insert("features", toml_edit::value(val.clone()));
+                    } else if let Some(t) = deps_table
+                        .get_mut(&key)
+                        .and_then(|v| v.as_inline_table_mut())
+                    {
+                        t.insert("features", val);
+                    }
+                }
+                if let Some(optional) = extra_optional {
+                    if let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut()) {
+                        t.insert("optional", toml_edit::value(optional));
+                    }
+                }
+
+                // Remove workspace = true from the resolved dep
+                if let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut()) {
+                    t.remove("workspace");
+                } else if let Some(t) = deps_table
+                    .get_mut(&key)
+                    .and_then(|v| v.as_inline_table_mut())
+                {
+                    t.remove("workspace");
+                }
+            }
+        }
     }
 }
 
