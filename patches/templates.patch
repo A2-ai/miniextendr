@@ -9,8 +9,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-03-16 19:37:05
-+++ b/monorepo/rpkg/configure.ac	2026-03-16 19:23:53
+--- a/monorepo/rpkg/configure.ac	2026-03-17 06:17:25
++++ b/monorepo/rpkg/configure.ac	2026-03-17 15:38:12
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -62,47 +62,20 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
  else
    CARGO_FEATURES_FLAG=""
-@@ -101,4 +97,5 @@
- dnl Canonical path two levels above src (rpkg/src → miniextendr)
- root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-+AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
- 
- dnl ---- tool discovery ----
-@@ -111,5 +108,7 @@
- AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
- AC_SUBST([CARGO])
--dnl RUSTC, SED, CYGPATH used only within configure.ac — no AC_SUBST needed
-+AC_SUBST([RUSTC])
-+AC_SUBST([SED])
-+AC_SUBST([CYGPATH])
- 
- dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
-@@ -149,4 +148,5 @@
- dnl Convenience: cargo command that includes optional toolchain selector
- CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
-+AC_SUBST([CARGO_CMD])
- 
- dnl ---- Cargo configuration ----
-@@ -232,17 +232,30 @@
+@@ -232,6 +228,6 @@
  AS_IF([test -n "$CARGO_BUILD_TARGET"],
        [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 -AS_IF([test -n "$MINIEXTENDR_FEATURES"],
 -      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
-+AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 +AS_IF([test -n "${{{features_var}}}"],
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
- dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
+@@ -239,10 +235,18 @@
  dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
--CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
-+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
-+AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
-+pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
-+AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
+ CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 +
 +dnl Staticlib name matches the Rust crate name (= pkg_rs)
-+CARGO_STATICLIB_NAME="$pkg_rs"
  AC_SUBST([CARGO_STATICLIB_NAME])
  AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
  
@@ -119,7 +92,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +case "$host_os" in
    darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
    *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-@@ -252,11 +265,4 @@
+@@ -252,11 +256,4 @@
  AC_SUBST([CDYLIB_EXT])
  
 -dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
@@ -131,7 +104,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -
  AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-@@ -288,8 +294,7 @@
+@@ -288,8 +285,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
@@ -142,7 +115,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -300,9 +305,11 @@
+@@ -300,9 +296,11 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -157,7 +130,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -313,9 +320,18 @@
+@@ -313,9 +311,18 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
@@ -178,14 +151,14 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +[NOT_CRAN="$NOT_CRAN" SED="$SED"])
  
  dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
-@@ -375,5 +391,5 @@
+@@ -375,5 +382,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -424,62 +440,4 @@
+@@ -424,62 +431,4 @@
        echo "configure: error: CRAN build requires vendored sources." >&2
        echo "configure:        Run 'just vendor' before CRAN submission." >&2
 -      exit 1
@@ -259,8 +232,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-03-16 19:37:05
-+++ b/rpkg/configure.ac	2026-03-16 19:22:50
+--- a/rpkg/configure.ac	2026-03-17 06:17:25
++++ b/rpkg/configure.ac	2026-03-17 15:38:12
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -312,47 +285,20 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
  else
    CARGO_FEATURES_FLAG=""
-@@ -101,4 +97,5 @@
- dnl Canonical path two levels above src (rpkg/src → miniextendr)
- root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-+AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
- 
- dnl ---- tool discovery ----
-@@ -111,5 +108,7 @@
- AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
- AC_SUBST([CARGO])
--dnl RUSTC, SED, CYGPATH used only within configure.ac — no AC_SUBST needed
-+AC_SUBST([RUSTC])
-+AC_SUBST([SED])
-+AC_SUBST([CYGPATH])
- 
- dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
-@@ -149,4 +148,5 @@
- dnl Convenience: cargo command that includes optional toolchain selector
- CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
-+AC_SUBST([CARGO_CMD])
- 
- dnl ---- Cargo configuration ----
-@@ -232,17 +232,30 @@
+@@ -232,6 +228,6 @@
  AS_IF([test -n "$CARGO_BUILD_TARGET"],
        [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 -AS_IF([test -n "$MINIEXTENDR_FEATURES"],
 -      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
-+AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 +AS_IF([test -n "${{{features_var}}}"],
 +      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
  
  dnl ---- package name → Rust-safe variants ----
- dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
+@@ -239,10 +235,18 @@
  dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
--CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
-+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
-+AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
-+pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
-+AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
+ CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 +
 +dnl Staticlib name matches the Rust crate name (= pkg_rs)
-+CARGO_STATICLIB_NAME="$pkg_rs"
  AC_SUBST([CARGO_STATICLIB_NAME])
  AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
  
@@ -369,7 +315,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +case "$host_os" in
    darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
    *mingw*|*msys*|*cygwin*)  CDYLIB_PREFIX="";    CDYLIB_EXT="dll" ;;
-@@ -252,11 +265,4 @@
+@@ -252,11 +256,4 @@
  AC_SUBST([CDYLIB_EXT])
  
 -dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
@@ -381,7 +327,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -
  AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-@@ -288,8 +294,7 @@
+@@ -288,8 +285,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Cargo.toml uses git deps with [patch."https://..."] for dev. In CRAN mode,
@@ -392,7 +338,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -300,9 +305,11 @@
+@@ -300,9 +296,11 @@
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
    src/Makevars:src/Makevars.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -407,7 +353,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -313,9 +320,18 @@
+@@ -313,9 +311,18 @@
      if test -f "$RPKG_CFG"; then
        rm "$RPKG_CFG"
 -      echo "configure: removed cargo config (dev mode)"
@@ -428,14 +374,14 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +[NOT_CRAN="$NOT_CRAN" SED="$SED"])
  
  dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
-@@ -375,5 +391,5 @@
+@@ -375,5 +382,5 @@
  
  dnl 3) Ensure vendor/ exists for offline builds
 -dnl    In dev mode: vendor-crates.R sync keeps vendor/ fresh from monorepo.
 +dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
  dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
  dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-@@ -424,62 +440,4 @@
+@@ -424,62 +431,4 @@
        echo "configure: error: CRAN build requires vendored sources." >&2
        echo "configure:        Run 'just vendor' before CRAN submission." >&2
 -      exit 1
