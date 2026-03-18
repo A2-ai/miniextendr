@@ -781,6 +781,8 @@ pub fn compress_vendor(
     let output = std::process::Command::new("tar")
         .arg("-cJf")
         .arg(tarball_path)
+        // Suppress macOS xattr metadata (causes warnings on Linux GNU tar)
+        .env("COPYFILE_DISABLE", "1")
         .arg("-C")
         .arg(parent_dir)
         .arg(vendor_name.as_ref())
