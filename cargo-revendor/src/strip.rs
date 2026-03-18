@@ -67,7 +67,11 @@ impl StripConfig {
 
 /// Strip all vendored crates in a vendor directory.
 /// Returns list of stripped items for reporting.
-pub fn strip_vendor_dir(vendor_dir: &Path, config: &StripConfig, v: Verbosity) -> Result<Vec<String>> {
+pub fn strip_vendor_dir(
+    vendor_dir: &Path,
+    config: &StripConfig,
+    v: Verbosity,
+) -> Result<Vec<String>> {
     let mut stripped = Vec::new();
     for entry in std::fs::read_dir(vendor_dir)? {
         let entry = entry?;
@@ -81,11 +85,7 @@ pub fn strip_vendor_dir(vendor_dir: &Path, config: &StripConfig, v: Verbosity) -
 
 /// Strip a single vendored crate directory
 fn strip_crate_dir(crate_dir: &Path, config: &StripConfig, v: Verbosity) -> Result<Vec<String>> {
-    let crate_name = crate_dir
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
+    let crate_name = crate_dir.file_name().unwrap().to_string_lossy().to_string();
     let mut stripped = Vec::new();
 
     // Remove configured directories
@@ -138,9 +138,7 @@ fn strip_toml_sections(cargo_toml: &Path, sections_to_strip: &[&str]) -> Result<
         let trimmed = line.trim();
 
         if trimmed.starts_with('[') {
-            in_stripped_section = sections_to_strip
-                .iter()
-                .any(|s| trimmed.starts_with(s));
+            in_stripped_section = sections_to_strip.iter().any(|s| trimmed.starts_with(s));
 
             if in_stripped_section {
                 continue;
@@ -148,8 +146,7 @@ fn strip_toml_sections(cargo_toml: &Path, sections_to_strip: &[&str]) -> Result<
         }
 
         if in_stripped_section {
-            if trimmed.starts_with('[')
-                && !sections_to_strip.iter().any(|s| trimmed.starts_with(s))
+            if trimmed.starts_with('[') && !sections_to_strip.iter().any(|s| trimmed.starts_with(s))
             {
                 in_stripped_section = false;
                 output_lines.push(line.to_string());

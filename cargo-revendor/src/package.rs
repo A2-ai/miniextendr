@@ -9,7 +9,7 @@
 //! published to crates.io.
 
 use crate::metadata::LocalPackage;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -103,7 +103,7 @@ pub fn package_local_crates(
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 eprintln!("    cargo package stderr: {}", stderr.trim());
             }
-            results.push((pkg.name.clone(), pkg.path.clone().into()));
+            results.push((pkg.name.clone(), pkg.path.clone()));
             continue;
         }
 
@@ -140,10 +140,10 @@ fn add_versions_to_path_deps(
     for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
         if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
             for name in local_names.iter() {
-                if let Some(dep) = table.get_mut(*name) {
-                    if ensure_version(dep) {
-                        changed = true;
-                    }
+                if let Some(dep) = table.get_mut(name)
+                    && ensure_version(dep)
+                {
+                    changed = true;
                 }
             }
         }
@@ -197,10 +197,7 @@ fn build_patch_config(local_pkgs: &[LocalPackage]) -> String {
 /// Find the .crate archive for a package
 fn find_crate_file(package_dir: &Path, name: &str) -> Result<PathBuf> {
     if !package_dir.exists() {
-        bail!(
-            "package output dir not found: {}",
-            package_dir.display()
-        );
+        bail!("package output dir not found: {}", package_dir.display());
     }
 
     let prefix = format!("{}-", name);
@@ -220,8 +217,11 @@ fn find_crate_file(package_dir: &Path, name: &str) -> Result<PathBuf> {
         mb.cmp(&ma)
     });
 
-    candidates
-        .first()
-        .map(|e| e.path())
-        .with_context(|| format!("no .crate file found for {} in {}", name, package_dir.display()))
+    candidates.first().map(|e| e.path()).with_context(|| {
+        format!(
+            "no .crate file found for {} in {}",
+            name,
+            package_dir.display()
+        )
+    })
 }

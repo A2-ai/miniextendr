@@ -94,7 +94,6 @@ struct Cli {
     /// Force re-vendoring even if Cargo.lock hasn't changed
     #[arg(long)]
     force: bool,
-
 }
 
 impl Cli {
@@ -168,7 +167,11 @@ fn main() -> Result<()> {
         }
         if cli.json {
             let count = std::fs::read_dir(&output)
-                .map(|d| d.filter_map(|e| e.ok()).filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).count())
+                .map(|d| {
+                    d.filter_map(|e| e.ok())
+                        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                        .count()
+                })
                 .unwrap_or(0);
             let json = JsonOutput {
                 vendor_dir: output.display().to_string(),
@@ -202,7 +205,12 @@ fn main() -> Result<()> {
     if v.info() {
         eprintln!("  Local packages to vendor: {}", local_pkgs.len());
         for pkg in &local_pkgs {
-            eprintln!("    - {} v{} ({})", pkg.name, pkg.version, pkg.path.display());
+            eprintln!(
+                "    - {} v{} ({})",
+                pkg.name,
+                pkg.version,
+                pkg.path.display()
+            );
         }
         if v.debug() && patch_pkgs.len() > local_pkgs.len() {
             eprintln!(

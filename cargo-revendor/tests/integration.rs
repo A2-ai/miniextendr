@@ -39,10 +39,7 @@ fn create_simple_crate(cargo_toml: &str, lib_rs: &str) -> TestProject {
 
 /// Create a workspace with the given members
 /// members: &[(name, cargo_toml, lib_rs)]
-fn create_workspace(
-    root_toml: &str,
-    members: &[(&str, &str, &str)],
-) -> TestProject {
+fn create_workspace(root_toml: &str, members: &[(&str, &str, &str)]) -> TestProject {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("workspace");
     std::fs::create_dir_all(&root).unwrap();
@@ -998,10 +995,18 @@ path = "lib.rs"
     assert_vendor_missing(&vendor, "rpkg");
 
     let a_toml = read_vendor_toml(&vendor, "a");
-    assert!(a_toml.contains("path = \"../b\""), "a should ref b:\n{}", a_toml);
+    assert!(
+        a_toml.contains("path = \"../b\""),
+        "a should ref b:\n{}",
+        a_toml
+    );
 
     let b_toml = read_vendor_toml(&vendor, "b");
-    assert!(b_toml.contains("path = \"../c\""), "b should ref c:\n{}", b_toml);
+    assert!(
+        b_toml.contains("path = \"../c\""),
+        "b should ref c:\n{}",
+        b_toml
+    );
 }
 
 // =============================================================================
@@ -1082,7 +1087,10 @@ cfg-if = "1"
         .assert()
         .success();
 
-    assert!(vendor.join(".revendor-cache").exists(), "cache file should exist");
+    assert!(
+        vendor.join(".revendor-cache").exists(),
+        "cache file should exist"
+    );
 
     // Second run with --json to check cached flag
     let output = revendor_cmd()
@@ -1098,8 +1106,7 @@ cfg-if = "1"
         .expect("failed to run");
 
     assert!(output.status.success());
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("invalid JSON");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("invalid JSON");
     assert_eq!(json["cached"], true, "second run should be cached");
 }
 
@@ -1153,8 +1160,7 @@ cfg-if = "1"
         .expect("failed to run");
 
     assert!(output.status.success());
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("invalid JSON");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("invalid JSON");
     assert_eq!(json["cached"], false, "--force should bypass cache");
 }
 

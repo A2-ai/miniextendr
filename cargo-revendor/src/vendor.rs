@@ -1,7 +1,7 @@
 //! Vendoring: run cargo vendor, extract local crates, rewrite paths
 
 use crate::metadata::LocalPackage;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -165,17 +165,17 @@ pub fn rewrite_local_path_deps(
         for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
             if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
                 for name in local_names.iter() {
-                    if let Some(dep) = table.get_mut(*name) {
-                        if add_path_to_dep(dep, name) {
-                            changed = true;
-                            if v.info() {
-                                eprintln!(
-                                    "  Rewrote {}.{} in {}/Cargo.toml",
-                                    section,
-                                    name,
-                                    entry.file_name().to_string_lossy()
-                                );
-                            }
+                    if let Some(dep) = table.get_mut(name)
+                        && add_path_to_dep(dep, name)
+                    {
+                        changed = true;
+                        if v.info() {
+                            eprintln!(
+                                "  Rewrote {}.{} in {}/Cargo.toml",
+                                section,
+                                name,
+                                entry.file_name().to_string_lossy()
+                            );
                         }
                     }
                 }
@@ -269,17 +269,14 @@ fn resolve_workspace_inheritance(
     let mut doc: toml_edit::DocumentMut = content.parse().unwrap_or_default();
 
     // Resolve [package] fields: version, edition, authors, etc.
-    if let Some(ws_pkg) = ws_doc.get("workspace").and_then(|w| w.get("package")) {
-        if let Some(pkg) = doc.get_mut("package") {
-            resolve_table_workspace_fields(pkg, ws_pkg);
-        }
+    if let Some(ws_pkg) = ws_doc.get("workspace").and_then(|w| w.get("package"))
+        && let Some(pkg) = doc.get_mut("package")
+    {
+        resolve_table_workspace_fields(pkg, ws_pkg);
     }
 
     // Resolve [dependencies] workspace refs
-    if let Some(ws_deps) = ws_doc
-        .get("workspace")
-        .and_then(|w| w.get("dependencies"))
-    {
+    if let Some(ws_deps) = ws_doc.get("workspace").and_then(|w| w.get("dependencies")) {
         for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
             if let Some(deps) = doc.get_mut(section) {
                 resolve_dep_workspace_fields(deps, ws_deps);
@@ -343,9 +340,7 @@ fn resolve_table_workspace_fields(pkg: &mut toml_edit::Item, ws_pkg: &toml_edit:
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
                 || val.as_bool().unwrap_or(false)
-                    && pkg_table
-                        .get(&format!("{}.workspace", field))
-                        .is_some();
+                    && pkg_table.get(&format!("{}.workspace", field)).is_some();
 
             // Also handle the dotted key form: version.workspace = true
             // toml_edit parses this as a subtable with key "workspace"
@@ -354,10 +349,10 @@ fn resolve_table_workspace_fields(pkg: &mut toml_edit::Item, ws_pkg: &toml_edit:
                 .map(|t| t.len() == 1 && t.contains_key("workspace"))
                 .unwrap_or(false);
 
-            if is_ws || is_ws_dotted {
-                if let Some(ws_val) = ws_table.get(field) {
-                    pkg_table.insert(field, ws_val.clone());
-                }
+            if (is_ws || is_ws_dotted)
+                && let Some(ws_val) = ws_table.get(field)
+            {
+                pkg_table.insert(field, ws_val.clone());
             }
         }
     }
@@ -388,64 +383,62 @@ fn resolve_dep_workspace_fields(deps: &mut toml_edit::Item, ws_deps: &toml_edit:
             })
             .unwrap_or(false);
 
-        if is_ws_ref {
-            if let Some(ws_dep) = ws_table.get(&key) {
-                // Get extra fields from the crate's dep (like features, optional)
-                let extra_features: Option<toml_edit::Array> = deps_table
-                    .get(&key)
-                    .and_then(|v| {
-                        v.as_table()
-                            .and_then(|t| t.get("features"))
-                            .and_then(|f| f.as_array())
-                            .or_else(|| {
-                                v.as_inline_table()
-                                    .and_then(|t| t.get("features"))
-                                    .and_then(|f| f.as_array())
-                            })
-                    })
-                    .cloned();
-
-                let extra_optional: Option<bool> = deps_table.get(&key).and_then(|v| {
+        if is_ws_ref && let Some(ws_dep) = ws_table.get(&key) {
+            // Get extra fields from the crate's dep (like features, optional)
+            let extra_features: Option<toml_edit::Array> = deps_table
+                .get(&key)
+                .and_then(|v| {
                     v.as_table()
-                        .and_then(|t| t.get("optional"))
-                        .and_then(|f| f.as_bool())
+                        .and_then(|t| t.get("features"))
+                        .and_then(|f| f.as_array())
                         .or_else(|| {
                             v.as_inline_table()
-                                .and_then(|t| t.get("optional"))
-                                .and_then(|f| f.as_bool())
+                                .and_then(|t| t.get("features"))
+                                .and_then(|f| f.as_array())
                         })
-                });
+                })
+                .cloned();
 
-                // Replace with workspace definition
-                deps_table.insert(&key, ws_dep.clone());
+            let extra_optional: Option<bool> = deps_table.get(&key).and_then(|v| {
+                v.as_table()
+                    .and_then(|t| t.get("optional"))
+                    .and_then(|f| f.as_bool())
+                    .or_else(|| {
+                        v.as_inline_table()
+                            .and_then(|t| t.get("optional"))
+                            .and_then(|f| f.as_bool())
+                    })
+            });
 
-                // Re-add extra fields
-                if let Some(features) = extra_features {
-                    let val = toml_edit::Value::Array(features);
-                    if let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut()) {
-                        t.insert("features", toml_edit::value(val.clone()));
-                    } else if let Some(t) = deps_table
-                        .get_mut(&key)
-                        .and_then(|v| v.as_inline_table_mut())
-                    {
-                        t.insert("features", val);
-                    }
-                }
-                if let Some(optional) = extra_optional {
-                    if let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut()) {
-                        t.insert("optional", toml_edit::value(optional));
-                    }
-                }
+            // Replace with workspace definition
+            deps_table.insert(&key, ws_dep.clone());
 
-                // Remove workspace = true from the resolved dep
+            // Re-add extra fields
+            if let Some(features) = extra_features {
+                let val = toml_edit::Value::Array(features);
                 if let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut()) {
-                    t.remove("workspace");
+                    t.insert("features", toml_edit::value(val.clone()));
                 } else if let Some(t) = deps_table
                     .get_mut(&key)
                     .and_then(|v| v.as_inline_table_mut())
                 {
-                    t.remove("workspace");
+                    t.insert("features", val);
                 }
+            }
+            if let Some(optional) = extra_optional
+                && let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut())
+            {
+                t.insert("optional", toml_edit::value(optional));
+            }
+
+            // Remove workspace = true from the resolved dep
+            if let Some(t) = deps_table.get_mut(&key).and_then(|v| v.as_table_mut()) {
+                t.remove("workspace");
+            } else if let Some(t) = deps_table
+                .get_mut(&key)
+                .and_then(|v| v.as_inline_table_mut())
+            {
+                t.remove("workspace");
             }
         }
     }
@@ -563,11 +556,7 @@ pub fn generate_cargo_config(
 ///
 /// Vendored crates have empty checksums, so the lockfile's `checksum = "..."`
 /// lines need to be removed for `--locked` builds to work.
-pub fn strip_lock_checksums(
-    lockfile: &Path,
-    vendor_dir: &Path,
-    v: crate::Verbosity,
-) -> Result<()> {
+pub fn strip_lock_checksums(lockfile: &Path, vendor_dir: &Path, v: crate::Verbosity) -> Result<()> {
     if !lockfile.exists() {
         return Ok(());
     }

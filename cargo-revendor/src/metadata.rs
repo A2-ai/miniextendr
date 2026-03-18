@@ -42,22 +42,23 @@ pub fn discover_workspace_members(workspace_root: &Path) -> Result<Vec<LocalPack
 
     let mut members = Vec::new();
     for pkg in &meta.packages {
-        let pkg_dir = pkg.manifest_path.parent().map(|p| p.as_std_path().to_path_buf());
+        let pkg_dir = pkg
+            .manifest_path
+            .parent()
+            .map(|p| p.as_std_path().to_path_buf());
 
         // A workspace member has no source (local) and is under the workspace root
-        if pkg.source.is_none() {
-            if let Some(ref dir) = pkg_dir {
-                if let Ok(canonical) = dir.canonicalize() {
-                    if canonical.starts_with(&ws_root) {
-                        members.push(LocalPackage {
-                            name: pkg.name.clone(),
-                            version: pkg.version.to_string(),
-                            path: canonical,
-                            manifest_path: pkg.manifest_path.clone().into(),
-                        });
-                    }
-                }
-            }
+        if pkg.source.is_none()
+            && let Some(ref dir) = pkg_dir
+            && let Ok(canonical) = dir.canonicalize()
+            && canonical.starts_with(&ws_root)
+        {
+            members.push(LocalPackage {
+                name: pkg.name.clone(),
+                version: pkg.version.to_string(),
+                path: canonical,
+                manifest_path: pkg.manifest_path.clone().into(),
+            });
         }
     }
 
