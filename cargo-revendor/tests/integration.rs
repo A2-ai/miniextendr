@@ -1003,3 +1003,344 @@ path = "lib.rs"
     let b_toml = read_vendor_toml(&vendor, "b");
     assert!(b_toml.contains("path = \"../c\""), "b should ref c:\n{}", b_toml);
 }
+
+// =============================================================================
+// JSON output
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn json_output_structure() {
+    let proj = create_simple_crate(
+        r#"[package]
+name = "testpkg"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if = "1"
+"#,
+        "pub fn hello() {}",
+    );
+    let vendor = proj.root().join("vendor");
+
+    let output = revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run");
+
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("invalid JSON output");
+    assert!(json["vendor_dir"].is_string());
+    assert!(json["total_crates"].is_number());
+    assert!(json["cached"].is_boolean());
+    assert_eq!(json["cached"], false);
+}
+
+// =============================================================================
+// Caching (second run should be cached)
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn caching_skips_second_run() {
+    let proj = create_simple_crate(
+        r#"[package]
+name = "testpkg"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if = "1"
+"#,
+        "pub fn hello() {}",
+    );
+    let vendor = proj.root().join("vendor");
+    let manifest = proj.root().join("Cargo.toml");
+
+    // First run
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            manifest.to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert!(vendor.join(".revendor-cache").exists(), "cache file should exist");
+
+    // Second run with --json to check cached flag
+    let output = revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            manifest.to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run");
+
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("invalid JSON");
+    assert_eq!(json["cached"], true, "second run should be cached");
+}
+
+// =============================================================================
+// --force bypasses cache
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn force_bypasses_cache() {
+    let proj = create_simple_crate(
+        r#"[package]
+name = "testpkg"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if = "1"
+"#,
+        "pub fn hello() {}",
+    );
+    let vendor = proj.root().join("vendor");
+    let manifest = proj.root().join("Cargo.toml");
+
+    // First run
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            manifest.to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    // Second run with --force --json
+    let output = revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            manifest.to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--force",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run");
+
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("invalid JSON");
+    assert_eq!(json["cached"], false, "--force should bypass cache");
+}
+
+// =============================================================================
+// Individual strip flags
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn strip_tests_only() {
+    let proj = create_workspace(
+        r#"[workspace]
+members = ["rpkg", "myhelper"]
+"#,
+        &[
+            (
+                "rpkg",
+                r#"[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+[dependencies]
+myhelper = { path = "../myhelper" }
+"#,
+                "pub fn go() {}",
+            ),
+            (
+                "myhelper",
+                r#"[package]
+name = "myhelper"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+"#,
+                "pub fn help() {}",
+            ),
+        ],
+    );
+    // Add tests and benches dirs to helper
+    let helper_dir = proj.root().join("myhelper");
+    std::fs::create_dir_all(helper_dir.join("tests")).unwrap();
+    std::fs::write(helper_dir.join("tests/t.rs"), "").unwrap();
+    std::fs::create_dir_all(helper_dir.join("benches")).unwrap();
+    std::fs::write(helper_dir.join("benches/b.rs"), "").unwrap();
+    git_init(proj.root());
+
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+            "--strip-tests", // only tests, NOT benches
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "myhelper");
+    assert!(
+        !vendor.join("myhelper/tests").exists(),
+        "tests/ should be stripped"
+    );
+    assert!(
+        vendor.join("myhelper/benches").exists(),
+        "benches/ should NOT be stripped (only --strip-tests)"
+    );
+}
+
+// =============================================================================
+// Empty vendor (no external deps)
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn empty_external_deps() {
+    let proj = create_workspace(
+        r#"[workspace]
+members = ["rpkg", "mylib"]
+"#,
+        &[
+            (
+                "rpkg",
+                r#"[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+[dependencies]
+mylib = { path = "../mylib" }
+"#,
+                "pub fn go() {}",
+            ),
+            (
+                "mylib",
+                r#"[package]
+name = "mylib"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+"#,
+                "pub fn lib_fn() {}",
+            ),
+        ],
+    );
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "mylib");
+}
+
+// =============================================================================
+// Config.toml and Cargo.lock output
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn generates_cargo_config_and_stripped_lockfile() {
+    let proj = create_simple_crate(
+        r#"[package]
+name = "testpkg"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if = "1"
+"#,
+        "pub fn hello() {}",
+    );
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    // Check .cargo-config.toml was generated
+    let config = std::fs::read_to_string(vendor.join(".cargo-config.toml"))
+        .expect("should generate .cargo-config.toml");
+    assert!(
+        config.contains("[source.crates-io]"),
+        "config should have crates-io source replacement"
+    );
+    assert!(
+        config.contains("vendored-sources"),
+        "config should reference vendored-sources"
+    );
+
+    // Check Cargo.lock was stripped and copied
+    let lock = std::fs::read_to_string(vendor.join("Cargo.lock"))
+        .expect("should copy stripped Cargo.lock");
+    assert!(
+        !lock.contains("checksum = "),
+        "Cargo.lock should have checksums stripped"
+    );
+    assert!(
+        lock.contains("cfg-if"),
+        "Cargo.lock should still have dependency entries"
+    );
+}
