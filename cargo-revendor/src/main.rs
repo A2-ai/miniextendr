@@ -13,6 +13,11 @@
 mod cache;
 mod metadata;
 mod package;
+
+/// Convert a path to a TOML-safe string (forward slashes on all platforms)
+pub fn path_to_toml(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "/")
+}
 mod strip;
 mod vendor;
 

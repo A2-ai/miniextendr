@@ -35,7 +35,7 @@ pub fn run_cargo_vendor(
             patch.push_str(&format!(
                 "{} = {{ path = \"{}\" }}\n",
                 pkg.name,
-                pkg.path.display()
+                crate::path_to_toml(&pkg.path)
             ));
         }
         std::fs::write(&ws_manifest, format!("{}{}", ws_original, patch))?;
@@ -534,7 +534,7 @@ pub fn generate_cargo_config(
 
     config.push_str(&format!(
         "[source.vendored-sources]\ndirectory = \"{}\"\n",
-        vendor_path.display()
+        crate::path_to_toml(&vendor_path)
     ));
 
     // Write to vendor dir for reference
@@ -699,7 +699,7 @@ fn pathdiff(target: &Path, base: &Path) -> String {
         .count();
 
     if common == 0 {
-        return target.display().to_string();
+        return crate::path_to_toml(&target);
     }
 
     let mut rel = String::new();
