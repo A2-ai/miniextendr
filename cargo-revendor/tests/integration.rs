@@ -1344,3 +1344,296 @@ cfg-if = "1"
         "Cargo.lock should still have dependency entries"
     );
 }
+
+// =============================================================================
+// Optional dependencies
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn optional_dependencies() {
+    let proj = create_simple_crate(
+        r#"[package]
+name = "testpkg"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if = { version = "1", optional = true }
+[features]
+default = ["cfg-if"]
+"#,
+        "pub fn hello() {}",
+    );
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "cfg-if");
+}
+
+// =============================================================================
+// Features on path deps
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn features_on_path_deps() {
+    let proj = create_workspace(
+        r#"[workspace]
+members = ["rpkg", "mylib"]
+"#,
+        &[
+            (
+                "rpkg",
+                r#"[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+[dependencies]
+mylib = { path = "../mylib", features = ["extra"] }
+"#,
+                "pub fn go() {}",
+            ),
+            (
+                "mylib",
+                r#"[package]
+name = "mylib"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+[features]
+default = []
+extra = []
+"#,
+                "pub fn lib_fn() {}",
+            ),
+        ],
+    );
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "mylib");
+}
+
+// =============================================================================
+// Workspace dependency inheritance (dep.workspace = true)
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn workspace_dep_inheritance() {
+    let proj = create_workspace(
+        r#"[workspace]
+members = ["rpkg", "mylib"]
+[workspace.dependencies]
+cfg-if = "1"
+mylib = { version = "0.1.0", path = "mylib" }
+"#,
+        &[
+            (
+                "rpkg",
+                r#"[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if.workspace = true
+mylib.workspace = true
+"#,
+                "pub fn go() {}",
+            ),
+            (
+                "mylib",
+                r#"[package]
+name = "mylib"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+"#,
+                "pub fn lib_fn() {}",
+            ),
+        ],
+    );
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "mylib");
+    assert_vendor_has(&vendor, "cfg-if");
+}
+
+// =============================================================================
+// --use-cargo-lib flag (library API path)
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn use_cargo_lib_simple() {
+    let proj = create_simple_crate(
+        r#"[package]
+name = "testpkg"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if = "1"
+"#,
+        "pub fn hello() {}",
+    );
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--use-cargo-lib",
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "cfg-if");
+    assert_empty_checksum(&vendor, "cfg-if");
+}
+
+#[test]
+#[ignore] // network
+fn use_cargo_lib_with_path_deps() {
+    let proj = create_workspace(
+        r#"[workspace]
+members = ["rpkg", "mylib"]
+"#,
+        &[
+            (
+                "rpkg",
+                r#"[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+[dependencies]
+mylib = { path = "../mylib" }
+cfg-if = "1"
+"#,
+                "pub fn go() {}",
+            ),
+            (
+                "mylib",
+                r#"[package]
+name = "mylib"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+"#,
+                "pub fn lib_fn() {}",
+            ),
+        ],
+    );
+    let vendor = proj.root().join("vendor");
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+            "--use-cargo-lib",
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "mylib");
+    assert_vendor_has(&vendor, "cfg-if");
+}
+
+// =============================================================================
+// Output directory already exists (should be replaced cleanly)
+// =============================================================================
+
+#[test]
+#[ignore] // network
+fn output_dir_replaced_cleanly() {
+    let proj = create_simple_crate(
+        r#"[package]
+name = "testpkg"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[lib]
+path = "lib.rs"
+[dependencies]
+cfg-if = "1"
+"#,
+        "pub fn hello() {}",
+    );
+    let vendor = proj.root().join("vendor");
+
+    // Create a stale vendor dir with junk
+    std::fs::create_dir_all(vendor.join("stale-crate")).unwrap();
+    std::fs::write(vendor.join("stale-crate/Cargo.toml"), "[package]").unwrap();
+
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--force",
+        ])
+        .assert()
+        .success();
+
+    assert_vendor_has(&vendor, "cfg-if");
+    assert_vendor_missing(&vendor, "stale-crate");
+}
