@@ -73,6 +73,7 @@ pub fn run_cargo_vendor(
 }
 
 /// Extract a .crate archive into the vendor directory
+/// Extract a .crate archive OR copy a directory into the vendor directory
 pub fn extract_crate_archive(
     crate_path: &Path,
     vendor_dir: &Path,
@@ -84,6 +85,15 @@ pub fn extract_crate_archive(
     // Remove any existing directory (cargo vendor may have put a placeholder)
     if dest.exists() {
         std::fs::remove_dir_all(&dest)?;
+    }
+
+    if crate_path.is_dir() {
+        // Direct copy fallback (when cargo package failed)
+        copy_crate_dir(crate_path, &dest)?;
+        if v.info() {
+            eprintln!("  Copied {} to vendor/{}", pkg_name, pkg_name);
+        }
+        return Ok(());
     }
 
     // .crate files are gzipped tar archives
@@ -218,6 +228,37 @@ fn add_path_to_dep(dep: &mut toml_edit::Item, name: &str) -> bool {
         }
         _ => false,
     }
+}
+
+/// Copy a crate directory to vendor/ (fallback when cargo package fails)
+/// Copies source files, excluding target/ and other build artifacts
+fn copy_crate_dir(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in walkdir::WalkDir::new(src).min_depth(1) {
+        let entry = entry?;
+        let relative = entry.path().strip_prefix(src).unwrap();
+
+        // Skip build artifacts and VCS dirs
+        let first_component = relative
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .unwrap_or_default();
+        if matches!(
+            first_component.as_str(),
+            "target" | ".git" | ".cargo" | "ra_target" | "ra-target"
+        ) {
+            continue;
+        }
+
+        let target = dst.join(relative);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target)?;
+        } else {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Clear all .cargo-checksum.json files (vendored sources don't need verification)
