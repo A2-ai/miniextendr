@@ -10,9 +10,9 @@ pub fn run_cargo_vendor(
     manifest_path: &Path,
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
-    verbose: bool,
+    v: crate::Verbosity,
 ) -> Result<()> {
-    if verbose {
+    if v.info() {
         eprintln!("  Running cargo vendor...");
     }
 
@@ -77,7 +77,7 @@ pub fn extract_crate_archive(
     crate_path: &Path,
     vendor_dir: &Path,
     pkg_name: &str,
-    verbose: bool,
+    v: crate::Verbosity,
 ) -> Result<()> {
     let dest = vendor_dir.join(pkg_name);
 
@@ -115,7 +115,7 @@ pub fn extract_crate_archive(
     // Clean up temp dir
     let _ = std::fs::remove_dir_all(&extract_tmp);
 
-    if verbose {
+    if v.info() {
         eprintln!("  Extracted {} to vendor/{}", pkg_name, pkg_name);
     }
 
@@ -126,7 +126,7 @@ pub fn extract_crate_archive(
 pub fn rewrite_local_path_deps(
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
-    verbose: bool,
+    v: crate::Verbosity,
 ) -> Result<()> {
     let local_names: std::collections::HashSet<&str> =
         local_pkgs.iter().map(|p| p.name.as_str()).collect();
@@ -156,7 +156,7 @@ pub fn rewrite_local_path_deps(
                     if let Some(dep) = table.get_mut(*name) {
                         if add_path_to_dep(dep, name) {
                             changed = true;
-                            if verbose {
+                            if v.info() {
                                 eprintln!(
                                     "  Rewrote {}.{} in {}/Cargo.toml",
                                     section,

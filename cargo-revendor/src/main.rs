@@ -3,11 +3,14 @@
 //! Unlike `cargo vendor`, this handles:
 //! - Path dependencies (workspace members) via `cargo package`
 //! - Workspace inheritance resolution
-//! - Stripping test/bench/example directories
+//! - Opt-in stripping of test/bench/example/bin directories
 //! - Cleaning TOML sections that reference stripped directories
 //! - Inter-crate path dependency rewriting
 //! - Empty checksum generation for vendored crates
+//! - Caching via Cargo.lock hash (skip re-vendoring when deps unchanged)
+//! - JSON output for machine consumption
 
+mod cache;
 mod metadata;
 mod package;
 mod strip;
@@ -16,6 +19,22 @@ mod vendor;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
+
+/// Verbosity level (0=quiet, 1=-v, 2=-vv, 3=-vvv)
+#[derive(Clone, Copy, Debug)]
+pub struct Verbosity(pub u8);
+
+impl Verbosity {
+    pub fn info(self) -> bool {
+        self.0 >= 1
+    }
+    pub fn debug(self) -> bool {
+        self.0 >= 2
+    }
+    pub fn trace(self) -> bool {
+        self.0 >= 3
+    }
+}
 
 #[derive(Parser)]
 #[command(
@@ -44,56 +63,143 @@ struct Cli {
     #[arg(long, default_value_t = true)]
     allow_dirty: bool,
 
-    /// Don't strip test/bench/example directories
+    /// Strip test directories from vendored crates
     #[arg(long)]
-    no_strip: bool,
+    strip_tests: bool,
 
-    /// Verbose output
-    #[arg(long, short)]
-    verbose: bool,
+    /// Strip bench directories from vendored crates
+    #[arg(long)]
+    strip_benches: bool,
+
+    /// Strip example directories from vendored crates
+    #[arg(long)]
+    strip_examples: bool,
+
+    /// Strip binary directories from vendored crates
+    #[arg(long)]
+    strip_bins: bool,
+
+    /// Strip all non-essential directories (tests, benches, examples, bins)
+    #[arg(long)]
+    strip_all: bool,
+
+    /// Output results as JSON
+    #[arg(long)]
+    json: bool,
+
+    /// Increase verbosity (-v info, -vv debug, -vvv trace)
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    /// Force re-vendoring even if Cargo.lock hasn't changed
+    #[arg(long)]
+    force: bool,
+}
+
+impl Cli {
+    fn verbosity(&self) -> Verbosity {
+        Verbosity(self.verbose)
+    }
+
+    fn strip_config(&self) -> strip::StripConfig {
+        if self.strip_all {
+            strip::StripConfig::all()
+        } else {
+            strip::StripConfig {
+                tests: self.strip_tests,
+                benches: self.strip_benches,
+                examples: self.strip_examples,
+                bins: self.strip_bins,
+            }
+        }
+    }
+}
+
+/// JSON output structure
+#[derive(serde::Serialize)]
+struct JsonOutput {
+    vendor_dir: String,
+    local_crates: Vec<String>,
+    external_crates: usize,
+    total_crates: usize,
+    cached: bool,
+    stripped: Vec<String>,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let v = cli.verbosity();
 
     let manifest_path = cli
         .manifest_path
         .canonicalize()
         .with_context(|| format!("manifest not found: {}", cli.manifest_path.display()))?;
 
-    eprintln!(
-        "cargo-revendor: vendoring deps from {}",
-        manifest_path.display()
-    );
+    if v.info() {
+        eprintln!(
+            "cargo-revendor: vendoring deps from {}",
+            manifest_path.display()
+        );
+    }
+
+    // Resolve output path
+    let output = if cli.output.is_absolute() {
+        cli.output.clone()
+    } else {
+        // Relative to the manifest's package root (parent of src/rust/)
+        let pkg_root = manifest_path
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .unwrap_or(manifest_path.parent().unwrap());
+        pkg_root.join(&cli.output)
+    };
+
+    // Step 0: Check cache — skip if Cargo.lock unchanged
+    let lockfile = manifest_path.with_file_name("Cargo.lock");
+    if !cli.force && cache::is_cached(&lockfile, &output)? {
+        if v.info() {
+            eprintln!("cargo-revendor: vendor/ is up to date (Cargo.lock unchanged)");
+        }
+        if cli.json {
+            let count = std::fs::read_dir(&output)
+                .map(|d| d.filter_map(|e| e.ok()).filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).count())
+                .unwrap_or(0);
+            let json = JsonOutput {
+                vendor_dir: output.display().to_string(),
+                local_crates: vec![],
+                external_crates: count,
+                total_crates: count,
+                cached: true,
+                stripped: vec![],
+            };
+            println!("{}", serde_json::to_string_pretty(&json)?);
+        }
+        return Ok(());
+    }
 
     // Step 1: Load cargo metadata to discover dependencies
     let meta = metadata::load_metadata(&manifest_path)?;
     let (local_pkgs, _external_pkgs) = metadata::partition_packages(&meta, &manifest_path)?;
 
-    // Also discover ALL workspace members from the source workspace root,
-    // because transitive deps (e.g. miniextendr-engine) may not appear in
-    // the rpkg dep tree but are needed by local_pkgs during cargo package.
+    // Also discover ALL workspace members from the source workspace root
     let all_workspace_members = if let Some(ref source_root) = cli.source_root {
         metadata::discover_workspace_members(source_root)?
+    } else if let Some(first_local) = local_pkgs.first() {
+        let ws_root = find_workspace_root(&first_local.path)?;
+        metadata::discover_workspace_members(&ws_root)?
     } else {
-        // Auto-detect: find workspace root from the first local package
-        if let Some(first_local) = local_pkgs.first() {
-            let ws_root = find_workspace_root(&first_local.path)?;
-            metadata::discover_workspace_members(&ws_root)?
-        } else {
-            Vec::new()
-        }
+        Vec::new()
     };
 
-    // Merge: local_pkgs (what we need to vendor) + all workspace members (for patching)
     let patch_pkgs = merge_packages(&local_pkgs, &all_workspace_members);
 
-    if cli.verbose {
+    if v.info() {
         eprintln!("  Local packages to vendor: {}", local_pkgs.len());
         for pkg in &local_pkgs {
             eprintln!("    - {} v{} ({})", pkg.name, pkg.version, pkg.path.display());
         }
-        if patch_pkgs.len() > local_pkgs.len() {
+        if v.debug() && patch_pkgs.len() > local_pkgs.len() {
             eprintln!(
                 "  Additional workspace members for patching: {}",
                 patch_pkgs.len() - local_pkgs.len()
@@ -109,59 +215,71 @@ fn main() -> Result<()> {
         &manifest_path,
         staging.path(),
         cli.allow_dirty,
-        cli.verbose,
+        v,
     )?;
 
     // Step 3: Run `cargo vendor` for external deps
     let vendor_staging = staging.path().join("vendor");
-    vendor::run_cargo_vendor(&manifest_path, &vendor_staging, &patch_pkgs, cli.verbose)?;
+    vendor::run_cargo_vendor(&manifest_path, &vendor_staging, &patch_pkgs, v)?;
 
     // Step 4: Extract packaged local crates into vendor staging
     for (pkg_name, crate_path) in &packaged {
-        vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, cli.verbose)?;
+        vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, v)?;
     }
 
-    // Step 5: Strip test/bench/example dirs and clean TOML sections
-    if !cli.no_strip {
-        strip::strip_vendor_dir(&vendor_staging, cli.verbose)?;
-    }
+    // Step 5: Strip directories (opt-in)
+    let strip_cfg = cli.strip_config();
+    let stripped = if strip_cfg.any() {
+        strip::strip_vendor_dir(&vendor_staging, &strip_cfg, v)?
+    } else {
+        vec![]
+    };
 
     // Step 6: Rewrite inter-crate path deps for local crates
-    vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, cli.verbose)?;
+    vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, v)?;
 
-    // Step 7: Clear checksums (vendored sources don't need verification)
+    // Step 7: Clear checksums
     vendor::clear_checksums(&vendor_staging)?;
 
     // Step 8: Move to final output directory
-    let output = if cli.output.is_absolute() {
-        cli.output.clone()
-    } else {
-        manifest_path
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap() // src/rust -> package root
-            .parent()
-            .unwrap() // package root -> monorepo root (or just package root)
-            .join(&cli.output)
-    };
-
     if output.exists() {
         std::fs::remove_dir_all(&output)
             .with_context(|| format!("failed to remove existing {}", output.display()))?;
     }
     std::fs::rename(&vendor_staging, &output)
-        .or_else(|_| {
-            // rename fails across filesystems, fall back to copy
-            copy_dir_recursive(&vendor_staging, &output)
-        })
+        .or_else(|_| copy_dir_recursive(&vendor_staging, &output))
         .with_context(|| format!("failed to move vendor to {}", output.display()))?;
 
-    eprintln!(
-        "cargo-revendor: vendored {} local + external deps to {}",
-        packaged.len(),
-        output.display()
-    );
+    // Step 9: Save cache
+    cache::save_cache(&lockfile, &output)?;
+
+    // Count total crates
+    let total = std::fs::read_dir(&output)
+        .map(|d| {
+            d.filter_map(|e| e.ok())
+                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                .count()
+        })
+        .unwrap_or(0);
+
+    if cli.json {
+        let json = JsonOutput {
+            vendor_dir: output.display().to_string(),
+            local_crates: packaged.iter().map(|(n, _)| n.clone()).collect(),
+            external_crates: total - packaged.len(),
+            total_crates: total,
+            cached: false,
+            stripped,
+        };
+        println!("{}", serde_json::to_string_pretty(&json)?);
+    } else if v.info() {
+        eprintln!(
+            "cargo-revendor: vendored {} local + {} external deps to {}",
+            packaged.len(),
+            total - packaged.len(),
+            output.display()
+        );
+    }
 
     Ok(())
 }

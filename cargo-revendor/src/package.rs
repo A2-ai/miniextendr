@@ -9,6 +9,7 @@
 //! published to crates.io.
 
 use crate::metadata::LocalPackage;
+use crate::Verbosity;
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -23,7 +24,7 @@ pub fn package_local_crates(
     _target_manifest: &Path,
     staging_dir: &Path,
     allow_dirty: bool,
-    verbose: bool,
+    v: crate::Verbosity,
 ) -> Result<Vec<(String, PathBuf)>> {
     let mut results = Vec::new();
 
@@ -31,7 +32,7 @@ pub fn package_local_crates(
     let patch_config = build_patch_config(all_patch_pkgs);
 
     for pkg in local_pkgs {
-        if verbose {
+        if v.info() {
             eprintln!("  Packaging {} v{} ...", pkg.name, pkg.version);
         }
 
@@ -100,7 +101,7 @@ pub fn package_local_crates(
         let package_dir = target_dir.join("package");
         let crate_file = find_crate_file(&package_dir, &pkg.name)?;
 
-        if verbose {
+        if v.info() {
             eprintln!("  Packaged: {}", crate_file.display());
         }
 

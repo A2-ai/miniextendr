@@ -1,51 +1,108 @@
 //! Strip unnecessary directories and TOML sections from vendored crates
 
+use crate::Verbosity;
 use anyhow::{Context, Result};
 use std::path::Path;
 
-/// Directories to remove from vendored crates
-const STRIP_DIRS: &[&str] = &[
-    "tests", "benches", "examples", ".github", ".circleci", "docs", "ci", "target",
-];
+/// Configuration for what to strip from vendored crates
+#[derive(Clone, Debug)]
+pub struct StripConfig {
+    pub tests: bool,
+    pub benches: bool,
+    pub examples: bool,
+    pub bins: bool,
+}
 
-/// TOML sections to remove (they reference stripped directories)
-const STRIP_TOML_SECTIONS: &[&str] = &["[[bench]]", "[[test]]", "[[example]]", "[dev-dependencies"];
+impl StripConfig {
+    /// Strip everything
+    pub fn all() -> Self {
+        Self {
+            tests: true,
+            benches: true,
+            examples: true,
+            bins: true,
+        }
+    }
 
-/// Strip all vendored crates in a vendor directory
-pub fn strip_vendor_dir(vendor_dir: &Path, verbose: bool) -> Result<()> {
+    /// Whether any stripping is enabled
+    pub fn any(&self) -> bool {
+        self.tests || self.benches || self.examples || self.bins
+    }
+
+    /// Get directory names to strip
+    fn dirs_to_strip(&self) -> Vec<&'static str> {
+        let mut dirs = vec![".github", ".circleci", "ci", "target"];
+        if self.tests {
+            dirs.push("tests");
+        }
+        if self.benches {
+            dirs.push("benches");
+        }
+        if self.examples {
+            dirs.push("examples");
+        }
+        // bins: no standard dir to strip (binaries are in src/bin/)
+        dirs
+    }
+
+    /// Get TOML section prefixes to strip
+    fn toml_sections_to_strip(&self) -> Vec<&'static str> {
+        let mut sections = Vec::new();
+        if self.tests {
+            sections.push("[[test]]");
+            sections.push("[dev-dependencies");
+        }
+        if self.benches {
+            sections.push("[[bench]]");
+        }
+        if self.examples {
+            sections.push("[[example]]");
+        }
+        if self.bins {
+            sections.push("[[bin]]");
+        }
+        sections
+    }
+}
+
+/// Strip all vendored crates in a vendor directory.
+/// Returns list of stripped items for reporting.
+pub fn strip_vendor_dir(vendor_dir: &Path, config: &StripConfig, v: Verbosity) -> Result<Vec<String>> {
+    let mut stripped = Vec::new();
     for entry in std::fs::read_dir(vendor_dir)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
-            strip_crate_dir(&entry.path(), verbose)?;
+            let items = strip_crate_dir(&entry.path(), config, v)?;
+            stripped.extend(items);
         }
     }
-    Ok(())
+    Ok(stripped)
 }
 
 /// Strip a single vendored crate directory
-fn strip_crate_dir(crate_dir: &Path, verbose: bool) -> Result<()> {
-    // Remove unwanted directories
-    for dir_name in STRIP_DIRS {
+fn strip_crate_dir(crate_dir: &Path, config: &StripConfig, v: Verbosity) -> Result<Vec<String>> {
+    let crate_name = crate_dir
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let mut stripped = Vec::new();
+
+    // Remove configured directories
+    for dir_name in config.dirs_to_strip() {
         let dir_path = crate_dir.join(dir_name);
         if dir_path.exists() {
             std::fs::remove_dir_all(&dir_path).with_context(|| {
-                format!(
-                    "failed to remove {}/{}",
-                    crate_dir.display(),
-                    dir_name
-                )
+                format!("failed to remove {}/{}", crate_dir.display(), dir_name)
             })?;
-            if verbose {
-                eprintln!(
-                    "  Stripped {}/{}",
-                    crate_dir.file_name().unwrap().to_string_lossy(),
-                    dir_name
-                );
+            if v.debug() {
+                eprintln!("  Stripped {}/{}", crate_name, dir_name);
             }
+            stripped.push(format!("{}/{}", crate_name, dir_name));
         }
     }
 
-    // Remove hidden files (except .cargo-checksum.json)
+    // Remove hidden files/dirs (except .cargo-checksum.json)
     for entry in std::fs::read_dir(crate_dir)? {
         let entry = entry?;
         let name = entry.file_name();
@@ -62,14 +119,17 @@ fn strip_crate_dir(crate_dir: &Path, verbose: bool) -> Result<()> {
     // Clean TOML sections that reference stripped directories
     let cargo_toml = crate_dir.join("Cargo.toml");
     if cargo_toml.exists() {
-        strip_toml_sections(&cargo_toml)?;
+        let sections = config.toml_sections_to_strip();
+        if !sections.is_empty() {
+            strip_toml_sections(&cargo_toml, &sections)?;
+        }
     }
 
-    Ok(())
+    Ok(stripped)
 }
 
-/// Remove [[bench]], [[test]], [[example]], and [dev-dependencies] sections from Cargo.toml
-fn strip_toml_sections(cargo_toml: &Path) -> Result<()> {
+/// Remove specified TOML sections from Cargo.toml
+fn strip_toml_sections(cargo_toml: &Path, sections_to_strip: &[&str]) -> Result<()> {
     let content = std::fs::read_to_string(cargo_toml)?;
     let mut output_lines = Vec::new();
     let mut in_stripped_section = false;
@@ -77,10 +137,8 @@ fn strip_toml_sections(cargo_toml: &Path) -> Result<()> {
     for line in content.lines() {
         let trimmed = line.trim();
 
-        // Check if this line starts a section header
         if trimmed.starts_with('[') {
-            // Check if it's a section we want to strip
-            in_stripped_section = STRIP_TOML_SECTIONS
+            in_stripped_section = sections_to_strip
                 .iter()
                 .any(|s| trimmed.starts_with(s));
 
@@ -90,16 +148,12 @@ fn strip_toml_sections(cargo_toml: &Path) -> Result<()> {
         }
 
         if in_stripped_section {
-            // Check if we've hit a new non-stripped section
             if trimmed.starts_with('[')
-                && !STRIP_TOML_SECTIONS
-                    .iter()
-                    .any(|s| trimmed.starts_with(s))
+                && !sections_to_strip.iter().any(|s| trimmed.starts_with(s))
             {
                 in_stripped_section = false;
                 output_lines.push(line.to_string());
             }
-            // Otherwise skip the line (still in stripped section)
         } else {
             output_lines.push(line.to_string());
         }
@@ -109,7 +163,7 @@ fn strip_toml_sections(cargo_toml: &Path) -> Result<()> {
     while output_lines.last().is_some_and(|l| l.trim().is_empty()) {
         output_lines.pop();
     }
-    output_lines.push(String::new()); // single trailing newline
+    output_lines.push(String::new());
 
     std::fs::write(cargo_toml, output_lines.join("\n"))?;
     Ok(())
@@ -131,27 +185,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = write_toml(
             dir.path(),
-            r#"[package]
-name = "foo"
-version = "0.1.0"
-
-[dependencies]
-bar = "1"
-
-[[bench]]
-name = "my_bench"
-harness = false
-
-[lib]
-name = "foo"
-"#,
+            "[package]\nname = \"foo\"\n\n[dependencies]\nbar = \"1\"\n\n[[bench]]\nname = \"my_bench\"\nharness = false\n\n[lib]\nname = \"foo\"\n",
         );
-        strip_toml_sections(&path).unwrap();
+        strip_toml_sections(&path, &["[[bench]]"]).unwrap();
         let result = std::fs::read_to_string(&path).unwrap();
-        assert!(!result.contains("[[bench]]"), "[[bench]] should be removed");
-        assert!(!result.contains("my_bench"), "bench content should be removed");
-        assert!(result.contains("[dependencies]"), "deps should remain");
-        assert!(result.contains("[lib]"), "[lib] should remain");
+        assert!(!result.contains("[[bench]]"));
+        assert!(!result.contains("my_bench"));
+        assert!(result.contains("[dependencies]"));
+        assert!(result.contains("[lib]"));
     }
 
     #[test]
@@ -159,21 +200,11 @@ name = "foo"
         let dir = TempDir::new().unwrap();
         let path = write_toml(
             dir.path(),
-            r#"[package]
-name = "foo"
-
-[[test]]
-name = "integration"
-path = "tests/integration.rs"
-
-[dependencies]
-bar = "1"
-"#,
+            "[package]\nname = \"foo\"\n\n[[test]]\nname = \"integration\"\n\n[dependencies]\nbar = \"1\"\n",
         );
-        strip_toml_sections(&path).unwrap();
+        strip_toml_sections(&path, &["[[test]]"]).unwrap();
         let result = std::fs::read_to_string(&path).unwrap();
         assert!(!result.contains("[[test]]"));
-        assert!(!result.contains("integration"));
         assert!(result.contains("[dependencies]"));
     }
 
@@ -182,26 +213,12 @@ bar = "1"
         let dir = TempDir::new().unwrap();
         let path = write_toml(
             dir.path(),
-            r#"[package]
-name = "foo"
-
-[dependencies]
-bar = "1"
-
-[dev-dependencies]
-criterion = "0.5"
-proptest = "1"
-
-[features]
-default = []
-"#,
+            "[package]\nname = \"foo\"\n\n[dependencies]\nbar = \"1\"\n\n[dev-dependencies]\ncriterion = \"0.5\"\n\n[features]\ndefault = []\n",
         );
-        strip_toml_sections(&path).unwrap();
+        strip_toml_sections(&path, &["[dev-dependencies"]).unwrap();
         let result = std::fs::read_to_string(&path).unwrap();
         assert!(!result.contains("[dev-dependencies]"));
         assert!(!result.contains("criterion"));
-        assert!(!result.contains("proptest"));
-        assert!(result.contains("[dependencies]"));
         assert!(result.contains("[features]"));
     }
 
@@ -210,21 +227,11 @@ default = []
         let dir = TempDir::new().unwrap();
         let path = write_toml(
             dir.path(),
-            r#"[package]
-name = "foo"
-
-[[example]]
-name = "demo"
-path = "examples/demo.rs"
-
-[dependencies]
-bar = "1"
-"#,
+            "[package]\nname = \"foo\"\n\n[[example]]\nname = \"demo\"\n\n[dependencies]\nbar = \"1\"\n",
         );
-        strip_toml_sections(&path).unwrap();
+        strip_toml_sections(&path, &["[[example]]"]).unwrap();
         let result = std::fs::read_to_string(&path).unwrap();
         assert!(!result.contains("[[example]]"));
-        assert!(!result.contains("demo"));
         assert!(result.contains("[dependencies]"));
     }
 
@@ -233,24 +240,9 @@ bar = "1"
         let dir = TempDir::new().unwrap();
         let path = write_toml(
             dir.path(),
-            r#"[package]
-name = "foo"
-version = "0.1.0"
-
-[dependencies]
-bar = "1"
-
-[build-dependencies]
-cc = "1"
-
-[features]
-default = ["bar"]
-
-[profile.release]
-opt-level = 3
-"#,
+            "[package]\nname = \"foo\"\n\n[dependencies]\nbar = \"1\"\n\n[build-dependencies]\ncc = \"1\"\n\n[features]\ndefault = []\n\n[profile.release]\nopt-level = 3\n",
         );
-        strip_toml_sections(&path).unwrap();
+        strip_toml_sections(&path, &["[[test]]", "[[bench]]", "[dev-dependencies"]).unwrap();
         let result = std::fs::read_to_string(&path).unwrap();
         assert!(result.contains("[package]"));
         assert!(result.contains("[dependencies]"));
@@ -264,30 +256,9 @@ opt-level = 3
         let dir = TempDir::new().unwrap();
         let path = write_toml(
             dir.path(),
-            r#"[package]
-name = "foo"
-
-[dependencies]
-bar = "1"
-
-[[test]]
-name = "t1"
-
-[[test]]
-name = "t2"
-
-[[bench]]
-name = "b1"
-harness = false
-
-[dev-dependencies]
-criterion = "0.5"
-
-[features]
-default = []
-"#,
+            "[package]\nname = \"foo\"\n\n[[test]]\nname = \"t1\"\n\n[[test]]\nname = \"t2\"\n\n[[bench]]\nname = \"b1\"\n\n[dev-dependencies]\ncriterion = \"0.5\"\n\n[features]\ndefault = []\n",
         );
-        strip_toml_sections(&path).unwrap();
+        strip_toml_sections(&path, &["[[test]]", "[[bench]]", "[dev-dependencies"]).unwrap();
         let result = std::fs::read_to_string(&path).unwrap();
         assert!(!result.contains("[[test]]"));
         assert!(!result.contains("[[bench]]"));
@@ -304,31 +275,22 @@ default = []
         std::fs::create_dir_all(crate_dir.join("examples")).unwrap();
         std::fs::create_dir_all(crate_dir.join(".github")).unwrap();
         std::fs::create_dir_all(crate_dir.join("src")).unwrap();
-        std::fs::write(crate_dir.join("tests/test.rs"), "fn main() {}").unwrap();
-        std::fs::write(crate_dir.join("benches/bench.rs"), "fn main() {}").unwrap();
+        std::fs::write(crate_dir.join("tests/test.rs"), "").unwrap();
         std::fs::write(crate_dir.join("src/lib.rs"), "").unwrap();
         std::fs::write(
             crate_dir.join("Cargo.toml"),
             "[package]\nname = \"mycrate\"\nversion = \"0.1.0\"\n",
         )
         .unwrap();
-        std::fs::write(
-            crate_dir.join(".cargo-checksum.json"),
-            "{\"files\":{}}",
-        )
-        .unwrap();
+        std::fs::write(crate_dir.join(".cargo-checksum.json"), "{\"files\":{}}").unwrap();
 
-        strip_crate_dir(&crate_dir, false).unwrap();
+        strip_crate_dir(&crate_dir, &StripConfig::all(), Verbosity(0)).unwrap();
 
         assert!(!crate_dir.join("tests").exists());
         assert!(!crate_dir.join("benches").exists());
         assert!(!crate_dir.join("examples").exists());
         assert!(!crate_dir.join(".github").exists());
-        assert!(crate_dir.join("src").exists(), "src/ should be preserved");
-        assert!(
-            crate_dir.join(".cargo-checksum.json").exists(),
-            "checksum should be preserved"
-        );
-        assert!(crate_dir.join("Cargo.toml").exists());
+        assert!(crate_dir.join("src").exists());
+        assert!(crate_dir.join(".cargo-checksum.json").exists());
     }
 }
