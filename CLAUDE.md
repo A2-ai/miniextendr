@@ -16,6 +16,11 @@ A Rust-R interoperability framework for building R packages with Rust backends.
   - `rpkg/src/stub.c` — static file (no configure substitution), just a linker stub
 - **configure.ac must not depend on minirextendr**: Template `configure.ac` files should not call `minirextendr::*` functions. Instead, put helper R scripts in `tools/` (included in templates) and invoke them via `Rscript tools/my-helper.R` from configure.ac.
 - **`cargo package` for workspace resolution**: When vendoring workspace crates, use `cargo package` to produce resolved Cargo.toml files (workspace inheritance already expanded). Do not hard-code workspace dependency replacements — the vendoring strategy must work with any workspace-monorepo project.
+- **configure.ac must not modify source files**: Never rewrite Cargo.toml, Cargo.lock, or .rs files during `./configure`. This dirties the VCS tree. Use `cargo revendor --freeze` at vendor time instead.
+- **m4 in AC_CONFIG_COMMANDS**: `$1` becomes empty (use `$0` or avoid `sh -c`). `[` and `]` in sed/grep patterns must use `@<:@` and `@:>@`.
+- **cargo-revendor**: Standalone workspace (excluded from miniextendr workspace). Build with `just revendor-build`, test with `just revendor-test`. `--freeze` rewrites Cargo.toml to resolve from vendor/ only.
+- **Windows paths in TOML**: Use forward slashes. `canonicalize()` adds `\\?\` prefix on Windows — strip it with `strip_prefix(r"\\?\")` before writing to TOML/config files.
+- **macOS tar xattrs**: Set `COPYFILE_DISABLE=1` when creating tarballs on macOS to prevent Apple xattr metadata that causes warnings on Linux/Windows GNU tar.
 
 ## Capturing Command Output
 
@@ -58,6 +63,7 @@ miniextendr/
 ├── miniextendr-bench/    # Benchmarks (separate workspace member)
 ├── miniextendr-lint/     # Static analysis tool
 ├── miniextendr-engine/   # Code generation engine
+├── cargo-revendor/      # Standalone cargo subcommand for vendoring (not in workspace)
 ├── rpkg/                 # Example R package demonstrating all features (named `miniextendr`)
 ├── minirextendr/         # Helper R package for scaffolding new projects
 ├── tests/cross-package/  # Cross-package trait ABI tests
@@ -91,7 +97,7 @@ just r-cmd-build        # 2. Build tarball (R CMD build)
 just r-cmd-check        # 3. Check the built tarball (R CMD check)
 
 # CRAN release prep (vendors deps into tarball)
-just vendor             # Package workspace crates + vendor external deps
+just vendor             # Uses cargo-revendor: vendor, strip, freeze, compress
 just configure-cran     # Configure with PREPARE_CRAN=true (unpacks vendor.tar.xz)
 # IMPORTANT: Always check the built tarball, not the source directory.
 # R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.

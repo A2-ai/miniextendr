@@ -610,9 +610,9 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
-TAR_FORCE_LOCAL
 CDYLIB_EXT
 CDYLIB_PREFIX
+TAR_FORCE_LOCAL
 CARGO_STATICLIB_NAME
 CARGO_LIBDIR
 CARGO_BUILD_TARGET
@@ -2465,8 +2465,15 @@ fi
 
 CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 
+
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
+
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+  *)                       TAR_FORCE_LOCAL="" ;;
+esac
+
 
 case "$host_os" in
   darwin*)                  CDYLIB_PREFIX="lib"; CDYLIB_EXT="dylib" ;;
@@ -2474,12 +2481,6 @@ case "$host_os" in
   *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
 esac
 
-
-
-case "$host_os" in
-  *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-  *)                       TAR_FORCE_LOCAL="" ;;
-esac
 
 
 
@@ -3224,7 +3225,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-NOT_CRAN="$NOT_CRAN"
+NOT_CRAN="$NOT_CRAN" SED="$SED"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"
@@ -3670,8 +3671,15 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   if test "$NOT_CRAN" = "true"; then
         if test -f "$RPKG_CFG"; then
       rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode)"
+      echo "configure: removed cargo config (dev mode - using git deps)"
     fi
+  elif test -f "$RPKG_CFG"; then
+            for _url in $("$SED" -n 's/.*git = "\(https:\/\/[^"]*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
+      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
+        printf '\n[source."git+%s"]\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
+        echo "configure: added source replacement for git dep: $_url"
+      fi
+    done
   fi
  ;;
     "cargo-lockfile-compat":C)
@@ -3736,24 +3744,24 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 
   if test "$NOT_CRAN" = "true"; then
     if test "$FORCE_VENDOR" = "1"; then
-      echo "configure: FORCE_VENDOR — running vendor-crates.R pack"
-      if test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
-        _vendor_src=""
+      echo "configure: FORCE_VENDOR — running cargo revendor"
+      if command -v cargo-revendor >/dev/null 2>&1; then
+        _source_root=""
         if test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
-          _vendor_src="--source-root $MINIEXTENDR_LOCAL"
-        elif test -f "$VENDOR_OUT/.vendor-source"; then
-          _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
-          if test -d "$_recorded"; then
-            _vendor_src="--source-root $_recorded"
-          fi
+          _source_root="--source-root $MINIEXTENDR_LOCAL"
         fi
-        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-          pack --path "$abs_rpkg_dir" $_vendor_src 2>&1 || {
-          echo "configure: error: vendor-crates.R pack failed" >&2
+        cargo revendor \
+          --manifest-path src/rust/Cargo.toml \
+          --output "$VENDOR_OUT" \
+          --strip-all \
+          --source-marker \
+          $_source_root -v || {
+          echo "configure: error: cargo revendor failed" >&2
           exit 1
         }
       else
-        echo "configure: error: tools/vendor-crates.R not found" >&2
+        echo "configure: error: cargo-revendor not found" >&2
+        echo "configure:        Install: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
         exit 1
       fi
     else
@@ -3762,58 +3770,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   else
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
       echo "configure: error: CRAN build requires vendored sources." >&2
-      echo "configure:        Run 'just vendor' before CRAN submission." >&2
-      exit 1
-    fi
-
-                    for _crate in miniextendr-api miniextendr-lint; do
-      _vendor_dir=""
-      if test -d "$VENDOR_OUT/$_crate"; then
-        _vendor_dir="$VENDOR_OUT/$_crate"
-      else
-        for _d in "$VENDOR_OUT/$_crate"-[0-9]*/; do
-          if test -d "$_d"; then _vendor_dir="$_d"; break; fi
-        done
-      fi
-      if test -n "$_vendor_dir"; then
-        _dirname="$(basename "$_vendor_dir")"
-        "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
-          src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
-        echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
-      fi
-    done
-
-        if grep -q '^\[patch\.' src/rust/Cargo.toml 2>/dev/null; then
-      "$SED" '/^\[patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
-        && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
-      echo "configure: stripped [patch] section"
-    fi
-
-        _patch_lines=""
-    for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
-      _vendor_dir=""
-      if test -d "$VENDOR_OUT/$_crate"; then
-        _vendor_dir="$VENDOR_OUT/$_crate"
-      else
-        for _d in "$VENDOR_OUT/$_crate"-[0-9]*/; do
-          if test -d "$_d"; then _vendor_dir="$_d"; break; fi
-        done
-      fi
-      if test -n "$_vendor_dir"; then
-        _dirname="$(basename "$_vendor_dir")"
-        _patch_lines="$_patch_lines
-$_crate = { path = \"../../vendor/$_dirname\" }"
-      fi
-    done
-    if test -n "$_patch_lines"; then
-      printf '\n[patch.crates-io]%s\n' "$_patch_lines" >> src/rust/Cargo.toml
-      echo "configure: added [patch.crates-io] for transitive deps"
-    fi
-
-        rm -f src/rust/Cargo.lock
-    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
-    if test $? -ne 0; then
-      echo "configure: error: failed to generate lockfile from vendored sources" >&2
+      echo "configure:        Run 'just vendor' to vendor deps." >&2
+      echo "configure:        Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
       exit 1
     fi
     echo "configure: CRAN build — vendor ready"

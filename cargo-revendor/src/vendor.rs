@@ -18,34 +18,27 @@ pub fn run_cargo_vendor(
 
     std::fs::create_dir_all(vendor_dir)?;
 
-    // Create temp .cargo/config.toml with [patch.crates-io] so cargo vendor
-    // can resolve the dependency graph even with unpublished local crates
-    let rust_dir = manifest_path.parent().unwrap();
-    let cargo_config_dir = rust_dir.join(".cargo");
-    let cargo_config_path = cargo_config_dir.join("config.toml");
-    let had_existing = cargo_config_path.exists();
-    let existing_content = if had_existing {
-        Some(std::fs::read_to_string(&cargo_config_path)?)
-    } else {
-        None
-    };
+    // Add [patch.crates-io] to workspace root Cargo.toml so cargo vendor
+    // can resolve the dependency graph even with unpublished local crates.
+    // NOTE: [patch] only works in Cargo.toml, NOT in .cargo/config.toml.
+    let ws_root = crate::find_workspace_root(
+        manifest_path
+            .parent()
+            .context("manifest has no parent")?,
+    )?;
+    let ws_manifest = ws_root.join("Cargo.toml");
+    let ws_original = std::fs::read_to_string(&ws_manifest)?;
 
-    if !local_pkgs.is_empty() {
-        std::fs::create_dir_all(&cargo_config_dir)?;
-        let mut patch = String::from("[patch.crates-io]\n");
+    if !local_pkgs.is_empty() && !ws_original.contains("[patch.crates-io]") {
+        let mut patch = String::from("\n[patch.crates-io]\n");
         for pkg in local_pkgs {
             patch.push_str(&format!(
                 "{} = {{ path = \"{}\" }}\n",
                 pkg.name,
-                pkg.path.display()
+                crate::path_to_toml(&pkg.path)
             ));
         }
-        let content = if let Some(ref existing) = existing_content {
-            format!("{}\n{}", existing, patch)
-        } else {
-            patch
-        };
-        std::fs::write(&cargo_config_path, &content)?;
+        std::fs::write(&ws_manifest, format!("{}{}", ws_original, patch))?;
     }
 
     let output = Command::new("cargo")
@@ -56,13 +49,8 @@ pub fn run_cargo_vendor(
         .output()
         .context("failed to run cargo vendor")?;
 
-    // Restore config
-    if let Some(ref original) = existing_content {
-        std::fs::write(&cargo_config_path, original)?;
-    } else if cargo_config_path.exists() {
-        let _ = std::fs::remove_file(&cargo_config_path);
-        let _ = std::fs::remove_dir(&cargo_config_dir);
-    }
+    // Restore original workspace Cargo.toml
+    std::fs::write(&ws_manifest, &ws_original)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -190,30 +178,30 @@ pub fn rewrite_local_path_deps(
     Ok(())
 }
 
-/// Add `path = "../<name>"` to a dependency entry if not already present
+/// Set `path = "../<name>"` on a dependency entry (adds or overwrites)
 fn add_path_to_dep(dep: &mut toml_edit::Item, name: &str) -> bool {
+    let correct_path = format!("../{}", name);
     match dep {
         toml_edit::Item::Value(toml_edit::Value::String(version_str)) => {
-            // Simple: name = "0.1.0" → name = { version = "0.1.0", path = "../name" }
             let version = version_str.value().to_string();
             let mut inline = toml_edit::InlineTable::new();
             inline.insert("version", toml_edit::value(&version).into_value().unwrap());
             inline.insert(
                 "path",
-                toml_edit::value(format!("../{}", name))
-                    .into_value()
-                    .unwrap(),
+                toml_edit::value(&correct_path).into_value().unwrap(),
             );
             *dep = toml_edit::Item::Value(toml_edit::Value::InlineTable(inline));
             true
         }
         toml_edit::Item::Value(toml_edit::Value::InlineTable(table)) => {
-            if !table.contains_key("path") {
+            let current = table
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            if current.as_deref() != Some(&correct_path) {
                 table.insert(
                     "path",
-                    toml_edit::value(format!("../{}", name))
-                        .into_value()
-                        .unwrap(),
+                    toml_edit::value(&correct_path).into_value().unwrap(),
                 );
                 true
             } else {
@@ -221,8 +209,12 @@ fn add_path_to_dep(dep: &mut toml_edit::Item, name: &str) -> bool {
             }
         }
         toml_edit::Item::Table(table) => {
-            if !table.contains_key("path") {
-                table.insert("path", toml_edit::value(format!("../{}", name)));
+            let current = table
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            if current.as_deref() != Some(&correct_path) {
+                table.insert("path", toml_edit::value(&correct_path));
                 true
             } else {
                 false
@@ -542,7 +534,7 @@ pub fn generate_cargo_config(
 
     config.push_str(&format!(
         "[source.vendored-sources]\ndirectory = \"{}\"\n",
-        vendor_path.display()
+        crate::path_to_toml(&vendor_path)
     ));
 
     // Write to vendor dir for reference
@@ -579,3 +571,240 @@ pub fn strip_lock_checksums(lockfile: &Path, vendor_dir: &Path, v: crate::Verbos
 
     Ok(())
 }
+
+/// Freeze: rewrite Cargo.toml so all sources resolve from vendor/.
+///
+/// 1. Rewrites git deps to vendor/ path deps
+/// 2. Strips all `[patch.*]` sections (they reference sources outside vendor/)
+/// 3. Adds `[patch.crates-io]` with vendor paths for transitive local deps
+///
+/// After freezing, the manifest is self-contained: `cargo build --offline`
+/// works with only the vendor directory, no network or workspace context.
+pub fn freeze_manifest(
+    manifest_path: &Path,
+    vendor_dir: &Path,
+    local_pkgs: &[LocalPackage],
+    v: crate::Verbosity,
+) -> Result<()> {
+    let content = std::fs::read_to_string(manifest_path)?;
+    let mut doc: toml_edit::DocumentMut = content
+        .parse()
+        .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+
+    let vendor_rel = pathdiff(
+        vendor_dir,
+        manifest_path.parent().context("manifest has no parent")?,
+    );
+
+    // Step 1: Rewrite git/version deps to vendor/ path deps
+    let local_names: std::collections::HashSet<&str> =
+        local_pkgs.iter().map(|p| p.name.as_str()).collect();
+
+    for section in &["dependencies", "build-dependencies"] {
+        if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
+            for name in local_names.iter() {
+                if let Some(dep) = table.get_mut(name) {
+                    rewrite_dep_to_vendor(dep, name, &vendor_rel);
+                }
+            }
+        }
+    }
+
+    // Step 2: Remove all [patch.*] sections
+    let keys_to_remove: Vec<String> = doc
+        .as_table()
+        .iter()
+        .filter(|(k, _)| k.starts_with("patch"))
+        .map(|(k, _)| k.to_string())
+        .collect();
+    for key in &keys_to_remove {
+        doc.remove(key);
+    }
+
+    // Step 3: Add [patch.crates-io] for transitive local deps in vendor/
+    let mut patch_table = toml_edit::Table::new();
+    for pkg in local_pkgs {
+        if vendor_dir.join(&pkg.name).exists() {
+            let rel = format!("{}/{}", vendor_rel, pkg.name);
+            let mut inline = toml_edit::InlineTable::new();
+            inline.insert("path", toml_edit::value(&rel).into_value().unwrap());
+            patch_table.insert(
+                &pkg.name,
+                toml_edit::Item::Value(toml_edit::Value::InlineTable(inline)),
+            );
+        }
+    }
+    if !patch_table.is_empty() {
+        doc.insert("patch", toml_edit::Item::Table(toml_edit::Table::new()));
+        if let Some(patch) = doc.get_mut("patch").and_then(|v| v.as_table_mut()) {
+            patch.insert("crates-io", toml_edit::Item::Table(patch_table));
+        }
+    }
+
+    std::fs::write(manifest_path, doc.to_string())?;
+
+    if v.info() {
+        eprintln!("  Frozen: {} now resolves from vendor/ only", manifest_path.display());
+    }
+
+    Ok(())
+}
+
+/// Rewrite a dependency entry to point at vendor/
+fn rewrite_dep_to_vendor(dep: &mut toml_edit::Item, name: &str, vendor_rel: &str) {
+    let path_val = format!("{}/{}", vendor_rel, name);
+    match dep {
+        toml_edit::Item::Value(toml_edit::Value::InlineTable(table)) => {
+            table.remove("git");
+            table.remove("branch");
+            table.remove("tag");
+            table.remove("rev");
+            if !table.contains_key("version") {
+                table.insert("version", toml_edit::value("*").into_value().unwrap());
+            }
+            table.insert("path", toml_edit::value(&path_val).into_value().unwrap());
+        }
+        toml_edit::Item::Table(table) => {
+            table.remove("git");
+            table.remove("branch");
+            table.remove("tag");
+            table.remove("rev");
+            if !table.contains_key("version") {
+                table.insert("version", toml_edit::value("*"));
+            }
+            table.insert("path", toml_edit::value(&path_val));
+        }
+        toml_edit::Item::Value(toml_edit::Value::String(_)) => {
+            let mut inline = toml_edit::InlineTable::new();
+            inline.insert("version", toml_edit::value("*").into_value().unwrap());
+            inline.insert("path", toml_edit::value(&path_val).into_value().unwrap());
+            *dep = toml_edit::Item::Value(toml_edit::Value::InlineTable(inline));
+        }
+        _ => {}
+    }
+}
+
+/// Compute relative path from base to target
+fn pathdiff(target: &Path, base: &Path) -> String {
+    let target = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+    let base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+
+    let target_parts: Vec<_> = target.components().collect();
+    let base_parts: Vec<_> = base.components().collect();
+
+    let common = target_parts
+        .iter()
+        .zip(base_parts.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    if common == 0 {
+        return crate::path_to_toml(&target);
+    }
+
+    let mut rel = String::new();
+    for _ in 0..base_parts.len() - common {
+        rel.push_str("../");
+    }
+    for part in &target_parts[common..] {
+        rel.push_str(&part.as_os_str().to_string_lossy());
+        rel.push('/');
+    }
+    if rel.ends_with('/') {
+        rel.pop();
+    }
+    rel
+}
+
+/// Regenerate Cargo.lock from vendored sources (offline)
+pub fn regenerate_lockfile(manifest_path: &Path, v: crate::Verbosity) -> Result<()> {
+    let lockfile = manifest_path.with_file_name("Cargo.lock");
+    if lockfile.exists() {
+        std::fs::remove_file(&lockfile)?;
+    }
+
+    let output = std::process::Command::new("cargo")
+        .arg("generate-lockfile")
+        .arg("--manifest-path")
+        .arg(manifest_path)
+        .arg("--offline")
+        .output()
+        .context("failed to run cargo generate-lockfile")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "cargo generate-lockfile --offline failed:\n{}",
+            stderr.trim()
+        );
+    }
+
+    if v.info() {
+        eprintln!("  CRAN mode: regenerated Cargo.lock from vendored sources");
+    }
+
+    Ok(())
+}
+
+/// Compress vendor/ into a .tar.xz tarball
+pub fn compress_vendor(
+    vendor_dir: &Path,
+    tarball_path: &Path,
+    blank_md: bool,
+    v: crate::Verbosity,
+) -> Result<()> {
+    if let Some(parent) = tarball_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    if blank_md {
+        for entry in walkdir::WalkDir::new(vendor_dir) {
+            let entry = entry?;
+            if entry.file_type().is_file()
+                && let Some(ext) = entry.path().extension()
+                && ext == "md"
+            {
+                std::fs::write(entry.path(), "")?;
+            }
+        }
+        if v.debug() {
+            eprintln!("  Blanked .md files in vendor/");
+        }
+    }
+
+    let vendor_name = vendor_dir
+        .file_name()
+        .context("vendor dir has no name")?
+        .to_string_lossy();
+    let parent_dir = vendor_dir.parent().context("vendor dir has no parent")?;
+
+    let output = std::process::Command::new("tar")
+        .arg("-cJf")
+        .arg(tarball_path)
+        // Suppress macOS xattr metadata (causes warnings on Linux GNU tar)
+        .env("COPYFILE_DISABLE", "1")
+        .arg("-C")
+        .arg(parent_dir)
+        .arg(vendor_name.as_ref())
+        .output()
+        .context("failed to run tar")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("tar compression failed:\n{}", stderr.trim());
+    }
+
+    if v.info() {
+        let size = std::fs::metadata(tarball_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        eprintln!(
+            "  Compressed vendor/ to {} ({:.1} MB)",
+            tarball_path.display(),
+            size as f64 / 1_048_576.0
+        );
+    }
+
+    Ok(())
+}
+
