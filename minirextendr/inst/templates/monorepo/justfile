@@ -125,10 +125,22 @@ dev: check test install
 # Quick iteration: just reinstall R package
 reinstall: install
 
-# Vendor all dependencies for CRAN submission
-# Downloads external crates and compresses into inst/vendor.tar.xz
+# Install cargo-revendor (required for vendoring)
+install-revendor:
+    cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor
+
+# Vendor all dependencies for offline/CRAN builds
+# Vendors deps, strips fat, freezes manifest, compresses into inst/vendor.tar.xz
 vendor:
-    Rscript "{{{rpkg_name}}}/tools/vendor-crates.R" pack
+    cargo revendor \
+      --manifest-path {{{rpkg_name}}}/src/rust/Cargo.toml \
+      --output {{{rpkg_name}}}/vendor \
+      --strip-all \
+      --freeze \
+      --compress {{{rpkg_name}}}/inst/vendor.tar.xz \
+      --blank-md \
+      --source-marker \
+      -v
 
 # Vendor monorepo library crates for CRAN (use_vendor_lib)
 # Call this for each monorepo crate that your R package depends on.

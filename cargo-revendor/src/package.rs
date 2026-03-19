@@ -188,7 +188,7 @@ fn build_patch_config(local_pkgs: &[LocalPackage]) -> String {
         lines.push(format!(
             "{} = {{ path = \"{}\" }}",
             pkg.name,
-            pkg.path.display()
+            crate::path_to_toml(&pkg.path)
         ));
     }
     lines.join("\n")

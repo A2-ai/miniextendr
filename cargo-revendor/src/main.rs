@@ -13,6 +13,14 @@
 mod cache;
 mod metadata;
 mod package;
+
+/// Convert a path to a TOML-safe string (forward slashes, no \\?\ prefix)
+pub fn path_to_toml(path: &std::path::Path) -> String {
+    let s = path.display().to_string();
+    // Strip Windows extended-length path prefix (\\?\) that canonicalize() adds
+    let s = s.strip_prefix(r"\\?\").unwrap_or(&s);
+    s.replace('\\', "/")
+}
 mod strip;
 mod vendor;
 
@@ -94,6 +102,26 @@ struct Cli {
     /// Force re-vendoring even if Cargo.lock hasn't changed
     #[arg(long)]
     force: bool,
+
+    /// Compress vendor/ into a tarball (e.g., vendor.tar.xz)
+    #[arg(long)]
+    compress: Option<PathBuf>,
+
+    /// Blank .md files in vendor/ before compression
+    #[arg(long)]
+    blank_md: bool,
+
+    /// Freeze: rewrite Cargo.toml so all sources resolve from vendor/.
+    /// Rewrites git deps to vendor/ path deps, strips [patch.*] sections,
+    /// adds [patch.crates-io] for transitive local deps, and regenerates
+    /// Cargo.lock offline. Makes the manifest self-contained for hermetic
+    /// offline builds with no network, git, or workspace context.
+    #[arg(long)]
+    freeze: bool,
+
+    /// Write .vendor-source marker file recording provenance
+    #[arg(long)]
+    source_marker: bool,
 }
 
 impl Cli {
@@ -142,21 +170,11 @@ fn main() -> Result<()> {
         );
     }
 
-    // Resolve output path
+    // Resolve output path (relative to CWD)
     let output = if cli.output.is_absolute() {
         cli.output.clone()
     } else {
-        // Relative to the manifest's package root (parent of src/rust/)
-        let pkg_root = manifest_path
-            .parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
-            .unwrap_or(
-                manifest_path
-                    .parent()
-                    .context("manifest path has no parent")?,
-            );
-        pkg_root.join(&cli.output)
+        std::env::current_dir()?.join(&cli.output)
     };
 
     // Step 0: Check cache — skip if Cargo.lock unchanged
@@ -276,7 +294,36 @@ fn main() -> Result<()> {
     // Step 10: Strip checksums from Cargo.lock (vendored crates have empty checksums)
     vendor::strip_lock_checksums(&lockfile, &output, v)?;
 
-    // Step 11: Save cache
+    // Step 11: Write source marker
+    if cli.source_marker {
+        let source_info = cli
+            .source_root
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "auto-detected".to_string());
+        std::fs::write(output.join(".vendor-source"), &source_info)?;
+        if v.info() {
+            eprintln!("  Wrote .vendor-source marker: {}", source_info);
+        }
+    }
+
+    // Step 12: Freeze — rewrite manifest so all sources resolve from vendor/
+    if cli.freeze {
+        vendor::freeze_manifest(&manifest_path, &output, &local_pkgs, v)?;
+        vendor::regenerate_lockfile(&manifest_path, v)?;
+    }
+
+    // Step 13: Compress to tarball (relative paths resolve from CWD)
+    if let Some(ref tarball_path) = cli.compress {
+        let tarball = if tarball_path.is_absolute() {
+            tarball_path.clone()
+        } else {
+            std::env::current_dir()?.join(tarball_path)
+        };
+        vendor::compress_vendor(&output, &tarball, cli.blank_md, v)?;
+    }
+
+    // Step 14: Save cache
     cache::save_cache(&lockfile, &output)?;
 
     // Count total crates
