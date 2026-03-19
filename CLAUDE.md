@@ -16,6 +16,11 @@ A Rust-R interoperability framework for building R packages with Rust backends.
   - `rpkg/src/stub.c` — static file (no configure substitution), just a linker stub
 - **configure.ac must not depend on minirextendr**: Template `configure.ac` files should not call `minirextendr::*` functions. Instead, put helper R scripts in `tools/` (included in templates) and invoke them via `Rscript tools/my-helper.R` from configure.ac.
 - **`cargo package` for workspace resolution**: When vendoring workspace crates, use `cargo package` to produce resolved Cargo.toml files (workspace inheritance already expanded). Do not hard-code workspace dependency replacements — the vendoring strategy must work with any workspace-monorepo project.
+- **configure.ac must not modify source files**: Never rewrite Cargo.toml, Cargo.lock, or .rs files during `./configure`. This dirties the VCS tree. Use `cargo revendor --freeze` at vendor time instead.
+- **m4 in AC_CONFIG_COMMANDS**: `$1` becomes empty (use `$0` or avoid `sh -c`). `[` and `]` in sed/grep patterns must use `@<:@` and `@:>@`.
+- **cargo-revendor**: Standalone workspace (excluded from miniextendr workspace). Build with `just revendor-build`, test with `just revendor-test`. `--freeze` rewrites Cargo.toml to resolve from vendor/ only.
+- **Windows paths in TOML**: Use forward slashes. `canonicalize()` adds `\\?\` prefix on Windows — strip it with `strip_prefix(r"\\?\")` before writing to TOML/config files.
+- **macOS tar xattrs**: Set `COPYFILE_DISABLE=1` when creating tarballs on macOS to prevent Apple xattr metadata that causes warnings on Linux/Windows GNU tar.
 
 ## Capturing Command Output
 
