@@ -323,7 +323,7 @@ expand *cargo_flags:
 #
 # In dev mode, this:
 # 1. Generates build configuration files (Makevars, cargo config, etc.)
-# 2. Syncs vendor/ from the monorepo via vendor-crates.R
+# 2. Syncs vendor/ from the monorepo
 #    (same path end-user scaffolded packages use)
 #
 # For CRAN release prep, use `just vendor` then `just configure-cran`.
@@ -341,10 +341,17 @@ configure-cran:
     NOT_CRAN=false bash ./configure
 
 # Vendor dependencies for CRAN release preparation.
-# Uses the package-local vendoring script that configure and generated packages
-# can rely on directly.
+# Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor
 vendor:
-    cd rpkg && Rscript tools/vendor-crates.R pack
+    cargo revendor \
+      --manifest-path rpkg/src/rust/Cargo.toml \
+      --output rpkg/vendor \
+      --strip-all \
+      --freeze \
+      --compress rpkg/inst/vendor.tar.xz \
+      --blank-md \
+      --source-marker \
+      -v
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": devtools-document
@@ -788,7 +795,11 @@ cli-install *cargo_flags:
 # cargo-revendor (standalone workspace, not part of miniextendr workspace)
 # ============================================================================
 
-# Build cargo-revendor
+# Install cargo-revendor
+revendor-install:
+    cargo install --path cargo-revendor
+
+# Build cargo-revendor (without installing)
 revendor-build *cargo_flags:
     cargo build --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
 
