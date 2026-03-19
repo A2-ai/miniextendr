@@ -2453,6 +2453,38 @@ macro_rules! impl_vec_option_try_from_sexp {
 impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
 impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
 
+/// Macro for NA-aware `R vector → Box<[Option<T>]>` conversions.
+macro_rules! impl_boxed_slice_option_try_from_sexp {
+    ($t:ty, $sexptype:ident, $dataptr:ident, $is_na:expr) => {
+        impl TryFromSexp for Box<[Option<$t>]> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::$sexptype {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::$sexptype,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let ptr = unsafe { crate::ffi::$dataptr(sexp) };
+                let slice = unsafe { r_slice(ptr, len) };
+
+                Ok(slice
+                    .iter()
+                    .map(|&v| if $is_na(v) { None } else { Some(v) })
+                    .collect())
+            }
+        }
+    };
+}
+
+impl_boxed_slice_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
+impl_boxed_slice_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
+
 /// Convert R logical vector (LGLSXP) to `Vec<Option<bool>>` with NA support.
 impl TryFromSexp for Vec<Option<bool>> {
     type Error = SexpError;
@@ -2495,6 +2527,16 @@ impl TryFromSexp for Vec<Option<bool>> {
             .iter()
             .map(|&v| RLogical::from_i32(v).to_option_bool())
             .collect())
+    }
+}
+
+/// Convert R logical vector (LGLSXP) to `Box<[Option<bool>]>` with NA support.
+impl TryFromSexp for Box<[Option<bool>]> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<Option<bool>> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_boxed_slice())
     }
 }
 
@@ -2662,6 +2704,16 @@ impl TryFromSexp for Vec<Option<String>> {
         }
 
         Ok(result)
+    }
+}
+
+/// Convert R character vector to `Box<[Option<String>]>` with NA support.
+impl TryFromSexp for Box<[Option<String>]> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_boxed_slice())
     }
 }
 
@@ -2988,6 +3040,25 @@ impl_vec_try_from_sexp_native!(f64);
 impl_vec_try_from_sexp_native!(u8);
 impl_vec_try_from_sexp_native!(RLogical);
 impl_vec_try_from_sexp_native!(crate::ffi::Rcomplex);
+
+macro_rules! impl_boxed_slice_try_from_sexp_native {
+    ($t:ty) => {
+        impl TryFromSexp for Box<[$t]> {
+            type Error = SexpTypeError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(slice.into())
+            }
+        }
+    };
+}
+
+impl_boxed_slice_try_from_sexp_native!(i32);
+impl_boxed_slice_try_from_sexp_native!(f64);
+impl_boxed_slice_try_from_sexp_native!(u8);
+impl_boxed_slice_try_from_sexp_native!(RLogical);
+impl_boxed_slice_try_from_sexp_native!(crate::ffi::Rcomplex);
 // endregion
 
 // region: Fixed-size array conversions
@@ -3172,6 +3243,18 @@ impl TryFromSexp for Vec<String> {
         }
 
         Ok(result)
+    }
+}
+
+/// Convert R character vector to `Box<[String]>`.
+///
+/// **Warning:** `NA_character_` values are converted to empty string `""`.
+impl TryFromSexp for Box<[String]> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_boxed_slice())
     }
 }
 
@@ -3721,6 +3804,15 @@ impl TryFromSexp for Vec<bool> {
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         Self::try_from_sexp(sexp)
+    }
+}
+
+impl TryFromSexp for Box<[bool]> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_boxed_slice())
     }
 }
 // endregion

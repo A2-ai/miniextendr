@@ -22,6 +22,27 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **Windows paths in TOML**: Use forward slashes. `canonicalize()` adds `\\?\` prefix on Windows — strip it with `strip_prefix(r"\\?\")` before writing to TOML/config files.
 - **macOS tar xattrs**: Set `COPYFILE_DISABLE=1` when creating tarballs on macOS to prevent Apple xattr metadata that causes warnings on Linux/Windows GNU tar.
 
+## Adding a New Conversion Type (e.g., `Box<[T]>`)
+
+To add a new container type to the R ↔ Rust conversion system, modify these files:
+
+1. **`miniextendr-api/src/from_r.rs`** — `TryFromSexp` impls (R → Rust):
+   - Native types: `Box<[i32]>`, `Box<[f64]>`, `Box<[u8]>`, `Box<[RLogical]>`, `Box<[Rcomplex]>`
+   - NA-aware: `Box<[Option<i32>]>`, `Box<[Option<f64>]>`
+   - Bool: `Box<[bool]>`, `Box<[Option<bool>]>`
+   - String: `Box<[String]>`, `Box<[Option<String>]>`
+2. **`miniextendr-api/src/into_r.rs`** — `IntoR` impls (Rust → R):
+   - Native blanket: `Box<[T: RNativeType]>` (delegates to `&[T]`)
+   - Bool: `Box<[bool]>` (non-RNativeType, needs explicit impl)
+   - String: `Box<[String]>`
+3. **`miniextendr-api/src/coerce.rs`** — `Coerce<Box<[R]>> for Box<[T]>`
+4. **Serde docs** — `src/serde.rs`, `src/serde/de.rs`, `src/serde/traits.rs` (update type tables)
+5. **rpkg test fixtures** — `rpkg/src/rust/<type>_tests.rs` + `rpkg/tests/testthat/test-<type>.R`
+6. **Vendor sync** — run `vendor_miniextendr(path = "rpkg", local_path = ".")` to update rpkg's vendor/
+
+Note: `bool` is NOT `RNativeType` (R uses `i32` for logicals), so it needs separate impls.
+Note: The proc-macro (`#[miniextendr]`) handles `Box<[T]>` generically via `TryFromSexp`/`IntoR` — no macro changes needed.
+
 ## Capturing Command Output
 
 **Always redirect long-running R/Cargo command output to a log file**, then read the log. This ensures you see the full output (no truncation from `tail`) and can re-read sections as needed.

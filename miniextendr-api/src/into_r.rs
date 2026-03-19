@@ -886,6 +886,29 @@ where
     }
 }
 
+impl<T> IntoR for Box<[T]>
+where
+    T: crate::ffi::RNativeType,
+{
+    type Error = std::convert::Infallible;
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { vec_to_sexp(&self) })
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { vec_to_sexp_unchecked(&self) })
+    }
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp(&self) }
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp_unchecked(&self) }
+    }
+}
+
 /// Convert a slice to an R vector (checked).
 #[inline]
 unsafe fn vec_to_sexp<T: crate::ffi::RNativeType>(slice: &[T]) -> crate::ffi::SEXP {
@@ -1823,6 +1846,23 @@ impl IntoR for &[String] {
     }
 }
 
+/// Convert `Box<[String]>` to R character vector (STRSXP).
+impl IntoR for Box<[String]> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        str_iter_to_strsxp(self.iter().map(|s| s.as_str()))
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_str())) }
+    }
+}
+
 /// Convert &[&str] to R character vector (STRSXP).
 impl IntoR for &[&str] {
     type Error = std::convert::Infallible;
@@ -2142,6 +2182,25 @@ impl IntoR for Vec<bool> {
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         let n = self.len();
         unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(|v| v as i32)) }
+    }
+}
+
+/// Convert `Box<[bool]>` to R logical vector.
+impl IntoR for Box<[bool]> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let n = self.len();
+        logical_iter_to_lglsxp(n, self.iter().map(|&v| v as i32))
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        let n = self.len();
+        unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| v as i32)) }
     }
 }
 
