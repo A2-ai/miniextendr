@@ -3225,7 +3225,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-NOT_CRAN="$NOT_CRAN" SED="$SED"
+NOT_CRAN="$NOT_CRAN" SED="$SED" VENDOR_OUT="$VENDOR_OUT"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
 ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"
@@ -3678,6 +3678,16 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
         printf '\n[source."git+%s"]\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
         echo "configure: added source replacement for git dep: $_url"
+      fi
+    done
+                _cargo_toml="src/rust/Cargo.toml"
+    for _path in $("$SED" -n 's/.*path = "\(\.\.\/[^"]*\)".*/\1/p' "$_cargo_toml" | sort -u); do
+      _escaped_path=$(echo "$_path" | "$SED" 's/\//\\\//g')
+      _name=$("$SED" -n "s/^\([A-Za-z0-9_-]*\).*path = \"${_escaped_path}\".*/\1/p" "$_cargo_toml" | head -1)
+      if test -n "$_name" && test -d "$VENDOR_OUT/$_name"; then
+        _vendor_rel="../../vendor/$_name"
+        "$SED" -i.bak "s|path = \"$_path\"|path = \"$_vendor_rel\"|" "$_cargo_toml" && rm -f "$_cargo_toml.bak"
+        echo "configure: rewrote path dep: $_path -> $_vendor_rel"
       fi
     done
   fi
