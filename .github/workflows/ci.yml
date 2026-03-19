@@ -594,6 +594,7 @@ jobs:
             --manifest-path rpkg/src/rust/Cargo.toml \
             --output rpkg/vendor \
             --strip-all \
+            --freeze \
             --compress rpkg/inst/vendor.tar.xz \
             --source-marker -v
 
