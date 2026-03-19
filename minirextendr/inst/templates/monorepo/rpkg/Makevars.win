@@ -8,4 +8,5 @@ include Makevars
 # - bcrypt: Cryptography
 # - advapi32: Security functions
 # - secur32: Security Support Provider Interface (GetUserNameExW for whoami crate)
-PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME) -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32
+# Use full path to staticlib to avoid MinGW linker picking up cdylib's .dll.a import lib
+PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32
