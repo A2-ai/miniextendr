@@ -61,7 +61,7 @@ pub use rayon_bridge::{RParallelExtend, RParallelIterator};
 /// Integration with the `rand` crate for R's RNG.
 ///
 /// Provides:
-/// - [`RRng`][rand_impl::RRng] - Wraps R's RNG, implements `rand::RngCore`
+/// - [`RRng`][rand_impl::RRng] - Wraps R's RNG, implements `rand::Rng`
 /// - [`RDistributions`][rand_impl::RDistributions] - Direct access to R's native distributions
 /// - [`RRngOps`][rand_impl::RRngOps] - Adapter trait for exposing custom RNGs to R
 ///
