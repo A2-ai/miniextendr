@@ -534,10 +534,12 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         }
 
         // Build column vectors, protecting each from GC.
+        // Coalesce homogeneous length-1 scalars into atomic vectors so that
+        // columns are INTSXP/REALSXP/LGLSXP/STRSXP instead of VECSXP (list).
         let mut df_pairs: Vec<(String, crate::ffi::SEXP)> = Vec::with_capacity(col_names.len());
         for name in col_names {
             let col_values = columns.remove(&name).unwrap();
-            let col_sexp = List::from_raw_values(col_values).as_sexp();
+            let col_sexp = List::from_scalars_or_list(&col_values).as_sexp();
             unsafe { crate::ffi::Rf_protect(col_sexp) };
             n_protect += 1;
             df_pairs.push((name, col_sexp));

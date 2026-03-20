@@ -1417,6 +1417,70 @@ impl List {
         }
     }
 
+    /// Build an atomic vector from homogeneous length-1 scalar SEXPs.
+    ///
+    /// If all elements are length-1 scalars of the same coalesceable type
+    /// (INTSXP, REALSXP, LGLSXP, STRSXP), returns that atomic vector.
+    /// Otherwise returns a VECSXP (generic list).
+    ///
+    /// This is the canonical entry point for both `DataFrame::into_data_frame`
+    /// (column building) and `SeqSerializer::end` (sequence coalescing).
+    ///
+    /// # Safety Note
+    ///
+    /// The input SEXPs should already be protected or be children of protected
+    /// containers.
+    pub fn from_scalars_or_list(elements: &[SEXP]) -> Self {
+        use crate::ffi::SEXPTYPE;
+
+        if elements.is_empty() {
+            return Self::from_raw_values(Vec::new());
+        }
+
+        let first_type = unsafe { ffi::TYPEOF(elements[0]) } as SEXPTYPE;
+        let all_scalar_same_type = elements.iter().all(|&e| unsafe {
+            ffi::Rf_xlength(e) == 1 && (ffi::TYPEOF(e) as SEXPTYPE) == first_type
+        });
+
+        if !all_scalar_same_type {
+            return Self::from_raw_values(elements.to_vec());
+        }
+
+        let n = elements.len() as isize;
+        let sexp = match first_type {
+            SEXPTYPE::INTSXP => unsafe {
+                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::INTSXP, n));
+                for (i, &elem) in elements.iter().enumerate() {
+                    ffi::SET_INTEGER_ELT(v.get(), i as isize, ffi::INTEGER_ELT(elem, 0));
+                }
+                v.get()
+            },
+            SEXPTYPE::REALSXP => unsafe {
+                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::REALSXP, n));
+                for (i, &elem) in elements.iter().enumerate() {
+                    ffi::SET_REAL_ELT(v.get(), i as isize, ffi::REAL_ELT(elem, 0));
+                }
+                v.get()
+            },
+            SEXPTYPE::LGLSXP => unsafe {
+                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::LGLSXP, n));
+                for (i, &elem) in elements.iter().enumerate() {
+                    ffi::SET_LOGICAL_ELT(v.get(), i as isize, ffi::LOGICAL_ELT(elem, 0));
+                }
+                v.get()
+            },
+            SEXPTYPE::STRSXP => unsafe {
+                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n));
+                for (i, &elem) in elements.iter().enumerate() {
+                    ffi::SET_STRING_ELT(v.get(), i as isize, ffi::STRING_ELT(elem, 0));
+                }
+                v.get()
+            },
+            _ => return Self::from_raw_values(elements.to_vec()),
+        };
+        List(sexp)
+    }
+
     /// Build a list from `(name, SEXP)` pairs (heterogeneous-friendly).
     ///
     /// # Safety Note

@@ -3,8 +3,7 @@
 use super::error::RSerdeError;
 use crate::ffi::{
     R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
-    Rf_setAttrib, Rf_unprotect, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE, cetype_t,
+    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, cetype_t,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -282,22 +281,7 @@ impl ser::SerializeSeq for SeqSerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        if self.elements.is_empty() {
-            // Empty sequence -> empty list
-            return Ok(unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 0) });
-        }
-
-        // Smart dispatch: coalesce homogeneous scalars to atomic vector
-        let result = if self.all_scalar {
-            if let Some(elem_type) = self.element_type {
-                try_coalesce_scalars(&self.elements, elem_type)
-                    .unwrap_or_else(|| create_r_list(&self.elements))
-            } else {
-                create_r_list(&self.elements)
-            }
-        } else {
-            create_r_list(&self.elements)
-        };
+        let result = crate::list::List::from_scalars_or_list(&self.elements).as_sexp();
         // Unprotect all intermediate elements now that they're in the container.
         unsafe { Rf_unprotect(self.protect_count) };
         Ok(result)
@@ -467,48 +451,6 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
 }
 
 // region: Helper functions
-
-/// Try to coalesce scalar SEXPs into an atomic vector.
-/// Returns None if coalescing is not possible.
-fn try_coalesce_scalars(elements: &[SEXP], elem_type: SEXPTYPE) -> Option<SEXP> {
-    let n = elements.len();
-
-    match elem_type {
-        SEXPTYPE::INTSXP => {
-            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::INTSXP, n as isize)) };
-            for (i, &elem) in elements.iter().enumerate() {
-                let val = unsafe { crate::ffi::INTEGER_ELT(elem, 0) };
-                unsafe { SET_INTEGER_ELT(sexp.get(), i as isize, val) };
-            }
-            Some(sexp.get())
-        }
-        SEXPTYPE::REALSXP => {
-            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::REALSXP, n as isize)) };
-            for (i, &elem) in elements.iter().enumerate() {
-                let val = unsafe { crate::ffi::REAL_ELT(elem, 0) };
-                unsafe { SET_REAL_ELT(sexp.get(), i as isize, val) };
-            }
-            Some(sexp.get())
-        }
-        SEXPTYPE::LGLSXP => {
-            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::LGLSXP, n as isize)) };
-            for (i, &elem) in elements.iter().enumerate() {
-                let val = unsafe { crate::ffi::LOGICAL_ELT(elem, 0) };
-                unsafe { SET_LOGICAL_ELT(sexp.get(), i as isize, val) };
-            }
-            Some(sexp.get())
-        }
-        SEXPTYPE::STRSXP => {
-            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n as isize)) };
-            for (i, &elem) in elements.iter().enumerate() {
-                let charsxp = unsafe { crate::ffi::STRING_ELT(elem, 0) };
-                unsafe { SET_STRING_ELT(sexp.get(), i as isize, charsxp) };
-            }
-            Some(sexp.get())
-        }
-        _ => None, // Not a coalesceable type
-    }
-}
 
 /// Create an unnamed R list from SEXPs.
 fn create_r_list(elements: &[SEXP]) -> SEXP {
