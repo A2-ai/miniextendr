@@ -113,9 +113,9 @@ mod bitflags_adapter_tests;
 mod bitvec_adapter_tests;
 #[cfg(feature = "borsh")]
 mod borsh_adapter_tests;
+mod box_slice_tests;
 #[cfg(feature = "bytes")]
 mod bytes_adapter_tests;
-mod box_slice_tests;
 mod class_system_matrix;
 mod coerce_tests;
 #[cfg(feature = "connections")]

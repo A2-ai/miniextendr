@@ -3,8 +3,7 @@
 use super::error::RSerdeError;
 use crate::ffi::{
     R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
-    Rf_setAttrib, Rf_unprotect, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE, cetype_t,
+    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, cetype_t,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
