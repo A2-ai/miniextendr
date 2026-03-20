@@ -64,7 +64,7 @@ export PATH := if os() == "windows" {
 
 # All optional features for testing (excluding nonapi which causes CRAN warnings).
 # This mirrors the list in rpkg/configure.ac for NOT_CRAN=true mode.
-all_features := "rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+all_features := "rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
 
 # Directory for devtools::check output (preserved for investigation)
 check_output_dir := justfile_directory() / "rpkg-check-output"
