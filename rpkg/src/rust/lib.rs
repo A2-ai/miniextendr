@@ -91,7 +91,7 @@ use miniextendr_api::miniextendr;
 
 // Package initialization — generates R_init_miniextendr() entry point.
 // Replaces the previous entrypoint.c with a pure-Rust implementation.
-miniextendr_api::miniextendr_init!(miniextendr);
+miniextendr_api::miniextendr_init!();
 
 // Re-export the serde crate from miniextendr-api so test modules can derive
 // Serialize/Deserialize without a direct serde dependency.
