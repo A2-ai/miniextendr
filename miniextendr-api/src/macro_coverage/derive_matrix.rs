@@ -25,8 +25,6 @@
 //! - `PreferDataFrame`: needs `IntoDataFrame` which only exists on generated
 //!   `*DataFrame` companion types from `DataFrameRow`.
 
-use crate::factor::RFactor;
-
 // ExternalPtr derive
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct CovPtr {

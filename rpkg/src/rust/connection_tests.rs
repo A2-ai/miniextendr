@@ -318,8 +318,8 @@ impl<F: Fn(u8) -> u8 + 'static> RConnectionImpl for TransformConnection<F> {
         let available = self.data.len().saturating_sub(self.position);
         let to_read = buf.len().min(available);
 
-        for i in 0..to_read {
-            buf[i] = (self.transform)(self.data[self.position + i]);
+        for (i, slot) in buf.iter_mut().enumerate().take(to_read) {
+            *slot = (self.transform)(self.data[self.position + i]);
         }
         self.position += to_read;
         to_read

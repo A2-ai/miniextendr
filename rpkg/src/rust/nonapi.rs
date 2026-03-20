@@ -2,12 +2,12 @@ use miniextendr_api::ffi::SEXP;
 use miniextendr_api::miniextendr;
 use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
 
+/// Non-API Thread Tests
+///
 /// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
 #[miniextendr]
-/// @title Non-API Thread Tests
 /// @name rpkg_nonapi
 /// @keywords internal
-/// @description Non-API thread tests (requires nonapi feature).
 /// @examples
 /// \dontrun{
 /// unsafe_C_test_spawn_with_r_lean_stack()

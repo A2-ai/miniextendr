@@ -230,8 +230,8 @@ impl Maps {
         string_to_int.insert("three".to_string(), 3);
 
         let mut string_to_float = BTreeMap::new();
-        string_to_float.insert("pi".to_string(), 3.14159);
-        string_to_float.insert("e".to_string(), 2.71828);
+        string_to_float.insert("pi".to_string(), std::f64::consts::PI);
+        string_to_float.insert("e".to_string(), std::f64::consts::E);
 
         let mut metadata = HashMap::new();
         metadata.insert("author".to_string(), "test".to_string());
@@ -330,7 +330,7 @@ impl WithOptionals {
         WithOptionals {
             required_int: 42,
             optional_int: Some(100),
-            optional_float: Some(3.14),
+            optional_float: Some(std::f64::consts::PI),
             optional_string: Some("hello".to_string()),
             optional_bool: Some(true),
         }
@@ -350,7 +350,7 @@ impl WithOptionals {
         WithOptionals {
             required_int: 42,
             optional_int: None,
-            optional_float: Some(2.71828),
+            optional_float: Some(std::f64::consts::E),
             optional_string: None,
             optional_bool: Some(false),
         }
@@ -540,7 +540,7 @@ pub fn serde_r_deserialize_missing_field(sexp: SEXP) -> Result<SerdeRPoint, Stri
 /// @noRd
 #[miniextendr]
 pub fn serde_r_serialize_tuple() -> SEXP {
-    let tuple = (42i32, 3.14f64, "hello".to_string());
+    let tuple = (42i32, std::f64::consts::PI, "hello".to_string());
     to_r(&tuple).expect("serialize tuple")
 }
 
