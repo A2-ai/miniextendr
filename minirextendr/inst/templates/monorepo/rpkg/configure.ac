@@ -321,22 +321,9 @@ AC_CONFIG_COMMANDS([dev-cargo-config],
         echo "configure: added source replacement for git dep: $_url"
       fi
     done
-    dnl CRAN mode: rewrite external path deps in Cargo.toml to point to vendor/
-    dnl Path deps are resolved directly by cargo before source replacement,
-    dnl so we must rewrite the paths in Cargo.toml itself.
-    _cargo_toml="src/rust/Cargo.toml"
-    for _path in $("$SED" -n 's/.*path = "\(\.\.\/@<:@^"@:>@*\)".*/\1/p' "$_cargo_toml" | sort -u); do
-      _escaped_path=$(echo "$_path" | "$SED" 's/\//\\\//g')
-      _name=$("$SED" -n "s/^\(@<:@A-Za-z0-9_-@:>@*\).*path = \"${_escaped_path}\".*/\1/p" "$_cargo_toml" | head -1)
-      if test -n "$_name" && test -d "$VENDOR_OUT/$_name"; then
-        _vendor_rel="../../vendor/$_name"
-        "$SED" -i.bak "s|path = \"$_path\"|path = \"$_vendor_rel\"|" "$_cargo_toml" && rm -f "$_cargo_toml.bak"
-        echo "configure: rewrote path dep: $_path -> $_vendor_rel"
-      fi
-    done
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" SED="$SED" VENDOR_OUT="$VENDOR_OUT"])
+[NOT_CRAN="$NOT_CRAN" SED="$SED"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 dnl Order matters: lockfile-compat, then cargo-vendor, then post-vendor
@@ -446,6 +433,21 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       exit 1
     fi
     echo "configure: CRAN build — vendor ready"
+
+    dnl Rewrite external path deps in Cargo.toml to point to vendor/
+    dnl Path deps are resolved directly by cargo before source replacement,
+    dnl so we must rewrite the paths in Cargo.toml itself.
+    dnl This runs AFTER vendor/ is confirmed to exist.
+    _cargo_toml="src/rust/Cargo.toml"
+    for _path in $("$SED" -n 's/.*path = "\(\.\.\/@<:@^"@:>@*\)".*/\1/p' "$_cargo_toml" | sort -u); do
+      _escaped_path=$(echo "$_path" | "$SED" 's/\//\\\//g')
+      _name=$("$SED" -n "s/^\(@<:@A-Za-z0-9_-@:>@*\).*path = \"${_escaped_path}\".*/\1/p" "$_cargo_toml" | head -1)
+      if test -n "$_name" && test -d "$VENDOR_OUT/$_name"; then
+        _vendor_rel="../../vendor/$_name"
+        "$SED" -i.bak "s|path = \"$_path\"|path = \"$_vendor_rel\"|" "$_cargo_toml" && rm -f "$_cargo_toml.bak"
+        echo "configure: rewrote path dep: $_path -> $_vendor_rel"
+      fi
+    done
   fi
 ],
 [NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
