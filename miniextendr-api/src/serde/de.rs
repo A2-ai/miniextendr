@@ -20,7 +20,7 @@ use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, Seq
 /// | `numeric(1)` | `f64` |
 /// | `character(1)` | `String` |
 /// | NA values | `Option<T>::None` |
-/// | atomic vectors | `Vec<primitive>` |
+/// | atomic vectors | `Vec<primitive>` or `Box<[primitive]>` |
 /// | lists | `Vec<T>` or struct |
 /// | named lists | struct or `HashMap<String, T>` |
 /// | NULL | `()` or `Option<T>::None` |
