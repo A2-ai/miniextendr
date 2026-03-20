@@ -1,7 +1,7 @@
 //! Integration with the `rand` crate for R's RNG.
 //!
 //! This module provides [`RRng`], a wrapper around R's random number generator
-//! that implements the `rand` crate's [`RngCore`] trait. This allows using R's
+//! that implements the `rand` crate's [`Rng`] trait. This allows using R's
 //! RNG with any `rand`-compatible code.
 //!
 //! # Features
@@ -17,7 +17,7 @@
 //!
 //! ```ignore
 //! use miniextendr_api::rand_impl::RRng;
-//! use rand::Rng;
+//! use rand::RngExt;
 //!
 //! #[miniextendr(rng)]
 //! fn random_gaussian(n: i32) -> Vec<f64> {
@@ -63,7 +63,7 @@
 //!
 //! 1. **Batch generation**: Generate all needed random numbers in one call, then
 //!    process them on the worker thread
-//! 2. **Use Rust RNG**: For non-reproducibility-critical work, use `rand::thread_rng()`
+//! 2. **Use Rust RNG**: For non-reproducibility-critical work, use `rand::rng()`
 //!    which doesn't require R thread access
 //!
 //! ```ignore
@@ -77,9 +77,11 @@
 //! }
 //! ```
 
-use rand::RngCore;
+use std::convert::Infallible;
 
-/// A wrapper around R's random number generator that implements [`RngCore`].
+use rand::TryRng;
+
+/// A wrapper around R's random number generator that implements [`rand::Rng`].
 ///
 /// This allows using R's RNG with any `rand`-compatible code, ensuring
 /// reproducibility when seeds are set via `set.seed()` in R.
@@ -94,7 +96,7 @@ use rand::RngCore;
 ///
 /// ```ignore
 /// use miniextendr_api::rand_impl::RRng;
-/// use rand::Rng;
+/// use rand::RngExt;
 ///
 /// #[miniextendr(rng)]
 /// fn random_sample(n: i32) -> Vec<f64> {
@@ -122,47 +124,51 @@ impl RRng {
     }
 }
 
-impl RngCore for RRng {
+/// Implement `TryRng` with `Error = Infallible` so the blanket impl provides `Rng`.
+impl TryRng for RRng {
+    type Error = Infallible;
+
     /// Generate a random u32 using R's RNG.
     ///
     /// Uses `unif_rand()` to generate a value in [0, 1) and scales to u32 range.
     #[inline]
-    fn next_u32(&mut self) -> u32 {
+    fn try_next_u32(&mut self) -> Result<u32, Infallible> {
         // R's unif_rand() returns a value in [0, 1)
         // Scale to full u32 range
         let u = unsafe { crate::ffi::unif_rand() };
         // u * 2^32, but we need to be careful with floating point
         // Using the standard conversion: floor(u * (MAX + 1))
-        (u * (u32::MAX as f64 + 1.0)) as u32
+        Ok((u * (u32::MAX as f64 + 1.0)) as u32)
     }
 
     /// Generate a random u64 using R's RNG.
     ///
     /// Combines two u32 values to create a full u64.
     #[inline]
-    fn next_u64(&mut self) -> u64 {
-        // Combine two u32 values
-        let high = self.next_u32() as u64;
-        let low = self.next_u32() as u64;
-        (high << 32) | low
+    fn try_next_u64(&mut self) -> Result<u64, Infallible> {
+        // Combine two u32 values — call try_next_u32 (infallible) directly
+        let high = self.try_next_u32()? as u64;
+        let low = self.try_next_u32()? as u64;
+        Ok((high << 32) | low)
     }
 
     /// Fill a byte slice with random data from R's RNG.
     #[inline]
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
         // Fill using u64 values for efficiency
         let mut chunks = dest.chunks_exact_mut(8);
         for chunk in chunks.by_ref() {
-            let val = self.next_u64();
+            let val = self.try_next_u64()?;
             chunk.copy_from_slice(&val.to_le_bytes());
         }
         // Handle remainder
         let remainder = chunks.into_remainder();
         if !remainder.is_empty() {
-            let val = self.next_u64();
+            let val = self.try_next_u64()?;
             let bytes = val.to_le_bytes();
             remainder.copy_from_slice(&bytes[..remainder.len()]);
         }
+        Ok(())
     }
 }
 
@@ -243,7 +249,7 @@ impl RDistributions for RRng {
 
 // region: Adapter Traits for Exposing RNGs to R
 
-/// Adapter trait for exposing any [`rand::Rng`] to R.
+/// Adapter trait for exposing any [`rand::RngExt`] to R.
 ///
 /// This trait provides R-friendly methods for random number generation.
 /// It has a blanket implementation for all types implementing `Rng`,
@@ -278,7 +284,7 @@ impl RDistributions for RRng {
 ///
 /// impl RRngOps for MyRng {
 ///     fn random_f64(&self) -> f64 {
-///         use rand::Rng;
+///         use rand::RngExt;
 ///         self.0.borrow_mut().random()
 ///     }
 ///     // ... implement other methods using self.0.borrow_mut()
@@ -299,7 +305,7 @@ impl RDistributions for RRng {
 /// # Design Note
 ///
 /// Like `RIterator`, this trait does NOT have a blanket impl because
-/// `rand::Rng` methods require `&mut self`, but R's ExternalPtr pattern
+/// `rand::RngExt` methods require `&mut self`, but R's ExternalPtr pattern
 /// provides `&self`. Users must implement manually using interior mutability.
 pub trait RRngOps {
     /// Generate a random f64 in [0, 1).
@@ -359,7 +365,7 @@ pub trait RRngOps {
     }
 }
 
-// Note: No blanket impl because Rng methods require &mut self,
+// Note: No blanket impl because RngExt methods require &mut self,
 // but ExternalPtr methods receive &self. Users must use interior mutability.
 
 /// Adapter trait for exposing probability distributions to R.
