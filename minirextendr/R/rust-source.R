@@ -395,7 +395,7 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   # ---- Rust source: lib.rs ----
   # Prepend miniextendr_init!() macro invocation (required for R_init_* entry point)
   lib_rs_content <- paste0(
-    "miniextendr_api::miniextendr_init!(", pkg_rs, ");\n\n",
+    "miniextendr_api::miniextendr_init!();\n\n",
     code, "\n"
   )
   writeLines(lib_rs_content, fs::path(pkg_dir, "src", "rust", "lib.rs"))

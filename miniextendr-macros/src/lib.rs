@@ -2667,20 +2667,11 @@ pub fn impl_typed_external(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// # Usage
 ///
 /// ```ignore
-/// miniextendr_init!(mypkg);
-/// ```
+/// // Auto-detects package name from CARGO_CRATE_NAME (recommended):
+/// miniextendr_api::miniextendr_init!();
 ///
-/// This expands to:
-///
-/// ```ignore
-/// #[unsafe(no_mangle)]
-/// pub unsafe extern "C-unwind" fn R_init_mypkg(
-///     dll: *mut ::miniextendr_api::ffi::DllInfo,
-/// ) {
-///     unsafe {
-///         ::miniextendr_api::init::package_init(dll, c"mypkg");
-///     }
-/// }
+/// // Or specify explicitly (for edge cases):
+/// miniextendr_api::miniextendr_init!(mypkg);
 /// ```
 ///
 /// The generated function calls [`miniextendr_api::init::package_init`] which
@@ -2688,7 +2679,18 @@ pub fn impl_typed_external(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// registration, routine registration, and symbol locking.
 #[proc_macro]
 pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let pkg_name: syn::Ident = syn::parse_macro_input!(input as syn::Ident);
+    let pkg_name: syn::Ident = if input.is_empty() {
+        // Auto-detect from CARGO_CRATE_NAME (set by cargo during compilation)
+        let name = std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| {
+            panic!(
+                "CARGO_CRATE_NAME not set. Either pass the package name explicitly: \
+                 miniextendr_init!(mypkg), or ensure you're building with cargo."
+            )
+        });
+        syn::Ident::new(&name, proc_macro2::Span::call_site())
+    } else {
+        syn::parse_macro_input!(input as syn::Ident)
+    };
     let fn_name = syn::Ident::new(&format!("R_init_{}", pkg_name), pkg_name.span());
 
     // Build a byte string literal with NUL terminator for the package name.

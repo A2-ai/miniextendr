@@ -10,7 +10,7 @@
 
 use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, trait_abi::ccall};
 
-miniextendr_api::miniextendr_init!(producer_pkg);
+miniextendr_api::miniextendr_init!();
 
 // Import the shared Counter trait and its generated ABI types
 pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};

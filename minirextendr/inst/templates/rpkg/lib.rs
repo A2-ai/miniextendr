@@ -1,6 +1,6 @@
 use miniextendr_api::miniextendr;
 
-miniextendr_api::miniextendr_init!({{package_rs}});
+miniextendr_api::miniextendr_init!();
 
 // ---- Adding new functions ----
 //
