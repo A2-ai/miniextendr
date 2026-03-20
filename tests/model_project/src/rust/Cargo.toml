@@ -18,8 +18,8 @@ connections = ["miniextendr-api/connections"]
 
 [dependencies]
 miniextendr-api = { path = "../../vendor/miniextendr-api" }
-rand = "0.9"
-rand_distr = "0.5"
+rand = "0.10"
+rand_distr = "0.6"
 rayon = "1.10"
 itertools = "0.14"
 
