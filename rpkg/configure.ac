@@ -425,6 +425,18 @@ AC_CONFIG_COMMANDS([cargo-vendor],
         echo "configure:        Install: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
         exit 1
       fi
+    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
+      echo "configure: dev mode — syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
+      if test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
+        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
+          sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
+          echo "configure: error: vendor-crates.R sync failed" >&2
+          exit 1
+        }
+      else
+        echo "configure: error: tools/vendor-crates.R not found" >&2
+        exit 1
+      fi
     else
       echo "configure: dev mode — using existing vendor/"
     fi

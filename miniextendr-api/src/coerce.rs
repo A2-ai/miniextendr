@@ -1089,6 +1089,14 @@ impl<T: Coerce<R>, R> Coerce<Vec<R>> for Vec<T> {
     }
 }
 
+/// Infallible element-wise coercion for `Box<[T]>` → `Box<[R]>`.
+impl<T: Coerce<R>, R> Coerce<Box<[R]>> for Box<[T]> {
+    #[inline]
+    fn coerce(self) -> Box<[R]> {
+        Vec::from(self).into_iter().map(Coerce::coerce).collect()
+    }
+}
+
 /// Infallible element-wise coercion for VecDeque to VecDeque.
 impl<T: Coerce<R>, R> Coerce<std::collections::VecDeque<R>> for std::collections::VecDeque<T> {
     fn coerce(self) -> std::collections::VecDeque<R> {
