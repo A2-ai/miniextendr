@@ -51,6 +51,7 @@
     "borsh",
     "indicatif",
     "nonapi",
+    "worker-thread",
     "macro-coverage",
     "debug-preserve",
     "growth-debug"

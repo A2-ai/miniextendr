@@ -34,6 +34,7 @@ pub fn box_slice_raw_roundtrip(x: Box<[u8]>) -> Box<[u8]> {
 
 /// Transform: double each element using Box<[f64]>
 #[miniextendr]
+#[allow(clippy::boxed_local)]
 pub fn box_slice_double(x: Box<[f64]>) -> Box<[f64]> {
     x.iter().map(|v| v * 2.0).collect()
 }

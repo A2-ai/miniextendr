@@ -1,4 +1,10 @@
-#![allow(dead_code, unused_variables, clippy::unused_unit, unused_mut)]
+#![allow(
+    dead_code,
+    unused_variables,
+    clippy::unused_unit,
+    unused_mut,
+    varargs_without_pattern
+)]
 
 //! Function-level macro option coverage.
 //!

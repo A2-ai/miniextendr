@@ -98,6 +98,7 @@
 //! | `connections` | Experimental R connection framework. **Unstable R API.** |
 //! | `indicatif` | Progress bars via R console. Requires `nonapi`. |
 //! | `vctrs` | vctrs class construction (`new_vctr`, `new_rcrd`, `new_list_of`) and `#[derive(Vctrs)]`. |
+//! | `worker-thread` | Worker thread for panic isolation and `Drop` safety. Without it, stubs run inline. |
 //!
 //! ### Type Conversions (Scalars & Vectors)
 //!
@@ -128,9 +129,9 @@
 //!
 //! | Feature | Traits/Modules | Description |
 //! |---------|----------------|-------------|
-//! | `serde` | `RSerialize`, `RDeserialize` | JSON serialization via serde_json |
-//! | `serde_r` | `RSerializeNative`, `RDeserializeNative` | Direct Rust ↔ R (no JSON) |
-//! | `serde_full` | Both above | Enables `serde` + `serde_r` |
+//! | `serde` | `RSerializeNative`, `RDeserializeNative` | Direct Rust ↔ R native serialization |
+//! | `serde_json` | `RSerialize`, `RDeserialize` | JSON string serialization (includes `serde`) |
+//! | `borsh` | `Borsh<T>` | Binary serialization ↔ raw vectors via Borsh |
 //!
 //! ### Adapter Traits (Generic Operations)
 //!
@@ -160,6 +161,26 @@
 //! | Feature | Types | Description |
 //! |---------|-------|-------------|
 //! | `raw_conversions` | `Raw<T>`, `RawSlice<T>` | POD types ↔ raw vectors via bytemuck |
+//!
+//! ### Project-wide Defaults (mutually exclusive where noted)
+//!
+//! | Feature | Description |
+//! |---------|-------------|
+//! | `default-r6` | Default class system: R6 (mutually exclusive with `default-s7`) |
+//! | `default-s7` | Default class system: S7 (mutually exclusive with `default-r6`) |
+//! | `default-worker` | Default to worker thread dispatch (implies `worker-thread`) |
+//! | `default-strict` | Default to strict mode for lossy integer conversions |
+//! | `default-coerce` | Default to coerce mode for type conversions |
+//!
+//! ### Development / Diagnostics
+//!
+//! | Feature | Description |
+//! |---------|-------------|
+//! | `doc-lint` | Warn on roxygen doc comment mismatches (enabled by default) |
+//! | `macro-coverage` | Expose macro coverage test module for `cargo expand` auditing |
+//! | `debug-preserve` | Enable `preserve::count()` diagnostic helpers (tests/benchmarks only) |
+//! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
+//! | `refcount-fast-hash` | Use ahash for refcount arenas (enabled by default, not DOS-resistant) |
 // ALTREP trait methods are safe fns that receive SEXP / *mut T parameters and
 // must pass them to FFI or unsafe helpers — clippy::not_unsafe_ptr_arg_deref
 // is unavoidable without making every trait method `unsafe fn`.
