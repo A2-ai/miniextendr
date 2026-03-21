@@ -70,8 +70,13 @@ mod doc_lint_tests {
     }
 
     #[test]
-    fn test_implicit_description_single_paragraph() {
-        let attrs = make_doc_attrs(&["This is the description."]);
+    fn test_implicit_description_is_second_paragraph() {
+        // First paragraph = title, second paragraph = description
+        let attrs = make_doc_attrs(&[
+            "This is the title.",
+            "",
+            "This is the description.",
+        ]);
         assert_eq!(
             implicit_description_from_attrs(&attrs),
             Some("This is the description.".to_string())
@@ -79,8 +84,13 @@ mod doc_lint_tests {
     }
 
     #[test]
-    fn test_implicit_description_multiline_paragraph() {
-        let attrs = make_doc_attrs(&["First line of description.", "Second line of description."]);
+    fn test_implicit_description_multiline_second_paragraph() {
+        let attrs = make_doc_attrs(&[
+            "Title line.",
+            "",
+            "First line of description.",
+            "Second line of description.",
+        ]);
         assert_eq!(
             implicit_description_from_attrs(&attrs),
             Some("First line of description. Second line of description.".to_string())
@@ -88,8 +98,10 @@ mod doc_lint_tests {
     }
 
     #[test]
-    fn test_implicit_description_stops_at_blank_line() {
+    fn test_implicit_description_stops_at_third_paragraph() {
         let attrs = make_doc_attrs(&[
+            "Title.",
+            "",
             "This is description.",
             "",
             "This is details (not description).",
@@ -101,9 +113,30 @@ mod doc_lint_tests {
     }
 
     #[test]
+    fn test_implicit_description_none_when_only_one_paragraph() {
+        // Only a title, no second paragraph
+        let attrs = make_doc_attrs(&["Just a title."]);
+        assert_eq!(implicit_description_from_attrs(&attrs), None);
+    }
+
+    #[test]
     fn test_implicit_description_none_when_starts_with_tag() {
         let attrs = make_doc_attrs(&["@title Explicit title", "@description Explicit desc"]);
         assert_eq!(implicit_description_from_attrs(&attrs), None);
+    }
+
+    #[test]
+    fn test_implicit_description_skips_multiple_blank_lines() {
+        let attrs = make_doc_attrs(&[
+            "Title.",
+            "",
+            "",
+            "Description after multiple blanks.",
+        ]);
+        assert_eq!(
+            implicit_description_from_attrs(&attrs),
+            Some("Description after multiple blanks.".to_string())
+        );
     }
 }
 // endregion

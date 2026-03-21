@@ -144,9 +144,10 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
         tags.insert(0, format!("@title {}", title));
     }
 
-    // Auto-generate @description from implicit description if we have @name but no @description
-    // Use implicit_description_from_attrs which respects paragraph breaks
-    if has_name
+    // Auto-generate @description from implicit description (second paragraph) if:
+    // - We have @name or any tags (like @param/@return) but no @description
+    // Mirrors the @title auto-generation condition above
+    if (has_name || has_any_tags)
         && !has_description
         && let Some(desc) = implicit_description_from_attrs(attrs)
     {
@@ -342,12 +343,19 @@ pub(crate) fn implicit_title_from_attrs(attrs: &[syn::Attribute]) -> Option<Stri
     }
 }
 
-/// Extract the implicit description from doc attributes (first paragraph, up to blank line).
+/// Extract the implicit description from doc attributes (second paragraph).
 ///
-/// Returns `None` if there are no doc comments or if docs start with a `@tag`.
+/// In roxygen2, the first paragraph is the title and the second paragraph is the
+/// description. This function skips the first paragraph (up to the first blank line)
+/// and returns the second paragraph.
+///
+/// Returns `None` if there is no second paragraph, no doc comments, or if docs
+/// start with a `@tag`.
 #[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
 pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
     let mut lines = Vec::new();
+    let mut found_first_paragraph = false;
+    let mut in_gap = false;
 
     for attr in attrs {
         if !attr.path().is_ident("doc") {
@@ -366,20 +374,34 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
         let content = lit.value();
         let trimmed = content.trim();
 
-        // If we hit a @tag before any content, there's no implicit description
+        // If we hit a @tag, stop
         if trimmed.starts_with('@') {
-            if lines.is_empty() {
-                return None;
+            break;
+        }
+
+        if !found_first_paragraph {
+            // Still in the first paragraph (title)
+            if trimmed.is_empty() {
+                // Blank line — first paragraph ended, now in the gap
+                found_first_paragraph = true;
+                in_gap = true;
             }
-            break;
+            // Non-empty lines before first blank are title — skip
+        } else if in_gap {
+            // Between paragraphs — skip blank lines
+            if !trimmed.is_empty() {
+                // Start of second paragraph
+                in_gap = false;
+                lines.push(trimmed.to_string());
+            }
+        } else {
+            // In second paragraph
+            if trimmed.is_empty() {
+                // End of second paragraph
+                break;
+            }
+            lines.push(trimmed.to_string());
         }
-
-        // Empty line ends the first paragraph
-        if trimmed.is_empty() {
-            break;
-        }
-
-        lines.push(trimmed.to_string());
     }
 
     if lines.is_empty() {
