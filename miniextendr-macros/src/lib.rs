@@ -391,16 +391,21 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// ## Attributes
 ///
-/// - `#[miniextendr(unsafe(main_thread))]`
-/// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]`
-/// - `#[miniextendr(check_interrupt)]`
-/// - `#[miniextendr(coerce)]` (also usable per-parameter)
-/// - `#[miniextendr(unwrap_in_r)]` (return `Result<T, E>` to R without unwrapping)
-/// - `#[miniextendr(dots = typed_list!(...))]` - validate dots, create `dots_typed`
+/// - `#[miniextendr(unsafe(main_thread))]` — run on R's main thread (bypass worker)
+/// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` — control return visibility
+/// - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
+/// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
+/// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
+/// - `#[miniextendr(unwrap_in_r)]` — return `Result<T, E>` to R without unwrapping
+/// - `#[miniextendr(dots = typed_list!(...))]` — validate dots, create `dots_typed`
+/// - `#[miniextendr(internal)]` — adds `@keywords internal` to R wrapper
+/// - `#[miniextendr(noexport)]` — suppresses `@export` from R wrapper
 ///
 /// # Impl blocks (class systems)
 ///
 /// Apply `#[miniextendr(env|r6|s7|s3|s4)]` to an `impl Type` block.
+/// Use `#[miniextendr(label = "...")]` to disambiguate multiple impl blocks
+/// on the same type.
 /// Registration is automatic.
 ///
 /// ## R6 Active Bindings
@@ -2195,7 +2200,7 @@ pub fn derive_altrep_integer(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Derive macro for ALTREP real vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltRealData` traits.
-/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
+/// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
 #[proc_macro_derive(AltrepReal, attributes(altrep))]
 pub fn derive_altrep_real(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2207,7 +2212,7 @@ pub fn derive_altrep_real(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 /// Derive macro for ALTREP logical vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltLogicalData` traits.
-/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
+/// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
 #[proc_macro_derive(AltrepLogical, attributes(altrep))]
 pub fn derive_altrep_logical(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2219,7 +2224,7 @@ pub fn derive_altrep_logical(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Derive macro for ALTREP raw vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltRawData` traits.
-/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
+/// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
 #[proc_macro_derive(AltrepRaw, attributes(altrep))]
 pub fn derive_altrep_raw(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2231,7 +2236,7 @@ pub fn derive_altrep_raw(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 /// Derive macro for ALTREP string vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltStringData` traits.
-/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
+/// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
 #[proc_macro_derive(AltrepString, attributes(altrep))]
 pub fn derive_altrep_string(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2243,7 +2248,7 @@ pub fn derive_altrep_string(input: proc_macro::TokenStream) -> proc_macro::Token
 /// Derive macro for ALTREP complex vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltComplexData` traits.
-/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
+/// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
 #[proc_macro_derive(AltrepComplex, attributes(altrep))]
 pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2255,7 +2260,8 @@ pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Derive macro for ALTREP list vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltListData` traits.
-/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
+/// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger),
+/// except `dataptr` and `subset` which are not supported for list ALTREP.
 #[proc_macro_derive(AltrepList, attributes(altrep))]
 pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2315,7 +2321,19 @@ pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::Token
         .into()
 }
 
-/// Derive `PrefersList`: opt into list-first IntoR by implementing the marker and IntoR wrapper.
+/// Derive `PrefersList`: when a type implements both `IntoList` and `ExternalPtr`,
+/// this selects list as the default `IntoR` conversion.
+///
+/// Without a Prefer* derive, types that implement multiple conversion paths
+/// will get a compile error due to conflicting `IntoR` impls.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(IntoList, PreferList)]
+/// struct Config { verbose: bool, threads: i32 }
+/// // IntoR produces list(verbose = TRUE, threads = 4L)
+/// ```
 #[proc_macro_derive(PreferList)]
 pub fn derive_prefer_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2324,7 +2342,16 @@ pub fn derive_prefer_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
         .into()
 }
 
-/// Derive `PreferDataFrame`: opt into data.frame-first IntoR by implementing the marker and IntoR wrapper.
+/// Derive `PreferDataFrame`: when a type implements both `IntoDataFrame` (via `DataFrameRow`)
+/// and other conversion paths, this selects data.frame as the default `IntoR` conversion.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(DataFrameRow, PreferDataFrame)]
+/// struct Obs { time: f64, value: f64 }
+/// // IntoR produces data.frame(time = ..., value = ...)
+/// ```
 #[proc_macro_derive(PreferDataFrame)]
 pub fn derive_prefer_data_frame(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2333,7 +2360,17 @@ pub fn derive_prefer_data_frame(input: proc_macro::TokenStream) -> proc_macro::T
         .into()
 }
 
-/// Derive `PreferExternalPtr`: marks a type as preferring ExternalPtr conversion.
+/// Derive `PreferExternalPtr`: when a type implements both `ExternalPtr` and
+/// other conversion paths (e.g., `IntoList`), this selects `ExternalPtr` wrapping
+/// as the default `IntoR` conversion.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(ExternalPtr, IntoList, PreferExternalPtr)]
+/// struct Model { weights: Vec<f64> }
+/// // IntoR wraps as ExternalPtr (opaque R object), not list
+/// ```
 #[proc_macro_derive(PreferExternalPtr)]
 pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2342,7 +2379,17 @@ pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::
         .into()
 }
 
-/// Derive `PreferRNativeType`: marks a type as preferring native SEXP conversion.
+/// Derive `PreferRNativeType`: when a newtype wraps an `RNativeType` and also
+/// implements other conversions, this selects the native R vector conversion
+/// as the default `IntoR` path.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(Copy, Clone, RNativeType, PreferRNativeType)]
+/// struct Meters(f64);
+/// // IntoR produces a numeric scalar, not an ExternalPtr
+/// ```
 #[proc_macro_derive(PreferRNativeType)]
 pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2351,7 +2398,8 @@ pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::Toke
         .into()
 }
 
-/// Derive `DataFrameRow`: generates a companion DataFrame type with collection fields.
+/// Derive `DataFrameRow`: generates a companion `*DataFrame` type with collection fields,
+/// plus `IntoR` / `TryFromSexp` / `IntoDataFrame` impls for seamless R data.frame conversion.
 ///
 /// # Example
 ///
@@ -2363,8 +2411,23 @@ pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// }
 ///
 /// // Generates MeasurementDataFrame { time: Vec<f64>, value: Vec<f64> }
-/// // And all conversion impls
+/// // plus conversion impls
 /// ```
+///
+/// # Struct-level attributes
+///
+/// - `#[dataframe(name = "CustomDf")]` — custom name for the generated DataFrame type
+/// - `#[dataframe(align)]` — pad shorter columns with NA to match longest
+/// - `#[dataframe(tag = "my_tag")]` — attach a tag attribute to the data.frame
+/// - `#[dataframe(conflicts = "string")]` — resolve conflicting column types as strings
+///
+/// # Field-level attributes
+///
+/// - `#[dataframe(skip)]` — omit this field from the DataFrame
+/// - `#[dataframe(rename = "col")]` — custom column name
+/// - `#[dataframe(as_list)]` — keep collection as single list column (no expansion)
+/// - `#[dataframe(expand)]` / `#[dataframe(unnest)]` — expand collection into suffixed columns
+/// - `#[dataframe(width = N)]` — pin expansion width (shorter rows get NA)
 #[proc_macro_derive(DataFrameRow, attributes(dataframe))]
 pub fn derive_dataframe_row(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
