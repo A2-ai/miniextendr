@@ -432,3 +432,17 @@ pub use arrow_impl::{
     TimestampSecondArray, UInt8Array,
 };
 // endregion
+
+// region: DataFusion - SQL query engine
+
+/// Integration with Apache DataFusion query engine.
+///
+/// Provides `RSessionContext` for running SQL queries on R data frames.
+/// Uses Tokio internally (block_on) so `#[miniextendr]` functions stay sync.
+///
+/// Enable with `features = ["datafusion"]` (implies `arrow`).
+#[cfg(feature = "datafusion")]
+pub mod datafusion_impl;
+#[cfg(feature = "datafusion")]
+pub use datafusion_impl::RSessionContext;
+// endregion
