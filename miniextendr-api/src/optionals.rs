@@ -103,6 +103,8 @@ pub use either_impl::{Either, Left, Right};
 #[cfg(feature = "ndarray")]
 pub mod ndarray_impl;
 #[cfg(feature = "ndarray")]
+pub use ndarray_impl::{RndMat, RndVec};
+#[cfg(feature = "ndarray")]
 pub use ndarray_impl::{
     // Shared ownership
     ArcArray1,
@@ -164,7 +166,9 @@ pub use ndarray_impl::{
 #[cfg(feature = "nalgebra")]
 pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
-pub use nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps, SMatrix, SVector};
+pub use nalgebra_impl::{
+    DMatrix, DVector, RDMatrix, RDVector, RMatrixOps, RVecStorage, RVectorOps, SMatrix, SVector,
+};
 // endregion
 
 // region: Numeric types

@@ -13,5 +13,5 @@ unsafe_C_altrep_sexp_is_altrep(x)
 \item{x}{A SEXP to check.}
 }
 \description{
-Return whether a SEXP is ALTREP
+Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection.
 }
