@@ -39,8 +39,11 @@ use std::sync::Arc;
 
 pub use arrow_array::{
     self,
-    types::{Float64Type, Int32Type, UInt8Type},
-    Array, ArrayRef, BooleanArray, Float64Array, Int32Array, RecordBatch, StringArray, UInt8Array,
+    types::{
+        Date32Type, Float64Type, Int32Type, TimestampSecondType, UInt8Type,
+    },
+    Array, ArrayRef, BooleanArray, Date32Array, DictionaryArray, Float64Array, Int32Array,
+    RecordBatch, StringArray, TimestampSecondArray, UInt8Array,
 };
 pub use arrow_buffer;
 pub use arrow_schema::{self, DataType, Field, Schema};
@@ -324,12 +327,370 @@ impl TryFromSexp for StringArray {
 
 // endregion
 
-// region: TryFromSexp — RecordBatch from data.frame
+// region: TryFromSexp — Factor, Date, POSIXct (R class-aware conversions)
+
+/// Type alias for dictionary-encoded string arrays (Arrow equivalent of R factors).
+pub type StringDictionaryArray = DictionaryArray<Int32Type>;
+
+/// Check if an R SEXP has a specific class (checks "class" attribute).
+unsafe fn r_inherits(sexp: SEXP, class: &str) -> bool {
+    unsafe { ffi::Rf_inherits(sexp, class.as_ptr().cast()) == Rboolean::TRUE }
+}
+
+/// Check if an R SEXP is a factor (INTSXP with "levels" attribute).
+unsafe fn is_factor(sexp: SEXP) -> bool {
+    sexp.type_of() == SEXPTYPE::INTSXP && unsafe { r_inherits(sexp, "factor\0") }
+}
+
+/// Check if an R SEXP is a Date (REALSXP with class "Date").
+unsafe fn is_date(sexp: SEXP) -> bool {
+    sexp.type_of() == SEXPTYPE::REALSXP && unsafe { r_inherits(sexp, "Date\0") }
+}
+
+/// Check if an R SEXP is POSIXct (REALSXP with class "POSIXct").
+unsafe fn is_posixct(sexp: SEXP) -> bool {
+    sexp.type_of() == SEXPTYPE::REALSXP && unsafe { r_inherits(sexp, "POSIXct\0") }
+}
+
+/// Convert R factor to Arrow DictionaryArray<Int32Type> with string values.
+///
+/// R factors are INTSXP with 1-based indices into a "levels" character vector.
+/// Arrow DictionaryArray uses 0-based indices, so we subtract 1.
+/// NA in factor (NA_integer_) → null in the dictionary keys.
+impl TryFromSexp for StringDictionaryArray {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if !unsafe { is_factor(sexp) } {
+            return Err(SexpError::InvalidValue(
+                "expected R factor (integer with levels attribute)".into(),
+            ));
+        }
+
+        let n = sexp.len();
+        let levels_sexp = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_LevelsSymbol) };
+        if levels_sexp.type_of() != SEXPTYPE::STRSXP {
+            return Err(SexpError::InvalidValue(
+                "factor missing levels attribute".into(),
+            ));
+        }
+
+        // Build the dictionary (levels)
+        let n_levels = levels_sexp.len();
+        let mut dict_builder =
+            arrow_array::builder::StringBuilder::with_capacity(n_levels, n_levels * 8);
+        for i in 0..n_levels {
+            let charsxp = unsafe { ffi::STRING_ELT(levels_sexp, i as R_xlen_t) };
+            let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+            dict_builder.append_value(s);
+        }
+        let dictionary = dict_builder.finish();
+
+        // Build the keys (1-based → 0-based, NA → null)
+        let slice: &[i32] = unsafe { sexp.as_slice() };
+        let mut keys_builder = arrow_array::builder::Int32Builder::with_capacity(n);
+        for &v in slice {
+            if v == NA_INTEGER {
+                keys_builder.append_null();
+            } else {
+                keys_builder.append_value(v - 1); // R is 1-based, Arrow is 0-based
+            }
+        }
+        let keys = keys_builder.finish();
+
+        DictionaryArray::try_new(keys, Arc::new(dictionary))
+            .map_err(|e| SexpError::InvalidValue(e.to_string()))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// Convert R Date to Arrow Date32Array.
+///
+/// R Date values are doubles (days since 1970-01-01). Arrow Date32 is i32 (same epoch).
+impl TryFromSexp for Date32Array {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if !unsafe { is_date(sexp) } {
+            return Err(SexpError::InvalidValue(
+                "expected R Date object (numeric with class 'Date')".into(),
+            ));
+        }
+
+        let n = sexp.len();
+        let slice: &[f64] = unsafe { sexp.as_slice() };
+        let mut builder = arrow_array::builder::Date32Builder::with_capacity(n);
+
+        for &v in slice {
+            if is_na_real(v) {
+                builder.append_null();
+            } else {
+                builder.append_value(v as i32); // f64 days → i32 days
+            }
+        }
+
+        Ok(builder.finish())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// Convert R POSIXct to Arrow TimestampSecondArray.
+///
+/// R POSIXct values are doubles (seconds since Unix epoch, possibly fractional).
+/// Arrow TimestampSecondArray uses i64 seconds. Fractional seconds are truncated.
+/// Timezone from R's "tzone" attribute is preserved if present.
+pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpError> {
+    if !unsafe { is_posixct(sexp) } {
+        return Err(SexpError::InvalidValue(
+            "expected R POSIXct object (numeric with class 'POSIXct')".into(),
+        ));
+    }
+
+    let n = sexp.len();
+    let slice: &[f64] = unsafe { sexp.as_slice() };
+
+    // Extract timezone if present
+    let tzone_sexp = unsafe {
+        ffi::Rf_getAttrib(sexp, ffi::Rf_install(c"tzone".as_ptr()))
+    };
+    let tz: Option<Arc<str>> = if tzone_sexp.type_of() == SEXPTYPE::STRSXP && tzone_sexp.len() > 0
+    {
+        let charsxp = unsafe { ffi::STRING_ELT(tzone_sexp, 0) };
+        let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+        if s.is_empty() { None } else { Some(Arc::from(s)) }
+    } else {
+        None
+    };
+
+    let mut builder = arrow_array::builder::TimestampSecondBuilder::with_capacity(n);
+    for &v in slice {
+        if is_na_real(v) {
+            builder.append_null();
+        } else {
+            builder.append_value(v as i64); // f64 seconds → i64 seconds
+        }
+    }
+
+    let mut arr = builder.finish();
+    if let Some(tz) = tz {
+        arr = arr.with_timezone(tz);
+    }
+    Ok(arr)
+}
+
+// endregion
+
+// region: IntoR — Factor, Date, POSIXct
+
+/// Convert Arrow DictionaryArray<Int32Type> to R factor.
+impl IntoR for StringDictionaryArray {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    fn into_sexp(self) -> SEXP {
+        use arrow_array::cast::AsArray;
+
+        let n = self.len();
+        let keys = self.keys();
+        let values = self.values().as_string::<i32>();
+
+        unsafe {
+            let scope = crate::gc_protect::ProtectScope::new();
+
+            // Create integer vector for factor codes (0-based → 1-based)
+            let codes = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::INTSXP, n as R_xlen_t));
+            let codes_ptr = ffi::INTEGER(codes);
+            for i in 0..n {
+                if self.is_null(i) {
+                    *codes_ptr.add(i) = NA_INTEGER;
+                } else {
+                    *codes_ptr.add(i) = keys.value(i) + 1; // Arrow 0-based → R 1-based
+                }
+            }
+
+            // Create levels character vector
+            let n_levels = values.len();
+            let levels =
+                scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n_levels as R_xlen_t));
+            for i in 0..n_levels {
+                let s = values.value(i);
+                let charsxp = ffi::Rf_mkCharLenCE(
+                    s.as_ptr().cast(),
+                    s.len() as i32,
+                    ffi::cetype_t::CE_UTF8,
+                );
+                ffi::SET_STRING_ELT(levels, i as R_xlen_t, charsxp);
+            }
+
+            // Set levels and class attributes
+            ffi::Rf_setAttrib(codes, ffi::R_LevelsSymbol, levels);
+            let class_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            ffi::SET_STRING_ELT(
+                class_str,
+                0,
+                ffi::Rf_mkCharLenCE(c"factor".as_ptr(), 6, ffi::cetype_t::CE_UTF8),
+            );
+            ffi::Rf_setAttrib(codes, R_ClassSymbol, class_str);
+
+            codes
+        }
+    }
+}
+
+/// Convert Arrow Date32Array to R Date.
+impl IntoR for Date32Array {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    fn into_sexp(self) -> SEXP {
+        let n = self.len();
+        unsafe {
+            let scope = crate::gc_protect::ProtectScope::new();
+
+            let sexp = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::REALSXP, n as R_xlen_t));
+            let dst = ffi::REAL(sexp);
+            for i in 0..n {
+                *dst.add(i) = if self.is_null(i) {
+                    NA_REAL
+                } else {
+                    self.value(i) as f64
+                };
+            }
+
+            // Set class = "Date"
+            let class_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            ffi::SET_STRING_ELT(
+                class_str,
+                0,
+                ffi::Rf_mkCharLenCE(c"Date".as_ptr(), 4, ffi::cetype_t::CE_UTF8),
+            );
+            ffi::Rf_setAttrib(sexp, R_ClassSymbol, class_str);
+
+            sexp
+        }
+    }
+}
+
+/// Convert Arrow TimestampSecondArray to R POSIXct.
+impl IntoR for TimestampSecondArray {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    fn into_sexp(self) -> SEXP {
+        let n = self.len();
+        let tz = match self.data_type() {
+            DataType::Timestamp(_, Some(tz)) => Some(tz.clone()),
+            _ => None,
+        };
+
+        unsafe {
+            let scope = crate::gc_protect::ProtectScope::new();
+
+            let sexp = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::REALSXP, n as R_xlen_t));
+            let dst = ffi::REAL(sexp);
+            for i in 0..n {
+                *dst.add(i) = if self.is_null(i) {
+                    NA_REAL
+                } else {
+                    self.value(i) as f64
+                };
+            }
+
+            // Set class = c("POSIXct", "POSIXt")
+            let class_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 2));
+            ffi::SET_STRING_ELT(
+                class_str,
+                0,
+                ffi::Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, ffi::cetype_t::CE_UTF8),
+            );
+            ffi::SET_STRING_ELT(
+                class_str,
+                1,
+                ffi::Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, ffi::cetype_t::CE_UTF8),
+            );
+            ffi::Rf_setAttrib(sexp, R_ClassSymbol, class_str);
+
+            // Set tzone attribute if present
+            if let Some(tz) = tz {
+                let tz_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+                ffi::SET_STRING_ELT(
+                    tz_str,
+                    0,
+                    ffi::Rf_mkCharLenCE(
+                        tz.as_ptr().cast(),
+                        tz.len() as i32,
+                        ffi::cetype_t::CE_UTF8,
+                    ),
+                );
+                ffi::Rf_setAttrib(sexp, ffi::Rf_install(c"tzone".as_ptr()), tz_str);
+            }
+
+            sexp
+        }
+    }
+}
+
+// endregion
+
+// region: TryFromSexp — RecordBatch from data.frame (class-aware dispatch)
 
 /// Convert a single R column SEXP to an Arrow ArrayRef.
 ///
-/// Dispatches on `TYPEOF(sexp)` to choose the appropriate array type.
+/// Dispatches on R class attributes first (factor, Date, POSIXct), then
+/// falls back to TYPEOF for plain vectors.
 fn sexp_column_to_arrow(col_sexp: SEXP, col_name: &str) -> Result<(Field, ArrayRef), SexpError> {
+    // Check class-based types first (before plain TYPEOF dispatch)
+    unsafe {
+        if is_factor(col_sexp) {
+            let arr = StringDictionaryArray::try_from_sexp(col_sexp)?;
+            let nullable = arr.logical_null_count() > 0;
+            return Ok((
+                Field::new(
+                    col_name,
+                    DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                    nullable,
+                ),
+                Arc::new(arr),
+            ));
+        }
+        if is_date(col_sexp) {
+            let arr = Date32Array::try_from_sexp(col_sexp)?;
+            let nullable = arr.null_count() > 0;
+            return Ok((
+                Field::new(col_name, DataType::Date32, nullable),
+                Arc::new(arr),
+            ));
+        }
+        if is_posixct(col_sexp) {
+            let arr = posixct_to_timestamp(col_sexp)?;
+            let nullable = arr.null_count() > 0;
+            return Ok((
+                Field::new(
+                    col_name,
+                    arr.data_type().clone(),
+                    nullable,
+                ),
+                Arc::new(arr),
+            ));
+        }
+    }
+
+    // Plain TYPEOF dispatch
     let (field, array): (Field, ArrayRef) = match col_sexp.type_of() {
         SEXPTYPE::REALSXP => {
             let arr = Float64Array::try_from_sexp(col_sexp)?;
@@ -606,6 +967,33 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
         DataType::UInt8 => array.as_primitive::<UInt8Type>().clone().into_sexp(),
         DataType::Boolean => array.as_boolean().clone().into_sexp(),
         DataType::Utf8 => array.as_string::<i32>().clone().into_sexp(),
+        DataType::Date32 => array.as_primitive::<Date32Type>().clone().into_sexp(),
+        DataType::Timestamp(arrow_schema::TimeUnit::Second, _) => {
+            array
+                .as_primitive::<TimestampSecondType>()
+                .clone()
+                .into_sexp()
+        }
+        DataType::Dictionary(key_type, _) if key_type.as_ref() == &DataType::Int32 => {
+            array
+                .as_any()
+                .downcast_ref::<StringDictionaryArray>()
+                .cloned()
+                .map(|a| a.into_sexp())
+                .unwrap_or_else(|| {
+                    // Not a string dictionary, fall through to default
+                    let n = array.len();
+                    unsafe {
+                        let sexp =
+                            ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
+                        let guard = crate::gc_protect::OwnedProtect::new(sexp);
+                        for i in 0..n {
+                            ffi::SET_STRING_ELT(guard.get(), i as R_xlen_t, R_NaString);
+                        }
+                        guard.get()
+                    }
+                })
+        }
         // Fallback for unsupported types: return character vector of NA
         _ => {
             let n = array.len();

@@ -179,3 +179,103 @@ test_that("ArrayRef length correct", {
 })
 
 # endregion
+
+# region: Factor (DictionaryArray)
+
+test_that("Factor roundtrip preserves levels and values", {
+  f <- factor(c("a", "b", "a", "c"))
+  result <- arrow_factor_roundtrip(f)
+  expect_s3_class(result, "factor")
+  expect_equal(levels(result), levels(f))
+  expect_equal(as.character(result), as.character(f))
+})
+
+test_that("Factor handles NA", {
+  f <- factor(c("x", NA, "y"))
+  result <- arrow_factor_roundtrip(f)
+  expect_equal(as.character(result[1]), "x")
+  expect_true(is.na(result[2]))
+  expect_equal(as.character(result[3]), "y")
+})
+
+test_that("Factor length correct", {
+  expect_equal(arrow_factor_len(factor(c("a", "b", "c"))), 3L)
+})
+
+# endregion
+
+# region: Date (Date32Array)
+
+test_that("Date roundtrip preserves values", {
+  d <- as.Date(c("2024-01-01", "2024-06-15", "2024-12-31"))
+  result <- arrow_date_roundtrip(d)
+  expect_s3_class(result, "Date")
+  expect_equal(result, d)
+})
+
+test_that("Date handles NA", {
+  d <- as.Date(c("2024-01-01", NA, "2024-12-31"))
+  result <- arrow_date_roundtrip(d)
+  expect_equal(result[1], d[1])
+  expect_true(is.na(result[2]))
+  expect_equal(result[3], d[3])
+})
+
+test_that("Date length correct", {
+  expect_equal(arrow_date_len(Sys.Date() + 0:4), 5L)
+})
+
+# endregion
+
+# region: POSIXct (TimestampSecondArray)
+
+test_that("POSIXct roundtrip preserves values (truncated to seconds)", {
+  t <- as.POSIXct(c("2024-01-01 12:00:00", "2024-06-15 18:30:00"), tz = "UTC")
+  result <- arrow_posixct_roundtrip(t)
+  expect_s3_class(result, "POSIXct")
+  # Timestamps are truncated to seconds
+  expect_equal(as.numeric(result), as.numeric(t), tolerance = 1)
+})
+
+test_that("POSIXct handles NA", {
+  t <- as.POSIXct(c("2024-01-01 00:00:00", NA), tz = "UTC")
+  result <- arrow_posixct_roundtrip(t)
+  expect_false(is.na(result[1]))
+  expect_true(is.na(result[2]))
+})
+
+test_that("POSIXct length correct", {
+  t <- as.POSIXct(c("2024-01-01", "2024-01-02", "2024-01-03"), tz = "UTC")
+  expect_equal(arrow_posixct_len(t), 3L)
+})
+
+test_that("POSIXct preserves timezone", {
+  t <- as.POSIXct("2024-01-01 12:00:00", tz = "America/New_York")
+  result <- arrow_posixct_roundtrip(t)
+  expect_equal(attr(result, "tzone"), "America/New_York")
+})
+
+# endregion
+
+# region: RecordBatch with typed columns
+
+test_that("RecordBatch handles factor columns", {
+  df <- data.frame(name = factor(c("a", "b", "c")), value = c(1.0, 2.0, 3.0))
+  result <- arrow_recordbatch_typed_roundtrip(df)
+  expect_s3_class(result$name, "factor")
+  expect_equal(as.character(result$name), c("a", "b", "c"))
+  expect_equal(result$value, c(1.0, 2.0, 3.0))
+})
+
+test_that("RecordBatch handles Date columns", {
+  df <- data.frame(
+    date = as.Date(c("2024-01-01", "2024-06-15")),
+    value = c(10L, 20L)
+  )
+  result <- arrow_recordbatch_typed_roundtrip(df)
+  expect_s3_class(result$date, "Date")
+  expect_equal(result$date, df$date)
+  expect_equal(result$value, df$value)
+})
+
+# endregion
