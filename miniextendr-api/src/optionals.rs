@@ -446,3 +446,12 @@ pub mod datafusion_impl;
 #[cfg(feature = "datafusion")]
 pub use datafusion_impl::RSessionContext;
 // endregion
+
+// region: Log - Rust logging to R console
+
+/// Integration with the `log` crate for routing Rust diagnostics to R's console.
+///
+/// Enable with `features = ["log"]`.
+#[cfg(feature = "log")]
+pub mod log_impl;
+// endregion

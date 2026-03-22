@@ -107,6 +107,8 @@ mod collect_tests;
 mod condition_tests;
 mod display_fromstr_tests;
 mod json_string_tests;
+#[cfg(feature = "log")]
+mod log_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
 mod altrep_sexp_tests;

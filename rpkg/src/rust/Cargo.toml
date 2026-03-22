@@ -47,6 +47,7 @@ tinyvec = ["miniextendr-api/tinyvec"]
 borsh = ["miniextendr-api/borsh"]
 arrow = ["miniextendr-api/arrow"]
 datafusion = ["miniextendr-api/datafusion"]
+log = ["miniextendr-api/log", "dep:log"]
 indicatif = ["miniextendr-api/indicatif"]
 # Diagnostic / development features (shallow pass-through)
 macro-coverage = ["miniextendr-api/macro-coverage"]
@@ -62,6 +63,7 @@ default-worker = ["miniextendr-api/default-worker"]
 
 [dependencies]
 miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
+log = { version = "0.4", optional = true }
 
 [build-dependencies]
 miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
