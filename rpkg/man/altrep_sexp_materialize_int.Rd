@@ -13,5 +13,5 @@ altrep_sexp_materialize_int(x)
 \item{x}{An ALTREP integer vector.}
 }
 \description{
-Try to wrap a SEXP in AltrepSexp and materialize it as integers
+Uses AltrepSexp parameter -- only accepts ALTREP vectors.
 }

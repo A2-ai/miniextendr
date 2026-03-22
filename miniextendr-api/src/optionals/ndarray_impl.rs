@@ -2662,6 +2662,325 @@ impl RNdIndex for ArrayD<i32> {
     }
 }
 
+// region: R-backed ndarray wrapper types
+//
+// Since ndarray's storage traits (`RawData`, `Data`, etc.) are sealed via
+// a private marker pattern, we cannot implement custom storage. Instead,
+// we provide wrapper types that hold a GC-protected R SEXP and vend ndarray
+// `ArrayView` / `ArrayViewMut` references for zero-copy operations.
+
+/// An R vector with zero-copy ndarray view access.
+///
+/// `RndVec<T>` wraps an R SEXP and provides `.view()` / `.view_mut()` methods
+/// that return ndarray `ArrayView1` / `ArrayViewMut1` views directly over
+/// R's memory. No data is copied on input or output.
+///
+/// # GC Protection
+///
+/// Uses the preserve list for GC protection — safe across `.Call` boundaries.
+///
+/// # Thread Safety
+///
+/// `!Send` and `!Sync` — must be used on R's main thread.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[miniextendr]
+/// fn double_vector(v: RndVec<f64>) -> RndVec<f64> {
+///     let input = v.view();
+///     let mut result = unsafe { RndVec::<f64>::new(input.len(), |s| s.fill(0.0)) };
+///     result.view_mut().assign(&(&input * 2.0));
+///     result  // zero-copy return
+/// }
+/// ```
+pub struct RndVec<T: RNativeType> {
+    sexp: SEXP,
+    preserve_cell: SEXP,
+    _marker: std::marker::PhantomData<*const T>,
+}
+
+/// An R matrix with zero-copy ndarray 2D view access.
+///
+/// `RndMat<T>` wraps an R matrix SEXP and provides `.view()` / `.view_mut()`
+/// methods returning Fortran-order (column-major) `ArrayView2` / `ArrayViewMut2`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[miniextendr]
+/// fn matrix_trace(m: RndMat<f64>) -> f64 {
+///     m.view().diag().sum()  // zero-copy
+/// }
+/// ```
+pub struct RndMat<T: RNativeType> {
+    sexp: SEXP,
+    preserve_cell: SEXP,
+    nrow: usize,
+    ncol: usize,
+    _marker: std::marker::PhantomData<*const T>,
+}
+
+impl<T: RNativeType> RndVec<T> {
+    /// Wrap an existing R SEXP as an ndarray-compatible vector (zero-copy).
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(crate::from_r::SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        Ok(Self {
+            sexp,
+            preserve_cell,
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    /// Allocate a new R vector and initialize it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
+        let sexp =
+            unsafe { crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t) };
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        let ptr = unsafe { T::dataptr_mut(sexp) };
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
+        init(slice);
+        Self {
+            sexp,
+            preserve_cell,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Allocate a zero-filled R vector.
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn zeros(len: usize) -> Self
+    where
+        T: Default,
+    {
+        unsafe { Self::new(len, |s| s.fill(T::default())) }
+    }
+
+    /// Zero-copy read-only ndarray view.
+    #[inline]
+    pub fn view(&self) -> ArrayView1<'_, T> {
+        let slice = unsafe { self.sexp.as_slice::<T>() };
+        ArrayView1::from(slice)
+    }
+
+    /// Zero-copy mutable ndarray view.
+    #[inline]
+    pub fn view_mut(&mut self) -> ArrayViewMut1<'_, T> {
+        let len = self.sexp.len();
+        let ptr = unsafe { T::dataptr_mut(self.sexp) };
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
+        ArrayViewMut1::from(slice)
+    }
+
+    /// Number of elements.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.sexp.len()
+    }
+
+    /// Check if empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get the underlying SEXP.
+    #[inline]
+    pub fn as_sexp(&self) -> SEXP {
+        self.sexp
+    }
+
+    /// Consume, release GC protection, and return the raw SEXP.
+    pub fn into_sexp(self) -> SEXP {
+        let sexp = self.sexp;
+        unsafe { crate::preserve::release(self.preserve_cell) };
+        std::mem::forget(self);
+        sexp
+    }
+}
+
+impl<T: RNativeType> Drop for RndVec<T> {
+    fn drop(&mut self) {
+        unsafe { crate::preserve::release(self.preserve_cell) }
+    }
+}
+
+impl<T: RNativeType> TryFromSexp for RndVec<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { Self::from_sexp(sexp) }
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+impl<T: RNativeType> IntoR for RndVec<T> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+}
+
+impl<T: RNativeType> RndMat<T> {
+    /// Wrap an existing R matrix SEXP (zero-copy).
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(crate::from_r::SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        Ok(Self {
+            sexp,
+            preserve_cell,
+            nrow,
+            ncol,
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    /// Allocate a new R matrix and initialize it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn new(nrow: usize, ncol: usize, init: impl FnOnce(&mut [T])) -> Self {
+        let sexp = unsafe {
+            crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32)
+        };
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        let ptr = unsafe { T::dataptr_mut(sexp) };
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, nrow * ncol) };
+        init(slice);
+        Self {
+            sexp,
+            preserve_cell,
+            nrow,
+            ncol,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Allocate a zero-filled R matrix.
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn zeros(nrow: usize, ncol: usize) -> Self
+    where
+        T: Default,
+    {
+        unsafe { Self::new(nrow, ncol, |s| s.fill(T::default())) }
+    }
+
+    /// Zero-copy Fortran-order (column-major) 2D view.
+    #[inline]
+    pub fn view(&self) -> ArrayView2<'_, T> {
+        let slice = unsafe { self.sexp.as_slice::<T>() };
+        unsafe { ArrayView2::from_shape_ptr((self.nrow, self.ncol).f(), slice.as_ptr()) }
+    }
+
+    /// Zero-copy mutable Fortran-order 2D view.
+    #[inline]
+    pub fn view_mut(&mut self) -> ArrayViewMut2<'_, T> {
+        let ptr = unsafe { T::dataptr_mut(self.sexp) };
+        unsafe { ArrayViewMut2::from_shape_ptr((self.nrow, self.ncol).f(), ptr) }
+    }
+
+    /// Number of rows.
+    #[inline]
+    pub fn nrow(&self) -> usize {
+        self.nrow
+    }
+
+    /// Number of columns.
+    #[inline]
+    pub fn ncol(&self) -> usize {
+        self.ncol
+    }
+
+    /// Get the underlying SEXP.
+    #[inline]
+    pub fn as_sexp(&self) -> SEXP {
+        self.sexp
+    }
+
+    /// Consume, release GC protection, and return the raw SEXP.
+    pub fn into_sexp(self) -> SEXP {
+        let sexp = self.sexp;
+        unsafe { crate::preserve::release(self.preserve_cell) };
+        std::mem::forget(self);
+        sexp
+    }
+}
+
+impl<T: RNativeType> Drop for RndMat<T> {
+    fn drop(&mut self) {
+        unsafe { crate::preserve::release(self.preserve_cell) }
+    }
+}
+
+impl<T: RNativeType> TryFromSexp for RndMat<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { Self::from_sexp(sexp) }
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+impl<T: RNativeType> IntoR for RndMat<T> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+}
+
+// endregion
+
 #[cfg(test)]
 mod tests {
     use super::*;

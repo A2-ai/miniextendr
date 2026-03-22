@@ -155,6 +155,8 @@ mod missing_tests;
 mod nalgebra_adapter_tests;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;
+#[cfg(all(feature = "nalgebra", feature = "ndarray"))]
+mod r_backed_tests;
 #[cfg(feature = "num-complex")]
 mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]

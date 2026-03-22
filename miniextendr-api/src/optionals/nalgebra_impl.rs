@@ -951,6 +951,416 @@ where
     }
 }
 
+// region: R-backed storage for zero-copy nalgebra operations
+//
+// `RVecStorage<T, R, C>` wraps an R SEXP and implements nalgebra's storage traits,
+// enabling nalgebra matrices/vectors to operate directly on R-allocated memory.
+// This eliminates copies on both input (R → Rust) and output (Rust → R).
+//
+// GC protection uses the preserve list (arbitrary-order release, survives
+// across .Call boundaries). Types are !Send + !Sync.
+
+use crate::ffi;
+use crate::from_r::SexpTypeError;
+use nalgebra::base::allocator::Allocator;
+use nalgebra::base::default_allocator::DefaultAllocator;
+use nalgebra::base::dimension::{Dim, Dyn, U1};
+use nalgebra::base::storage::{IsContiguous, RawStorage, RawStorageMut, Storage};
+use nalgebra::base::Matrix;
+use std::marker::PhantomData;
+
+/// Column-major R-backed storage for nalgebra matrices.
+///
+/// This type wraps an R SEXP (REALSXP, INTSXP, or RAWSXP) and implements
+/// nalgebra's storage traits. The underlying data is R-allocated memory,
+/// protected from garbage collection via the preserve list.
+///
+/// # Zero-Copy Guarantee
+///
+/// - **Input**: `TryFromSexp` wraps the R vector directly (no copy)
+/// - **Output**: `IntoR` returns the underlying SEXP (no copy)
+/// - **Compute**: all nalgebra operations read/write R memory directly
+///
+/// # Thread Safety
+///
+/// `RVecStorage` is `!Send` and `!Sync` because accessing R memory requires
+/// being on R's main thread. Functions using `RDVector`/`RDMatrix` automatically
+/// route to the main thread via the `#[miniextendr]` macro.
+///
+/// # ALTREP
+///
+/// If the input R vector is an ALTREP object, accessing its data pointer will
+/// trigger materialization. This is unavoidable for contiguous memory access.
+pub struct RVecStorage<T: RNativeType, R: Dim = Dyn, C: Dim = Dyn> {
+    sexp: SEXP,
+    preserve_cell: SEXP,
+    nrows: R,
+    ncols: C,
+    _marker: PhantomData<*const T>, // !Send + !Sync
+}
+
+/// A nalgebra dynamic vector backed by R memory. Zero-copy.
+///
+/// This is a real nalgebra column vector that operates directly on R's
+/// `REALSXP`/`INTSXP` memory.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[miniextendr]
+/// fn vector_norm(v: RDVector<f64>) -> f64 {
+///     v.norm()  // zero-copy, no allocation
+/// }
+/// ```
+pub type RDVector<T> = Matrix<T, Dyn, U1, RVecStorage<T, Dyn, U1>>;
+
+/// A nalgebra dynamic matrix backed by R memory. Zero-copy.
+///
+/// This is a real nalgebra matrix that operates directly on R's
+/// column-major matrix memory.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[miniextendr]
+/// fn matrix_det(m: RDMatrix<f64>) -> f64 {
+///     m.determinant()  // zero-copy, no allocation
+/// }
+/// ```
+pub type RDMatrix<T> = Matrix<T, Dyn, Dyn, RVecStorage<T, Dyn, Dyn>>;
+
+impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
+    /// Wrap an existing R SEXP as a column vector storage (zero-copy).
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn from_sexp_vector(sexp: SEXP) -> Result<Self, SexpError> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let len = sexp.len();
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        Ok(Self {
+            sexp,
+            preserve_cell,
+            nrows: Dyn(len),
+            ncols: U1,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Allocate a new R vector and initialize it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn new_vector(len: usize, init: impl FnOnce(&mut [T])) -> Self {
+        let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len as ffi::R_xlen_t) };
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        let ptr = unsafe { T::dataptr_mut(sexp) };
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
+        init(slice);
+        Self {
+            sexp,
+            preserve_cell,
+            nrows: Dyn(len),
+            ncols: U1,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
+    /// Wrap an existing R SEXP as matrix storage (zero-copy).
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn from_sexp_matrix(
+        sexp: SEXP,
+        nrows: usize,
+        ncols: usize,
+    ) -> Result<Self, SexpError> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let len = sexp.len();
+        if len != nrows * ncols {
+            return Err(SexpLengthError {
+                expected: nrows * ncols,
+                actual: len,
+            }
+            .into());
+        }
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        Ok(Self {
+            sexp,
+            preserve_cell,
+            nrows: Dyn(nrows),
+            ncols: Dyn(ncols),
+            _marker: PhantomData,
+        })
+    }
+
+    /// Allocate a new R matrix and initialize it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called on R's main thread.
+    pub unsafe fn new_matrix(
+        nrows: usize,
+        ncols: usize,
+        init: impl FnOnce(&mut [T]),
+    ) -> Self {
+        let total = nrows * ncols;
+        let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, total as ffi::R_xlen_t) };
+        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        let ptr = unsafe { T::dataptr_mut(sexp) };
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, total) };
+        init(slice);
+        Self {
+            sexp,
+            preserve_cell,
+            nrows: Dyn(nrows),
+            ncols: Dyn(ncols),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
+    /// Get the underlying SEXP.
+    #[inline]
+    pub fn as_sexp(&self) -> SEXP {
+        self.sexp
+    }
+
+    /// Consume the storage, release GC protection, and return the raw SEXP.
+    ///
+    /// The caller is responsible for ensuring the SEXP remains protected
+    /// (e.g., by returning it from a `.Call` function).
+    pub fn into_sexp(self) -> SEXP {
+        let sexp = self.sexp;
+        unsafe { crate::preserve::release(self.preserve_cell) };
+        std::mem::forget(self); // Don't run Drop (we already released)
+        sexp
+    }
+
+    /// Total number of elements.
+    #[inline]
+    fn total_len(&self) -> usize {
+        self.nrows.value() * self.ncols.value()
+    }
+}
+
+impl<T: RNativeType, R: Dim, C: Dim> Drop for RVecStorage<T, R, C> {
+    fn drop(&mut self) {
+        unsafe { crate::preserve::release(self.preserve_cell) }
+    }
+}
+
+// region: RawStorage<T, Dyn, C> (generic over column dimension)
+
+unsafe impl<T: RNativeType, C: Dim> RawStorage<T, Dyn, C> for RVecStorage<T, Dyn, C> {
+    type RStride = U1;
+    type CStride = Dyn;
+
+    #[inline]
+    fn ptr(&self) -> *const T {
+        if self.total_len() == 0 {
+            std::ptr::NonNull::<T>::dangling().as_ptr()
+        } else {
+            unsafe { ffi::DATAPTR_RO(self.sexp).cast() }
+        }
+    }
+
+    #[inline]
+    fn shape(&self) -> (Dyn, C) {
+        (self.nrows, self.ncols)
+    }
+
+    #[inline]
+    fn strides(&self) -> (U1, Dyn) {
+        (U1, self.nrows)
+    }
+
+    #[inline]
+    fn is_contiguous(&self) -> bool {
+        true
+    }
+
+    #[inline]
+    unsafe fn as_slice_unchecked(&self) -> &[T] {
+        let len = self.total_len();
+        if len == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(self.ptr(), len) }
+        }
+    }
+}
+
+unsafe impl<T: RNativeType, C: Dim> RawStorageMut<T, Dyn, C> for RVecStorage<T, Dyn, C> {
+    #[inline]
+    fn ptr_mut(&mut self) -> *mut T {
+        if self.total_len() == 0 {
+            std::ptr::NonNull::<T>::dangling().as_ptr()
+        } else {
+            unsafe { T::dataptr_mut(self.sexp) }
+        }
+    }
+
+    #[inline]
+    unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [T] {
+        let len = self.total_len();
+        if len == 0 {
+            &mut []
+        } else {
+            unsafe { std::slice::from_raw_parts_mut(self.ptr_mut(), len) }
+        }
+    }
+}
+
+unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, Dyn>
+    for RVecStorage<T, Dyn, Dyn>
+{
+    #[inline]
+    fn into_owned(self) -> nalgebra::base::storage::Owned<T, Dyn, Dyn>
+    where
+        DefaultAllocator: Allocator<Dyn, Dyn>,
+    {
+        let data: Vec<T> = unsafe { self.as_slice_unchecked().to_vec() };
+        nalgebra::VecStorage::new(self.nrows, self.ncols, data)
+    }
+
+    #[inline]
+    fn clone_owned(&self) -> nalgebra::base::storage::Owned<T, Dyn, Dyn>
+    where
+        DefaultAllocator: Allocator<Dyn, Dyn>,
+    {
+        let data: Vec<T> = unsafe { self.as_slice_unchecked().to_vec() };
+        nalgebra::VecStorage::new(self.nrows, self.ncols, data)
+    }
+
+    #[inline]
+    fn forget_elements(self) {
+        // R owns the memory — just release our preserve cell via Drop
+    }
+}
+
+unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, U1>
+    for RVecStorage<T, Dyn, U1>
+{
+    #[inline]
+    fn into_owned(self) -> nalgebra::base::storage::Owned<T, Dyn, U1>
+    where
+        DefaultAllocator: Allocator<Dyn, U1>,
+    {
+        let data: Vec<T> = unsafe { self.as_slice_unchecked().to_vec() };
+        nalgebra::VecStorage::new(self.nrows, self.ncols, data)
+    }
+
+    #[inline]
+    fn clone_owned(&self) -> nalgebra::base::storage::Owned<T, Dyn, U1>
+    where
+        DefaultAllocator: Allocator<Dyn, U1>,
+    {
+        let data: Vec<T> = unsafe { self.as_slice_unchecked().to_vec() };
+        nalgebra::VecStorage::new(self.nrows, self.ncols, data)
+    }
+
+    #[inline]
+    fn forget_elements(self) {
+        // R owns the memory — just release our preserve cell via Drop
+    }
+}
+
+unsafe impl<T: RNativeType, C: Dim> IsContiguous for RVecStorage<T, Dyn, C> {}
+
+// endregion
+
+// region: TryFromSexp / IntoR for RDVector and RDMatrix
+
+impl<T: RNativeType + Scalar + Copy> TryFromSexp for RDVector<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let storage = unsafe { RVecStorage::from_sexp_vector(sexp)? };
+        Ok(Matrix::from_data(storage))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+impl<T: RNativeType + Scalar + Copy> TryFromSexp for RDMatrix<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        let storage = unsafe { RVecStorage::from_sexp_matrix(sexp, nrow, ncol)? };
+        Ok(Matrix::from_data(storage))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+impl<T: RNativeType + Scalar + Copy> IntoR for RDVector<T> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.data.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+}
+
+impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        let sexp = self.data.as_sexp();
+        // Ensure dim attribute is set for matrix return
+        unsafe {
+            let dim = ffi::Rf_getAttrib(sexp, ffi::R_DimSymbol);
+            if dim.type_of() != SEXPTYPE::INTSXP || dim.len() != 2 {
+                let nrow = self.nrows();
+                let ncol = self.ncols();
+                let dim_sexp = ffi::Rf_allocVector(SEXPTYPE::INTSXP, 2);
+                let _guard = crate::gc_protect::OwnedProtect::new(dim_sexp);
+                let dim_ptr = ffi::INTEGER(dim_sexp);
+                *dim_ptr = nrow as i32;
+                *dim_ptr.add(1) = ncol as i32;
+                ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);
+            }
+        }
+        Ok(self.data.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+}
+
+// endregion
+// endregion
+
 #[cfg(test)]
 mod tests {
     use super::*;

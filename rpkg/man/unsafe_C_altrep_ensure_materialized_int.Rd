@@ -13,5 +13,5 @@ unsafe_C_altrep_ensure_materialized_int(x)
 \item{x}{A SEXP to materialize.}
 }
 \description{
-Use ensure_materialized on any SEXP, then extract as integer vector
+Takes raw SEXP (extern "C-unwind") to bypass the ALTREP rejection, then materializes and converts normally.
 }
