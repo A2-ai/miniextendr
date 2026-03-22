@@ -521,6 +521,7 @@ pub use convert::{
     AsListExt, AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsRNative,
     AsRNativeExt, Collect, CollectStrings, DataFrame, IntoDataFrame, ToDataFrame, ToDataFrameExt,
 };
+pub use into_r::Lazy;
 #[cfg(feature = "serde")]
 pub use convert::{AsSerializeRow, SerializeDataFrame};
 pub use list::{

@@ -2731,6 +2731,30 @@ where
 /// - `Vec<i32>`, `Vec<f64>`, `Vec<bool>`, `Vec<u8>`, `Vec<String>`
 /// - `Box<[i32]>`, `Box<[f64]>`, `Box<[bool]>`, `Box<[u8]>`, `Box<[String]>`
 /// - `Range<i32>`, `Range<i64>`, `Range<f64>`
+/// Opt-in lazy materialization via ALTREP.
+///
+/// Wrapping a return type in `Lazy<T>` causes it to be returned as an
+/// ALTREP vector backed by Rust-owned memory. R reads elements on demand;
+/// full materialization only happens if R needs a contiguous pointer.
+///
+/// # When to use
+/// - Large vectors (>1000 elements)
+/// - Data R may only partially read
+/// - Computed/external data (Arrow, ndarray, nalgebra)
+///
+/// # When NOT to use
+/// - Small vectors (<100 elements, ALTREP overhead dominates)
+/// - Data R will immediately modify (triggers instant materialization)
+///
+/// # Example
+/// ```rust,ignore
+/// #[miniextendr]
+/// fn big_result() -> Lazy<Vec<f64>> {
+///     Lazy(vec![0.0; 1_000_000])
+/// }
+/// ```
+pub type Lazy<T> = Altrep<T>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Altrep<T>(pub T);

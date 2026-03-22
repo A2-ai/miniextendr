@@ -107,6 +107,7 @@ mod collect_tests;
 mod condition_tests;
 mod display_fromstr_tests;
 mod json_string_tests;
+mod lazy_tests;
 #[cfg(feature = "log")]
 mod log_tests;
 #[cfg(feature = "arrow")]

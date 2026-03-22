@@ -1082,3 +1082,312 @@ impl IntoR for ArrayRef {
 }
 
 // endregion
+
+// region: ALTREP support for Arrow arrays (Lazy<T>)
+//
+// These impls allow `Lazy<Float64Array>`, `Lazy<Int32Array>`, etc. to return
+// Arrow data as ALTREP vectors. R reads elements on demand; for null-free
+// arrays the Dataptr callback returns the Arrow buffer pointer directly
+// (true zero-copy, O(1)).
+
+use crate::altrep_data::{
+    AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltrepDataptr, AltrepLen, Logical,
+};
+use crate::externalptr::TypedExternal;
+
+// region: TypedExternal impls (required for ExternalPtr wrapping in ALTREP)
+
+impl TypedExternal for Float64Array {
+    const TYPE_NAME: &'static str = "arrow::Float64Array";
+    const TYPE_NAME_CSTR: &'static [u8] = b"arrow::Float64Array\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"arrow::Float64Array\0";
+}
+
+impl TypedExternal for Int32Array {
+    const TYPE_NAME: &'static str = "arrow::Int32Array";
+    const TYPE_NAME_CSTR: &'static [u8] = b"arrow::Int32Array\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"arrow::Int32Array\0";
+}
+
+impl TypedExternal for UInt8Array {
+    const TYPE_NAME: &'static str = "arrow::UInt8Array";
+    const TYPE_NAME_CSTR: &'static [u8] = b"arrow::UInt8Array\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"arrow::UInt8Array\0";
+}
+
+impl TypedExternal for BooleanArray {
+    const TYPE_NAME: &'static str = "arrow::BooleanArray";
+    const TYPE_NAME_CSTR: &'static [u8] = b"arrow::BooleanArray\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"arrow::BooleanArray\0";
+}
+
+impl TypedExternal for StringArray {
+    const TYPE_NAME: &'static str = "arrow::StringArray";
+    const TYPE_NAME_CSTR: &'static [u8] = b"arrow::StringArray\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"arrow::StringArray\0";
+}
+
+// endregion
+
+// region: AltrepLen impls
+
+impl AltrepLen for Float64Array {
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+}
+
+impl AltrepLen for Int32Array {
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+}
+
+impl AltrepLen for UInt8Array {
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+}
+
+impl AltrepLen for BooleanArray {
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+}
+
+// endregion
+
+// region: ALTREP data trait impls
+
+impl AltRealData for Float64Array {
+    fn elt(&self, i: usize) -> f64 {
+        if self.is_null(i) {
+            NA_REAL
+        } else {
+            self.value(i)
+        }
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        // Zero-copy: return Arrow buffer pointer directly if no nulls.
+        // Arrow's null bitmap marks nulls but data buffer has garbage there,
+        // so we can only expose the raw buffer when null_count == 0.
+        if self.null_count() == 0 {
+            Some(self.values().as_ref())
+        } else {
+            None
+        }
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(self.null_count() == 0)
+    }
+}
+
+impl AltIntegerData for Int32Array {
+    fn elt(&self, i: usize) -> i32 {
+        if self.is_null(i) {
+            crate::altrep_traits::NA_INTEGER
+        } else {
+            self.value(i)
+        }
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        if self.null_count() == 0 {
+            Some(self.values().as_ref())
+        } else {
+            None
+        }
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(self.null_count() == 0)
+    }
+}
+
+impl AltRawData for UInt8Array {
+    fn elt(&self, i: usize) -> u8 {
+        if self.is_null(i) {
+            0
+        } else {
+            self.value(i)
+        }
+    }
+
+    fn as_slice(&self) -> Option<&[u8]> {
+        if self.null_count() == 0 {
+            Some(self.values().as_ref())
+        } else {
+            None
+        }
+    }
+}
+
+impl AltLogicalData for BooleanArray {
+    fn elt(&self, i: usize) -> Logical {
+        if self.is_null(i) {
+            Logical::Na
+        } else if self.value(i) {
+            Logical::True
+        } else {
+            Logical::False
+        }
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(self.null_count() == 0)
+    }
+}
+
+// endregion
+
+// region: AltrepDataptr impls (zero-copy when no nulls)
+
+impl AltrepDataptr<f64> for Float64Array {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
+        // Arrow buffers are immutable — can't provide writable pointer.
+        // Return read-only pointer cast to mut (R handles const-correctness).
+        if self.null_count() == 0 {
+            Some(self.values().as_ptr() as *mut f64)
+        } else {
+            None
+        }
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const f64> {
+        if self.null_count() == 0 {
+            Some(self.values().as_ptr())
+        } else {
+            None
+        }
+    }
+}
+
+impl AltrepDataptr<i32> for Int32Array {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        if self.null_count() == 0 {
+            Some(self.values().as_ptr() as *mut i32)
+        } else {
+            None
+        }
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        if self.null_count() == 0 {
+            Some(self.values().as_ptr())
+        } else {
+            None
+        }
+    }
+}
+
+impl AltrepDataptr<u8> for UInt8Array {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
+        if self.null_count() == 0 {
+            Some(self.values().as_ptr() as *mut u8)
+        } else {
+            None
+        }
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const u8> {
+        if self.null_count() == 0 {
+            Some(self.values().as_ptr())
+        } else {
+            None
+        }
+    }
+}
+
+// endregion
+
+// region: ALTREP bridge traits + InferBase + RegisterAltrep
+//
+// impl_alt*_from_data! generates the bridge traits (Altrep, AltVec, AltReal/etc.)
+// AND calls impl_inferbase_*! to register the class creation.
+
+crate::impl_altreal_from_data!(Float64Array, dataptr);
+crate::impl_altinteger_from_data!(Int32Array, dataptr);
+crate::impl_altraw_from_data!(UInt8Array, dataptr);
+crate::impl_altlogical_from_data!(BooleanArray);
+
+use crate::altrep::RegisterAltrep;
+
+impl RegisterAltrep for Float64Array {
+    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| {
+            let cls = unsafe {
+                <Float64Array as crate::altrep_data::InferBase>::make_class(
+                    b"arrow_Float64Array\0".as_ptr().cast(),
+                    crate::AltrepPkgName::as_ptr(),
+                )
+            };
+            unsafe {
+                <Float64Array as crate::altrep_data::InferBase>::install_methods(cls);
+            }
+            cls
+        })
+    }
+}
+
+impl RegisterAltrep for Int32Array {
+    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| {
+            let cls = unsafe {
+                <Int32Array as crate::altrep_data::InferBase>::make_class(
+                    b"arrow_Int32Array\0".as_ptr().cast(),
+                    crate::AltrepPkgName::as_ptr(),
+                )
+            };
+            unsafe {
+                <Int32Array as crate::altrep_data::InferBase>::install_methods(cls);
+            }
+            cls
+        })
+    }
+}
+
+impl RegisterAltrep for UInt8Array {
+    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| {
+            let cls = unsafe {
+                <UInt8Array as crate::altrep_data::InferBase>::make_class(
+                    b"arrow_UInt8Array\0".as_ptr().cast(),
+                    crate::AltrepPkgName::as_ptr(),
+                )
+            };
+            unsafe {
+                <UInt8Array as crate::altrep_data::InferBase>::install_methods(cls);
+            }
+            cls
+        })
+    }
+}
+
+impl RegisterAltrep for BooleanArray {
+    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| {
+            let cls = unsafe {
+                <BooleanArray as crate::altrep_data::InferBase>::make_class(
+                    b"arrow_BooleanArray\0".as_ptr().cast(),
+                    crate::AltrepPkgName::as_ptr(),
+                )
+            };
+            unsafe {
+                <BooleanArray as crate::altrep_data::InferBase>::install_methods(cls);
+            }
+            cls
+        })
+    }
+}
+
+// endregion
