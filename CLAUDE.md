@@ -7,6 +7,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **No backwards compatibility**: This is an unreleased project. Remove deprecated code, don't shim around it.
 - **Simple over complex**: Avoid over-engineering. Only make changes directly requested or clearly necessary.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
+- **No pre-existing warnings**: If you encounter a warning, lint issue, or test failure — fix it. There is no such thing as a "known issue" that can be ignored. Every warning is a bug to be fixed.
 - **just is for maintainers, not end users**: `just`/`justfile` is a convenience tool for miniextendr authors/maintainers only. End-user R packages built with miniextendr must NOT require `just`. Any build logic that end users need (vendoring, configure, etc.) must work through `configure.ac`, `tools/*.R` scripts, or standard R package mechanisms. Mitigate any reliance on `just` in generated/scaffolded packages.
 - **Edit `.in` templates, not generated files**: Many files in rpkg are generated from `.in` templates. Always edit the `.in` source file instead:
   - `rpkg/src/rust/.cargo/config.toml` → edit `rpkg/src/rust/cargo-config.toml.in`
@@ -674,6 +675,30 @@ When touching files that use other section patterns (`// =====` banners, `// ─
 ### Type Conversions
 
 **Prefer `From`/`TryFrom` over `as` casts** — use `TryFrom` and `From` trait conversions instead of `as`-casts. Propagate the error rather than silently truncating or wrapping. When you encounter `as` casts during development, flag them for replacement.
+
+## Error Handling in Vectorized Operations
+
+**Collect all errors, not just the first** — in operations that can fail at multiple points (e.g. vectorized TryFromSexp, column validation, bulk conversions), collect all errors and report them together rather than bailing on the first one. This gives users actionable diagnostics instead of fix-one-rerun loops.
+
+## File Deletion Safety
+
+- **Never use `rm` or any permanent deletion command** in automated/agent workflows.
+- Use a safe mechanism that moves files to system trash (`trash`, `gio trash`, or platform equivalent).
+- If no trash utility is available, **stop and ask** instead of deleting.
+- Permanent deletion is irreversible — the trash provides a recovery path.
+
+## Agent Worktrees
+
+- Agents should run in **worktrees** (`isolation: "worktree"`) so they don't collide with each other or main.
+- **Merge workflow**: rebase the worktree branch onto current main, then merge into main. The rebase must happen immediately before the merge — not when the agent finishes.
+- **Sequential merging**: When multiple worktrees need merging, do them one at a time: rebase worktree-1 onto main, merge it, then rebase worktree-2 onto the now-updated main, merge it, and so on. Each rebase must see the previous merge's commits on main, otherwise the merge silently overwrites them.
+- **Never copy entire files** from a worktree to main — rebase + merge is the correct workflow. Copying whole files overwrites unrelated changes made on main since the worktree branched.
+- If the agent didn't commit, commit its work in the worktree first, then rebase + merge.
+- Never delete a worktree until its changes have been verified as merged into main.
+
+## Plans
+
+- **Flat structure, no phases** — list what needs to be done in a flat, prioritized order. Don't organize plans into "Phase 1", "Phase 2", etc. — just say what's needed and in what order.
 
 ## Reviews
 
