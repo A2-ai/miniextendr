@@ -836,9 +836,15 @@ pub use optionals::{Array, ArrayVec, TinyVec};
 pub use optionals::arrow_impl;
 #[cfg(feature = "arrow")]
 pub use optionals::{
-    ArrowArray, ArrayRef, BooleanArray, DataType, Field, Float64Array, Int32Array, RecordBatch,
-    Schema, StringArray, UInt8Array,
+    ArrowArray, ArrayRef, BooleanArray, DataType, Date32Array, DictionaryArray, Field,
+    Float64Array, Int32Array, RecordBatch, Schema, StringArray, StringDictionaryArray,
+    TimestampSecondArray, UInt8Array,
 };
+
+#[cfg(feature = "datafusion")]
+pub use optionals::datafusion_impl;
+#[cfg(feature = "datafusion")]
+pub use optionals::RSessionContext;
 
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;
