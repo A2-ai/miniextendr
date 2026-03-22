@@ -507,6 +507,7 @@ pub use as_coerce::{
     is_supported_as_generic,
 };
 
+pub mod condition;
 pub mod convert;
 /// Support for R `...` arguments represented as a validated list.
 pub mod dots;

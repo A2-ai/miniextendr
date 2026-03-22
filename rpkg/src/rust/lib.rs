@@ -104,6 +104,7 @@ mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
 mod collect_tests;
+mod condition_tests;
 mod display_fromstr_tests;
 mod json_string_tests;
 #[cfg(feature = "arrow")]
