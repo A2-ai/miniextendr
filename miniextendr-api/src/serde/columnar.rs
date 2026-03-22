@@ -8,9 +8,9 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::NA_REAL;
 use crate::ffi::{
-    self, CE_UTF8, R_ClassSymbol, R_NaString, R_NamesSymbol, R_NilValue, R_RowNamesSymbol,
-    Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_setAttrib, Rf_unprotect, SET_INTEGER_ELT,
-    SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
+    CE_UTF8, R_ClassSymbol, R_NaString, R_NamesSymbol, R_NilValue, R_RowNamesSymbol,
+    Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_setAttrib, Rf_unprotect, SET_STRING_ELT,
+    SET_VECTOR_ELT, SEXP, SEXPTYPE,
 };
 use serde::ser::{self, Serialize};
 
@@ -937,11 +937,10 @@ fn empty_dataframe() -> SEXP {
         Rf_setAttrib(list, R_ClassSymbol, class_sexp);
 
         // Set compact row.names: c(NA_integer_, 0)
-        let row_names = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         Rf_protect(row_names);
-        let rn_ptr = ffi::INTEGER(row_names);
-        *rn_ptr = i32::MIN; // NA_integer_
-        *rn_ptr.add(1) = 0;
+        rn[0] = i32::MIN; // NA_integer_
+        rn[1] = 0;
         Rf_setAttrib(list, R_RowNamesSymbol, row_names);
 
         Rf_unprotect(3);
@@ -988,11 +987,10 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
         Rf_setAttrib(list, R_ClassSymbol, class_sexp);
 
         // Set compact row.names: c(NA_integer_, -nrow)
-        let row_names = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         Rf_protect(row_names);
-        let rn_ptr = ffi::INTEGER(row_names);
-        *rn_ptr = i32::MIN; // NA_integer_
-        *rn_ptr.add(1) = -(nrow as i32);
+        rn[0] = i32::MIN; // NA_integer_
+        rn[1] = -(nrow as i32);
         Rf_setAttrib(list, R_RowNamesSymbol, row_names);
 
         Rf_unprotect(4); // list, names, class, row_names
@@ -1001,28 +999,30 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
 }
 
 /// Convert a single column buffer into an R SEXP vector.
+///
+/// For native types (integer, real, logical), uses `alloc_r_vector` + `copy_from_slice`.
+/// For STRSXP/VECSXP, uses per-element SET_*_ELT (no slice access for CHARSXP/SEXP elements).
 unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
+    use crate::into_r::alloc_r_vector;
+
     unsafe {
         match col {
             ColumnBuffer::Logical(v) => {
-                let sexp = Rf_allocVector(SEXPTYPE::LGLSXP, nrow as isize);
-                for (i, &val) in v.iter().enumerate() {
-                    SET_LOGICAL_ELT(sexp, i as isize, val);
-                }
+                // RLogical is repr(transparent) over i32, same layout as LGLSXP data.
+                let (sexp, dst) = alloc_r_vector::<crate::ffi::RLogical>(nrow);
+                let dst_i32: &mut [i32] =
+                    std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), nrow);
+                dst_i32.copy_from_slice(v);
                 sexp
             }
             ColumnBuffer::Integer(v) => {
-                let sexp = Rf_allocVector(SEXPTYPE::INTSXP, nrow as isize);
-                for (i, &val) in v.iter().enumerate() {
-                    SET_INTEGER_ELT(sexp, i as isize, val);
-                }
+                let (sexp, dst) = alloc_r_vector::<i32>(nrow);
+                dst.copy_from_slice(v);
                 sexp
             }
             ColumnBuffer::Real(v) => {
-                let sexp = Rf_allocVector(SEXPTYPE::REALSXP, nrow as isize);
-                for (i, &val) in v.iter().enumerate() {
-                    SET_REAL_ELT(sexp, i as isize, val);
-                }
+                let (sexp, dst) = alloc_r_vector::<f64>(nrow);
+                dst.copy_from_slice(v);
                 sexp
             }
             ColumnBuffer::Character(v) => {

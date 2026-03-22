@@ -579,8 +579,6 @@ where
         total_len
     );
 
-    use crate::ffi::SEXPTYPE;
-
     // Allocate, set dims, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
@@ -588,13 +586,11 @@ where
             crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect_unchecked(sexp);
 
-        let dim_sexp =
-            crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
+        let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector_unchecked::<i32>(NDIM);
         crate::ffi::Rf_protect_unchecked(dim_sexp);
 
-        let dim_ptr = crate::ffi::INTEGER_unchecked(dim_sexp);
-        for (i, &d) in dims.iter().enumerate() {
-            *dim_ptr.add(i) = d as i32;
+        for (slot, &d) in dim_s.iter_mut().zip(dims.iter()) {
+            *slot = d as i32;
         }
 
         crate::ffi::Rf_setAttrib_unchecked(sexp, crate::ffi::R_DimSymbol, dim_sexp);

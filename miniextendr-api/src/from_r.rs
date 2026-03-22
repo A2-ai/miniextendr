@@ -3083,10 +3083,13 @@ where
             .into());
         }
 
-        // Safe because T: Copy and length is verified
+        // T: Copy, length verified above. Use MaybeUninit + copy_from_slice.
         let mut arr = std::mem::MaybeUninit::<[T; N]>::uninit();
         unsafe {
-            std::ptr::copy_nonoverlapping(slice.as_ptr(), arr.as_mut_ptr().cast::<T>(), N);
+            // SAFETY: MaybeUninit<[T; N]> and [T; N] have the same layout.
+            // We write all N elements via copy_from_slice, so assume_init is safe.
+            let dst: &mut [T] = std::slice::from_raw_parts_mut(arr.as_mut_ptr().cast::<T>(), N);
+            dst.copy_from_slice(&slice[..N]);
             Ok(arr.assume_init())
         }
     }

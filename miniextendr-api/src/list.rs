@@ -2,7 +2,7 @@
 //! Provides safe construction from Rust values and typed extraction.
 
 use crate::ffi::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
-use crate::ffi::{self, Rboolean, SEXP};
+use crate::ffi::{self, Rboolean, SexpExt, SEXP};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -348,19 +348,16 @@ impl List {
     /// ```
     #[inline]
     pub fn set_row_names_int(self, n: usize) -> Self {
-        use crate::ffi::SEXPTYPE::INTSXP;
-
         unsafe {
             // R's compact row.names: c(NA_integer_, -n)
-            let row_names = OwnedProtect::new(ffi::Rf_allocVector(INTSXP, 2));
-            let ptr = ffi::INTEGER(row_names.get());
-            // NA_INTEGER is i32::MIN in R
-            *ptr = i32::MIN;
+            let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
+            let _guard = OwnedProtect::new(row_names);
+            rn[0] = i32::MIN; // NA_INTEGER
             let n_i32 = i32::try_from(n).unwrap_or_else(|_| {
                 panic!("row count {n} exceeds i32::MAX");
             });
-            *ptr.add(1) = -n_i32;
-            ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, row_names.get());
+            rn[1] = -n_i32;
+            ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, row_names);
         }
         self
     }
@@ -1432,6 +1429,7 @@ impl List {
     /// containers.
     pub fn from_scalars_or_list(elements: &[SEXP]) -> Self {
         use crate::ffi::SEXPTYPE;
+        use crate::into_r::alloc_r_vector;
 
         if elements.is_empty() {
             return Self::from_raw_values(Vec::new());
@@ -1446,31 +1444,34 @@ impl List {
             return Self::from_raw_values(elements.to_vec());
         }
 
-        let n = elements.len() as isize;
+        let n = elements.len();
         let sexp = match first_type {
+            // For native types: allocate R vector, get mutable slice, read source
+            // scalars via as_slice()[0] — no per-element FFI calls.
             SEXPTYPE::INTSXP => unsafe {
-                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::INTSXP, n));
-                for (i, &elem) in elements.iter().enumerate() {
-                    ffi::SET_INTEGER_ELT(v.get(), i as isize, ffi::INTEGER_ELT(elem, 0));
+                let (v, dst) = alloc_r_vector::<i32>(n);
+                for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
+                    *slot = *elem.as_slice::<i32>().first().unwrap();
                 }
-                v.get()
+                v
             },
             SEXPTYPE::REALSXP => unsafe {
-                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::REALSXP, n));
-                for (i, &elem) in elements.iter().enumerate() {
-                    ffi::SET_REAL_ELT(v.get(), i as isize, ffi::REAL_ELT(elem, 0));
+                let (v, dst) = alloc_r_vector::<f64>(n);
+                for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
+                    *slot = *elem.as_slice::<f64>().first().unwrap();
                 }
-                v.get()
+                v
             },
             SEXPTYPE::LGLSXP => unsafe {
-                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::LGLSXP, n));
-                for (i, &elem) in elements.iter().enumerate() {
-                    ffi::SET_LOGICAL_ELT(v.get(), i as isize, ffi::LOGICAL_ELT(elem, 0));
+                let (v, dst) = alloc_r_vector::<crate::ffi::RLogical>(n);
+                for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
+                    *slot = *elem.as_slice::<crate::ffi::RLogical>().first().unwrap();
                 }
-                v.get()
+                v
             },
+            // STRSXP elements are CHARSXPs — must use SET_STRING_ELT (no slice access).
             SEXPTYPE::STRSXP => unsafe {
-                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n));
+                let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as isize));
                 for (i, &elem) in elements.iter().enumerate() {
                     ffi::SET_STRING_ELT(v.get(), i as isize, ffi::STRING_ELT(elem, 0));
                 }
