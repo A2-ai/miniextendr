@@ -864,13 +864,12 @@ unsafe fn get_dims<const NDIM: usize>(sexp: SEXP) -> [usize; NDIM] {
 /// Must be called from R main thread.
 unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
     unsafe {
-        let dim_sexp = ffi::Rf_allocVector(SEXPTYPE::INTSXP, NDIM as ffi::R_xlen_t);
+        let (dim_sexp, dim_slice) = crate::into_r::alloc_r_vector::<i32>(NDIM);
         ffi::Rf_protect(dim_sexp);
 
-        let dim_ptr = ffi::INTEGER(dim_sexp);
-        for (i, &d) in dims.iter().enumerate() {
-            *dim_ptr.add(i) = i32::try_from(d).unwrap_or_else(|_| {
-                panic!("array dimension {d} at index {i} exceeds i32::MAX");
+        for (slot, &d) in dim_slice.iter_mut().zip(dims.iter()) {
+            *slot = i32::try_from(d).unwrap_or_else(|_| {
+                panic!("array dimension {d} exceeds i32::MAX");
             });
         }
 

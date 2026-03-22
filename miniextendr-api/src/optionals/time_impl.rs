@@ -246,12 +246,10 @@ impl TryFromSexp for Vec<OffsetDateTime> {
             .into());
         }
 
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-        let ptr = unsafe { REAL(sexp) };
+        let src: &[f64] = unsafe { sexp.as_slice() };
+        let mut result = Vec::with_capacity(src.len());
 
-        for i in 0..len {
-            let secs = unsafe { *ptr.add(i) };
+        for (i, &secs) in src.iter().enumerate() {
             if secs.is_nan() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for Vec<OffsetDateTime>",
@@ -285,16 +283,13 @@ impl IntoR for Vec<OffsetDateTime> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            let n = self.len();
-            let vec = Rf_allocVector(SEXPTYPE::REALSXP, n as crate::ffi::R_xlen_t);
+            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            let ptr = REAL(vec);
-            for (i, dt) in self.into_iter().enumerate() {
+            for (slot, dt) in dst.iter_mut().zip(self.into_iter()) {
                 let duration = dt - UNIX_EPOCH;
-                let secs = duration.whole_seconds() as f64
+                *slot = duration.whole_seconds() as f64
                     + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
-                *ptr.add(i) = secs;
             }
 
             // Set class = c("POSIXct", "POSIXt")
@@ -333,12 +328,10 @@ impl TryFromSexp for Vec<Option<OffsetDateTime>> {
             .into());
         }
 
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-        let ptr = unsafe { REAL(sexp) };
+        let src: &[f64] = unsafe { sexp.as_slice() };
+        let mut result = Vec::with_capacity(src.len());
 
-        for i in 0..len {
-            let secs = unsafe { *ptr.add(i) };
+        for (i, &secs) in src.iter().enumerate() {
             if secs.is_nan() {
                 result.push(None);
             } else {
@@ -369,23 +362,18 @@ impl IntoR for Vec<Option<OffsetDateTime>> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            let n = self.len();
-            let vec = Rf_allocVector(SEXPTYPE::REALSXP, n as crate::ffi::R_xlen_t);
+            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            let ptr = REAL(vec);
-            for (i, opt) in self.into_iter().enumerate() {
-                match opt {
+            for (slot, opt) in dst.iter_mut().zip(self.into_iter()) {
+                *slot = match opt {
                     Some(dt) => {
                         let duration = dt - UNIX_EPOCH;
-                        let secs = duration.whole_seconds() as f64
-                            + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
-                        *ptr.add(i) = secs;
+                        duration.whole_seconds() as f64
+                            + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0)
                     }
-                    None => {
-                        *ptr.add(i) = f64::NAN;
-                    }
-                }
+                    None => f64::NAN,
+                };
             }
 
             // Set class = c("POSIXct", "POSIXt")
@@ -560,12 +548,10 @@ impl TryFromSexp for Vec<Date> {
             .into());
         }
 
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-        let ptr = unsafe { REAL(sexp) };
+        let src: &[f64] = unsafe { sexp.as_slice() };
+        let mut result = Vec::with_capacity(src.len());
 
-        for i in 0..len {
-            let days = unsafe { *ptr.add(i) };
+        for (i, &days) in src.iter().enumerate() {
             if days.is_nan() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for Vec<Date>",
@@ -596,14 +582,11 @@ impl IntoR for Vec<Date> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            let n = self.len();
-            let vec = Rf_allocVector(SEXPTYPE::REALSXP, n as crate::ffi::R_xlen_t);
+            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            let ptr = REAL(vec);
-            for (i, d) in self.into_iter().enumerate() {
-                let days = (d - UNIX_EPOCH_DATE).whole_days() as f64;
-                *ptr.add(i) = days;
+            for (slot, d) in dst.iter_mut().zip(self.into_iter()) {
+                *slot = (d - UNIX_EPOCH_DATE).whole_days() as f64;
             }
 
             let class_sym = Rf_install(c"class".as_ptr());
@@ -632,12 +615,10 @@ impl TryFromSexp for Vec<Option<Date>> {
             .into());
         }
 
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-        let ptr = unsafe { REAL(sexp) };
+        let src: &[f64] = unsafe { sexp.as_slice() };
+        let mut result = Vec::with_capacity(src.len());
 
-        for i in 0..len {
-            let days = unsafe { *ptr.add(i) };
+        for (i, &days) in src.iter().enumerate() {
             if days.is_nan() {
                 result.push(None);
             } else {
@@ -665,21 +646,14 @@ impl IntoR for Vec<Option<Date>> {
     }
     fn into_sexp(self) -> SEXP {
         unsafe {
-            let n = self.len();
-            let vec = Rf_allocVector(SEXPTYPE::REALSXP, n as crate::ffi::R_xlen_t);
+            let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            let ptr = REAL(vec);
-            for (i, opt) in self.into_iter().enumerate() {
-                match opt {
-                    Some(d) => {
-                        let days = (d - UNIX_EPOCH_DATE).whole_days() as f64;
-                        *ptr.add(i) = days;
-                    }
-                    None => {
-                        *ptr.add(i) = f64::NAN;
-                    }
-                }
+            for (slot, opt) in dst.iter_mut().zip(self.into_iter()) {
+                *slot = match opt {
+                    Some(d) => (d - UNIX_EPOCH_DATE).whole_days() as f64,
+                    None => f64::NAN,
+                };
             }
 
             let class_sym = Rf_install(c"class".as_ptr());

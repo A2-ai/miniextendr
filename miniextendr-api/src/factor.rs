@@ -98,9 +98,8 @@ pub fn build_levels_sexp_cached(levels: &[&str]) -> SEXP {
 /// Build a factor SEXP from indices and a levels STRSXP.
 pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
     unsafe {
-        let sexp = Rf_allocVector(SEXPTYPE::INTSXP, indices.len() as isize);
-        let ptr = INTEGER(sexp);
-        std::ptr::copy_nonoverlapping(indices.as_ptr(), ptr, indices.len());
+        let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(indices.len());
+        dst.copy_from_slice(indices);
         Rf_setAttrib(sexp, R_LevelsSymbol, levels);
         Rf_setAttrib(sexp, R_ClassSymbol, factor_class_sexp());
         sexp

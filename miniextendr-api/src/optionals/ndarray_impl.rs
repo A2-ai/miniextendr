@@ -708,8 +708,8 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
+            dst.copy_from_slice(&data);
 
             // Return the SEXP - guard drops and unprotects
             // (R manages protection of .Call return values)
@@ -752,19 +752,19 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
                 data.len() as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
+            dst.copy_from_slice(&data);
 
             // Set dim attribute
-            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 3));
-            let dim_ptr = crate::ffi::INTEGER(dim);
-            *dim_ptr = d0 as i32;
-            *dim_ptr.add(1) = d1 as i32;
-            *dim_ptr.add(2) = d2 as i32;
+            let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(3);
+            scope.protect_raw(dim);
+            dim_s[0] = d0 as i32;
+            dim_s[1] = d1 as i32;
+            dim_s[2] = d2 as i32;
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
-        }) // scope drops here, calling UNPROTECT(2)
+        }) // scope drops here, calling UNPROTECT(2+1)
     }
 }
 // endregion
@@ -795,15 +795,15 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
+            dst.copy_from_slice(&data);
 
-            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 4));
-            let dim_ptr = crate::ffi::INTEGER(dim);
-            *dim_ptr = d0 as i32;
-            *dim_ptr.add(1) = d1 as i32;
-            *dim_ptr.add(2) = d2 as i32;
-            *dim_ptr.add(3) = d3 as i32;
+            let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(4);
+            scope.protect_raw(dim);
+            dim_s[0] = d0 as i32;
+            dim_s[1] = d1 as i32;
+            dim_s[2] = d2 as i32;
+            dim_s[3] = d3 as i32;
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
@@ -838,13 +838,13 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
+            dst.copy_from_slice(&data);
 
-            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 5));
-            let dim_ptr = crate::ffi::INTEGER(dim);
-            for (i, &d) in [d0, d1, d2, d3, d4].iter().enumerate() {
-                *dim_ptr.add(i) = d as i32;
+            let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(5);
+            scope.protect_raw(dim);
+            for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4].iter()) {
+                *slot = d as i32;
             }
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
@@ -880,13 +880,13 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
+            dst.copy_from_slice(&data);
 
-            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 6));
-            let dim_ptr = crate::ffi::INTEGER(dim);
-            for (i, &d) in [d0, d1, d2, d3, d4, d5].iter().enumerate() {
-                *dim_ptr.add(i) = d as i32;
+            let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(6);
+            scope.protect_raw(dim);
+            for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4, d5].iter()) {
+                *slot = d as i32;
             }
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
@@ -929,18 +929,15 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
+            dst.copy_from_slice(&data);
 
             // Set dim attribute if ndim > 1
             if ndim > 1 {
-                let dim = scope.protect_raw(crate::ffi::Rf_allocVector(
-                    SEXPTYPE::INTSXP,
-                    ndim as crate::ffi::R_xlen_t,
-                ));
-                let dim_ptr = crate::ffi::INTEGER(dim);
-                for (i, &d) in shape.iter().enumerate() {
-                    *dim_ptr.add(i) = d as i32;
+                let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(ndim);
+                scope.protect_raw(dim);
+                for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
+                    *slot = d as i32;
                 }
                 crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
             }
@@ -1059,8 +1056,8 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
+            dst.copy_from_slice(&data);
 
             // Return the SEXP - guard drops and unprotects
             // (R manages protection of .Call return values)
@@ -1097,15 +1094,15 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
                 data.len() as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
+            dst.copy_from_slice(&data);
 
             // Set dim attribute
-            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 3));
-            let dim_ptr = crate::ffi::INTEGER(dim);
-            *dim_ptr = d0 as i32;
-            *dim_ptr.add(1) = d1 as i32;
-            *dim_ptr.add(2) = d2 as i32;
+            let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(3);
+            scope.protect_raw(dim);
+            dim_s[0] = d0 as i32;
+            dim_s[1] = d1 as i32;
+            dim_s[2] = d2 as i32;
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
@@ -1139,18 +1136,15 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
                 total_len as crate::ffi::R_xlen_t,
             ));
 
-            let ptr = crate::ffi::DATAPTR_RO(arr).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
+            dst.copy_from_slice(&data);
 
             // Set dim attribute if ndim > 1
             if ndim > 1 {
-                let dim = scope.protect_raw(crate::ffi::Rf_allocVector(
-                    SEXPTYPE::INTSXP,
-                    ndim as crate::ffi::R_xlen_t,
-                ));
-                let dim_ptr = crate::ffi::INTEGER(dim);
-                for (i, &d) in shape.iter().enumerate() {
-                    *dim_ptr.add(i) = d as i32;
+                let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(ndim);
+                scope.protect_raw(dim);
+                for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
+                    *slot = d as i32;
                 }
                 crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
             }
