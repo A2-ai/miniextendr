@@ -379,9 +379,8 @@ pub fn test_main_thread_r_api() -> i32 {
 /// @noRd
 #[miniextendr(unsafe(main_thread))]
 pub fn test_main_thread_r_error() -> i32 {
-    // mxl::allow(MXL300)
     unsafe {
-        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error from main_thread fn".as_ptr())
+        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error from main_thread fn".as_ptr()) // mxl::allow(MXL300)
     }
 }
 
@@ -389,8 +388,8 @@ pub fn test_main_thread_r_error() -> i32 {
 #[miniextendr(unsafe(main_thread))]
 pub fn test_main_thread_r_error_with_drops() -> i32 {
     let _resource = SimpleDropMsg("main_thread_r_error: resource");
-    // mxl::allow(MXL300)
     unsafe {
+        // mxl::allow(MXL300)
         miniextendr_api::ffi::Rf_error(
             c"%s".as_ptr(),
             c"R error from main_thread fn with drops".as_ptr(),
@@ -509,8 +508,8 @@ pub extern "C-unwind" fn C_test_nested_with_error() -> SEXP {
         // Second nested call errors
         with_r_thread::<_, ()>(|| {
             let _inner_resource = SimpleDropMsg("nested_error: second call resource");
-            // mxl::allow(MXL300)
             unsafe {
+                // mxl::allow(MXL300)
                 miniextendr_api::ffi::Rf_error(
                     c"%s".as_ptr(),
                     c"Error in nested with_r_thread".as_ptr(),
