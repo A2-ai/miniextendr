@@ -16,5 +16,5 @@ new_derived_percent(x)
 A derived_percent vector.
 }
 \description{
-Create a new derived_percent vector using the derive macro
+This demonstrates the simpler derive-based approach.
 }

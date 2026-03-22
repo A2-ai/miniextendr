@@ -13,5 +13,5 @@ altrep_sexp_materialize_strings(x)
 \item{x}{An ALTREP string vector.}
 }
 \description{
-Try to wrap a SEXP in AltrepSexp and materialize strings
+Uses AltrepSexp parameter -- only accepts ALTREP vectors.
 }

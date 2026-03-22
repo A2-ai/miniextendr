@@ -13,5 +13,5 @@ altrep_sexp_materialize_real(x)
 \item{x}{An ALTREP real vector.}
 }
 \description{
-Try to wrap a SEXP in AltrepSexp and materialize it as doubles
+Uses AltrepSexp parameter -- only accepts ALTREP vectors.
 }

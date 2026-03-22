@@ -13,7 +13,7 @@ rpkg_enabled_features()
 A character vector of enabled feature names.
 }
 \description{
-Returns a vector of enabled feature names for this build.
+This function is useful for R tests to skip tests when features are not enabled.
 }
 \examples{
 rpkg_enabled_features()
