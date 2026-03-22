@@ -1856,7 +1856,9 @@ impl_option_collection_into_r!(
 );
 
 /// Helper: allocate STRSXP and fill from a string iterator (checked).
-fn str_iter_to_strsxp<'a>(iter: impl ExactSizeIterator<Item = &'a str>) -> crate::ffi::SEXP {
+pub(crate) fn str_iter_to_strsxp<'a>(
+    iter: impl ExactSizeIterator<Item = &'a str>,
+) -> crate::ffi::SEXP {
     unsafe {
         let n = iter.len();
         let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
@@ -1873,7 +1875,7 @@ fn str_iter_to_strsxp<'a>(iter: impl ExactSizeIterator<Item = &'a str>) -> crate
 }
 
 /// Helper: allocate STRSXP and fill from a string iterator (unchecked).
-unsafe fn str_iter_to_strsxp_unchecked<'a>(
+pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::ffi::SEXP {
     unsafe {
