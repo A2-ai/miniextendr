@@ -1211,3 +1211,103 @@ where
     }
 }
 // endregion
+
+// region: Collect — zero-allocation iterator-to-R-vector adapters
+
+/// Write an `ExactSizeIterator` of native R types directly into an R vector.
+///
+/// Skips the intermediate `Vec` allocation — the R vector is allocated once
+/// and the iterator writes directly into it.
+///
+/// Requires `ExactSizeIterator` because R vectors must know their length
+/// at allocation time.
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn sines(n: i32) -> Collect<impl ExactSizeIterator<Item = f64>> {
+///     Collect((0..n).map(|i| (i as f64).sin()))
+/// }
+/// ```
+pub struct Collect<I>(pub I);
+
+impl<I, T> IntoR for Collect<I>
+where
+    I: ExactSizeIterator<Item = T>,
+    T: crate::ffi::RNativeType,
+{
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<T>(self.0.len());
+            for (slot, val) in dst.iter_mut().zip(self.0) {
+                *slot = val;
+            }
+            sexp
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector_unchecked::<T>(self.0.len());
+            for (slot, val) in dst.iter_mut().zip(self.0) {
+                *slot = val;
+            }
+            sexp
+        }
+    }
+}
+
+/// Write an `ExactSizeIterator` of `String` directly into an R character vector.
+///
+/// Strings require per-element CHARSXP allocation (no bulk `copy_from_slice`),
+/// so this is a separate type from [`Collect`].
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn upper(words: Vec<String>) -> CollectStrings<impl ExactSizeIterator<Item = String>> {
+///     CollectStrings(words.into_iter().map(|w| w.to_uppercase()))
+/// }
+/// ```
+pub struct CollectStrings<I>(pub I);
+
+impl<I> IntoR for CollectStrings<I>
+where
+    I: ExactSizeIterator<Item = String>,
+{
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        // Collect String refs for str_iter_to_strsxp.
+        let strings: Vec<String> = self.0.collect();
+        Ok(crate::into_r::str_iter_to_strsxp(
+            strings.iter().map(|s| s.as_str()),
+        ))
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        let strings: Vec<String> = self.0.collect();
+        Ok(unsafe {
+            crate::into_r::str_iter_to_strsxp_unchecked(strings.iter().map(|s| s.as_str()))
+        })
+    }
+}
+// endregion
