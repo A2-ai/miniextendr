@@ -52,6 +52,7 @@
     "indicatif",
     "nonapi",
     "worker-thread",
+    "arrow",
     "macro-coverage",
     "debug-preserve",
     "growth-debug"
