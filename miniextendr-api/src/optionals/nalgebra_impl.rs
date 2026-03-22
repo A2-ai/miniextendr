@@ -169,8 +169,8 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
+            dst.copy_from_slice(&data);
 
             // Return the SEXP - guard drops and unprotects
             guard.get()
@@ -284,8 +284,8 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, R as i32, C as i32);
             let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(guard.get()).cast_mut().cast::<T>();
-            std::ptr::copy_nonoverlapping(self.as_slice().as_ptr(), ptr, R * C);
+            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), R * C);
+            dst.copy_from_slice(self.as_slice());
 
             guard.get()
         })
@@ -1342,11 +1342,10 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
             if dim.type_of() != SEXPTYPE::INTSXP || dim.len() != 2 {
                 let nrow = self.nrows();
                 let ncol = self.ncols();
-                let dim_sexp = ffi::Rf_allocVector(SEXPTYPE::INTSXP, 2);
+                let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector::<i32>(2);
                 let _guard = crate::gc_protect::OwnedProtect::new(dim_sexp);
-                let dim_ptr = ffi::INTEGER(dim_sexp);
-                *dim_ptr = nrow as i32;
-                *dim_ptr.add(1) = ncol as i32;
+                dim_s[0] = nrow as i32;
+                dim_s[1] = ncol as i32;
                 ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);
             }
         }

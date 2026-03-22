@@ -507,14 +507,14 @@ impl IntoR for StringDictionaryArray {
             let scope = crate::gc_protect::ProtectScope::new();
 
             // Create integer vector for factor codes (0-based → 1-based)
-            let codes = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::INTSXP, n as R_xlen_t));
-            let codes_ptr = ffi::INTEGER(codes);
-            for i in 0..n {
-                if self.is_null(i) {
-                    *codes_ptr.add(i) = NA_INTEGER;
+            let (codes, codes_dst) = crate::into_r::alloc_r_vector::<i32>(n);
+            scope.protect_raw(codes);
+            for (i, slot) in codes_dst.iter_mut().enumerate() {
+                *slot = if self.is_null(i) {
+                    NA_INTEGER
                 } else {
-                    *codes_ptr.add(i) = keys.value(i) + 1; // Arrow 0-based → R 1-based
-                }
+                    keys.value(i) + 1 // Arrow 0-based → R 1-based
+                };
             }
 
             // Create levels character vector
@@ -559,10 +559,10 @@ impl IntoR for Date32Array {
         unsafe {
             let scope = crate::gc_protect::ProtectScope::new();
 
-            let sexp = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::REALSXP, n as R_xlen_t));
-            let dst = ffi::REAL(sexp);
-            for i in 0..n {
-                *dst.add(i) = if self.is_null(i) {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(n);
+            scope.protect_raw(sexp);
+            for (i, slot) in dst.iter_mut().enumerate() {
+                *slot = if self.is_null(i) {
                     NA_REAL
                 } else {
                     self.value(i) as f64
@@ -601,10 +601,10 @@ impl IntoR for TimestampSecondArray {
         unsafe {
             let scope = crate::gc_protect::ProtectScope::new();
 
-            let sexp = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::REALSXP, n as R_xlen_t));
-            let dst = ffi::REAL(sexp);
-            for i in 0..n {
-                *dst.add(i) = if self.is_null(i) {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(n);
+            scope.protect_raw(sexp);
+            for (i, slot) in dst.iter_mut().enumerate() {
+                *slot = if self.is_null(i) {
                     NA_REAL
                 } else {
                     self.value(i) as f64
@@ -825,19 +825,13 @@ impl IntoR for Float64Array {
     }
 
     fn into_sexp(self) -> SEXP {
-        let n = self.len();
         unsafe {
-            let sexp = ffi::Rf_allocVector(SEXPTYPE::REALSXP, n as R_xlen_t);
-            let dst = ffi::REAL(sexp);
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             if self.null_count() == 0 {
-                std::ptr::copy_nonoverlapping(self.values().as_ptr(), dst, n);
+                dst.copy_from_slice(self.values().as_ref());
             } else {
-                for i in 0..n {
-                    *dst.add(i) = if self.is_null(i) {
-                        NA_REAL
-                    } else {
-                        self.value(i)
-                    };
+                for (i, slot) in dst.iter_mut().enumerate() {
+                    *slot = if self.is_null(i) { NA_REAL } else { self.value(i) };
                 }
             }
             sexp
@@ -853,19 +847,13 @@ impl IntoR for Int32Array {
     }
 
     fn into_sexp(self) -> SEXP {
-        let n = self.len();
         unsafe {
-            let sexp = ffi::Rf_allocVector(SEXPTYPE::INTSXP, n as R_xlen_t);
-            let dst = ffi::INTEGER(sexp);
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(self.len());
             if self.null_count() == 0 {
-                std::ptr::copy_nonoverlapping(self.values().as_ptr(), dst, n);
+                dst.copy_from_slice(self.values().as_ref());
             } else {
-                for i in 0..n {
-                    *dst.add(i) = if self.is_null(i) {
-                        NA_INTEGER
-                    } else {
-                        self.value(i)
-                    };
+                for (i, slot) in dst.iter_mut().enumerate() {
+                    *slot = if self.is_null(i) { NA_INTEGER } else { self.value(i) };
                 }
             }
             sexp
@@ -881,15 +869,13 @@ impl IntoR for UInt8Array {
     }
 
     fn into_sexp(self) -> SEXP {
-        let n = self.len();
         unsafe {
-            let sexp = ffi::Rf_allocVector(SEXPTYPE::RAWSXP, n as R_xlen_t);
-            let dst = ffi::RAW(sexp);
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<u8>(self.len());
             if self.null_count() == 0 {
-                std::ptr::copy_nonoverlapping(self.values().as_ptr(), dst, n);
+                dst.copy_from_slice(self.values().as_ref());
             } else {
-                for i in 0..n {
-                    *dst.add(i) = if self.is_null(i) { 0 } else { self.value(i) };
+                for (i, slot) in dst.iter_mut().enumerate() {
+                    *slot = if self.is_null(i) { 0 } else { self.value(i) };
                 }
             }
             sexp
@@ -905,12 +891,12 @@ impl IntoR for BooleanArray {
     }
 
     fn into_sexp(self) -> SEXP {
-        let n = self.len();
         unsafe {
-            let sexp = ffi::Rf_allocVector(SEXPTYPE::LGLSXP, n as R_xlen_t);
-            let dst = ffi::LOGICAL(sexp);
-            for i in 0..n {
-                *dst.add(i) = if self.is_null(i) {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::ffi::RLogical>(self.len());
+            let dst_i32: &mut [i32] =
+                std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), self.len());
+            for (i, slot) in dst_i32.iter_mut().enumerate() {
+                *slot = if self.is_null(i) {
                     crate::altrep_traits::NA_LOGICAL
                 } else if self.value(i) {
                     Rboolean::TRUE as i32
@@ -1068,10 +1054,10 @@ impl IntoR for RecordBatch {
             ffi::Rf_setAttrib(list, R_ClassSymbol, class_str);
 
             // Set compact row.names: c(NA_integer_, -nrow)
-            let rownames = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::INTSXP, 2));
-            let rn_ptr = ffi::INTEGER(rownames);
-            *rn_ptr = NA_INTEGER;
-            *rn_ptr.add(1) = -(nrow as i32);
+            let (rownames, rn) = crate::into_r::alloc_r_vector::<i32>(2);
+            scope.protect_raw(rownames);
+            rn[0] = NA_INTEGER;
+            rn[1] = -(nrow as i32);
             ffi::Rf_setAttrib(list, R_RowNamesSymbol, rownames);
 
             list

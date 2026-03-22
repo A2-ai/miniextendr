@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use crate::ffi::{self, Rboolean, SEXP, SEXPTYPE};
+use crate::ffi::{self, Rboolean, SexpExt, SEXP, SEXPTYPE};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
@@ -305,13 +305,11 @@ fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
 
     // Compact integer form: c(NA_integer_, -n) where n is the row count
     if rn_type == SEXPTYPE::INTSXP && rn_len == 2 {
-        let ptr = unsafe { ffi::INTEGER(row_names) };
-        let first = unsafe { *ptr };
-        let second = unsafe { *ptr.add(1) };
+        let rn: &[i32] = unsafe { row_names.as_slice() };
 
         // NA_INTEGER = i32::MIN, second is -nrow
-        if first == i32::MIN && second < 0 {
-            return Ok((-second) as usize);
+        if rn[0] == i32::MIN && rn[1] < 0 {
+            return Ok((-rn[1]) as usize);
         }
         // Not compact form, but an actual 2-element integer vector — nrow = 2
         // (This is unusual but valid)

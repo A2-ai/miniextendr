@@ -372,7 +372,7 @@ test_that("Tuple serializes to unnamed list", {
   expect_null(names(result))  # Unnamed
 
   expect_equal(result[[1]], 42L)
-  expect_equal(result[[2]], 3.14)
+  expect_equal(result[[2]], pi)
   expect_equal(result[[3]], "hello")
 })
 
@@ -624,7 +624,7 @@ test_that("WithOptionals handles all present values", {
 
   expect_equal(data$required_int, 42L)
   expect_equal(data$optional_int, 100L)
-  expect_equal(data$optional_float, 3.14)
+  expect_equal(data$optional_float, pi)
   expect_equal(data$optional_string, "hello")
   expect_true(data$optional_bool)
 })
@@ -646,7 +646,7 @@ test_that("WithOptionals handles mixed values", {
 
   expect_equal(data$required_int, 42L)
   expect_null(data$optional_int)
-  expect_equal(data$optional_float, 2.71828)
+  expect_equal(data$optional_float, exp(1))
   expect_null(data$optional_string)
   expect_false(data$optional_bool)
 })
