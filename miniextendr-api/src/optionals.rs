@@ -427,7 +427,8 @@ pub use tinyvec_impl::{Array, ArrayVec, TinyVec};
 pub mod arrow_impl;
 #[cfg(feature = "arrow")]
 pub use arrow_impl::{
-    Array as ArrowArray, ArrayRef, BooleanArray, DataType, Field, Float64Array, Int32Array,
-    RecordBatch, Schema, StringArray, UInt8Array,
+    Array as ArrowArray, ArrayRef, BooleanArray, DataType, Date32Array, DictionaryArray, Field,
+    Float64Array, Int32Array, RecordBatch, Schema, StringArray, StringDictionaryArray,
+    TimestampSecondArray, UInt8Array,
 };
 // endregion
