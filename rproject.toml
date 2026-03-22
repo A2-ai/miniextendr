@@ -1,0 +1,41 @@
+[project]
+name = "miniextendr"
+r_version = "4.5"
+
+# A list of repositories to fetch packages from. Order matters: we will try to get a package from each repository in order.
+# The alias is only used in this file if you want to specifically require a dependency to come from a certain repository.
+# Example: { alias = "PPM", url = "https://packagemanager.posit.co/cran/latest" },
+repositories = [
+    {alias = "CRAN", url = "https://cloud.r-project.org/"},
+]
+
+# A list of packages to install and any additional configuration
+# Examples:
+    # "dplyr",
+    # {name = "dplyr", repository = "CRAN"},
+    # {name = "dplyr", git = "https://github.com/tidyverse/dplyr.git", tag = "v1.1.4"},
+dependencies = [
+    "lifecycle",
+    "methods",
+    "R6",
+    "S7",
+    "vctrs",
+    "bench",
+    "callr",
+    "dplyr",
+    "ggplot2",
+    "scales",
+    "testthat",
+    "tibble",
+    "tidyr",
+    "cli",
+    "fs",
+    "usethis",
+    "devtools",
+    "knitr",
+    "rcmdcheck",
+    "rmarkdown",
+    "roxygen2",
+    "withr",
+    "yaml",
+]
