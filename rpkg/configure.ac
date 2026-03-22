@@ -74,7 +74,7 @@ if test -z "${MINIEXTENDR_FEATURES+x}"; then
   fi
   dnl If auto-detection returned nothing, enable all features
   if test -z "$MINIEXTENDR_FEATURES"; then
-    MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh"
+    MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow"
   fi
 fi
 

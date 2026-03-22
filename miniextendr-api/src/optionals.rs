@@ -414,3 +414,20 @@ pub mod tinyvec_impl;
 #[cfg(feature = "tinyvec")]
 pub use tinyvec_impl::{Array, ArrayVec, TinyVec};
 // endregion
+
+// region: Arrow - Apache Arrow columnar format
+
+/// Integration with the Apache Arrow columnar format.
+///
+/// Provides zero-copy (where possible) conversions between R vectors/data.frames
+/// and Arrow arrays/RecordBatch.
+///
+/// Enable with `features = ["arrow"]`.
+#[cfg(feature = "arrow")]
+pub mod arrow_impl;
+#[cfg(feature = "arrow")]
+pub use arrow_impl::{
+    Array as ArrowArray, ArrayRef, BooleanArray, DataType, Field, Float64Array, Int32Array,
+    RecordBatch, Schema, StringArray, UInt8Array,
+};
+// endregion

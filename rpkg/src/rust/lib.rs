@@ -103,6 +103,8 @@ pub use miniextendr_api::serde_crate as serde;
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
+#[cfg(feature = "arrow")]
+mod arrow_adapter_tests;
 mod altrep_sexp_tests;
 mod as_coerce_tests;
 #[cfg(feature = "num-bigint")]
