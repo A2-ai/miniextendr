@@ -230,6 +230,8 @@
 pub mod columnar;
 mod de;
 mod error;
+#[cfg(feature = "serde_json")]
+pub mod json_string;
 mod ser;
 mod traits;
 
@@ -239,5 +241,7 @@ pub use ::serde::{Deserialize, Serialize};
 pub use columnar::vec_to_dataframe;
 pub use de::RDeserializer;
 pub use error::RSerdeError;
+#[cfg(feature = "serde_json")]
+pub use json_string::{AsJson, AsJsonPretty, AsJsonVec, FromJson};
 pub use ser::RSerializer;
 pub use traits::{AsSerialize, RDeserializeNative, RSerializeNative, from_r, to_r};

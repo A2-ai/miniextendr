@@ -38,4 +38,5 @@ dependencies = [
     "roxygen2",
     "withr",
     "yaml",
+    "jsonlite",
 ]
