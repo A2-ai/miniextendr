@@ -518,7 +518,7 @@ pub mod typed_list;
 pub use convert::{
     AsDisplay, AsDisplayVec, AsExternalPtr, AsExternalPtrExt, AsFromStr, AsFromStrVec, AsList,
     AsListExt, AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsRNative,
-    AsRNativeExt, DataFrame, IntoDataFrame, ToDataFrame, ToDataFrameExt,
+    AsRNativeExt, Collect, CollectStrings, DataFrame, IntoDataFrame, ToDataFrame, ToDataFrameExt,
 };
 #[cfg(feature = "serde")]
 pub use convert::{AsSerializeRow, SerializeDataFrame};
