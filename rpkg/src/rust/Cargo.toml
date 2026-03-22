@@ -46,6 +46,7 @@ vctrs = ["miniextendr-api/vctrs"]
 tinyvec = ["miniextendr-api/tinyvec"]
 borsh = ["miniextendr-api/borsh"]
 arrow = ["miniextendr-api/arrow"]
+datafusion = ["miniextendr-api/datafusion"]
 indicatif = ["miniextendr-api/indicatif"]
 # Diagnostic / development features (shallow pass-through)
 macro-coverage = ["miniextendr-api/macro-coverage"]
