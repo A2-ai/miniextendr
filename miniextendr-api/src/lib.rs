@@ -832,6 +832,14 @@ pub use optionals::tinyvec_impl;
 #[cfg(feature = "tinyvec")]
 pub use optionals::{Array, ArrayVec, TinyVec};
 
+#[cfg(feature = "arrow")]
+pub use optionals::arrow_impl;
+#[cfg(feature = "arrow")]
+pub use optionals::{
+    ArrowArray, ArrayRef, BooleanArray, DataType, Field, Float64Array, Int32Array, RecordBatch,
+    Schema, StringArray, UInt8Array,
+};
+
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;
 pub use rarray::{RArray, RArray3D, RMatrix, RVector};
