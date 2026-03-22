@@ -118,6 +118,26 @@ Make both `#[miniextendr]` and derive paths available for every feature.
 - [x] `#[miniextendr(prefer = "...")]` on struct → Prefer\* markers
 - [x] `#[derive(Altrep)]` on 1-field struct → ALTREP registration
 
+== Trait Adapter Wrappers (2026-03-22)
+
+- [x] `AsDisplay<T>` / `AsDisplayVec<T>` — `T: Display` → R character
+- [x] `AsFromStr<T>` / `AsFromStrVec<T>` — R character → `T: FromStr`
+- [x] `Collect<I>` / `CollectStrings<I>` — zero-alloc iterator → R vector
+- [x] `AsJson<T>` / `FromJson<T>` / `AsJsonPretty<T>` / `AsJsonVec<T>` — JSON string ↔ serde
+- [x] `RCondition<E>` — `std::error::Error` cause chain in R error messages
+- [x] `log` feature — route `log::info!`/`warn!`/`error!` to R console
+- [x] `tools/detect-features.R` — configure-time feature auto-detection
+- [x] `sync_feature_rules()` in minirextendr — auto-update detect script from Cargo.toml
+- [x] `alloc_r_vector<T>()` — centralized R vector allocation, no more `ptr.add` loops
+
+== Remaining Plans
+
+- [ ] `lazy-altrep-materialization` — `Lazy<T>` opt-in ALTREP for Arrow/ndarray/nalgebra
+- [ ] `datafusion-full-integration` — DataFrame API, file I/O, UDF bridge
+- [ ] `extract-feature-crates` — split optional integrations into `miniextendr-*` crates
+- [ ] `par-column-chunks-two` — builder-style parallel DataFrame column processing
+- [ ] `lfs-history-cleanup` — rewrite git history to use LFS for vendor.tar.xz
+
 == Low Priority / Nice to Have
 
 - [x] `miniextendr.yml` config file support — `mx_config()` + `mx_config_defaults()`
