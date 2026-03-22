@@ -58,6 +58,10 @@ pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
             // 3. Assert UTF-8 locale
             crate::encoding::miniextendr_assert_utf8_locale();
 
+            // 3b. Install R console logger (if log feature enabled)
+            #[cfg(feature = "log")]
+            crate::optionals::log_impl::install_r_logger();
+
             // 4. Set ALTREP package name
             crate::miniextendr_set_altrep_pkg_name(pkg_name.as_ptr());
 
