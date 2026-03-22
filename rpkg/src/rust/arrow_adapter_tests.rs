@@ -166,3 +166,70 @@ pub fn arrow_i32_empty_roundtrip(v: Int32Array) -> Int32Array {
 }
 
 // endregion
+
+// region: Factor (DictionaryArray)
+
+/// @noRd
+#[miniextendr]
+pub fn arrow_factor_roundtrip(
+    v: miniextendr_api::arrow_impl::StringDictionaryArray,
+) -> miniextendr_api::arrow_impl::StringDictionaryArray {
+    v
+}
+
+/// @noRd
+#[miniextendr]
+pub fn arrow_factor_len(v: miniextendr_api::arrow_impl::StringDictionaryArray) -> i32 {
+    v.len() as i32
+}
+
+// endregion
+
+// region: Date (Date32Array)
+
+/// @noRd
+#[miniextendr]
+pub fn arrow_date_roundtrip(
+    v: miniextendr_api::arrow_impl::Date32Array,
+) -> miniextendr_api::arrow_impl::Date32Array {
+    v
+}
+
+/// @noRd
+#[miniextendr]
+pub fn arrow_date_len(v: miniextendr_api::arrow_impl::Date32Array) -> i32 {
+    v.len() as i32
+}
+
+// endregion
+
+// region: POSIXct (TimestampSecondArray via helper)
+
+/// @noRd
+#[miniextendr]
+pub fn arrow_posixct_roundtrip(v: miniextendr_api::ffi::SEXP) -> miniextendr_api::ffi::SEXP {
+    use miniextendr_api::arrow_impl::posixct_to_timestamp;
+    use miniextendr_api::into_r::IntoR;
+    let arr = posixct_to_timestamp(v).expect("posixct_to_timestamp failed");
+    arr.into_sexp()
+}
+
+/// @noRd
+#[miniextendr]
+pub fn arrow_posixct_len(v: miniextendr_api::ffi::SEXP) -> i32 {
+    use miniextendr_api::arrow_impl::posixct_to_timestamp;
+    let arr = posixct_to_timestamp(v).expect("posixct_to_timestamp failed");
+    arr.len() as i32
+}
+
+// endregion
+
+// region: RecordBatch with typed columns
+
+/// @noRd
+#[miniextendr]
+pub fn arrow_recordbatch_typed_roundtrip(rb: RecordBatch) -> RecordBatch {
+    rb
+}
+
+// endregion
