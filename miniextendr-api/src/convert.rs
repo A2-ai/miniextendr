@@ -1038,3 +1038,176 @@ impl<K: AsRef<str>, V: AtomicElement> AsNamedVectorExt for Vec<(K, V)> {}
 impl<K: AsRef<str>, V: AtomicElement, const N: usize> AsNamedVectorExt for [(K, V); N] {}
 impl<K: AsRef<str>, V: Clone + AtomicElement> AsNamedVectorExt for &[(K, V)] {}
 // endregion
+
+// region: Display/FromStr trait adapters
+
+/// Wrap a `T: Display` and convert it to an R character scalar.
+///
+/// Any type implementing `std::fmt::Display` can be returned to R as a string
+/// without implementing miniextendr traits.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::net::IpAddr;
+///
+/// #[miniextendr]
+/// fn format_ip(ip: &str) -> AsDisplay<IpAddr> {
+///     AsDisplay(ip.parse().unwrap())
+/// }
+/// // R gets: "192.168.1.1"
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct AsDisplay<T>(pub T);
+
+impl<T: std::fmt::Display> IntoR for AsDisplay<T> {
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.0.to_string().into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.0.to_string().into_sexp_unchecked() })
+    }
+}
+
+/// Wrap a `Vec<T: Display>` and convert it to an R character vector.
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn format_errors(errors: Vec<std::io::Error>) -> AsDisplayVec<std::io::Error> {
+///     AsDisplayVec(errors)
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct AsDisplayVec<T>(pub Vec<T>);
+
+impl<T: std::fmt::Display> IntoR for AsDisplayVec<T> {
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        let strings: Vec<String> = self.0.into_iter().map(|x| x.to_string()).collect();
+        Ok(strings.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        let strings: Vec<String> = self.0.into_iter().map(|x| x.to_string()).collect();
+        Ok(unsafe { strings.into_sexp_unchecked() })
+    }
+}
+
+/// Wrap a parsed `T: FromStr` from an R character scalar.
+///
+/// Pass an R character scalar and it will be parsed into `T` via `str::parse()`.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::net::IpAddr;
+///
+/// #[miniextendr]
+/// fn check_ip(addr: AsFromStr<IpAddr>) -> bool {
+///     addr.0.is_loopback()
+/// }
+/// // R: check_ip("127.0.0.1") → TRUE
+/// ```
+#[derive(Debug, Clone)]
+pub struct AsFromStr<T>(pub T);
+
+impl<T: std::str::FromStr> crate::from_r::TryFromSexp for AsFromStr<T>
+where
+    T::Err: std::fmt::Display,
+{
+    type Error = crate::from_r::SexpError;
+
+    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let s: &str = crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+        let value = s
+            .parse::<T>()
+            .map_err(|e| crate::from_r::SexpError::InvalidValue(format!("{e}")))?;
+        Ok(AsFromStr(value))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let s: &str = unsafe { crate::from_r::TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        let value = s
+            .parse::<T>()
+            .map_err(|e| crate::from_r::SexpError::InvalidValue(format!("{e}")))?;
+        Ok(AsFromStr(value))
+    }
+}
+
+/// Wrap a `Vec<T: FromStr>` parsed from an R character vector.
+///
+/// Each element of the R character vector is parsed into `T`.
+/// All parse errors are collected with their indices.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::net::IpAddr;
+///
+/// #[miniextendr]
+/// fn parse_ips(addrs: AsFromStrVec<IpAddr>) -> Vec<bool> {
+///     addrs.0.into_iter().map(|ip| ip.is_loopback()).collect()
+/// }
+/// // R: parse_ips(c("127.0.0.1", "8.8.8.8")) → c(TRUE, FALSE)
+/// ```
+#[derive(Debug, Clone)]
+pub struct AsFromStrVec<T>(pub Vec<T>);
+
+impl<T: std::str::FromStr> crate::from_r::TryFromSexp for AsFromStrVec<T>
+where
+    T::Err: std::fmt::Display,
+{
+    type Error = crate::from_r::SexpError;
+
+    fn try_from_sexp(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let strings: Vec<String> = crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+        let mut result = Vec::with_capacity(strings.len());
+        let mut errors = Vec::new();
+        for (i, s) in strings.iter().enumerate() {
+            match s.parse::<T>() {
+                Ok(v) => result.push(v),
+                Err(e) => errors.push(format!("index {i}: {e}")),
+            }
+        }
+        if errors.is_empty() {
+            Ok(AsFromStrVec(result))
+        } else {
+            Err(crate::from_r::SexpError::InvalidValue(format!(
+                "parse errors: {}",
+                errors.join("; ")
+            )))
+        }
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: crate::ffi::SEXP) -> Result<Self, Self::Error> {
+        let strings: Vec<String> =
+            unsafe { crate::from_r::TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        let mut result = Vec::with_capacity(strings.len());
+        let mut errors = Vec::new();
+        for (i, s) in strings.iter().enumerate() {
+            match s.parse::<T>() {
+                Ok(v) => result.push(v),
+                Err(e) => errors.push(format!("index {i}: {e}")),
+            }
+        }
+        if errors.is_empty() {
+            Ok(AsFromStrVec(result))
+        } else {
+            Err(crate::from_r::SexpError::InvalidValue(format!(
+                "parse errors: {}",
+                errors.join("; ")
+            )))
+        }
+    }
+}
+// endregion
