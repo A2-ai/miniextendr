@@ -61,3 +61,35 @@ test_that("RDataFrame chain (SQL WHERE + sort + limit)", {
 })
 
 # endregion
+
+# region: Aggregate and count
+
+test_that("RDataFrame aggregate with group_by works", {
+  df <- data.frame(
+    name = c("a", "a", "b", "b"),
+    y = c(10.0, 20.0, 30.0, 40.0)
+  )
+  result <- test_df_aggregate(df)
+  expect_true(is.data.frame(result))
+  expect_equal(nrow(result), 2)
+  # Group "a": sum=30, count=2; group "b": sum=70, count=2
+  a_row <- result[result$name == "a", ]
+  expect_equal(a_row$total, 30.0)
+  expect_equal(a_row$cnt, 2L)
+})
+
+test_that("RDataFrame global aggregation (no group_by) works", {
+  df <- make_test_df()
+  result <- test_df_global_agg(df)
+  expect_equal(nrow(result), 1)
+  expect_equal(result$avg_y, 30.0)
+  expect_equal(result$max_x, 5L)
+})
+
+test_that("RDataFrame count works", {
+  df <- make_test_df()
+  result <- test_df_count(df)
+  expect_equal(result, 3L)  # x > 2: values 3, 4, 5
+})
+
+# endregion
