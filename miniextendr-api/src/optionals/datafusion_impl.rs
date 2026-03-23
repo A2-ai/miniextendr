@@ -136,6 +136,24 @@ impl RSessionContext {
             .map_err(|e| e.to_string())?;
         rt.block_on(df.collect()).map_err(|e| e.to_string())
     }
+
+    /// Execute a SQL query and return an `RDataFrame` for further operations.
+    ///
+    /// The query is not executed until `.collect()` is called.
+    pub fn sql(&self, query: &str) -> Result<RDataFrame, String> {
+        let rt = runtime();
+        let df = rt
+            .block_on(self.ctx.sql(query))
+            .map_err(|e| e.to_string())?;
+        Ok(RDataFrame { df })
+    }
+
+    /// Register a CSV file as a named table.
+    pub fn register_csv(&self, name: &str, path: &str) -> Result<(), String> {
+        let rt = runtime();
+        rt.block_on(self.ctx.register_csv(name, path, Default::default()))
+            .map_err(|e| e.to_string())
+    }
 }
 
 impl Default for RSessionContext {
@@ -175,3 +193,99 @@ impl TypedExternal for RSessionContext {
     const TYPE_NAME_CSTR: &'static [u8] = b"datafusion::RSessionContext\0";
     const TYPE_ID_CSTR: &'static [u8] = b"datafusion::RSessionContext\0";
 }
+
+// region: RDataFrame — sync wrapper around DataFusion DataFrame
+
+/// A synchronous wrapper around DataFusion's `DataFrame`.
+///
+/// Returned by `RSessionContext::sql()`. Provides chainable operations
+/// (select, sort, limit) that build a query plan. The plan is executed
+/// lazily — only when `.collect()` is called.
+///
+/// For filtering, use SQL in `ctx.sql("SELECT * FROM t WHERE x > 5")`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let ctx = RSessionContext::new();
+/// ctx.register_record_batch("t", batch)?;
+/// let result = ctx.sql("SELECT * FROM t WHERE x > 5")?
+///     .select(&["x", "y"])?
+///     .sort("x", true)?
+///     .limit(10)?
+///     .collect()?;
+/// ```
+pub struct RDataFrame {
+    df: datafusion::dataframe::DataFrame,
+}
+
+impl RDataFrame {
+    /// Create from a DataFusion DataFrame.
+    pub fn from_inner(df: datafusion::dataframe::DataFrame) -> Self {
+        Self { df }
+    }
+
+    /// Select columns by name.
+    pub fn select(self, columns: &[&str]) -> Result<Self, String> {
+        let exprs: Vec<datafusion::prelude::Expr> = columns
+            .iter()
+            .map(|c| datafusion::prelude::col(*c))
+            .collect();
+        let df = self.df.select(exprs).map_err(|e| e.to_string())?;
+        Ok(RDataFrame { df })
+    }
+
+    /// Sort by a column.
+    pub fn sort(self, column: &str, ascending: bool) -> Result<Self, String> {
+        let sort_expr = datafusion::prelude::col(column).sort(ascending, !ascending);
+        let df = self.df.sort(vec![sort_expr]).map_err(|e| e.to_string())?;
+        Ok(RDataFrame { df })
+    }
+
+    /// Limit the number of rows returned.
+    pub fn limit(self, n: usize) -> Result<Self, String> {
+        let df = self.df.limit(0, Some(n)).map_err(|e| e.to_string())?;
+        Ok(RDataFrame { df })
+    }
+
+    /// Execute the query plan and collect all results into a single RecordBatch.
+    pub fn collect(self) -> Result<RecordBatch, String> {
+        let rt = runtime();
+        let batches: Vec<RecordBatch> =
+            rt.block_on(self.df.collect()).map_err(|e| e.to_string())?;
+
+        if batches.is_empty() {
+            return Ok(RecordBatch::new_empty(Arc::new(arrow_schema::Schema::empty())));
+        }
+
+        if batches.len() == 1 {
+            return Ok(batches.into_iter().next().unwrap());
+        }
+
+        let schema = batches[0].schema();
+        arrow_select::concat::concat_batches(&schema, &batches).map_err(|e| e.to_string())
+    }
+
+    /// Get column names.
+    pub fn columns(&self) -> Vec<String> {
+        self.df
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect()
+    }
+
+    /// Get the underlying DataFusion DataFrame (for advanced use).
+    pub fn into_inner(self) -> datafusion::dataframe::DataFrame {
+        self.df
+    }
+}
+
+impl TypedExternal for RDataFrame {
+    const TYPE_NAME: &'static str = "datafusion::RDataFrame";
+    const TYPE_NAME_CSTR: &'static [u8] = b"datafusion::RDataFrame\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"datafusion::RDataFrame\0";
+}
+
+// endregion
