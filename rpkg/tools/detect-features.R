@@ -40,6 +40,7 @@ features <- c(features, "tinyvec")
 features <- c(features, "raw_conversions")
 features <- c(features, "borsh")
 features <- c(features, "arrow")
+features <- c(features, "datafusion")
 features <- c(features, "log")
 
 # vctrs — only if the R package is installed
