@@ -1925,6 +1925,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 name = "miniextendr"
 version = "0.1.0"
 dependencies = [
+ "log",
  "miniextendr-api",
  "miniextendr-lint",
 ]
@@ -1949,6 +1950,7 @@ dependencies = [
  "indexmap",
  "indicatif",
  "linkme",
+ "log",
  "miniextendr-macros",
  "nalgebra",
  "ndarray",
