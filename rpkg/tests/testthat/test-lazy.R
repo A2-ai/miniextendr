@@ -52,3 +52,37 @@ test_that("Lazy<Float64Array> with nulls becomes NA", {
 })
 
 # endregion
+
+# region: Lazy<ndarray::Array1>
+
+test_that("Lazy<Array1<f64>> returns correct numeric values", {
+  result <- test_lazy_ndarray_f64(5L)
+  expect_type(result, "double")
+  expect_length(result, 5)
+  expect_equal(result, (0:4) * 0.5)
+})
+
+test_that("Lazy<Array1<i32>> returns correct integer values", {
+  result <- test_lazy_ndarray_i32(5L)
+  expect_type(result, "integer")
+  expect_equal(result, 0L:4L)
+})
+
+# endregion
+
+# region: Lazy<nalgebra::DVector>
+
+test_that("Lazy<DVector<f64>> returns correct numeric values", {
+  result <- test_lazy_nalgebra_f64(5L)
+  expect_type(result, "double")
+  expect_length(result, 5)
+  expect_equal(result, (0:4) * 2.0)
+})
+
+test_that("Lazy<DVector<i32>> returns correct integer values", {
+  result <- test_lazy_nalgebra_i32(5L)
+  expect_type(result, "integer")
+  expect_equal(result, 0L:4L)
+})
+
+# endregion
