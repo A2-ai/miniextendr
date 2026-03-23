@@ -2122,6 +2122,7 @@ dependencies = [
  "indexmap",
  "indicatif",
  "linkme",
+ "log",
  "miniextendr-engine",
  "miniextendr-macros",
  "nalgebra",
