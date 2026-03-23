@@ -50,3 +50,27 @@ pub fn test_collect_strings_numbered(n: i32) -> CollectStrings<std::vec::IntoIte
 }
 
 // endregion
+
+// region: CollectNA — Option<f64/i32> iterators with NA
+
+use miniextendr_api::convert::{CollectNA, CollectNAInt};
+
+/// @export
+#[miniextendr]
+pub fn test_collect_na_f64(n: i32) -> CollectNA<std::vec::IntoIter<Option<f64>>> {
+    let v: Vec<Option<f64>> = (0..n)
+        .map(|i| if i % 3 == 0 { None } else { Some(i as f64) })
+        .collect();
+    CollectNA(v.into_iter())
+}
+
+/// @export
+#[miniextendr]
+pub fn test_collect_na_i32(n: i32) -> CollectNAInt<std::vec::IntoIter<Option<i32>>> {
+    let v: Vec<Option<i32>> = (0..n)
+        .map(|i| if i % 2 == 0 { None } else { Some(i * 10) })
+        .collect();
+    CollectNAInt(v.into_iter())
+}
+
+// endregion

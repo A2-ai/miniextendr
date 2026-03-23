@@ -1310,4 +1310,99 @@ where
         })
     }
 }
+
+/// Write an `ExactSizeIterator` of `Option<T>` directly into an R vector with NA support.
+///
+/// `None` values become `NA` in R. Works for `f64` and `i32`.
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn with_gaps(n: i32) -> CollectNA<impl ExactSizeIterator<Item = Option<f64>>> {
+///     CollectNA((0..n).map(|i| if i % 3 == 0 { None } else { Some(i as f64) }))
+/// }
+/// ```
+pub struct CollectNA<I>(pub I);
+
+impl<I> IntoR for CollectNA<I>
+where
+    I: ExactSizeIterator<Item = Option<f64>>,
+{
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(self.0.len());
+            for (slot, val) in dst.iter_mut().zip(self.0) {
+                *slot = val.unwrap_or(crate::altrep_traits::NA_REAL);
+            }
+            sexp
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector_unchecked::<f64>(self.0.len());
+            for (slot, val) in dst.iter_mut().zip(self.0) {
+                *slot = val.unwrap_or(crate::altrep_traits::NA_REAL);
+            }
+            sexp
+        }
+    }
+}
+
+/// Write an `ExactSizeIterator` of `Option<i32>` directly into an R integer vector with NA.
+pub struct CollectNAInt<I>(pub I);
+
+impl<I> IntoR for CollectNAInt<I>
+where
+    I: ExactSizeIterator<Item = Option<i32>>,
+{
+    type Error = std::convert::Infallible;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(self.0.len());
+            for (slot, val) in dst.iter_mut().zip(self.0) {
+                *slot = val.unwrap_or(crate::altrep_traits::NA_INTEGER);
+            }
+            sexp
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector_unchecked::<i32>(self.0.len());
+            for (slot, val) in dst.iter_mut().zip(self.0) {
+                *slot = val.unwrap_or(crate::altrep_traits::NA_INTEGER);
+            }
+            sexp
+        }
+    }
+}
 // endregion
