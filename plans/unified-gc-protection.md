@@ -253,6 +253,66 @@ Functions that return already-protected or non-SEXP values:
 7. Migrate manual `Rf_protect`/`Rf_unprotect` call sites to `ProtectScope`
 8. Lint rule: warn on direct `Rf_protect`/`Rf_unprotect` outside gc_protect.rs
 
+## Relationship to `refcount_protect.rs`
+
+`refcount_protect.rs` implements a VECSXP-backed pool with HashMap/BTreeMap and
+reference counting. However, the refcounting is unnecessary: R's API is single-threaded,
+so all protection calls must happen on the main thread. Multiple threads can't
+independently protect/release the same SEXP — they must route through the main thread,
+which serializes access. Shared ownership of protection doesn't exist in this model.
+
+**Refactor `refcount_protect.rs`, don't delete it.** The module has good infrastructure
+that `ProtectPool` should build on:
+
+- **`MapStorage` trait** — generic over BTreeMap/HashMap/ahash. Reusable as-is.
+- **`ArenaState`** — VECSXP pool with free list, growth (doubling + copy), capacity
+  management. This IS the proposed `ProtectPool`, already implemented.
+- **`Arena<M>`** — RefCell wrapper with `ArenaGuard` RAII (Drop-based unprotect).
+- **`define_thread_local_arena!`** — zero-overhead thread-local pool via UnsafeCell.
+- **Growth logic** — allocate new VECSXP, copy elements, R_PreserveObject/R_ReleaseObject swap.
+
+**What to remove:** the refcounting layer (`Entry.count`, `decrement_and_maybe_remove`).
+R's API is single-threaded — multiple threads can't independently protect/release the
+same SEXP without routing through the main thread, which serializes access. Shared
+ownership of protection doesn't exist in this model. Replace refcounting with either
+slotmap generational keys or simple unique ownership (one protector per SEXP).
+
+**What to add:** slotmap backend as an alternative to HashMap/BTreeMap via `MapStorage`,
+or replace `MapStorage` entirely with slotmap if benchmarks show it's faster.
+
+## If benchmarks show negligible differences
+
+The most likely result at typical miniextendr scales (tens to low hundreds of protected
+objects) is that all mechanisms perform similarly. If so:
+
+- **Keep only two**: protect stack (`ProtectScope`) + precious list (`OwnedProtect`)
+- **Don't build the pool** — the complexity isn't justified
+- **Retire the DLL** — precious list is simpler for the same use case at small N
+- **Keep `refcount_protect` only if refcounting is actually used** somewhere; otherwise retire it too
+- The `Protector` trait still has value (abstracts over stack vs precious list) but with
+  only two implementations, not four
+
+The simplest correct codebase wins when performance is equal.
+
+## Decisions pending benchmark results
+
+See `plans/gc-protection-benchmarks.md` for the benchmark plan. The following decisions
+in this plan are assumptions that benchmark data could overturn:
+
+| Decision | Assumption | Benchmark that tests it | What changes if wrong |
+|----------|-----------|------------------------|----------------------|
+| ExternalPtr → precious list (step 5) | "few objects" means O(n) release is fine | Group 2 (batch), Group 13 (R_HASH_PRECIOUS) | Keep ExternalPtr on DLL if precious list degrades at moderate N (>50) |
+| Allocator stays on DLL (step 6) | CONSXP allocation is acceptable | Group 9 (GC pressure), Group 3 (churn) | Move allocator to pool if CONSXP allocation measurably increases GC frequency |
+| Pool needed for churn | DLL's CONSXP cost matters at high frequency | Group 3 (churn), Group 9 (GC pressure) | Drop the pool entirely if DLL handles 100k churn with negligible overhead |
+| slotmap as pool backend | Generational check is free | Group 16 (slotmap overhead) | Offer raw Vec pool as unsafe fast path if check is measurable |
+| Four Protector impls needed | Each mechanism has a distinct winning niche | Groups 2, 3, 6, 13 | Reduce to two (stack + one cross-call) if niches collapse |
+| DLL memory reclamation matters | GC reclaims cons cells between bursts | Group 6 (bursty) | Remove "bursty workload" from DLL's advantages if GC doesn't reclaim |
+| Pool growth spikes are a concern | Reallocation has visible latency | Group 17 (growth cost) | Remove "no growth spikes" from DLL's advantages if spikes are <100μs |
+| Vec vs VecDeque for pool free list | Unknown which is better | Group 11 (free-list strategy) | Use whichever wins; Vec if negligible difference |
+
+**Run benchmarks before implementing steps 5-6.** The trait and FFI wrappers (steps 1-4)
+are independent of these decisions.
+
 ## Migration priority
 
 High — these have multiple unprotected allocations in sequence:
