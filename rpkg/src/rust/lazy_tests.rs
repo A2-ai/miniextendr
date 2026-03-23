@@ -23,7 +23,7 @@ pub fn test_lazy_vec_i32(n: i32) -> Lazy<Vec<i32>> {
 // region: Lazy<Arrow arrays>
 
 #[cfg(feature = "arrow")]
-use miniextendr_api::optionals::arrow_impl::{Float64Array, Int32Array, BooleanArray};
+use miniextendr_api::optionals::arrow_impl::{Float64Array, Int32Array, BooleanArray, StringArray};
 
 /// @export
 #[cfg(feature = "arrow")]
@@ -55,6 +55,22 @@ pub fn test_lazy_arrow_bool(n: i32) -> Lazy<BooleanArray> {
 pub fn test_lazy_arrow_f64_with_nulls() -> Lazy<Float64Array> {
     let values: Vec<Option<f64>> = vec![Some(1.0), None, Some(3.0), None, Some(5.0)];
     Altrep(Float64Array::from(values))
+}
+
+/// @export
+#[cfg(feature = "arrow")]
+#[miniextendr]
+pub fn test_lazy_arrow_string() -> Lazy<StringArray> {
+    let values = vec!["hello", "world", "foo"];
+    Altrep(StringArray::from(values))
+}
+
+/// @export
+#[cfg(feature = "arrow")]
+#[miniextendr]
+pub fn test_lazy_arrow_string_with_nulls() -> Lazy<StringArray> {
+    let values: Vec<Option<&str>> = vec![Some("a"), None, Some("c")];
+    Altrep(StringArray::from(values))
 }
 
 // endregion

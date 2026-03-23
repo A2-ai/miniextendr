@@ -518,7 +518,7 @@ impl IntoR for StringDictionaryArray {
             }
 
             // Create levels character vector
-            let n_levels = values.len();
+            let n_levels = Array::len(&*values);
             let levels =
                 scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n_levels as R_xlen_t));
             for i in 0..n_levels {
@@ -917,7 +917,7 @@ impl IntoR for StringArray {
     }
 
     fn into_sexp(self) -> SEXP {
-        let n = self.len();
+        let n = Array::len(&self);
         unsafe {
             let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
             let guard = crate::gc_protect::OwnedProtect::new(sexp);
@@ -1384,6 +1384,49 @@ impl RegisterAltrep for BooleanArray {
             };
             unsafe {
                 <BooleanArray as crate::altrep_data::InferBase>::install_methods(cls);
+            }
+            cls
+        })
+    }
+}
+
+// StringArray ALTREP — Elt creates CHARSXP on demand, no Dataptr (not contiguous).
+
+impl AltrepLen for StringArray {
+    fn len(&self) -> usize {
+        Array::len(self)
+    }
+}
+
+impl crate::altrep_data::AltStringData for StringArray {
+    fn elt(&self, i: usize) -> Option<&str> {
+        if self.is_null(i) {
+            None
+        } else {
+            Some(self.value(i))
+        }
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(self.null_count() == 0)
+    }
+}
+
+crate::impl_altstring_from_data!(StringArray);
+
+impl RegisterAltrep for StringArray {
+    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| {
+            let cls = unsafe {
+                <StringArray as crate::altrep_data::InferBase>::make_class(
+                    b"arrow_StringArray\0".as_ptr().cast(),
+                    crate::AltrepPkgName::as_ptr(),
+                )
+            };
+            unsafe {
+                <StringArray as crate::altrep_data::InferBase>::install_methods(cls);
             }
             cls
         })

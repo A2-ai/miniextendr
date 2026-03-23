@@ -51,6 +51,22 @@ test_that("Lazy<Float64Array> with nulls becomes NA", {
   expect_equal(result[5], 5.0)
 })
 
+test_that("Lazy<StringArray> returns character on demand", {
+  result <- test_lazy_arrow_string()
+  expect_type(result, "character")
+  expect_length(result, 3)
+  expect_equal(result, c("hello", "world", "foo"))
+})
+
+test_that("Lazy<StringArray> with nulls becomes NA_character_", {
+  result <- test_lazy_arrow_string_with_nulls()
+  expect_type(result, "character")
+  expect_length(result, 3)
+  expect_equal(result[1], "a")
+  expect_true(is.na(result[2]))
+  expect_equal(result[3], "c")
+})
+
 # endregion
 
 # region: Lazy<ndarray::Array1>
