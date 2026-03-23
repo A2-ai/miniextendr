@@ -444,7 +444,7 @@ pub use arrow_impl::{
 #[cfg(feature = "datafusion")]
 pub mod datafusion_impl;
 #[cfg(feature = "datafusion")]
-pub use datafusion_impl::RSessionContext;
+pub use datafusion_impl::{RDataFrame, RSessionContext};
 // endregion
 
 // region: Log - Rust logging to R console
