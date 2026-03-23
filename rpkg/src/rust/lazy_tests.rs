@@ -58,3 +58,45 @@ pub fn test_lazy_arrow_f64_with_nulls() -> Lazy<Float64Array> {
 }
 
 // endregion
+
+// region: Lazy<ndarray::Array1<T>>
+
+#[cfg(feature = "ndarray")]
+use miniextendr_api::optionals::ndarray_impl::Array1;
+
+/// @export
+#[cfg(feature = "ndarray")]
+#[miniextendr]
+pub fn test_lazy_ndarray_f64(n: i32) -> Lazy<Array1<f64>> {
+    Altrep(Array1::from_iter((0..n).map(|i| (i as f64) * 0.5)))
+}
+
+/// @export
+#[cfg(feature = "ndarray")]
+#[miniextendr]
+pub fn test_lazy_ndarray_i32(n: i32) -> Lazy<Array1<i32>> {
+    Altrep(Array1::from_iter(0..n))
+}
+
+// endregion
+
+// region: Lazy<nalgebra::DVector<T>>
+
+#[cfg(feature = "nalgebra")]
+use miniextendr_api::optionals::nalgebra_impl::DVector;
+
+/// @export
+#[cfg(feature = "nalgebra")]
+#[miniextendr]
+pub fn test_lazy_nalgebra_f64(n: i32) -> Lazy<DVector<f64>> {
+    Altrep(DVector::from_iterator(n as usize, (0..n).map(|i| (i as f64) * 2.0)))
+}
+
+/// @export
+#[cfg(feature = "nalgebra")]
+#[miniextendr]
+pub fn test_lazy_nalgebra_i32(n: i32) -> Lazy<DVector<i32>> {
+    Altrep(DVector::from_iterator(n as usize, 0..n))
+}
+
+// endregion

@@ -3363,3 +3363,134 @@ mod tests {
     }
 }
 // endregion
+
+// region: ALTREP support for ndarray Array1 (Lazy<Array1<T>>)
+
+use crate::altrep_data::{AltIntegerData, AltRealData, AltrepDataptr, AltrepLen};
+
+// TypedExternal already impl'd via impl_te_ndarray! macro above.
+
+impl AltrepLen for Array1<f64> {
+    fn len(&self) -> usize {
+        ndarray::ArrayBase::len(self)
+    }
+}
+
+impl AltrepLen for Array1<i32> {
+    fn len(&self) -> usize {
+        ndarray::ArrayBase::len(self)
+    }
+}
+
+impl AltRealData for Array1<f64> {
+    fn elt(&self, i: usize) -> f64 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        // Use is_standard_layout to check contiguity, then raw pointer.
+        if self.is_standard_layout() {
+            Some(unsafe { std::slice::from_raw_parts(self.as_ptr(), self.len()) })
+        } else {
+            None
+        }
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true)
+    }
+}
+
+impl AltIntegerData for Array1<i32> {
+    fn elt(&self, i: usize) -> i32 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        if self.is_standard_layout() {
+            Some(unsafe { std::slice::from_raw_parts(self.as_ptr(), self.len()) })
+        } else {
+            None
+        }
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true)
+    }
+}
+
+impl AltrepDataptr<f64> for Array1<f64> {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
+        if self.is_standard_layout() {
+            Some(self.as_mut_ptr())
+        } else {
+            None
+        }
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const f64> {
+        if self.is_standard_layout() {
+            Some(self.as_ptr())
+        } else {
+            None
+        }
+    }
+}
+
+impl AltrepDataptr<i32> for Array1<i32> {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        if self.is_standard_layout() {
+            Some(self.as_mut_ptr())
+        } else {
+            None
+        }
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        if self.is_standard_layout() {
+            Some(self.as_ptr())
+        } else {
+            None
+        }
+    }
+}
+
+crate::impl_altreal_from_data!(Array1<f64>, dataptr);
+crate::impl_altinteger_from_data!(Array1<i32>, dataptr);
+
+use crate::altrep::RegisterAltrep;
+
+impl RegisterAltrep for Array1<f64> {
+    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| {
+            let cls = unsafe {
+                <Array1<f64> as crate::altrep_data::InferBase>::make_class(
+                    b"ndarray_Array1_f64\0".as_ptr().cast(),
+                    crate::AltrepPkgName::as_ptr(),
+                )
+            };
+            unsafe { <Array1<f64> as crate::altrep_data::InferBase>::install_methods(cls) };
+            cls
+        })
+    }
+}
+
+impl RegisterAltrep for Array1<i32> {
+    fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| {
+            let cls = unsafe {
+                <Array1<i32> as crate::altrep_data::InferBase>::make_class(
+                    b"ndarray_Array1_i32\0".as_ptr().cast(),
+                    crate::AltrepPkgName::as_ptr(),
+                )
+            };
+            unsafe { <Array1<i32> as crate::altrep_data::InferBase>::install_methods(cls) };
+            cls
+        })
+    }
+}
+// endregion
