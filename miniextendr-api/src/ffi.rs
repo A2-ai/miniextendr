@@ -961,18 +961,90 @@ unsafe extern "C-unwind" {
         name: *const ::std::os::raw::c_char,
     ) -> DL_FUNC;
 
-    // Rinternals.h
-    pub fn R_PreserveObject(object: SEXP);
-    pub fn R_ReleaseObject(object: SEXP);
+    // region: GC protection
+    //
+    // R has two GC protection mechanisms with very different cost profiles:
+    //
+    // ## Protect stack (`Rf_protect` / `Rf_unprotect`)
+    //
+    // A pre-allocated array (`R_PPStack`) with an integer index (`R_PPStackTop`).
+    // Protect pushes: `R_PPStack[R_PPStackTop++] = s`.
+    // Unprotect pops: `R_PPStackTop -= n`.
+    // **No heap allocation. No GC pressure. Essentially a single memory write.**
+    // Use this for temporary protection within a function.
+    // Requires LIFO discipline — nested scopes are fine, interleaved are not.
+    //
+    // ## Precious list (`R_PreserveObject` / `R_ReleaseObject`)
+    //
+    // A global linked list of CONSXP cells (`R_PreciousList`).
+    // Preserve: `CONS(object, R_PreciousList)` — **allocates a cons cell every call**.
+    // Release: linear scan of the entire list to find and unlink the object — **O(n)**.
+    // (Optional `R_HASH_PRECIOUS` env var enables a 1069-bucket hash table, improving
+    // Release to O(bucket_size), but Preserve still allocates.)
+    // Use this only for long-lived objects that outlive any single protect scope.
+    //
+    // ## Cost summary
+    //
+    // | Operation            | Cost               | Allocates? |
+    // |----------------------|--------------------|------------|
+    // | `Rf_protect`         | array write        | no         |
+    // | `Rf_unprotect(n)`    | integer subtract   | no         |
+    // | `Rf_unprotect_ptr`   | scan + shift       | no         |
+    // | `R_PreserveObject`   | cons cell alloc    | **yes**    |
+    // | `R_ReleaseObject`    | linked list scan   | no (O(n))  |
+    // | `R_ProtectWithIndex` | array write + save | no         |
+    // | `R_Reprotect`        | array index write  | no         |
 
+    /// Add a SEXP to the protect stack, preventing GC collection.
+    ///
+    /// **Cost: O(1)** — single array write (`R_PPStack[top++] = s`). No allocation.
+    ///
+    /// Must be balanced by a corresponding `Rf_unprotect`. The protect stack is
+    /// LIFO — nested scopes are safe, but interleaved usage from different scopes
+    /// will cause incorrect unprotection.
     #[doc(alias = "PROTECT")]
     #[doc(alias = "protect")]
     pub fn Rf_protect(s: SEXP) -> SEXP;
+
+    /// Pop the top `l` entries from the protect stack.
+    ///
+    /// **Cost: O(1)** — single integer subtract (`R_PPStackTop -= l`). No allocation.
+    ///
+    /// The popped SEXPs become eligible for GC. Must match the number of
+    /// `Rf_protect` calls in the current scope (LIFO order).
     #[doc(alias = "UNPROTECT")]
     #[doc(alias = "unprotect")]
     pub fn Rf_unprotect(l: ::std::os::raw::c_int);
+
+    /// Remove a specific SEXP from anywhere in the protect stack.
+    ///
+    /// **Cost: O(k)** — scans backwards from top (k = distance from top), then
+    /// shifts remaining entries down. No allocation. R source comment:
+    /// *"should be among the top few items"*.
+    ///
+    /// Unlike `Rf_unprotect`, this is order-independent — it finds and removes
+    /// the specific pointer regardless of stack position. Useful when LIFO
+    /// discipline cannot be maintained, but more expensive than `Rf_unprotect`.
     #[doc(alias = "UNPROTECT_PTR")]
     pub fn Rf_unprotect_ptr(s: SEXP);
+
+    /// Add a SEXP to the global precious list, preventing GC indefinitely.
+    ///
+    /// **Cost: O(1) but allocates a CONSXP cell** — creates GC pressure on every
+    /// call. The precious list is a global linked list (`R_PreciousList`).
+    ///
+    /// Use only for long-lived objects (e.g., ExternalPtr stored across R calls).
+    /// For temporary protection within a function, prefer `Rf_protect`.
+    pub fn R_PreserveObject(object: SEXP);
+
+    /// Remove a SEXP from the global precious list, allowing GC.
+    ///
+    /// **Cost: O(n)** — linear scan of the entire precious list to find and unlink
+    /// the cons cell. With `R_HASH_PRECIOUS` env var, O(bucket_size) average
+    /// via a 1069-bucket hash table, but this is off by default.
+    pub fn R_ReleaseObject(object: SEXP);
+
+    // endregion
     // Vector allocation functions
     #[doc(alias = "allocVector")]
     pub fn Rf_allocVector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP;
@@ -2909,24 +2981,24 @@ unsafe extern "C-unwind" {
     #[doc(alias = "xlengthgets")]
     pub fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
 
-    // Protection
+    // Protection (indexed — see cost table in the "GC protection" region above)
 
-    /// Protect with saved index for later reprotection.
+    /// Protect a SEXP and record its stack index for later `R_Reprotect`.
     ///
-    /// # Parameters
-    ///
-    /// - `s`: SEXP to protect
-    /// - `index`: Output parameter for protection index
+    /// **Cost: O(1)** — same array write as `Rf_protect`, plus stores the index.
+    /// No allocation. Use when you need to replace a protected value in-place
+    /// (e.g., inside a loop that allocates) without unprotect/re-protect churn.
     #[doc(alias = "PROTECT_WITH_INDEX")]
     pub fn R_ProtectWithIndex(s: SEXP, index: *mut ::std::os::raw::c_int);
 
-    /// Reprotect a SEXP using a saved index.
+    /// Replace the SEXP at a previously recorded protect stack index.
     ///
-    /// Allows updating a protected slot without unprotecting.
+    /// **Cost: O(1)** — direct array write (`R_PPStack[index] = s`). No allocation.
     ///
     /// # Safety
     ///
-    /// `index` must be from a previous `R_ProtectWithIndex` call.
+    /// `index` must be from a previous `R_ProtectWithIndex` call and the
+    /// stack must not have been unprotected past that index.
     #[doc(alias = "REPROTECT")]
     pub fn R_Reprotect(s: SEXP, index: ::std::os::raw::c_int);
 
