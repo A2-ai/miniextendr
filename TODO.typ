@@ -132,7 +132,11 @@ Make both `#[miniextendr]` and derive paths available for every feature.
 
 == Remaining Plans
 
-- [ ] `lazy-altrep-materialization` — `Lazy<T>` opt-in ALTREP for Arrow/ndarray/nalgebra
+- [x] `lazy-altrep-materialization` — `Lazy<T>` opt-in ALTREP for Arrow/ndarray/nalgebra
+  - Arrow: Float64Array, Int32Array, UInt8Array, BooleanArray, StringArray
+  - ndarray: Array1<f64/i32> with zero-copy Dataptr
+  - nalgebra: DVector<f64/i32> with zero-copy Dataptr
+  - Deferred: RecordBatch (list ALTREP), Array2/DMatrix (need dim attr)
 - [ ] `datafusion-full-integration` — DataFrame API, file I/O, UDF bridge
 - [ ] `extract-feature-crates` — split optional integrations into `miniextendr-*` crates
 - [ ] `par-column-chunks-two` — builder-style parallel DataFrame column processing
