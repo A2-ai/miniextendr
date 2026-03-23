@@ -105,6 +105,8 @@ mod adapter_traits_tests;
 mod aho_corasick_adapter_tests;
 mod collect_tests;
 mod condition_tests;
+#[cfg(feature = "datafusion")]
+mod datafusion_tests;
 mod display_fromstr_tests;
 mod json_string_tests;
 mod lazy_tests;
