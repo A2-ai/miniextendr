@@ -70,4 +70,43 @@ pub fn test_df_chain(df: RecordBatch) -> RecordBatch {
         .unwrap()
 }
 
+/// @export
+#[miniextendr]
+pub fn test_df_aggregate(df: RecordBatch) -> RecordBatch {
+    let ctx = RSessionContext::new();
+    ctx.register_record_batch("t", df).unwrap();
+    ctx.sql("SELECT * FROM t")
+        .unwrap()
+        .aggregate(&["name"], &[("total", "sum", "y"), ("cnt", "count", "y")])
+        .unwrap()
+        .sort("name", true)
+        .unwrap()
+        .collect()
+        .unwrap()
+}
+
+/// @export
+#[miniextendr]
+pub fn test_df_global_agg(df: RecordBatch) -> RecordBatch {
+    let ctx = RSessionContext::new();
+    ctx.register_record_batch("t", df).unwrap();
+    ctx.sql("SELECT * FROM t")
+        .unwrap()
+        .aggregate(&[], &[("avg_y", "avg", "y"), ("max_x", "max", "x")])
+        .unwrap()
+        .collect()
+        .unwrap()
+}
+
+/// @export
+#[miniextendr]
+pub fn test_df_count(df: RecordBatch) -> i32 {
+    let ctx = RSessionContext::new();
+    ctx.register_record_batch("t", df).unwrap();
+    ctx.sql("SELECT * FROM t WHERE x > 2")
+        .unwrap()
+        .count()
+        .unwrap() as i32
+}
+
 // endregion

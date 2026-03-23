@@ -276,6 +276,95 @@ impl RDataFrame {
             .collect()
     }
 
+    /// Aggregate with group-by columns and aggregate expressions.
+    ///
+    /// `group_by` — column names to group by (empty for global aggregation).
+    /// `aggr` — aggregate expressions as `("output_name", "function", "column")` tuples.
+    ///
+    /// Supported functions: `"sum"`, `"avg"`, `"min"`, `"max"`, `"count"`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // SELECT name, SUM(y) as total FROM t GROUP BY name
+    /// df.aggregate(&["name"], &[("total", "sum", "y")])?;
+    /// ```
+    pub fn aggregate(
+        self,
+        group_by: &[&str],
+        aggr: &[(&str, &str, &str)],
+    ) -> Result<Self, String> {
+        use datafusion::functions_aggregate::expr_fn;
+        use datafusion::prelude::*;
+
+        let group_exprs: Vec<Expr> = group_by.iter().map(|c| col(*c)).collect();
+
+        let aggr_exprs: Vec<Expr> = aggr
+            .iter()
+            .map(|(alias, func, column)| {
+                let expr = match *func {
+                    "sum" => expr_fn::sum(col(*column)),
+                    "avg" => expr_fn::avg(col(*column)),
+                    "min" => expr_fn::min(col(*column)),
+                    "max" => expr_fn::max(col(*column)),
+                    "count" => expr_fn::count(col(*column)),
+                    other => {
+                        return Err(format!(
+                            "unknown aggregate function '{other}' (supported: sum, avg, min, max, count)"
+                        ))
+                    }
+                };
+                Ok(expr.alias(*alias))
+            })
+            .collect::<Result<_, String>>()?;
+
+        let df = self
+            .df
+            .aggregate(group_exprs, aggr_exprs)
+            .map_err(|e| e.to_string())?;
+        Ok(RDataFrame { df })
+    }
+
+    /// Join with another RDataFrame.
+    ///
+    /// `right` — the other DataFrame to join.
+    /// `on` — column names to join on (must exist in both).
+    /// `join_type` — one of `"inner"`, `"left"`, `"right"`, `"full"`.
+    pub fn join(
+        self,
+        right: RDataFrame,
+        on: &[&str],
+        join_type: &str,
+    ) -> Result<Self, String> {
+        use datafusion::prelude::JoinType;
+
+        let jt = match join_type {
+            "inner" => JoinType::Inner,
+            "left" => JoinType::Left,
+            "right" => JoinType::Right,
+            "full" => JoinType::Full,
+            other => {
+                return Err(format!(
+                    "unknown join type '{other}' (supported: inner, left, right, full)"
+                ))
+            }
+        };
+
+        let join_cols: Vec<&str> = on.to_vec();
+        let df = self
+            .df
+            .join(right.df, jt, &join_cols, &join_cols, None)
+            .map_err(|e| e.to_string())?;
+        Ok(RDataFrame { df })
+    }
+
+    /// Return the number of rows (executes the query).
+    pub fn count(self) -> Result<usize, String> {
+        let rt = runtime();
+        rt.block_on(self.df.count())
+            .map_err(|e| e.to_string())
+    }
+
     /// Get the underlying DataFusion DataFrame (for advanced use).
     pub fn into_inner(self) -> datafusion::dataframe::DataFrame {
         self.df

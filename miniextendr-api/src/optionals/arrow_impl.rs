@@ -949,7 +949,29 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
 
     match array.data_type() {
         DataType::Float64 => array.as_primitive::<Float64Type>().clone().into_sexp(),
+        DataType::Float32 => {
+            // Widen f32 → f64 for R
+            let arr = array.as_primitive::<arrow_array::types::Float32Type>();
+            let widened: Float64Array = arr.iter().map(|v| v.map(|x| x as f64)).collect();
+            widened.into_sexp()
+        }
         DataType::Int32 => array.as_primitive::<Int32Type>().clone().into_sexp(),
+        DataType::Int64 => {
+            // R has no i64 — convert to f64 (may lose precision for values > 2^53)
+            let arr = array.as_primitive::<arrow_array::types::Int64Type>();
+            let converted: Float64Array = arr.iter().map(|v| v.map(|x| x as f64)).collect();
+            converted.into_sexp()
+        }
+        DataType::Int16 => {
+            let arr = array.as_primitive::<arrow_array::types::Int16Type>();
+            let widened: Int32Array = arr.iter().map(|v| v.map(|x| x as i32)).collect();
+            widened.into_sexp()
+        }
+        DataType::Int8 => {
+            let arr = array.as_primitive::<arrow_array::types::Int8Type>();
+            let widened: Int32Array = arr.iter().map(|v| v.map(|x| x as i32)).collect();
+            widened.into_sexp()
+        }
         DataType::UInt8 => array.as_primitive::<UInt8Type>().clone().into_sexp(),
         DataType::Boolean => array.as_boolean().clone().into_sexp(),
         DataType::Utf8 => array.as_string::<i32>().clone().into_sexp(),
