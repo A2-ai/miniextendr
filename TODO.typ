@@ -122,7 +122,7 @@ Make both `#[miniextendr]` and derive paths available for every feature.
 
 - [x] `AsDisplay<T>` / `AsDisplayVec<T>` — `T: Display` → R character
 - [x] `AsFromStr<T>` / `AsFromStrVec<T>` — R character → `T: FromStr`
-- [x] `Collect<I>` / `CollectStrings<I>` — zero-alloc iterator → R vector
+- [x] `Collect<I>` / `CollectStrings<I>` / `CollectNA<I>` / `CollectNAInt<I>` — zero-alloc iterator → R vector
 - [x] `AsJson<T>` / `FromJson<T>` / `AsJsonPretty<T>` / `AsJsonVec<T>` — JSON string ↔ serde
 - [x] `RCondition<E>` — `std::error::Error` cause chain in R error messages
 - [x] `log` feature — route `log::info!`/`warn!`/`error!` to R console
@@ -137,7 +137,8 @@ Make both `#[miniextendr]` and derive paths available for every feature.
   - ndarray: Array1<f64/i32> with zero-copy Dataptr
   - nalgebra: DVector<f64/i32> with zero-copy Dataptr
   - Deferred: RecordBatch (list ALTREP), Array2/DMatrix (need dim attr)
-- [ ] `datafusion-full-integration` — DataFrame API, file I/O, UDF bridge
+- [~] `datafusion-full-integration` — RDataFrame wrapper done (select/sort/limit/collect), register_csv done
+  - Remaining: read_parquet, read_json, UDF bridge, expression builder
 - [ ] `extract-feature-crates` — split optional integrations into `miniextendr-*` crates
 - [ ] `par-column-chunks-two` — builder-style parallel DataFrame column processing
 - [ ] `lfs-history-cleanup` — rewrite git history to use LFS for vendor.tar.xz
