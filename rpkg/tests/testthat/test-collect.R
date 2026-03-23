@@ -43,3 +43,32 @@ test_that("CollectStrings generates numbered strings", {
 })
 
 # endregion
+
+# region: CollectNA — Option iterators with NA
+
+test_that("CollectNA produces numeric with NA for None", {
+  result <- test_collect_na_f64(6L)
+  expect_type(result, "double")
+  expect_length(result, 6)
+  # i=0,3 are NA (i %% 3 == 0)
+  expect_true(is.na(result[1]))  # i=0
+  expect_equal(result[2], 1.0)   # i=1
+  expect_equal(result[3], 2.0)   # i=2
+  expect_true(is.na(result[4]))  # i=3
+  expect_equal(result[5], 4.0)   # i=4
+  expect_equal(result[6], 5.0)   # i=5
+})
+
+test_that("CollectNAInt produces integer with NA for None", {
+  result <- test_collect_na_i32(5L)
+  expect_type(result, "integer")
+  expect_length(result, 5)
+  # i=0,2,4 are NA (i %% 2 == 0)
+  expect_true(is.na(result[1]))   # i=0
+  expect_equal(result[2], 10L)    # i=1
+  expect_true(is.na(result[3]))   # i=2
+  expect_equal(result[4], 30L)    # i=3
+  expect_true(is.na(result[5]))   # i=4
+})
+
+# endregion

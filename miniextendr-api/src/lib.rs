@@ -519,7 +519,8 @@ pub mod typed_list;
 pub use convert::{
     AsDisplay, AsDisplayVec, AsExternalPtr, AsExternalPtrExt, AsFromStr, AsFromStrVec, AsList,
     AsListExt, AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsRNative,
-    AsRNativeExt, Collect, CollectStrings, DataFrame, IntoDataFrame, ToDataFrame, ToDataFrameExt,
+    AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, DataFrame, IntoDataFrame,
+    ToDataFrame, ToDataFrameExt,
 };
 pub use into_r::Lazy;
 #[cfg(feature = "serde")]
