@@ -380,3 +380,195 @@ miniextendr already has all three mechanisms implemented:
    the container, then fill. Not 1M protections for the elements.
 5. **R's precious list is an implementation detail.** Used once to anchor the DLL
    head. Never used directly for protecting individual objects.
+
+## Possible Mechanism 4: VECSXP Pool with Rust-side Collections
+
+### The constraint
+
+R's GC only traces objects it knows about. A Rust `Vec<SEXP>` on the heap is invisible
+to the GC — those SEXPs would be collected. To keep SEXPs alive, they must be stored in
+an R object whose elements the GC traces. Only VECSXP (generic list) and cons-cell
+structures (LISTSXP) qualify — RAWSXP, INTSXP, etc. are opaque bytes to the GC.
+
+### The idea
+
+Use a single GC-traced VECSXP as the backing store. Manage slot allocation entirely
+in Rust using standard collection types. One `R_PreserveObject` for the VECSXP, ever.
+Zero per-insert R allocation.
+
+```
+┌─────────────────────────────────────┐
+│  R side: VECSXP (GC-traced slots)   │  ← one R_PreserveObject, ever
+│  [SEXP][SEXP][NIL][SEXP][NIL][SEXP] │
+└──────┬──────────────────────────────┘
+       │ slot indices
+┌──────┴──────────────────────────────┐
+│  Rust side: any collection          │
+│  manages which slots are used       │
+└─────────────────────────────────────┘
+```
+
+Insert: `SET_VECTOR_ELT(pool, slot, sexp)` — writes the SEXP into a GC-traced slot.
+Release: `SET_VECTOR_ELT(pool, slot, R_NilValue)` — GC can now collect it.
+Growth: allocate a larger VECSXP, copy elements, swap — amortized O(1) with doubling.
+
+No CONSXP allocation per insert (unlike the DLL preserve list). All bookkeeping is
+pure Rust heap — cheap and creates no GC pressure.
+
+### Rust-side collection options
+
+The VECSXP is just a flat array of SEXP slots. The Rust side decides how those slots
+are managed, and different collections offer different access patterns.
+
+#### `Vec<usize>` free list — the manual pool
+
+```rust
+struct ProtectPool {
+    pool: SEXP,              // VECSXP, one R_PreserveObject
+    free_slots: Vec<usize>,  // recycled slot indices
+    len: usize,              // next fresh slot
+    capacity: usize,
+}
+```
+
+- **Insert**: O(1) — pop from free list, or use next fresh slot
+- **Release**: O(1) — push slot index back to free list
+- **Handle**: caller holds a `usize` (slot index), 8 bytes — same as DLL's cell SEXP
+- **Ordering**: none — any-order insert and release
+- **Danger**: a stale `usize` index is indistinguishable from a valid one. If a slot is
+  released and reused, a stale handle silently refers to the new occupant. Releasing it
+  would unprotect the wrong SEXP.
+
+#### `slotmap::SlotMap` — generational pool (recommended)
+
+The `slotmap` crate (https://crates.io/crates/slotmap) provides a `SlotMap<K, V>` with
+**generational indices**. Each key contains both a slot index and a generation counter.
+When a slot is released and reused, the generation increments. A stale key's generation
+doesn't match the slot's current generation, so access/release is safely rejected.
+
+```rust
+use slotmap::{SlotMap, new_key_type};
+
+new_key_type! { struct ProtectKey; }
+
+struct ProtectPool {
+    pool: SEXP,                       // VECSXP, GC-traced
+    slots: SlotMap<ProtectKey, ()>,    // generational index management
+}
+
+impl ProtectPool {
+    fn insert(&mut self, sexp: SEXP) -> ProtectKey {
+        let key = self.slots.insert(());
+        let idx = key.data().as_ffi();  // slot index into VECSXP
+        self.maybe_grow(idx);
+        SET_VECTOR_ELT(self.pool, idx as usize, sexp);
+        key
+    }
+
+    fn release(&mut self, key: ProtectKey) {
+        if self.slots.remove(key).is_some() {  // checks generation
+            SET_VECTOR_ELT(self.pool, key.data().as_ffi() as usize, R_NilValue);
+        }
+        // stale key → silent no-op (generation mismatch)
+    }
+
+    fn get(&self, key: ProtectKey) -> Option<SEXP> {
+        self.slots.get(key)?;  // checks generation
+        Some(VECTOR_ELT(self.pool, key.data().as_ffi() as usize))
+    }
+}
+```
+
+- **Insert**: O(1) — slotmap manages free list internally
+- **Release**: O(1) — generation-checked, safe against stale keys
+- **Lookup**: O(1) — generation-checked
+- **Handle**: `ProtectKey` is 8 bytes (4-byte index + 4-byte generation)
+- **Per-slot overhead**: 4 bytes for the generation counter (inside slotmap)
+- **Use-after-release**: safely detected — stale key returns `None` / no-op
+- **Use case**: drop-in replacement for the DLL preserve list with zero R allocation
+  per insert AND protection against stale-handle bugs
+
+The generational safety is critical for GC protection. A stale handle that silently
+operates on a reused slot would either unprotect a live SEXP (use-after-free for R's GC)
+or protect a dead one (leak). slotmap makes this class of bug impossible.
+
+#### `VecDeque<usize>` free list — FIFO slot reuse
+
+Same pool, but released slots go to the back of the deque, allocations come from
+the front. Recently-freed slots aren't immediately reused, giving the GC a window
+to collect the old SEXP value before the slot is overwritten. Better cache locality
+for sequential access patterns.
+
+#### `HashMap<K, usize>` — keyed protection
+
+```rust
+struct KeyedPool<K: Hash + Eq> {
+    pool: SEXP,
+    map: HashMap<K, usize>,
+    free_slots: Vec<usize>,
+    // ...
+}
+```
+
+- **Insert**: `pool.insert("my_table", sexp)` — O(1) average
+- **Lookup**: `pool.get("my_table")` — O(1) average
+- **Release**: `pool.release("my_table")` — O(1) average
+- **Handle**: caller holds a key (string, integer, etc.)
+- **Use case**: named caches, session state, registry of protected objects by name.
+  "Protect this RecordBatch as 'df', retrieve it later by name."
+
+#### `BTreeMap<K, usize>` — sorted keyed protection
+
+Same as HashMap but keys are ordered. Enables:
+- Range release: drop all protections in a key range
+- Ordered iteration: visit protected SEXPs in key order
+- **Use case**: protection with priority/timestamp ordering, TTL-based expiry
+
+#### `IndexMap<K, usize>` — insertion-ordered keyed protection
+
+O(1) lookup by key, but also iterates in insertion order. Release in insertion
+order = FIFO without the LIFO constraint of the protect stack.
+- **Use case**: ordered processing where you want to drain protections oldest-first
+
+### Cost comparison (all four mechanisms)
+
+| Property | Protect Stack | DLL Preserve | VECSXP Pool |
+|----------|--------------|--------------|-------------|
+| **Insert** | O(1), no alloc | O(1), allocs CONSXP | O(1), no alloc |
+| **Release** | O(1), LIFO only | O(1), any order | O(1), any order |
+| **Capacity** | 50k hard limit | Unlimited | Growable (amortized) |
+| **R allocs per insert** | 0 | 1 (CONSXP, 56 bytes) | 0 |
+| **GC pressure per insert** | Zero | 1 cons cell | Zero |
+| **R protections used** | 1 per value | 1 (DLL anchor) | 1 (the pool VECSXP) |
+| **Rust per-value storage** | 0 (scope counts) | 8 bytes (cell SEXP) | 8 bytes (slotmap key) |
+| **Rust per-value Drop** | None | `preserve::release` | `pool.release(key)` |
+| **Stale-handle safety** | N/A (scope-based) | No (raw SEXP cell) | Yes (generational key) |
+| **Ordering** | LIFO only | Any | Any |
+| **Keyed access** | No | No | Yes (with HashMap/etc.) |
+
+### Rust-side per-value cost by collection
+
+| Collection | Per-value Rust cost | Lookup | Release | Stale-key safe |
+|------------|---------------------|--------|---------|----------------|
+| Vec (free list) | 0 | O(1) by index | O(1) | No |
+| slotmap | 4 bytes (generation) | O(1) by key | O(1) by key | **Yes** |
+| HashMap | ~40-80 bytes (key + entry) | O(1) by key | O(1) by key | N/A (keyed) |
+| BTreeMap | ~40-60 bytes (node) | O(log n) | O(log n) | N/A (keyed) |
+| IndexMap | ~40-80 bytes (entry + order) | O(1) by key | O(1) by key | N/A (keyed) |
+
+slotmap is the recommended primitive — near-zero overhead with generational safety.
+Keyed collections layer semantics on top for named/ordered access to protected objects.
+
+### The VECSXP pool vs DLL preserve: when to prefer which
+
+The VECSXP pool strictly dominates the DLL preserve list on R-side cost (zero allocation
+per insert vs one CONSXP). The Rust-side per-value cost is identical (8 bytes either way).
+
+The DLL's advantage: it uses R cons cells as the data structure, so the entire state is
+visible to R's GC and can be serialized/inspected from R. The VECSXP pool's Rust-side
+bookkeeping (the free list, the HashMap, etc.) is invisible to R — if the Rust state is
+lost (e.g., process crash), the VECSXP still holds the SEXPs but there's no way to
+reconstruct which slots are live.
+
+In practice this doesn't matter — if the process crashes, everything is lost anyway. The
+VECSXP pool is the better primitive for new protection abstractions.
