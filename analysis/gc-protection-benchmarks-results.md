@@ -192,6 +192,69 @@ DLL must release+reinsert per replacement (allocates a CONSXP each time) — **3
 This pattern (fixed number of live temporaries, replaced frequently) strongly favors
 mechanisms that can overwrite in place. The DLL's inability to do this is a real cost.
 
+## DLL Stack Interaction (Group 14)
+
+DLL insert uses 2 protect stack slots temporarily. Does stack depth affect DLL performance?
+
+| Stack depth | DLL 100 ops | Pool 100 ops |
+|-------------|-------------|--------------|
+| 0 | 3.0 µs | 1.7 µs |
+| 100 | 4.2 µs | 2.8 µs |
+| 1,000 | 14.3 µs | 12.3 µs |
+| 10,000 | 112.8 µs | 100.3 µs |
+
+Both DLL and pool slow down with stack depth — but that's the cost of Rf_protect/Rf_unprotect
+for the stack fill, not the DLL/pool operations. The DLL's 2-slot transient usage is
+invisible. **Stack depth does not affect DLL performance.**
+
+## GC Pressure (allocation rate)
+
+| Mechanism | 1k ops | 10k ops | Notes |
+|-----------|--------|---------|-------|
+| baseline (alloc only) | 7.1 µs | 72.6 µs | N test SEXPs |
+| precious list | 16.3 µs | 164.8 µs | N SEXPs + N CONSXP |
+| vec pool | 16.9 µs | 169.3 µs | N SEXPs only |
+| DLL preserve | 33.1 µs | 357.4 µs | N SEXPs + N CONSXP |
+| DLL + work allocs | 49.6 µs | 425.3 µs | N SEXPs + N CONSXP + N work |
+| Pool + work allocs | 26.3 µs | 256.2 µs | N SEXPs + N work |
+
+**DLL is 2x slower than pool** due to CONSXP allocation per insert. When interleaved
+with real work (additional allocations), DLL is 1.66x slower. The CONSXP allocation
+from DLL is measurable — it roughly doubles the total R allocation rate.
+
+Precious list shows similar per-op cost to pool for insert+release cycles (because
+release is O(1) when the list has only 1 element). The O(n²) shows up only when many
+objects are live simultaneously.
+
+## Memory Overhead (hold N objects, total time including GC)
+
+| N | Pool | DLL | Precious |
+|---|------|-----|----------|
+| 1k | 16.4 µs | 28.6 µs | 626.8 µs |
+| 10k | 166 µs | 286 µs | **113 ms** |
+| 100k | 1.83 ms | 4.36 ms | — |
+
+Pool is 1.7x faster than DLL to hold N objects (single VECSXP alloc vs N CONSXP allocs).
+DLL's 100k shows variance (median 4.4ms but mean 6.6ms) — GC pauses from cons cell pressure.
+Precious list is catastrophic above 1k (O(n²) release).
+
+## Precious List with Background Pressure (Group 13)
+
+How does the global precious list size affect per-operation cost?
+100 insert+release cycles with N background preserved objects.
+
+| Background N | 100 cycles (median) | Per-op |
+|---|---|---|
+| 0 | 1.7 µs | 17 ns |
+| 100 | 9.2 µs | 92 ns |
+| 1,000 | 617 µs | 6.2 µs |
+| 10,000 | **118 ms** | **1.18 ms** |
+
+**Background pressure dominates.** With 10k other preserved objects (from other packages
+in the same R session), each R_ReleaseObject scans the entire 10k list. A single
+release goes from 17ns (empty list) to 1.18ms (10k background). This means the precious
+list cost depends not just on YOUR objects but on ALL preserved objects in the session.
+
 ## Keyed Pools (HashMap, BTreeMap, IndexMap) — Group 15
 
 ### Insert + get + release N entries (median)
@@ -222,12 +285,15 @@ pools are appropriate for named caches (string keys are the point), not general 
 
 | Decision | Benchmark result | Verdict |
 |----------|-----------------|---------|
-| ExternalPtr → precious list? | Precious list is fine at <100 objects, catastrophic at >1k | **Yes, but only for types with <~100 instances** |
-| Allocator stays on DLL? | DLL is 1.5-2x slower than pool at all sizes | **Move to pool if allocator does >1k allocs** |
-| Pool needed for churn? | DLL ≈ pool under churn (CONSXP cost invisible) | **Pool wins on batch/random, ties on churn** |
+| ExternalPtr → precious list? | Fine at <100 objects BUT background pressure matters — 10k other preserved objects makes each release 1.18ms | **Yes only if total session preserved count is low. If other packages preserve many objects, use pool.** |
+| Allocator stays on DLL? | DLL is 2x slower than pool (GC pressure group confirms CONSXP doubles allocation rate) | **Move to pool** |
+| Pool needed for churn? | DLL ≈ pool under churn, but DLL is 2x on GC pressure | **Pool wins overall. DLL has no remaining advantage.** |
 | slotmap vs raw Vec? | 15% overhead for generational safety | **slotmap as default, Vec as unsafe opt-in** |
-| Four Protector impls? | Precious list collapses above ~100 objects; DLL ≈ pool on churn | **Three: stack, precious (small N), pool (large N). DLL is optional.** |
-| DLL memory reclamation? | Pool is 1.6x faster on bursty, DLL shows no reclamation advantage | **Theoretical — not observable in practice** |
+| How many Protector impls? | Precious list collapses with background pressure; DLL loses to pool on GC pressure | **Two: stack + pool. Precious list for truly minimal use (<10 objects, known low session pressure). DLL retired.** |
+| DLL memory reclamation? | Pool is 1.7x faster to hold 100k. DLL shows GC pause variance at 100k (mean 6.6ms vs median 4.4ms). | **DLL's cons cells create GC pressure, not reduce it** |
+| DLL stack interaction? | No measurable effect from stack depth | **Not a concern** |
 | Pool growth spikes? | 27µs at 1024 elements | **Not a concern** |
 | Vec vs VecDeque? | <5% difference | **Vec (simpler)** |
 | Rf_unprotect_ptr bad? | Same speed as bulk unprotect at all depths | **Not bad — usable when needed** |
+| Precious list background? | 10k background objects → 1.18ms per release | **Precious list cost is SESSION-global, not per-package. Dangerous in multi-package sessions.** |
+| Keyed pools? | 6-14x slower than slotmap due to string keys | **For named caches only, not general protection** |
