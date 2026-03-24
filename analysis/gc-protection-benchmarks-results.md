@@ -192,6 +192,32 @@ DLL must release+reinsert per replacement (allocates a CONSXP each time) — **3
 This pattern (fixed number of live temporaries, replaced frequently) strongly favors
 mechanisms that can overwrite in place. The DLL's inability to do this is a real cost.
 
+## Keyed Pools (HashMap, BTreeMap, IndexMap) — Group 15
+
+### Insert + get + release N entries (median)
+
+| Collection | 100 | 1k | 10k |
+|---|---|---|---|
+| slotmap (no key) | **2.5 µs** | **23.8 µs** | **239 µs** |
+| hashmap | 14.7 µs | 148 µs | 1.59 ms |
+| indexmap | 16.4 µs | 163 µs | 1.76 ms |
+| btreemap | 24.4 µs | 315 µs | 3.37 ms |
+
+### Churn (insert + get + release one at a time, median)
+
+| Collection | 100 | 1k | 10k |
+|---|---|---|---|
+| btreemap | 8.7 µs | **96 µs** | **1.02 ms** |
+| indexmap | 8.5 µs | 101 µs | 1.05 ms |
+| hashmap | 9.5 µs | 110 µs | 1.13 ms |
+
+Keyed pools are **6-14x slower** than slotmap due to string key allocation (`format!`)
+and hashing/comparison overhead. BTreeMap wins on churn (single-element entry API is
+efficient), HashMap wins on bulk operations (amortized hash table access).
+
+The key overhead dominates — the VECSXP pool cost is negligible by comparison. Keyed
+pools are appropriate for named caches (string keys are the point), not general protection.
+
 ## Key Decisions Informed by Data
 
 | Decision | Benchmark result | Verdict |
