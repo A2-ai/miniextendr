@@ -1,5 +1,9 @@
 //! Benchmarks for RefCountedArena vs ProtectScope.
 //!
+//! These benchmarks include SEXP allocation in the timed region, measuring
+//! end-to-end arena usage cost (allocation + protection + release). For
+//! isolated protection-only timings, see `gc_protection_compare.rs`.
+//!
 //! Compares:
 //! - Protection overhead (single value)
 //! - Multiple protections

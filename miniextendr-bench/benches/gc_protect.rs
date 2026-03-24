@@ -1,5 +1,11 @@
 //! GC protection benchmarks.
 //!
+//! **NOTE**: Protection-specific benchmarks here include SEXP allocation in the
+//! timed region. For accurate protection-only timings, see `gc_protection_compare.rs`
+//! which pre-allocates SEXPs outside the timed loop. The list/strvec construction
+//! benchmarks below are still valid — they measure end-to-end construction cost
+//! where allocation is part of the workload.
+//!
 //! Compares:
 //! - `ProtectScope` vs raw `Rf_protect/Rf_unprotect`
 //! - `OwnedProtect` vs `ProtectScope::protect`
