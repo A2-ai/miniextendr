@@ -11,48 +11,29 @@ handle. Users never call `Rf_protect` directly.
 
 ## Which R primitives are used, and when
 
-Three R mechanisms, each filling a specific role:
+Two R mechanisms, plus one Rust-side mechanism:
 
 1. **Protect stack** (`Rf_protect` / `Rf_unprotect`) — for temporaries within a `.Call`.
-   Zero cost, LIFO, 50k limit. Exposed via `ProtectScope`. Also provides
-   `R_ProtectWithIndex`/`R_Reprotect` for replace-in-loop without stack growth
-   (exposed via `ReprotectSlot`).
+   7.4 ns/op, LIFO, 50k limit. Exposed via `ProtectScope`. Also provides
+   `R_ProtectWithIndex`/`R_Reprotect` for replace-in-loop (3.8 ns/op, no stack growth).
 
 2. **R's precious list** (`R_PreserveObject` / `R_ReleaseObject`) — for a small number
-   of long-lived cross-call objects. The SEXP is its own handle — zero Rust-side
-   bookkeeping. O(n) release is acceptable when n is small. Ideal for ExternalPtr
-   (you already hold the SEXP, there are few of them, they live a long time).
+   of long-lived cross-call objects that are NEVER released in a loop. 13 ns/op for
+   single protect+release. SEXP is its own handle — zero Rust-side bookkeeping.
+   O(n) release but LIFO-fast (recently preserved objects found first). Ideal for
+   ExternalPtr (you already hold the SEXP, there are few of them, they live a long time).
+   **NEVER use in a loop** — 15 seconds at 10k iterations due to O(n²) list growth.
 
-3. **DLL preserve list** (`preserve.rs`, existing) — for moderate cross-call usage
-   where the protection token needs to be an R object (storable in TAG/PROT slots
-   of other SEXPs). O(1) insert (allocates CONSXP), O(1) release (splice out).
-   Memory naturally shrinks — released cells become GC garbage. R-side introspectable.
-   Ideal for `RAllocator` (stores cell in Header for dealloc lookup) and bursty
-   workloads where memory should reclaim after mass release.
+3. **VECSXP pool** (new, replaces DLL preserve list) — for all other cross-call usage.
+   9.6 ns/op single, 2.5x faster than DLL at batch, 7x faster at replace-in-loop.
+   One GC-traced VECSXP with slot management via `slotmap` (11.4 ns/op with safety)
+   or `Vec` (9.6 ns/op raw). Zero R allocation per insert/release. Generational keys
+   prevent stale-handle bugs.
 
-4. **VECSXP pool** (new) — for high-frequency insert/release where CONSXP allocation
-   per insert is measurable GC pressure. One GC-traced VECSXP with slot management
-   via `slotmap`. Zero R allocation per insert/release. Generational keys prevent
-   stale-handle bugs. Exposed via `ProtectPool`. Ideal for bulk caches with many
-   simultaneous protections.
-
-### When each cross-call mechanism wins
-
-| | Precious list | DLL preserve | VECSXP pool |
-|---|---|---|---|
-| **Insert R cost** | CONSXP | CONSXP | zero (amortized growth) |
-| **Release R cost** | O(n) scan | O(1) | O(1) |
-| **Rust per-value** | 0 bytes | 8 bytes (cell SEXP) | 8 bytes (slotmap key) |
-| **Handle is R object** | yes (SEXP itself) | yes (cell SEXP) | no (Rust key) |
-| **Memory after release** | GC reclaims cons | GC reclaims cons | slot stays allocated |
-| **Growth spikes** | none | none | copy on VECSXP resize |
-| **Introspectable from R** | yes | yes | no |
-
-- **Precious list** wins: few objects, long-lived, zero bookkeeping wanted
-- **DLL** wins: handle must be an R object (storable in SEXP slots), bursty workloads
-  where memory should shrink after mass release, no growth spikes wanted
-- **Pool** wins: high-frequency churn where per-insert CONSXP allocation matters,
-  many simultaneous protections, stale-key safety wanted
+The **DLL preserve list** (`preserve.rs`) is retired. Benchmarks show it's 3-7x slower
+than the VECSXP pool across all workloads (28.9 ns vs 9.6 ns single-op, 271 µs vs 45 µs
+replace-in-loop at 10k). Its only theoretical advantage (R-object handle, memory shrinkage)
+didn't produce measurable benefits.
 
 ### Decision tree
 
@@ -61,23 +42,20 @@ Is the SEXP returned directly to R (single allocation, no intermediate)?
   → No protection needed. R protects on receipt.
 
 Is the SEXP temporary within a .Call (used, then discarded before return)?
-  → ProtectScope (protect stack). Zero cost, bulk Rf_unprotect(n) on drop.
+  → ProtectScope (protect stack). 7.4 ns/op, bulk Rf_unprotect(n) on drop.
 
 Does the SEXP replace another in a loop (same slot, many iterations)?
-  → ReprotectSlot (R_ProtectWithIndex + R_Reprotect). No stack growth.
+  → ReprotectSlot (R_ProtectWithIndex + R_Reprotect). 3.8 ns/op, no stack growth.
+  → Or pool overwrite (SET_VECTOR_ELT in place). 4.5 ns/op.
 
 Must the SEXP survive across .Call boundaries?
-  ├── Few long-lived objects, zero bookkeeping wanted?
-  │   → R_PreserveObject / R_ReleaseObject (precious list).
-  │     SEXP is its own handle. O(n) release is fine when n is small.
+  ├── Few long-lived objects, never released in a loop?
+  │   → R_PreserveObject / R_ReleaseObject (precious list). 13 ns/op.
+  │     SEXP is its own handle. Zero Rust bookkeeping.
   │
-  ├── Handle must be an R object, or bursty alloc/release pattern?
-  │   → DLL preserve list (preserve.rs). Cell is storable in TAG/PROT
-  │     slots. GC reclaims released cells naturally.
-  │
-  └── High-frequency churn, many simultaneous protections?
-      → ProtectPool (VECSXP + slotmap). Zero R alloc per insert,
-        O(1) release, generational stale-key safety.
+  └── Anything else (many objects, churn, loops, allocator backing)?
+      → ProtectPool (VECSXP + slotmap). 11.4 ns/op with safety,
+        9.6 ns/op raw Vec. Zero R alloc per insert.
 ```
 
 ## The `Protector` trait
@@ -89,13 +67,11 @@ trait Protector {
 }
 ```
 
-Four implementations:
+Three implementations:
 
 - `ProtectScope` (existing) — stack-backed, `Handle = Root<'scope>`, no Drop, bulk cleanup
 - `OwnedProtect` (existing) — precious-list-backed, `Handle = OwnedProtect`,
   has Drop (`R_ReleaseObject`), SEXP is the handle (zero extra state)
-- `DllPreserve` (existing `preserve.rs`) — DLL-backed, `Handle = PreserveCell`,
-  has Drop (`preserve::release`), cell is an R object (storable in SEXP slots)
 - `ProtectPool` (new) — VECSXP + slotmap-backed, `Handle = PoolHandle`, has Drop, any-order
 
 Functions that allocate intermediate SEXPs take `&impl Protector` and are generic over
@@ -235,23 +211,24 @@ Functions that return already-protected or non-SEXP values:
 1. Add `slotmap` dependency to miniextendr-api (always-on, it's 0 deps and no-std)
 2. Implement `ProtectPool` in a new `protect_pool.rs`
    - VECSXP anchored by one `R_PreserveObject`
-   - `SlotMap<ProtectKey, ()>` for generational slot management
+   - `SlotMap<ProtectKey, ()>` for generational slot management (11.4 ns/op)
    - `PoolHandle` with Drop that calls release
    - Growth: allocate larger VECSXP, copy elements, reprotect, release old
-3. Add `Protector` trait to `gc_protect.rs`, implement for all four:
+   - Reuse infrastructure from `refcount_protect.rs` (ArenaState, growth logic)
+3. Add `Protector` trait to `gc_protect.rs`, implement for all three:
    - `ProtectScope` (stack) — existing, just add trait impl
    - `OwnedProtect` (precious list) — existing, add trait impl
-   - `DllPreserve` (DLL) — wrap existing `preserve.rs`, add trait impl
    - `ProtectPool` (VECSXP + slotmap) — new
 4. Add protected wrappers for all FFI functions listed above
    (many already exist on `ProtectScope` — fill in the gaps)
 5. Migrate `externalptr.rs` from `preserve::insert`/`release` to `R_PreserveObject`
    directly (few long-lived objects, SEXP is its own handle, zero bookkeeping)
-6. Keep `allocator.rs` on `preserve.rs` DLL — the cell is stored in a C-layout Header
-   and needs to be an R object. DLL is the right fit. (Evaluate pool later if GC
-   pressure from CONSXP allocation is measured as a problem.)
+6. Migrate `allocator.rs` from `preserve::insert`/`release` to `ProtectPool`
+   (DLL is 3x slower than pool; allocator needs O(1) release for arbitrary dealloc)
 7. Migrate manual `Rf_protect`/`Rf_unprotect` call sites to `ProtectScope`
-8. Lint rule: warn on direct `Rf_protect`/`Rf_unprotect` outside gc_protect.rs
+8. Delete `preserve.rs` DLL (replaced by pool)
+9. Strip refcounting from `refcount_protect.rs`, keep VECSXP pool infrastructure
+10. Lint rule: warn on direct `Rf_protect`/`Rf_unprotect` outside gc_protect.rs
 
 ## Relationship to `refcount_protect.rs`
 
@@ -280,38 +257,21 @@ slotmap generational keys or simple unique ownership (one protector per SEXP).
 **What to add:** slotmap backend as an alternative to HashMap/BTreeMap via `MapStorage`,
 or replace `MapStorage` entirely with slotmap if benchmarks show it's faster.
 
-## If benchmarks show negligible differences
+## Benchmark findings (resolved)
 
-The most likely result at typical miniextendr scales (tens to low hundreds of protected
-objects) is that all mechanisms perform similarly. If so:
+See `analysis/gc-protection-benchmarks-results.md` for full data.
 
-- **Keep only two**: protect stack (`ProtectScope`) + precious list (`OwnedProtect`)
-- **Don't build the pool** — the complexity isn't justified
-- **Retire the DLL** — precious list is simpler for the same use case at small N
-- **Keep `refcount_protect` only if refcounting is actually used** somewhere; otherwise retire it too
-- The `Protector` trait still has value (abstracts over stack vs precious list) but with
-  only two implementations, not four
-
-The simplest correct codebase wins when performance is equal.
-
-## Decisions pending benchmark results
-
-See `plans/gc-protection-benchmarks.md` for the benchmark plan. The following decisions
-in this plan are assumptions that benchmark data could overturn:
-
-| Decision | Assumption | Benchmark that tests it | What changes if wrong |
-|----------|-----------|------------------------|----------------------|
-| ExternalPtr → precious list (step 5) | "few objects" means O(n) release is fine | Group 2 (batch), Group 13 (R_HASH_PRECIOUS) | Keep ExternalPtr on DLL if precious list degrades at moderate N (>50) |
-| Allocator stays on DLL (step 6) | CONSXP allocation is acceptable | Group 9 (GC pressure), Group 3 (churn) | Move allocator to pool if CONSXP allocation measurably increases GC frequency |
-| Pool needed for churn | DLL's CONSXP cost matters at high frequency | Group 3 (churn), Group 9 (GC pressure) | Drop the pool entirely if DLL handles 100k churn with negligible overhead |
-| slotmap as pool backend | Generational check is free | Group 16 (slotmap overhead) | Offer raw Vec pool as unsafe fast path if check is measurable |
-| Four Protector impls needed | Each mechanism has a distinct winning niche | Groups 2, 3, 6, 13 | Reduce to two (stack + one cross-call) if niches collapse |
-| DLL memory reclamation matters | GC reclaims cons cells between bursts | Group 6 (bursty) | Remove "bursty workload" from DLL's advantages if GC doesn't reclaim |
-| Pool growth spikes are a concern | Reallocation has visible latency | Group 17 (growth cost) | Remove "no growth spikes" from DLL's advantages if spikes are <100μs |
-| Vec vs VecDeque for pool free list | Unknown which is better | Group 11 (free-list strategy) | Use whichever wins; Vec if negligible difference |
-
-**Run benchmarks before implementing steps 5-6.** The trait and FFI wrappers (steps 1-4)
-are independent of these decisions.
+| Question | Answer | Data |
+|----------|--------|------|
+| ExternalPtr → precious list? | **Yes** — 13 ns/op, no background degradation for recent objects | Group 13 |
+| Allocator → pool? | **Yes** — pool is 3x faster than DLL (9.6 vs 28.9 ns/op) | Group 1 |
+| DLL has a niche? | **No** — pool beats it 2.6-7x across all workloads | Groups 1,2,5,7 |
+| slotmap overhead? | **25%** (11.4 vs 9.6 ns/op) — acceptable for safety | Group 16 |
+| Vec vs VecDeque? | **Identical** (9.6 ns both) — use Vec | Group 11 |
+| Pool growth? | **Not a concern** — 10% overhead from cap=16 to 100k | Group 17 |
+| Precious list in loops? | **NEVER** — 15 seconds at 10k iterations (O(n²)) | Group 7 |
+| Precious list background? | **No degradation** for recent objects (LIFO prepend) | Group 13 |
+| Rf_unprotect_ptr? | **Fine** — 15% overhead at all depths | Group 12 |
 
 ## Migration priority
 
