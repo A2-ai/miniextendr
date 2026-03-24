@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 miniextendr-api = { workspace = true }
 miniextendr-engine = { workspace = true }
+slotmap = "1"
 
 [features]
 rayon = ["miniextendr-api/rayon"]

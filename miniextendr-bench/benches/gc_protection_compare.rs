@@ -1,13 +1,12 @@
 //! Head-to-head GC protection mechanism benchmarks.
 //!
-//! Compares all four mechanisms (protect stack, precious list, DLL preserve,
-//! VECSXP pool) under identical workloads. See `plans/gc-protection-benchmarks.md`.
+//! Compares protect stack, precious list, DLL preserve, and three VECSXP pool
+//! variants (Vec, VecDeque, slotmap) under identical workloads.
+//! See `plans/gc-protection-benchmarks.md`.
 
-use miniextendr_api::ffi::{
-    self, R_NilValue, R_PreserveObject, R_ReleaseObject, Rf_ScalarInteger, Rf_protect,
-    Rf_unprotect, Rf_unprotect_ptr, SEXP,
-};
+use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, Rf_ScalarInteger, SEXP};
 use miniextendr_api::preserve;
+use miniextendr_bench::pool_prototypes::{DequePool, SlotmapPool, VecPool};
 
 fn main() {
     miniextendr_bench::init();
@@ -16,80 +15,20 @@ fn main() {
 
 // region: helpers
 
-/// Allocate a test SEXP (cheap scalar integer).
 #[inline(always)]
 unsafe fn test_sexp(i: usize) -> SEXP {
     unsafe { Rf_ScalarInteger((i % 1000) as i32) }
 }
 
-// A minimal VECSXP pool for benchmarking (no slotmap dependency needed yet).
-// Uses Vec<usize> free list — measures the raw pool overhead without generational checks.
-struct VecsxpPool {
-    backing: SEXP,
-    capacity: usize,
-    len: usize,
-    free_list: Vec<usize>,
-}
-
-impl VecsxpPool {
-    unsafe fn new(capacity: usize) -> Self {
-        unsafe {
-            let backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
-            R_PreserveObject(backing);
-            Self {
-                backing,
-                capacity,
-                len: 0,
-                free_list: Vec::with_capacity(capacity),
-            }
-        }
-    }
-
-    #[inline]
-    unsafe fn insert(&mut self, sexp: SEXP) -> usize {
-        let slot = if let Some(s) = self.free_list.pop() {
-            s
-        } else {
-            if self.len >= self.capacity {
-                unsafe { self.grow() };
-            }
-            let s = self.len;
-            self.len += 1;
-            s
-        };
-        unsafe { ffi::SET_VECTOR_ELT(self.backing, slot as ffi::R_xlen_t, sexp) };
-        slot
-    }
-
-    #[inline]
-    unsafe fn release(&mut self, slot: usize) {
-        unsafe { ffi::SET_VECTOR_ELT(self.backing, slot as ffi::R_xlen_t, R_NilValue) };
-        self.free_list.push(slot);
-    }
-
-    unsafe fn grow(&mut self) {
-        let new_cap = self.capacity * 2;
-        unsafe {
-            let new_backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
-            Rf_protect(new_backing);
-            R_PreserveObject(new_backing);
-            for i in 0..self.capacity {
-                let elt = ffi::VECTOR_ELT(self.backing, i as ffi::R_xlen_t);
-                ffi::SET_VECTOR_ELT(new_backing, i as ffi::R_xlen_t, elt);
-            }
-            R_ReleaseObject(self.backing);
-            Rf_unprotect(1);
-            self.backing = new_backing;
-            self.capacity = new_cap;
-        }
-    }
-}
-
-impl Drop for VecsxpPool {
-    fn drop(&mut self) {
-        unsafe { R_ReleaseObject(self.backing) };
+/// Deterministic shuffle (xorshift64 Fisher-Yates).
+fn shuffle(v: &mut [usize]) {
+    let mut state: u64 = 0xDEAD_BEEF_CAFE_1234;
+    for i in (1..v.len()).rev() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let j = (state as usize) % (i + 1);
+        v.swap(i, j);
     }
 }
 
@@ -104,8 +43,8 @@ mod single_latency {
     fn protect_stack() {
         unsafe {
             let sexp = test_sexp(0);
-            Rf_protect(sexp);
-            Rf_unprotect(1);
+            ffi::Rf_protect(sexp);
+            ffi::Rf_unprotect(1);
             divan::black_box(sexp);
         }
     }
@@ -131,37 +70,47 @@ mod single_latency {
     }
 
     #[divan::bench]
-    fn vecsxp_pool() {
+    fn vec_pool() {
         unsafe {
-            // Pool created once, reused across iterations via black_box trick
-            // Actually divan runs this many times, so create a pool per call for fairness
-            let mut pool = VecsxpPool::new(16);
+            let mut pool = VecPool::new(16);
             let sexp = test_sexp(0);
             let slot = pool.insert(sexp);
             pool.release(slot);
             divan::black_box(slot);
         }
     }
+
+    #[divan::bench]
+    fn slotmap_pool() {
+        unsafe {
+            let mut pool = SlotmapPool::new(16);
+            let sexp = test_sexp(0);
+            let key = pool.insert(sexp);
+            pool.release(key);
+            divan::black_box(key);
+        }
+    }
 }
 
 // endregion
 
-// region: Group 2 — Protect N, then release all (batch throughput)
+// region: Group 2 — Batch protect N, release all
 
 mod batch_throughput {
     use super::*;
 
-    #[divan::bench(args = [10, 100, 1_000, 10_000, 50_000])]
+    #[divan::bench(args = [10, 100, 1_000, 10_000])]
     fn protect_stack(n: usize) {
         unsafe {
             for i in 0..n {
-                Rf_protect(test_sexp(i));
+                ffi::Rf_protect(test_sexp(i));
             }
-            Rf_unprotect(n as i32);
+            ffi::Rf_unprotect(n as i32);
         }
     }
 
-    #[divan::bench(args = [10, 100, 1_000, 10_000, 50_000])]
+    // Precious list: cap at 10k (50k is O(n²) ≈ minutes)
+    #[divan::bench(args = [10, 100, 1_000, 10_000])]
     fn precious_list(n: usize) {
         unsafe {
             let mut sexps = Vec::with_capacity(n);
@@ -190,15 +139,29 @@ mod batch_throughput {
     }
 
     #[divan::bench(args = [10, 100, 1_000, 10_000, 50_000])]
-    fn vecsxp_pool(n: usize) {
+    fn vec_pool(n: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(n.max(16));
+            let mut pool = VecPool::new(n.max(16));
             let mut slots = Vec::with_capacity(n);
             for i in 0..n {
                 slots.push(pool.insert(test_sexp(i)));
             }
             for slot in slots {
                 pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [10, 100, 1_000, 10_000, 50_000])]
+    fn slotmap_pool(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(n.max(16));
+            let mut keys = Vec::with_capacity(n);
+            for i in 0..n {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            for key in keys {
+                pool.release(key);
             }
         }
     }
@@ -211,7 +174,7 @@ mod batch_throughput {
 mod churn {
     use super::*;
 
-    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    #[divan::bench(args = [1_000, 10_000])]
     fn precious_list(n: usize) {
         unsafe {
             let mut live: Vec<SEXP> = Vec::new();
@@ -220,8 +183,7 @@ mod churn {
                 R_PreserveObject(s);
                 live.push(s);
                 if i % 3 == 0 && !live.is_empty() {
-                    let oldest = live.remove(0);
-                    R_ReleaseObject(oldest);
+                    R_ReleaseObject(live.remove(0));
                 }
             }
             for s in live {
@@ -237,8 +199,7 @@ mod churn {
             for i in 0..n {
                 live.push(preserve::insert_unchecked(test_sexp(i)));
                 if i % 3 == 0 && !live.is_empty() {
-                    let oldest = live.remove(0);
-                    preserve::release_unchecked(oldest);
+                    preserve::release_unchecked(live.remove(0));
                 }
             }
             for cell in live {
@@ -248,15 +209,14 @@ mod churn {
     }
 
     #[divan::bench(args = [1_000, 10_000, 100_000])]
-    fn vecsxp_pool(n: usize) {
+    fn vec_pool(n: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(1024);
+            let mut pool = VecPool::new(1024);
             let mut live: Vec<usize> = Vec::new();
             for i in 0..n {
                 live.push(pool.insert(test_sexp(i)));
                 if i % 3 == 0 && !live.is_empty() {
-                    let oldest = live.remove(0);
-                    pool.release(oldest);
+                    pool.release(live.remove(0));
                 }
             }
             for slot in live {
@@ -264,11 +224,28 @@ mod churn {
             }
         }
     }
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn slotmap_pool(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(1024);
+            let mut live = Vec::new();
+            for i in 0..n {
+                live.push(pool.insert(test_sexp(i)));
+                if i % 3 == 0 && !live.is_empty() {
+                    pool.release(live.remove(0));
+                }
+            }
+            for key in live {
+                pool.release(key);
+            }
+        }
+    }
 }
 
 // endregion
 
-// region: Group 4 — LIFO release (protect stack's ideal)
+// region: Group 4 — LIFO release
 
 mod lifo_release {
     use super::*;
@@ -277,25 +254,9 @@ mod lifo_release {
     fn protect_stack(n: usize) {
         unsafe {
             for i in 0..n {
-                Rf_protect(test_sexp(i));
+                ffi::Rf_protect(test_sexp(i));
             }
-            Rf_unprotect(n as i32);
-        }
-    }
-
-    #[divan::bench(args = [10, 100, 1_000, 10_000])]
-    fn precious_list(n: usize) {
-        unsafe {
-            let mut sexps = Vec::with_capacity(n);
-            for i in 0..n {
-                let s = test_sexp(i);
-                R_PreserveObject(s);
-                sexps.push(s);
-            }
-            // Release in reverse (LIFO)
-            for s in sexps.into_iter().rev() {
-                R_ReleaseObject(s);
-            }
+            ffi::Rf_unprotect(n as i32);
         }
     }
 
@@ -313,9 +274,9 @@ mod lifo_release {
     }
 
     #[divan::bench(args = [10, 100, 1_000, 10_000])]
-    fn vecsxp_pool(n: usize) {
+    fn vec_pool(n: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(n.max(16));
+            let mut pool = VecPool::new(n.max(16));
             let mut slots = Vec::with_capacity(n);
             for i in 0..n {
                 slots.push(pool.insert(test_sexp(i)));
@@ -333,19 +294,6 @@ mod lifo_release {
 
 mod random_release {
     use super::*;
-
-    /// Simple deterministic shuffle (Fisher-Yates with fixed seed).
-    fn shuffle(v: &mut [usize]) {
-        let mut state: u64 = 0xDEAD_BEEF_CAFE_1234;
-        for i in (1..v.len()).rev() {
-            // xorshift64
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            let j = (state as usize) % (i + 1);
-            v.swap(i, j);
-        }
-    }
 
     #[divan::bench(args = [100, 1_000, 10_000])]
     fn precious_list(n: usize) {
@@ -380,9 +328,9 @@ mod random_release {
     }
 
     #[divan::bench(args = [100, 1_000, 10_000])]
-    fn vecsxp_pool(n: usize) {
+    fn vec_pool(n: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(n.max(16));
+            let mut pool = VecPool::new(n.max(16));
             let mut slots = Vec::with_capacity(n);
             for i in 0..n {
                 slots.push(pool.insert(test_sexp(i)));
@@ -394,17 +342,33 @@ mod random_release {
             }
         }
     }
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn slotmap_pool(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(n.max(16));
+            let mut keys = Vec::with_capacity(n);
+            for i in 0..n {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            let mut order: Vec<usize> = (0..n).collect();
+            shuffle(&mut order);
+            for i in order {
+                pool.release(keys[i]);
+            }
+        }
+    }
 }
 
 // endregion
 
-// region: Group 6 — Bursty workload (allocate many, release most)
+// region: Group 6 — Bursty (alloc many, release most)
 
 mod bursty {
     use super::*;
 
     const BURST_SIZE: usize = 10_000;
-    const KEEP_PER_BURST: usize = 100;
+    const KEEP: usize = 100;
 
     #[divan::bench(args = [3, 10])]
     fn dll_preserve(rounds: usize) {
@@ -415,8 +379,7 @@ mod bursty {
                 for i in 0..BURST_SIZE {
                     cells.push(preserve::insert_unchecked(test_sexp(round * BURST_SIZE + i)));
                 }
-                // Release all but KEEP_PER_BURST
-                for cell in cells.drain(KEEP_PER_BURST..) {
+                for cell in cells.drain(KEEP..) {
                     preserve::release_unchecked(cell);
                 }
                 kept.extend(cells);
@@ -428,16 +391,16 @@ mod bursty {
     }
 
     #[divan::bench(args = [3, 10])]
-    fn vecsxp_pool(rounds: usize) {
+    fn vec_pool(rounds: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(BURST_SIZE);
+            let mut pool = VecPool::new(BURST_SIZE);
             let mut kept: Vec<usize> = Vec::new();
             for round in 0..rounds {
                 let mut slots = Vec::with_capacity(BURST_SIZE);
                 for i in 0..BURST_SIZE {
                     slots.push(pool.insert(test_sexp(round * BURST_SIZE + i)));
                 }
-                for slot in slots.drain(KEEP_PER_BURST..) {
+                for slot in slots.drain(KEEP..) {
                     pool.release(slot);
                 }
                 kept.extend(slots);
@@ -449,23 +412,22 @@ mod bursty {
     }
 
     #[divan::bench(args = [3, 10])]
-    fn precious_list(rounds: usize) {
+    fn slotmap_pool(rounds: usize) {
         unsafe {
-            let mut kept: Vec<SEXP> = Vec::new();
+            let mut pool = SlotmapPool::new(BURST_SIZE);
+            let mut kept = Vec::new();
             for round in 0..rounds {
-                let mut sexps = Vec::with_capacity(BURST_SIZE);
+                let mut keys = Vec::with_capacity(BURST_SIZE);
                 for i in 0..BURST_SIZE {
-                    let s = test_sexp(round * BURST_SIZE + i);
-                    R_PreserveObject(s);
-                    sexps.push(s);
+                    keys.push(pool.insert(test_sexp(round * BURST_SIZE + i)));
                 }
-                for s in sexps.drain(KEEP_PER_BURST..) {
-                    R_ReleaseObject(s);
+                for key in keys.drain(KEEP..) {
+                    pool.release(key);
                 }
-                kept.extend(sexps);
+                kept.extend(keys);
             }
-            for s in kept {
-                R_ReleaseObject(s);
+            for key in kept {
+                pool.release(key);
             }
         }
     }
@@ -486,7 +448,7 @@ mod replace_in_loop {
             for i in 1..n {
                 ffi::R_Reprotect(test_sexp(i), idx);
             }
-            Rf_unprotect(1);
+            ffi::Rf_unprotect(1);
         }
     }
 
@@ -503,12 +465,11 @@ mod replace_in_loop {
     }
 
     #[divan::bench(args = [100, 1_000, 10_000])]
-    fn pool_overwrite(n: usize) {
+    fn vec_pool_overwrite(n: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(16);
+            let mut pool = VecPool::new(16);
             let slot = pool.insert(test_sexp(0));
             for i in 1..n {
-                // Overwrite in place — no release/reinsert needed
                 ffi::SET_VECTOR_ELT(pool.backing, slot as ffi::R_xlen_t, test_sexp(i));
             }
             pool.release(slot);
@@ -532,42 +493,7 @@ mod replace_in_loop {
 
 // endregion
 
-// region: Group 12 — Rf_unprotect_ptr at various depths
-
-mod unprotect_ptr_depth {
-    use super::*;
-
-    #[divan::bench(args = [1, 5, 10, 50, 100, 1_000])]
-    fn unprotect_ptr_at_depth(depth: usize) {
-        unsafe {
-            // The target is the first thing protected (deepest in stack)
-            let target = Rf_protect(test_sexp(0));
-            for i in 1..depth {
-                Rf_protect(test_sexp(i));
-            }
-            // Remove the deepest item — scans entire stack
-            Rf_unprotect_ptr(target);
-            // Clean up the rest
-            if depth > 1 {
-                Rf_unprotect((depth - 1) as i32);
-            }
-        }
-    }
-
-    #[divan::bench(args = [1, 5, 10, 50, 100, 1_000])]
-    fn unprotect_bulk_baseline(depth: usize) {
-        unsafe {
-            for i in 0..depth {
-                Rf_protect(test_sexp(i));
-            }
-            Rf_unprotect(depth as i32);
-        }
-    }
-}
-
-// endregion
-
-// region: Group 8 — Data.frame construction (realistic composite)
+// region: Group 8 — Data.frame construction
 
 mod dataframe_construction {
     use super::*;
@@ -581,14 +507,11 @@ mod dataframe_construction {
     #[divan::bench(args = [5, 20, 100])]
     fn protect_scope(ncols: usize) {
         unsafe {
-            // Protect list
-            let list = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, ncols as ffi::R_xlen_t));
-            // Protect names
-            let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, ncols as ffi::R_xlen_t));
-
+            let list = ffi::Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, ncols as ffi::R_xlen_t));
+            let names =
+                ffi::Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, ncols as ffi::R_xlen_t));
             for i in 0..ncols {
-                // Each column allocation — protect until set into list
-                let col = Rf_protect(Rf_allocVector(
+                let col = ffi::Rf_protect(Rf_allocVector(
                     SEXPTYPE::INTSXP,
                     COL_LEN as ffi::R_xlen_t,
                 ));
@@ -597,19 +520,13 @@ mod dataframe_construction {
                     *ptr.add(j) = (i * COL_LEN + j) as i32;
                 }
                 SET_VECTOR_ELT(list, i as ffi::R_xlen_t, col);
-                Rf_unprotect(1); // col now reachable from list
-
+                ffi::Rf_unprotect(1);
                 let name = format!("col_{i}");
-                let charsxp = Rf_mkCharLenCE(
-                    name.as_ptr().cast(),
-                    name.len() as i32,
-                    ffi::CE_UTF8,
-                );
-                SET_STRING_ELT(names, i as ffi::R_xlen_t, charsxp);
+                let ch = Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, ch);
             }
-
             Rf_setAttrib(list, R_NamesSymbol, names);
-            Rf_unprotect(2); // list + names
+            ffi::Rf_unprotect(2);
             divan::black_box(list);
         }
     }
@@ -618,68 +535,232 @@ mod dataframe_construction {
     fn dll_preserve(ncols: usize) {
         unsafe {
             let list = Rf_allocVector(SEXPTYPE::VECSXP, ncols as ffi::R_xlen_t);
-            let list_cell = preserve::insert_unchecked(list);
+            let lc = preserve::insert_unchecked(list);
             let names = Rf_allocVector(SEXPTYPE::STRSXP, ncols as ffi::R_xlen_t);
-            let names_cell = preserve::insert_unchecked(names);
-
+            let nc = preserve::insert_unchecked(names);
             for i in 0..ncols {
                 let col = Rf_allocVector(SEXPTYPE::INTSXP, COL_LEN as ffi::R_xlen_t);
-                let col_cell = preserve::insert_unchecked(col);
+                let cc = preserve::insert_unchecked(col);
                 let ptr = ffi::INTEGER(col);
                 for j in 0..COL_LEN {
                     *ptr.add(j) = (i * COL_LEN + j) as i32;
                 }
                 SET_VECTOR_ELT(list, i as ffi::R_xlen_t, col);
-                preserve::release_unchecked(col_cell);
-
+                preserve::release_unchecked(cc);
                 let name = format!("col_{i}");
-                let charsxp = Rf_mkCharLenCE(
-                    name.as_ptr().cast(),
-                    name.len() as i32,
-                    ffi::CE_UTF8,
-                );
-                SET_STRING_ELT(names, i as ffi::R_xlen_t, charsxp);
+                let ch = Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, ch);
             }
-
             Rf_setAttrib(list, R_NamesSymbol, names);
-            preserve::release_unchecked(names_cell);
-            preserve::release_unchecked(list_cell);
+            preserve::release_unchecked(nc);
+            preserve::release_unchecked(lc);
             divan::black_box(list);
         }
     }
 
     #[divan::bench(args = [5, 20, 100])]
-    fn vecsxp_pool(ncols: usize) {
+    fn vec_pool(ncols: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(ncols + 4);
+            let mut pool = VecPool::new(ncols + 4);
             let list = Rf_allocVector(SEXPTYPE::VECSXP, ncols as ffi::R_xlen_t);
-            let list_slot = pool.insert(list);
+            let ls = pool.insert(list);
             let names = Rf_allocVector(SEXPTYPE::STRSXP, ncols as ffi::R_xlen_t);
-            let names_slot = pool.insert(names);
-
+            let ns = pool.insert(names);
             for i in 0..ncols {
                 let col = Rf_allocVector(SEXPTYPE::INTSXP, COL_LEN as ffi::R_xlen_t);
-                let col_slot = pool.insert(col);
+                let cs = pool.insert(col);
                 let ptr = ffi::INTEGER(col);
                 for j in 0..COL_LEN {
                     *ptr.add(j) = (i * COL_LEN + j) as i32;
                 }
                 SET_VECTOR_ELT(list, i as ffi::R_xlen_t, col);
-                pool.release(col_slot);
-
+                pool.release(cs);
                 let name = format!("col_{i}");
-                let charsxp = Rf_mkCharLenCE(
-                    name.as_ptr().cast(),
-                    name.len() as i32,
-                    ffi::CE_UTF8,
-                );
-                SET_STRING_ELT(names, i as ffi::R_xlen_t, charsxp);
+                let ch = Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, ch);
             }
-
             Rf_setAttrib(list, R_NamesSymbol, names);
-            pool.release(names_slot);
-            pool.release(list_slot);
+            pool.release(ns);
+            pool.release(ls);
             divan::black_box(list);
+        }
+    }
+}
+
+// endregion
+
+// region: Group 11 — Vec vs VecDeque free list
+
+mod freelist_strategy {
+    use super::*;
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn vec_churn(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(1024);
+            for i in 0..n {
+                let slot = pool.insert(test_sexp(i));
+                pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn deque_churn(n: usize) {
+        unsafe {
+            let mut pool = DequePool::new(1024);
+            for i in 0..n {
+                let slot = pool.insert(test_sexp(i));
+                pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn vec_burst(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(n.max(16));
+            let mut slots = Vec::with_capacity(n);
+            for i in 0..n {
+                slots.push(pool.insert(test_sexp(i)));
+            }
+            // Release oldest half
+            for slot in slots.drain(..n / 2) {
+                pool.release(slot);
+            }
+            // Reinsert half
+            for i in 0..n / 2 {
+                slots.push(pool.insert(test_sexp(n + i)));
+            }
+            for slot in slots {
+                pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn deque_burst(n: usize) {
+        unsafe {
+            let mut pool = DequePool::new(n.max(16));
+            let mut slots = Vec::with_capacity(n);
+            for i in 0..n {
+                slots.push(pool.insert(test_sexp(i)));
+            }
+            for slot in slots.drain(..n / 2) {
+                pool.release(slot);
+            }
+            for i in 0..n / 2 {
+                slots.push(pool.insert(test_sexp(n + i)));
+            }
+            for slot in slots {
+                pool.release(slot);
+            }
+        }
+    }
+}
+
+// endregion
+
+// region: Group 12 — Rf_unprotect_ptr at varying depths
+
+mod unprotect_ptr_depth {
+    use super::*;
+
+    #[divan::bench(args = [1, 5, 10, 50, 100, 1_000])]
+    fn unprotect_ptr_at_depth(depth: usize) {
+        unsafe {
+            let target = ffi::Rf_protect(test_sexp(0));
+            for i in 1..depth {
+                ffi::Rf_protect(test_sexp(i));
+            }
+            ffi::Rf_unprotect_ptr(target);
+            if depth > 1 {
+                ffi::Rf_unprotect((depth - 1) as i32);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1, 5, 10, 50, 100, 1_000])]
+    fn bulk_unprotect_baseline(depth: usize) {
+        unsafe {
+            for i in 0..depth {
+                ffi::Rf_protect(test_sexp(i));
+            }
+            ffi::Rf_unprotect(depth as i32);
+        }
+    }
+}
+
+// endregion
+
+// region: Group 16 — slotmap generational check overhead
+
+mod slotmap_overhead {
+    use super::*;
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn slotmap_insert_release(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(n.max(16));
+            let mut keys = Vec::with_capacity(n);
+            for i in 0..n {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn vec_insert_release(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(n.max(16));
+            let mut slots = Vec::with_capacity(n);
+            for i in 0..n {
+                slots.push(pool.insert(test_sexp(i)));
+            }
+            for slot in slots {
+                pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn slotmap_get_hot(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(n.max(16));
+            let mut keys = Vec::with_capacity(n);
+            for i in 0..n {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            for _ in 0..10 {
+                for &key in &keys {
+                    divan::black_box(pool.get(key));
+                }
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn vec_get_hot(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(n.max(16));
+            let mut slots = Vec::with_capacity(n);
+            for i in 0..n {
+                slots.push(pool.insert(test_sexp(i)));
+            }
+            for _ in 0..10 {
+                for &slot in &slots {
+                    divan::black_box(pool.get(slot));
+                }
+            }
+            for slot in slots {
+                pool.release(slot);
+            }
         }
     }
 }
@@ -692,10 +773,9 @@ mod pool_growth {
     use super::*;
 
     #[divan::bench(args = [16, 64, 256, 1024])]
-    fn growth_spike(initial_cap: usize) {
+    fn vec_growth_spike(initial_cap: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(initial_cap);
-            // Fill to capacity, then one more to trigger growth
+            let mut pool = VecPool::new(initial_cap);
             let mut slots = Vec::with_capacity(initial_cap + 1);
             for i in 0..=initial_cap {
                 slots.push(pool.insert(test_sexp(i)));
@@ -706,16 +786,44 @@ mod pool_growth {
         }
     }
 
-    #[divan::bench(args = [1_000, 10_000, 100_000])]
-    fn amortized_from_small(n: usize) {
+    #[divan::bench(args = [16, 64, 256, 1024])]
+    fn slotmap_growth_spike(initial_cap: usize) {
         unsafe {
-            let mut pool = VecsxpPool::new(16); // small initial, many growths
+            let mut pool = SlotmapPool::new(initial_cap);
+            let mut keys = Vec::with_capacity(initial_cap + 1);
+            for i in 0..=initial_cap {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn vec_amortized_from_small(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(16);
             let mut slots = Vec::with_capacity(n);
             for i in 0..n {
                 slots.push(pool.insert(test_sexp(i)));
             }
             for slot in slots {
                 pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn slotmap_amortized_from_small(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(16);
+            let mut keys = Vec::with_capacity(n);
+            for i in 0..n {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            for key in keys {
+                pool.release(key);
             }
         }
     }
