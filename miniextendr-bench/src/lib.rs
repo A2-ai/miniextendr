@@ -21,6 +21,7 @@ use std::sync::OnceLock;
 use miniextendr_api::ffi::{self, SEXP};
 
 pub mod bench_plan;
+pub mod pool_prototypes;
 
 // region: Size matrix for parameterized benchmarks
 
