@@ -163,6 +163,35 @@ modest and predictable.
 Vec pool is 1.6x faster than DLL on bursty workloads. The DLL's "memory reclamation"
 advantage (released cons cells become GC garbage) doesn't show as a speed advantage.
 
+## JSON-like Named List Construction (N keys + values) — median
+
+| N | protect_scope | vec_pool | deque_pool | dll_preserve |
+|---|---------------|----------|------------|--------------|
+| 10 | **677 ns** | 828 ns | 833 ns | 911 ns |
+| 100 | **6.8 µs** | 7.6 µs | 7.4 µs | 8.5 µs |
+| 1k | **68.5 µs** | 75.8 µs | 77.4 µs | 85.5 µs |
+
+Protect scope wins for JSON construction — per-iteration protect/unprotect(1) is
+cheaper than pool insert+release. The pool's advantage (any-order release) doesn't
+help when each temporary is consumed immediately. DLL is 25% slower from CONSXP churn.
+
+Deque pool shows no advantage over vec pool here — the small pool (cap=4) means
+both reuse the same 1-2 slots anyway.
+
+## High-Turnover (3 live temporaries, replaced every iteration) — median
+
+| N iterations | ReprotectSlot | vec_pool overwrite | DLL reinsert |
+|---|---|---|---|
+| 1k | **29.5 µs** | 34.6 µs | 100.7 µs |
+| 10k | **302 µs** | 348 µs | 1.00 ms |
+
+ReprotectSlot is fastest (one R_Reprotect = array write per replacement).
+Pool overwrite is close (one SET_VECTOR_ELT per replacement — 15% slower).
+DLL must release+reinsert per replacement (allocates a CONSXP each time) — **3.3x slower**.
+
+This pattern (fixed number of live temporaries, replaced frequently) strongly favors
+mechanisms that can overwrite in place. The DLL's inability to do this is a real cost.
+
 ## Key Decisions Informed by Data
 
 | Decision | Benchmark result | Verdict |
