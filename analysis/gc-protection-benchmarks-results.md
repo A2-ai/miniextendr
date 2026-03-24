@@ -4,18 +4,30 @@ Machine: Apple Silicon (aarch64), R embedded via miniextendr-engine, divan 0.1.2
 
 ## Single Latency (one protect + release)
 
+### Cold start (includes pool creation)
+
 | Mechanism | Median |
 |-----------|--------|
-| protect_stack | **13.7 ns** |
-| precious_list | 17.0 ns |
-| dll_preserve | 34.7 ns |
-| vec_pool | 69.4 ns |
-| slotmap_pool | 100.6 ns |
+| protect_stack | **15.2 ns** |
+| precious_list | 17.5 ns |
+| dll_preserve | 36.5 ns |
+| vec_pool_cold | 57.1 ns |
+| slotmap_pool_cold | 93.5 ns |
 
-Protect stack is fastest (array write + integer subtract). Precious list is close
-(CONS + singly-linked prepend). DLL is 2.5x stack (CONS + doubly-linked splice +
-2 temporary Rf_protect calls). Pools are slower because of pool creation overhead
-per bench iteration — in real use the pool is created once.
+### Steady state (1000 ops on existing pool, per-op)
+
+| Mechanism | 1000 ops total | Per-op |
+|-----------|---------------|--------|
+| protect_stack | **14.3 µs** | **14.3 ns** |
+| precious_list | 16.5 µs | 16.5 ns |
+| vec_pool | 17.5 µs | **17.5 ns** |
+| slotmap_pool | 21.1 µs | 21.1 ns |
+| dll_preserve | 29.0 µs | 29.0 ns |
+
+**Steady-state is the real comparison.** Pool creation is a one-time cost.
+On an existing pool, vec_pool is only 3ns slower than the protect stack.
+The DLL is 2x slower than vec_pool in steady state (29ns vs 17.5ns) due to
+CONSXP allocation + doubly-linked splice on every insert.
 
 ## Batch Throughput (protect N, release all) — median
 
@@ -122,13 +134,24 @@ check is measurable but modest. For the safety it provides (stale-key detection)
 
 | Initial cap | vec spike | slotmap spike |
 |-------------|-----------|---------------|
-| 16 | 651 ns | 792 ns |
-| 64 | 1.9 µs | 2.2 µs |
-| 256 | 7.0 µs | 7.9 µs |
-| 1024 | 27.2 µs | 31.5 µs |
+| 16 | 708 ns | 875 ns |
+| 64 | 2.0 µs | 2.4 µs |
+| 256 | 7.2 µs | 8.2 µs |
+| 1024 | 27.6 µs | 33.2 µs |
 
-Growth spike at 1024 elements: **27 µs**. Amortized from initial cap 16 to 100k:
-2.8 ms total (28 ns/element). Growth is not a concern.
+Growth spike at 1024 elements: **28 µs**. Amortized from initial cap 16 to 100k:
+3.0 ms total (30 ns/element). Growth is not a concern.
+
+## Pre-sized vs Small Initial Pool — batch at 50k, median
+
+| Pool | Pre-sized (cap=N) | Small initial (cap=16) | Growth penalty |
+|------|-------------------|------------------------|----------------|
+| vec_pool | 899 µs | 1.40 ms | **1.6x** |
+| slotmap | 1.01 ms | 1.57 ms | **1.6x** |
+
+Growth adds ~60% overhead at 50k elements. Still faster than DLL (1.77ms pre-sized).
+For known sizes, pre-sizing is worth it. For unknown sizes, the growth penalty is
+modest and predictable.
 
 ## Bursty (10k alloc, 9.9k release, keep 100) — median
 
