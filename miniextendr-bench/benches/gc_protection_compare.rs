@@ -1104,3 +1104,120 @@ mod pool_growth {
 }
 
 // endregion
+
+// region: Group 15 — Keyed pool collections (HashMap, BTreeMap, IndexMap)
+
+mod keyed_pools {
+    use super::*;
+    use miniextendr_bench::pool_prototypes::{BTreeMapPool, HashMapPool, IndexMapPool};
+
+    // Insert N keyed entries, lookup each, release all.
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn hashmap_insert_get_release(n: usize) {
+        unsafe {
+            let mut pool = HashMapPool::new(n.max(16));
+            for i in 0..n {
+                pool.insert(format!("key_{i}"), test_sexp(i));
+            }
+            for i in 0..n {
+                divan::black_box(pool.get(&format!("key_{i}")));
+            }
+            for i in 0..n {
+                pool.release(&format!("key_{i}"));
+            }
+        }
+    }
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn btreemap_insert_get_release(n: usize) {
+        unsafe {
+            let mut pool = BTreeMapPool::new(n.max(16));
+            for i in 0..n {
+                pool.insert(format!("key_{i}"), test_sexp(i));
+            }
+            for i in 0..n {
+                divan::black_box(pool.get(&format!("key_{i}")));
+            }
+            for i in 0..n {
+                pool.release(&format!("key_{i}"));
+            }
+        }
+    }
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn indexmap_insert_get_release(n: usize) {
+        unsafe {
+            let mut pool = IndexMapPool::new(n.max(16));
+            for i in 0..n {
+                pool.insert(format!("key_{i}"), test_sexp(i));
+            }
+            for i in 0..n {
+                divan::black_box(pool.get(&format!("key_{i}")));
+            }
+            for i in 0..n {
+                pool.release(&format!("key_{i}"));
+            }
+        }
+    }
+
+    // Baseline: slotmap (no key overhead, for comparison)
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn slotmap_baseline(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(n.max(16));
+            let mut keys = Vec::with_capacity(n);
+            for i in 0..n {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            for &key in &keys {
+                divan::black_box(pool.get(key));
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        }
+    }
+
+    // Churn: insert, lookup, release one at a time.
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn hashmap_churn(n: usize) {
+        unsafe {
+            let mut pool = HashMapPool::new(64);
+            for i in 0..n {
+                let key = format!("k_{i}");
+                pool.insert(key.clone(), test_sexp(i));
+                divan::black_box(pool.get(&key));
+                pool.release(&key);
+            }
+        }
+    }
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn indexmap_churn(n: usize) {
+        unsafe {
+            let mut pool = IndexMapPool::new(64);
+            for i in 0..n {
+                let key = format!("k_{i}");
+                pool.insert(key.clone(), test_sexp(i));
+                divan::black_box(pool.get(&key));
+                pool.release(&key);
+            }
+        }
+    }
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn btreemap_churn(n: usize) {
+        unsafe {
+            let mut pool = BTreeMapPool::new(64);
+            for i in 0..n {
+                let key = format!("k_{i}");
+                pool.insert(key.clone(), test_sexp(i));
+                divan::black_box(pool.get(&key));
+                pool.release(&key);
+            }
+        }
+    }
+}
+
+// endregion
