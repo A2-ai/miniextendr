@@ -684,6 +684,185 @@ mod dataframe_construction {
 
 // endregion
 
+// region: Group 9 — JSON-like nested object construction
+// Models: allocate key (CHARSXP), allocate value (scalar or nested list),
+// set into parent, release temporary. Multiple live temporaries per iteration.
+
+mod json_construction {
+    use super::*;
+    use miniextendr_api::ffi::{
+        Rf_allocVector, Rf_mkCharLenCE, SET_STRING_ELT, SET_VECTOR_ELT, SEXPTYPE,
+    };
+
+    /// Build a flat named list with N string keys and integer values.
+    /// Each iteration: alloc CHARSXP (for key) + alloc ScalarInteger (for value).
+    /// The CHARSXP is consumed by SET_STRING_ELT; the scalar by SET_VECTOR_ELT.
+    /// Between those two allocations, the first needs protection.
+
+    #[divan::bench(args = [10, 100, 1_000])]
+    fn protect_scope(n: usize) {
+        unsafe {
+            let list = ffi::Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t));
+            let names = ffi::Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t));
+            for i in 0..n {
+                // Key: alloc CHARSXP
+                let key = format!("key_{i}");
+                let ch = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, ffi::CE_UTF8);
+                // Value: alloc scalar — this can trigger GC, so ch needs protection
+                ffi::Rf_protect(ch);
+                let val = ffi::Rf_ScalarInteger(i as i32);
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, ch);
+                SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
+                ffi::Rf_unprotect(1); // ch
+            }
+            ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+            ffi::Rf_unprotect(2);
+            divan::black_box(list);
+        }
+    }
+
+    #[divan::bench(args = [10, 100, 1_000])]
+    fn vec_pool(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(4); // small — only 2-3 live at a time
+            let list = Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t);
+            let ls = pool.insert(list);
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t);
+            let ns = pool.insert(names);
+            for i in 0..n {
+                let key = format!("key_{i}");
+                let ch = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, ffi::CE_UTF8);
+                let cs = pool.insert(ch);
+                let val = ffi::Rf_ScalarInteger(i as i32);
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, ch);
+                SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
+                pool.release(cs); // ch now reachable from names
+            }
+            ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+            pool.release(ns);
+            pool.release(ls);
+            divan::black_box(list);
+        }
+    }
+
+    #[divan::bench(args = [10, 100, 1_000])]
+    fn deque_pool(n: usize) {
+        unsafe {
+            let mut pool = DequePool::new(4);
+            let list = Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t);
+            let ls = pool.insert(list);
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t);
+            let ns = pool.insert(names);
+            for i in 0..n {
+                let key = format!("key_{i}");
+                let ch = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, ffi::CE_UTF8);
+                let cs = pool.insert(ch);
+                let val = ffi::Rf_ScalarInteger(i as i32);
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, ch);
+                SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
+                pool.release(cs);
+            }
+            ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+            pool.release(ns);
+            pool.release(ls);
+            divan::black_box(list);
+        }
+    }
+
+    #[divan::bench(args = [10, 100, 1_000])]
+    fn dll_preserve(n: usize) {
+        unsafe {
+            let list = Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t);
+            let lc = preserve::insert_unchecked(list);
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t);
+            let nc = preserve::insert_unchecked(names);
+            for i in 0..n {
+                let key = format!("key_{i}");
+                let ch = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, ffi::CE_UTF8);
+                let cc = preserve::insert_unchecked(ch);
+                let val = ffi::Rf_ScalarInteger(i as i32);
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, ch);
+                SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
+                preserve::release_unchecked(cc);
+            }
+            ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+            preserve::release_unchecked(nc);
+            preserve::release_unchecked(lc);
+            divan::black_box(list);
+        }
+    }
+}
+
+// endregion
+
+// region: Group 10 — High-turnover temporaries with multiple live
+// Models: 3 live temporaries at any moment, each replaced every iteration.
+// Tests the "window" of live protections, not bulk insert/release.
+
+mod high_turnover {
+    use super::*;
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn protect_stack_3_live(n: usize) {
+        unsafe {
+            // 3 ReprotectSlots — constant stack usage
+            let mut idx_a: std::os::raw::c_int = 0;
+            let mut idx_b: std::os::raw::c_int = 0;
+            let mut idx_c: std::os::raw::c_int = 0;
+            ffi::R_ProtectWithIndex(test_sexp(0), std::ptr::from_mut(&mut idx_a));
+            ffi::R_ProtectWithIndex(test_sexp(1), std::ptr::from_mut(&mut idx_b));
+            ffi::R_ProtectWithIndex(test_sexp(2), std::ptr::from_mut(&mut idx_c));
+            for i in 0..n {
+                ffi::R_Reprotect(test_sexp(i * 3), idx_a);
+                ffi::R_Reprotect(test_sexp(i * 3 + 1), idx_b);
+                ffi::R_Reprotect(test_sexp(i * 3 + 2), idx_c);
+            }
+            ffi::Rf_unprotect(3);
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn vec_pool_3_live(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(4);
+            let a = pool.insert(test_sexp(0));
+            let b = pool.insert(test_sexp(1));
+            let c = pool.insert(test_sexp(2));
+            for i in 0..n {
+                // Overwrite in place — no release/reinsert needed
+                ffi::SET_VECTOR_ELT(pool.backing, a as ffi::R_xlen_t, test_sexp(i * 3));
+                ffi::SET_VECTOR_ELT(pool.backing, b as ffi::R_xlen_t, test_sexp(i * 3 + 1));
+                ffi::SET_VECTOR_ELT(pool.backing, c as ffi::R_xlen_t, test_sexp(i * 3 + 2));
+            }
+            pool.release(a);
+            pool.release(b);
+            pool.release(c);
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn dll_3_live(n: usize) {
+        unsafe {
+            let mut a = preserve::insert_unchecked(test_sexp(0));
+            let mut b = preserve::insert_unchecked(test_sexp(1));
+            let mut c = preserve::insert_unchecked(test_sexp(2));
+            for i in 0..n {
+                preserve::release_unchecked(a);
+                a = preserve::insert_unchecked(test_sexp(i * 3));
+                preserve::release_unchecked(b);
+                b = preserve::insert_unchecked(test_sexp(i * 3 + 1));
+                preserve::release_unchecked(c);
+                c = preserve::insert_unchecked(test_sexp(i * 3 + 2));
+            }
+            preserve::release_unchecked(a);
+            preserve::release_unchecked(b);
+            preserve::release_unchecked(c);
+        }
+    }
+}
+
+// endregion
+
 // region: Group 11 — Vec vs VecDeque free list
 
 mod freelist_strategy {
