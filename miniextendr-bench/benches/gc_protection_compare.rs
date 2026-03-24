@@ -1221,3 +1221,264 @@ mod keyed_pools {
 }
 
 // endregion
+
+// region: Group 13 — R_HASH_PRECIOUS mode
+// R_HASH_PRECIOUS is checked via getenv() on the FIRST call to R_PreserveObject.
+// No recompilation needed — just set the env var before running.
+// To compare: run once normally, once with R_HASH_PRECIOUS=1 cargo bench ...
+// Hash mode uses a 1069-bucket hash table instead of singly-linked list,
+// improving R_ReleaseObject from O(n) to O(bucket_size).
+
+mod precious_list_scale {
+    use super::*;
+
+    /// Precious list at scale — the O(n²) release behavior.
+    /// Run with and without R_HASH_PRECIOUS=1 to compare.
+    #[divan::bench(args = [10, 100, 1_000])]
+    fn precious_batch_release(n: usize) {
+        unsafe {
+            let mut sexps = Vec::with_capacity(n);
+            for i in 0..n {
+                let s = test_sexp(i);
+                R_PreserveObject(s);
+                sexps.push(s);
+            }
+            for s in sexps {
+                R_ReleaseObject(s);
+            }
+        }
+    }
+
+    /// Precious list: release in random order (worst case for singly-linked).
+    #[divan::bench(args = [10, 100, 1_000])]
+    fn precious_random_release(n: usize) {
+        unsafe {
+            let mut sexps = Vec::with_capacity(n);
+            for i in 0..n {
+                let s = test_sexp(i);
+                R_PreserveObject(s);
+                sexps.push(s);
+            }
+            let mut order: Vec<usize> = (0..n).collect();
+            shuffle(&mut order);
+            for i in order {
+                R_ReleaseObject(sexps[i]);
+            }
+        }
+    }
+
+    /// Precious list with background pressure: N preserved objects from
+    /// "other packages", then measure insert+release of one more.
+    /// Shows how global precious list size affects per-operation cost.
+    #[divan::bench(args = [0, 100, 1_000, 10_000])]
+    fn precious_with_background(background_n: usize) {
+        unsafe {
+            // Simulate other packages' preserved objects
+            let mut bg = Vec::with_capacity(background_n);
+            for i in 0..background_n {
+                let s = test_sexp(i);
+                R_PreserveObject(s);
+                bg.push(s);
+            }
+            // Now measure 100 insert+release cycles with this background
+            for i in 0..100 {
+                let s = test_sexp(background_n + i);
+                R_PreserveObject(s);
+                R_ReleaseObject(s);
+            }
+            // Cleanup background
+            for s in bg {
+                R_ReleaseObject(s);
+            }
+        }
+    }
+}
+
+// endregion
+
+// region: Group 14 — DLL insert's protect stack interaction
+
+mod dll_stack_interaction {
+    use super::*;
+
+    /// DLL insert under protect stack pressure.
+    /// Pre-fill the protect stack to `depth`, then do N DLL insert+release cycles.
+    /// Tests whether DLL's transient 2-slot usage interacts with stack depth.
+    #[divan::bench(args = [0, 100, 1_000, 10_000])]
+    fn dll_with_stack_depth(stack_depth: usize) {
+        unsafe {
+            // Fill protect stack to simulate deep R call nesting
+            for i in 0..stack_depth {
+                ffi::Rf_protect(test_sexp(i));
+            }
+            // Now do 100 DLL cycles
+            for i in 0..100 {
+                let cell = preserve::insert_unchecked(test_sexp(stack_depth + i));
+                preserve::release_unchecked(cell);
+            }
+            // Cleanup stack
+            if stack_depth > 0 {
+                ffi::Rf_unprotect(stack_depth as i32);
+            }
+        }
+    }
+
+    /// Pool under same conditions (should be unaffected by stack depth).
+    #[divan::bench(args = [0, 100, 1_000, 10_000])]
+    fn pool_with_stack_depth(stack_depth: usize) {
+        unsafe {
+            for i in 0..stack_depth {
+                ffi::Rf_protect(test_sexp(i));
+            }
+            let mut pool = VecPool::new(16);
+            for i in 0..100 {
+                let slot = pool.insert(test_sexp(stack_depth + i));
+                pool.release(slot);
+            }
+            if stack_depth > 0 {
+                ffi::Rf_unprotect(stack_depth as i32);
+            }
+        }
+    }
+}
+
+// endregion
+
+// region: Group GC pressure — count allocations between GC triggers
+
+mod gc_pressure {
+    use super::*;
+
+    /// Allocate N SEXPs via Rf_ScalarInteger (baseline GC trigger rate).
+    #[divan::bench(args = [1_000, 10_000])]
+    fn baseline_alloc_only(n: usize) {
+        unsafe {
+            for i in 0..n {
+                divan::black_box(test_sexp(i));
+            }
+        }
+    }
+
+    /// DLL: N insert+release cycles (each allocates a CONSXP on insert).
+    /// Total R allocations: N test SEXPs + N CONSXP cells = 2N.
+    #[divan::bench(args = [1_000, 10_000])]
+    fn dll_alloc_pressure(n: usize) {
+        unsafe {
+            for i in 0..n {
+                let cell = preserve::insert_unchecked(test_sexp(i));
+                preserve::release_unchecked(cell);
+            }
+        }
+    }
+
+    /// Pool: N insert+release cycles (no R allocation per insert).
+    /// Total R allocations: N test SEXPs only.
+    #[divan::bench(args = [1_000, 10_000])]
+    fn pool_alloc_pressure(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(16);
+            for i in 0..n {
+                let slot = pool.insert(test_sexp(i));
+                pool.release(slot);
+            }
+        }
+    }
+
+    /// Precious: N insert+release cycles (allocates CONSXP on insert, O(n) scan on release).
+    #[divan::bench(args = [1_000, 10_000])]
+    fn precious_alloc_pressure(n: usize) {
+        unsafe {
+            for i in 0..n {
+                let s = test_sexp(i);
+                R_PreserveObject(s);
+                R_ReleaseObject(s);
+            }
+        }
+    }
+
+    /// Interleaved: insert protection, then allocate a "work" SEXP.
+    /// Models real code where protection and computation alternate.
+    /// DLL's extra CONSXP doubles the allocation rate between GC triggers.
+    #[divan::bench(args = [1_000, 10_000])]
+    fn dll_interleaved_with_work(n: usize) {
+        unsafe {
+            for i in 0..n {
+                let cell = preserve::insert_unchecked(test_sexp(i));
+                // Simulate work allocation (unprotected, immediately consumed)
+                divan::black_box(ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
+                preserve::release_unchecked(cell);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn pool_interleaved_with_work(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(16);
+            for i in 0..n {
+                let slot = pool.insert(test_sexp(i));
+                divan::black_box(ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
+                pool.release(slot);
+            }
+        }
+    }
+}
+
+// endregion
+
+// region: Group memory — measure R heap after protecting N objects
+
+mod memory_overhead {
+    use super::*;
+
+    /// Protect N objects with DLL, measure how many VECSXP/CONSXP R allocates.
+    /// We can't directly measure R heap, but we can time the operation to
+    /// see if GC pauses appear (GC is triggered by allocation pressure).
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn dll_hold_n(n: usize) {
+        unsafe {
+            let mut cells = Vec::with_capacity(n);
+            for i in 0..n {
+                cells.push(preserve::insert_unchecked(test_sexp(i)));
+            }
+            // Hold all — measures cost of having N protected objects live
+            divan::black_box(cells.len());
+            for cell in cells {
+                preserve::release_unchecked(cell);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 100_000])]
+    fn pool_hold_n(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(n.max(16));
+            let mut slots = Vec::with_capacity(n);
+            for i in 0..n {
+                slots.push(pool.insert(test_sexp(i)));
+            }
+            divan::black_box(slots.len());
+            for slot in slots {
+                pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn precious_hold_n(n: usize) {
+        unsafe {
+            let mut sexps = Vec::with_capacity(n);
+            for i in 0..n {
+                let s = test_sexp(i);
+                R_PreserveObject(s);
+                sexps.push(s);
+            }
+            divan::black_box(sexps.len());
+            for s in sexps {
+                R_ReleaseObject(s);
+            }
+        }
+    }
+}
+
+// endregion
