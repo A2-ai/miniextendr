@@ -152,6 +152,43 @@ BTreeMap is slightly fastest among keyed pools. IndexMap and HashMap are close.
 Growth adds ~10% overhead for slotmap vs vec. Both are dominated by the
 SET_VECTOR_ELT calls, not the growth events.
 
+## R_HASH_PRECIOUS Mode (Group 13)
+
+Run with `R_HASH_PRECIOUS=1` env var. Enables 1069-bucket hash table for the precious
+list instead of singly-linked list. Checked via `getenv()` on first `R_PreserveObject`
+call — no R recompilation needed.
+
+### Comparison: default vs hash mode (median)
+
+| Benchmark | Default | R_HASH_PRECIOUS | Speedup |
+|-----------|---------|-----------------|---------|
+| Single op | 13.1 ns | 17.0 ns | **0.8x (slower)** |
+| Batch 100 | 6.17 µs | 1.88 µs | **3.3x** |
+| Batch 1k | 568 µs | 19.7 µs | **29x** |
+| Random 1k | 281 µs | 18.4 µs | **15x** |
+| Churn 10k | 75.4 ms | 1.31 ms | **58x** |
+| Replace 10k | 15.1 s | 20.9 ms | **723x** |
+
+Hash mode eliminates the O(n²) catastrophe. Release becomes O(bucket_size) instead of O(n).
+
+### Hash precious vs vec_pool (median)
+
+| Benchmark | R_HASH_PRECIOUS | Vec pool | Pool advantage |
+|-----------|-----------------|----------|----------------|
+| Single op | 17.0 ns | **9.6 ns** | 1.8x |
+| Batch 1k | 19.7 µs | **9.6 µs** | 2.1x |
+| Churn 10k | 1.31 ms | **1.16 ms** | 1.1x |
+| Replace 10k | 20.9 ms | **45.2 µs** | 462x |
+
+Even with hash mode, the precious list is 1.1-2x slower than vec_pool on most
+workloads. Replace-in-loop remains catastrophic (20ms vs 45µs) because each iteration
+still allocates a CONSXP + does a hash lookup.
+
+**Verdict**: `R_HASH_PRECIOUS` makes the precious list viable for moderate batch
+operations, but the pool is still faster everywhere. And crucially, miniextendr
+can't control whether the env var is set — it depends on how R was launched.
+The pool's performance is consistent regardless of R session configuration.
+
 ## Key Decisions Informed by Data
 
 | Decision | Benchmark result | Verdict |
