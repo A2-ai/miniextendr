@@ -1,0 +1,155 @@
+# GC Protection Benchmark Results
+
+Machine: Apple Silicon (aarch64), R embedded via miniextendr-engine, divan 0.1.21.
+
+## Single Latency (one protect + release)
+
+| Mechanism | Median |
+|-----------|--------|
+| protect_stack | **13.7 ns** |
+| precious_list | 17.0 ns |
+| dll_preserve | 34.7 ns |
+| vec_pool | 69.4 ns |
+| slotmap_pool | 100.6 ns |
+
+Protect stack is fastest (array write + integer subtract). Precious list is close
+(CONS + singly-linked prepend). DLL is 2.5x stack (CONS + doubly-linked splice +
+2 temporary Rf_protect calls). Pools are slower because of pool creation overhead
+per bench iteration — in real use the pool is created once.
+
+## Batch Throughput (protect N, release all) — median
+
+| N | stack | precious | DLL | vec_pool | slotmap |
+|---|-------|----------|-----|----------|---------|
+| 10 | **125 ns** | 234 ns | 427 ns | 292 ns | 333 ns |
+| 100 | **1.2 µs** | 7.5 µs | 3.8 µs | 1.8 µs | 2.1 µs |
+| 1k | **11 µs** | 630 µs | 36 µs | 17 µs | 19 µs |
+| 10k | **102 µs** | **114 ms** | 329 µs | 170 µs | 202 µs |
+| 50k | — | — | 1.7 ms | 893 µs | 1.0 ms |
+
+**Precious list is catastrophic at scale.** 114ms at 10k — that's O(n²) release.
+At 1k it's already 630µs vs 17µs for vec_pool (37x slower).
+
+Stack is king for batch (single `Rf_unprotect(n)` call). Among cross-call mechanisms,
+**vec_pool is consistently fastest**, ~2x faster than DLL at all sizes.
+
+## Churn (interleaved insert/release) — median
+
+| N | precious | DLL | vec_pool | slotmap |
+|---|----------|-----|----------|---------|
+| 1k | 438 µs | 42 µs | **31 µs** | 33 µs |
+| 10k | **78 ms** | 1.35 ms | **1.31 ms** | 1.32 ms |
+| 100k | — | 155 ms | **152 ms** | 154 ms |
+
+Precious list is 56x slower than pools at 10k. DLL, vec_pool, and slotmap are
+**virtually identical** under churn. The CONSXP allocation from the DLL doesn't
+measurably hurt — the dominant cost is the R allocation of the test SEXP itself.
+
+## Random Release Order — median
+
+| N | precious | DLL | vec_pool | slotmap |
+|---|----------|-----|----------|---------|
+| 100 | 4.6 µs | 3.5 µs | **2.1 µs** | 2.5 µs |
+| 1k | 324 µs | 34 µs | **20 µs** | 22 µs |
+| 10k | **68 ms** | 368 µs | **220 µs** | 282 µs |
+
+Same story. Precious list O(n²) dominates. Pools are ~1.5x faster than DLL.
+
+## Replace in Loop — median
+
+| N | reprotect_slot | pool_overwrite | precious_churn | dll_reinsert |
+|---|----------------|----------------|----------------|--------------|
+| 100 | **1.08 µs** | 1.22 µs | 1.72 µs | 3.5 µs |
+| 1k | **10.6 µs** | 11.6 µs | 16.5 µs | 36.7 µs |
+| 10k | **101 µs** | 115 µs | 168 µs | 361 µs |
+
+ReprotectSlot is fastest (single R_Reprotect = array write). Pool overwrite is close
+(single SET_VECTOR_ELT). Precious list churn (release+preserve each iteration) is
+1.7x. DLL reinsert (release+insert each iteration, allocating a CONSXP) is **3.5x slower**
+than ReprotectSlot.
+
+## Data.frame Construction (realistic, N columns × 1000 rows) — median
+
+| N cols | protect_scope | dll_preserve | vec_pool |
+|--------|---------------|--------------|----------|
+| 5 | 3.0 µs | 3.4 µs | 3.0 µs |
+| 20 | **11.8 µs** | 13.2 µs | **9.4 µs** |
+| 100 | **59.2 µs** | 62.4 µs | **44.7 µs** |
+
+At 100 columns, vec_pool is 25% faster than protect_scope and 28% faster than DLL.
+The pool avoids both CONSXP allocation (DLL) and protect stack pressure (scope).
+
+## Vec vs VecDeque Free List — median
+
+| N | vec_churn | deque_churn | vec_burst | deque_burst |
+|---|-----------|-------------|-----------|-------------|
+| 1k | **16.5 µs** | 17.2 µs | **28.2 µs** | 27.9 µs |
+| 10k | **172 µs** | 168 µs | **280 µs** | 265 µs |
+| 100k | **1.69 ms** | 1.74 ms | **3.21 ms** | 3.19 ms |
+
+**Negligible difference.** Vec is marginally faster on churn (LIFO reuse = hot cache),
+VecDeque is marginally faster on burst (FIFO spreads access). The difference is <5%.
+Use Vec (simpler).
+
+## Rf_unprotect_ptr at Depth — median
+
+| Depth | unprotect_ptr | bulk unprotect |
+|-------|---------------|----------------|
+| 1 | 14.3 ns | 14.6 ns |
+| 5 | 63.2 ns | 59.3 ns |
+| 10 | 122 ns | 122 ns |
+| 50 | 567 ns | 557 ns |
+| 100 | 1.11 µs | 1.06 µs |
+| 1000 | 10.8 µs | 10.4 µs |
+
+**Essentially identical.** `Rf_unprotect_ptr` scan + shift is no worse than bulk
+`Rf_unprotect` + the cost of the N protect calls. At depth 1000 it's only 4% slower.
+The "avoid `Rf_unprotect_ptr`" advice in the analysis was too strong — it's fine for
+any depth likely in practice.
+
+## slotmap vs Vec Overhead — median
+
+| N | slotmap insert+release | vec insert+release | slotmap get×10 | vec get×10 |
+|---|------------------------|--------------------|----------------|------------|
+| 1k | 20.2 µs | **17.5 µs** | 59.4 µs | **55.9 µs** |
+| 10k | 203 µs | **173 µs** | 593 µs | **564 µs** |
+
+slotmap is ~15% slower on insert/release and ~5% slower on get. The generational
+check is measurable but modest. For the safety it provides (stale-key detection),
+15% overhead is acceptable.
+
+## Pool Growth — median
+
+| Initial cap | vec spike | slotmap spike |
+|-------------|-----------|---------------|
+| 16 | 651 ns | 792 ns |
+| 64 | 1.9 µs | 2.2 µs |
+| 256 | 7.0 µs | 7.9 µs |
+| 1024 | 27.2 µs | 31.5 µs |
+
+Growth spike at 1024 elements: **27 µs**. Amortized from initial cap 16 to 100k:
+2.8 ms total (28 ns/element). Growth is not a concern.
+
+## Bursty (10k alloc, 9.9k release, keep 100) — median
+
+| Rounds | DLL | vec_pool | slotmap |
+|--------|-----|----------|---------|
+| 3 | 996 µs | **607 µs** | 688 µs |
+| 10 | 3.44 ms | **1.88 ms** | 2.13 ms |
+
+Vec pool is 1.6x faster than DLL on bursty workloads. The DLL's "memory reclamation"
+advantage (released cons cells become GC garbage) doesn't show as a speed advantage.
+
+## Key Decisions Informed by Data
+
+| Decision | Benchmark result | Verdict |
+|----------|-----------------|---------|
+| ExternalPtr → precious list? | Precious list is fine at <100 objects, catastrophic at >1k | **Yes, but only for types with <~100 instances** |
+| Allocator stays on DLL? | DLL is 1.5-2x slower than pool at all sizes | **Move to pool if allocator does >1k allocs** |
+| Pool needed for churn? | DLL ≈ pool under churn (CONSXP cost invisible) | **Pool wins on batch/random, ties on churn** |
+| slotmap vs raw Vec? | 15% overhead for generational safety | **slotmap as default, Vec as unsafe opt-in** |
+| Four Protector impls? | Precious list collapses above ~100 objects; DLL ≈ pool on churn | **Three: stack, precious (small N), pool (large N). DLL is optional.** |
+| DLL memory reclamation? | Pool is 1.6x faster on bursty, DLL shows no reclamation advantage | **Theoretical — not observable in practice** |
+| Pool growth spikes? | 27µs at 1024 elements | **Not a concern** |
+| Vec vs VecDeque? | <5% difference | **Vec (simpler)** |
+| Rf_unprotect_ptr bad? | Same speed as bulk unprotect at all depths | **Not bad — usable when needed** |
