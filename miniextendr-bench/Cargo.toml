@@ -144,3 +144,7 @@ harness = false
 [[bench]]
 name = "refcount_protect"
 harness = false
+
+[[bench]]
+name = "gc_protection_compare"
+harness = false
