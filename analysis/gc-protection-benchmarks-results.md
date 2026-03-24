@@ -66,15 +66,76 @@ cost without allocation noise makes the DLL's CONSXP overhead clearly visible.
 ReprotectSlot: 3.76 ns/op. Pool overwrite: 4.50 ns/op. DLL reinsert: 27.1 ns/op.
 Precious list at 10k: **15 seconds** (O(n²) — each iteration scans growing list).
 
+## LIFO Release (Group 4) — median
+
+| N | stack | precious | vec_pool | dll |
+|---|-------|----------|----------|-----|
+| 10 | **42 ns** | 107 ns | 134 ns | 278 ns |
+| 100 | **393 ns** | **1.07 µs** | 1.03 µs | 2.46 µs |
+| 1k | **3.90 µs** | **10.7 µs** | 9.79 µs | 23.7 µs |
+| 10k | **38.9 µs** | — | 101 µs | 247 µs |
+
+**Precious list is competitive with vec_pool in LIFO.** R_ReleaseObject scans from
+head — LIFO means the target is always at the head (O(1) per release). This is the
+ONE scenario where precious list performs well at moderate N.
+
+## Bursty (Group 6) — median
+
+| Rounds | vec_pool (burst=10k) | dll (burst=10k) | precious (burst=1k) |
+|--------|---------------------|-----------------|---------------------|
+| 3 | **298 µs** | 735 µs | 93 µs* |
+
+*Precious uses burst=1k (10k would take minutes). Not directly comparable.
+
+## GC Pressure with Work Allocations (Group 9) — median
+
+| N | pool + work | dll + work |
+|---|-------------|------------|
+| 1k | **21.5 µs** | 32.9 µs |
+| 10k | **229 µs** | 343 µs |
+
+Pool is **1.5x faster** when interleaved with real work allocations. The DLL's
+extra CONSXP per insert doubles the allocation rate, measurably increasing GC pressure.
+
+## Memory Hold (Group 10) — median
+
+| N | pool | dll | precious |
+|---|------|-----|----------|
+| 1k | **9.6 µs** | 24.9 µs | 637 µs |
+| 10k | **97 µs** | 248 µs | 116 ms |
+| 100k | **982 µs** | 2.55 ms | — |
+
+Pool is 2.6x faster than DLL to hold N objects. DLL allocates N CONSXP cells (GC
+pressure + cache pollution). Precious list at 10k: O(n²) release dominates.
+
+## Hot-Get Loop (Group 16) — median, 10 reads per key
+
+| N | slotmap | vec |
+|---|---------|-----|
+| 1k | 38.5 µs | **38.2 µs** |
+| 10k | 387 µs | **385 µs** |
+
+**Identical.** The generational check is invisible on reads (single u32 compare,
+branch-predicted always-taken). No reason to use raw Vec for get performance.
+
 ## Vec vs VecDeque Free List — median
 
-| N | vec_churn | deque_churn |
-|---|-----------|-------------|
-| 1k | 9.79 µs | **9.17 µs** |
-| 10k | 97.9 µs | **97.9 µs** |
-| 100k | **982 µs** | 982 µs |
+### Churn (insert 1, release 1, repeat N)
 
-Identical. Single-latency also identical (9.6ns both). No measurable difference.
+| N | vec | deque |
+|---|-----|-------|
+| 1k | 9.83 µs | **9.79 µs** |
+| 10k | **97.9 µs** | 101 µs |
+| 100k | **979 µs** | 979 µs |
+
+### Burst (insert N, release half, reinsert half)
+
+| N | vec | deque |
+|---|-----|-------|
+| 1k | **14.7 µs** | 15.0 µs |
+| 10k | **151 µs** | 154 µs |
+
+Identical on both patterns. Single-latency also identical (9.6ns both).
 
 ## Rf_unprotect_ptr at Depth — median
 
@@ -196,7 +257,7 @@ The pool's performance is consistent regardless of R session configuration.
 | Single-op cost | stack 7.4ns, vec_pool 9.6ns, dll 28.9ns | **Pool is 2.2ns slower than stack. DLL is 4x slower.** |
 | Batch throughput | vec_pool 2.5x slower than stack, 2.6x faster than DLL | **Stack for temporaries, pool for cross-call** |
 | Replace-in-loop | ReprotectSlot 3.8ns/op, pool 4.5ns/op, precious **15 seconds** at 10k | **ReprotectSlot or pool overwrite. Never precious list for loops.** |
-| Precious list | Fine for single ops (13ns), catastrophic for loops (O(n²)), background-unaffected for recent objects | **Safe for few long-lived objects. Never for iteration.** |
+| Precious list | 13ns single, LIFO release = pool speed, non-LIFO = O(n²), background OK for recent | **Safe for LIFO-released long-lived objects. Never for random/loop release.** |
 | slotmap vs Vec | 25% overhead | **slotmap as default (safety), Vec as opt-in fast path** |
 | Vec vs VecDeque | Identical | **Vec (simpler)** |
 | DLL niche? | 4x slower single-op, 2.6x slower batch, 7x slower replace | **No niche. Pool beats it everywhere.** |
