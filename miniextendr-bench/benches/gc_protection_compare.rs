@@ -35,6 +35,8 @@ fn shuffle(v: &mut [usize]) {
 // endregion
 
 // region: Group 1 — Single protect + release (latency)
+// NOTE: Pool benchmarks include pool creation overhead (VECSXP alloc + R_PreserveObject).
+// The "steady_state" group below isolates the per-operation cost on an existing pool.
 
 mod single_latency {
     use super::*;
@@ -70,7 +72,7 @@ mod single_latency {
     }
 
     #[divan::bench]
-    fn vec_pool() {
+    fn vec_pool_cold() {
         unsafe {
             let mut pool = VecPool::new(16);
             let sexp = test_sexp(0);
@@ -81,13 +83,76 @@ mod single_latency {
     }
 
     #[divan::bench]
-    fn slotmap_pool() {
+    fn slotmap_pool_cold() {
         unsafe {
             let mut pool = SlotmapPool::new(16);
             let sexp = test_sexp(0);
             let key = pool.insert(sexp);
             pool.release(key);
             divan::black_box(key);
+        }
+    }
+}
+
+// endregion
+
+// region: Group 1b — Steady-state latency (pool already exists)
+// Isolates per-operation cost by doing N ops on an existing pool.
+
+mod steady_state_latency {
+    use super::*;
+
+    /// 1000 insert+release on an existing vec pool — amortized per-op cost.
+    #[divan::bench]
+    fn vec_pool_1000_ops() {
+        unsafe {
+            let mut pool = VecPool::new(16);
+            for i in 0..1000 {
+                let slot = pool.insert(test_sexp(i));
+                pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench]
+    fn slotmap_pool_1000_ops() {
+        unsafe {
+            let mut pool = SlotmapPool::new(16);
+            for i in 0..1000 {
+                let key = pool.insert(test_sexp(i));
+                pool.release(key);
+            }
+        }
+    }
+
+    #[divan::bench]
+    fn dll_preserve_1000_ops() {
+        unsafe {
+            for i in 0..1000 {
+                let cell = preserve::insert_unchecked(test_sexp(i));
+                preserve::release_unchecked(cell);
+            }
+        }
+    }
+
+    #[divan::bench]
+    fn protect_stack_1000_ops() {
+        unsafe {
+            for i in 0..1000 {
+                ffi::Rf_protect(test_sexp(i));
+                ffi::Rf_unprotect(1);
+            }
+        }
+    }
+
+    #[divan::bench]
+    fn precious_list_1000_ops() {
+        unsafe {
+            for i in 0..1000 {
+                let s = test_sexp(i);
+                R_PreserveObject(s);
+                R_ReleaseObject(s);
+            }
         }
     }
 }
@@ -156,6 +221,36 @@ mod batch_throughput {
     fn slotmap_pool(n: usize) {
         unsafe {
             let mut pool = SlotmapPool::new(n.max(16));
+            let mut keys = Vec::with_capacity(n);
+            for i in 0..n {
+                keys.push(pool.insert(test_sexp(i)));
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        }
+    }
+
+
+    // Pre-sized pool (best case) vs small initial (realistic, includes growth)
+    #[divan::bench(args = [1_000, 10_000, 50_000])]
+    fn vec_pool_small_initial(n: usize) {
+        unsafe {
+            let mut pool = VecPool::new(16); // starts tiny, must grow
+            let mut slots = Vec::with_capacity(n);
+            for i in 0..n {
+                slots.push(pool.insert(test_sexp(i)));
+            }
+            for slot in slots {
+                pool.release(slot);
+            }
+        }
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 50_000])]
+    fn slotmap_pool_small_initial(n: usize) {
+        unsafe {
+            let mut pool = SlotmapPool::new(16); // starts tiny, must grow
             let mut keys = Vec::with_capacity(n);
             for i in 0..n {
                 keys.push(pool.insert(test_sexp(i)));
