@@ -650,12 +650,12 @@ impl RBigUintOps for BigUint {
 
     fn is_zero(&self) -> bool {
         use num_bigint::ToBigUint;
-        *self == 0u32.to_biguint().unwrap()
+        *self == 0u32.to_biguint().expect("0 is always a valid BigUint")
     }
 
     fn is_one(&self) -> bool {
         use num_bigint::ToBigUint;
-        *self == 1u32.to_biguint().unwrap()
+        *self == 1u32.to_biguint().expect("1 is always a valid BigUint")
     }
 
     fn bit_length(&self) -> i64 {
@@ -683,7 +683,7 @@ impl RBigUintOps for BigUint {
     fn div_str(&self, other: &str) -> Result<BigUint, String> {
         use num_bigint::ToBigUint;
         let other = BigUint::from_str(other).map_err(|e| e.to_string())?;
-        if other == 0u32.to_biguint().unwrap() {
+        if other == 0u32.to_biguint().expect("0 is always a valid BigUint") {
             return Err("division by zero".to_string());
         }
         Ok(self / other)
@@ -692,7 +692,7 @@ impl RBigUintOps for BigUint {
     fn rem_str(&self, other: &str) -> Result<BigUint, String> {
         use num_bigint::ToBigUint;
         let other = BigUint::from_str(other).map_err(|e| e.to_string())?;
-        if other == 0u32.to_biguint().unwrap() {
+        if other == 0u32.to_biguint().expect("0 is always a valid BigUint") {
             return Err("division by zero".to_string());
         }
         Ok(self % other)
@@ -918,7 +918,7 @@ impl RBigUintBitOps for BigUint {
 
     fn trailing_zeros(&self) -> Option<i64> {
         use num_bigint::ToBigUint;
-        if *self == 0u32.to_biguint().unwrap() {
+        if *self == 0u32.to_biguint().expect("0 is always a valid BigUint") {
             return None;
         }
         let digits = self.to_u32_digits();
