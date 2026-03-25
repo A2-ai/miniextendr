@@ -1,14 +1,15 @@
 //! R-backed global allocator for Rust.
 //!
-//! Allocations are backed by R RAWSXP objects and protected from GC via the
-//! crate's [`preserve`](crate::preserve) mechanism.
+//! Allocations are backed by R RAWSXP objects and protected from GC via
+//! `R_PreserveObject`/`R_ReleaseObject` (R's precious list).
 //!
 //! # Protection Strategy
 //!
-//! This allocator uses the **preserve list** (not the PROTECT stack) because:
+//! This allocator uses `R_PreserveObject` directly because:
 //! - Allocations may need to survive across multiple `.Call` invocations
-//! - Deallocations can happen in any order (not LIFO like the PROTECT stack)
-//! - The preserve list supports arbitrary-order release
+//! - The SEXP (RAWSXP) is its own handle — zero Rust-side bookkeeping
+//! - LIFO release pattern (recently allocated = first freed) means O(1) release
+//!   in practice (R's precious list scans from head)
 //!
 //! See the [crate-level documentation](crate#gc-protection-strategies) for an
 //! overview of miniextendr's protection mechanisms.
@@ -36,8 +37,7 @@
 //! For long-lived allocations or critical cleanup requirements, consider using
 //! Rust's standard allocator instead.
 
-use crate::ffi::{SEXP, SEXPTYPE};
-use crate::preserve::{insert, release};
+use crate::ffi::{R_PreserveObject_unchecked, R_ReleaseObject_unchecked, SEXP, SEXPTYPE};
 use crate::worker::{has_worker_context, is_r_main_thread, with_r_thread};
 use core::{
     alloc::{GlobalAlloc, Layout},
@@ -113,7 +113,8 @@ fn with_r_thread_or_inline<R: Send + 'static, F: FnOnce() -> R + Send + 'static>
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Header {
-    preserve_tag: SEXP,
+    /// The RAWSXP itself, preserved via R_PreserveObject.
+    sexp: SEXP,
 }
 
 const HEADER_SIZE: usize = mem::size_of::<Header>();
@@ -237,7 +238,8 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     }
 
     // Protect from GC (must stay valid until dealloc()).
-    let preserve_tag = unsafe { insert(sexp) };
+    // Uses R_PreserveObject — LIFO means recently allocated objects are found fast on release.
+    unsafe { R_PreserveObject_unchecked(sexp) };
 
     // Use _unchecked since we're guaranteed to be on R main thread.
     let raw_base = unsafe { crate::ffi::RAW_unchecked(sexp) }.cast::<u8>();
@@ -247,14 +249,14 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     let pad = after_header.align_offset(align);
     if pad == usize::MAX {
         // Alignment failed (extremely unlikely)
-        unsafe { release(preserve_tag) };
+        unsafe { R_ReleaseObject_unchecked(sexp) };
         return sendable_data_ptr_null();
     }
 
     let data = unsafe { after_header.add(pad) };
     let header = unsafe { data.sub(HEADER_SIZE) }.cast::<Header>();
 
-    unsafe { header.write(Header { preserve_tag }) };
+    unsafe { header.write(Header { sexp }) };
 
     debug_assert_eq!(data.align_offset(layout.align()), 0);
     sendable_data_ptr_new(data)
@@ -269,8 +271,8 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
 unsafe fn dealloc_main_thread(ptr: SendableDataPtr) {
     let data = sendable_data_ptr_get(ptr);
     let header = unsafe { data.sub(HEADER_SIZE) }.cast::<Header>();
-    let preserve_tag = unsafe { (*header).preserve_tag };
-    unsafe { release(preserve_tag) };
+    let sexp = unsafe { (*header).sexp };
+    unsafe { R_ReleaseObject_unchecked(sexp) };
 }
 
 /// Reallocate memory on the R main thread.
@@ -287,11 +289,10 @@ unsafe fn realloc_main_thread(
 ) -> SendableDataPtr {
     let old = sendable_data_ptr_get(old_ptr);
 
-    // Recover RAWSXP via preserve tag
+    // Recover RAWSXP from header (stored directly, no DLL cell indirection).
     // Use _unchecked since we're guaranteed to be on R main thread via with_r_thread_or_inline.
     let header = unsafe { old.sub(HEADER_SIZE) }.cast::<Header>();
-    let preserve_tag = unsafe { (*header).preserve_tag };
-    let sexp = unsafe { crate::ffi::TAG_unchecked(preserve_tag) };
+    let sexp = unsafe { (*header).sexp };
 
     // Check if existing allocation has capacity
     let raw_base = unsafe { crate::ffi::RAW_unchecked(sexp) }.cast::<u8>();
@@ -325,7 +326,7 @@ unsafe fn realloc_main_thread(
     unsafe {
         ptr::copy_nonoverlapping(old, sendable_data_ptr_get(new_ptr), old_size.min(new_size))
     };
-    unsafe { release(preserve_tag) }; // Free old allocation
+    unsafe { R_ReleaseObject_unchecked(sexp) }; // Free old allocation
 
     new_ptr
 }
