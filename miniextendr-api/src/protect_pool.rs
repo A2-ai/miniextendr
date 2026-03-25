@@ -1,12 +1,12 @@
 //! VECSXP-backed protection pool with generational keys.
 //!
 //! A GC protection mechanism that stores protected SEXPs in a single R VECSXP
-//! (generic list), with slot management handled by `slotmap` on the Rust side.
+//! (generic list), with slot management and generation tracking on the Rust side.
 //!
 //! # Performance
 //!
-//! Benchmarked at 9.6 ns/op (Vec) or 11.4 ns/op (slotmap) for single insert+release.
-//! Zero R allocation per insert (unlike `preserve.rs` DLL which allocates a CONSXP).
+//! Benchmarked at 9.6 ns/op for single insert+release. Zero R allocation per
+//! insert (unlike `preserve.rs` DLL which allocates a CONSXP each time).
 //! See `analysis/gc-protection-benchmarks-results.md` for full data.
 //!
 //! # When to use
@@ -30,29 +30,34 @@
 //! │  R side: VECSXP (GC-traced slots)   │  ← one R_PreserveObject, ever
 //! │  [SEXP][SEXP][NIL][SEXP][NIL][SEXP] │
 //! └──────┬──────────────────────────────┘
-//!        │ slot indices (stored as slotmap values)
+//!        │ slot indices
 //! ┌──────┴──────────────────────────────┐
-//! │  Rust side: SlotMap<Key, usize>     │  ← generational key → VECSXP index
-//! │  manages which slots are occupied   │
+//! │  Rust side: Vec<u32> generations    │  ← one free list, one generation array
+//! │  + Vec<usize> free_slots            │
 //! └─────────────────────────────────────┘
 //! ```
+//!
+//! No external dependencies for slot management (no slotmap). The generation
+//! counter per slot detects stale keys. Single free list for VECSXP slot reuse.
 
 use crate::ffi::{
     R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
     Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
 };
-use slotmap::{new_key_type, SlotMap};
-use std::cell::Cell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-new_key_type! {
-    /// Generational key for a slot in a [`ProtectPool`].
-    ///
-    /// Contains both a slot index and a generation counter. If a slot is
-    /// released and reused, the old key's generation won't match and
-    /// operations will safely return `None` or no-op.
-    pub struct ProtectKey;
+/// Generational key for a slot in a [`ProtectPool`].
+///
+/// Contains a slot index and a generation counter. If a slot is released and
+/// reused, the old key's generation won't match and operations will safely
+/// return `None` or no-op.
+///
+/// 8 bytes: 4-byte slot index + 4-byte generation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ProtectKey {
+    slot: u32,
+    generation: u32,
 }
 
 /// Enforces `!Send + !Sync` (R API is not thread-safe).
@@ -79,16 +84,15 @@ pub struct ProtectPool {
     backing: SEXP,
     /// Current capacity of the backing VECSXP.
     capacity: usize,
-    /// Generational slot management. Value = VECSXP slot index.
-    /// The slotmap provides generational keys for safe access and
-    /// tracks which keys are alive. The usize value maps key → VECSXP index.
-    slots: SlotMap<ProtectKey, usize>,
+    /// Generation counter per VECSXP slot. Incremented on each release.
+    /// A key is valid iff `generations[key.slot] == key.generation`.
+    generations: Vec<u32>,
     /// Free VECSXP slot indices for reuse.
     free_slots: Vec<usize>,
     /// Next fresh VECSXP slot index (for when free_slots is empty).
     next_slot: usize,
     /// Number of currently protected objects.
-    len: Cell<usize>,
+    len: usize,
     _nosend: NoSendSync,
 }
 
@@ -120,10 +124,10 @@ impl ProtectPool {
             Self {
                 backing,
                 capacity,
-                slots: SlotMap::with_capacity_and_key(capacity),
+                generations: vec![0; capacity],
                 free_slots: Vec::with_capacity(capacity / 2),
                 next_slot: 0,
-                len: Cell::new(0),
+                len: 0,
                 _nosend: PhantomData,
             }
         }
@@ -142,8 +146,11 @@ impl ProtectPool {
     pub unsafe fn insert(&mut self, sexp: SEXP) -> ProtectKey {
         let slot = self.alloc_slot();
         unsafe { SET_VECTOR_ELT(self.backing, slot as R_xlen_t, sexp) };
-        self.len.set(self.len.get() + 1);
-        self.slots.insert(slot)
+        self.len += 1;
+        ProtectKey {
+            slot: slot as u32,
+            generation: self.generations[slot],
+        }
     }
 
     /// Release a previously protected SEXP.
@@ -155,18 +162,24 @@ impl ProtectPool {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn release(&mut self, key: ProtectKey) {
-        if let Some(slot) = self.slots.remove(key) {
+        let slot = key.slot as usize;
+        if slot < self.generations.len() && self.generations[slot] == key.generation {
             unsafe { SET_VECTOR_ELT(self.backing, slot as R_xlen_t, R_NilValue) };
+            self.generations[slot] = self.generations[slot].wrapping_add(1);
             self.free_slots.push(slot);
-            self.len.set(self.len.get() - 1);
+            self.len -= 1;
         }
     }
 
     /// Get the SEXP for a key, or `None` if the key is stale.
     #[inline]
     pub fn get(&self, key: ProtectKey) -> Option<SEXP> {
-        let &slot = self.slots.get(key)?;
-        Some(unsafe { VECTOR_ELT(self.backing, slot as R_xlen_t) })
+        let slot = key.slot as usize;
+        if slot < self.generations.len() && self.generations[slot] == key.generation {
+            Some(unsafe { VECTOR_ELT(self.backing, slot as R_xlen_t) })
+        } else {
+            None
+        }
     }
 
     /// Overwrite the SEXP at an existing key without releasing/reinserting.
@@ -181,7 +194,8 @@ impl ProtectPool {
     /// Must be called from the R main thread. `sexp` must be a valid SEXP.
     #[inline]
     pub unsafe fn replace(&mut self, key: ProtectKey, sexp: SEXP) -> bool {
-        if let Some(&slot) = self.slots.get(key) {
+        let slot = key.slot as usize;
+        if slot < self.generations.len() && self.generations[slot] == key.generation {
             unsafe { SET_VECTOR_ELT(self.backing, slot as R_xlen_t, sexp) };
             true
         } else {
@@ -192,19 +206,20 @@ impl ProtectPool {
     /// Check if a key is currently valid (not stale).
     #[inline]
     pub fn contains_key(&self, key: ProtectKey) -> bool {
-        self.slots.contains_key(key)
+        let slot = key.slot as usize;
+        slot < self.generations.len() && self.generations[slot] == key.generation
     }
 
     /// Number of currently protected objects.
     #[inline]
     pub fn len(&self) -> usize {
-        self.len.get()
+        self.len
     }
 
     /// Whether the pool is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len.get() == 0
+        self.len == 0
     }
 
     /// Current capacity of the backing VECSXP.
@@ -234,7 +249,6 @@ impl ProtectPool {
             let new_backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_cap as R_xlen_t));
             R_PreserveObject(new_backing);
 
-            // Copy existing elements
             for i in 0..self.capacity {
                 SET_VECTOR_ELT(
                     new_backing,
@@ -247,6 +261,7 @@ impl ProtectPool {
             Rf_unprotect(1);
 
             self.backing = new_backing;
+            self.generations.resize(new_cap, 0);
             self.capacity = new_cap;
         }
     }
@@ -254,7 +269,6 @@ impl ProtectPool {
 
 impl Drop for ProtectPool {
     fn drop(&mut self) {
-        // Release the backing VECSXP. All protected SEXPs become eligible for GC.
         unsafe { R_ReleaseObject(self.backing) };
     }
 }
@@ -267,23 +281,33 @@ mod tests {
     fn pool_is_not_send() {
         fn _assert_not_send<T: Send>() {}
         // Uncomment to verify: _assert_not_send::<ProtectPool>();
-        // Should fail because of PhantomData<Rc<()>>
     }
 
     #[test]
-    fn slotmap_generational_safety() {
-        // Verify slotmap detects stale keys after removal + reuse
-        let mut sm = SlotMap::<ProtectKey, usize>::with_key();
-        let k1 = sm.insert(10);
-        let k2 = sm.insert(20);
-        assert_eq!(sm.get(k1), Some(&10));
-        assert_eq!(sm.get(k2), Some(&20));
+    fn key_generational_safety() {
+        // Can't test with real SEXPs (no R runtime in unit tests),
+        // but we can test the generation logic directly.
+        let mut gens: Vec<u32> = vec![0; 4];
+        let mut free: Vec<usize> = Vec::new();
 
-        sm.remove(k1);
-        let k3 = sm.insert(30);
-        // k1 is stale — same slot but new generation
-        assert!(sm.get(k1).is_none());
-        assert_eq!(sm.get(k3), Some(&30));
-        assert_eq!(sm.get(k2), Some(&20));
+        // Simulate insert at slot 0
+        let k1 = ProtectKey { slot: 0, generation: gens[0] };
+        assert_eq!(gens[0], k1.generation); // valid
+
+        // Simulate release of slot 0
+        gens[0] = gens[0].wrapping_add(1);
+        free.push(0);
+        assert_ne!(gens[0], k1.generation); // k1 is stale
+
+        // Simulate reuse of slot 0
+        let slot = free.pop().unwrap();
+        let k2 = ProtectKey { slot: slot as u32, generation: gens[slot] };
+        assert_eq!(gens[0], k2.generation); // k2 is valid
+        assert_ne!(k1.generation, k2.generation); // k1 still stale
+    }
+
+    #[test]
+    fn key_size() {
+        assert_eq!(std::mem::size_of::<ProtectKey>(), 8);
     }
 }

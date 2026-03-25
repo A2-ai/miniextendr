@@ -167,12 +167,15 @@ type NoSendSync = PhantomData<Rc<()>>;
 
 // region: Protector trait
 
-/// A GC protection backend.
+/// A scope-like GC protection backend.
 ///
 /// Functions that allocate multiple intermediate SEXPs can take `&mut impl Protector`
-/// to be generic over the protection mechanism. The caller decides which backend
-/// to use by passing a [`ProtectScope`], [`OwnedProtect`], or
-/// [`ProtectPool`](crate::protect_pool::ProtectPool).
+/// to be generic over the protection mechanism. All protected SEXPs stay protected
+/// until the protector itself is dropped — there is no individual release via this
+/// trait.
+///
+/// For individual release by key, use [`ProtectPool::insert`](crate::protect_pool::ProtectPool::insert)
+/// and [`ProtectPool::release`](crate::protect_pool::ProtectPool::release) directly.
 ///
 /// # Safety
 ///
@@ -185,7 +188,10 @@ pub trait Protector {
     /// Protect a SEXP from garbage collection.
     ///
     /// Returns the same SEXP (for convenience in chaining). The SEXP is now
-    /// protected and will remain so until the protector releases it.
+    /// protected and will remain so until the protector is dropped.
+    ///
+    /// The key (if any) is managed internally — use the pool's direct API
+    /// (`insert`/`release`) if you need individual release.
     ///
     /// # Safety
     ///
@@ -203,6 +209,8 @@ impl Protector for ProtectScope {
 impl Protector for crate::protect_pool::ProtectPool {
     #[inline]
     unsafe fn protect(&mut self, sexp: SEXP) -> SEXP {
+        // Key is intentionally discarded — Protector is scope-like (all released
+        // on drop). For individual release, use pool.insert()/pool.release() directly.
         unsafe { self.insert(sexp) };
         sexp
     }
