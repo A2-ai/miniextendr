@@ -250,15 +250,63 @@ operations, but the pool is still faster everywhere. And crucially, miniextendr
 can't control whether the env var is set — it depends on how R was launched.
 The pool's performance is consistent regardless of R session configuration.
 
+## Real ProtectPool vs Prototypes (Group 18) — median
+
+| Pool | Single op | Batch 10k |
+|------|-----------|-----------|
+| **real ProtectPool** (hand-rolled gen keys) | **10.1 ns** | 112 µs |
+| prototype VecPool (no safety) | 10.3 ns | **96.9 µs** |
+| prototype SlotmapPool (slotmap crate) | 11.4 ns | 116 µs |
+
+Real pool matches VecPool on single-op (10.1 vs 10.3 ns). Removing the redundant
+second free list (slotmap's internal + ours) worked — hand-rolled generational keys
+have the same cost as raw `usize` indices with no safety.
+
+Batch is 16% slower than VecPool (generation array `wrapping_add(1)` per release).
+Still 2.3x faster than DLL (256 µs).
+
+## Generation Check: Valid vs Stale Keys (Group 19)
+
+| N | Valid keys | Stale keys |
+|---|-----------|-----------|
+| 1k | 3.94 µs | **463 ns** |
+| 10k | 38.7 µs | **4.71 µs** |
+
+Stale keys are **8x faster** — they bail at the u32 generation compare (pure Rust).
+Valid keys proceed to `VECTOR_ELT` (R FFI call). The generation check itself is
+invisible; the cost is in the FFI call on success.
+
+## replace() vs release()+insert() (Group 20) — median
+
+| Operation | 1k | 10k | Per-op (10k) |
+|-----------|-----|------|------|
+| **replace** | **4.79 µs** | **47.9 µs** | **4.8 ns** |
+| release+insert | 10.8 µs | 108.5 µs | 10.9 ns |
+
+Replace is **2.3x faster** — one SET_VECTOR_ELT vs full release+insert cycle
+(SET_VECTOR_ELT(nil) + free list push + pop + SET_VECTOR_ELT(new) + generation bump).
+Use `pool.replace(key, new_sexp)` instead of release+insert for in-place updates.
+
+## Real Pool Growth (Group 21) — median
+
+| N | Pre-sized | Small initial (cap=16) | Ratio |
+|---|-----------|------------------------|-------|
+| 1k | 12.4 µs | 22.1 µs | 1.8x |
+| 10k | 121 µs | 251 µs | 2.1x |
+| 50k | 578 µs | 1.10 ms | 1.9x |
+
+Growth penalty is ~2x. Pre-sizing is worth it when count is known.
+Even with growth, 50k from cap=16 takes only 1.1ms — still fast.
+
 ## Key Decisions Informed by Data
 
 | Decision | Benchmark result | Verdict |
 |----------|-----------------|---------|
-| Single-op cost | stack 7.4ns, vec_pool 9.6ns, dll 28.9ns | **Pool is 2.2ns slower than stack. DLL is 4x slower.** |
+| Single-op cost | stack 7.4ns, real pool 10.1ns, dll 28.9ns | **Real pool is 2.7ns slower than stack. DLL is 4x slower.** |
 | Batch throughput | vec_pool 2.5x slower than stack, 2.6x faster than DLL | **Stack for temporaries, pool for cross-call** |
 | Replace-in-loop | ReprotectSlot 3.8ns/op, pool 4.5ns/op, precious **15 seconds** at 10k | **ReprotectSlot or pool overwrite. Never precious list for loops.** |
 | Precious list | 13ns single, LIFO release = pool speed, non-LIFO = O(n²), background OK for recent | **Safe for LIFO-released long-lived objects. Never for random/loop release.** |
-| slotmap vs Vec | 25% overhead | **slotmap as default (safety), Vec as opt-in fast path** |
+| Hand-rolled vs slotmap | Real pool = VecPool speed (10.1ns), slotmap 11.4ns | **Hand-rolled gen keys: slotmap safety at VecPool speed** |
 | Vec vs VecDeque | Identical | **Vec (simpler)** |
 | DLL niche? | 4x slower single-op, 2.6x slower batch, 7x slower replace | **No niche. Pool beats it everywhere.** |
 | Rf_unprotect_ptr | 15% overhead at all depths | **Usable when needed** |
