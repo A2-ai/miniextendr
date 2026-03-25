@@ -1451,21 +1451,21 @@ impl List {
             SEXPTYPE::INTSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<i32>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<i32>().first().unwrap();
+                    *slot = *elem.as_slice::<i32>().first().expect("scalar has length 1");
                 }
                 v
             },
             SEXPTYPE::REALSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<f64>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<f64>().first().unwrap();
+                    *slot = *elem.as_slice::<f64>().first().expect("scalar has length 1");
                 }
                 v
             },
             SEXPTYPE::LGLSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<crate::ffi::RLogical>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<crate::ffi::RLogical>().first().unwrap();
+                    *slot = *elem.as_slice::<crate::ffi::RLogical>().first().expect("scalar has length 1");
                 }
                 v
             },
