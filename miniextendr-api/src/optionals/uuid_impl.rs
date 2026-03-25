@@ -314,7 +314,7 @@ pub mod uuid_helpers {
         if bytes.len() != 16 {
             return Err(format!("expected 16 bytes, got {}", bytes.len()));
         }
-        let arr: [u8; 16] = bytes.try_into().unwrap();
+        let arr: [u8; 16] = bytes.try_into().expect("length checked == 16");
         Ok(Uuid::from_bytes(arr))
     }
 
