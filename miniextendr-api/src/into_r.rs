@@ -1001,7 +1001,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$to>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                        *slot = val as $to;
+                        *slot = <$to>::from(val);
                     }
                     sexp
                 }
@@ -1011,7 +1011,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$to>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                        *slot = val as $to;
+                        *slot = <$to>::from(val);
                     }
                     sexp
                 }
@@ -1033,7 +1033,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$to>(self.len());
                     for (slot, &val) in dst.iter_mut().zip(self.iter()) {
-                        *slot = val as $to;
+                        *slot = <$to>::from(val);
                     }
                     sexp
                 }
@@ -1043,7 +1043,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$to>(self.len());
                     for (slot, &val) in dst.iter_mut().zip(self.iter()) {
-                        *slot = val as $to;
+                        *slot = <$to>::from(val);
                     }
                     sexp
                 }
