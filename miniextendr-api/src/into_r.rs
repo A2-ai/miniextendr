@@ -270,8 +270,10 @@ impl IntoR for i64 {
     fn into_sexp(self) -> crate::ffi::SEXP {
         // i32::MIN is NA_integer_ in R, so exclude it from the integer range
         if self > i32::MIN as i64 && self <= i32::MAX as i64 {
+            // Range guard verified — cast is safe
             (self as i32).into_sexp()
         } else {
+            // R has no 64-bit integer; f64 loses precision > 2^53
             (self as f64).into_sexp()
         }
     }
@@ -1076,12 +1078,14 @@ macro_rules! impl_vec_smart_i64_into_r {
                     if self.iter().all(|&x| $fits_i32(x)) {
                         let (sexp, dst) = alloc_r_vector::<i32>(self.len());
                         for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
+                            // fits_i32 guard verified range
                             *slot = val as i32;
                         }
                         sexp
                     } else {
                         let (sexp, dst) = alloc_r_vector::<f64>(self.len());
                         for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
+                            // R has no 64-bit integer; f64 loses precision > 2^53
                             *slot = val as f64;
                         }
                         sexp
@@ -1093,12 +1097,14 @@ macro_rules! impl_vec_smart_i64_into_r {
                     if self.iter().all(|&x| $fits_i32(x)) {
                         let (sexp, dst) = alloc_r_vector_unchecked::<i32>(self.len());
                         for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
+                            // fits_i32 guard verified range
                             *slot = val as i32;
                         }
                         sexp
                     } else {
                         let (sexp, dst) = alloc_r_vector_unchecked::<f64>(self.len());
                         for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
+                            // R has no 64-bit integer; f64 loses precision > 2^53
                             *slot = val as f64;
                         }
                         sexp
