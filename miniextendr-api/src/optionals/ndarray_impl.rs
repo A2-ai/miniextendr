@@ -2671,7 +2671,7 @@ impl RNdIndex for ArrayD<i32> {
 ///
 /// # GC Protection
 ///
-/// Uses the preserve list for GC protection — safe across `.Call` boundaries.
+/// Uses `R_PreserveObject` for GC protection — safe across `.Call` boundaries.
 ///
 /// # Thread Safety
 ///
@@ -2690,7 +2690,6 @@ impl RNdIndex for ArrayD<i32> {
 /// ```
 pub struct RndVec<T: RNativeType> {
     sexp: SEXP,
-    preserve_cell: SEXP,
     _marker: std::marker::PhantomData<*const T>,
 }
 
@@ -2709,7 +2708,6 @@ pub struct RndVec<T: RNativeType> {
 /// ```
 pub struct RndMat<T: RNativeType> {
     sexp: SEXP,
-    preserve_cell: SEXP,
     nrow: usize,
     ncol: usize,
     _marker: std::marker::PhantomData<*const T>,
@@ -2730,10 +2728,9 @@ impl<T: RNativeType> RndVec<T> {
             }
             .into());
         }
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
-            preserve_cell,
             _marker: std::marker::PhantomData,
         })
     }
@@ -2746,13 +2743,12 @@ impl<T: RNativeType> RndVec<T> {
     pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
         let sexp =
             unsafe { crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t) };
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
             sexp,
-            preserve_cell,
             _marker: std::marker::PhantomData,
         }
     }
@@ -2806,7 +2802,7 @@ impl<T: RNativeType> RndVec<T> {
     /// Consume, release GC protection, and return the raw SEXP.
     pub fn into_sexp(self) -> SEXP {
         let sexp = self.sexp;
-        unsafe { crate::preserve::release(self.preserve_cell) };
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
         std::mem::forget(self);
         sexp
     }
@@ -2814,7 +2810,7 @@ impl<T: RNativeType> RndVec<T> {
 
 impl<T: RNativeType> Drop for RndVec<T> {
     fn drop(&mut self) {
-        unsafe { crate::preserve::release(self.preserve_cell) }
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
     }
 }
 
@@ -2858,10 +2854,9 @@ impl<T: RNativeType> RndMat<T> {
             .into());
         }
         let (nrow, ncol) = get_matrix_dims(sexp)?;
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
-            preserve_cell,
             nrow,
             ncol,
             _marker: std::marker::PhantomData,
@@ -2877,13 +2872,12 @@ impl<T: RNativeType> RndMat<T> {
         let sexp = unsafe {
             crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32)
         };
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, nrow * ncol) };
         init(slice);
         Self {
             sexp,
-            preserve_cell,
             nrow,
             ncol,
             _marker: std::marker::PhantomData,
@@ -2937,7 +2931,7 @@ impl<T: RNativeType> RndMat<T> {
     /// Consume, release GC protection, and return the raw SEXP.
     pub fn into_sexp(self) -> SEXP {
         let sexp = self.sexp;
-        unsafe { crate::preserve::release(self.preserve_cell) };
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
         std::mem::forget(self);
         sexp
     }
@@ -2945,7 +2939,7 @@ impl<T: RNativeType> RndMat<T> {
 
 impl<T: RNativeType> Drop for RndMat<T> {
     fn drop(&mut self) {
-        unsafe { crate::preserve::release(self.preserve_cell) }
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
     }
 }
 
