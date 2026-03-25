@@ -121,7 +121,7 @@ impl RSessionContext {
         }
 
         if batches.len() == 1 {
-            return Ok(batches.into_iter().next().unwrap());
+            return Ok(batches.into_iter().next().expect("len checked == 1"));
         }
 
         let schema = batches[0].schema();
@@ -259,7 +259,7 @@ impl RDataFrame {
         }
 
         if batches.len() == 1 {
-            return Ok(batches.into_iter().next().unwrap());
+            return Ok(batches.into_iter().next().expect("len checked == 1"));
         }
 
         let schema = batches[0].schema();
