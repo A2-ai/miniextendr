@@ -58,7 +58,9 @@ fn is_na_real(value: f64) -> bool {
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR(charsxp);
-        let len = crate::ffi::LENGTH(charsxp) as usize;
+        let len: usize = crate::ffi::LENGTH(charsxp)
+            .try_into()
+            .expect("CHARSXP LENGTH must be non-negative");
         let bytes = r_slice(ptr.cast::<u8>(), len);
         std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
     }
@@ -69,7 +71,9 @@ pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
 unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR_unchecked(charsxp);
-        let len = crate::ffi::LENGTH(charsxp) as usize;
+        let len: usize = crate::ffi::LENGTH(charsxp)
+            .try_into()
+            .expect("CHARSXP LENGTH must be non-negative");
         let bytes = r_slice(ptr.cast::<u8>(), len);
         std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
     }
