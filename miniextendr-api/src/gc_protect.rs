@@ -165,6 +165,51 @@ pub type ProtectIndex = ::std::os::raw::c_int;
 /// Enforces `!Send + !Sync` (R API is not thread-safe).
 type NoSendSync = PhantomData<Rc<()>>;
 
+// region: Protector trait
+
+/// A GC protection backend.
+///
+/// Functions that allocate multiple intermediate SEXPs can take `&mut impl Protector`
+/// to be generic over the protection mechanism. The caller decides which backend
+/// to use by passing a [`ProtectScope`], [`OwnedProtect`], or
+/// [`ProtectPool`](crate::protect_pool::ProtectPool).
+///
+/// # Safety
+///
+/// Implementations must ensure that the returned SEXP remains protected from GC
+/// for at least as long as the protector is alive. Callers must not use the
+/// returned SEXP after the protector is dropped.
+///
+/// All methods must be called from the R main thread.
+pub trait Protector {
+    /// Protect a SEXP from garbage collection.
+    ///
+    /// Returns the same SEXP (for convenience in chaining). The SEXP is now
+    /// protected and will remain so until the protector releases it.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `sexp` must be a valid SEXP.
+    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP;
+}
+
+impl Protector for ProtectScope {
+    #[inline]
+    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP {
+        unsafe { self.protect_raw(sexp) }
+    }
+}
+
+impl Protector for crate::protect_pool::ProtectPool {
+    #[inline]
+    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP {
+        unsafe { self.insert(sexp) };
+        sexp
+    }
+}
+
+// endregion
+
 // region: ProtectScope
 
 /// A scope that automatically balances `UNPROTECT(n)` on drop.
