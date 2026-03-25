@@ -174,9 +174,9 @@ impl ProtectPool {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn release(&mut self, key: ProtectKey) {
-        let slot = key.slot as usize;
+        let Ok(slot) = usize::try_from(key.slot) else { return };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            let r_slot = key.slot as R_xlen_t;
             unsafe { SET_VECTOR_ELT(self.backing, r_slot, R_NilValue) };
             self.generations[slot] = self.generations[slot].wrapping_add(1);
             self.free_slots.push(slot);
@@ -187,9 +187,9 @@ impl ProtectPool {
     /// Get the SEXP for a key, or `None` if the key is stale.
     #[inline]
     pub fn get(&self, key: ProtectKey) -> Option<SEXP> {
-        let slot = key.slot as usize;
+        let Ok(slot) = usize::try_from(key.slot) else { return None };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return None };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            let r_slot = key.slot as R_xlen_t;
             Some(unsafe { VECTOR_ELT(self.backing, r_slot) })
         } else {
             None
@@ -208,9 +208,9 @@ impl ProtectPool {
     /// Must be called from the R main thread. `sexp` must be a valid SEXP.
     #[inline]
     pub unsafe fn replace(&mut self, key: ProtectKey, sexp: SEXP) -> bool {
-        let slot = key.slot as usize;
+        let Ok(slot) = usize::try_from(key.slot) else { return false };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return false };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            let r_slot = key.slot as R_xlen_t;
             unsafe { SET_VECTOR_ELT(self.backing, r_slot, sexp) };
             true
         } else {
@@ -221,7 +221,7 @@ impl ProtectPool {
     /// Check if a key is currently valid (not stale).
     #[inline]
     pub fn contains_key(&self, key: ProtectKey) -> bool {
-        let slot = key.slot as usize;
+        let Ok(slot) = usize::try_from(key.slot) else { return false };
         slot < self.generations.len() && self.generations[slot] == key.generation
     }
 
