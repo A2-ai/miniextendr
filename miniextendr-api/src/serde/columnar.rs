@@ -1031,7 +1031,8 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                 sexp
             }
             ColumnBuffer::Character(v) => {
-                let sexp = Rf_allocVector(SEXPTYPE::STRSXP, nrow_isize);
+                let nrow_r: isize = nrow.try_into().expect("nrow exceeds isize::MAX");
+                let sexp = Rf_allocVector(SEXPTYPE::STRSXP, nrow_r);
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     match val {
@@ -1049,7 +1050,8 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                 sexp
             }
             ColumnBuffer::Generic(v) => {
-                let sexp = Rf_allocVector(SEXPTYPE::VECSXP, nrow_isize);
+                let nrow_r: isize = nrow.try_into().expect("nrow exceeds isize::MAX");
+                let sexp = Rf_allocVector(SEXPTYPE::VECSXP, nrow_r);
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(elem) = val {
