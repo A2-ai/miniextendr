@@ -1141,14 +1141,23 @@ impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
         self.sexp
     }
 
-    /// Consume the storage, release GC protection, and return the raw SEXP.
+    /// Consume, transfer GC protection to the protect stack, and return the SEXP.
+    pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
+        let sexp = unsafe { scope.protect_raw(self.sexp) };
+        // Drop runs → R_ReleaseObject, but sexp is now also on the protect stack.
+        sexp
+    }
+
+    /// Consume, release GC protection, and return the raw SEXP.
     ///
-    /// The caller is responsible for ensuring the SEXP remains protected
-    /// (e.g., by returning it from a `.Call` function).
-    pub fn into_sexp(self) -> SEXP {
+    /// # Safety
+    ///
+    /// The returned SEXP is **unprotected**. The caller must either return it
+    /// directly to R (`.Call` return) or protect it immediately.
+    pub unsafe fn into_sexp_unprotected(self) -> SEXP {
         let sexp = self.sexp;
         unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
-        std::mem::forget(self); // Don't run Drop (we already released)
+        std::mem::forget(self);
         sexp
     }
 
@@ -1318,7 +1327,8 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDVector<T> {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.data.into_sexp())
+        // SAFETY: IntoR is called from generated .Call wrappers. R protects on receipt.
+        Ok(unsafe { self.data.into_sexp_unprotected() })
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
@@ -1344,7 +1354,8 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
                 ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);
             }
         }
-        Ok(self.data.into_sexp())
+        // SAFETY: IntoR is called from generated .Call wrappers. R protects on receipt.
+        Ok(unsafe { self.data.into_sexp_unprotected() })
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
