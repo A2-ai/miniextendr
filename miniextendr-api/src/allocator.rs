@@ -302,11 +302,11 @@ unsafe fn realloc_main_thread(
     };
 
     let used = unsafe { old.cast_const().offset_from(raw_base.cast_const()) };
-    if used < 0 {
+    let Ok(used_usize) = usize::try_from(used) else {
         // Should be impossible if `old` came from this allocator, but don't UB.
         return sendable_data_ptr_null();
-    }
-    let available = cap.saturating_sub(used as usize);
+    };
+    let available = cap.saturating_sub(used_usize);
 
     if new_size <= available {
         return old_ptr; // Reuse existing allocation

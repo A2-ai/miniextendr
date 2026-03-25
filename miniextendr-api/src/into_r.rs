@@ -390,7 +390,7 @@ macro_rules! impl_logical_into_r {
     };
 }
 
-impl_logical_into_r!(bool, |v: bool| v as i32);
+impl_logical_into_r!(bool, |v: bool| i32::from(v));
 impl_logical_into_r!(crate::ffi::Rboolean, |v: crate::ffi::Rboolean| v as i32);
 impl_logical_into_r!(crate::ffi::RLogical, crate::ffi::RLogical::to_i32);
 
@@ -459,6 +459,7 @@ impl IntoR for Option<crate::ffi::Rboolean> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
+            // Rboolean is repr(i32), `as i32` is a no-op transmute
             Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v as i32) },
             None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
         }
@@ -632,7 +633,8 @@ fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
         if s.is_empty() {
             crate::ffi::R_BlankString
         } else {
-            crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, crate::ffi::CE_UTF8)
+            let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
+            crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::CE_UTF8)
         }
     }
 }
@@ -644,9 +646,10 @@ unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
         if s.is_empty() {
             crate::ffi::R_BlankString
         } else {
+            let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
             crate::ffi::Rf_mkCharLenCE_unchecked(
                 s.as_ptr().cast(),
-                s.len() as i32,
+                len,
                 crate::ffi::CE_UTF8,
             )
         }
@@ -1154,27 +1157,24 @@ fn map_to_named_list<V: IntoR>(
     iter: impl ExactSizeIterator<Item = (String, V)>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n = iter.len();
+        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("map length exceeds isize::MAX");
         let list =
-            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n);
         crate::ffi::Rf_protect(list);
 
         // Allocate names vector
         let names =
-            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n);
         crate::ffi::Rf_protect(names);
 
         for (i, (key, value)) in iter.enumerate() {
+            let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             // Set list element
-            crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, value.into_sexp());
+            crate::ffi::SET_VECTOR_ELT(list, idx, value.into_sexp());
 
             // Set name
-            let charsxp = crate::ffi::Rf_mkCharLenCE(
-                key.as_ptr().cast(),
-                key.len() as i32,
-                crate::ffi::CE_UTF8,
-            );
-            crate::ffi::SET_STRING_ELT(names, i as crate::ffi::R_xlen_t, charsxp);
+            let charsxp = str_to_charsxp(&key);
+            crate::ffi::SET_STRING_ELT(names, idx, charsxp);
         }
 
         // Attach names attribute
@@ -1190,28 +1190,29 @@ unsafe fn map_to_named_list_unchecked<V: IntoR>(
     iter: impl ExactSizeIterator<Item = (String, V)>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n = iter.len();
+        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("map length exceeds isize::MAX");
         let list = crate::ffi::Rf_allocVector_unchecked(
             crate::ffi::SEXPTYPE::VECSXP,
-            n as crate::ffi::R_xlen_t,
+            n,
         );
         crate::ffi::Rf_protect(list);
 
         let names = crate::ffi::Rf_allocVector_unchecked(
             crate::ffi::SEXPTYPE::STRSXP,
-            n as crate::ffi::R_xlen_t,
+            n,
         );
         crate::ffi::Rf_protect(names);
 
         for (i, (key, value)) in iter.enumerate() {
+            let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             crate::ffi::SET_VECTOR_ELT_unchecked(
                 list,
-                i as crate::ffi::R_xlen_t,
+                idx,
                 value.into_sexp_unchecked(),
             );
 
             let charsxp = str_to_charsxp_unchecked(&key);
-            crate::ffi::SET_STRING_ELT_unchecked(names, i as crate::ffi::R_xlen_t, charsxp);
+            crate::ffi::SET_STRING_ELT_unchecked(names, idx, charsxp);
         }
 
         crate::ffi::Rf_setAttrib_unchecked(list, crate::ffi::R_NamesSymbol, names);
@@ -1621,7 +1622,7 @@ macro_rules! impl_set_coerce_into_r {
                 self.try_into_sexp()
             }
             fn into_sexp(self) -> crate::ffi::SEXP {
-                let vec: Vec<i32> = self.into_iter().map(|x| x as i32).collect();
+                let vec: Vec<i32> = self.into_iter().map(|x| i32::from(x)).collect();
                 vec.into_sexp()
             }
         }
@@ -1635,7 +1636,7 @@ macro_rules! impl_set_coerce_into_r {
                 self.try_into_sexp()
             }
             fn into_sexp(self) -> crate::ffi::SEXP {
-                let vec: Vec<i32> = self.into_iter().map(|x| x as i32).collect();
+                let vec: Vec<i32> = self.into_iter().map(|x| i32::from(x)).collect();
                 vec.into_sexp()
             }
         }
@@ -1860,15 +1861,15 @@ pub(crate) fn str_iter_to_strsxp<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n = iter.len();
+        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("string vec length exceeds isize::MAX");
         let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
             crate::ffi::SEXPTYPE::STRSXP,
-            n as crate::ffi::R_xlen_t,
+            n,
         ));
         for (i, s) in iter.enumerate() {
-            let charsxp =
-                crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, crate::ffi::CE_UTF8);
-            crate::ffi::SET_STRING_ELT(*sexp, i as crate::ffi::R_xlen_t, charsxp);
+            let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+            let charsxp = str_to_charsxp(s);
+            crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
         }
         *sexp
     }
@@ -1879,14 +1880,15 @@ pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n = iter.len();
+        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("string vec length exceeds isize::MAX");
         let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
             crate::ffi::SEXPTYPE::STRSXP,
-            n as crate::ffi::R_xlen_t,
+            n,
         ));
         for (i, s) in iter.enumerate() {
+            let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp_unchecked(s);
-            crate::ffi::SET_STRING_ELT_unchecked(*sexp, i as crate::ffi::R_xlen_t, charsxp);
+            crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
         }
         *sexp
     }
@@ -2188,7 +2190,7 @@ macro_rules! impl_vec_option_coerce_into_r {
             fn into_sexp(self) -> crate::ffi::SEXP {
                 // Delegate to the target Option type's impl (coerce inline)
                 let coerced: Vec<Option<$to>> =
-                    self.into_iter().map(|opt| opt.map(|x| x as $to)).collect();
+                    self.into_iter().map(|opt| opt.map(|x| <$to>::from(x))).collect();
                 coerced.into_sexp()
             }
         }
@@ -2244,12 +2246,12 @@ impl IntoR for Vec<bool> {
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         let n = self.len();
-        logical_iter_to_lglsxp(n, self.into_iter().map(|v| v as i32))
+        logical_iter_to_lglsxp(n, self.into_iter().map(|v| i32::from(v)))
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         let n = self.len();
-        unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(|v| v as i32)) }
+        unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(|v| i32::from(v))) }
     }
 }
 
@@ -2264,11 +2266,11 @@ impl IntoR for Box<[bool]> {
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         let n = self.len();
-        logical_iter_to_lglsxp(n, self.iter().map(|&v| v as i32))
+        logical_iter_to_lglsxp(n, self.iter().map(|&v| i32::from(v)))
     }
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         let n = self.len();
-        unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| v as i32)) }
+        unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| i32::from(v))) }
     }
 }
 
@@ -2283,12 +2285,12 @@ impl IntoR for &[bool] {
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         let n = self.len();
-        logical_iter_to_lglsxp(n, self.iter().map(|&v| v as i32))
+        logical_iter_to_lglsxp(n, self.iter().map(|&v| i32::from(v)))
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         let n = self.len();
-        unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| v as i32)) }
+        unsafe { logical_iter_to_lglsxp_unchecked(n, self.iter().map(|&v| i32::from(v))) }
     }
 }
 
@@ -2355,22 +2357,19 @@ impl IntoR for Vec<Option<String>> {
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {
-            let n = self.len();
+            let n: crate::ffi::R_xlen_t = self.len().try_into().expect("vec length exceeds isize::MAX");
             let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
                 crate::ffi::SEXPTYPE::STRSXP,
-                n as crate::ffi::R_xlen_t,
+                n,
             ));
 
             for (i, opt_s) in self.iter().enumerate() {
+                let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
-                    Some(s) => crate::ffi::Rf_mkCharLenCE(
-                        s.as_ptr().cast(),
-                        s.len() as i32,
-                        crate::ffi::CE_UTF8,
-                    ),
+                    Some(s) => str_to_charsxp(s),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT(*sexp, i as crate::ffi::R_xlen_t, charsxp);
+                crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
             }
 
             *sexp
@@ -2379,18 +2378,19 @@ impl IntoR for Vec<Option<String>> {
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         unsafe {
-            let n = self.len();
+            let n: crate::ffi::R_xlen_t = self.len().try_into().expect("vec length exceeds isize::MAX");
             let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
                 crate::ffi::SEXPTYPE::STRSXP,
-                n as crate::ffi::R_xlen_t,
+                n,
             ));
 
             for (i, opt_s) in self.iter().enumerate() {
+                let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp_unchecked(s),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT_unchecked(*sexp, i as crate::ffi::R_xlen_t, charsxp);
+                crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
             }
 
             *sexp

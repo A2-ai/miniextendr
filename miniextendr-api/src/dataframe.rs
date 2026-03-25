@@ -173,7 +173,8 @@ impl DataFrameView {
     where
         T: TryFromSexp<Error = SexpError>,
     {
-        self.inner.get_index(idx as isize)
+        let idx_isize: isize = idx.try_into().ok()?;
+        self.inner.get_index(idx_isize)
     }
 
     /// Get the raw SEXP for a column by name.
@@ -316,8 +317,8 @@ fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
     }
 
     // Explicit form: nrow = length of row.names vector
-    if rn_len >= 0 {
-        Ok(rn_len as usize)
+    if let Ok(n) = usize::try_from(rn_len) {
+        Ok(n)
     } else {
         Err(DataFrameError::BadRowNames(format!(
             "row.names has negative length: {}",
@@ -338,8 +339,8 @@ fn nrow_from_first_column(sexp: SEXP) -> Result<usize, DataFrameError> {
         return Ok(0);
     }
     let len = unsafe { ffi::Rf_xlength(first_col) };
-    if len >= 0 {
-        Ok(len as usize)
+    if let Ok(n) = usize::try_from(len) {
+        Ok(n)
     } else {
         Err(DataFrameError::BadRowNames(
             "first column has negative length".to_string(),
@@ -361,13 +362,17 @@ fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
 
     // Get the length of the first column
     let first_col = unsafe { ffi::VECTOR_ELT(list.as_sexp(), 0) };
-    let expected = unsafe { ffi::Rf_xlength(first_col) } as usize;
+    let expected: usize = unsafe { ffi::Rf_xlength(first_col) }
+        .try_into()
+        .expect("column length must be non-negative");
 
     // Check all columns match
     let names_sexp = list.names();
     for i in 1..n {
         let col = unsafe { ffi::VECTOR_ELT(list.as_sexp(), i) };
-        let col_len = unsafe { ffi::Rf_xlength(col) } as usize;
+        let col_len: usize = unsafe { ffi::Rf_xlength(col) }
+            .try_into()
+            .expect("column length must be non-negative");
         if col_len != expected {
             // Try to get the column name for the error message
             let col_name = if let Some(names) = names_sexp {
