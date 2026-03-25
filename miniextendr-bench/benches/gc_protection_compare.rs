@@ -9,6 +9,7 @@
 
 use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, Rf_ScalarInteger, SEXP};
 use miniextendr_api::preserve;
+use miniextendr_api::protect_pool::ProtectPool;
 use miniextendr_bench::pool_prototypes::{
     BTreeMapPool, DequePool, HashMapPool, IndexMapPool, SlotmapPool, VecPool,
 };
@@ -1146,6 +1147,232 @@ mod pool_growth {
 
         bencher.bench_local(|| unsafe {
             let mut pool = SlotmapPool::new(16);
+            let mut keys = Vec::with_capacity(n);
+            for _ in 0..n {
+                keys.push(pool.insert(sexp));
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        });
+
+        unsafe { R_ReleaseObject(sexp) };
+    }
+}
+
+// endregion
+
+// region: Group 18 — Real ProtectPool vs prototypes
+
+mod real_pool {
+    use super::*;
+    use divan::Bencher;
+
+    #[divan::bench]
+    fn real_protect_pool(bencher: Bencher) {
+        let sexp = unsafe { Rf_ScalarInteger(42) };
+        unsafe { R_PreserveObject(sexp) };
+        let mut pool = unsafe { ProtectPool::new(16) };
+
+        bencher.bench_local(|| unsafe {
+            let key = pool.insert(sexp);
+            pool.release(key);
+        });
+
+        unsafe { R_ReleaseObject(sexp) };
+    }
+
+    #[divan::bench]
+    fn prototype_vec_pool(bencher: Bencher) {
+        let sexp = unsafe { Rf_ScalarInteger(42) };
+        unsafe { R_PreserveObject(sexp) };
+        let mut pool = unsafe { VecPool::new(16) };
+
+        bencher.bench_local(|| unsafe {
+            let slot = pool.insert(sexp);
+            pool.release(slot);
+        });
+
+        unsafe { R_ReleaseObject(sexp) };
+    }
+
+    #[divan::bench]
+    fn prototype_slotmap_pool(bencher: Bencher) {
+        let sexp = unsafe { Rf_ScalarInteger(42) };
+        unsafe { R_PreserveObject(sexp) };
+        let mut pool = unsafe { SlotmapPool::new(16) };
+
+        bencher.bench_local(|| unsafe {
+            let key = pool.insert(sexp);
+            pool.release(key);
+        });
+
+        unsafe { R_ReleaseObject(sexp) };
+    }
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn real_pool_batch(bencher: Bencher, n: usize) {
+        let sexps = unsafe { prealloc_sexps(n) };
+        let mut pool = unsafe { ProtectPool::new(n.max(16)) };
+
+        bencher.bench_local(|| unsafe {
+            let mut keys = Vec::with_capacity(n);
+            for &s in &sexps {
+                keys.push(pool.insert(s));
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        });
+
+        unsafe { release_prealloc(&sexps) };
+    }
+
+    #[divan::bench(args = [100, 1_000, 10_000])]
+    fn vec_pool_batch(bencher: Bencher, n: usize) {
+        let sexps = unsafe { prealloc_sexps(n) };
+        let mut pool = unsafe { VecPool::new(n.max(16)) };
+
+        bencher.bench_local(|| unsafe {
+            let mut slots = Vec::with_capacity(n);
+            for &s in &sexps {
+                slots.push(pool.insert(s));
+            }
+            for slot in slots {
+                pool.release(slot);
+            }
+        });
+
+        unsafe { release_prealloc(&sexps) };
+    }
+}
+
+// endregion
+
+// region: Group 19 — Generation check cost (valid vs stale keys)
+
+mod generation_check {
+    use super::*;
+    use divan::Bencher;
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn get_valid_keys(bencher: Bencher, n: usize) {
+        let sexp = unsafe { Rf_ScalarInteger(42) };
+        unsafe { R_PreserveObject(sexp) };
+        let mut pool = unsafe { ProtectPool::new(n.max(16)) };
+        let keys: Vec<_> = (0..n).map(|_| unsafe { pool.insert(sexp) }).collect();
+
+        bencher.bench_local(|| {
+            for &key in &keys {
+                divan::black_box(pool.get(key));
+            }
+        });
+
+        for key in keys {
+            unsafe { pool.release(key) };
+        }
+        unsafe { R_ReleaseObject(sexp) };
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn get_stale_keys(bencher: Bencher, n: usize) {
+        let sexp = unsafe { Rf_ScalarInteger(42) };
+        unsafe { R_PreserveObject(sexp) };
+        let mut pool = unsafe { ProtectPool::new(n.max(16)) };
+        let stale_keys: Vec<_> = (0..n)
+            .map(|_| {
+                let key = unsafe { pool.insert(sexp) };
+                unsafe { pool.release(key) };
+                key
+            })
+            .collect();
+
+        bencher.bench_local(|| {
+            for &key in &stale_keys {
+                divan::black_box(pool.get(key));
+            }
+        });
+
+        unsafe { R_ReleaseObject(sexp) };
+    }
+}
+
+// endregion
+
+// region: Group 20 — replace vs release+insert
+
+mod replace_vs_reinsert {
+    use super::*;
+    use divan::Bencher;
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn pool_replace(bencher: Bencher, n: usize) {
+        let sexps = unsafe { prealloc_sexps(n) };
+        let mut pool = unsafe { ProtectPool::new(16) };
+        let key = unsafe { pool.insert(sexps[0]) };
+
+        bencher.bench_local(|| unsafe {
+            for &s in &sexps[1..] {
+                pool.replace(key, s);
+            }
+        });
+
+        unsafe { pool.release(key) };
+        unsafe { release_prealloc(&sexps) };
+    }
+
+    #[divan::bench(args = [1_000, 10_000])]
+    fn pool_release_insert(bencher: Bencher, n: usize) {
+        let sexps = unsafe { prealloc_sexps(n) };
+        let mut pool = unsafe { ProtectPool::new(16) };
+
+        bencher.bench_local(|| unsafe {
+            let mut key = pool.insert(sexps[0]);
+            for &s in &sexps[1..] {
+                pool.release(key);
+                key = pool.insert(s);
+            }
+            pool.release(key);
+        });
+
+        unsafe { release_prealloc(&sexps) };
+    }
+}
+
+// endregion
+
+// region: Group 21 — Real pool growth (pre-sized vs small initial)
+
+mod real_pool_growth {
+    use super::*;
+    use divan::Bencher;
+
+    #[divan::bench(args = [1_000, 10_000, 50_000])]
+    fn presized(bencher: Bencher, n: usize) {
+        let sexp = unsafe { Rf_ScalarInteger(42) };
+        unsafe { R_PreserveObject(sexp) };
+
+        bencher.bench_local(|| unsafe {
+            let mut pool = ProtectPool::new(n);
+            let mut keys = Vec::with_capacity(n);
+            for _ in 0..n {
+                keys.push(pool.insert(sexp));
+            }
+            for key in keys {
+                pool.release(key);
+            }
+        });
+
+        unsafe { R_ReleaseObject(sexp) };
+    }
+
+    #[divan::bench(args = [1_000, 10_000, 50_000])]
+    fn small_initial(bencher: Bencher, n: usize) {
+        let sexp = unsafe { Rf_ScalarInteger(42) };
+        unsafe { R_PreserveObject(sexp) };
+
+        bencher.bench_local(|| unsafe {
+            let mut pool = ProtectPool::new(16);
             let mut keys = Vec::with_capacity(n);
             for _ in 0..n {
                 keys.push(pool.insert(sexp));
