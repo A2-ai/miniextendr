@@ -5,7 +5,7 @@
 //!
 //! # Performance
 //!
-//! Benchmarked at 9.6 ns/op for single insert+release. Zero R allocation per
+//! Benchmarked at 10.1 ns/op for single insert+release. Zero R allocation per
 //! insert (unlike `preserve.rs` DLL which allocates a CONSXP each time).
 //! See `analysis/gc-protection-benchmarks-results.md` for full data.
 //!
@@ -37,8 +37,8 @@
 //! └─────────────────────────────────────┘
 //! ```
 //!
-//! No external dependencies for slot management (no slotmap). The generation
-//! counter per slot detects stale keys. Single free list for VECSXP slot reuse.
+//! No external dependencies for slot management. The generation counter per slot
+//! detects stale keys. Single free list for VECSXP slot reuse.
 
 use crate::ffi::{
     R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
@@ -114,10 +114,15 @@ impl ProtectPool {
     /// # Safety
     ///
     /// Must be called from the R main thread.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `capacity` exceeds `R_xlen_t::MAX` or `u32::MAX`.
     pub unsafe fn with_capacity(capacity: usize) -> Self {
         let capacity = capacity.max(1);
+        let r_cap = R_xlen_t::try_from(capacity).expect("capacity exceeds R_xlen_t::MAX");
         unsafe {
-            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
+            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, r_cap));
             R_PreserveObject(backing);
             Rf_unprotect(1);
 
@@ -142,13 +147,20 @@ impl ProtectPool {
     /// # Safety
     ///
     /// Must be called from the R main thread. `sexp` must be a valid SEXP.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the pool has grown beyond `u32::MAX` slots.
     #[inline]
     pub unsafe fn insert(&mut self, sexp: SEXP) -> ProtectKey {
         let slot = self.alloc_slot();
-        unsafe { SET_VECTOR_ELT(self.backing, slot as R_xlen_t, sexp) };
+        // slot < capacity ≤ R_xlen_t::MAX (checked in with_capacity/grow),
+        // so this conversion is safe.
+        let r_slot = R_xlen_t::try_from(slot).expect("slot exceeds R_xlen_t::MAX");
+        unsafe { SET_VECTOR_ELT(self.backing, r_slot, sexp) };
         self.len += 1;
         ProtectKey {
-            slot: slot as u32,
+            slot: u32::try_from(slot).expect("slot exceeds u32::MAX"),
             generation: self.generations[slot],
         }
     }
@@ -164,7 +176,8 @@ impl ProtectPool {
     pub unsafe fn release(&mut self, key: ProtectKey) {
         let slot = key.slot as usize;
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            unsafe { SET_VECTOR_ELT(self.backing, slot as R_xlen_t, R_NilValue) };
+            let r_slot = key.slot as R_xlen_t;
+            unsafe { SET_VECTOR_ELT(self.backing, r_slot, R_NilValue) };
             self.generations[slot] = self.generations[slot].wrapping_add(1);
             self.free_slots.push(slot);
             self.len -= 1;
@@ -176,7 +189,8 @@ impl ProtectPool {
     pub fn get(&self, key: ProtectKey) -> Option<SEXP> {
         let slot = key.slot as usize;
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            Some(unsafe { VECTOR_ELT(self.backing, slot as R_xlen_t) })
+            let r_slot = key.slot as R_xlen_t;
+            Some(unsafe { VECTOR_ELT(self.backing, r_slot) })
         } else {
             None
         }
@@ -196,7 +210,8 @@ impl ProtectPool {
     pub unsafe fn replace(&mut self, key: ProtectKey, sexp: SEXP) -> bool {
         let slot = key.slot as usize;
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            unsafe { SET_VECTOR_ELT(self.backing, slot as R_xlen_t, sexp) };
+            let r_slot = key.slot as R_xlen_t;
+            unsafe { SET_VECTOR_ELT(self.backing, r_slot, sexp) };
             true
         } else {
             false
@@ -245,16 +260,14 @@ impl ProtectPool {
             .capacity
             .checked_mul(2)
             .expect("ProtectPool capacity overflow");
+        let r_new_cap = R_xlen_t::try_from(new_cap).expect("new capacity exceeds R_xlen_t::MAX");
         unsafe {
-            let new_backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_cap as R_xlen_t));
+            let new_backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, r_new_cap));
             R_PreserveObject(new_backing);
 
             for i in 0..self.capacity {
-                SET_VECTOR_ELT(
-                    new_backing,
-                    i as R_xlen_t,
-                    VECTOR_ELT(self.backing, i as R_xlen_t),
-                );
+                let r_i = R_xlen_t::try_from(i).expect("index exceeds R_xlen_t::MAX");
+                SET_VECTOR_ELT(new_backing, r_i, VECTOR_ELT(self.backing, r_i));
             }
 
             R_ReleaseObject(self.backing);
@@ -285,25 +298,23 @@ mod tests {
 
     #[test]
     fn key_generational_safety() {
-        // Can't test with real SEXPs (no R runtime in unit tests),
-        // but we can test the generation logic directly.
         let mut gens: Vec<u32> = vec![0; 4];
         let mut free: Vec<usize> = Vec::new();
 
-        // Simulate insert at slot 0
         let k1 = ProtectKey { slot: 0, generation: gens[0] };
-        assert_eq!(gens[0], k1.generation); // valid
+        assert_eq!(gens[0], k1.generation);
 
-        // Simulate release of slot 0
         gens[0] = gens[0].wrapping_add(1);
         free.push(0);
-        assert_ne!(gens[0], k1.generation); // k1 is stale
+        assert_ne!(gens[0], k1.generation);
 
-        // Simulate reuse of slot 0
         let slot = free.pop().unwrap();
-        let k2 = ProtectKey { slot: slot as u32, generation: gens[slot] };
-        assert_eq!(gens[0], k2.generation); // k2 is valid
-        assert_ne!(k1.generation, k2.generation); // k1 still stale
+        let k2 = ProtectKey {
+            slot: u32::try_from(slot).unwrap(),
+            generation: gens[slot],
+        };
+        assert_eq!(gens[0], k2.generation);
+        assert_ne!(k1.generation, k2.generation);
     }
 
     #[test]
