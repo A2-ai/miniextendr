@@ -106,7 +106,7 @@ where
     where
         F: FnOnce() -> R,
     {
-        let data = unsafe { data.cast::<CallData<F, R>>().as_mut().unwrap() };
+        let data = unsafe { data.cast::<CallData<F, R>>().as_mut().expect("CallData pointer from R_UnwindProtect") };
         let f = data.f.take().expect("trampoline: closure already consumed");
 
         match catch_unwind(AssertUnwindSafe(f)) {

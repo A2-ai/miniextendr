@@ -697,7 +697,10 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
         JsonValue::Number(n) => {
             if json_number_fits_i32(n) {
                 let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 1) };
-                unsafe { SET_INTEGER_ELT(sexp, 0, n.as_i64().unwrap() as i32) };
+                unsafe {
+                    let i = n.as_i64().expect("json_number_fits_i32 verified this");
+                    SET_INTEGER_ELT(sexp, 0, i32::try_from(i).expect("json_number_fits_i32 verified range"));
+                };
                 return sexp;
             }
             // Fall back to f64
@@ -778,7 +781,9 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                     for (i, v) in arr.iter().enumerate() {
                         if let JsonValue::Number(n) = v {
                             unsafe {
-                                SET_INTEGER_ELT(sexp, i as isize, n.as_i64().unwrap() as i32)
+                                let i64_val = n.as_i64().expect("all_i32 check verified this");
+                                let i32_val = i32::try_from(i64_val).expect("all_i32 check verified range");
+                                SET_INTEGER_ELT(sexp, i as isize, i32_val)
                             };
                         }
                     }

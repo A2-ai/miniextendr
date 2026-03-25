@@ -812,9 +812,9 @@ impl RCustomConnection {
     /// ```
     pub fn new() -> Self {
         Self {
-            description: CString::new("custom connection").unwrap(),
-            mode: CString::new("r").unwrap(),
-            class_name: CString::new("customConnection").unwrap(),
+            description: CString::new("custom connection").expect("no null bytes in literal"),
+            mode: CString::new("r").expect("no null bytes in literal"),
+            class_name: CString::new("customConnection").expect("no null bytes in literal"),
             text: None,
             can_read: None,
             can_write: None,
