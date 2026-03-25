@@ -500,7 +500,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         }
 
         // Extract column names as Vec<String>
-        let names_sexp = first_names_sexp.unwrap();
+        let names_sexp = first_names_sexp.expect("checked is_none above");
         let n_cols = unsafe { crate::ffi::Rf_xlength(names_sexp) };
         let mut col_names = Vec::with_capacity(n_cols as usize);
         for i in 0..n_cols {
@@ -529,7 +529,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
                 let value = list
                     .get_named::<crate::ffi::SEXP>(name)
                     .unwrap_or(unsafe { crate::ffi::R_NilValue });
-                columns.get_mut(name).unwrap().push(value);
+                columns.get_mut(name).expect("column inserted above").push(value);
             }
         }
 
@@ -538,7 +538,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         // columns are INTSXP/REALSXP/LGLSXP/STRSXP instead of VECSXP (list).
         let mut df_pairs: Vec<(String, crate::ffi::SEXP)> = Vec::with_capacity(col_names.len());
         for name in col_names {
-            let col_values = columns.remove(&name).unwrap();
+            let col_values = columns.remove(&name).expect("column inserted above");
             let col_sexp = List::from_scalars_or_list(&col_values).as_sexp();
             unsafe { crate::ffi::Rf_protect(col_sexp) };
             n_protect += 1;
