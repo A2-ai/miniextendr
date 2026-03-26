@@ -13,8 +13,9 @@ balance `PROTECT`/`UNPROTECT` calls.
 | Strategy | Scope | Max Size | Release Order | Use Case |
 |----------|-------|----------|---------------|----------|
 | [PROTECT stack](#protectscope) | Within `.Call` | ~50k (ppsize) | LIFO | Temporary allocations |
-| [Preserve list](#preserve-list) | Cross-`.Call` | Unlimited | Any order | Long-lived R objects |
-| [Refcount arenas](#refcount-arenas) | Flexible | Unlimited | Any order | Many SEXPs, hot loops |
+| [ProtectPool](#protectpool) | Cross-`.Call` | Unlimited | Any order | Cross-call, many objects (10.1 ns/op) |
+| [Preserve list](#preserve-list) | Cross-`.Call` | Unlimited | Any order | Few long-lived R objects |
+| [Refcount arenas](#refcount-arenas) | Flexible | Unlimited | Any order | Legacy — see ProtectPool |
 
 ### PROTECT Stack Types
 
