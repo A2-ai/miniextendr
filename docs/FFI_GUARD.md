@@ -9,7 +9,7 @@ Four independent FFI boundaries exist between Rust and R:
 | Boundary | Where | Guard |
 |----------|-------|-------|
 | Main thread (default) | `unwind_protect.rs` | `R_UnwindProtect` + `catch_unwind` + `error_in_r` tagged values |
-| Worker thread (opt-in, requires `worker-thread` feature) | `worker.rs` | `catch_unwind` + `r_stop` |
+| Worker thread (opt-in, requires `worker-thread` feature) | `worker.rs` | `catch_unwind` + `Rf_error` |
 | ALTREP trampolines | `altrep_bridge.rs` | Per-type `AltrepGuard` const |
 | `R_UnwindProtect` | `unwind_protect.rs` | Catches panics + R longjmps |
 | Connection callbacks | `connection.rs` | `catch_unwind` + fallback value |
@@ -28,7 +28,7 @@ catch_unwind / R_UnwindProtect
 panic_telemetry::fire(message, source)   <-- hook fires here
   |
   v
-r_stop(message)  or  return fallback
+Rf_error(message)  or  return fallback
 ```
 
 ---
@@ -40,7 +40,7 @@ r_stop(message)  or  return fallback
 ### CatchUnwind
 
 Wraps the closure in `std::panic::catch_unwind`. On panic, fires telemetry and
-calls `r_stop` (which diverges via `Rf_error` -- never returns).
+raises an R error via `Rf_error` (diverges -- never returns).
 
 Use when the closure does **not** call R APIs that might longjmp.
 
@@ -91,7 +91,7 @@ pub fn guarded_ffi_call<F, R>(f: F, mode: GuardMode, source: PanicSource) -> R
 On panic:
 1. Extracts the panic message from the payload.
 2. Fires `panic_telemetry::fire()`.
-3. `CatchUnwind`: calls `r_stop()` (diverges).
+3. `CatchUnwind`: raises R error via `Rf_error` (diverges).
 4. `RUnwind`: delegates to `with_r_unwind_protect_sourced()`.
 
 ## guarded_ffi_call_with_fallback
@@ -103,7 +103,7 @@ pub fn guarded_ffi_call_with_fallback<F, R>(f: F, fallback: R, source: PanicSour
 ```
 
 Used by connection trampolines where the C caller expects a return value (e.g.,
-bytes-read count). Calling `r_stop` is not an option because the caller would
+bytes-read count). Calling `Rf_error` is not an option because the caller would
 not handle the longjmp correctly.
 
 ```rust
@@ -231,8 +231,8 @@ All four panic-to-R-error sites call `panic_telemetry::fire()`:
 
 | Site | File | What happens after `fire()` |
 |------|------|-----------------------------|
-| Worker thread (opt-in) | `worker.rs` | `r_stop()` on main thread (requires `worker-thread` feature) |
-| ALTREP bridge | `ffi_guard.rs` (via `guarded_ffi_call`) | `r_stop()` or `R_UnwindProtect` |
+| Worker thread (opt-in) | `worker.rs` | `Rf_error` on main thread (requires `worker-thread` feature) |
+| ALTREP bridge | `ffi_guard.rs` (via `guarded_ffi_call`) | `Rf_error` or `R_UnwindProtect` |
 | Unwind protect | `unwind_protect.rs` | `R_ContinueUnwind` |
 | Connection | `ffi_guard.rs` (via `guarded_ffi_call_with_fallback`) | Returns fallback value |
 

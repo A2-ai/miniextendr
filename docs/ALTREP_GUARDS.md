@@ -9,14 +9,14 @@ through C frames (undefined behavior). Guard modes wrap callbacks in protection:
 
 | Mode | Attribute | Catches | Overhead | Default |
 |------|-----------|---------|----------|---------|
-| **RustUnwind** | `#[altrep(rust_unwind)]` or omitted | Rust panics | ~1-2ns | Yes |
-| **RUnwind** | `#[altrep(r_unwind)]` | Rust panics + R longjmps | Minimal | No |
+| **RUnwind** | `#[altrep(r_unwind)]` or omitted | Rust panics + R longjmps | Minimal | Yes |
+| **RustUnwind** | `#[altrep(rust_unwind)]` | Rust panics only | ~1-2ns | No |
 | **Unsafe** | `#[altrep(unsafe)]` | Nothing | Zero | No |
 
 ## Syntax
 
 ```rust
-// Default: RustUnwind (catches Rust panics)
+// Default: RUnwind (catches Rust panics + R longjmps)
 #[derive(AltrepInteger)]
 #[altrep(len = "length")]
 pub struct MyInts {
@@ -43,9 +43,15 @@ pub struct DynamicStrings {
 
 ## When to Use Each Mode
 
-### RustUnwind (default) — Pure Rust Callbacks
+### RUnwind (default) — Safe for All Callbacks
+
+The default. Catches both Rust panics and R longjmps. Safe for callbacks that
+call R API functions (e.g., `Rf_mkCharLenCE`, `Rf_allocVector`).
+
+### RustUnwind — Pure Rust Callbacks Only
 
 Use when callbacks only access Rust data and don't call R API functions.
+Slightly lower overhead than RUnwind but **unsafe if callbacks call R APIs**.
 
 ```rust
 #[derive(AltrepInteger)]
@@ -64,12 +70,12 @@ impl AltIntegerData for Sequence {
 
 - Wraps in `catch_unwind`
 - On panic: extracts message, fires telemetry, raises R error via `Rf_error()`
-- Safe for all pure-Rust code
-- Recommended default
+- Safe for pure-Rust code only
+- **Unsafe if callbacks call R APIs** — R longjmps bypass `catch_unwind`
 
-### RUnwind — Callbacks That Call R APIs
+### RUnwind Example — Callbacks That Call R APIs
 
-Use when callbacks invoke R functions that might error (longjmp):
+The default. Use for all callbacks, especially those that invoke R functions:
 
 ```rust
 #[derive(AltrepString)]
