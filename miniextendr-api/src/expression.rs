@@ -364,26 +364,33 @@ unsafe fn get_r_error_message() -> String {
         let mut err: std::os::raw::c_int = 0;
         let msg_sexp = R_tryEvalSilent(call, R_BaseEnv, &mut err);
 
-        Rf_unprotect(1); // call
-
         if err != 0 || msg_sexp.is_null() {
+            Rf_unprotect(1); // call
             return "R error occurred (could not retrieve message)".to_string();
         }
 
+        Rf_protect(msg_sexp);
+
         // geterrmessage() returns character(1)
-        if ffi::Rf_xlength(msg_sexp) > 0 {
+        let result = if ffi::Rf_xlength(msg_sexp) > 0 {
             let charsxp = ffi::STRING_ELT(msg_sexp, 0);
             if !charsxp.is_null() {
                 let ptr = ffi::R_CHAR(charsxp);
                 if !ptr.is_null() {
                     let msg = CStr::from_ptr(ptr).to_string_lossy().into_owned();
-                    // R error messages often have a trailing newline
-                    return msg.trim_end().to_string();
+                    msg.trim_end().to_string()
+                } else {
+                    "R error occurred".to_string()
                 }
+            } else {
+                "R error occurred".to_string()
             }
-        }
+        } else {
+            "R error occurred".to_string()
+        };
 
-        "R error occurred".to_string()
+        Rf_unprotect(2); // call + msg_sexp
+        result
     }
 }
 // endregion
