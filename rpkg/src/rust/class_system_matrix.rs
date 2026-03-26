@@ -64,7 +64,7 @@ pub struct CounterTraitS3 {
     value: i32,
 }
 
-#[miniextendr]
+#[miniextendr(s3)]
 impl CounterTraitS3 {
     fn new(v: i32) -> Self {
         Self { value: v }
@@ -97,7 +97,7 @@ pub struct CounterTraitS4 {
     value: i32,
 }
 
-#[miniextendr]
+#[miniextendr(s4)]
 impl CounterTraitS4 {
     fn new(v: i32) -> Self {
         Self { value: v }
@@ -132,7 +132,7 @@ pub struct CounterTraitS7 {
     value: i32,
 }
 
-#[miniextendr]
+#[miniextendr(s7)]
 impl CounterTraitS7 {
     fn new(v: i32) -> Self {
         Self { value: v }
@@ -163,7 +163,7 @@ pub struct CounterTraitR6 {
     value: i32,
 }
 
-#[miniextendr]
+#[miniextendr(r6)]
 impl CounterTraitR6 {
     fn new(v: i32) -> Self {
         Self { value: v }
