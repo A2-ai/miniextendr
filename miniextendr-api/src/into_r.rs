@@ -188,6 +188,43 @@ macro_rules! impl_scalar_into_r {
 impl_scalar_into_r!(i32, Rf_ScalarInteger, Rf_ScalarInteger_unchecked);
 impl_scalar_into_r!(f64, Rf_ScalarReal, Rf_ScalarReal_unchecked);
 impl_scalar_into_r!(u8, Rf_ScalarRaw, Rf_ScalarRaw_unchecked);
+impl_scalar_into_r!(crate::ffi::Rcomplex, Rf_ScalarComplex, Rf_ScalarComplex_unchecked);
+
+impl IntoR for Option<crate::ffi::Rcomplex> {
+    type Error = std::convert::Infallible;
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe {
+                crate::ffi::Rf_ScalarComplex(crate::ffi::Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                })
+            },
+        }
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe {
+                crate::ffi::Rf_ScalarComplex_unchecked(crate::ffi::Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                })
+            },
+        }
+    }
+}
 
 /// Macro for infallible widening IntoR via Coerce.
 macro_rules! impl_into_r_via_coerce {
