@@ -314,7 +314,7 @@ impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
                 }
             }
             Err(e) => {
-                crate::r_error!("AsSerializeRow: serde serialization failed: {e}");
+                panic!("AsSerializeRow: serde serialization failed: {e}");
             }
         }
     }
@@ -496,7 +496,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         let first_names_sexp = lists[0].names();
         if first_names_sexp.is_none() {
             unsafe { crate::ffi::Rf_unprotect(n_protect) };
-            crate::r_error!("cannot create data frame from unnamed list elements");
+            panic!("cannot create data frame from unnamed list elements");
         }
 
         // Extract column names as Vec<String>
