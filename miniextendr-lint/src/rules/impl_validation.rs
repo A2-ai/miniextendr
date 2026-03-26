@@ -14,31 +14,31 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
         for ati in &data.attributed_trait_impls {
             let trait_style = ati.class_system.as_deref().unwrap_or("env");
 
-            if trait_style == "env"
-                && let Some((inherent_style, _)) =
-                    data.inherent_impl_class_systems.get(&ati.type_name)
-                && !inherent_style.is_empty()
-                && inherent_style != "env"
+            if let Some((inherent_style, _)) =
+                data.inherent_impl_class_systems.get(&ati.type_name)
             {
-                diagnostics.push(Diagnostic::new(
-                    LintCode::MXL008,
-                    path,
-                    ati.line,
-                    format!(
-                        "#[miniextendr] impl {} for {} uses Env-style (default) which \
-                         requires Env-style inherent impl, but {} uses \
-                         #[miniextendr({})]. Env-style trait impls generate \
-                         Type$Trait$method() patterns that need the type to be an \
-                         environment. Either change the trait impl to use \
-                         #[miniextendr({})] or change the inherent impl to \
-                         #[miniextendr].",
-                        ati.trait_name,
-                        ati.type_name,
-                        ati.type_name,
-                        inherent_style,
-                        inherent_style
-                    ),
-                ));
+                let inherent = if inherent_style.is_empty() { "env" } else { inherent_style.as_str() };
+
+                if trait_style != inherent {
+                    diagnostics.push(Diagnostic::new(
+                        LintCode::MXL008,
+                        path,
+                        ati.line,
+                        format!(
+                            "#[miniextendr] impl {} for {} uses {}-style, but the inherent \
+                             impl uses {}-style. Trait and inherent impls must use the same \
+                             class system. Either change the trait impl to \
+                             #[miniextendr({})] or change the inherent impl to \
+                             #[miniextendr({})].",
+                            ati.trait_name,
+                            ati.type_name,
+                            trait_style,
+                            inherent,
+                            inherent,
+                            trait_style,
+                        ),
+                    ));
+                }
             }
         }
 
