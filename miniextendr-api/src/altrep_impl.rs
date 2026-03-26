@@ -137,7 +137,7 @@ macro_rules! impl_altinteger_from_data {
 #[doc(hidden)]
 macro_rules! __impl_altrep_base {
     ($ty:ty) => {
-        $crate::__impl_altrep_base!($ty, RustUnwind);
+        $crate::__impl_altrep_base!($ty, RUnwind);
     };
     ($ty:ty, $guard:ident) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -172,7 +172,7 @@ macro_rules! __impl_altrep_base {
 #[doc(hidden)]
 macro_rules! __impl_altrep_base_with_serialize {
     ($ty:ty) => {
-        $crate::__impl_altrep_base_with_serialize!($ty, RustUnwind);
+        $crate::__impl_altrep_base_with_serialize!($ty, RUnwind);
     };
     ($ty:ty, $guard:ident) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -853,18 +853,15 @@ macro_rules! __impl_altraw_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altstring_from_data {
-    // String ALTREP callbacks call R APIs (Rf_mkCharLenCE in elt, Rf_allocVector in dataptr),
-    // so they MUST use RUnwind to catch both Rust panics and R longjmps.
     ($ty:ty) => {
-        $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, @guard RUnwind);
+        $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string);
     };
     ($ty:ty, dataptr) => {
         $crate::__impl_alt_from_data!(
             $ty,
             __impl_altstring_methods,
             impl_inferbase_string,
-            string_dataptr,
-            @guard RUnwind
+            string_dataptr
         );
     };
     ($ty:ty, serialize) => {
@@ -872,8 +869,7 @@ macro_rules! impl_altstring_from_data {
             $ty,
             __impl_altstring_methods,
             impl_inferbase_string,
-            serialize,
-            @guard RUnwind
+            serialize
         );
     };
     ($ty:ty, dataptr, serialize) => {
@@ -882,8 +878,7 @@ macro_rules! impl_altstring_from_data {
             __impl_altstring_methods,
             impl_inferbase_string,
             string_dataptr,
-            serialize,
-            @guard RUnwind
+            serialize
         );
     };
 }
@@ -921,7 +916,7 @@ macro_rules! __impl_altstring_methods {
 #[macro_export]
 macro_rules! impl_altlist_from_data {
     ($ty:ty) => {
-        $crate::impl_altlist_from_data!($ty, RustUnwind);
+        $crate::impl_altlist_from_data!($ty, RUnwind);
     };
     ($ty:ty, $guard:ident) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
