@@ -2252,12 +2252,12 @@ impl IntoR for Vec<bool> {
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         let n = self.len();
-        logical_iter_to_lglsxp(n, self.into_iter().map(|v| i32::from(v)))
+        logical_iter_to_lglsxp(n, self.into_iter().map(i32::from))
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         let n = self.len();
-        unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(|v| i32::from(v))) }
+        unsafe { logical_iter_to_lglsxp_unchecked(n, self.into_iter().map(i32::from)) }
     }
 }
 
@@ -2737,6 +2737,7 @@ where
 /// - `Vec<i32>`, `Vec<f64>`, `Vec<bool>`, `Vec<u8>`, `Vec<String>`
 /// - `Box<[i32]>`, `Box<[f64]>`, `Box<[bool]>`, `Box<[u8]>`, `Box<[String]>`
 /// - `Range<i32>`, `Range<i64>`, `Range<f64>`
+///
 /// Opt-in lazy materialization via ALTREP.
 ///
 /// Wrapping a return type in `Lazy<T>` causes it to be returned as an
