@@ -81,33 +81,30 @@ the backend. The caller decides which backend by passing a scope, an owned guard
 `ProtectScope` for the replace-in-loop pattern. Pool slots are naturally replaceable
 (just `SET_VECTOR_ELT` to overwrite), so the pool doesn't need a separate reprotect API.
 
-## `ProtectPool`: VECSXP + slotmap
+## `ProtectPool`: VECSXP + hand-rolled generational keys
 
-Add `slotmap` as optional dependency (feature-gated? or always available — it's small,
-no-std compatible, zero deps).
+**IMPLEMENTED** in `miniextendr-api/src/protect_pool.rs`. No external dependencies
+(slotmap was evaluated but hand-rolled keys matched VecPool speed at 10.1 ns/op
+while slotmap was 11.4 ns/op due to redundant second free list).
 
 ```rust
-use slotmap::{SlotMap, new_key_type};
-
-new_key_type! { struct ProtectKey; }
-
-struct ProtectPool {
-    pool: SEXP,                     // VECSXP, anchored by one R_PreserveObject
-    slots: SlotMap<ProtectKey, ()>,
+pub struct ProtectKey {
+    slot: u32,
+    generation: u32,
 }
 
-struct PoolHandle {
-    key: ProtectKey,
-    pool: *const ProtectPool,       // or Rc<RefCell<ProtectPool>> for safety
-}
-
-impl Drop for PoolHandle {
-    fn drop(&mut self) { self.pool.release(self.key); }
+pub struct ProtectPool {
+    backing: SEXP,           // VECSXP, anchored by one R_PreserveObject
+    generations: Vec<u32>,   // generation counter per slot
+    free_slots: Vec<usize>,  // recycled slot indices
+    next_slot: usize,
+    len: usize,
 }
 ```
 
 - Insert: O(1), zero R allocation (just SET_VECTOR_ELT)
-- Release: O(1), generational-key safe
+- Release: O(1), generational-key safe (stale keys are no-ops)
+- Replace: O(1), in-place overwrite (pool equivalent of R_Reprotect)
 - Growth: allocate larger VECSXP, copy, swap — amortized O(1)
 
 ## FFI wrappers that need protected variants

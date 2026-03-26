@@ -246,7 +246,7 @@ pub trait RBuf {
 ///
 /// impl RBufMut for WritableBuffer {
 ///     fn remaining_mut(&self) -> i32 {
-///         self.data.borrow().remaining_mut() as i32
+///         i32::try_from(self.data.borrow().remaining_mut()).unwrap_or(i32::MAX)
 ///     }
 ///
 ///     fn put_u8(&self, val: i32) {
