@@ -140,13 +140,38 @@ Rust-side coercion is ~25% faster than R's `Rf_coerceVector` for vectors.
 
 ## GC Protection
 
-| Pattern | Size | Median | Notes |
-|---------|------|--------|-------|
-| OwnedProtect | 1 | 15 ns | RAII protect/unprotect |
-| ProtectScope | 1 | 14 ns | scoped protection |
-| R_PreserveObject cycle | 1 | 58 ns | insert + release |
-| Preserve scale | 100K | 4.4 ms | O(n) lookup in preserve list |
-| Reprotect slot | 1K | 12 us | SET_VECTOR_ELT pattern |
+See `analysis/gc-protection-strategies.md` for full analysis and
+`analysis/gc-protection-benchmarks-results.md` for detailed results.
+All numbers below measure pure protection cost (SEXP allocation excluded).
+
+### Per-operation cost
+
+| Mechanism | Single op | Notes |
+|-----------|-----------|-------|
+| Protect stack | **7.4 ns** | array write + integer subtract |
+| Vec pool (VECSXP) | **9.6 ns** | SET_VECTOR_ELT + free list |
+| Slotmap pool | 11.4 ns | + generational safety check |
+| Precious list | 13.1 ns | CONS alloc + prepend |
+| DLL preserve | 28.9 ns | CONS alloc + doubly-linked splice |
+
+### Batch throughput (protect N, release all)
+
+| Mechanism | 1k | 10k | 50k |
+|-----------|----|-----|-----|
+| Protect stack | **3.8 µs** | **38 µs** | — (50k limit) |
+| Vec pool | 9.6 µs | 97 µs | 486 µs |
+| Slotmap pool | 11.7 µs | 116 µs | 575 µs |
+| DLL preserve | 27.2 µs | 256 µs | 1.31 ms |
+| Precious list | 568 µs | — | — |
+
+### Replace-in-loop (N replacements)
+
+| Mechanism | 10k | Per-op |
+|-----------|-----|--------|
+| ReprotectSlot | **37.6 µs** | 3.8 ns |
+| Pool overwrite | 45.2 µs | 4.5 ns |
+| DLL reinsert | 271 µs | 27.1 ns |
+| Precious churn | **15.1 s** | 1.5 ms (O(n²)) |
 
 ## Typed List Validation
 

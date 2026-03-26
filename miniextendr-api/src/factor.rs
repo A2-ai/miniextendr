@@ -44,7 +44,7 @@ static FACTOR_CLASS: OnceLock<SEXP> = OnceLock::new();
 fn factor_class_sexp() -> SEXP {
     *FACTOR_CLASS.get_or_init(|| unsafe {
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        crate::preserve::insert(class_sexp);
+        crate::ffi::R_PreserveObject(class_sexp);
         // Use symbol PRINTNAME for permanent CHARSXP
         let sym = Rf_install(c"factor".as_ptr());
         SET_STRING_ELT(class_sexp, 0, PRINTNAME(sym));
@@ -90,7 +90,7 @@ pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
 pub fn build_levels_sexp_cached(levels: &[&str]) -> SEXP {
     unsafe {
         let sexp = build_levels_sexp(levels);
-        crate::preserve::insert(sexp);
+        crate::ffi::R_PreserveObject(sexp);
         sexp
     }
 }

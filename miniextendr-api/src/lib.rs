@@ -561,12 +561,17 @@ pub use externalptr::{
 // TypedExternal implementations for std types
 pub mod externalptr_std;
 
-// R object preservation and allocator
+// Deprecated: DLL preserve list. Use ProtectPool or R_PreserveObject instead.
+// Kept for benchmark comparisons.
 pub mod preserve;
 
 // GC protection toolkit (PROTECT stack RAII wrappers)
 pub mod gc_protect;
-pub use gc_protect::{OwnedProtect, ProtectIndex, ProtectScope, ReprotectSlot, Root};
+pub use gc_protect::{OwnedProtect, ProtectIndex, ProtectScope, Protector, ReprotectSlot, Root};
+
+// VECSXP pool with generational keys (slotmap-backed)
+pub mod protect_pool;
+pub use protect_pool::{ProtectKey, ProtectPool};
 
 // Reference-counted GC protection (BTreeMap + VECSXP backing)
 pub mod refcount_protect;
