@@ -35,6 +35,10 @@ struct AltrepFamilyConfig<'a> {
     /// Name of the `impl_inferbase_*!` macro that provides `InferBase` for this family
     /// (e.g., `"impl_inferbase_integer"`).
     inferbase_macro: &'a str,
+    /// Default guard mode for this family when no explicit guard is specified.
+    /// String family uses `RUnwind` because elt/dataptr call R APIs (Rf_mkCharLenCE).
+    /// All other families default to `RustUnwind`.
+    default_guard: &'a str,
 }
 
 /// Parsed `#[altrep(...)]` attributes controlling ALTREP derive code generation.
@@ -262,6 +266,7 @@ impl AltrepAttrs {
             subset,
             methods_macro,
             inferbase_macro,
+            default_guard,
         } = *family;
         let altvec_dataptr_macro = dataptr_macro;
         let altvec_string_dataptr = string_dataptr;
@@ -302,7 +307,7 @@ impl AltrepAttrs {
             .guard
             .as_ref()
             .cloned()
-            .unwrap_or_else(|| syn::Ident::new("RustUnwind", proc_macro2::Span::call_site()));
+            .unwrap_or_else(|| syn::Ident::new(default_guard, proc_macro2::Span::call_site()));
 
         // 1. Altrep base (with or without serialize)
         let base_impl = if has_serialize {
@@ -453,6 +458,7 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
             subset: true,
             methods_macro: "__impl_altinteger_methods",
             inferbase_macro: "impl_inferbase_integer",
+            default_guard: "RustUnwind",
         },
     )
 }
@@ -483,6 +489,7 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             subset: true,
             methods_macro: "__impl_altreal_methods",
             inferbase_macro: "impl_inferbase_real",
+            default_guard: "RustUnwind",
         },
     )
 }
@@ -513,6 +520,7 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
             subset: true,
             methods_macro: "__impl_altlogical_methods",
             inferbase_macro: "impl_inferbase_logical",
+            default_guard: "RustUnwind",
         },
     )
 }
@@ -543,6 +551,7 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             subset: true,
             methods_macro: "__impl_altraw_methods",
             inferbase_macro: "impl_inferbase_raw",
+            default_guard: "RustUnwind",
         },
     )
 }
@@ -575,6 +584,9 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
             subset: true,
             methods_macro: "__impl_altstring_methods",
             inferbase_macro: "impl_inferbase_string",
+            // String elt calls Rf_mkCharLenCE; dataptr calls Rf_allocVector + SET_STRING_ELT.
+            // These R API calls can longjmp — must use RUnwind.
+            default_guard: "RUnwind",
         },
     )
 }
@@ -612,6 +624,7 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
             subset: true,
             methods_macro: "__impl_altcomplex_methods",
             inferbase_macro: "impl_inferbase_complex",
+            default_guard: "RustUnwind",
         },
     )
 }
