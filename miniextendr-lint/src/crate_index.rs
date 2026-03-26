@@ -110,7 +110,8 @@ pub struct FileData {
     pub mod_decl_cfgs: HashMap<String, Vec<String>>,
 
     // Export control
-    pub export_control: HashMap<String, (bool, bool)>,
+    /// (has_internal, has_noexport, line)
+    pub export_control: HashMap<String, (bool, bool, usize)>,
 
     // Doc-comment roxygen tags per function/impl name
     /// Known roxygen tags: "@noRd", "@export", "@keywords internal"
@@ -386,7 +387,7 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                     let attrs = parse_miniextendr_impl_attrs(&item_fn.attrs);
                     if attrs.internal || attrs.noexport {
                         data.export_control
-                            .insert(name.clone(), (attrs.internal, attrs.noexport));
+                            .insert(name.clone(), (attrs.internal, attrs.noexport, line));
                     }
 
                     // Track doc-comment roxygen tags
@@ -475,7 +476,7 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                 if impl_attrs.internal || impl_attrs.noexport {
                                     data.export_control.insert(
                                         type_name,
-                                        (impl_attrs.internal, impl_attrs.noexport),
+                                        (impl_attrs.internal, impl_attrs.noexport, line),
                                     );
                                 }
                             }

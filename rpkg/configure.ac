@@ -1,4 +1,4 @@
-AC_INIT([miniextendr], [1.0])
+AC_INIT([miniextendr], [0.1.0])
 
 dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
 dnl This avoids the CRAN NOTE about non-standard top-level files

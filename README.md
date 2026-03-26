@@ -179,7 +179,7 @@ sync) are listed in `justfile` and `tests/cross-package/justfile`.
 
 ### Type system and conversions
 - `COERCE.md` – Coercion rules and conversion behavior.
-- `COERCE_AND_INTO_R_REVIEW.md` – Review notes on coercion and `IntoR` behavior.
+- `COERCE.md` also covers `IntoR` behavior and review notes.
 - `TRAIT_AS_R.md` – Trait ABI and cross-package dispatch.
 - `ADAPTER_TRAITS.md` – Exporting external traits to R via adapter pattern.
 - `ADAPTER_COOKBOOK.md` – Practical recipes: iterators, serde, IO, comparison, hashing.
@@ -190,10 +190,9 @@ sync) are listed in `justfile` and `tests/cross-package/justfile`.
 - `ENGINE.md` – Embedding engine notes.
 
 ### Reference
-- `docs.md` – Architecture overview and command reference.
 - `NONAPI.md` – Non-API R symbols and policy.
 - `TRACK_CALLER.md` – `#[track_caller]` usage and error reporting details.
-- `altrep.md` – ALTREP notes and design context.
+- `ALTREP.md` – ALTREP notes and design context.
 - `MAINTAINER.md` – Maintenance and release checklist.
 
 ## Threading model (two modes)
