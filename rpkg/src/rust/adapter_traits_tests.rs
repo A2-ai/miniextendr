@@ -445,7 +445,7 @@ impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
 }
 
 /// @noRd
-#[miniextendr]
+#[miniextendr(blanket)]
 impl IterableVecIter {
     fn collect_all(&self) -> Vec<i32> {
         let mut result = Vec::new();

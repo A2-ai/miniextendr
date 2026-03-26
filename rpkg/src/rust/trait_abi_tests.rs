@@ -183,7 +183,7 @@ impl Counter for S3TraitCounter {
     }
 }
 
-#[miniextendr]
+#[miniextendr(s3)]
 impl S3TraitCounter {
     /// Create a new S3 trait counter.
     fn new_s3trait(initial: i32) -> Self {
@@ -235,7 +235,7 @@ impl Counter for S4TraitCounter {
 }
 
 /// @noRd
-#[miniextendr]
+#[miniextendr(s4)]
 impl S4TraitCounter {
     /// Create a new S4 trait counter.
     fn new_s4trait(initial: i32) -> Self {
@@ -287,7 +287,7 @@ impl Counter for S7TraitCounter {
 }
 
 /// @noRd
-#[miniextendr]
+#[miniextendr(s7)]
 impl S7TraitCounter {
     /// Create a new S7 trait counter.
     fn new_s7trait(initial: i32) -> Self {
@@ -339,7 +339,7 @@ impl Counter for R6TraitCounter {
 }
 
 /// @noRd
-#[miniextendr]
+#[miniextendr(r6)]
 impl R6TraitCounter {
     /// Create a new R6 trait counter.
     fn new_r6trait(initial: i32) -> Self {
