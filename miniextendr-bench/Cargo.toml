@@ -11,6 +11,8 @@ publish = false
 [dependencies]
 miniextendr-api = { workspace = true }
 miniextendr-engine = { workspace = true }
+slotmap = "1"
+indexmap = "2"
 
 [features]
 rayon = ["miniextendr-api/rayon"]
@@ -143,4 +145,8 @@ harness = false
 
 [[bench]]
 name = "refcount_protect"
+harness = false
+
+[[bench]]
+name = "gc_protection_compare"
 harness = false

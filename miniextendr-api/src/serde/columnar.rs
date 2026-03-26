@@ -544,7 +544,7 @@ impl ColumnBuffer {
                 value.serialize(&mut probe)?;
                 v.push(match probe.value {
                     ExtractedValue::Real(f) => f,
-                    ExtractedValue::Int(i) => i as f64,
+                    ExtractedValue::Int(i) => f64::from(i),
                     ExtractedValue::None => NA_REAL,
                     _ => NA_REAL,
                 });
@@ -602,11 +602,11 @@ impl ser::Serializer for &mut ValueExtractor {
         Ok(())
     }
     fn serialize_i8(self, v: i8) -> Result<(), RSerdeError> {
-        self.value = ExtractedValue::Int(v as i32);
+        self.value = ExtractedValue::Int(i32::from(v));
         Ok(())
     }
     fn serialize_i16(self, v: i16) -> Result<(), RSerdeError> {
-        self.value = ExtractedValue::Int(v as i32);
+        self.value = ExtractedValue::Int(i32::from(v));
         Ok(())
     }
     fn serialize_i32(self, v: i32) -> Result<(), RSerdeError> {
@@ -614,31 +614,33 @@ impl ser::Serializer for &mut ValueExtractor {
         Ok(())
     }
     fn serialize_i64(self, v: i64) -> Result<(), RSerdeError> {
+        // i64 may lose precision > 2^53, but R has no native i64 type
         self.value = ExtractedValue::Real(v as f64);
         Ok(())
     }
     fn serialize_u8(self, v: u8) -> Result<(), RSerdeError> {
-        self.value = ExtractedValue::Int(v as i32);
+        self.value = ExtractedValue::Int(i32::from(v));
         Ok(())
     }
     fn serialize_u16(self, v: u16) -> Result<(), RSerdeError> {
-        self.value = ExtractedValue::Int(v as i32);
+        self.value = ExtractedValue::Int(i32::from(v));
         Ok(())
     }
     fn serialize_u32(self, v: u32) -> Result<(), RSerdeError> {
-        if v <= i32::MAX as u32 {
-            self.value = ExtractedValue::Int(v as i32);
+        if let Ok(i) = i32::try_from(v) {
+            self.value = ExtractedValue::Int(i);
         } else {
-            self.value = ExtractedValue::Real(v as f64);
+            self.value = ExtractedValue::Real(f64::from(v));
         }
         Ok(())
     }
     fn serialize_u64(self, v: u64) -> Result<(), RSerdeError> {
+        // u64 may lose precision > 2^53, but R has no native u64 type
         self.value = ExtractedValue::Real(v as f64);
         Ok(())
     }
     fn serialize_f32(self, v: f32) -> Result<(), RSerdeError> {
-        self.value = ExtractedValue::Real(v as f64);
+        self.value = ExtractedValue::Real(f64::from(v));
         Ok(())
     }
     fn serialize_f64(self, v: f64) -> Result<(), RSerdeError> {
@@ -955,27 +957,30 @@ fn empty_dataframe() -> SEXP {
 /// Must be called from the R main thread. All column buffers must have
 /// exactly `nrow` elements.
 unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nrow: usize) -> SEXP {
-    let ncol = fields.len();
+    let ncol: isize = fields.len().try_into().expect("ncol exceeds isize::MAX");
 
     unsafe {
-        let list = Rf_allocVector(SEXPTYPE::VECSXP, ncol as isize);
+        let list = Rf_allocVector(SEXPTYPE::VECSXP, ncol);
         Rf_protect(list);
 
         // Build each column and set into list
         for (i, col) in columns.iter().enumerate() {
+            let idx: isize = i.try_into().expect("column index exceeds isize::MAX");
             let col_sexp = column_to_sexp(col, nrow);
             Rf_protect(col_sexp);
-            SET_VECTOR_ELT(list, i as isize, col_sexp);
+            SET_VECTOR_ELT(list, idx, col_sexp);
             Rf_unprotect(1); // col_sexp is now held by list
         }
 
         // Set names
-        let names_sexp = Rf_allocVector(SEXPTYPE::STRSXP, ncol as isize);
+        let names_sexp = Rf_allocVector(SEXPTYPE::STRSXP, ncol);
         Rf_protect(names_sexp);
         for (i, field) in fields.iter().enumerate() {
+            let idx: isize = i.try_into().expect("field index exceeds isize::MAX");
+            let name_len: i32 = field.name.len().try_into().expect("field name exceeds i32::MAX bytes");
             let charsxp =
-                Rf_mkCharLenCE(field.name.as_ptr().cast(), field.name.len() as i32, CE_UTF8);
-            SET_STRING_ELT(names_sexp, i as isize, charsxp);
+                Rf_mkCharLenCE(field.name.as_ptr().cast(), name_len, CE_UTF8);
+            SET_STRING_ELT(names_sexp, idx, charsxp);
         }
         Rf_setAttrib(list, R_NamesSymbol, names_sexp);
 
@@ -1026,28 +1031,33 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                 sexp
             }
             ColumnBuffer::Character(v) => {
-                let sexp = Rf_allocVector(SEXPTYPE::STRSXP, nrow as isize);
+                let nrow_r: isize = nrow.try_into().expect("nrow exceeds isize::MAX");
+                let sexp = Rf_allocVector(SEXPTYPE::STRSXP, nrow_r);
                 for (i, val) in v.iter().enumerate() {
+                    let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     match val {
                         Some(s) => {
+                            let s_len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
                             let charsxp =
-                                Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, CE_UTF8);
-                            SET_STRING_ELT(sexp, i as isize, charsxp);
+                                Rf_mkCharLenCE(s.as_ptr().cast(), s_len, CE_UTF8);
+                            SET_STRING_ELT(sexp, idx, charsxp);
                         }
                         None => {
-                            SET_STRING_ELT(sexp, i as isize, R_NaString);
+                            SET_STRING_ELT(sexp, idx, R_NaString);
                         }
                     }
                 }
                 sexp
             }
             ColumnBuffer::Generic(v) => {
-                let sexp = Rf_allocVector(SEXPTYPE::VECSXP, nrow as isize);
+                let nrow_r: isize = nrow.try_into().expect("nrow exceeds isize::MAX");
+                let sexp = Rf_allocVector(SEXPTYPE::VECSXP, nrow_r);
                 for (i, val) in v.iter().enumerate() {
+                    let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(elem) = val {
-                        SET_VECTOR_ELT(sexp, i as isize, *elem);
+                        SET_VECTOR_ELT(sexp, idx, *elem);
                     } else {
-                        SET_VECTOR_ELT(sexp, i as isize, R_NilValue);
+                        SET_VECTOR_ELT(sexp, idx, R_NilValue);
                     }
                 }
                 sexp

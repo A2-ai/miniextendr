@@ -957,7 +957,7 @@ where
 // enabling nalgebra matrices/vectors to operate directly on R-allocated memory.
 // This eliminates copies on both input (R → Rust) and output (Rust → R).
 //
-// GC protection uses the preserve list (arbitrary-order release, survives
+// GC protection uses R_PreserveObject/R_ReleaseObject (arbitrary-order release, survives
 // across .Call boundaries). Types are !Send + !Sync.
 
 use crate::ffi;
@@ -973,7 +973,7 @@ use std::marker::PhantomData;
 ///
 /// This type wraps an R SEXP (REALSXP, INTSXP, or RAWSXP) and implements
 /// nalgebra's storage traits. The underlying data is R-allocated memory,
-/// protected from garbage collection via the preserve list.
+/// protected from garbage collection via `R_PreserveObject`.
 ///
 /// # Zero-Copy Guarantee
 ///
@@ -993,7 +993,6 @@ use std::marker::PhantomData;
 /// trigger materialization. This is unavoidable for contiguous memory access.
 pub struct RVecStorage<T: RNativeType, R: Dim = Dyn, C: Dim = Dyn> {
     sexp: SEXP,
-    preserve_cell: SEXP,
     nrows: R,
     ncols: C,
     _marker: PhantomData<*const T>, // !Send + !Sync
@@ -1045,10 +1044,9 @@ impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
             .into());
         }
         let len = sexp.len();
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
-            preserve_cell,
             nrows: Dyn(len),
             ncols: U1,
             _marker: PhantomData,
@@ -1062,13 +1060,12 @@ impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
     /// Must be called on R's main thread.
     pub unsafe fn new_vector(len: usize, init: impl FnOnce(&mut [T])) -> Self {
         let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len as ffi::R_xlen_t) };
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
             sexp,
-            preserve_cell,
             nrows: Dyn(len),
             ncols: U1,
             _marker: PhantomData,
@@ -1103,10 +1100,9 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
             }
             .into());
         }
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
-            preserve_cell,
             nrows: Dyn(nrows),
             ncols: Dyn(ncols),
             _marker: PhantomData,
@@ -1125,13 +1121,12 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
     ) -> Self {
         let total = nrows * ncols;
         let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, total as ffi::R_xlen_t) };
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, total) };
         init(slice);
         Self {
             sexp,
-            preserve_cell,
             nrows: Dyn(nrows),
             ncols: Dyn(ncols),
             _marker: PhantomData,
@@ -1146,14 +1141,23 @@ impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
         self.sexp
     }
 
-    /// Consume the storage, release GC protection, and return the raw SEXP.
+    /// Consume, transfer GC protection to the protect stack, and return the SEXP.
+    pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
+        let sexp = unsafe { scope.protect_raw(self.sexp) };
+        // Drop runs → R_ReleaseObject, but sexp is now also on the protect stack.
+        sexp
+    }
+
+    /// Consume, release GC protection, and return the raw SEXP.
     ///
-    /// The caller is responsible for ensuring the SEXP remains protected
-    /// (e.g., by returning it from a `.Call` function).
-    pub fn into_sexp(self) -> SEXP {
+    /// # Safety
+    ///
+    /// The returned SEXP is **unprotected**. The caller must either return it
+    /// directly to R (`.Call` return) or protect it immediately.
+    pub unsafe fn into_sexp_unprotected(self) -> SEXP {
         let sexp = self.sexp;
-        unsafe { crate::preserve::release(self.preserve_cell) };
-        std::mem::forget(self); // Don't run Drop (we already released)
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
+        std::mem::forget(self);
         sexp
     }
 
@@ -1166,7 +1170,7 @@ impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
 
 impl<T: RNativeType, R: Dim, C: Dim> Drop for RVecStorage<T, R, C> {
     fn drop(&mut self) {
-        unsafe { crate::preserve::release(self.preserve_cell) }
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
     }
 }
 
@@ -1255,7 +1259,7 @@ unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, Dyn>
 
     #[inline]
     fn forget_elements(self) {
-        // R owns the memory — just release our preserve cell via Drop
+        // R owns the memory — just R_ReleaseObject via Drop
     }
 }
 
@@ -1282,7 +1286,7 @@ unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, U1>
 
     #[inline]
     fn forget_elements(self) {
-        // R owns the memory — just release our preserve cell via Drop
+        // R owns the memory — just R_ReleaseObject via Drop
     }
 }
 
@@ -1323,7 +1327,8 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDVector<T> {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.data.into_sexp())
+        // SAFETY: IntoR is called from generated .Call wrappers. R protects on receipt.
+        Ok(unsafe { self.data.into_sexp_unprotected() })
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
@@ -1349,7 +1354,8 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
                 ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);
             }
         }
-        Ok(self.data.into_sexp())
+        // SAFETY: IntoR is called from generated .Call wrappers. R protects on receipt.
+        Ok(unsafe { self.data.into_sexp_unprotected() })
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {

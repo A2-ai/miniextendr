@@ -1145,42 +1145,42 @@ impl<T: TypedExternal> Deref for ExternalPtr<T> {
 
     #[inline]
     fn deref(&self) -> &T {
-        Self::as_ref(self).unwrap()
+        Self::as_ref(self).expect("ExternalPtr is null or cleared")
     }
 }
 
 impl<T: TypedExternal> DerefMut for ExternalPtr<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        Self::as_mut(self).unwrap()
+        Self::as_mut(self).expect("ExternalPtr is null or cleared")
     }
 }
 
 impl<T: TypedExternal> AsRef<T> for ExternalPtr<T> {
     #[inline]
     fn as_ref(&self) -> &T {
-        Self::as_ref(self).unwrap()
+        Self::as_ref(self).expect("ExternalPtr is null or cleared")
     }
 }
 
 impl<T: TypedExternal> AsMut<T> for ExternalPtr<T> {
     #[inline]
     fn as_mut(&mut self) -> &mut T {
-        Self::as_mut(self).unwrap()
+        Self::as_mut(self).expect("ExternalPtr is null or cleared")
     }
 }
 
 impl<T: TypedExternal> std::borrow::Borrow<T> for ExternalPtr<T> {
     #[inline]
     fn borrow(&self) -> &T {
-        Self::as_ref(self).unwrap()
+        Self::as_ref(self).expect("ExternalPtr is null or cleared")
     }
 }
 
 impl<T: TypedExternal> std::borrow::BorrowMut<T> for ExternalPtr<T> {
     #[inline]
     fn borrow_mut(&mut self) -> &mut T {
-        Self::as_mut(self).unwrap()
+        Self::as_mut(self).expect("ExternalPtr is null or cleared")
     }
 }
 

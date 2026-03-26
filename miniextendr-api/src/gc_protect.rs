@@ -165,6 +165,59 @@ pub type ProtectIndex = ::std::os::raw::c_int;
 /// Enforces `!Send + !Sync` (R API is not thread-safe).
 type NoSendSync = PhantomData<Rc<()>>;
 
+// region: Protector trait
+
+/// A scope-like GC protection backend.
+///
+/// Functions that allocate multiple intermediate SEXPs can take `&mut impl Protector`
+/// to be generic over the protection mechanism. All protected SEXPs stay protected
+/// until the protector itself is dropped — there is no individual release via this
+/// trait.
+///
+/// For individual release by key, use [`ProtectPool::insert`](crate::protect_pool::ProtectPool::insert)
+/// and [`ProtectPool::release`](crate::protect_pool::ProtectPool::release) directly.
+///
+/// # Safety
+///
+/// Implementations must ensure that the returned SEXP remains protected from GC
+/// for at least as long as the protector is alive. Callers must not use the
+/// returned SEXP after the protector is dropped.
+///
+/// All methods must be called from the R main thread.
+pub trait Protector {
+    /// Protect a SEXP from garbage collection.
+    ///
+    /// Returns the same SEXP (for convenience in chaining). The SEXP is now
+    /// protected and will remain so until the protector is dropped.
+    ///
+    /// The key (if any) is managed internally — use the pool's direct API
+    /// (`insert`/`release`) if you need individual release.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `sexp` must be a valid SEXP.
+    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP;
+}
+
+impl Protector for ProtectScope {
+    #[inline]
+    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP {
+        unsafe { self.protect_raw(sexp) }
+    }
+}
+
+impl Protector for crate::protect_pool::ProtectPool {
+    #[inline]
+    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP {
+        // Key is intentionally discarded — Protector is scope-like (all released
+        // on drop). For individual release, use pool.insert()/pool.release() directly.
+        unsafe { self.insert(sexp) };
+        sexp
+    }
+}
+
+// endregion
+
 // region: ProtectScope
 
 /// A scope that automatically balances `UNPROTECT(n)` on drop.

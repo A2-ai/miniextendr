@@ -401,7 +401,7 @@ mod worker_channel {
                     }
 
                     unsafe extern "C-unwind" fn trampoline(data: *mut std::ffi::c_void) -> SEXP {
-                        let data = unsafe { data.cast::<CallData>().as_mut().unwrap() };
+                        let data = unsafe { data.cast::<CallData>().as_mut().expect("CallData pointer from R_UnwindProtect") };
                         let work = data
                             .work
                             .take()
@@ -428,7 +428,7 @@ mod worker_channel {
                             // R is about to longjmp. We MUST send an error response to the worker
                             // before continuing the unwind—the worker is blocked on response_rx.recv()
                             // and would deadlock if we don't send something.
-                            let data = unsafe { data.cast::<CallData>().as_ref().unwrap() };
+                            let data = unsafe { data.cast::<CallData>().as_ref().expect("CallData pointer from R_UnwindProtect") };
                             let response_tx = unsafe { &*data.response_tx_ptr };
 
                             #[cfg(feature = "nonapi")]

@@ -2671,7 +2671,7 @@ impl RNdIndex for ArrayD<i32> {
 ///
 /// # GC Protection
 ///
-/// Uses the preserve list for GC protection — safe across `.Call` boundaries.
+/// Uses `R_PreserveObject` for GC protection — safe across `.Call` boundaries.
 ///
 /// # Thread Safety
 ///
@@ -2690,7 +2690,6 @@ impl RNdIndex for ArrayD<i32> {
 /// ```
 pub struct RndVec<T: RNativeType> {
     sexp: SEXP,
-    preserve_cell: SEXP,
     _marker: std::marker::PhantomData<*const T>,
 }
 
@@ -2709,7 +2708,6 @@ pub struct RndVec<T: RNativeType> {
 /// ```
 pub struct RndMat<T: RNativeType> {
     sexp: SEXP,
-    preserve_cell: SEXP,
     nrow: usize,
     ncol: usize,
     _marker: std::marker::PhantomData<*const T>,
@@ -2730,10 +2728,9 @@ impl<T: RNativeType> RndVec<T> {
             }
             .into());
         }
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
-            preserve_cell,
             _marker: std::marker::PhantomData,
         })
     }
@@ -2746,13 +2743,12 @@ impl<T: RNativeType> RndVec<T> {
     pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
         let sexp =
             unsafe { crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t) };
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
             sexp,
-            preserve_cell,
             _marker: std::marker::PhantomData,
         }
     }
@@ -2803,10 +2799,30 @@ impl<T: RNativeType> RndVec<T> {
         self.sexp
     }
 
+    /// Consume, transfer GC protection to the protect stack, and return the SEXP.
+    ///
+    /// The returned SEXP is protected on R's protect stack via the scope.
+    /// It remains protected until the scope is dropped.
+    pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
+        let sexp = unsafe { scope.protect_raw(self.sexp) };
+        // Drop runs → R_ReleaseObject, but sexp is now also on the protect stack.
+        sexp
+    }
+
     /// Consume, release GC protection, and return the raw SEXP.
-    pub fn into_sexp(self) -> SEXP {
+    ///
+    /// # Safety
+    ///
+    /// The returned SEXP is **unprotected**. The caller must either:
+    /// - Return it directly to R (R protects on receipt via `.Call`)
+    /// - Protect it immediately via `Rf_protect` or a `ProtectScope`
+    ///
+    /// Any R allocation between this call and protection could trigger GC
+    /// and collect the returned SEXP.
+    pub unsafe fn into_sexp_unprotected(self) -> SEXP {
         let sexp = self.sexp;
-        unsafe { crate::preserve::release(self.preserve_cell) };
+        // Skip Drop (which would also call R_ReleaseObject)
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
         std::mem::forget(self);
         sexp
     }
@@ -2814,7 +2830,7 @@ impl<T: RNativeType> RndVec<T> {
 
 impl<T: RNativeType> Drop for RndVec<T> {
     fn drop(&mut self) {
-        unsafe { crate::preserve::release(self.preserve_cell) }
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
     }
 }
 
@@ -2834,7 +2850,10 @@ impl<T: RNativeType> IntoR for RndVec<T> {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
+        // SAFETY: IntoR is called from generated .Call wrappers that return the
+        // SEXP directly to R. R protects the return value on receipt, so the
+        // unprotected window between R_ReleaseObject and .Call return is safe.
+        Ok(unsafe { self.into_sexp_unprotected() })
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
@@ -2858,10 +2877,9 @@ impl<T: RNativeType> RndMat<T> {
             .into());
         }
         let (nrow, ncol) = get_matrix_dims(sexp)?;
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         Ok(Self {
             sexp,
-            preserve_cell,
             nrow,
             ncol,
             _marker: std::marker::PhantomData,
@@ -2877,13 +2895,12 @@ impl<T: RNativeType> RndMat<T> {
         let sexp = unsafe {
             crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32)
         };
-        let preserve_cell = unsafe { crate::preserve::insert(sexp) };
+        unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, nrow * ncol) };
         init(slice);
         Self {
             sexp,
-            preserve_cell,
             nrow,
             ncol,
             _marker: std::marker::PhantomData,
@@ -2934,10 +2951,20 @@ impl<T: RNativeType> RndMat<T> {
         self.sexp
     }
 
+    /// Consume, transfer GC protection to the protect stack, and return the SEXP.
+    pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
+        let sexp = unsafe { scope.protect_raw(self.sexp) };
+        sexp
+    }
+
     /// Consume, release GC protection, and return the raw SEXP.
-    pub fn into_sexp(self) -> SEXP {
+    ///
+    /// # Safety
+    ///
+    /// The returned SEXP is **unprotected**. See [`RndVec::into_sexp_unprotected`].
+    pub unsafe fn into_sexp_unprotected(self) -> SEXP {
         let sexp = self.sexp;
-        unsafe { crate::preserve::release(self.preserve_cell) };
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) };
         std::mem::forget(self);
         sexp
     }
@@ -2945,7 +2972,7 @@ impl<T: RNativeType> RndMat<T> {
 
 impl<T: RNativeType> Drop for RndMat<T> {
     fn drop(&mut self) {
-        unsafe { crate::preserve::release(self.preserve_cell) }
+        unsafe { crate::ffi::R_ReleaseObject(self.sexp) }
     }
 }
 
@@ -2965,7 +2992,8 @@ impl<T: RNativeType> IntoR for RndMat<T> {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.into_sexp())
+        // SAFETY: See RndVec IntoR impl.
+        Ok(unsafe { self.into_sexp_unprotected() })
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
