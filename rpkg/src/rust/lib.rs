@@ -649,7 +649,7 @@ pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
 #[miniextendr]
 fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
     if n < 0 {
-        miniextendr_api::r_error!("altrep_compact_int: n must be >= 0");
+        panic!("altrep_compact_int: n must be >= 0");
     }
     let len = if n == 0 { 0 } else { n as usize };
     LazyIntSeqClass(LazyIntSeqData {
@@ -696,7 +696,7 @@ pub fn altrep_from_list(x: SEXP) -> ListDataClass {
     use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SEXPTYPE, TYPEOF};
 
     if unsafe { TYPEOF(x) } != SEXPTYPE::VECSXP {
-        miniextendr_api::r_error!("altrep_from_list: expected a list (VECSXP)");
+        panic!("altrep_from_list: expected a list (VECSXP)");
     }
 
     if x != unsafe { R_NilValue } {
@@ -736,7 +736,7 @@ pub fn large_vec_altrep() -> SEXP {
 pub fn lazy_squares(n: i32) -> SEXP {
     use miniextendr_api::IntoRAltrep;
     if n < 0 {
-        miniextendr_api::r_error!("lazy_squares: n must be >= 0");
+        panic!("lazy_squares: n must be >= 0");
     }
     (0..n)
         .map(|i| i * i)
@@ -752,7 +752,7 @@ pub fn lazy_squares(n: i32) -> SEXP {
 pub fn boxed_data_altrep(n: i32) -> SEXP {
     use miniextendr_api::IntoRAltrep;
     if n < 0 {
-        miniextendr_api::r_error!("boxed_data_altrep: n must be >= 0");
+        panic!("boxed_data_altrep: n must be >= 0");
     }
     let data = (0..n).collect::<Vec<i32>>().into_boxed_slice();
     data.into_altrep().into_sexp()
@@ -768,7 +768,7 @@ pub fn boxed_data_altrep(n: i32) -> SEXP {
 #[miniextendr]
 pub fn bench_vec_copy(n: i32) -> Vec<i32> {
     if n < 0 {
-        miniextendr_api::r_error!("n must be >= 0");
+        panic!("n must be >= 0");
     }
     vec![0; n as usize] // Uses IntoR - copies to R
 }
@@ -781,7 +781,7 @@ pub fn bench_vec_copy(n: i32) -> Vec<i32> {
 pub fn bench_vec_altrep(n: i32) -> SEXP {
     use miniextendr_api::IntoRAltrep;
     if n < 0 {
-        miniextendr_api::r_error!("n must be >= 0");
+        panic!("n must be >= 0");
     }
     vec![0; n as usize].into_sexp_altrep() // Zero-copy
 }

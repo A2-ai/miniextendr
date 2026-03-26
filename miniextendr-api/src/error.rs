@@ -1,21 +1,22 @@
 //! Error handling helpers for R API calls.
 //!
-//! Inside `#[miniextendr]` functions, R API calls are automatically protected
-//! by `with_r_unwind_protect`. This means:
+//! **Prefer `panic!()` over `r_error!`** in `#[miniextendr]` functions.
+//! Panics are caught by `catch_unwind` and propagated cleanly as R errors.
+//! `r_error!` calls `Rf_error` which longjmps — this works inside
+//! `R_UnwindProtect` but leaks the payload Box on the R error path.
 //!
-//! - R errors (via `Rf_error`) will trigger proper Rust destructor cleanup
-//! - After cleanup, the error propagates to R normally
+//! Use `r_error!` / `r_stop` only in contexts that are NOT inside
+//! `catch_unwind` or `R_UnwindProtect` — e.g., `R_init_*` package init,
+//! or `extern "C-unwind"` functions called directly from R.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use miniextendr_api::{miniextendr, r_error};
+//! use miniextendr_api::miniextendr;
 //!
 //! #[miniextendr]
 //! fn validate_input(x: i32) -> i32 {
-//!     if x < 0 {
-//!         r_error!("x must be non-negative, got {}", x);
-//!     }
+//!     assert!(x >= 0, "x must be non-negative, got {x}");
 //!     x * 2
 //! }
 //! ```
