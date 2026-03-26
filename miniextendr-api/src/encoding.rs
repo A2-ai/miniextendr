@@ -53,6 +53,7 @@ pub fn encoding_info() -> Option<&'static REncodingInfo> {
 /// Uses `l10n_info()[["UTF-8"]]` which is public R API.
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_assert_utf8_locale() {
+    debug_assert!(crate::worker::is_r_main_thread(), "must be called from R main thread");
     use crate::ffi::{
         LOGICAL, R_BaseEnv, R_NamesSymbol, Rf_eval, Rf_getAttrib, Rf_install, Rf_protect,
         Rf_unprotect, Rf_xlength, STRING_ELT, VECTOR_ELT,
