@@ -1221,6 +1221,9 @@ impl<I: Iterator<Item = String> + 'static> InferBase for IterStringData<I> {
 }
 
 impl<I: Iterator<Item = String> + 'static> crate::altrep_traits::Altrep for IterStringData<I> {
+    // String ALTREP elt calls Rf_mkCharLenCE (R API) — must use RUnwind to catch longjmps.
+    const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
+
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
         unsafe { crate::altrep_data1_as::<Self>(x) }
             .map(|d| d.len() as crate::ffi::R_xlen_t)
