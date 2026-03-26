@@ -778,7 +778,8 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2, d3) = self.dim();
         let shape = vec![d0, d1, d2, d3];
-        let total_len = shape.iter().product();
+        let total_len: usize = shape.iter().try_fold(1usize, |a, &b| a.checked_mul(b))
+            .expect("array dimensions overflow");
 
         let data: Vec<T> = {
             let mut v = Vec::with_capacity(total_len);
@@ -821,7 +822,8 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2, d3, d4) = self.dim();
         let shape = vec![d0, d1, d2, d3, d4];
-        let total_len = shape.iter().product();
+        let total_len: usize = shape.iter().try_fold(1usize, |a, &b| a.checked_mul(b))
+            .expect("array dimensions overflow");
 
         let data: Vec<T> = {
             let mut v = Vec::with_capacity(total_len);

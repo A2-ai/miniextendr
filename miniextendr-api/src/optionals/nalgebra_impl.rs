@@ -527,9 +527,11 @@ impl RVectorOps for DVector<f64> {
     }
 
     fn argmin(&self) -> i32 {
+        // Skip NaN values — NaN is not comparable; returning NaN index is misleading
         self.iter()
             .enumerate()
-            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .filter(|(_, x)| !x.is_nan())
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).expect("NaN filtered"))
             .map(|(i, _)| i as i32)
             .unwrap_or(-1)
     }
@@ -537,7 +539,8 @@ impl RVectorOps for DVector<f64> {
     fn argmax(&self) -> i32 {
         self.iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .filter(|(_, x)| !x.is_nan())
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("NaN filtered"))
             .map(|(i, _)| i as i32)
             .unwrap_or(-1)
     }

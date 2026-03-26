@@ -995,7 +995,7 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         Rf_protect(row_names);
         rn[0] = i32::MIN; // NA_integer_
-        rn[1] = -(nrow as i32);
+        rn[1] = -i32::try_from(nrow).expect("data.frame row count exceeds i32::MAX");
         Rf_setAttrib(list, R_RowNamesSymbol, row_names);
 
         Rf_unprotect(4); // list, names, class, row_names

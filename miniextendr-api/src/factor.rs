@@ -181,6 +181,7 @@ impl<'a> Factor<'a> {
     /// Get level string at 0-based index.
     #[inline]
     pub fn level(&self, idx: usize) -> &'a str {
+        assert!(idx < self.n_levels(), "level index {idx} out of bounds (n_levels = {})", self.n_levels());
         let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
         unsafe { charsxp_to_str(charsxp) }
     }
@@ -274,6 +275,7 @@ impl<'a> FactorMut<'a> {
     /// Get level string at 0-based index.
     #[inline]
     pub fn level(&self, idx: usize) -> &'a str {
+        assert!(idx < self.n_levels(), "level index {idx} out of bounds (n_levels = {})", self.n_levels());
         let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
         unsafe { charsxp_to_str(charsxp) }
     }
