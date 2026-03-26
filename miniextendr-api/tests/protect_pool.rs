@@ -110,3 +110,32 @@ fn pool_stale_key_after_reuse() {
         pool.release(k2);
     });
 }
+
+#[test]
+#[ignore = "Requires R runtime; run with --ignored"]
+fn pool_double_release_is_noop() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let mut pool = ProtectPool::new(4);
+
+        let k = pool.insert(Rf_ScalarInteger(77));
+        assert_eq!(pool.len(), 1);
+
+        // First release — valid
+        pool.release(k);
+        assert_eq!(pool.len(), 0);
+
+        // Second release — stale key, should be a no-op
+        pool.release(k);
+        assert_eq!(pool.len(), 0);
+
+        // Third release — still no-op
+        pool.release(k);
+        assert_eq!(pool.len(), 0);
+
+        // Pool should still be functional
+        let k2 = pool.insert(Rf_ScalarInteger(88));
+        assert_eq!(pool.len(), 1);
+        assert_eq!(ffi::INTEGER_ELT(pool.get(k2).unwrap(), 0), 88);
+        pool.release(k2);
+    });
+}

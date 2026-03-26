@@ -1351,9 +1351,9 @@ mod real_pool_growth {
     fn presized(bencher: Bencher, n: usize) {
         let sexp = unsafe { Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
+        let mut pool = unsafe { ProtectPool::new(n) };
 
         bencher.bench_local(|| unsafe {
-            let mut pool = ProtectPool::new(n);
             let mut keys = Vec::with_capacity(n);
             for _ in 0..n {
                 keys.push(pool.insert(sexp));
@@ -1366,6 +1366,7 @@ mod real_pool_growth {
         unsafe { R_ReleaseObject(sexp) };
     }
 
+    // NOTE: Pool init is INSIDE bench_local intentionally — measuring growth cost.
     #[divan::bench(args = [1_000, 10_000, 50_000])]
     fn small_initial(bencher: Bencher, n: usize) {
         let sexp = unsafe { Rf_ScalarInteger(42) };

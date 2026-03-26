@@ -555,10 +555,15 @@ fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
         if trimmed.starts_with("#[") {
             continue;
         }
+        // Strip inline comments to avoid false positives
+        let code_part = match trimmed.find("//") {
+            Some(pos) => &trimmed[..pos],
+            None => trimmed,
+        };
         let mut search_from = 0;
-        while let Some(ffi_pos) = trimmed[search_from..].find("ffi::") {
+        while let Some(ffi_pos) = code_part[search_from..].find("ffi::") {
             let abs_pos = search_from + ffi_pos;
-            let after_ffi = &trimmed[abs_pos + 5..];
+            let after_ffi = &code_part[abs_pos + 5..];
             let ident_end = after_ffi
                 .find(|c: char| !c.is_alphanumeric() && c != '_')
                 .unwrap_or(after_ffi.len());
@@ -583,8 +588,13 @@ fn scan_rf_error_calls(src: &str, data: &mut FileData) {
         if trimmed.starts_with("//") {
             continue;
         }
+        // Strip inline comments to avoid false positives
+        let code_part = match trimmed.find("//") {
+            Some(pos) => &trimmed[..pos],
+            None => trimmed,
+        };
         for pattern in RF_ERROR_PATTERNS {
-            if trimmed.contains(pattern) && !is_suppressed(&lines, line_idx, "MXL300") {
+            if code_part.contains(pattern) && !is_suppressed(&lines, line_idx, "MXL300") {
                 let fn_name = &pattern[..pattern.len() - 1];
                 data.rf_error_calls
                     .push((fn_name.to_string(), line_idx + 1));
