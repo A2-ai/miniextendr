@@ -634,6 +634,12 @@ mod tests {
         #[test]
         fn stub_with_r_thread_inline() {
             miniextendr_runtime_init();
+            // If another parallel test already set R_MAIN_THREAD_ID to a
+            // different thread (OnceLock), we won't be "main" and with_r_thread
+            // will rightfully panic. Skip in that case.
+            if !is_r_main_thread() {
+                return;
+            }
             let result = with_r_thread(|| 42);
             assert_eq!(result, 42);
         }
