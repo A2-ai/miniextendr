@@ -444,9 +444,9 @@ pub mod strict;
 // Error value transport for #[miniextendr(error_in_r)]
 pub mod error_value;
 
-// Error handling helpers (r_stop, r_warning, r_error!, r_print!, r_println! macros)
+// Error handling helpers (r_warning, r_print!, r_println! macros)
 pub mod error;
-pub use error::{r_stop, r_warning};
+pub use error::r_warning;
 
 // RNG (random number generation) utilities
 pub mod rng;

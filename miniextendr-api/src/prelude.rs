@@ -70,7 +70,7 @@ pub use crate::{Sendable, with_r_thread};
 // endregion
 
 // region: Error handling
-pub use crate::{r_stop, r_warning};
+pub use crate::r_warning;
 // endregion
 
 // region: FFI (SEXP is needed in almost every crate)
