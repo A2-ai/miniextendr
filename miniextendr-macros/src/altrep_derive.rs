@@ -37,7 +37,7 @@ struct AltrepFamilyConfig<'a> {
     inferbase_macro: &'a str,
     /// Default guard mode for this family when no explicit guard is specified.
     /// String family uses `RUnwind` because elt/dataptr call R APIs (Rf_mkCharLenCE).
-    /// All other families default to `RustUnwind`.
+    /// All families now default to `RUnwind`.
     default_guard: &'a str,
 }
 
@@ -57,8 +57,8 @@ struct AltrepFamilyConfig<'a> {
 /// | `serialize` | Flag | Enable `Serialized_state` and `Unserialize` method registration for ALTREP serialization support. |
 /// | `subset` | Flag | Enable `Extract_subset` method registration. Mutually exclusive with `dataptr`. Only supported for integer and complex families. Not supported for List. |
 /// | `unsafe` | Flag | Set guard mode to `Unsafe` -- no panic protection on ALTREP callbacks. |
-/// | `rust_unwind` | Flag | Set guard mode to `RustUnwind` (default) -- uses `catch_unwind` for panic safety. |
-/// | `r_unwind` | Flag | Set guard mode to `RUnwind` -- uses `with_r_unwind_protect` for callbacks that call R API functions. |
+/// | `rust_unwind` | Flag | Set guard mode to `RustUnwind` -- uses `catch_unwind` only (unsafe if callbacks call R APIs). |
+/// | `r_unwind` | Flag | Set guard mode to `RUnwind` (default) -- uses `with_r_unwind_protect` for safe R API calls. |
 struct AltrepAttrs {
     /// Field name containing the vector length, set via `#[altrep(len = "field")]`.
     /// If `None`, auto-detection looks for fields named `len` or `length`.
@@ -73,8 +73,8 @@ struct AltrepAttrs {
     lowlevel_options: Vec<syn::Ident>,
     /// Guard mode override for ALTREP trampoline callbacks. Maps to [`AltrepGuard`] variants:
     /// - `Unsafe` -- no protection
-    /// - `RustUnwind` -- `catch_unwind` (default)
-    /// - `RUnwind` -- `with_r_unwind_protect`
+    /// - `RustUnwind` -- `catch_unwind` only
+    /// - `RUnwind` -- `with_r_unwind_protect` (default)
     guard: Option<syn::Ident>,
 }
 
@@ -175,9 +175,10 @@ impl AltrepAttrs {
 
     /// Returns `true` if a non-default guard mode is set (i.e., `Unsafe` or `RUnwind`).
     ///
-    /// The default guard is `RustUnwind`, which uses the simple `impl_alt*_from_data!`
-    /// macro path. Non-default guards require the expanded code generation path that
-    /// emits individual internal macros with an explicit guard parameter.
+    /// The default guard is `RUnwind`, which uses the simple `impl_alt*_from_data!`
+    /// macro path. Non-default guards (e.g., `RustUnwind`, `Unsafe`) require the
+    /// expanded code generation path that emits individual internal macros with an
+    /// explicit guard parameter.
     fn has_non_default_guard(&self) -> bool {
         match &self.guard {
             Some(g) => g != "RUnwind",
@@ -233,7 +234,7 @@ impl AltrepAttrs {
     ///
     /// There are two code generation paths:
     ///
-    /// 1. **Simple path** -- When using the default `RustUnwind` guard and no `subset` option,
+    /// 1. **Simple path** -- When using the default `RUnwind` guard and no `subset` option,
     ///    delegates to the `impl_alt*_from_data!` runtime macro which bundles `Altrep`,
     ///    `AltVec`, family-specific methods, and `InferBase` in a single expansion.
     ///

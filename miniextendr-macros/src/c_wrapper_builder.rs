@@ -129,7 +129,7 @@ pub struct CWrapperContext {
     /// Set by `#[miniextendr(strict)]`.
     pub strict: bool,
     /// When `true`, Rust panics and errors return tagged `SEXP` error values
-    /// (via `make_rust_error_value`) instead of calling `r_stop`/`Rf_errorcall`.
+    /// (via `make_rust_error_value`) instead of raising an R error directly.
     /// The R wrapper then raises a structured condition object.
     /// This is the default for standalone functions.
     pub error_in_r: bool,
@@ -535,7 +535,7 @@ impl CWrapperContext {
     ///
     /// Emits the call expression followed by conversion logic based on [`ReturnHandling`].
     /// For `Option`/`Result` variants, also emits error-path code: either a tagged error
-    /// value (`error_in_r`) or a call to `r_stop`.
+    /// value (`error_in_r`) or an R error.
     fn generate_return_handling(&self, call_expr: &TokenStream) -> TokenStream {
         let fn_ident = &self.fn_ident;
 
@@ -1141,7 +1141,7 @@ pub struct CWrapperContextBuilder {
     call_method_def_ident: Option<syn::Ident>,
     /// Enable strict checked conversions for lossy return types.
     strict: bool,
-    /// Enable error_in_r mode (tagged error values instead of `r_stop`).
+    /// Enable error_in_r mode (tagged error values instead of raising R errors).
     error_in_r: bool,
 }
 
@@ -1243,7 +1243,7 @@ impl CWrapperContextBuilder {
     }
 
     /// Enables error_in_r mode: panics and errors return tagged `SEXP` values
-    /// (via `make_rust_error_value`) instead of calling `r_stop`/`Rf_errorcall`.
+    /// (via `make_rust_error_value`) instead of raising an R error directly.
     pub fn error_in_r(mut self) -> Self {
         self.error_in_r = true;
         self
