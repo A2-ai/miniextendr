@@ -61,10 +61,15 @@ pub enum AltrepGuard {
 pub trait Altrep {
     /// The guard mode for all ALTREP trampolines on this type.
     ///
-    /// Defaults to [`AltrepGuard::RustUnwind`] (catches Rust panics).
-    /// Override to [`AltrepGuard::Unsafe`] for maximum performance or
-    /// [`AltrepGuard::RUnwind`] when callbacks call R API functions.
-    const GUARD: AltrepGuard = AltrepGuard::RustUnwind;
+    /// Defaults to [`AltrepGuard::RUnwind`] which catches both Rust panics and
+    /// R longjmps via `R_UnwindProtect`. This is safe for all callbacks, including
+    /// those that call R API functions (e.g., `Rf_mkCharLenCE`, `Rf_ScalarReal`,
+    /// `into_sexp` in serialization).
+    ///
+    /// Override to [`AltrepGuard::RustUnwind`] if your callbacks never call R APIs
+    /// and you want to save ~2ns per call, or [`AltrepGuard::Unsafe`] for trivial
+    /// callbacks that cannot panic.
+    const GUARD: AltrepGuard = AltrepGuard::RUnwind;
 
     // --- REQUIRED ---
     /// Returns the length of the ALTREP vector.

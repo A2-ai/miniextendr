@@ -180,7 +180,7 @@ impl AltrepAttrs {
     /// emits individual internal macros with an explicit guard parameter.
     fn has_non_default_guard(&self) -> bool {
         match &self.guard {
-            Some(g) => g != "RustUnwind",
+            Some(g) => g != "RUnwind",
             None => false,
         }
     }
@@ -458,7 +458,7 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
             subset: true,
             methods_macro: "__impl_altinteger_methods",
             inferbase_macro: "impl_inferbase_integer",
-            default_guard: "RustUnwind",
+            default_guard: "RUnwind",
         },
     )
 }
@@ -489,7 +489,7 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             subset: true,
             methods_macro: "__impl_altreal_methods",
             inferbase_macro: "impl_inferbase_real",
-            default_guard: "RustUnwind",
+            default_guard: "RUnwind",
         },
     )
 }
@@ -520,7 +520,7 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
             subset: true,
             methods_macro: "__impl_altlogical_methods",
             inferbase_macro: "impl_inferbase_logical",
-            default_guard: "RustUnwind",
+            default_guard: "RUnwind",
         },
     )
 }
@@ -551,7 +551,7 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             subset: true,
             methods_macro: "__impl_altraw_methods",
             inferbase_macro: "impl_inferbase_raw",
-            default_guard: "RustUnwind",
+            default_guard: "RUnwind",
         },
     )
 }
@@ -624,7 +624,7 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
             subset: true,
             methods_macro: "__impl_altcomplex_methods",
             inferbase_macro: "impl_inferbase_complex",
-            default_guard: "RustUnwind",
+            default_guard: "RUnwind",
         },
     )
 }

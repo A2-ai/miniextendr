@@ -446,13 +446,12 @@ fn test_derive_altrep_integer_r_unwind_guard() {
     let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
     let output_str = output.to_string();
 
-    assert!(!output_str.contains("impl_altinteger_from_data"));
-    assert!(output_str.contains("__impl_altrep_base"));
-    assert!(output_str.contains("RUnwind"));
+    // RUnwind is the default guard — should use the high-level macro
+    assert!(output_str.contains("impl_altinteger_from_data"));
 }
 
 #[test]
-fn test_derive_altrep_integer_rust_unwind_guard_uses_highevel_macro() {
+fn test_derive_altrep_integer_rust_unwind_guard_uses_expanded_path() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         #[altrep(rust_unwind)]
         pub struct DefaultData {
@@ -464,8 +463,10 @@ fn test_derive_altrep_integer_rust_unwind_guard_uses_highevel_macro() {
     let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
     let output_str = output.to_string();
 
-    // rust_unwind is the default — should use the high-level macro
-    assert!(output_str.contains("impl_altinteger_from_data"));
+    // rust_unwind is non-default (RUnwind is default) — should use expanded path
+    assert!(!output_str.contains("impl_altinteger_from_data"));
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("RustUnwind"));
 }
 
 #[test]
@@ -498,8 +499,8 @@ fn test_derive_altrep_list_with_guard() {
     let output = crate::altrep_derive::derive_altrep_list(input).unwrap();
     let output_str = output.to_string();
 
+    // RUnwind is the default — should use the simple high-level macro path
     assert!(output_str.contains("impl_altlist_from_data"));
-    assert!(output_str.contains("RUnwind"));
 }
 // endregion
 
