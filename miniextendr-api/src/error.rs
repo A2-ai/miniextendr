@@ -1,13 +1,15 @@
 //! Error handling helpers for R API calls.
 //!
-//! **Prefer `panic!()` over `r_error!`** in `#[miniextendr]` functions.
+//! **In `#[miniextendr]` functions, use `panic!()` instead of `r_stop`.**
 //! Panics are caught by `catch_unwind` and propagated cleanly as R errors.
-//! `r_error!` calls `Rf_error` which longjmps — this works inside
-//! `R_UnwindProtect` but leaks the payload Box on the R error path.
 //!
-//! Use `r_error!` / `r_stop` only in contexts that are NOT inside
-//! `catch_unwind` or `R_UnwindProtect` — e.g., `R_init_*` package init,
-//! or `extern "C-unwind"` functions called directly from R.
+//! `r_stop` calls `Rf_error` (longjmp). It is used internally by:
+//! - The proc-macro generated argument validation / return type unwrapping
+//! - The `CatchUnwind` guard (after catch_unwind has caught a panic)
+//! - Trait ABI shims
+//!
+//! These are all inside `R_UnwindProtect` or after `catch_unwind`, where
+//! `Rf_error` longjmp is safe. User code should never call `r_stop` directly.
 //!
 //! # Example
 //!
@@ -20,13 +22,11 @@
 //!     x * 2
 //! }
 //! ```
-/// Raise an R error with the given message.
+
+/// Raise an R error via `Rf_error` (longjmp). **Do not call from user code** —
+/// use `panic!()` instead, which is caught by the framework.
 ///
-/// This function does not return - it triggers R's error handling mechanism.
-/// When called inside a `#[miniextendr]` function, Rust destructors will run
-/// before the error propagates to R.
-///
-/// Automatically routes to R's main thread if called from a worker thread.
+/// This is used internally by generated code and the FFI guard layer.
 ///
 /// # Panics
 ///
@@ -45,22 +45,6 @@ pub fn r_stop(msg: &str) -> ! {
             crate::ffi::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
         })
     }
-}
-
-/// Raise an R error with a formatted message.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::r_error;
-///
-/// r_error!("Invalid value: {}", value);
-/// ```
-#[macro_export]
-macro_rules! r_error {
-    ($($arg:tt)*) => {
-        $crate::error::r_stop(&format!($($arg)*))
-    };
 }
 
 /// Raise an R warning with the given message.
