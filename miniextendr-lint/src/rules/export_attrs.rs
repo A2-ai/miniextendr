@@ -8,13 +8,13 @@ use crate::lint_code::LintCode;
 
 pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
     for (path, data) in &index.file_data {
-        for (name, (has_internal, has_noexport)) in &data.export_control {
+        for (name, (has_internal, has_noexport, line)) in &data.export_control {
             if *has_internal && *has_noexport {
                 diagnostics.push(
                     Diagnostic::new(
                         LintCode::MXL203,
                         path,
-                        0,
+                        *line,
                         format!(
                             "`{}` has both `internal` and `noexport`. \
                              `internal` already suppresses @export (and adds @keywords internal), \

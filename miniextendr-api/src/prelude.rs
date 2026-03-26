@@ -55,13 +55,13 @@ pub use crate::{
 // endregion
 
 // region: Core traits
-pub use crate::{Coerce, IntoR, TryCoerce, TryFromSexp};
+pub use crate::{Coerce, IntoR, IntoRAltrep, TryCoerce, TryFromSexp};
 // endregion
 
 // region: Types
 pub use crate::{
-    List, ListBuilder, ListMut, Missing, NamedVector, OwnedProtect, ProtectScope, StrVec,
-    StrVecBuilder,
+    IntoList, Lazy, List, ListBuilder, ListMut, Missing, NamedVector, OwnedProtect, ProtectScope,
+    StrVec, StrVecBuilder,
 };
 // endregion
 
@@ -69,8 +69,8 @@ pub use crate::{
 pub use crate::{Sendable, with_r_thread};
 // endregion
 
-// region: Error handling
-pub use crate::r_warning;
+// region: Error handling and console output
+pub use crate::{r_print, r_println, r_warning};
 // endregion
 
 // region: FFI (SEXP is needed in almost every crate)
@@ -169,7 +169,7 @@ pub use rayon;
 
 // --- rand ---
 #[cfg(feature = "rand")]
-pub use crate::{RDistributions, RRng, RRngOps};
+pub use crate::{RDistributionOps, RDistributions, RRng, RRngOps};
 #[cfg(feature = "rand")]
 pub use rand;
 #[cfg(feature = "rand_distr")]

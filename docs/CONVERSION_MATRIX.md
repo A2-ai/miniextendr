@@ -33,6 +33,7 @@ These types require an exact R type match. Length must be 1.
 | `i32` | INTSXP | Returns `i32::MIN` (NA_integer_) | Error |
 | `f64` | REALSXP | Returns NA_real_ (specific NaN) | Error |
 | `u8` | RAWSXP | No NA concept in raw | Error |
+| `Rcomplex` | CPLXSXP | Returns `Rcomplex { r: NA_real_, i: NA_real_ }` | Error |
 | `bool` | LGLSXP | Error (NA is not true/false) | Error |
 | `Rboolean` | LGLSXP | Error (NA not representable) | Error |
 | `RLogical` | LGLSXP | Returns `RLogical::Na` | Error |
@@ -48,6 +49,7 @@ These types require an exact R type match. Length must be 1.
 | `Option<i32>` | INTSXP | `None` | `None` |
 | `Option<f64>` | REALSXP | `None` | `None` |
 | `Option<u8>` | RAWSXP | `Some(val)` (raw has no NA) | `None` |
+| `Option<Rcomplex>` | CPLXSXP | `None` | `None` |
 | `Option<bool>` | LGLSXP | `None` | `None` |
 | `Option<Rboolean>` | LGLSXP | `None` | `None` |
 | `Option<String>` | STRSXP | `None` | `None` |
@@ -204,7 +206,7 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `VecDeque<T>` | Vector (converted to Vec first) |
 | `BinaryHeap<T>` | Vector (arbitrary order) |
 | `Vec<Vec<T>>` | List of vectors (VECSXP) |
-| `(A, B, ...)` | Unnamed list (VECSXP), up to 8 elements |
+| `(A, B, ...)` | Unnamed list (VECSXP), up to 8 elements (IntoR only, no TryFromSexp) |
 | `PathBuf` | STRSXP (lossy UTF-8 conversion) |
 | `OsString` | STRSXP (lossy UTF-8 conversion) |
 

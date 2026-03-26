@@ -166,7 +166,7 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
 
         // Create R matrix with RAII protection
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
+            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"));
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
@@ -208,7 +208,7 @@ fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
             ));
         }
 
-        Ok((nrow as usize, ncol as usize))
+        Ok((usize::try_from(nrow).expect("nrow overflow"), usize::try_from(ncol).expect("ncol overflow")))
     }
 }
 // endregion
@@ -281,7 +281,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, R as i32, C as i32);
+            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(R).expect("nrow exceeds i32"), i32::try_from(C).expect("ncol exceeds i32"));
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), R * C);
@@ -483,7 +483,7 @@ pub trait RVectorOps {
 
 impl RVectorOps for DVector<f64> {
     fn len(&self) -> i32 {
-        DVector::len(self) as i32
+        i32::try_from(DVector::len(self)).expect("length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {
@@ -532,7 +532,7 @@ impl RVectorOps for DVector<f64> {
             .enumerate()
             .filter(|(_, x)| !x.is_nan())
             .min_by(|(_, a), (_, b)| a.partial_cmp(b).expect("NaN filtered"))
-            .map(|(i, _)| i as i32)
+            .map(|(i, _)| i32::try_from(i).expect("index exceeds i32"))
             .unwrap_or(-1)
     }
 
@@ -541,7 +541,7 @@ impl RVectorOps for DVector<f64> {
             .enumerate()
             .filter(|(_, x)| !x.is_nan())
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("NaN filtered"))
-            .map(|(i, _)| i as i32)
+            .map(|(i, _)| i32::try_from(i).expect("index exceeds i32"))
             .unwrap_or(-1)
     }
 
@@ -675,15 +675,15 @@ pub trait RMatrixOps {
 
 impl RMatrixOps for DMatrix<f64> {
     fn nrows(&self) -> i32 {
-        DMatrix::nrows(self) as i32
+        i32::try_from(DMatrix::nrows(self)).expect("nrows exceeds i32")
     }
 
     fn ncols(&self) -> i32 {
-        DMatrix::ncols(self) as i32
+        i32::try_from(DMatrix::ncols(self)).expect("ncols exceeds i32")
     }
 
     fn shape(&self) -> (i32, i32) {
-        (DMatrix::nrows(self) as i32, DMatrix::ncols(self) as i32)
+        (i32::try_from(DMatrix::nrows(self)).expect("nrows exceeds i32"), i32::try_from(DMatrix::ncols(self)).expect("ncols exceeds i32"))
     }
 
     fn is_square(&self) -> bool {
@@ -1352,8 +1352,8 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
                 let ncol = self.ncols();
                 let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector::<i32>(2);
                 let _guard = crate::gc_protect::OwnedProtect::new(dim_sexp);
-                dim_s[0] = nrow as i32;
-                dim_s[1] = ncol as i32;
+                dim_s[0] = i32::try_from(nrow).expect("nrow exceeds i32");
+                dim_s[1] = i32::try_from(ncol).expect("ncol exceeds i32");
                 ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);
             }
         }

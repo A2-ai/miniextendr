@@ -222,3 +222,92 @@ fn follows_mod_declarations() {
         report.errors
     );
 }
+
+#[test]
+fn mxl008_class_system_mismatch() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(r6)]
+        impl MyType {
+            fn new() -> Self { MyType }
+        }
+
+        #[miniextendr]
+        impl MyTrait for MyType {
+            fn method(&self) -> i32 { 42 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|e| e.contains("MXL008") || e.contains("class system")),
+        "expected MXL008 error for class system mismatch, got: {:?}",
+        report.errors
+    );
+}
+
+#[test]
+fn mxl300_rf_error_usage() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        pub fn bad_error() {
+            unsafe { Rf_error(c"oops".as_ptr()) };
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL300"),
+        "expected MXL300 warning for direct Rf_error call, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl301_ffi_unchecked_usage() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        pub fn bad_unchecked() {
+            unsafe { ffi::Rf_allocVector_unchecked(INTSXP, 10) };
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL301"),
+        "expected MXL301 warning for _unchecked FFI call, got: {:?}",
+        report.diagnostics
+    );
+}

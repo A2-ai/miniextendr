@@ -239,7 +239,7 @@ impl RRegexOps for Regex {
     }
 
     fn captures_len(&self) -> i32 {
-        self.captures_len() as i32
+        i32::try_from(self.captures_len()).expect("captures_len exceeds i32")
     }
 }
 // endregion
@@ -326,7 +326,7 @@ impl RCaptureGroups for CaptureGroups {
     }
 
     fn len(&self) -> i32 {
-        self.groups.len() as i32
+        i32::try_from(self.groups.len()).expect("groups length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {

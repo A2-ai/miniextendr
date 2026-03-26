@@ -59,7 +59,7 @@
 //!
 //! #[miniextendr]
 //! fn nd_array_shape(arr: ArrayD<f64>) -> Vec<i32> {
-//!     arr.shape().iter().map(|&d| d as i32).collect()
+//!     arr.shape().iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
 //! }
 //! ```
 
@@ -705,7 +705,7 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
 
         // Create R matrix with RAII protection
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
+            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"));
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
@@ -758,9 +758,9 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             // Set dim attribute
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(3);
             scope.protect_raw(dim);
-            dim_s[0] = d0 as i32;
-            dim_s[1] = d1 as i32;
-            dim_s[2] = d2 as i32;
+            dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
+            dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
+            dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
@@ -801,10 +801,10 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
 
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(4);
             scope.protect_raw(dim);
-            dim_s[0] = d0 as i32;
-            dim_s[1] = d1 as i32;
-            dim_s[2] = d2 as i32;
-            dim_s[3] = d3 as i32;
+            dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
+            dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
+            dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
+            dim_s[3] = i32::try_from(d3).expect("dimension exceeds i32");
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
@@ -846,7 +846,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(5);
             scope.protect_raw(dim);
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4].iter()) {
-                *slot = d as i32;
+                *slot = i32::try_from(d).expect("dimension exceeds i32");
             }
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
@@ -888,7 +888,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(6);
             scope.protect_raw(dim);
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4, d5].iter()) {
-                *slot = d as i32;
+                *slot = i32::try_from(d).expect("dimension exceeds i32");
             }
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
@@ -939,7 +939,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
                 let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(ndim);
                 scope.protect_raw(dim);
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
-                    *slot = d as i32;
+                    *slot = i32::try_from(d).expect("dimension exceeds i32");
                 }
                 crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
             }
@@ -1055,7 +1055,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
         }
 
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
+            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"));
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
@@ -1102,9 +1102,9 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             // Set dim attribute
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(3);
             scope.protect_raw(dim);
-            dim_s[0] = d0 as i32;
-            dim_s[1] = d1 as i32;
-            dim_s[2] = d2 as i32;
+            dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
+            dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
+            dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
             arr
@@ -1146,7 +1146,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
                 let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(ndim);
                 scope.protect_raw(dim);
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
-                    *slot = d as i32;
+                    *slot = i32::try_from(d).expect("dimension exceeds i32");
                 }
                 crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
             }
@@ -1719,7 +1719,7 @@ pub trait RNdArrayOps {
 
 impl RNdArrayOps for Array1<f64> {
     fn len(&self) -> i32 {
-        Array1::len(self) as i32
+        i32::try_from(Array1::len(self)).expect("length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {
@@ -1727,11 +1727,11 @@ impl RNdArrayOps for Array1<f64> {
     }
 
     fn ndim(&self) -> i32 {
-        Array1::ndim(self) as i32
+        i32::try_from(Array1::ndim(self)).expect("ndim exceeds i32")
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array1::shape(self).iter().map(|&d| d as i32).collect()
+        Array1::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1774,7 +1774,7 @@ impl RNdArrayOps for Array1<f64> {
 
 impl RNdArrayOps for Array2<f64> {
     fn len(&self) -> i32 {
-        Array2::len(self) as i32
+        i32::try_from(Array2::len(self)).expect("length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {
@@ -1782,11 +1782,11 @@ impl RNdArrayOps for Array2<f64> {
     }
 
     fn ndim(&self) -> i32 {
-        Array2::ndim(self) as i32
+        i32::try_from(Array2::ndim(self)).expect("ndim exceeds i32")
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array2::shape(self).iter().map(|&d| d as i32).collect()
+        Array2::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1829,7 +1829,7 @@ impl RNdArrayOps for Array2<f64> {
 
 impl RNdArrayOps for ArrayD<f64> {
     fn len(&self) -> i32 {
-        ArrayD::len(self) as i32
+        i32::try_from(ArrayD::len(self)).expect("length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {
@@ -1837,11 +1837,11 @@ impl RNdArrayOps for ArrayD<f64> {
     }
 
     fn ndim(&self) -> i32 {
-        ArrayD::ndim(self) as i32
+        i32::try_from(ArrayD::ndim(self)).expect("ndim exceeds i32")
     }
 
     fn shape(&self) -> Vec<i32> {
-        ArrayD::shape(self).iter().map(|&d| d as i32).collect()
+        ArrayD::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1886,7 +1886,7 @@ impl RNdArrayOps for ArrayD<f64> {
 
 impl RNdArrayOps for Array1<i32> {
     fn len(&self) -> i32 {
-        Array1::len(self) as i32
+        i32::try_from(Array1::len(self)).expect("length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {
@@ -1894,11 +1894,11 @@ impl RNdArrayOps for Array1<i32> {
     }
 
     fn ndim(&self) -> i32 {
-        Array1::ndim(self) as i32
+        i32::try_from(Array1::ndim(self)).expect("ndim exceeds i32")
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array1::shape(self).iter().map(|&d| d as i32).collect()
+        Array1::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1943,7 +1943,7 @@ impl RNdArrayOps for Array1<i32> {
 
 impl RNdArrayOps for Array2<i32> {
     fn len(&self) -> i32 {
-        Array2::len(self) as i32
+        i32::try_from(Array2::len(self)).expect("length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {
@@ -1951,11 +1951,11 @@ impl RNdArrayOps for Array2<i32> {
     }
 
     fn ndim(&self) -> i32 {
-        Array2::ndim(self) as i32
+        i32::try_from(Array2::ndim(self)).expect("ndim exceeds i32")
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array2::shape(self).iter().map(|&d| d as i32).collect()
+        Array2::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn sum(&self) -> f64 {
@@ -2000,7 +2000,7 @@ impl RNdArrayOps for Array2<i32> {
 
 impl RNdArrayOps for ArrayD<i32> {
     fn len(&self) -> i32 {
-        ArrayD::len(self) as i32
+        i32::try_from(ArrayD::len(self)).expect("length exceeds i32")
     }
 
     fn is_empty(&self) -> bool {
@@ -2008,11 +2008,11 @@ impl RNdArrayOps for ArrayD<i32> {
     }
 
     fn ndim(&self) -> i32 {
-        ArrayD::ndim(self) as i32
+        i32::try_from(ArrayD::ndim(self)).expect("ndim exceeds i32")
     }
 
     fn shape(&self) -> Vec<i32> {
-        ArrayD::shape(self).iter().map(|&d| d as i32).collect()
+        ArrayD::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn sum(&self) -> f64 {
@@ -2253,11 +2253,11 @@ impl RNdSlice2D for Array2<f64> {
     }
 
     fn nrows(&self) -> i32 {
-        self.view().nrows() as i32
+        i32::try_from(self.view().nrows()).expect("nrows exceeds i32")
     }
 
     fn ncols(&self) -> i32 {
-        self.view().ncols() as i32
+        i32::try_from(self.view().ncols()).expect("ncols exceeds i32")
     }
 }
 
@@ -2295,11 +2295,11 @@ impl RNdSlice2D for Array2<i32> {
     }
 
     fn nrows(&self) -> i32 {
-        self.view().nrows() as i32
+        i32::try_from(self.view().nrows()).expect("nrows exceeds i32")
     }
 
     fn ncols(&self) -> i32 {
-        self.view().ncols() as i32
+        i32::try_from(self.view().ncols()).expect("ncols exceeds i32")
     }
 }
 // endregion
@@ -2443,15 +2443,15 @@ impl RNdIndex for ArrayD<f64> {
     }
 
     fn shape_nd(&self) -> Vec<i32> {
-        self.shape().iter().map(|&d| d as i32).collect()
+        self.shape().iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn ndim(&self) -> i32 {
-        self.ndim() as i32
+        i32::try_from(self.ndim()).expect("ndim exceeds i32")
     }
 
     fn len_nd(&self) -> i32 {
-        self.len() as i32
+        i32::try_from(self.len()).expect("length exceeds i32")
     }
 
     fn flatten(&self) -> Vec<f64> {
@@ -2582,15 +2582,15 @@ impl RNdIndex for ArrayD<i32> {
     }
 
     fn shape_nd(&self) -> Vec<i32> {
-        self.shape().iter().map(|&d| d as i32).collect()
+        self.shape().iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
     }
 
     fn ndim(&self) -> i32 {
-        self.ndim() as i32
+        i32::try_from(self.ndim()).expect("ndim exceeds i32")
     }
 
     fn len_nd(&self) -> i32 {
-        self.len() as i32
+        i32::try_from(self.len()).expect("length exceeds i32")
     }
 
     fn flatten(&self) -> Vec<i32> {
@@ -2895,7 +2895,7 @@ impl<T: RNativeType> RndMat<T> {
     /// Must be called on R's main thread.
     pub unsafe fn new(nrow: usize, ncol: usize, init: impl FnOnce(&mut [T])) -> Self {
         let sexp = unsafe {
-            crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32)
+            crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"))
         };
         unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
