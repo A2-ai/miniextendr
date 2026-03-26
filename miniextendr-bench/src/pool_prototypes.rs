@@ -2,6 +2,12 @@
 //!
 //! These are standalone implementations used to benchmark different pool
 //! strategies head-to-head. The winner will be integrated into miniextendr-api.
+//!
+//! # Safety
+//!
+//! All `unsafe` functions in this module require being called from R's main
+//! thread with valid SEXP arguments. These are benchmark prototypes, not public API.
+#![allow(clippy::missing_safety_doc)]
 
 use miniextendr_api::ffi::{
     self, R_NilValue, R_PreserveObject, R_ReleaseObject, Rf_protect, Rf_unprotect, SEXP,
