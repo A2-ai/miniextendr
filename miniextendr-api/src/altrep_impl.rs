@@ -204,7 +204,7 @@ macro_rules! __impl_altrep_base_with_serialize {
             ) -> $crate::ffi::SEXP {
                 let Some(data) = <$ty as $crate::altrep_data::AltrepSerialize>::unserialize(state)
                 else {
-                    $crate::r_error!(
+                    panic!(
                         "ALTREP unserialize failed for {}",
                         core::any::type_name::<$ty>()
                     );
@@ -1555,18 +1555,8 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        // Static data cannot be modified. Error if writable access is requested.
-        // This matches R's mmap behavior for read-only data (altclasses.c:1144-1153).
-        if writable {
-            unsafe {
-                crate::ffi::Rf_error(
-                    c"%s".as_ptr(),
-                    c"cannot get writable DATAPTR for static ALTREP data".as_ptr(),
-                );
-            }
-        }
-        // For read-only access, return pointer to static data.
-        // Use (*d).as_ptr() to get the slice's data pointer, not ExternalPtr::as_ptr()
+        // Static data cannot be modified. Panic is caught by RUnwind guard.
+        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1669,14 +1659,7 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        if writable {
-            unsafe {
-                crate::ffi::Rf_error(
-                    c"%s".as_ptr(),
-                    c"cannot get writable DATAPTR for static ALTREP data".as_ptr(),
-                );
-            }
-        }
+        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1820,14 +1803,7 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        if writable {
-            unsafe {
-                crate::ffi::Rf_error(
-                    c"%s".as_ptr(),
-                    c"cannot get writable DATAPTR for static ALTREP data".as_ptr(),
-                );
-            }
-        }
+        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
