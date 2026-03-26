@@ -164,36 +164,35 @@ pub fn process(path: &str) -> Result<i32> {
 
 ## R Error API
 
-### r_error! Macro
+### panic!() for Errors
 
-For explicit R errors with formatting:
+Use `panic!()` for unrecoverable errors. The `#[miniextendr]` framework catches panics
+and converts them to structured R error conditions via `error_in_r`:
 
 ```rust
-use miniextendr_api::r_error;
-
 #[miniextendr]
 pub fn validate_positive(x: i32) -> i32 {
     if x < 0 {
-        r_error!("x must be non-negative, got {}", x);
+        panic!("x must be non-negative, got {}", x);
     }
     x
 }
 ```
 
-### r_stop Function
-
-The underlying function:
+For recoverable errors, return `Result<T, E>`:
 
 ```rust
-use miniextendr_api::error::r_stop;
-
 #[miniextendr]
-pub fn check_input(x: i32) {
+pub fn check_input(x: i32) -> Result<i32, String> {
     if x < 0 {
-        r_stop("x must be positive");
+        return Err("x must be positive".to_string());
     }
+    Ok(x)
 }
 ```
+
+> **Note**: `r_stop()` exists internally but is not part of the public API.
+> The `r_error!` macro has been removed. Always use `panic!()` or `Err(...)` instead.
 
 ### Warnings
 
@@ -604,11 +603,11 @@ pub fn unsafe_divide(a: f64, b: f64) -> f64 {
 pub fn process_matrix(data: Vec<f64>, rows: i32, cols: i32) -> Vec<f64> {
     // Validate at entry point
     if rows <= 0 || cols <= 0 {
-        r_error!("rows and cols must be positive");
+        panic!("rows and cols must be positive");
     }
     let expected_len = (rows * cols) as usize;
     if data.len() != expected_len {
-        r_error!("data length {} doesn't match {}x{}", data.len(), rows, cols);
+        panic!("data length {} doesn't match {}x{}", data.len(), rows, cols);
     }
 
     // Now process with confidence
