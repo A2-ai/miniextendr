@@ -1,6 +1,10 @@
-//! Preserve list benchmarks.
+//! Preserve list benchmarks (DLL doubly-linked list).
+//!
+//! Pre-allocates SEXPs outside the timed region to measure pure
+//! protection overhead. Compares checked vs unchecked variants.
 
-use miniextendr_api::ffi;
+use divan::Bencher;
+use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, Rf_ScalarInteger};
 use miniextendr_api::preserve;
 
 fn main() {
@@ -8,32 +12,45 @@ fn main() {
     divan::main();
 }
 
+// region: single insert+release
+
 #[divan::bench]
-fn preserve_insert_release() {
-    unsafe {
-        let sexp = ffi::Rf_ScalarInteger(1);
+fn preserve_insert_release(bencher: Bencher) {
+    let sexp = unsafe { Rf_ScalarInteger(1) };
+    unsafe { R_PreserveObject(sexp) };
+
+    bencher.bench_local(|| unsafe {
         let cell = preserve::insert(sexp);
         preserve::release(cell);
-        divan::black_box(cell);
-    }
+    });
+
+    unsafe { R_ReleaseObject(sexp) };
 }
 
 #[divan::bench]
-fn preserve_insert_release_unchecked() {
-    unsafe {
-        let sexp = ffi::Rf_ScalarInteger(1);
+fn preserve_insert_release_unchecked(bencher: Bencher) {
+    let sexp = unsafe { Rf_ScalarInteger(1) };
+    unsafe { R_PreserveObject(sexp) };
+
+    bencher.bench_local(|| unsafe {
         let cell = preserve::insert_unchecked(sexp);
         preserve::release_unchecked(cell);
-        divan::black_box(cell);
-    }
+    });
+
+    unsafe { R_ReleaseObject(sexp) };
 }
 
 #[divan::bench]
-fn protect_unprotect() {
-    unsafe {
-        let sexp = ffi::Rf_ScalarInteger(1);
+fn protect_unprotect(bencher: Bencher) {
+    let sexp = unsafe { Rf_ScalarInteger(1) };
+    unsafe { R_PreserveObject(sexp) };
+
+    bencher.bench_local(|| unsafe {
         ffi::Rf_protect(sexp);
         ffi::Rf_unprotect(1);
-        divan::black_box(sexp);
-    }
+    });
+
+    unsafe { R_ReleaseObject(sexp) };
 }
+
+// endregion

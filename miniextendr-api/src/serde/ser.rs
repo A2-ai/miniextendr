@@ -64,11 +64,11 @@ impl ser::Serializer for RSerializer {
     }
 
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        Ok((v as i32).into_sexp())
+        Ok(i32::from(v).into_sexp())
     }
 
     fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        Ok((v as i32).into_sexp())
+        Ok(i32::from(v).into_sexp())
     }
 
     fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
@@ -76,33 +76,30 @@ impl ser::Serializer for RSerializer {
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        // Convert to f64 to preserve value (R integers are 32-bit)
-        Ok((v as f64).into_sexp())
+        // Use i64's IntoR which routes to INTSXP when in range, else REALSXP
+        Ok(v.into_sexp())
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        Ok((v as i32).into_sexp())
+        Ok(i32::from(v).into_sexp())
     }
 
     fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        Ok((v as i32).into_sexp())
+        Ok(i32::from(v).into_sexp())
     }
 
     fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        // u32 can overflow i32, use f64
-        if v <= i32::MAX as u32 {
-            Ok((v as i32).into_sexp())
-        } else {
-            Ok((v as f64).into_sexp())
-        }
+        // u32 can overflow i32 — use i64's smart routing (INTSXP when fits, else REALSXP)
+        Ok(i64::from(v).into_sexp())
     }
 
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        Ok((v as f64).into_sexp())
+        // Uses u64's IntoR: INTSXP when fits i32, else REALSXP (may lose precision > 2^53)
+        Ok(v.into_sexp())
     }
 
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        Ok((v as f64).into_sexp())
+        Ok(f64::from(v).into_sexp())
     }
 
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
@@ -454,11 +451,12 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
 
 /// Create an unnamed R list from SEXPs.
 fn create_r_list(elements: &[SEXP]) -> SEXP {
-    let n = elements.len();
-    let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)) };
+    let n: isize = elements.len().try_into().expect("list length exceeds isize::MAX");
+    let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
 
     for (i, &elem) in elements.iter().enumerate() {
-        unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, elem) };
+        let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+        unsafe { SET_VECTOR_ELT(sexp.get(), idx, elem) };
     }
 
     sexp.get()
@@ -467,16 +465,18 @@ fn create_r_list(elements: &[SEXP]) -> SEXP {
 /// Create a named R list from string keys and SEXP values.
 fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
     debug_assert_eq!(keys.len(), values.len());
-    let n = keys.len();
+    let n: isize = keys.len().try_into().expect("list length exceeds isize::MAX");
 
-    let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)) };
-    let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n as isize)) };
+    let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
+    let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for (i, (key, &value)) in keys.iter().zip(values.iter()).enumerate() {
+        let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+        let key_len: i32 = key.len().try_into().expect("key exceeds i32::MAX bytes");
         unsafe {
-            SET_VECTOR_ELT(list.get(), i as isize, value);
-            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8);
-            SET_STRING_ELT(names.get(), i as isize, charsxp);
+            SET_VECTOR_ELT(list.get(), idx, value);
+            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key_len, cetype_t::CE_UTF8);
+            SET_STRING_ELT(names.get(), idx, charsxp);
         }
     }
 
@@ -487,16 +487,18 @@ fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
 /// Create a named R list from static string keys and SEXP values.
 fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
     debug_assert_eq!(keys.len(), values.len());
-    let n = keys.len();
+    let n: isize = keys.len().try_into().expect("list length exceeds isize::MAX");
 
-    let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)) };
-    let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n as isize)) };
+    let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
+    let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for (i, (&key, &value)) in keys.iter().zip(values.iter()).enumerate() {
+        let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+        let key_len: i32 = key.len().try_into().expect("key exceeds i32::MAX bytes");
         unsafe {
-            SET_VECTOR_ELT(list.get(), i as isize, value);
-            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8);
-            SET_STRING_ELT(names.get(), i as isize, charsxp);
+            SET_VECTOR_ELT(list.get(), idx, value);
+            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key_len, cetype_t::CE_UTF8);
+            SET_STRING_ELT(names.get(), idx, charsxp);
         }
     }
 
@@ -509,9 +511,10 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, 1)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1)) };
 
+    let tag_len: i32 = tag.len().try_into().expect("tag exceeds i32::MAX bytes");
     unsafe {
         SET_VECTOR_ELT(list.get(), 0, value);
-        let charsxp = Rf_mkCharLenCE(tag.as_ptr().cast(), tag.len() as i32, cetype_t::CE_UTF8);
+        let charsxp = Rf_mkCharLenCE(tag.as_ptr().cast(), tag_len, cetype_t::CE_UTF8);
         SET_STRING_ELT(names.get(), 0, charsxp);
         Rf_setAttrib(list.get(), R_NamesSymbol, names.get());
     }

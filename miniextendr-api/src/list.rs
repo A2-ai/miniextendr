@@ -289,13 +289,15 @@ impl List {
     pub fn set_class_str(self, classes: &[&str]) -> Self {
         use crate::ffi::SEXPTYPE::STRSXP;
 
-        let n = classes.len() as isize;
+        let n: isize = classes.len().try_into().expect("classes length exceeds isize::MAX");
         unsafe {
             let class_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, class) in classes.iter().enumerate() {
+                let class_len: i32 = class.len().try_into().expect("class name exceeds i32::MAX bytes");
                 let chars =
-                    ffi::Rf_mkCharLenCE(class.as_ptr().cast(), class.len() as i32, ffi::CE_UTF8);
-                ffi::SET_STRING_ELT(class_vec.get(), i as isize, chars);
+                    ffi::Rf_mkCharLenCE(class.as_ptr().cast(), class_len, ffi::CE_UTF8);
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                ffi::SET_STRING_ELT(class_vec.get(), idx, chars);
             }
             ffi::Rf_setAttrib(self.0, ffi::R_ClassSymbol, class_vec.get());
         }
@@ -317,13 +319,15 @@ impl List {
     pub fn set_names_str(self, names: &[&str]) -> Self {
         use crate::ffi::SEXPTYPE::STRSXP;
 
-        let n = names.len() as isize;
+        let n: isize = names.len().try_into().expect("names length exceeds isize::MAX");
         unsafe {
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in names.iter().enumerate() {
+                let name_len: i32 = name.len().try_into().expect("name exceeds i32::MAX bytes");
                 let chars =
-                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
-                ffi::SET_STRING_ELT(names_vec.get(), i as isize, chars);
+                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name_len, ffi::CE_UTF8);
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                ffi::SET_STRING_ELT(names_vec.get(), idx, chars);
             }
             ffi::Rf_namesgets(self.0, names_vec.get());
         }
@@ -380,13 +384,15 @@ impl List {
     pub fn set_row_names_str(self, row_names: &[&str]) -> Self {
         use crate::ffi::SEXPTYPE::STRSXP;
 
-        let n = row_names.len() as isize;
+        let n: isize = row_names.len().try_into().expect("row_names length exceeds isize::MAX");
         unsafe {
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in row_names.iter().enumerate() {
+                let name_len: i32 = name.len().try_into().expect("name exceeds i32::MAX bytes");
                 let chars =
-                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
-                ffi::SET_STRING_ELT(names_vec.get(), i as isize, chars);
+                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name_len, ffi::CE_UTF8);
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                ffi::SET_STRING_ELT(names_vec.get(), idx, chars);
             }
             ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, names_vec.get());
         }
@@ -686,7 +692,8 @@ impl<'a> ListAccumulator<'a> {
     /// Must be called from the R main thread.
     pub unsafe fn new(scope: &'a ProtectScope, initial_cap: usize) -> Self {
         let cap = initial_cap.max(1); // At least 1 to avoid edge cases
-        let list_sexp = unsafe { ffi::Rf_allocVector(VECSXP, cap as isize) };
+        let cap_isize: isize = cap.try_into().expect("capacity exceeds isize::MAX");
+        let list_sexp = unsafe { ffi::Rf_allocVector(VECSXP, cap_isize) };
         let list = unsafe { scope.protect_with_index(list_sexp) };
         let temp = unsafe { scope.protect_with_index(ffi::R_NilValue) };
 
@@ -718,8 +725,9 @@ impl<'a> ListAccumulator<'a> {
         let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
 
         // Insert into list (list and temp are both protected)
+        let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
-            ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
+            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
         }
 
         self.names.push(None);
@@ -739,9 +747,10 @@ impl<'a> ListAccumulator<'a> {
         }
 
         // Protect the sexp during insertion using temp slot
+        let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
             self.temp.set(sexp);
-            ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
+            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
         }
 
         self.names.push(None);
@@ -761,8 +770,9 @@ impl<'a> ListAccumulator<'a> {
 
         let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
 
+        let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
-            ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
+            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
         }
 
         self.names.push(Some(name.to_string()));
@@ -815,19 +825,21 @@ impl<'a> ListAccumulator<'a> {
     /// Must be called from the R main thread.
     unsafe fn grow(&mut self) {
         let new_cap = self.cap.saturating_mul(2).max(4);
+        let new_cap_isize: isize = new_cap.try_into().expect("new capacity exceeds isize::MAX");
 
         // Allocate new list via temp slot (safe pattern)
         let old_list = self.list.get();
         unsafe {
             self.temp
-                .set_with(|| ffi::Rf_allocVector(VECSXP, new_cap as isize));
+                .set_with(|| ffi::Rf_allocVector(VECSXP, new_cap_isize));
         }
         let new_list = self.temp.get();
 
         // Copy existing elements
         for i in 0..self.len {
-            let elem = unsafe { ffi::VECTOR_ELT(old_list, i as isize) };
-            unsafe { ffi::SET_VECTOR_ELT(new_list, i as isize, elem) };
+            let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+            let elem = unsafe { ffi::VECTOR_ELT(old_list, idx) };
+            unsafe { ffi::SET_VECTOR_ELT(new_list, idx, elem) };
         }
 
         // Replace list slot with new list
@@ -864,9 +876,10 @@ impl<'a> ListAccumulator<'a> {
         let has_names = self.names.iter().any(|n| n.is_some());
 
         // If len < cap, we need to shrink the list
+        let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         let root = if self.len < self.cap {
             unsafe {
-                let shrunk = ffi::Rf_xlengthgets(self.list.get(), self.len as isize);
+                let shrunk = ffi::Rf_xlengthgets(self.list.get(), len_isize);
                 // The shrunk list might be the same or a new allocation
                 // Either way, we protect it via the scope
                 self.scope.protect(shrunk)
@@ -880,14 +893,16 @@ impl<'a> ListAccumulator<'a> {
             unsafe {
                 // OwnedProtect handles Rf_protect/Rf_unprotect automatically.
                 // Rf_mkCharLenCE can allocate, so names_sexp must be protected.
-                let names_sexp = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, self.len as isize));
+                let names_sexp = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, len_isize));
                 for (i, name) in self.names.iter().enumerate() {
+                    let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(n) = name {
+                        let n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
                         let charsxp =
-                            ffi::Rf_mkCharLenCE(n.as_ptr().cast(), n.len() as i32, ffi::CE_UTF8);
-                        ffi::SET_STRING_ELT(names_sexp.get(), i as isize, charsxp);
+                            ffi::Rf_mkCharLenCE(n.as_ptr().cast(), n_len, ffi::CE_UTF8);
+                        ffi::SET_STRING_ELT(names_sexp.get(), idx, charsxp);
                     } else {
-                        ffi::SET_STRING_ELT(names_sexp.get(), i as isize, ffi::R_BlankString);
+                        ffi::SET_STRING_ELT(names_sexp.get(), idx, ffi::R_BlankString);
                     }
                 }
                 ffi::Rf_setAttrib(root.get(), ffi::R_NamesSymbol, names_sexp.get());
@@ -1024,11 +1039,12 @@ impl NamedList {
     /// Returns `None` if the list has no `names` attribute.
     pub fn new(list: List) -> Option<Self> {
         let names_sexp = list.names()?;
-        let n = list.len() as usize;
+        let n: usize = list.len().try_into().expect("list length must be non-negative");
         let mut index = HashMap::with_capacity(n);
 
         for i in 0..n {
-            let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i as isize) };
+            let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+            let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, idx) };
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }
@@ -1053,7 +1069,8 @@ impl NamedList {
         T: TryFromSexp<Error = SexpError>,
     {
         let &idx = self.index.get(name)?;
-        let elem = unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx as isize) };
+        let idx_isize: isize = idx.try_into().ok()?;
+        let elem = unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx_isize) };
         T::try_from_sexp(elem).ok()
     }
 
@@ -1061,7 +1078,8 @@ impl NamedList {
     #[inline]
     pub fn get_raw(&self, name: &str) -> Option<SEXP> {
         let &idx = self.index.get(name)?;
-        Some(unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx as isize) })
+        let idx_isize: isize = idx.try_into().ok()?;
+        Some(unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx_isize) })
     }
 
     /// Get element at 0-based index and convert to type `T`.
@@ -1179,13 +1197,14 @@ impl<T: IntoR> IntoList for Vec<T> {
         // This also ensures all R allocations happen before we allocate the list,
         // so we don't need to protect the list during SET_VECTOR_ELT.
         let converted: Vec<SEXP> = self.into_iter().map(|v| v.into_sexp()).collect();
-        let n = converted.len() as isize;
+        let n: isize = converted.len().try_into().expect("list length exceeds isize::MAX");
         unsafe {
             let list = ffi::Rf_allocVector(VECSXP, n);
             // No protection needed: SET_VECTOR_ELT doesn't allocate, and all
             // child SEXPs were allocated before `list`, so no GC can occur here.
             for (i, val) in converted.into_iter().enumerate() {
-                ffi::SET_VECTOR_ELT(list, i as isize, val);
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                ffi::SET_VECTOR_ELT(list, idx, val);
             }
             List(list)
         }
@@ -1199,10 +1218,11 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
-        let expected = list.len() as usize;
+        let expected: usize = list.len().try_into().expect("list length must be non-negative");
         let mut out = Vec::with_capacity(expected);
         for i in 0..expected {
-            let sexp = list.get(i as isize).ok_or_else(|| {
+            let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+            let sexp = list.get(idx).ok_or_else(|| {
                 SexpError::from(SexpLengthError {
                     expected,
                     actual: i,
@@ -1235,12 +1255,13 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
-        let n = list.len() as usize;
+        let n: usize = list.len().try_into().expect("list length must be non-negative");
         let names_sexp = list.names();
         let mut map = HashMap::with_capacity(n);
 
         for i in 0..n {
-            let sexp = list.get(i as isize).ok_or_else(|| {
+            let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+            let sexp = list.get(idx).ok_or_else(|| {
                 SexpError::from(SexpLengthError {
                     expected: n,
                     actual: i,
@@ -1249,7 +1270,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, i as isize) };
+                let name_sexp = unsafe { ffi::STRING_ELT(names, idx) };
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
@@ -1288,12 +1309,13 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
-        let n = list.len() as usize;
+        let n: usize = list.len().try_into().expect("list length must be non-negative");
         let names_sexp = list.names();
         let mut map = BTreeMap::new();
 
         for i in 0..n {
-            let sexp = list.get(i as isize).ok_or_else(|| {
+            let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+            let sexp = list.get(idx).ok_or_else(|| {
                 SexpError::from(SexpLengthError {
                     expected: n,
                     actual: i,
@@ -1302,7 +1324,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, i as isize) };
+                let name_sexp = unsafe { ffi::STRING_ELT(names, idx) };
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
@@ -1402,13 +1424,14 @@ impl List {
     /// The input SEXPs should already be protected or be children of protected
     /// containers. This function protects the list during construction.
     pub fn from_raw_values(values: Vec<SEXP>) -> Self {
-        let n = values.len() as isize;
+        let n: isize = values.len().try_into().expect("values length exceeds isize::MAX");
         unsafe {
             // Protect list during construction. SET_VECTOR_ELT doesn't allocate,
             // but we protect defensively in case this code is modified later.
             let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
             for (i, val) in values.into_iter().enumerate() {
-                ffi::SET_VECTOR_ELT(list.get(), i as isize, val);
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                ffi::SET_VECTOR_ELT(list.get(), idx, val);
             }
             List(list.get())
         }
@@ -1451,21 +1474,21 @@ impl List {
             SEXPTYPE::INTSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<i32>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<i32>().first().unwrap();
+                    *slot = *elem.as_slice::<i32>().first().expect("scalar has length 1");
                 }
                 v
             },
             SEXPTYPE::REALSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<f64>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<f64>().first().unwrap();
+                    *slot = *elem.as_slice::<f64>().first().expect("scalar has length 1");
                 }
                 v
             },
             SEXPTYPE::LGLSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<crate::ffi::RLogical>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<crate::ffi::RLogical>().first().unwrap();
+                    *slot = *elem.as_slice::<crate::ffi::RLogical>().first().expect("scalar has length 1");
                 }
                 v
             },
@@ -1473,7 +1496,8 @@ impl List {
             SEXPTYPE::STRSXP => unsafe {
                 let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as isize));
                 for (i, &elem) in elements.iter().enumerate() {
-                    ffi::SET_STRING_ELT(v.get(), i as isize, ffi::STRING_ELT(elem, 0));
+                    let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                    ffi::SET_STRING_ELT(v.get(), idx, ffi::STRING_ELT(elem, 0));
                 }
                 v.get()
             },
@@ -1493,19 +1517,21 @@ impl List {
     where
         N: AsRef<str>,
     {
-        let n = pairs.len() as isize;
+        let n: isize = pairs.len().try_into().expect("pairs length exceeds isize::MAX");
         unsafe {
             // CRITICAL: Both list and names must be protected because
             // Rf_mkCharLenCE can allocate and trigger GC in the loop below.
             let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
             let names = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, (name, val)) in pairs.into_iter().enumerate() {
-                ffi::SET_VECTOR_ELT(list.get(), i as isize, val);
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                ffi::SET_VECTOR_ELT(list.get(), idx, val);
 
                 let s = name.as_ref();
+                let s_len: i32 = s.len().try_into().expect("name exceeds i32::MAX bytes");
                 // Rf_mkCharLenCE allocates - list and names must be protected!
-                let chars = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8);
-                ffi::SET_STRING_ELT(names.get(), i as isize, chars);
+                let chars = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s_len, ffi::CE_UTF8);
+                ffi::SET_STRING_ELT(names.get(), idx, chars);
             }
             ffi::Rf_namesgets(list.get(), names.get());
             List(list.get())
@@ -1608,7 +1634,8 @@ impl TryFromSexp for List {
         let names_sexp = unsafe { ffi::Rf_getAttrib(list_sexp, ffi::R_NamesSymbol) };
         if names_sexp != unsafe { ffi::R_NilValue } {
             let n = unsafe { ffi::Rf_xlength(list_sexp) };
-            let mut seen = HashSet::with_capacity(n as usize);
+            let n_usize: usize = n.try_into().expect("list length must be non-negative");
+            let mut seen = HashSet::with_capacity(n_usize);
 
             for i in 0..n {
                 let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };
