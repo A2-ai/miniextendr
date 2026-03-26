@@ -121,7 +121,7 @@ impl mx_tag {
 /// 2. Converting each `argv[i]` via [`TryFromSexp`]
 /// 3. Calling the actual method
 /// 4. Converting the result via [`IntoR`]
-/// 5. Catching panics and converting to `r_stop`
+/// 5. Catching panics and converting to R errors
 ///
 /// ## Safety
 ///
