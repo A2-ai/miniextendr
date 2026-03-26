@@ -264,7 +264,7 @@ pub trait TraitView: Sized {
     /// Try to create a view, returning an error message on failure.
     ///
     /// Similar to `try_from_sexp` but returns an error string suitable for
-    /// use with `r_stop` if the object does not implement the trait.
+    /// use as an R error message if the object does not implement the trait.
     ///
     /// # Safety
     ///

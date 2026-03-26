@@ -7,7 +7,7 @@
 //! ## Guard Modes
 //!
 //! - [`GuardMode::CatchUnwind`]: Wraps the closure in `catch_unwind`. On panic,
-//!   fires telemetry and calls `r_stop` (which diverges via `Rf_error`).
+//!   fires telemetry and raises an R error via `Rf_error` (diverges).
 //!   Used by worker and connection trampolines.
 //!
 //! - [`GuardMode::RUnwind`]: Uses `R_UnwindProtect` to catch both Rust panics
@@ -24,7 +24,7 @@ use crate::unwind_protect::panic_payload_to_string;
 /// FFI guard mode controlling how panics are caught at Rust-R boundaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuardMode {
-    /// `catch_unwind` only. On panic: fire telemetry, then `r_stop()` (diverges).
+    /// `catch_unwind` only. On panic: fire telemetry, then `Rf_error` (diverges).
     ///
     /// Use when R longjmps cannot occur (the closure does not call R APIs).
     CatchUnwind,
@@ -39,7 +39,7 @@ pub enum GuardMode {
 /// On panic:
 /// - Extracts the panic message from the payload.
 /// - Fires [`crate::panic_telemetry`] with `source`.
-/// - For [`GuardMode::CatchUnwind`]: calls `r_stop` (diverges — never returns).
+/// - For [`GuardMode::CatchUnwind`]: raises R error via `Rf_error` (diverges — never returns).
 /// - For [`GuardMode::RUnwind`]: delegates to `with_r_unwind_protect_sourced`.
 ///
 /// # Parameters
@@ -50,7 +50,7 @@ pub enum GuardMode {
 ///
 /// # Note on `fallback`
 ///
-/// `GuardMode::CatchUnwind` diverges on panic (`r_stop` never returns), so no
+/// `GuardMode::CatchUnwind` diverges on panic (`Rf_error` never returns), so no
 /// fallback value is needed. If you need a fallback (e.g. connection trampolines
 /// that must return a value on panic without calling R), use
 /// [`guarded_ffi_call_with_fallback`] instead.
@@ -74,10 +74,10 @@ where
 
 /// Execute `f` inside a `CatchUnwind` guard, returning `fallback` on panic.
 ///
-/// Unlike [`guarded_ffi_call`] with `CatchUnwind` (which diverges via `r_stop`),
+/// Unlike [`guarded_ffi_call`] with `CatchUnwind` (which diverges via `Rf_error`),
 /// this variant returns the `fallback` value instead of raising an R error.
 /// This is needed for connection trampolines where panicking through R/C frames
-/// is UB but calling `r_stop` is also undesirable (the caller expects a return
+/// is UB but raising an R error is also undesirable (the caller expects a return
 /// value indicating failure).
 ///
 /// Telemetry is fired before returning the fallback.

@@ -106,9 +106,9 @@
 //!
 //! Method shims handle errors as follows:
 //!
-//! - **Arity mismatch**: Calls `r_stop("expected N arguments, got M")`
-//! - **Type conversion failure**: Calls `r_stop` with the error message
-//! - **Panic**: Caught via `catch_unwind`, converted to `r_stop`
+//! - **Arity mismatch**: Raises R error ("expected N arguments, got M")
+//! - **Type conversion failure**: Raises R error with the error message
+//! - **Panic**: Caught via `with_r_unwind_protect`, converted to R error
 //!
 //! ## Thread Safety
 //!
@@ -676,7 +676,7 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
 /// 3. Converts SEXP arguments to Rust types
 /// 4. Calls the actual method on the concrete type
 /// 5. Converts the result back to SEXP
-/// 6. On panic, converts to R error via `r_stop`
+/// 6. On panic, converts to R error via `with_r_unwind_protect`
 ///
 /// For generic traits, the shim carries the trait's type parameters plus `__ImplT`.
 fn generate_method_shim(

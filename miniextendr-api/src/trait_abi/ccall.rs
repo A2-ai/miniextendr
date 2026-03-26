@@ -168,7 +168,7 @@ pub unsafe fn mx_query(sexp: SEXP, tag: mx_tag) -> *const c_void {
 /// if let Some(view) = unsafe { mx_query_as::<FooView>(obj, TAG_FOO) } {
 ///     let result = view.some_method(args);
 /// } else {
-///     r_stop("object does not implement Foo");
+///     panic!("object does not implement Foo");
 /// }
 /// ```
 #[inline]

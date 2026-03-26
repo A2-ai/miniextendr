@@ -22,7 +22,7 @@ struct AnalysisCtx<'a> {
     /// Set to `true` if the R wrapper should return invisibly (e.g., `()` or `Option<()>`).
     is_invisible: &'a mut bool,
     /// Statements to execute after calling the Rust function but before converting
-    /// the result to SEXP (e.g., unwrapping `Result::Err` via `r_stop`).
+    /// the result to SEXP (e.g., unwrapping `Result::Err` to an R error).
     post_call_statements: &'a mut Vec<proc_macro2::TokenStream>,
 }
 
@@ -52,7 +52,7 @@ pub(crate) struct ReturnTypeAnalysis {
 
     /// Statements inserted between the Rust function call and the return expression.
     ///
-    /// Used for unwrapping `Result::Err` (via `r_stop`) or checking `Option::None`
+    /// Used for unwrapping `Result::Err` (raises R error) or checking `Option::None`
     /// before the conversion to SEXP occurs.
     pub post_call_statements: Vec<proc_macro2::TokenStream>,
 }
@@ -68,11 +68,11 @@ pub(crate) struct ReturnTypeAnalysis {
 /// - `rust_ident`: Function name (used in error messages for `Option::None`)
 /// - `return_pref`: How to convert non-primitive return types (Auto, List, ExternalPtr, Native)
 /// - `unwrap_in_r`: When `true`, `Result<T, E>` is passed to R as-is via `IntoR` (list with error field)
-///   rather than unwrapped in Rust via `r_stop`
+///   rather than unwrapped in Rust (which raises an R error)
 /// - `strict`: When `true`, lossy integer types (i64, u64, isize, usize) use checked
 ///   conversions that panic on overflow instead of silent truncation
 /// - `error_in_r`: When `true`, errors are returned as tagged SEXP values (checked in R)
-///   instead of calling `r_stop` directly in Rust
+///   instead of raising an R error directly in Rust
 pub(crate) fn analyze_return_type(
     output: &syn::ReturnType,
     rust_result_ident: &syn::Ident,
@@ -200,7 +200,7 @@ pub(crate) fn analyze_return_type(
 /// - `Option<SEXP>`: returns the SEXP or `R_NilValue` for `None`
 /// - `Option<T>`: delegates to `IntoR` (which maps `None` to `NA` for supported types)
 ///
-/// In `error_in_r` mode, `None` returns a tagged error SEXP instead of calling `r_stop`.
+/// In `error_in_r` mode, `None` returns a tagged error SEXP instead of raising an R error.
 fn analyze_option_type(
     type_path: &syn::TypePath,
     ctx: &mut AnalysisCtx,
@@ -264,10 +264,10 @@ fn analyze_option_type(
 ///
 /// Handles several combinations of `T` and `E`:
 /// - `Result<T, ()>`: unit error is a deliberate sentinel; `Err(())` returns `NULL` to R
-/// - `Result<(), E>`: invisible, `Err` triggers `r_stop` (or tagged error in `error_in_r` mode)
+/// - `Result<(), E>`: invisible, `Err` raises R error (or tagged error in `error_in_r` mode)
 /// - `Result<SEXP, E>`: returns the SEXP directly on `Ok`
 /// - `Result<T, E>` with `unwrap_in_r`: passes the full `Result` to R as a list
-/// - `Result<T, E>` default: unwraps in Rust, calling `r_stop` on `Err`
+/// - `Result<T, E>` default: unwraps in Rust, raising R error on `Err`
 fn analyze_result_type(
     type_path: &syn::TypePath,
     ctx: &mut AnalysisCtx,
