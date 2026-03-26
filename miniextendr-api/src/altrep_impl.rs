@@ -473,6 +473,13 @@ macro_rules! __impl_alt_from_data {
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
     };
+    // Base: explicit guard
+    ($ty:ty, $methods:ident, $inferbase:ident, @guard $guard:ident) => {
+        $crate::__impl_altrep_base!($ty, $guard);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
     // Dataptr with element type
     ($ty:ty, $methods:ident, $inferbase:ident, dataptr($elem:ty)) => {
         $crate::__impl_altrep_base!($ty);
@@ -487,9 +494,23 @@ macro_rules! __impl_alt_from_data {
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
     };
+    // String dataptr + explicit guard
+    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr, @guard $guard:ident) => {
+        $crate::__impl_altrep_base!($ty, $guard);
+        $crate::__impl_altvec_string_dataptr!($ty);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
     // Serialize only
     ($ty:ty, $methods:ident, $inferbase:ident, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // Serialize + explicit guard
+    ($ty:ty, $methods:ident, $inferbase:ident, serialize, @guard $guard:ident) => {
+        $crate::__impl_altrep_base_with_serialize!($ty, $guard);
         impl $crate::altrep_traits::AltVec for $ty {}
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
@@ -511,6 +532,13 @@ macro_rules! __impl_alt_from_data {
     // String dataptr + serialize
     ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_string_dataptr!($ty);
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
+    // String dataptr + serialize + explicit guard
+    ($ty:ty, $methods:ident, $inferbase:ident, string_dataptr, serialize, @guard $guard:ident) => {
+        $crate::__impl_altrep_base_with_serialize!($ty, $guard);
         $crate::__impl_altvec_string_dataptr!($ty);
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
@@ -825,15 +853,18 @@ macro_rules! __impl_altraw_methods {
 /// ```
 #[macro_export]
 macro_rules! impl_altstring_from_data {
+    // String ALTREP callbacks call R APIs (Rf_mkCharLenCE in elt, Rf_allocVector in dataptr),
+    // so they MUST use RUnwind to catch both Rust panics and R longjmps.
     ($ty:ty) => {
-        $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string);
+        $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, @guard RUnwind);
     };
     ($ty:ty, dataptr) => {
         $crate::__impl_alt_from_data!(
             $ty,
             __impl_altstring_methods,
             impl_inferbase_string,
-            string_dataptr
+            string_dataptr,
+            @guard RUnwind
         );
     };
     ($ty:ty, serialize) => {
@@ -841,7 +872,8 @@ macro_rules! impl_altstring_from_data {
             $ty,
             __impl_altstring_methods,
             impl_inferbase_string,
-            serialize
+            serialize,
+            @guard RUnwind
         );
     };
     ($ty:ty, dataptr, serialize) => {
@@ -850,7 +882,8 @@ macro_rules! impl_altstring_from_data {
             __impl_altstring_methods,
             impl_inferbase_string,
             string_dataptr,
-            serialize
+            serialize,
+            @guard RUnwind
         );
     };
 }
@@ -1277,6 +1310,9 @@ impl<const N: usize> crate::altrep_traits::AltRaw for [u8; N] {
 
 // String arrays
 impl<const N: usize> crate::altrep_traits::Altrep for [String; N] {
+    // String ALTREP elt calls Rf_mkCharLenCE (R API) — must use RUnwind.
+    const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
+
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
         unsafe { crate::altrep_data1_as::<[String; N]>(x) }
             .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
@@ -1846,6 +1882,9 @@ crate::impl_inferbase_raw!(&'static [u8]);
 
 // String static slices (owned strings)
 impl crate::altrep_traits::Altrep for &'static [String] {
+    // String ALTREP elt calls Rf_mkCharLenCE (R API) — must use RUnwind.
+    const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
+
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
         unsafe { crate::altrep_data1_as::<&'static [String]>(x) }
             .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
@@ -1880,6 +1919,9 @@ crate::impl_inferbase_string!(&'static [String]);
 
 // String static slices (str references)
 impl crate::altrep_traits::Altrep for &'static [&'static str] {
+    // String ALTREP elt calls Rf_mkCharLenCE (R API) — must use RUnwind.
+    const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
+
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
         unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) }
             .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
