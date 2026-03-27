@@ -129,7 +129,7 @@ test_that("trait associated constants work", {
 
 test_that("S3TraitCounter trait methods work via S3 dispatch", {
   # Create an S3TraitCounter
-  counter <- S3TraitCounter$new_s3trait(10L)
+  counter <- s3traitcounter_new_s3trait(10L)
   expect_true(inherits(counter, "S3TraitCounter"))
 
   # Test S3 generic dispatch: value(x) instead of x$Counter$value()
@@ -143,12 +143,12 @@ test_that("S3TraitCounter trait methods work via S3 dispatch", {
   checked_add(counter, 5L)
   expect_equal(value(counter), 16L)
 
-  # Verify inherent method and S3 trait method return same value
-  expect_equal(counter$get_value(), value(counter))
+  # Verify inherent method (S3 generic) and trait method return same value
+  expect_equal(get_value(counter), value(counter))
 })
 
 test_that("S3TraitCounter S3 names work directly", {
-  counter <- S3TraitCounter$new_s3trait(5L)
+  counter <- s3traitcounter_new_s3trait(5L)
   expect_equal(value.S3TraitCounter(counter), 5L)
 
   increment.S3TraitCounter(counter)
@@ -159,8 +159,8 @@ test_that("S3TraitCounter S3 names work directly", {
 })
 
 test_that("S3 trait methods work with multiple instances independently", {
-  counter1 <- S3TraitCounter$new_s3trait(0L)
-  counter2 <- S3TraitCounter$new_s3trait(100L)
+  counter1 <- s3traitcounter_new_s3trait(0L)
+  counter2 <- s3traitcounter_new_s3trait(100L)
 
   # Modify counter1 via S3 trait methods
   increment(counter1)
@@ -190,7 +190,7 @@ test_that("S3 trait static methods and associated constants work", {
 
 test_that("S4TraitCounter trait methods work via S4 dispatch", {
   # Create an S4TraitCounter using inherent method (Env style)
-  counter <- S4TraitCounter$new_s4trait(10L)
+  counter <- S4TraitCounter_new_s4trait(10L)
   expect_true(inherits(counter, "S4TraitCounter"))
 
   # Test S4 trait method: s4_trait_Counter_value
@@ -205,7 +205,7 @@ test_that("S4TraitCounter trait methods work via S4 dispatch", {
   expect_equal(s4_trait_Counter_value(counter), 16L)
 
   # Verify inherent method and S4 trait method return same value
-  expect_equal(counter$get_value(), s4_trait_Counter_value(counter))
+  expect_equal(s4_get_value(counter), s4_trait_Counter_value(counter))
 })
 
 test_that("S4 trait static methods and associated constants work", {
@@ -224,7 +224,7 @@ test_that("S4 trait static methods and associated constants work", {
 test_that("S7TraitCounter trait methods work via S7 dispatch", {
   # Create an S7TraitCounter using inherent method (Env style)
   counter <- S7TraitCounter_new_s7trait(10L)
-  expect_true(inherits(counter, "S7TraitCounter"))
+  expect_s3_class(counter, "S7TraitCounter")
 
   # Test S7 trait method: s7_trait_Counter_value
   expect_equal(s7_trait_Counter_value(counter), 10L)
@@ -237,8 +237,8 @@ test_that("S7TraitCounter trait methods work via S7 dispatch", {
   s7_trait_Counter_checked_add(counter, 5L)
   expect_equal(s7_trait_Counter_value(counter), 16L)
 
-  # Verify inherent method and S7 trait method return same value
-  expect_equal(counter$get_value(), s7_trait_Counter_value(counter))
+  # Verify inherent method (S7 generic) and trait method return same value
+  expect_equal(get_value(counter), s7_trait_Counter_value(counter))
 })
 
 test_that("S7 trait static methods and associated constants work", {

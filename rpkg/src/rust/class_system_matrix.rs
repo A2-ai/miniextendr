@@ -35,10 +35,10 @@ pub struct CounterTraitEnv {
 
 #[miniextendr]
 impl CounterTraitEnv {
-    fn new(v: i32) -> Self {
+    pub fn new(v: i32) -> Self {
         Self { value: v }
     }
-    fn get_value(&self) -> i32 {
+    pub fn get_value(&self) -> i32 {
         self.value
     }
 }
@@ -66,10 +66,10 @@ pub struct CounterTraitS3 {
 
 #[miniextendr(s3)]
 impl CounterTraitS3 {
-    fn new(v: i32) -> Self {
+    pub fn new(v: i32) -> Self {
         Self { value: v }
     }
-    fn get_value(&self) -> i32 {
+    pub fn get_value(&self) -> i32 {
         self.value
     }
 }
@@ -99,10 +99,10 @@ pub struct CounterTraitS4 {
 
 #[miniextendr(s4)]
 impl CounterTraitS4 {
-    fn new(v: i32) -> Self {
+    pub fn new(v: i32) -> Self {
         Self { value: v }
     }
-    fn get_value(&self) -> i32 {
+    pub fn get_value(&self) -> i32 {
         self.value
     }
 }
@@ -134,10 +134,10 @@ pub struct CounterTraitS7 {
 
 #[miniextendr(s7)]
 impl CounterTraitS7 {
-    fn new(v: i32) -> Self {
+    pub fn new(v: i32) -> Self {
         Self { value: v }
     }
-    fn get_value(&self) -> i32 {
+    pub fn get_value(&self) -> i32 {
         self.value
     }
 }
@@ -165,10 +165,10 @@ pub struct CounterTraitR6 {
 
 #[miniextendr(r6)]
 impl CounterTraitR6 {
-    fn new(v: i32) -> Self {
+    pub fn new(v: i32) -> Self {
         Self { value: v }
     }
-    fn get_value(&self) -> i32 {
+    pub fn get_value(&self) -> i32 {
         self.value
     }
 }
