@@ -1,13 +1,21 @@
-//! `ExternalPtr<T>` - A Box-like owned pointer that wraps R's EXTPTRSXP
+//! `ExternalPtr<T>` — a Box-like owned pointer that wraps R's EXTPTRSXP.
 //!
 //! This provides ownership semantics similar to `Box<T>`, with the key difference
 //! that cleanup is deferred to R's garbage collector via finalizers.
 //!
-//! This means you can hand ownership of Rust-allocated data to R and let its GC
-//! decide when to drop it. The `tag` slot is a human-friendly type name, and the
-//! `prot` slot stores both the type symbol and any R objects you want to keep
-//! alive alongside the pointer. Neither slot is an R class attribute; if you
-//! want an S3/S4 class, attach it yourself in R.
+//! # Submodules
+//!
+//! | Module | Contents |
+//! |--------|----------|
+//! | [`altrep_helpers`] | ALTREP data1/data2 slot access helpers + `Sidecar` marker type |
+//!
+//! # Core Types
+//!
+//! - [`ExternalPtr<T>`] — owned pointer wrapping EXTPTRSXP
+//! - [`TypedExternal`] — trait for type-safe identification across packages
+//! - [`ExternalSlice<T>`] — helper for slice data in external pointers
+//! - [`ErasedExternalPtr`] — type-erased `ExternalPtr<()>` alias
+//! - [`IntoExternalPtr`] — conversion trait for wrapping values
 //!
 //! `PartialEq`/`PartialOrd` compare the pointee values (like `Box<T>`). Use
 //! `ptr_eq` when you care about pointer identity, and `as_ref()`/`as_mut()` for

@@ -2,6 +2,19 @@
 //!
 //! This module provides RAII wrappers around R's GC protection primitives.
 //!
+//! # Submodules
+//!
+//! | Module | Contents |
+//! |--------|----------|
+//! | [`tls`] | Thread-local convenience API — `tls::protect(x)` without passing `&ProtectScope` |
+//!
+//! # Core Types
+//!
+//! - [`ProtectScope`] — RAII scope that calls `UNPROTECT(n)` on drop
+//! - [`OwnedProtect`] — single-value RAII protect/unprotect
+//! - [`Root`] — lifetime-tied handle to a protected SEXP
+//! - [`ReprotectSlot`] — `PROTECT_WITH_INDEX` + `REPROTECT` for mutable slots
+//!
 //! # Protection Strategies in miniextendr
 //!
 //! miniextendr provides three complementary protection mechanisms for different scenarios:

@@ -8,7 +8,20 @@
 //! | REALSXP | `f64`, `&[f64]` | `REAL()` / `DATAPTR_RO` |
 //! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
+//! | CPLXSXP | `Rcomplex` | `COMPLEX()` / `DATAPTR_RO` |
 //! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` / `Rf_translateCharUTF8()` |
+//!
+//! # Submodules
+//!
+//! | Module | Contents |
+//! |--------|----------|
+//! | [`logical`] | `Rboolean`, `bool`, `Option<bool>` |
+//! | [`coerced_scalars`] | Multi-source numeric scalars (`i8`..`usize`) + large integers (`i64`, `u64`) |
+//! | [`references`] | Borrowed views: `&T`, `&mut T`, `&[T]`, `Vec<&T>` |
+//! | [`strings`] | `&str`, `String`, `char` from STRSXP |
+//! | [`na_vectors`] | `Vec<Option<T>>`, `Box<[Option<T>]>` with NA awareness |
+//! | [`collections`] | `HashMap`, `BTreeMap`, `HashSet`, `BTreeSet` |
+//! | [`cow_and_paths`] | `Cow<[T]>`, `PathBuf`, `OsString`, string sets |
 //!
 //! # Thread Safety
 //!
