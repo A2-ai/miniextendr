@@ -2,6 +2,15 @@
 //!
 //! This module provides the [`IntoR`] trait for converting Rust values to R SEXPs.
 //!
+//! # Submodules
+//!
+//! | Module | Contents |
+//! |--------|----------|
+//! | [`large_integers`] | `i64`, `u64`, `isize`, `usize` → REALSXP, plus string/bool/Option scalars |
+//! | [`collections`] | `HashMap`, `BTreeMap`, `HashSet`, `BTreeSet` → named/unnamed lists |
+//! | [`result`] | `Result<T, E>` → list with `ok`/`err` fields |
+//! | [`altrep`] | `Altrep<T>` marker type, `Lazy<T>` alias, `IntoRAltrep` trait |
+//!
 //! # Thread Safety
 //!
 //! The trait provides two methods:

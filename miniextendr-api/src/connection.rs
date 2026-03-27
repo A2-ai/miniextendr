@@ -2,6 +2,19 @@
 //!
 //! This module provides a safe Rust interface for creating custom R connections.
 //!
+//! # Submodules
+//!
+//! | Module | Contents |
+//! |--------|----------|
+//! | [`io_adapters`] | `std::io::{Read, Write, Seek}` adapters: `IoRead`, `IoWrite`, `IoReadWrite`, etc. |
+//!
+//! # Core Types
+//!
+//! - [`RConnectionImpl`] — trait users implement for custom connection behavior
+//! - [`RCustomConnection`] — builder for registering connections with R
+//! - [`ConnectionCapabilities`] — query connection state (readable, writable, seekable)
+//! - [`Rconn`] — C-compatible struct mirroring R's internal `struct Rconn`
+//!
 //! # WARNING
 //!
 //! **The R connection API is explicitly unstable.** From R's `R_ext/Connections.h`:

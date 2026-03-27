@@ -1,5 +1,20 @@
 //! Thin wrapper around R list (`VECSXP`).
+//!
 //! Provides safe construction from Rust values and typed extraction.
+//!
+//! # Submodules
+//!
+//! | Module | Contents |
+//! |--------|----------|
+//! | [`accumulator`] | `ListAccumulator` — dynamic list construction with bounded protect stack |
+//! | [`named`] | `NamedList` — O(1) name-indexed access via `HashMap` index |
+//!
+//! # Core Types
+//!
+//! - [`List`] — owned handle to an R list (VECSXP)
+//! - [`ListMut`] — mutable view for in-place element replacement
+//! - [`ListBuilder`] — fixed-size batch construction
+//! - [`IntoList`] / [`TryFromList`] — conversion traits
 
 use crate::ffi::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
 use crate::ffi::{self, Rboolean, SexpExt, SEXP};

@@ -1,3 +1,31 @@
+//! R's `...` (variadic arguments) support.
+//!
+//! Provides [`Dots`], the Rust representation of R's `...` parameter. The generated
+//! R wrapper captures `...` as `list(...)` and passes it to Rust.
+//!
+//! # Usage
+//!
+//! Use `...` as the parameter type — the macro handles the rest:
+//!
+//! ```ignore
+//! #[miniextendr]
+//! pub fn greet(prefix: &str, dots: ...) {
+//!     let list = dots.as_list();
+//!     // Access by name: list.get_named::<String>("key")
+//!     // Access by position: list.get_index::<i32>(0)
+//! }
+//! ```
+//!
+//! Use `name @ ...` syntax for a custom parameter name, or combine with
+//! [`typed_list!`](crate::typed_list) for structure validation:
+//!
+//! ```ignore
+//! #[miniextendr(dots = typed_list!(x: i32, y: f64))]
+//! pub fn validated(args: ...) {
+//!     // dots_typed.x and dots_typed.y are available
+//! }
+//! ```
+
 use crate::ffi::{R_NilValue, SEXP};
 use crate::from_r::TryFromSexp;
 use crate::list::{List, ListFromSexpError};
