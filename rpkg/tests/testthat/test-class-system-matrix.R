@@ -78,8 +78,8 @@ test_that("CounterTraitS4 works with S4 trait impl", {
 
 test_that("CounterTraitS7 works with S7 trait impl", {
   counter <- CounterTraitS7(10L)
-  # S7 instances use S7's own class system
-  expect_s3_class(counter, "CounterTraitS7")
+  # S7 namespaces the class: "miniextendr::CounterTraitS7"
+  expect_s3_class(counter, "miniextendr::CounterTraitS7")
 
   # S7 trait method: s7_trait_Trait_method(x)
   expect_equal(s7_trait_MatrixCounter_custom_get(counter), 10L)
