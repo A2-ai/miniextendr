@@ -747,10 +747,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
-                T::SEXP_TYPE,
-                data.len() as crate::ffi::R_xlen_t,
-            ));
+            let arr = scope.alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t).into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -791,10 +788,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
 
         Ok(unsafe {
             let scope = ProtectScope::new();
-            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
-                T::SEXP_TYPE,
-                total_len as crate::ffi::R_xlen_t,
-            ));
+            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -835,10 +829,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
 
         Ok(unsafe {
             let scope = ProtectScope::new();
-            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
-                T::SEXP_TYPE,
-                total_len as crate::ffi::R_xlen_t,
-            ));
+            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -877,10 +868,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
 
         Ok(unsafe {
             let scope = ProtectScope::new();
-            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
-                T::SEXP_TYPE,
-                total_len as crate::ffi::R_xlen_t,
-            ));
+            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -926,10 +914,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
-                T::SEXP_TYPE,
-                total_len as crate::ffi::R_xlen_t,
-            ));
+            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -1091,10 +1076,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
-                T::SEXP_TYPE,
-                data.len() as crate::ffi::R_xlen_t,
-            ));
+            let arr = scope.alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t).into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -1133,10 +1115,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
-                T::SEXP_TYPE,
-                total_len as crate::ffi::R_xlen_t,
-            ));
+            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);

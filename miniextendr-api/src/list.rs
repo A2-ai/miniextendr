@@ -437,7 +437,7 @@ impl List {
     ///
     /// ```ignore
     /// let scope = ProtectScope::new();
-    /// let list = List::from_raw(scope.protect_raw(Rf_allocVector(VECSXP, n)));
+    /// let list = List::from_raw(scope.alloc_vecsxp(n).into_raw());
     ///
     /// for i in 0..n {
     ///     let child = Rf_allocVector(REALSXP, 10);  // unprotected!
@@ -487,7 +487,7 @@ impl List {
     /// # Example
     ///
     /// ```ignore
-    /// let list = List::from_raw(scope.protect_raw(Rf_allocVector(VECSXP, n)));
+    /// let list = List::from_raw(scope.alloc_vecsxp(n).into_raw());
     ///
     /// for i in 0..n {
     ///     list.set_elt_with(i, || {
@@ -531,7 +531,7 @@ use crate::gc_protect::ProtectScope;
 ///
 ///     for i in 0..n {
 ///         // Allocations inside the loop are protected by the scope
-///         let child = scope.protect_raw(Rf_allocVector(REALSXP, 10));
+///         let child = scope.alloc_real(10).into_raw();
 ///         builder.set(i, child);
 ///     }
 ///
@@ -552,9 +552,9 @@ impl<'a> ListBuilder<'a> {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn new(scope: &'a ProtectScope, len: isize) -> Self {
+    pub unsafe fn new(scope: &'a ProtectScope, len: usize) -> Self {
         // SAFETY: caller guarantees R main thread
-        let list = unsafe { scope.protect_raw(ffi::Rf_allocVector(VECSXP, len)) };
+        let list = unsafe { scope.alloc_vecsxp(len).into_raw() };
         Self {
             list,
             _scope: scope,
