@@ -1,4 +1,7 @@
-//! Error types for fallible `IntoR` conversions.
+//! Error types for fallible [`IntoR`](crate::into_r::IntoR) conversions.
+//!
+//! [`IntoRError`] is returned by `try_into_sexp` when conversion fails
+//! (e.g., string exceeds R's `i32` length limit).
 
 /// Error returned by [`IntoR::try_into_sexp`](crate::into_r::IntoR::try_into_sexp)
 /// for types whose conversion to R can fail.

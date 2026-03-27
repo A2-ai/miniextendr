@@ -1,4 +1,9 @@
-//! ALTREP marker type (Altrep<T> / Lazy<T>).
+//! ALTREP marker type (`Altrep<T>` / `Lazy<T>`).
+//!
+//! Wrapping a value in `Altrep(value)` opts into ALTREP representation
+//! instead of eager copy when returned from a `#[miniextendr]` function.
+//!
+//! `Lazy<T>` is a type alias for `Altrep<T>` — use whichever reads better.
 
 use crate::into_r::IntoR;
 

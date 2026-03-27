@@ -1,4 +1,8 @@
-//! Result<T, E> conversions to R.
+//! `Result<T, E>` conversions to R.
+//!
+//! Used by `#[miniextendr(unwrap_in_r)]` to pass Results to R as lists
+//! with `ok` and `err` fields, instead of unwrapping in Rust.
+//! Also provides `NullOnErr` for `Result<T, ()>` → NULL-on-error semantics.
 
 use std::collections::HashMap;
 

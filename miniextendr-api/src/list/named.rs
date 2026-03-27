@@ -1,4 +1,8 @@
-//! NamedList — O(1) name-indexed access to R lists.
+//! `NamedList` — O(1) name-indexed access to R lists.
+//!
+//! Wraps a [`List`](super::List) and builds a `HashMap<String, usize>` index
+//! on construction. Use when accessing multiple elements by name from the
+//! same list — each lookup is O(1) instead of O(n).
 
 use std::collections::HashMap;
 

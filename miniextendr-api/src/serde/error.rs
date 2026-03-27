@@ -1,4 +1,7 @@
-//! Error types for R serialization/deserialization.
+//! Error types for R serde serialization/deserialization.
+//!
+//! Provides [`RSerdeError`] which implements both `serde::ser::Error` and
+//! `serde::de::Error`, bridging serde's error model with R's error handling.
 
 use std::fmt;
 

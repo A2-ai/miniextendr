@@ -1,8 +1,11 @@
-// Convenience macros for implementing InferBase.
-//
-// The parametric `__impl_inferbase!` macro provides the shared implementation.
-// Each `impl_inferbase_*!` macro is a thin wrapper that passes family-specific
-// parameters (RBase variant, R_make_alt*_class function, install_* function).
+//! Convenience macros for implementing `InferBase`.
+//!
+//! The parametric `__impl_inferbase!` macro provides the shared implementation.
+//! Each `impl_inferbase_*!` macro is a thin wrapper that passes family-specific
+//! parameters (`RBase` variant, `R_make_alt*_class` function, `install_*` function).
+//!
+//! These macros are used by the `#[derive(Altrep)]` proc macro and by the
+//! built-in type implementations in [`super::builtins`].
 
 /// Parametric implementation of `InferBase` for any ALTREP family.
 ///

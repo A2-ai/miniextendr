@@ -1,4 +1,10 @@
 //! Reference conversions (borrowed views into R vectors).
+//!
+//! Provides zero-copy access to R vector data via `'static` references.
+//! The lifetime is technically a lie — the data lives as long as R doesn't GC it.
+//!
+//! Covers: `&T`, `&mut T`, `Option<&T>`, `Vec<&T>`, `Vec<&[T]>`, and
+//! mutable variants for all `RNativeType` types.
 
 use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};

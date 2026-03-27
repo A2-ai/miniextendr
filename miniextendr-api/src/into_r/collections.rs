@@ -1,4 +1,7 @@
 //! Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet) to R.
+//!
+//! - `HashMap<String, V>` / `BTreeMap<String, V>` → named R list
+//! - `HashSet<T>` / `BTreeSet<T>` → unnamed R vector (via Vec intermediary)
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
