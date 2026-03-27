@@ -627,6 +627,7 @@ pub fn miniextendr(
         strict,
         internal,
         noexport,
+        export,
         doc,
         error_in_r,
         c_symbol,
@@ -1447,7 +1448,8 @@ pub fn miniextendr(
     };
     // S3 methods need both @method (for registration) AND @export (for NAMESPACE)
     // Don't auto-export functions marked with @noRd, @keywords internal, or attr flags
-    let export_comment = if matches!(vis, syn::Visibility::Public(_))
+    // #[miniextendr(export)] forces @export even on non-pub functions
+    let export_comment = if (matches!(vis, syn::Visibility::Public(_)) || export)
         && !has_export_tag
         && !has_no_rd_tag
         && !has_internal_tag
