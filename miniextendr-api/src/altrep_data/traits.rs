@@ -1,3 +1,17 @@
+//! Per-family ALTREP data traits.
+//!
+//! Each ALTREP family has a high-level data trait that users implement:
+//!
+//! | Trait | R Type | Key Method |
+//! |-------|--------|-----------|
+//! | [`AltIntegerData`] | INTSXP | `elt(i) -> i32` |
+//! | [`AltRealData`] | REALSXP | `elt(i) -> f64` |
+//! | [`AltLogicalData`] | LGLSXP | `elt(i) -> Logical` |
+//! | [`AltRawData`] | RAWSXP | `elt(i) -> u8` |
+//! | [`AltComplexData`] | CPLXSXP | `elt(i) -> Rcomplex` |
+//! | [`AltStringData`] | STRSXP | `elt(i) -> Option<&str>` |
+//! | [`AltListData`] | VECSXP | `elt(i) -> SEXP` |
+
 use super::{AltrepLen, Logical, Sortedness, fill_region};
 use crate::ffi::{Rcomplex, SEXP};
 

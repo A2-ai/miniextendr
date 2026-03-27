@@ -1,4 +1,11 @@
-//! String conversions — STRSXP requires special handling via STRING_ELT.
+//! String conversions — STRSXP requires special handling via `STRING_ELT`.
+//!
+//! R stores strings as STRSXP (vector of CHARSXP). Each element requires
+//! `STRING_ELT` + `R_CHAR` to extract, unlike numeric vectors which expose
+//! a contiguous data pointer.
+//!
+//! Covers: `&str`, `String`, `char`, `Option<&str>`, `Option<String>`,
+//! `Vec<String>`, `Vec<&str>`, `Box<[String]>`.
 
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str, charsxp_to_str_unchecked};

@@ -1,4 +1,9 @@
-//! NA-aware vector conversions (Vec<Option<T>>, Box<[Option<T>]>).
+//! NA-aware vector conversions (`Vec<Option<T>>`, `Box<[Option<T>]>`).
+//!
+//! Maps R's NA values to `None` and non-NA values to `Some(v)`.
+//! Covers native types (i32, f64, u8), logical (bool, Rboolean, RLogical),
+//! string (`Option<String>`), complex (`Option<Rcomplex>`), and coerced
+//! numeric types (`Option<i64>`, `Option<u64>`, etc.).
 
 use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};

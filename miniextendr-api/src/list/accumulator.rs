@@ -1,4 +1,8 @@
-//! ListAccumulator — unknown-length list construction with bounded stack usage.
+//! `ListAccumulator` — unknown-length list construction with bounded stack usage.
+//!
+//! Unlike [`ListBuilder`](super::ListBuilder) which requires knowing the size at construction,
+//! `ListAccumulator` supports dynamic growth via `push`. It uses
+//! `ReprotectSlot` internally to maintain O(1) protect stack usage.
 
 use crate::ffi::SEXPTYPE::{STRSXP, VECSXP};
 use crate::ffi::{self, SEXP};

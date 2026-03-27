@@ -1,36 +1,31 @@
 //! TLS-backed convenience API for GC protection.
-
-/// Thread-local convenience for protecting without explicit scope references.
-///
-/// This module provides an **optional** convenience layer that maintains a
-/// thread-local stack of scope pointers, allowing `tls::protect(x)` without
-/// passing `&ProtectScope` explicitly.
-///
-/// # Design Note
-///
-/// **Explicit `&ProtectScope` is recommended for most use cases.** It's simpler,
-/// clearer about lifetimes, and doesn't rely on runtime state. Use this TLS
-/// convenience only when threading scope references through deep call stacks
-/// would be excessively verbose.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::gc_protect::tls;
-///
-/// unsafe fn deep_helper(x: SEXP) -> SEXP {
-///     // No need to thread &ProtectScope through multiple call levels
-///     let y = tls::protect(allocate_something());
-///     combine(x, y.get())
-/// }
-///
-/// unsafe fn call_body(x: SEXP) -> SEXP {
-///     tls::with_protect_scope(|| {
-///         let x = tls::protect(x);
-///         deep_helper(x.get())
-///     })
-/// }
-/// ```
+//!
+//! Provides an **optional** convenience layer that maintains a thread-local
+//! stack of scope pointers, allowing `tls::protect(x)` without passing
+//! `&ProtectScope` explicitly.
+//!
+//! **Explicit `&ProtectScope` is recommended for most use cases.** It's simpler,
+//! clearer about lifetimes, and doesn't rely on runtime state. Use this TLS
+//! convenience only when threading scope references through deep call stacks
+//! would be excessively verbose.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use miniextendr_api::gc_protect::tls;
+//!
+//! unsafe fn deep_helper(x: SEXP) -> SEXP {
+//!     let y = tls::protect(allocate_something());
+//!     combine(x, y.get())
+//! }
+//!
+//! unsafe fn call_body(x: SEXP) -> SEXP {
+//!     tls::with_protect_scope(|| {
+//!         let x = tls::protect(x);
+//!         deep_helper(x.get())
+//!     })
+//! }
+//! ```
 use super::ProtectScope;
 use crate::ffi::SEXP;
 use std::cell::RefCell;
