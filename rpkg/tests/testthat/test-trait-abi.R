@@ -224,7 +224,7 @@ test_that("S4 trait static methods and associated constants work", {
 test_that("S7TraitCounter trait methods work via S7 dispatch", {
   # Create an S7TraitCounter using inherent method (Env style)
   counter <- S7TraitCounter_new_s7trait(10L)
-  expect_s3_class(counter, "S7TraitCounter")
+  expect_s3_class(counter, "miniextendr::S7TraitCounter")
 
   # Test S7 trait method: s7_trait_Counter_value
   expect_equal(s7_trait_Counter_value(counter), 10L)

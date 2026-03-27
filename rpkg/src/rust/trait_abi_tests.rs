@@ -342,12 +342,12 @@ impl Counter for R6TraitCounter {
 #[miniextendr(r6)]
 impl R6TraitCounter {
     /// Create a new R6 trait counter.
-    fn new_r6trait(initial: i32) -> Self {
+    pub fn new_r6trait(initial: i32) -> Self {
         Self::new(initial)
     }
 
     /// Get value via inherent method.
-    fn get_value(&self) -> i32 {
+    pub fn get_value(&self) -> i32 {
         self.value
     }
 }
