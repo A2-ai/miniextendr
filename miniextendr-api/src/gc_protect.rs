@@ -165,8 +165,10 @@
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
 use crate::ffi::{
-    R_NilValue, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList,
-    Rf_allocMatrix, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
+    R_NewEnv, R_NilValue, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList,
+    Rf_allocMatrix, Rf_allocVector, Rf_coerceVector, Rf_duplicate, Rf_mkCharLenCE, Rf_protect,
+    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal,
+    Rf_ScalarString, Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE,
 };
 use core::cell::Cell;
 use core::marker::PhantomData;
@@ -491,6 +493,216 @@ impl ProtectScope {
     pub unsafe fn alloc_vecsxp<'a>(&'a self, n: R_xlen_t) -> Root<'a> {
         unsafe { self.alloc_vector(SEXPTYPE::VECSXP, n) }
     }
+
+    // region: Typed vector allocation shortcuts
+
+    /// Allocate an integer vector (INTSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_integer<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector(SEXPTYPE::INTSXP, len) }
+    }
+
+    /// Allocate a real vector (REALSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_real<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector(SEXPTYPE::REALSXP, len) }
+    }
+
+    /// Allocate a logical vector (LGLSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_logical<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector(SEXPTYPE::LGLSXP, len) }
+    }
+
+    /// Allocate a raw vector (RAWSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_raw<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector(SEXPTYPE::RAWSXP, len) }
+    }
+
+    /// Allocate a complex vector (CPLXSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_complex<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector(SEXPTYPE::CPLXSXP, len) }
+    }
+
+    /// Allocate a character vector (STRSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn alloc_character<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector(SEXPTYPE::STRSXP, len) }
+    }
+
+    // endregion
+
+    // region: Scalar constructors (allocate + set + protect)
+
+    /// Create a scalar integer (length-1 INTSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_integer<'a>(&'a self, x: i32) -> Root<'a> {
+        unsafe { self.protect(Rf_ScalarInteger(x)) }
+    }
+
+    /// Create a scalar real (length-1 REALSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_real<'a>(&'a self, x: f64) -> Root<'a> {
+        unsafe { self.protect(Rf_ScalarReal(x)) }
+    }
+
+    /// Create a scalar logical (length-1 LGLSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_logical<'a>(&'a self, x: bool) -> Root<'a> {
+        unsafe { self.protect(Rf_ScalarLogical(if x { 1 } else { 0 })) }
+    }
+
+    /// Create a scalar complex (length-1 CPLXSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_complex<'a>(&'a self, x: crate::ffi::Rcomplex) -> Root<'a> {
+        unsafe { self.protect(Rf_ScalarComplex(x)) }
+    }
+
+    /// Create a scalar raw (length-1 RAWSXP), protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_raw<'a>(&'a self, x: u8) -> Root<'a> {
+        unsafe { self.protect(Rf_ScalarRaw(x)) }
+    }
+
+    /// Create a scalar string (length-1 STRSXP) from a Rust `&str`, protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_string<'a>(&'a self, s: &str) -> Root<'a> {
+        let charsxp = if s.is_empty() {
+            unsafe { crate::ffi::R_BlankString }
+        } else {
+            let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
+            unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::CE_UTF8) }
+        };
+        unsafe { self.protect(Rf_ScalarString(charsxp)) }
+    }
+
+    // endregion
+
+    // region: CHARSXP, duplication, coercion, environment
+
+    /// Create a CHARSXP from a Rust `&str`, protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn mkchar<'a>(&'a self, s: &str) -> Root<'a> {
+        let charsxp = if s.is_empty() {
+            unsafe { crate::ffi::R_BlankString }
+        } else {
+            let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
+            unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::CE_UTF8) }
+        };
+        unsafe { self.protect(charsxp) }
+    }
+
+    /// Deep-duplicate a SEXP, protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `x` must be a valid SEXP.
+    #[inline]
+    pub unsafe fn duplicate<'a>(&'a self, x: SEXP) -> Root<'a> {
+        unsafe { self.protect(Rf_duplicate(x)) }
+    }
+
+    /// Shallow-duplicate a SEXP, protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `x` must be a valid SEXP.
+    #[inline]
+    pub unsafe fn shallow_duplicate<'a>(&'a self, x: SEXP) -> Root<'a> {
+        unsafe { self.protect(Rf_shallow_duplicate(x)) }
+    }
+
+    /// Coerce a SEXP to a different type, protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. `x` must be a valid SEXP.
+    #[inline]
+    pub unsafe fn coerce<'a>(&'a self, x: SEXP, target: SEXPTYPE) -> Root<'a> {
+        unsafe { self.protect(Rf_coerceVector(x, target)) }
+    }
+
+    /// Create a new environment, protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn new_env<'a>(&'a self, parent: SEXP, hash: bool, size: i32) -> Root<'a> {
+        unsafe {
+            self.protect(R_NewEnv(
+                parent,
+                if hash {
+                    crate::ffi::Rboolean::TRUE
+                } else {
+                    crate::ffi::Rboolean::FALSE
+                },
+                size,
+            ))
+        }
+    }
+
+    // endregion
 
     /// Create a `Root<'a>` for an already-protected SEXP without adding protection.
     ///
