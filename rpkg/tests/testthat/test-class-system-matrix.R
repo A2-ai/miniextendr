@@ -58,7 +58,7 @@ test_that("CounterTraitS3 direct trait helpers exist", {
 # =============================================================================
 
 test_that("CounterTraitS4 works with S4 trait impl", {
-  counter <- CounterTraitS4$new(10L)
+  counter <- CounterTraitS4(10L)
   expect_true(inherits(counter, "CounterTraitS4"))
 
   # Inherent method
@@ -78,7 +78,7 @@ test_that("CounterTraitS4 works with S4 trait impl", {
 # =============================================================================
 
 test_that("CounterTraitS7 works with S7 trait impl", {
-  counter <- CounterTraitS7$new(10L)
+  counter <- CounterTraitS7(10L)
   expect_true(inherits(counter, "CounterTraitS7"))
 
   # Inherent method
@@ -90,7 +90,7 @@ test_that("CounterTraitS7 works with S7 trait impl", {
   expect_equal(s7_trait_MatrixCounter_custom_get(counter), 15L)
 
   # Static trait method
-  expect_equal(CounterTraitS7$MatrixCounter$default_value(), 4L)
+  expect_equal(attr(CounterTraitS7, "MatrixCounter")$default_value(), 4L)
 })
 
 # =============================================================================
@@ -121,8 +121,8 @@ test_that("different trait impl styles work independently", {
   # Create counters with different trait styles
   env_counter <- CounterTraitEnv$new(100L)
   s3_counter <- CounterTraitS3$new(100L)
-  s4_counter <- CounterTraitS4$new(100L)
-  s7_counter <- CounterTraitS7$new(100L)
+  s4_counter <- CounterTraitS4(100L)
+  s7_counter <- CounterTraitS7(100L)
   r6_counter <- CounterTraitR6$new(100L)
 
   # Modify each using its trait style (env uses standalone for variety)
@@ -163,6 +163,6 @@ test_that("static trait methods return different values per type", {
   expect_equal(CounterTraitEnv$MatrixCounter$default_value(), 1L)
   expect_equal(CounterTraitS3$MatrixCounter$default_value(), 2L)
   expect_equal(CounterTraitS4_MatrixCounter_default_value(), 3L)
-  expect_equal(CounterTraitS7$MatrixCounter$default_value(), 4L)
+  expect_equal(attr(CounterTraitS7, "MatrixCounter")$default_value(), 4L)
   expect_equal(CounterTraitR6$MatrixCounter$default_value(), 5L)
 })
