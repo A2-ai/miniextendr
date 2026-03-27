@@ -13,6 +13,9 @@
 //! - Inside `#[miniextendr(unsafe(main_thread))]` functions
 //! - Inside `extern "C-unwind"` functions called directly by R
 
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::Hash;
+
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 
 /// Trait for converting Rust types to R SEXP values.
@@ -667,7 +670,7 @@ impl<T: crate::externalptr::IntoExternalPtr> IntoR for T {
 /// Helper to convert a string slice to R CHARSXP.
 /// Uses UTF-8 encoding. Empty strings return R_BlankString (static, no allocation).
 #[inline]
-fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
+pub(crate) fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
     unsafe {
         if s.is_empty() {
             crate::ffi::R_BlankString
@@ -680,7 +683,7 @@ fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
 
 /// Unchecked version of [`str_to_charsxp`].
 #[inline]
-unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
+pub(crate) unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
     unsafe {
         if s.is_empty() {
             crate::ffi::R_BlankString
@@ -1160,187 +1163,14 @@ impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
 impl_vec_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 // endregion
 
-// region: Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::hash::Hash;
+mod altrep;
+mod collections;
+mod result;
 
-macro_rules! impl_map_into_r {
-    ($(#[$meta:meta])* $map_ty:ident) => {
-        $(#[$meta])*
-        impl<V: IntoR> IntoR for $map_ty<String, V> {
-            type Error = crate::into_r_error::IntoRError;
-            fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-                Ok(self.into_sexp())
-            }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-                Ok(unsafe { self.into_sexp_unchecked() })
-            }
-            fn into_sexp(self) -> crate::ffi::SEXP {
-                map_to_named_list(self.into_iter())
-            }
-            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-                unsafe { map_to_named_list_unchecked(self.into_iter()) }
-            }
-        }
-    };
-}
+pub use altrep::*;
+pub use result::*;
 
-impl_map_into_r!(
-    /// Convert HashMap<String, V> to R named list (VECSXP).
-    HashMap
-);
-impl_map_into_r!(
-    /// Convert BTreeMap<String, V> to R named list (VECSXP).
-    BTreeMap
-);
-
-/// Helper to convert an iterator of (String, V) pairs to a named R list.
-fn map_to_named_list<V: IntoR>(
-    iter: impl ExactSizeIterator<Item = (String, V)>,
-) -> crate::ffi::SEXP {
-    unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("map length exceeds isize::MAX");
-        let list =
-            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n);
-        crate::ffi::Rf_protect(list);
-
-        // Allocate names vector
-        let names =
-            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n);
-        crate::ffi::Rf_protect(names);
-
-        for (i, (key, value)) in iter.enumerate() {
-            let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-            // Set list element
-            crate::ffi::SET_VECTOR_ELT(list, idx, value.into_sexp());
-
-            // Set name
-            let charsxp = str_to_charsxp(&key);
-            crate::ffi::SET_STRING_ELT(names, idx, charsxp);
-        }
-
-        // Attach names attribute
-        crate::ffi::Rf_setAttrib(list, crate::ffi::R_NamesSymbol, names);
-
-        crate::ffi::Rf_unprotect(2);
-        list
-    }
-}
-
-/// Unchecked version of [`map_to_named_list`].
-unsafe fn map_to_named_list_unchecked<V: IntoR>(
-    iter: impl ExactSizeIterator<Item = (String, V)>,
-) -> crate::ffi::SEXP {
-    unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("map length exceeds isize::MAX");
-        let list = crate::ffi::Rf_allocVector_unchecked(
-            crate::ffi::SEXPTYPE::VECSXP,
-            n,
-        );
-        crate::ffi::Rf_protect(list);
-
-        let names = crate::ffi::Rf_allocVector_unchecked(
-            crate::ffi::SEXPTYPE::STRSXP,
-            n,
-        );
-        crate::ffi::Rf_protect(names);
-
-        for (i, (key, value)) in iter.enumerate() {
-            let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-            crate::ffi::SET_VECTOR_ELT_unchecked(
-                list,
-                idx,
-                value.into_sexp_unchecked(),
-            );
-
-            let charsxp = str_to_charsxp_unchecked(&key);
-            crate::ffi::SET_STRING_ELT_unchecked(names, idx, charsxp);
-        }
-
-        crate::ffi::Rf_setAttrib_unchecked(list, crate::ffi::R_NamesSymbol, names);
-
-        crate::ffi::Rf_unprotect(2);
-        list
-    }
-}
-
-/// Convert `HashSet<T>` to R vector.
-impl<T> IntoR for HashSet<T>
-where
-    T: crate::ffi::RNativeType + Eq + Hash,
-{
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        let vec: Vec<T> = self.into_iter().collect();
-        vec.into_sexp()
-    }
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        let vec: Vec<T> = self.into_iter().collect();
-        unsafe { vec.into_sexp_unchecked() }
-    }
-}
-
-/// Convert `BTreeSet<T>` to R vector.
-impl<T> IntoR for BTreeSet<T>
-where
-    T: crate::ffi::RNativeType + Ord,
-{
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        let vec: Vec<T> = self.into_iter().collect();
-        vec.into_sexp()
-    }
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        let vec: Vec<T> = self.into_iter().collect();
-        unsafe { vec.into_sexp_unchecked() }
-    }
-}
-
-macro_rules! impl_set_string_into_r {
-    ($(#[$meta:meta])* $set_ty:ident) => {
-        $(#[$meta])*
-        impl IntoR for $set_ty<String> {
-            type Error = crate::into_r_error::IntoRError;
-            fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-                Ok(self.into_sexp())
-            }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-                Ok(unsafe { self.into_sexp_unchecked() })
-            }
-            fn into_sexp(self) -> crate::ffi::SEXP {
-                let vec: Vec<String> = self.into_iter().collect();
-                vec.into_sexp()
-            }
-            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-                let vec: Vec<String> = self.into_iter().collect();
-                unsafe { vec.into_sexp_unchecked() }
-            }
-        }
-    };
-}
-
-impl_set_string_into_r!(
-    /// Convert `HashSet<String>` to R character vector.
-    HashSet
-);
-impl_set_string_into_r!(
-    /// Convert `BTreeSet<String>` to R character vector.
-    BTreeSet
-);
-// endregion
 
 // region: Fixed-size array conversions
 
@@ -2512,129 +2342,6 @@ impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
 impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
 // endregion
 
-// region: Result conversions
-
-/// Convert `Result<T, E>` to R (value-style, for `#[miniextendr(unwrap_in_r)]`).
-///
-/// # Behavior
-///
-/// - `Ok(value)` → returns the converted value directly
-/// - `Err(msg)` → returns `list(error = "<msg>")` (value-style error)
-///
-/// # When This Is Used
-///
-/// This impl is **only used** when `#[miniextendr(unwrap_in_r)]` is specified.
-/// Without that attribute, `#[miniextendr]` functions returning `Result<T, E>`
-/// will unwrap in Rust and raise an R error on `Err` (error boundary semantics).
-///
-/// # Error Handling Summary
-///
-/// | Mode | On `Err(e)` | Bound Required |
-/// |------|-------------|----------------|
-/// | Default | R error via panic | `E: Debug` |
-/// | `unwrap_in_r` | `list(error = ...)` | `E: Display` |
-///
-/// **Default** (without `unwrap_in_r`): `Result<T, E>` acts as an error boundary:
-/// - `Ok(v)` → `v` converted to R
-/// - `Err(e)` → R error with Debug-formatted message (requires `E: Debug`)
-///
-/// **With `unwrap_in_r`**: `Result<T, E>` is passed through to R:
-/// - `Ok(v)` → `v` converted to R
-/// - `Err(e)` → `list(error = e.to_string())` (requires `E: Display`)
-///
-/// # Example
-///
-/// ```ignore
-/// // Default: error boundary - Err becomes R stop()
-/// #[miniextendr]
-/// fn divide(x: f64, y: f64) -> Result<f64, String> {
-///     if y == 0.0 { Err("division by zero".into()) }
-///     else { Ok(x / y) }
-/// }
-/// // In R: tryCatch(divide(1, 0), error = ...) catches the error
-///
-/// // Value-style: Err becomes list(error = ...)
-/// #[miniextendr(unwrap_in_r)]
-/// fn divide_safe(x: f64, y: f64) -> Result<f64, String> {
-///     if y == 0.0 { Err("division by zero".into()) }
-///     else { Ok(x / y) }
-/// }
-/// // In R: result <- divide_safe(1, 0)
-/// //       if (!is.null(result$error)) { handle error }
-/// ```
-impl<T, E> IntoR for Result<T, E>
-where
-    T: IntoR,
-    E: std::fmt::Display,
-{
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        match self {
-            Ok(value) => value.into_sexp(),
-            Err(msg) => {
-                // Create list(error = msg) for R-side error handling
-                let mut map = HashMap::with_capacity(1);
-                map.insert("error".to_string(), msg.to_string());
-                map.into_sexp()
-            }
-        }
-    }
-}
-
-/// Marker type for `Result<T, ()>` that converts `Err(())` to NULL.
-///
-/// This type is used internally by the `#[miniextendr]` macro when handling
-/// `Result<T, ()>` return types. When the error type is `()`, there's no
-/// error message to report, so we return NULL instead of raising an error.
-///
-/// # Usage
-///
-/// You typically don't use this directly. When you write:
-///
-/// ```ignore
-/// #[miniextendr]
-/// fn maybe_value(x: i32) -> Result<i32, ()> {
-///     if x > 0 { Ok(x) } else { Err(()) }
-/// }
-/// ```
-///
-/// The macro generates code that converts `Err(())` to `Err(NullOnErr)` and
-/// returns `NULL` in R.
-///
-/// # Note
-///
-/// `NullOnErr` intentionally does NOT implement `Display` to avoid conflicting
-/// with the generic `IntoR for Result<T, E: Display>` impl. It has its own
-/// specialized `IntoR` impl that returns NULL on error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NullOnErr;
-
-/// Convert `Result<T, NullOnErr>` to R, returning NULL on error.
-///
-/// This is a special case for `Result<T, ()>` types where the error
-/// carries no information. Instead of raising an R error, we return NULL.
-impl<T: IntoR> IntoR for Result<T, NullOnErr> {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        match self {
-            Ok(value) => value.into_sexp(),
-            Err(NullOnErr) => unsafe { crate::ffi::R_NilValue },
-        }
-    }
-}
-// endregion
 
 // region: ALTREP zero-copy extension trait
 
@@ -2732,192 +2439,6 @@ where
 }
 // endregion
 
-// region: ALTREP marker type
-
-/// Marker type to opt-in to ALTREP representation for types that have both
-/// eager-copy and ALTREP implementations.
-///
-/// # Motivation
-///
-/// Types like `Vec<i32>` have two possible conversions to R:
-/// 1. **Eager copy** (default): copies all data to R immediately
-/// 2. **ALTREP**: keeps data in Rust, provides it on-demand to R
-///
-/// The default `IntoR` for `Vec<i32>` does eager copy. To get ALTREP behavior,
-/// wrap your value in `Altrep<T>`.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::{miniextendr, Altrep};
-///
-/// // Returns an ALTREP-backed integer vector (data stays in Rust)
-/// #[miniextendr]
-/// fn altrep_vec() -> Altrep<Vec<i32>> {
-///     Altrep((0..1_000_000).collect())
-/// }
-///
-/// // Returns a regular R vector (data copied to R)
-/// #[miniextendr]
-/// fn regular_vec() -> Vec<i32> {
-///     (0..1_000_000).collect()
-/// }
-/// ```
-///
-/// # Supported Types
-///
-/// `Altrep<T>` works with any type that implements both:
-/// - [`RegisterAltrep`](crate::altrep::RegisterAltrep) - for ALTREP class registration
-/// - [`TypedExternal`](crate::externalptr::TypedExternal) - for wrapping in ExternalPtr
-///
-/// Built-in supported types:
-/// - `Vec<i32>`, `Vec<f64>`, `Vec<bool>`, `Vec<u8>`, `Vec<String>`
-/// - `Box<[i32]>`, `Box<[f64]>`, `Box<[bool]>`, `Box<[u8]>`, `Box<[String]>`
-/// - `Range<i32>`, `Range<i64>`, `Range<f64>`
-///
-/// Opt-in lazy materialization via ALTREP.
-///
-/// Wrapping a return type in `Lazy<T>` causes it to be returned as an
-/// ALTREP vector backed by Rust-owned memory. R reads elements on demand;
-/// full materialization only happens if R needs a contiguous pointer.
-///
-/// # When to use
-/// - Large vectors (>1000 elements)
-/// - Data R may only partially read
-/// - Computed/external data (Arrow, ndarray, nalgebra)
-///
-/// # When NOT to use
-/// - Small vectors (<100 elements, ALTREP overhead dominates)
-/// - Data R will immediately modify (triggers instant materialization)
-///
-/// # Example
-/// ```rust,ignore
-/// #[miniextendr]
-/// fn big_result() -> Lazy<Vec<f64>> {
-///     Lazy(vec![0.0; 1_000_000])
-/// }
-/// ```
-pub type Lazy<T> = Altrep<T>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Altrep<T>(pub T);
-
-impl<T> Altrep<T> {
-    /// Create a new ALTREP marker wrapper.
-    #[inline]
-    pub fn new(value: T) -> Self {
-        Altrep(value)
-    }
-
-    /// Unwrap and return the inner value.
-    #[inline]
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-
-    /// Convert to R ALTREP and wrap in [`AltrepSexp`](crate::altrep_sexp::AltrepSexp) (`!Send + !Sync`).
-    ///
-    /// This creates the ALTREP SEXP and wraps it in an `AltrepSexp` that
-    /// prevents the result from being sent to non-R threads. Use this when
-    /// you need to keep the ALTREP vector in Rust code and want compile-time
-    /// thread safety guarantees.
-    ///
-    /// For returning directly to R from `#[miniextendr]` functions, use
-    /// `Altrep<T>` as the return type (which implements `IntoR`) or call
-    /// `.into_sexp()` / `.into_sexp_altrep()` instead.
-    pub fn into_altrep_sexp(self) -> crate::altrep_sexp::AltrepSexp
-    where
-        T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
-    {
-        let sexp = self.into_sexp();
-        // Safety: we just created an ALTREP SEXP via R_new_altrep
-        unsafe { crate::altrep_sexp::AltrepSexp::from_raw(sexp) }
-    }
-}
-
-impl<T> From<T> for Altrep<T> {
-    #[inline]
-    fn from(value: T) -> Self {
-        Altrep(value)
-    }
-}
-
-impl<T> std::ops::Deref for Altrep<T> {
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> std::ops::DerefMut for Altrep<T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-/// Convert `Altrep<T>` to R using ALTREP representation.
-///
-/// This creates an ALTREP object where the data stays in Rust and is
-/// provided to R on-demand through ALTREP callbacks.
-impl<T> IntoR for Altrep<T>
-where
-    T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
-{
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
-        let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
-        let data1 = ext_ptr.as_sexp();
-        // Protect data1 across R_new_altrep — it may allocate and trigger GC.
-        unsafe {
-            crate::ffi::Rf_protect_unchecked(data1);
-            let out = crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null());
-            crate::ffi::Rf_unprotect_unchecked(1);
-            out
-        }
-    }
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
-        let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
-        let data1 = ext_ptr.as_sexp();
-        unsafe {
-            crate::ffi::Rf_protect_unchecked(data1);
-            let out =
-                crate::ffi::altrep::R_new_altrep_unchecked(cls, data1, crate::ffi::SEXP::null());
-            crate::ffi::Rf_unprotect_unchecked(1);
-            out
-        }
-    }
-}
-
-/// Convert `AltrepSexp` to R by returning the inner SEXP.
-///
-/// This allows `AltrepSexp` to be used as a return type from `#[miniextendr]`
-/// functions, transparently passing the ALTREP SEXP back to R.
-impl IntoR for crate::altrep_sexp::AltrepSexp {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        // Safety: returning to R which is always the main thread context
-        unsafe { self.as_raw() }
-    }
-}
-// endregion
 
 // region: Additional collection type conversions for DataFrameRow support
 
