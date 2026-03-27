@@ -86,7 +86,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let public_method_contexts: Vec<_> = parsed_impl.public_instance_method_contexts().collect();
     let has_public_methods = !public_method_contexts.is_empty();
 
-    // Constructor (initialize) - accepts either normal params or a pre-made .ptr
+    // Constructor (initialize) - accepts either normal params or a pre-made .ptr.
+    // If there's no explicit `new()` but there are factory methods returning Self,
+    // generate a minimal initialize(.ptr) so factories can call $new(.ptr = val).
     if let Some(ctx) = parsed_impl.constructor_context() {
         // Add inline roxygen documentation for initialize method
         // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
@@ -165,6 +167,15 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("      private$.ptr <- .val".to_string());
             lines.push(format!("    }}{}", comma));
         }
+    } else if has_self_returning_methods {
+        // No explicit new() constructor, but factory methods need $new(.ptr = val).
+        // Generate a minimal initialize that only accepts .ptr.
+        let comma = if has_public_methods { "," } else { "" };
+        lines.push("    initialize = function(.ptr = NULL) {".to_string());
+        lines.push("      if (!is.null(.ptr)) {".to_string());
+        lines.push("        private$.ptr <- .ptr".to_string());
+        lines.push("      }".to_string());
+        lines.push(format!("    }}{}", comma));
     }
 
     // Public instance methods
