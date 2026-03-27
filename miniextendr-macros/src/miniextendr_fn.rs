@@ -990,6 +990,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
     pub(crate) noexport: bool,
+    /// Force `@export` even on non-pub functions. Antidote to `noexport`.
+    pub(crate) export: bool,
     /// Custom roxygen documentation override.
     ///
     /// When set, replaces auto-extracted roxygen from Rust doc comments.
@@ -1116,6 +1118,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut error_in_r: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
+        let mut export = false;
         let mut doc = None;
         let mut c_symbol = None;
         let mut r_name = None;
@@ -1142,6 +1145,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 error_in_r: error_in_r.unwrap_or(true),
                 internal,
                 noexport,
+                export,
                 doc,
                 c_symbol,
                 r_name,
@@ -1201,10 +1205,12 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             internal = true;
                         } else if ident == "noexport" {
                             noexport = true;
+                        } else if ident == "export" {
+                            export = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
                             ));
                         }
                     }
@@ -1260,6 +1266,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 internal = val;
                             } else if ident == "noexport" {
                                 noexport = val;
+                            } else if ident == "export" {
+                                export = val;
                             } else {
                                 return Err(syn::Error::new_spanned(
                                     ident,
@@ -1267,7 +1275,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                         "unknown `#[miniextendr]` option `{}`; expected one of: \
                                          invisible, visible, check_interrupt, unsafe(main_thread), \
                                          worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, \
-                                         error_in_r, no_error_in_r, strict, no_strict, internal, noexport",
+                                         error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
                                         ident,
                                     ),
                                 ));
@@ -1636,6 +1644,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 internal = val;
                             } else if ident == "noexport" {
                                 noexport = val;
+                            } else if ident == "export" {
+                                export = val;
                             } else {
                                 let opt_name = ident.to_string();
                                 return Err(syn::Error::new_spanned(
@@ -1680,6 +1690,20 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 "`internal` and `noexport` cannot be used together. \
                  `internal` already suppresses @export and also adds @keywords internal. \
                  Use `internal` alone to mark as internal, or `noexport` alone to only suppress export.",
+            ));
+        }
+
+        // Validate: `export` conflicts with `noexport` and `internal`
+        if export && noexport {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`export` and `noexport` are contradictory.",
+            ));
+        }
+        if export && internal {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`export` and `internal` are contradictory.",
             ));
         }
 
@@ -1730,6 +1754,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             error_in_r: resolved_error_in_r,
             internal,
             noexport,
+            export,
             doc,
             c_symbol,
             r_name,
