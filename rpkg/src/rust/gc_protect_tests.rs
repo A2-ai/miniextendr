@@ -15,7 +15,7 @@ use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 pub fn test_list_builder_length(n: i32) -> i32 {
     unsafe {
         let scope = ProtectScope::new();
-        let builder = ListBuilder::new(&scope, n as isize);
+        let builder = ListBuilder::new(&scope, n as usize);
         builder.len() as i32
     }
 }
@@ -80,7 +80,7 @@ pub fn test_list_set_elt_with() -> List {
 pub fn test_strvec_builder_length(n: i32) -> i32 {
     unsafe {
         let scope = ProtectScope::new();
-        let builder = StrVecBuilder::new(&scope, n as isize);
+        let builder = StrVecBuilder::new(&scope, n as usize);
         builder.len() as i32
     }
 }

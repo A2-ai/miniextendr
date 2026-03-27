@@ -520,7 +520,7 @@ impl IntoR for StringDictionaryArray {
             // Create levels character vector
             let n_levels = Array::len(&*values);
             let levels =
-                scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n_levels as R_xlen_t));
+                scope.alloc_character(n_levels).into_raw();
             for i in 0..n_levels {
                 let s = values.value(i);
                 let charsxp = ffi::Rf_mkCharLenCE(
@@ -533,7 +533,7 @@ impl IntoR for StringDictionaryArray {
 
             // Set levels and class attributes
             ffi::Rf_setAttrib(codes, ffi::R_LevelsSymbol, levels);
-            let class_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let class_str = scope.alloc_character(1).into_raw();
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
@@ -570,7 +570,7 @@ impl IntoR for Date32Array {
             }
 
             // Set class = "Date"
-            let class_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let class_str = scope.alloc_character(1).into_raw();
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
@@ -612,7 +612,7 @@ impl IntoR for TimestampSecondArray {
             }
 
             // Set class = c("POSIXct", "POSIXt")
-            let class_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 2));
+            let class_str = scope.alloc_character(2).into_raw();
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
@@ -627,7 +627,7 @@ impl IntoR for TimestampSecondArray {
 
             // Set tzone attribute if present
             if let Some(tz) = tz {
-                let tz_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+                let tz_str = scope.alloc_character(1).into_raw();
                 ffi::SET_STRING_ELT(
                     tz_str,
                     0,
@@ -1033,16 +1033,10 @@ impl IntoR for RecordBatch {
             let scope = crate::gc_protect::ProtectScope::new();
 
             // Create list for columns
-            let list = scope.protect_raw(ffi::Rf_allocVector(
-                SEXPTYPE::VECSXP,
-                ncol as R_xlen_t,
-            ));
+            let list = scope.alloc_vecsxp(ncol).into_raw();
 
             // Create names vector
-            let names = scope.protect_raw(ffi::Rf_allocVector(
-                SEXPTYPE::STRSXP,
-                ncol as R_xlen_t,
-            ));
+            let names = scope.alloc_character(ncol).into_raw();
 
             for (i, (col, field)) in
                 self.columns().iter().zip(schema.fields()).enumerate()
@@ -1063,7 +1057,7 @@ impl IntoR for RecordBatch {
             ffi::Rf_setAttrib(list, R_NamesSymbol, names);
 
             // Set class = "data.frame"
-            let class_str = scope.protect_raw(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let class_str = scope.alloc_character(1).into_raw();
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
