@@ -560,9 +560,9 @@ fn generate_trait_s4_r_wrapper(
         }
         lines.extend(generic_roxygen.export().build());
 
-        // S4 generic definition - setGeneric() is idempotent, no conditional needed
+        // Define generic only if it doesn't already exist (avoid clearing methods)
         lines.push(format!(
-            "methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
+            "if (!methods::isGeneric(\"{generic_name}\")) methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
         ));
         lines.push(String::new());
 
