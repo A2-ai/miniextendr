@@ -223,7 +223,7 @@ test_that("S4 trait static methods and associated constants work", {
 
 test_that("S7TraitCounter trait methods work via S7 dispatch", {
   # Create an S7TraitCounter using inherent method (Env style)
-  counter <- S7TraitCounter$new_s7trait(10L)
+  counter <- S7TraitCounter_new_s7trait(10L)
   expect_true(inherits(counter, "S7TraitCounter"))
 
   # Test S7 trait method: s7_trait_Counter_value
@@ -244,10 +244,11 @@ test_that("S7TraitCounter trait methods work via S7 dispatch", {
 test_that("S7 trait static methods and associated constants work", {
   # S7 static trait methods use Type$Trait$method() (Env style)
   # S7TraitCounter::default_initial() returns 30
-  expect_equal(S7TraitCounter$Counter$default_initial(), 30L)
+  # S7 trait statics are attached via attr() — access via attr()
+  expect_equal(attr(S7TraitCounter, "Counter")$default_initial(), 30L)
 
   # S7TraitCounter::MAX_VALUE is 300
-  expect_equal(S7TraitCounter$Counter$MAX_VALUE(), 300L)
+  expect_equal(attr(S7TraitCounter, "Counter")$MAX_VALUE(), 300L)
 })
 
 # =============================================================================
