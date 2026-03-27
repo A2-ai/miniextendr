@@ -763,16 +763,18 @@ fn generate_trait_s7_r_wrapper(
         lines.push(String::new());
     }
 
-    // Create trait namespace for static methods and consts
+    // Create trait namespace for static methods and consts.
+    // For S7 classes, use a local variable + attr() to avoid S7's $<- interception.
+    let trait_env_var = format!(".{}__{}", type_ident, trait_name);
     if !static_methods.is_empty() || !consts.is_empty() {
         lines.push(format!(
-            "{}${} <- new.env(parent = emptyenv())",
-            type_ident, trait_name
+            "{} <- new.env(parent = emptyenv())",
+            trait_env_var
         ));
         lines.push(String::new());
     }
 
-    // Generate static methods in Type$Trait$ namespace
+    // Generate static methods in trait namespace
     for method in &static_methods {
         let method_name = &method.ident;
         let r_name = method.r_method_name();
@@ -798,15 +800,15 @@ fn generate_trait_s7_r_wrapper(
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!(
-            "{}${}${} <- function({}) {{",
-            type_ident, trait_name, r_name, formals
+            "{}${} <- function({}) {{",
+            trait_env_var, r_name, formals
         ));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
 
-    // Generate const wrappers in Type$Trait$ namespace
+    // Generate const wrappers in trait namespace
     for trait_const in consts {
         let const_name = &trait_const.ident;
         let const_str = const_name.to_string();
@@ -821,11 +823,21 @@ fn generate_trait_s7_r_wrapper(
         let call = DotCallBuilder::new(&c_ident).build();
 
         lines.push(format!(
-            "{}${}${} <- function() {{",
-            type_ident, trait_name, const_name
+            "{}${} <- function() {{",
+            trait_env_var, const_name
         ));
         lines.push(format!("  {}", call));
         lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    // Attach the trait env to the S7 class via attr() to bypass S7's $<- interception.
+    // R's $ accessor on S7 objects falls through to attributes, so Type$Trait$method still works.
+    if !static_methods.is_empty() || !consts.is_empty() {
+        lines.push(format!(
+            "attr({}, \"{}\") <- {}",
+            type_ident, trait_name, trait_env_var
+        ));
         lines.push(String::new());
     }
 
