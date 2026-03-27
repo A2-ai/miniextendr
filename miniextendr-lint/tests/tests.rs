@@ -257,6 +257,36 @@ fn mxl008_class_system_mismatch() {
 }
 
 #[test]
+fn mxl008_s3_trait_on_s4_inherent_is_allowed() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(s4)]
+        impl MyType {
+            fn new() -> Self { MyType }
+        }
+
+        #[miniextendr(s3)]
+        impl MyTrait for MyType {
+            fn method(&self) -> i32 { 42 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report.errors.is_empty(),
+        "S3 trait on S4 inherent should be allowed (S3 dispatch works on any class), got: {:?}",
+        report.errors
+    );
+}
+
+#[test]
 fn mxl300_rf_error_usage() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
