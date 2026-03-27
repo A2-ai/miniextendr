@@ -125,13 +125,13 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
 
-        // Define generic unconditionally - setGeneric() is idempotent and handles
-        // re-definition correctly. The conditional `if (!isGeneric())` pattern fails
-        // during package reload because isGeneric() can return TRUE from stale cache
-        // entries while the actual generic no longer exists in the namespace.
+        // Define generic only if it doesn't already exist. Unconditional setGeneric()
+        // replaces the generic object, clearing previously registered methods. This
+        // matters when multiple types share the same generic name (e.g., s4_get_value
+        // used by both S4TraitCounter and CounterTraitS4).
         lines.push(format!(
-            "methods::setGeneric(\"{}\", function(x, ...) standardGeneric(\"{}\"))",
-            method_name, method_name
+            "if (!methods::isGeneric(\"{0}\")) methods::setGeneric(\"{0}\", function(x, ...) standardGeneric(\"{0}\"))",
+            method_name
         ));
 
         // Define method with @exportMethod for proper S4 dispatch (if class should be exported)
