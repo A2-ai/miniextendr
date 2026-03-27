@@ -131,7 +131,7 @@
 //! SET_VECTOR_ELT(list, 0, child);           // GC could occur before this!
 //!
 //! // CORRECT - use safe insertion methods
-//! let list = List::from_raw(scope.protect_raw(Rf_allocVector(VECSXP, n)));
+//! let list = List::from_raw(scope.alloc_vecsxp(n).into_raw());
 //! for i in 0..n {
 //!     let child = Rf_allocVector(REALSXP, 10);
 //!     list.set_elt(i, child);  // protects child during insertion
@@ -140,7 +140,7 @@
 //! // EFFICIENT - use ListBuilder with scope
 //! let builder = ListBuilder::new(&scope, n);
 //! for i in 0..n {
-//!     let child = scope.protect_raw(Rf_allocVector(REALSXP, 10));
+//!     let child = scope.alloc_real(10).into_raw();
 //!     builder.set(i, child);  // child already protected by scope
 //! }
 //! ```
@@ -480,8 +480,8 @@ impl ProtectScope {
     ///
     /// Same as [`alloc_vector`][Self::alloc_vector].
     #[inline]
-    pub unsafe fn alloc_strsxp<'a>(&'a self, n: R_xlen_t) -> Root<'a> {
-        unsafe { self.alloc_vector(SEXPTYPE::STRSXP, n) }
+    pub unsafe fn alloc_strsxp<'a>(&'a self, n: usize) -> Root<'a> {
+        unsafe { self.alloc_character(n) }
     }
 
     /// Allocate a VECSXP (generic list) of the given length and immediately protect it.
@@ -490,8 +490,9 @@ impl ProtectScope {
     ///
     /// Same as [`alloc_vector`][Self::alloc_vector].
     #[inline]
-    pub unsafe fn alloc_vecsxp<'a>(&'a self, n: R_xlen_t) -> Root<'a> {
-        unsafe { self.alloc_vector(SEXPTYPE::VECSXP, n) }
+    pub unsafe fn alloc_vecsxp<'a>(&'a self, n: usize) -> Root<'a> {
+        let len = R_xlen_t::try_from(n).expect("length exceeds R_xlen_t");
+        unsafe { self.alloc_vector(SEXPTYPE::VECSXP, len) }
     }
 
     // region: Typed vector allocation shortcuts

@@ -209,9 +209,9 @@ impl<'a> StrVecBuilder<'a> {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn new(scope: &'a ProtectScope, len: isize) -> Self {
+    pub unsafe fn new(scope: &'a ProtectScope, len: usize) -> Self {
         // SAFETY: caller guarantees R main thread
-        let vec = unsafe { scope.protect_raw(ffi::Rf_allocVector(STRSXP, len)) };
+        let vec = unsafe { scope.alloc_character(len).into_raw() };
         Self { vec, _scope: scope }
     }
 
