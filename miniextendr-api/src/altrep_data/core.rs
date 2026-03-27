@@ -1,3 +1,14 @@
+//! Core ALTREP data traits and helpers.
+//!
+//! Defines shared infrastructure used by all ALTREP families:
+//!
+//! - [`AltrepLen`] — length query trait
+//! - [`AltrepDataptr`] / [`AltrepSerialize`] / [`AltrepExtractSubset`] — optional capabilities
+//! - [`InferBase`] — maps data types to their R base type + class registration
+//! - [`Sortedness`] — sort-order metadata constants
+//! - [`Logical`] — three-valued logical (TRUE/FALSE/NA)
+//! - [`fill_region`] — helper for `get_region` implementations
+
 use crate::altrep_traits::{
     KNOWN_UNSORTED, SORTED_DECR, SORTED_DECR_NA_1ST, SORTED_INCR, SORTED_INCR_NA_1ST,
     UNKNOWN_SORTEDNESS,

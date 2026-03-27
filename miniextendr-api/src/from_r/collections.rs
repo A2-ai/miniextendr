@@ -1,4 +1,8 @@
 //! Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet).
+//!
+//! Named R lists convert to `HashMap<String, V>` / `BTreeMap<String, V>`.
+//! Unnamed R vectors convert to `HashSet<T>` / `BTreeSet<T>` for native types.
+//! Nested lists convert to `Vec<HashMap<String, V>>` etc.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 

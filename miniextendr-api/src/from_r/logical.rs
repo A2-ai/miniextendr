@@ -1,4 +1,13 @@
 //! Logical type conversions (Rboolean, bool, Option variants).
+//!
+//! Handles the three R logical states (TRUE, FALSE, NA) and maps them to Rust:
+//!
+//! | Rust Type | NA Handling |
+//! |-----------|-------------|
+//! | `Rboolean` | Error on NA |
+//! | `bool` | Error on NA |
+//! | `Option<Rboolean>` | `None` on NA |
+//! | `Option<bool>` | `None` on NA |
 
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};

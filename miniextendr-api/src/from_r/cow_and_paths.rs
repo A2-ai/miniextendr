@@ -1,4 +1,9 @@
 //! Cow, PathBuf, OsString, and string collection conversions.
+//!
+//! - `Cow<'static, [T]>` — zero-copy borrow of R native vectors
+//! - `Cow<'static, str>` — zero-copy borrow of R character scalars
+//! - `PathBuf` / `OsString` — from STRSXP via `String` intermediary
+//! - `HashSet<String>` / `BTreeSet<String>` — string set conversions
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashSet};

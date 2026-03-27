@@ -1,3 +1,14 @@
+//! Built-in ALTREP data implementations for standard Rust types.
+//!
+//! Provides `AltIntegerData`, `AltRealData`, `AltLogicalData`, `AltRawData`,
+//! `AltStringData`, and `AltComplexData` implementations for:
+//!
+//! - `Vec<T>` — owned vector (most common)
+//! - `Box<[T]>` — boxed slice
+//! - `Range<T>` — lazy arithmetic sequences (integer, real)
+//! - `&'static [T]` — borrowed slices (zero-copy from static data)
+//! - `[T; N]` — fixed-size arrays
+
 use std::ops::Range;
 
 use crate::ffi::Rcomplex;

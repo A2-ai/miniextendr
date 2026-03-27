@@ -1,4 +1,7 @@
-//! Serializer for converting Rust values to R SEXP.
+//! Serializer for converting Rust values to R SEXP via serde.
+//!
+//! Implements `serde::Serializer` that produces R SEXPs, enabling `to_sexp(&value)`
+//! to serialize any serde-compatible Rust type into R data structures.
 
 use super::error::RSerdeError;
 use crate::ffi::{

@@ -1,4 +1,10 @@
 //! Coerced scalar conversions (multi-source numeric) and large integer scalars.
+//!
+//! These types accept multiple R source types (INTSXP, REALSXP, RAWSXP, LGLSXP)
+//! and coerce to the target Rust type via [`TryCoerce`](crate::coerce::TryCoerce).
+//!
+//! Covers: `i8`, `i16`, `u16`, `u32`, `f32` (sub-native scalars) and
+//! `i64`, `u64`, `isize`, `usize` (large integers via f64 intermediary).
 
 use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, SEXP, SEXPTYPE, SexpExt};

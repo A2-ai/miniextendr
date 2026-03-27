@@ -1,4 +1,7 @@
-//! Deserializer for converting R SEXP to Rust values.
+//! Deserializer for converting R SEXP to Rust values via serde.
+//!
+//! Implements `serde::Deserializer` for SEXP, enabling `from_sexp::<T>(sexp)`
+//! to deserialize any serde-compatible Rust type from R data structures.
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};

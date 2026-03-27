@@ -1,4 +1,8 @@
-//! ALTREP helpers for ExternalPtr — data1/data2 slot access.
+//! ALTREP helpers for `ExternalPtr` — data1/data2 slot access.
+//!
+//! Convenience functions for ALTREP implementations that store their data
+//! in `ExternalPtr` slots. Also provides the `Sidecar` marker type for
+//! `#[r_data]` fields.
 
 use crate::ffi::SEXP;
 use super::{ErasedExternalPtr, ExternalPtr, TypedExternal};
