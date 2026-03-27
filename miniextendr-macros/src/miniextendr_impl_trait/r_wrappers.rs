@@ -512,9 +512,10 @@ fn generate_trait_s4_r_wrapper(
     ));
     lines.push(String::new());
 
-    // Register the S3 class for S4 dispatch using setOldClass
-    lines.push("#' @importFrom methods setOldClass setGeneric setMethod".to_string());
-    lines.push(format!("methods::setOldClass(\"{}\")", type_str));
+    // NOTE: We do NOT call setOldClass here. The inherent impl's class registration
+    // (setClass for S4, or setOldClass for S3/env) takes care of that. Calling
+    // setOldClass here would clobber a proper S4 setClass with slots.
+    lines.push("#' @importFrom methods setGeneric setMethod".to_string());
     lines.push(String::new());
 
     // Separate instance methods from static methods
@@ -583,7 +584,10 @@ fn generate_trait_s4_r_wrapper(
             "methods::setMethod(\"{}\", \"{}\", function({}) {{",
             generic_name, type_str, full_params
         ));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        // S4 objects store the ExternalPtr in x@ptr — extract it for .Call()
+        lines.push("  .ptr <- x@ptr".to_string());
+        let s4_call = call.replace(", x", ", .ptr");
+        lines.extend(trait_method_body_lines(&s4_call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -683,12 +687,12 @@ fn generate_trait_s7_r_wrapper(
     ));
     lines.push(String::new());
 
-    // Create S7 class wrapper for the S3 class
-    lines.push("#' @importFrom S7 new_generic method S7_dispatch new_S3_class".to_string());
-    lines.push(format!(
-        "{} <- S7::new_S3_class(\"{}\")",
-        s7_class_var, type_str
-    ));
+    // Use the S7 class object directly for method dispatch.
+    // new_S3_class("Foo") creates a descriptor for "Foo" but S7 new_class
+    // creates instances with the namespaced class "pkg::Foo", so new_S3_class
+    // wouldn't match. Using the class object directly works correctly.
+    lines.push("#' @importFrom S7 new_generic method S7_dispatch".to_string());
+    lines.push(format!("{} <- {}", s7_class_var, type_str));
     lines.push(String::new());
 
     // Separate instance methods from static methods
@@ -754,7 +758,10 @@ fn generate_trait_s7_r_wrapper(
             "S7::method({}, {}) <- function({}) {{",
             generic_name, s7_class_var, full_params
         ));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        // S7 objects store the ExternalPtr in x@.ptr — extract it for .Call()
+        lines.push("  .ptr <- x@.ptr".to_string());
+        let s7_call = call.replace(", x", ", .ptr");
+        lines.extend(trait_method_body_lines(&s7_call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -929,7 +936,11 @@ fn generate_trait_r6_r_wrapper(
             .build();
 
         lines.push(format!("{} <- function({}) {{", fn_name, full_params));
-        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
+        // R6 objects store the ExternalPtr in private$.ptr — extract it for .Call()
+        lines.push("  .ptr <- x$.__enclos_env__$private$.ptr".to_string());
+        // Replace x with .ptr in the .Call
+        let r6_call = call.replace(", x", ", .ptr");
+        lines.extend(trait_method_body_lines(&r6_call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
