@@ -355,56 +355,58 @@ fn generate_getter_body(
 ) -> TokenStream {
     let field_name = &slot.name;
 
+    // Helper: generate the pointer extraction code for Box<dyn Any> storage.
+    // R_ExternalPtrAddr returns *mut Box<dyn Any>; we downcast to &T.
+    let extract_ref = quote::quote! {
+        use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
+        let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
+        if any_raw.is_null() {
+            return R_NilValue;
+        }
+        let any_box: &Box<dyn ::std::any::Any> = &*any_raw;
+        let data: &#struct_name = match any_box.downcast_ref::<#struct_name>() {
+            Some(v) => v,
+            None => return R_NilValue,
+        };
+    };
+
     match slot.kind {
         SlotKind::RawSexp => {
             // Raw SEXP field - return directly (already an R value)
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
-                    if ptr.is_null() {
-                        return R_NilValue;
-                    }
-                    (*ptr).#field_name
+                    #extract_ref
+                    data.#field_name
                 }
             }
         }
         SlotKind::ScalarInt => {
             // i32 field - convert to R integer
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarInteger};
+                use ::miniextendr_api::ffi::Rf_ScalarInteger;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
-                    if ptr.is_null() {
-                        return R_NilValue;
-                    }
-                    Rf_ScalarInteger((*ptr).#field_name)
+                    #extract_ref
+                    Rf_ScalarInteger(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarReal => {
             // f64 field - convert to R real
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarReal};
+                use ::miniextendr_api::ffi::Rf_ScalarReal;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
-                    if ptr.is_null() {
-                        return R_NilValue;
-                    }
-                    Rf_ScalarReal((*ptr).#field_name)
+                    #extract_ref
+                    Rf_ScalarReal(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarLogical => {
             // bool field - convert to R logical
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarLogical, Rboolean};
+                use ::miniextendr_api::ffi::{Rf_ScalarLogical, Rboolean};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
-                    if ptr.is_null() {
-                        return R_NilValue;
-                    }
-                    let val = if (*ptr).#field_name { Rboolean::TRUE } else { Rboolean::FALSE };
+                    #extract_ref
+                    let val = if data.#field_name { Rboolean::TRUE } else { Rboolean::FALSE };
                     Rf_ScalarLogical(val as i32)
                 }
             }
@@ -412,13 +414,10 @@ fn generate_getter_body(
         SlotKind::ScalarRaw => {
             // u8 field - convert to R raw
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarRaw};
+                use ::miniextendr_api::ffi::Rf_ScalarRaw;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
-                    if ptr.is_null() {
-                        return R_NilValue;
-                    }
-                    Rf_ScalarRaw((*ptr).#field_name)
+                    #extract_ref
+                    Rf_ScalarRaw(data.#field_name)
                 }
             }
         }
@@ -426,16 +425,10 @@ fn generate_getter_body(
             // Use IntoR trait for conversion (e.g., String -> character)
             let ty = &slot.ty;
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 use ::miniextendr_api::into_r::IntoR;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>().cast_const();
-                    if ptr.is_null() {
-                        return R_NilValue;
-                    }
-                    // Clone the value and convert to R.
-                    // Note: sidecar field types must implement Clone.
-                    let val: #ty = (*ptr).#field_name.clone();
+                    #extract_ref
+                    let val: #ty = data.#field_name.clone();
                     <#ty as IntoR>::into_sexp(val)
                 }
             }
@@ -460,85 +453,78 @@ fn generate_setter_body(
 ) -> TokenStream {
     let field_name = &slot.name;
 
+    // Helper: extract mutable reference via Box<dyn Any> downcast.
+    let extract_mut = quote::quote! {
+        use ::miniextendr_api::ffi::R_ExternalPtrAddr;
+        let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
+        if any_raw.is_null() {
+            return x;
+        }
+        let any_box: &mut Box<dyn ::std::any::Any> = &mut *any_raw;
+        let Some(data) = any_box.downcast_mut::<#struct_name>() else {
+            return x;
+        };
+    };
+
     match slot.kind {
         SlotKind::RawSexp => {
-            // Raw SEXP field - store directly
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
-                    if !ptr.is_null() {
-                        (*ptr).#field_name = value;
-                    }
+                    #extract_mut
+                    data.#field_name = value;
                     x
                 }
             }
         }
         SlotKind::ScalarInt => {
-            // i32 field - convert from R integer
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asInteger};
+                use ::miniextendr_api::ffi::Rf_asInteger;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
-                    if !ptr.is_null() {
-                        (*ptr).#field_name = Rf_asInteger(value);
-                    }
+                    #extract_mut
+                    data.#field_name = Rf_asInteger(value);
                     x
                 }
             }
         }
         SlotKind::ScalarReal => {
-            // f64 field - convert from R real
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asReal};
+                use ::miniextendr_api::ffi::Rf_asReal;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
-                    if !ptr.is_null() {
-                        (*ptr).#field_name = Rf_asReal(value);
-                    }
+                    #extract_mut
+                    data.#field_name = Rf_asReal(value);
                     x
                 }
             }
         }
         SlotKind::ScalarLogical => {
-            // bool field - convert from R logical
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asLogical, Rboolean};
+                use ::miniextendr_api::ffi::{Rf_asLogical, Rboolean};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
-                    if !ptr.is_null() {
-                        (*ptr).#field_name = Rf_asLogical(value) == Rboolean::TRUE as i32;
-                    }
+                    #extract_mut
+                    data.#field_name = Rf_asLogical(value) == Rboolean::TRUE as i32;
                     x
                 }
             }
         }
         SlotKind::ScalarRaw => {
-            // u8 field - convert from R raw
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, RAW, Rf_coerceVector, SEXPTYPE};
+                use ::miniextendr_api::ffi::{RAW, Rf_coerceVector, SEXPTYPE};
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
-                    if !ptr.is_null() {
-                        let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
-                        (*ptr).#field_name = *RAW(raw_vec);
-                    }
+                    #extract_mut
+                    let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
+                    data.#field_name = *RAW(raw_vec);
                     x
                 }
             }
         }
         SlotKind::Conversion => {
-            // Use TryFromSexp for conversion (e.g., character -> String)
             let ty = &slot.ty;
             quote::quote! {
-                use ::miniextendr_api::ffi::R_ExternalPtrAddr;
                 use ::miniextendr_api::TryFromSexp;
                 unsafe {
-                    let ptr = R_ExternalPtrAddr(x).cast::<#struct_name>();
-                    if !ptr.is_null() {
-                        if let Ok(val) = <#ty as TryFromSexp>::try_from_sexp(value) {
-                            (*ptr).#field_name = val;
-                        }
+                    #extract_mut
+                    if let Ok(val) = <#ty as TryFromSexp>::try_from_sexp(value) {
+                        data.#field_name = val;
                     }
                     x
                 }
