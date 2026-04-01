@@ -103,11 +103,13 @@ pub use miniextendr_api::serde_crate as serde;
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
+mod backtrace_tests;
 mod collect_tests;
 mod condition_tests;
 #[cfg(feature = "datafusion")]
 mod datafusion_tests;
 mod display_fromstr_tests;
+#[cfg(feature = "serde")]
 mod json_string_tests;
 mod lazy_tests;
 #[cfg(feature = "log")]
@@ -144,10 +146,19 @@ mod doc_attr_tests;
 mod dots_tests;
 #[cfg(feature = "either")]
 mod either_adapter_tests;
+mod encoding_tests;
 mod error_in_r_tests;
 mod export_control_tests;
+mod externalptr_any_tests;
+mod externalslice_tests;
 mod externalptr_tests;
 mod factor_tests;
+mod ffi_guard_tests;
+#[cfg(feature = "growth-debug")]
+mod growth_debug_tests;
+mod impl_trait_tests;
+mod into_r_as_tests;
+mod into_r_error_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
 mod identical_tests;
@@ -161,6 +172,8 @@ mod lifecycle_tests;
 mod macro_equivalence;
 mod match_arg_tests;
 mod misc_tests;
+mod panic_telemetry_tests;
+mod protect_pool_tests;
 mod missing_tests;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
@@ -180,14 +193,18 @@ mod r6_tests;
 mod r_wrapper_attrs;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
+mod rarray_tests;
 mod rdata_sidecar_tests;
+mod refcount_protect_tests;
 mod receiver_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rng_tests;
 mod s3_tests;
+mod s4_helpers_tests;
 mod s4_tests;
 mod s7_tests;
+mod streaming_altrep_tests;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]
