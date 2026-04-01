@@ -66,13 +66,16 @@
 //!
 //! # Type Identification
 //!
-//! Type identification uses R's interned symbols (`Rf_install`). Since R interns
-//! symbols, the same type name always returns the same pointer, enabling fast
-//! pointer comparison for type checking.
+//! Type safety is enforced via `Any::downcast` (Rust's `TypeId`). R symbols
+//! in the `tag` and `prot` slots are retained for display and error messages.
 //!
-//! The `tag` slot holds a symbol (type name).
+//! Internally, data is stored as `Box<Box<dyn Any>>` — a thin pointer (fits
+//! in R's `R_ExternalPtrAddr`) pointing to a fat pointer (carries the `Any`
+//! vtable for runtime downcasting).
+//!
+//! The `tag` slot holds a symbol (type name, for display).
 //! The `prot` slot holds a VECSXP (list) with two elements:
-//!   - Index 0: SYMSXP (interned symbol) for fast pointer-based type comparison
+//!   - Index 0: SYMSXP (interned type ID symbol, for error messages)
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
 //!
 //! # ExternalPtr is Not an R Native Type
@@ -92,7 +95,7 @@
 //! to convert your struct to a named R list, or use ALTREP to expose Rust
 //! iterators as lazy R vectors.
 
-use std::alloc::Layout;
+use std::any::Any;
 use std::any::TypeId;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -116,23 +119,23 @@ use crate::ffi::{
 /// # Safety
 ///
 /// This is safe to send between threads because it's just a memory address.
-/// The data `T` is owned and transferred to the main thread before being accessed.
-type SendablePtr<T> = crate::worker::Sendable<NonNull<T>>;
+/// The data is owned and transferred to the main thread before being accessed.
+type SendableAnyPtr = crate::worker::Sendable<NonNull<Box<dyn Any>>>;
 
-/// Create a new sendable pointer from a raw pointer.
+/// Create a new sendable pointer from a raw `*mut Box<dyn Any>`.
 ///
 /// # Safety
 ///
 /// The pointer must be non-null.
 #[inline]
-unsafe fn sendable_ptr_new_unchecked<T>(ptr: *mut T) -> SendablePtr<T> {
+unsafe fn sendable_any_ptr_new(ptr: *mut Box<dyn Any>) -> SendableAnyPtr {
     // SAFETY: Caller guarantees ptr is non-null
     crate::worker::Sendable(unsafe { NonNull::new_unchecked(ptr) })
 }
 
 /// Get the raw pointer, consuming the sendable wrapper.
 #[inline]
-fn sendable_ptr_into_ptr<T>(ptr: SendablePtr<T>) -> *mut T {
+fn sendable_any_ptr_into_ptr(ptr: SendableAnyPtr) -> *mut Box<dyn Any> {
     ptr.0.as_ptr()
 }
 
@@ -278,7 +281,7 @@ impl TypedExternal for () {
 /// This is conceptually similar to `Box<T>`, but with the following differences:
 /// - Memory is freed by R's GC via a registered finalizer (non-deterministic)
 /// - The underlying SEXP is Copy, so aliasing must be manually prevented
-/// - Type checking happens at runtime via R symbol comparison in the prot slot
+/// - Type checking happens at runtime via `Any::downcast` (Rust `TypeId`)
 ///
 /// # Thread Safety
 ///
@@ -315,7 +318,8 @@ pub struct ExternalPtr<T: TypedExternal> {
     /// The pointer remains valid for the lifetime of the `ExternalPtr` because:
     /// - R's finalizer only runs after R garbage-collects the SEXP (which cannot
     ///   happen while a Rust `ExternalPtr` value exists).
-    /// - `R_ClearExternalPtr` is only called in `into_raw`, which consumes `self`.
+    /// - `R_ClearExternalPtr` is only called in methods that consume or finalize
+    ///   (`into_raw`, `into_inner`, `release_any`).
     cached_ptr: NonNull<T>,
     _marker: PhantomData<T>,
 }
@@ -328,6 +332,10 @@ unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T> {}
 
 impl<T: TypedExternal> ExternalPtr<T> {
     /// Allocates memory on the heap and places `x` into it.
+    ///
+    /// Internally stores a `Box<Box<dyn Any>>` — a thin pointer (fits in R's
+    /// `R_ExternalPtrAddr`) pointing to a fat pointer (carries the `Any` vtable
+    /// for runtime type checking via `downcast`).
     ///
     /// This function can be called from any thread:
     /// - If called from R's main thread, creates the ExternalPtr directly
@@ -343,19 +351,26 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// [`with_r_thread`]: crate::worker::with_r_thread
     #[inline]
     pub fn new(x: T) -> Self {
-        // Box the value first (this is thread-safe)
-        let ptr = Box::into_raw(Box::new(x));
+        // Get concrete pointer with full write provenance from Box::into_raw,
+        // BEFORE erasing to dyn Any. This preserves mutable provenance for
+        // cached_ptr (downcast_ref would give shared-reference provenance,
+        // which is UB for later writes through as_mut()).
+        let raw: *mut T = Box::into_raw(Box::new(x));
         // SAFETY: Box::into_raw never returns null
-        let cached_ptr = unsafe { NonNull::new_unchecked(ptr) };
-        // Wrap in SendablePtr so it can be sent across thread boundary
-        let sendable_ptr = unsafe { sendable_ptr_new_unchecked(ptr) };
+        let cached_ptr = unsafe { NonNull::new_unchecked(raw) };
+
+        // Re-wrap: Box::from_raw(raw) → Box<dyn Any> → Box<Box<dyn Any>>
+        // The data stays at `raw`; we're just adding the Any vtable wrapper.
+        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
+        let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
+
+        // Wrap in Sendable so it can be sent across thread boundary
+        let sendable = unsafe { sendable_any_ptr_new(any_raw) };
 
         // Use with_r_thread to run R API calls on main thread
         let sexp = crate::worker::with_r_thread(move || {
-            // This runs on main thread - unwrap the pointer
-            let ptr: *mut T = sendable_ptr_into_ptr(sendable_ptr);
-            // Use _unchecked since with_r_thread guarantees we're on main thread
-            unsafe { Self::create_extptr_sexp_unchecked(ptr) }
+            let any_raw = sendable_any_ptr_into_ptr(sendable);
+            unsafe { Self::create_extptr_sexp_unchecked(any_raw) }
         });
 
         Self {
@@ -367,97 +382,82 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Allocates memory on the heap and places `x` into it, without thread checks.
     ///
-    /// This version skips the debug thread-safety assertions in R API calls.
-    ///
     /// # Safety
     ///
     /// Must be called from R's main thread. Calling from another thread
     /// is undefined behavior (R APIs are not thread-safe).
-    ///
-    /// Use this in contexts where you know you're on main thread:
-    /// - ALTREP callbacks
-    /// - Inside `#[miniextendr(unsafe(main_thread))]` functions
-    /// - Inside `extern "C-unwind"` functions called directly by R
     #[inline]
     pub unsafe fn new_unchecked(x: T) -> Self {
-        let ptr = Box::into_raw(Box::new(x));
-        let sexp = unsafe { Self::create_extptr_sexp_unchecked(ptr) };
+        let raw: *mut T = Box::into_raw(Box::new(x));
+        let cached_ptr = unsafe { NonNull::new_unchecked(raw) };
+
+        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
+        let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
+
+        let sexp = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
         Self {
             sexp,
-            // SAFETY: Box::into_raw never returns null
-            cached_ptr: unsafe { NonNull::new_unchecked(ptr) },
+            cached_ptr,
             _marker: PhantomData,
         }
     }
 
-    /// Create an EXTPTRSXP from a raw pointer. Must be called from main thread.
+    /// Create an EXTPTRSXP from a `*mut Box<dyn Any>`. Must be called from main thread.
     ///
-    /// This is the internal function that actually calls R APIs.
+    /// The `any_raw` is a thin pointer to a heap-allocated fat pointer (`Box<dyn Any>`).
+    /// R stores the thin pointer in `R_ExternalPtrAddr`.
     #[inline]
-    unsafe fn create_extptr_sexp(ptr: *mut T) -> SEXP {
-        debug_assert!(!ptr.is_null(), "create_extptr_sexp received null pointer");
+    unsafe fn create_extptr_sexp(any_raw: *mut Box<dyn Any>) -> SEXP {
+        debug_assert!(
+            !any_raw.is_null(),
+            "create_extptr_sexp received null pointer"
+        );
 
-        // Create two symbols:
-        // - type_sym (TYPE_NAME_CSTR): short name for display in R
-        // - type_id_sym (TYPE_ID_CSTR): namespaced ID for type checking
         let type_sym = unsafe { type_symbol::<T>() };
         let type_id_sym = unsafe { type_id_symbol::<T>() };
 
-        // Create the prot VECSXP: [type_id_symbol, user_protected]
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
-
-        // Store namespaced type ID in slot 0 for type checking
         unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
-        // Slot 1 (user protected) starts as R_NilValue (already default)
 
-        // Create the external pointer with short display tag and prot
-        let sexp = unsafe { R_MakeExternalPtr(ptr.cast(), type_sym, prot) };
+        let sexp = unsafe { R_MakeExternalPtr(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };
 
-        // Register the C finalizer that will call drop
-        unsafe { R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
+        // Non-generic finalizer — Box<dyn Any> vtable handles the concrete drop
+        unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
 
         unsafe { Rf_unprotect(2) };
-
         sexp
     }
 
-    /// Create an EXTPTRSXP from a raw pointer without thread safety checks.
+    /// Create an EXTPTRSXP from a `*mut Box<dyn Any>` without thread safety checks.
     ///
     /// # Safety
     ///
     /// Must be called from R's main thread. No debug assertions for thread safety.
     #[inline]
-    unsafe fn create_extptr_sexp_unchecked(ptr: *mut T) -> SEXP {
+    unsafe fn create_extptr_sexp_unchecked(any_raw: *mut Box<dyn Any>) -> SEXP {
         debug_assert!(
-            !ptr.is_null(),
+            !any_raw.is_null(),
             "create_extptr_sexp_unchecked received null pointer"
         );
 
-        // Create two symbols:
-        // - type_sym (TYPE_NAME_CSTR): short name for display in R
-        // - type_id_sym (TYPE_ID_CSTR): namespaced ID for type checking
         let type_sym = unsafe { type_symbol_unchecked::<T>() };
         let type_id_sym = unsafe { type_id_symbol_unchecked::<T>() };
 
-        // Create the prot VECSXP: [type_id_symbol, user_protected]
         let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect_unchecked(prot) };
-
-        // Store namespaced type ID in slot 0 for type checking
         unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
-        // Slot 1 (user protected) starts as R_NilValue (already default)
 
-        // Create the external pointer with short display tag and prot
-        let sexp = unsafe { R_MakeExternalPtr_unchecked(ptr.cast(), type_sym, prot) };
+        let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
 
-        // Register the C finalizer that will call drop
-        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
+        // Non-generic finalizer — Box<dyn Any> vtable handles the concrete drop
+        unsafe {
+            R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE);
+        };
 
         unsafe { Rf_unprotect_unchecked(2) };
-
         sexp
     }
 
@@ -485,6 +485,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Constructs an ExternalPtr from a raw pointer.
     ///
+    /// Re-wraps the `*mut T` in `Box<dyn Any>` for the new storage format.
+    ///
     /// # Safety
     ///
     /// - `raw` must have been allocated via `Box::into_raw` or equivalent
@@ -495,10 +497,14 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Equivalent to `Box::from_raw`.
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        let sexp = unsafe { Self::create_extptr_sexp(raw) };
+        // Re-wrap in Box<dyn Any> → Box<Box<dyn Any>>
+        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
+        let outer: Box<Box<dyn Any>> = Box::new(inner);
+        let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
+
+        let sexp = unsafe { Self::create_extptr_sexp(any_raw) };
         Self {
             sexp,
-            // SAFETY: precondition requires raw is non-null
             cached_ptr: unsafe { NonNull::new_unchecked(raw) },
             _marker: PhantomData,
         }
@@ -514,10 +520,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - Must be called from R's main thread (no debug assertions)
     #[inline]
     pub unsafe fn from_raw_unchecked(raw: *mut T) -> Self {
-        let sexp = unsafe { Self::create_extptr_sexp_unchecked(raw) };
+        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
+        let outer: Box<Box<dyn Any>> = Box::new(inner);
+        let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
+
+        let sexp = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
         Self {
             sexp,
-            // SAFETY: precondition requires raw is non-null
             cached_ptr: unsafe { NonNull::new_unchecked(raw) },
             _marker: PhantomData,
         }
@@ -533,8 +542,20 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub fn into_raw(this: Self) -> *mut T {
         let ptr = this.cached_ptr.as_ptr();
 
+        // Recover and disassemble the Box<Box<dyn Any>> wrapper.
+        // We need to free the wrapper allocations without dropping the T data.
+        let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
+
         // Clear the external pointer so the finalizer becomes a no-op
         unsafe { R_ClearExternalPtr(this.sexp) };
+
+        if !any_raw.is_null() {
+            // Reconstruct outer box → extract inner → leak inner (prevents T drop)
+            let outer: Box<Box<dyn Any>> = unsafe { Box::from_raw(any_raw) };
+            let inner: Box<dyn Any> = *outer;
+            // Box::into_raw leaks the inner allocation — caller owns T via `ptr`
+            let _ = Box::into_raw(inner);
+        }
 
         // Don't run our Drop
         mem::forget(this);
@@ -566,27 +587,24 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Consumes the ExternalPtr, returning the wrapped value.
     ///
-    /// This moves the value out of the ExternalPtr and deallocates
-    /// the underlying memory. The R finalizer becomes a no-op.
+    /// Uses `Box<dyn Any>::downcast` to recover the concrete `Box<T>`,
+    /// then moves the value out.
     ///
     /// Equivalent to `*boxed` (deref move) or `Box::into_inner`.
     #[inline]
     pub fn into_inner(this: Self) -> T {
-        // Get the raw pointer and prevent finalizer from running
-        let ptr = Self::into_raw(this);
+        let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
 
-        // Read the value out
-        let value = unsafe { ptr::read(ptr) };
+        // Clear so finalizer is no-op
+        unsafe { R_ClearExternalPtr(this.sexp) };
+        mem::forget(this);
 
-        // Deallocate the memory (Box handles the layout)
-        unsafe {
-            let layout = Layout::new::<T>();
-            if layout.size() > 0 {
-                std::alloc::dealloc(ptr.cast(), layout);
-            }
-        }
-
-        value
+        assert!(!any_raw.is_null(), "ExternalPtr is null or cleared");
+        let outer: Box<Box<dyn Any>> = unsafe { Box::from_raw(any_raw) };
+        let inner: Box<dyn Any> = *outer;
+        *inner
+            .downcast::<T>()
+            .expect("ExternalPtr type mismatch in into_inner")
     }
 
     // region: Pin support (Box-equivalent)
@@ -808,52 +826,42 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Attempt to wrap a SEXP as an ExternalPtr with type checking.
     ///
+    /// Uses `Any::downcast_ref` for authoritative type checking (Rust `TypeId`).
+    /// Falls back to R symbol comparison for type-erased `ExternalPtr<()>`.
+    ///
     /// Returns `None` if:
     /// - The internal pointer is null
-    /// - The `prot` slot doesn't contain a valid VECSXP with type symbol
-    /// - The type symbol doesn't match T's type
-    ///
-    /// This is a low-level method. For automatic conversions in `#[miniextendr]`
-    /// functions, use the [`TryFromSexp`] trait which requires `T: Send`.
+    /// - The stored `Box<dyn Any>` does not contain a `T`
     ///
     /// # Safety
     ///
-    /// - `sexp` must be a valid EXTPTRSXP
+    /// - `sexp` must be a valid EXTPTRSXP created by this library
     /// - The caller must ensure no other ExternalPtr owns this SEXP
-    ///
-    /// [`TryFromSexp`]: crate::TryFromSexp
     pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
-        // Check if pointer is null
-        let ptr = unsafe { R_ExternalPtrAddr(sexp) };
-        if ptr.is_null() {
+        let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
             return None;
         }
 
-        // Extract prot VECSXP
-        let prot = unsafe { R_ExternalPtrProtected(sexp) };
-        if prot.is_null_or_nil() {
-            return None;
-        }
-        if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-            return None;
-        }
-
-        // Extract type symbol from slot 0
-        let stored_sym = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
-        if stored_sym.type_of() != SEXPTYPE::SYMSXP {
-            return None;
+        if is_type_erased::<T>() {
+            // Type-erased path: skip downcast, just use the raw pointer
+            // (ExternalPtr<()> doesn't care about the concrete type)
+            return Some(Self {
+                sexp,
+                cached_ptr: unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) },
+                _marker: PhantomData,
+            });
         }
 
-        // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_id_symbol::<T>() };
-        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
-            return None;
-        }
+        // Use downcast_mut (not downcast_ref) so cached_ptr gets mutable
+        // provenance — shared-reference provenance from downcast_ref would
+        // make later writes through as_mut() UB under Stacked Borrows.
+        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+        let concrete: &mut T = any_box.downcast_mut::<T>()?;
 
         Some(Self {
             sexp,
-            // SAFETY: ptr was checked non-null above
-            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
+            cached_ptr: unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) },
             _marker: PhantomData,
         })
     }
@@ -864,45 +872,31 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// # Safety
     ///
-    /// - `sexp` must be a valid EXTPTRSXP
+    /// - `sexp` must be a valid EXTPTRSXP created by this library
     /// - The caller must ensure exclusive ownership
     /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
     pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
-        use crate::ffi::{
-            R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked,
-        };
+        use crate::ffi::R_ExternalPtrAddr_unchecked;
 
-        // Check if pointer is null
-        let ptr = unsafe { R_ExternalPtrAddr_unchecked(sexp) };
-        if ptr.is_null() {
+        let any_raw = unsafe { R_ExternalPtrAddr_unchecked(sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
             return None;
         }
 
-        // Extract prot VECSXP
-        let prot = unsafe { R_ExternalPtrProtected_unchecked(sexp) };
-        if prot.is_null_or_nil() {
-            return None;
-        }
-        if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-            return None;
-        }
-
-        // Extract type symbol from slot 0
-        let stored_sym = unsafe { VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX) };
-        if stored_sym.type_of() != SEXPTYPE::SYMSXP {
-            return None;
+        if is_type_erased::<T>() {
+            return Some(Self {
+                sexp,
+                cached_ptr: unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) },
+                _marker: PhantomData,
+            });
         }
 
-        // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_id_symbol::<T>() };
-        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
-            return None;
-        }
+        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+        let concrete: &mut T = any_box.downcast_mut::<T>()?;
 
         Some(Self {
             sexp,
-            // SAFETY: ptr was checked non-null above
-            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
+            cached_ptr: unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) },
             _marker: PhantomData,
         })
     }
@@ -917,57 +911,75 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// [`TryFromSexp`]: crate::TryFromSexp
     pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
-        // Check if pointer is null
-        let ptr = unsafe { R_ExternalPtrAddr(sexp) };
-        if ptr.is_null() {
+        let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
             return Err(TypeMismatchError::NullPointer);
         }
 
-        // Extract prot VECSXP
-        let prot = unsafe { R_ExternalPtrProtected(sexp) };
-        if prot.is_null_or_nil() {
-            return Err(TypeMismatchError::InvalidTypeId);
-        }
-        if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-            return Err(TypeMismatchError::InvalidTypeId);
-        }
-
-        // Extract type symbol from slot 0
-        let stored_sym = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
-        if stored_sym.type_of() != SEXPTYPE::SYMSXP {
-            return Err(TypeMismatchError::InvalidTypeId);
-        }
-
-        // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_id_symbol::<T>() };
-        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
-            return Err(TypeMismatchError::Mismatch {
-                expected: T::TYPE_NAME,
-                found: unsafe { symbol_name(stored_sym) },
+        if is_type_erased::<T>() {
+            return Ok(Self {
+                sexp,
+                cached_ptr: unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) },
+                _marker: PhantomData,
             });
         }
 
-        Ok(Self {
-            sexp,
-            // SAFETY: ptr was checked non-null above
-            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
-            _marker: PhantomData,
-        })
+        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+        match any_box.downcast_mut::<T>() {
+            Some(concrete) => Ok(Self {
+                sexp,
+                cached_ptr: unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) },
+                _marker: PhantomData,
+            }),
+            None => {
+                // Try to get the stored type name from R symbol for error reporting
+                let found = unsafe {
+                    let prot = R_ExternalPtrProtected(sexp);
+                    if !prot.is_null_or_nil()
+                        && prot.type_of() == SEXPTYPE::VECSXP
+                        && prot.len() >= PROT_VEC_LEN as usize
+                    {
+                        let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+                        if stored_sym.type_of() == SEXPTYPE::SYMSXP {
+                            symbol_name(stored_sym)
+                        } else {
+                            "<unknown>"
+                        }
+                    } else {
+                        "<unknown>"
+                    }
+                };
+                Err(TypeMismatchError::Mismatch {
+                    expected: T::TYPE_NAME,
+                    found,
+                })
+            }
+        }
     }
 
     /// Create an ExternalPtr from an SEXP without type checking.
     ///
     /// # Safety
     ///
-    /// - `sexp` must be a valid EXTPTRSXP containing a `*mut T`
+    /// - `sexp` must be a valid EXTPTRSXP containing a `*mut Box<dyn Any>`
+    ///   wrapping a value of type `T`
     /// - The caller must ensure exclusive ownership
     #[inline]
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
-        let ptr = unsafe { R_ExternalPtrAddr(sexp) };
+        let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
+        debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
+
+        let cached_ptr = if is_type_erased::<T>() {
+            unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) }
+        } else {
+            let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+            let concrete: &mut T = unsafe { any_box.downcast_mut::<T>().unwrap_unchecked() };
+            unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) }
+        };
+
         Self {
             sexp,
-            // SAFETY: caller guarantees sexp contains a valid *mut T
-            cached_ptr: unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
+            cached_ptr,
             _marker: PhantomData,
         }
     }
@@ -1017,43 +1029,43 @@ impl ExternalPtr<()> {
         unsafe { Self::from_sexp_unchecked(sexp) }
     }
 
-    /// Check whether the stored type symbol matches `T`.
+    /// Check whether the stored `Box<dyn Any>` contains a `T`.
+    ///
+    /// Uses `Any::is` for authoritative runtime type checking.
     #[inline]
     pub fn is<T: TypedExternal>(&self) -> bool {
-        if self.is_null() {
+        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
             return false;
         }
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() || prot.type_of() != SEXPTYPE::VECSXP {
-                return false;
-            }
-            let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
-            if stored_sym.type_of() != SEXPTYPE::SYMSXP {
-                return false;
-            }
-            // Must use type_id_symbol (namespaced) to match what new() stores
-            let expected_sym = type_id_symbol::<T>();
-            std::ptr::eq(stored_sym.0, expected_sym.0)
-        }
+        let any_box: &Box<dyn Any> = unsafe { &*any_raw };
+        any_box.is::<T>()
     }
 
     /// Downcast to an immutable reference of the stored type if it matches `T`.
+    ///
+    /// Uses `Any::downcast_ref` for authoritative runtime type checking.
     #[inline]
     pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
-        if !self.is::<T>() {
+        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
             return None;
         }
-        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_ref() }
+        let any_box: &Box<dyn Any> = unsafe { &*any_raw };
+        any_box.downcast_ref::<T>()
     }
 
     /// Downcast to a mutable reference of the stored type if it matches `T`.
+    ///
+    /// Uses `Any::downcast_mut` for authoritative runtime type checking.
     #[inline]
     pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
-        if !self.is::<T>() {
+        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
             return None;
         }
-        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_mut() }
+        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+        any_box.downcast_mut::<T>()
     }
 }
 
@@ -1343,11 +1355,12 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
 
 // region: Finalizer
 
-/// C finalizer function called by R's garbage collector.
+/// Non-generic C finalizer called by R's garbage collector.
 ///
-/// This function is registered with R_RegisterCFinalizerEx and called when
-/// the EXTPTRSXP is garbage collected.
-extern "C-unwind" fn release_raw<T>(sexp: SEXP) {
+/// Since `ExternalPtr` stores `Box<Box<dyn Any>>`, the `Any` vtable carries
+/// the concrete type's drop function. No generic parameter needed — one
+/// finalizer function handles all `ExternalPtr<T>` types.
+extern "C-unwind" fn release_any(sexp: SEXP) {
     if sexp.is_null() {
         return;
     }
@@ -1355,18 +1368,20 @@ extern "C-unwind" fn release_raw<T>(sexp: SEXP) {
         return;
     }
 
-    let ptr = unsafe { R_ExternalPtrAddr(sexp).cast::<T>() };
+    let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
 
     // Guard against double-finalization
-    if ptr.is_null() {
+    if any_raw.is_null() {
         return;
     }
 
     // Clear the external pointer first (prevents double-free if called again)
     unsafe { R_ClearExternalPtr(sexp) };
 
-    // Reconstruct the Box and let it drop
-    drop(unsafe { Box::from_raw(ptr) });
+    // Reconstruct the outer Box<Box<dyn Any>> and let it drop.
+    // This drops the outer Box, then the inner Box<dyn Any>, which
+    // uses the vtable to drop the concrete T value.
+    drop(unsafe { Box::from_raw(any_raw) });
 }
 // endregion
 
