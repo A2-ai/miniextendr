@@ -66,6 +66,11 @@ struct AltrepAttrs {
     /// Field name for constant-value element access, set via `#[altrep(elt = "field")]`.
     /// When set, `elt()` returns `self.{field}` for every index.
     elt_field: Option<syn::Ident>,
+    /// Field name for delegated element access, set via `#[altrep(elt_delegate = "field")]`.
+    /// When set, `elt()` calls `self.{field}.elt(i)`, delegating to the inner type's
+    /// `AltIntegerData`/`AltRealData`/etc. implementation. Useful for wrapper types
+    /// around `StreamingIntData`, `StreamingRealData`, etc.
+    elt_delegate: Option<syn::Ident>,
     /// Whether to generate the `impl_alt*_from_data!` macro call. Defaults to `true`.
     /// Set to `false` by `#[altrep(no_lowlevel)]`.
     generate_lowlevel: bool,
@@ -90,6 +95,7 @@ impl AltrepAttrs {
     fn parse(input: &syn::DeriveInput) -> syn::Result<Self> {
         let mut len_field = None;
         let mut elt_field = None;
+        let mut elt_delegate = None;
         let mut generate_lowlevel = true; // Default: generate
         let mut lowlevel_options = Vec::new();
         let mut guard = None;
@@ -108,6 +114,10 @@ impl AltrepAttrs {
                     let _: syn::Token![=] = meta.input.parse()?;
                     let field: syn::LitStr = meta.input.parse()?;
                     elt_field = Some(syn::Ident::new(&field.value(), field.span()));
+                } else if meta.path.is_ident("elt_delegate") {
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let field: syn::LitStr = meta.input.parse()?;
+                    elt_delegate = Some(syn::Ident::new(&field.value(), field.span()));
                 } else if meta.path.is_ident("no_lowlevel") {
                     generate_lowlevel = false;
                 } else if meta.path.is_ident("dataptr") {
@@ -130,6 +140,7 @@ impl AltrepAttrs {
         Ok(Self {
             len_field,
             elt_field,
+            elt_delegate,
             generate_lowlevel,
             lowlevel_options,
             guard,
@@ -405,7 +416,7 @@ fn generate_altrep_len(
 fn derive_altrep_generic(
     input: syn::DeriveInput,
     data_trait_path: TokenStream,
-    gen_elt_impl: impl FnOnce(Option<&syn::Ident>) -> TokenStream,
+    gen_elt_impl: impl FnOnce(Option<&syn::Ident>, Option<&syn::Ident>) -> TokenStream,
     family: &AltrepFamilyConfig,
 ) -> syn::Result<TokenStream> {
     let name = &input.ident;
@@ -416,7 +427,7 @@ fn derive_altrep_generic(
     let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let elt_impl = gen_elt_impl(attrs.elt_field.as_ref());
+    let elt_impl = gen_elt_impl(attrs.elt_field.as_ref(), attrs.elt_delegate.as_ref());
 
     let data_trait_impl = quote! {
         impl #impl_generics #data_trait_path for #name #ty_generics #where_clause {
@@ -445,8 +456,10 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
     derive_altrep_generic(
         input,
         quote! { ::miniextendr_api::altrep_data::AltIntegerData },
-        |elt_field| {
-            if let Some(f) = elt_field {
+        |elt_field, elt_delegate| {
+            if let Some(d) = elt_delegate {
+                quote! { fn elt(&self, i: usize) -> i32 { self.#d.elt(i) } }
+            } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> i32 { self.#f } }
             } else {
                 quote! { fn elt(&self, _i: usize) -> i32 { ::miniextendr_api::altrep_traits::NA_INTEGER } }
@@ -476,8 +489,10 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
         quote! { ::miniextendr_api::altrep_data::AltRealData },
-        |elt_field| {
-            if let Some(f) = elt_field {
+        |elt_field, elt_delegate| {
+            if let Some(d) = elt_delegate {
+                quote! { fn elt(&self, i: usize) -> f64 { self.#d.elt(i) } }
+            } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> f64 { self.#f } }
             } else {
                 quote! { fn elt(&self, _i: usize) -> f64 { f64::NAN } }
@@ -507,8 +522,10 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
     derive_altrep_generic(
         input,
         quote! { ::miniextendr_api::altrep_data::AltLogicalData },
-        |elt_field| {
-            if let Some(f) = elt_field {
+        |elt_field, elt_delegate| {
+            if let Some(d) = elt_delegate {
+                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::altrep_data::Logical { self.#d.elt(i) } }
+            } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical { self.#f.into() } }
             } else {
                 quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical { ::miniextendr_api::altrep_data::Logical::Na } }
@@ -538,8 +555,10 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     derive_altrep_generic(
         input,
         quote! { ::miniextendr_api::altrep_data::AltRawData },
-        |elt_field| {
-            if let Some(f) = elt_field {
+        |elt_field, elt_delegate| {
+            if let Some(d) = elt_delegate {
+                quote! { fn elt(&self, i: usize) -> u8 { self.#d.elt(i) } }
+            } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> u8 { self.#f } }
             } else {
                 quote! { fn elt(&self, _i: usize) -> u8 { 0 } }
@@ -571,8 +590,10 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
     derive_altrep_generic(
         input,
         quote! { ::miniextendr_api::altrep_data::AltStringData },
-        |elt_field| {
-            if let Some(f) = elt_field {
+        |elt_field, elt_delegate| {
+            if let Some(d) = elt_delegate {
+                quote! { fn elt(&self, i: usize) -> Option<&str> { self.#d.elt(i) } }
+            } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> Option<&str> { Some(self.#f.as_ref()) } }
             } else {
                 quote! { fn elt(&self, _i: usize) -> Option<&str> { None } }
@@ -604,8 +625,10 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
     derive_altrep_generic(
         input,
         quote! { ::miniextendr_api::altrep_data::AltComplexData },
-        |elt_field| {
-            if let Some(f) = elt_field {
+        |elt_field, elt_delegate| {
+            if let Some(d) = elt_delegate {
+                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::ffi::Rcomplex { self.#d.elt(i) } }
+            } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::Rcomplex { self.#f } }
             } else {
                 quote! {
