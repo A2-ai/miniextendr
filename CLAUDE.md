@@ -22,6 +22,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **cargo-revendor**: Standalone workspace (excluded from miniextendr workspace). Build with `just revendor-build`, test with `just revendor-test`. `--freeze` rewrites Cargo.toml to resolve from vendor/ only.
 - **Windows paths in TOML**: Use forward slashes. `canonicalize()` adds `\\?\` prefix on Windows — strip it with `strip_prefix(r"\\?\")` before writing to TOML/config files.
 - **macOS tar xattrs**: Set `COPYFILE_DISABLE=1` when creating tarballs on macOS to prevent Apple xattr metadata that causes warnings on Linux/Windows GNU tar.
+- **Pointer provenance**: When caching a `*mut T` for later reads AND writes, derive it from a mutable path (`&mut T`, `Box::into_raw`, `downcast_mut`, `ptr::from_mut`). Never derive a write-capable `cached_ptr` from `&T` / `downcast_ref` / `as_ref` — shared-reference provenance makes later writes UB under Stacked Borrows.
 
 ## Adding a New Conversion Type (e.g., `Box<[T]>`)
 
@@ -328,13 +329,14 @@ NOT_CRAN=true just devtools-test # Run R tests
 ## Key Concepts
 
 - **Worker thread pattern**: Rust code runs on worker thread for proper panic handling
-- **ExternalPtr**: Box-like owned pointer using R's EXTPTRSXP with type safety via R symbols
-- **TypedExternal**: Trait for type-safe ExternalPtr identification across packages
+- **ExternalPtr**: Box-like owned pointer using R's EXTPTRSXP. Stores `Box<Box<dyn Any>>` — thin pointer (in `R_ExternalPtrAddr`) → fat pointer (heap, carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic finalizer (`release_any`). `cached_ptr` must have mutable provenance (`downcast_mut` / `ptr::from_mut`, never `downcast_ref`).
+- **TypedExternal**: Trait providing R-visible type name (`TYPE_NAME_CSTR` for display tag, `TYPE_ID_CSTR` for error messages). No longer used for type safety — `Any::downcast` is authoritative.
 - **ALTREP**: Lazy/compact vectors via proc-macro method traits
 - **R_UnwindProtect**: Ensures Rust destructors run on R errors
 - **GC Protection**: Use `OwnedProtect`/`ProtectScope` for RAII-based protect/unprotect
 - **Dots (`...`)**: R's variadic args become `_dots: &Dots`. Use `name @ ...` for custom name. See `docs/DOTS_TYPED_LIST.md`
 - **typed_list!**: Validate dots structure with `#[miniextendr(dots = typed_list!(...))]`. Creates `dots_typed` variable.
+- **`impl Trait` support**: Return position only (`-> impl IntoR`). The C wrapper is a caller that only sees the opaque trait bound, so it needs `IntoR` to call `into_sexp()`. Argument position is NOT supported — Rust's type inference cannot resolve the concrete type from `TryFromSexp + Trait` across a `let` binding (E0283), even when only one type satisfies both bounds.
 
 ## FFI Thread Checking (`#[r_ffi_checked]`)
 
