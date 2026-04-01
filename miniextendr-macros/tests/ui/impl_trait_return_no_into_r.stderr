@@ -1,0 +1,21 @@
+error[E0277]: the trait bound `impl std::fmt::Display: IntoR` is not satisfied
+ --> tests/ui/impl_trait_return_no_into_r.rs:9:1
+  |
+9 | #[miniextendr]
+  | ^^^^^^^^^^^^^^
+  | |
+  | the trait `IntoExternalPtr` is not implemented for `impl std::fmt::Display`
+  | required by a bound introduced by this call
+  |
+  = help: the following other types implement trait `IntoR`:
+            &OsStr
+            &Path
+            &[&str]
+            &[T]
+            &[bool]
+            &[f32]
+            &[i16]
+            &[i8]
+          and $N others
+  = note: required for `impl std::fmt::Display` to implement `IntoR`
+  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)
