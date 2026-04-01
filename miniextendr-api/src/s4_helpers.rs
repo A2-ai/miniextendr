@@ -28,12 +28,25 @@
 ///     }
 /// }
 /// ```
-use crate::expression::RCall;
+use crate::expression::{RCall, REnv};
 use crate::ffi::{
     self, R_ClassSymbol, Rboolean, Rf_getAttrib, Rf_isS4, Rf_protect, Rf_unprotect, SEXP,
     STRING_ELT, SexpExt,
 };
 use std::ffi::CStr;
+
+/// Get the `methods` package namespace for evaluating S4 functions.
+///
+/// # Safety
+///
+/// Must be called from the R main thread.
+unsafe fn methods_namespace() -> Result<SEXP, String> {
+    unsafe {
+        RCall::new("getNamespace")
+            .arg(scalar_string("methods"))
+            .eval_base()
+    }
+}
 
 /// Check if a SEXP is an S4 object.
 ///
@@ -75,10 +88,12 @@ pub unsafe fn s4_has_slot(obj: SEXP, slot_name: &str) -> bool {
 /// - `Err(String)` if the slot doesn't exist or another R error occurs.
 pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, String> {
     unsafe {
+        let ns = methods_namespace()?;
+        let env = REnv::from_sexp(ns);
         RCall::new("slot")
             .arg(obj)
             .named_arg("name", scalar_string(slot_name))
-            .eval_base()
+            .eval(env.as_sexp())
     }
 }
 
@@ -99,11 +114,13 @@ pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, String> {
 pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(), String> {
     unsafe {
         // slot(obj, name) <- value  is equivalent to `slot<-`(obj, name, value)
+        let ns = methods_namespace()?;
+        let env = REnv::from_sexp(ns);
         RCall::new("slot<-")
             .arg(obj)
             .named_arg("name", scalar_string(slot_name))
             .named_arg("value", value)
-            .eval_base()?;
+            .eval(env.as_sexp())?;
         Ok(())
     }
 }
