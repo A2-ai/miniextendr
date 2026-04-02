@@ -774,10 +774,7 @@ fn generate_trait_s7_r_wrapper(
     // For S7 classes, use a local variable + attr() to avoid S7's $<- interception.
     let trait_env_var = format!(".{}__{}", type_ident, trait_name);
     if !static_methods.is_empty() || !consts.is_empty() {
-        lines.push(format!(
-            "{} <- new.env(parent = emptyenv())",
-            trait_env_var
-        ));
+        lines.push(format!("{} <- new.env(parent = emptyenv())", trait_env_var));
         lines.push(String::new());
     }
 
@@ -829,10 +826,7 @@ fn generate_trait_s7_r_wrapper(
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, const_name);
         let call = DotCallBuilder::new(&c_ident).build();
 
-        lines.push(format!(
-            "{}${} <- function() {{",
-            trait_env_var, const_name
-        ));
+        lines.push(format!("{}${} <- function() {{", trait_env_var, const_name));
         lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());

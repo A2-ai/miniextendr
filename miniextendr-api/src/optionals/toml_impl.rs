@@ -248,9 +248,20 @@ impl IntoR for Vec<TomlValue> {
     }
     fn into_sexp(self) -> SEXP {
         let len = self.len();
-        let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, isize::try_from(len).expect("length exceeds R_xlen_t"))) };
+        let sexp = unsafe {
+            OwnedProtect::new(Rf_allocVector(
+                SEXPTYPE::VECSXP,
+                isize::try_from(len).expect("length exceeds R_xlen_t"),
+            ))
+        };
         for (i, value) in self.iter().enumerate() {
-            unsafe { SET_VECTOR_ELT(sexp.get(), isize::try_from(i).expect("index overflow"), toml_value_to_sexp(value)) };
+            unsafe {
+                SET_VECTOR_ELT(
+                    sexp.get(),
+                    isize::try_from(i).expect("index overflow"),
+                    toml_value_to_sexp(value),
+                )
+            };
         }
         // Return the SEXP - guard drops and unprotects
         sexp.get()
@@ -267,13 +278,24 @@ impl IntoR for Vec<Option<TomlValue>> {
     }
     fn into_sexp(self) -> SEXP {
         let len = self.len();
-        let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, isize::try_from(len).expect("length exceeds R_xlen_t"))) };
+        let sexp = unsafe {
+            OwnedProtect::new(Rf_allocVector(
+                SEXPTYPE::VECSXP,
+                isize::try_from(len).expect("length exceeds R_xlen_t"),
+            ))
+        };
         for (i, value) in self.iter().enumerate() {
             let elem = match value {
                 Some(v) => toml_value_to_sexp(v),
                 None => unsafe { crate::ffi::R_NilValue },
             };
-            unsafe { SET_VECTOR_ELT(sexp.get(), isize::try_from(i).expect("index overflow"), elem) };
+            unsafe {
+                SET_VECTOR_ELT(
+                    sexp.get(),
+                    isize::try_from(i).expect("index overflow"),
+                    elem,
+                )
+            };
         }
         // Return the SEXP - guard drops and unprotects
         sexp.get()
@@ -312,7 +334,11 @@ fn int_to_sexp(i: i64) -> SEXP {
     unsafe {
         if i64_fits_r_int(i) {
             let sexp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-            SET_INTEGER_ELT(sexp, 0, i32::try_from(i).expect("validated by i64_fits_r_int"));
+            SET_INTEGER_ELT(
+                sexp,
+                0,
+                i32::try_from(i).expect("validated by i64_fits_r_int"),
+            );
             sexp
         } else {
             // Value out of R integer range — store as double
@@ -356,13 +382,20 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
             TomlValue::String(_) => {
                 // Protect sexp before Rf_mkCharLenCE calls which can trigger GC
                 let sexp = unsafe {
-                    OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, isize::try_from(arr.len()).expect("length exceeds R_xlen_t")))
+                    OwnedProtect::new(Rf_allocVector(
+                        SEXPTYPE::STRSXP,
+                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
+                    ))
                 };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::String(s) = v {
                         unsafe {
                             let charsxp = crate::altrep_impl::checked_mkchar(s);
-                            SET_STRING_ELT(sexp.get(), isize::try_from(i).expect("index overflow"), charsxp);
+                            SET_STRING_ELT(
+                                sexp.get(),
+                                isize::try_from(i).expect("index overflow"),
+                                charsxp,
+                            );
                         }
                     }
                 }
@@ -380,38 +413,78 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 });
 
                 if all_fit {
-                    let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, isize::try_from(arr.len()).expect("length exceeds R_xlen_t")) };
+                    let sexp = unsafe {
+                        Rf_allocVector(
+                            SEXPTYPE::INTSXP,
+                            isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
+                        )
+                    };
                     for (i, v) in arr.iter().enumerate() {
                         if let TomlValue::Integer(n) = v {
-                            unsafe { SET_INTEGER_ELT(sexp, isize::try_from(i).expect("index overflow"), i32::try_from(*n).expect("validated by i64_fits_r_int")) };
+                            unsafe {
+                                SET_INTEGER_ELT(
+                                    sexp,
+                                    isize::try_from(i).expect("index overflow"),
+                                    i32::try_from(*n).expect("validated by i64_fits_r_int"),
+                                )
+                            };
                         }
                     }
                     return sexp;
                 }
                 // Fall back to REALSXP if any value is out of range
-                let sexp = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, isize::try_from(arr.len()).expect("length exceeds R_xlen_t")) };
+                let sexp = unsafe {
+                    Rf_allocVector(
+                        SEXPTYPE::REALSXP,
+                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
+                    )
+                };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Integer(n) = v {
                         #[allow(clippy::cast_precision_loss)]
-                        unsafe { SET_REAL_ELT(sexp, isize::try_from(i).expect("index overflow"), *n as f64) };
+                        unsafe {
+                            SET_REAL_ELT(
+                                sexp,
+                                isize::try_from(i).expect("index overflow"),
+                                *n as f64,
+                            )
+                        };
                     }
                 }
                 return sexp;
             }
             TomlValue::Float(_) => {
-                let sexp = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, isize::try_from(arr.len()).expect("length exceeds R_xlen_t")) };
+                let sexp = unsafe {
+                    Rf_allocVector(
+                        SEXPTYPE::REALSXP,
+                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
+                    )
+                };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Float(f) = v {
-                        unsafe { SET_REAL_ELT(sexp, isize::try_from(i).expect("index overflow"), *f) };
+                        unsafe {
+                            SET_REAL_ELT(sexp, isize::try_from(i).expect("index overflow"), *f)
+                        };
                     }
                 }
                 return sexp;
             }
             TomlValue::Boolean(_) => {
-                let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, isize::try_from(arr.len()).expect("length exceeds R_xlen_t")) };
+                let sexp = unsafe {
+                    Rf_allocVector(
+                        SEXPTYPE::LGLSXP,
+                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
+                    )
+                };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Boolean(b) = v {
-                        unsafe { SET_LOGICAL_ELT(sexp, isize::try_from(i).expect("index overflow"), if *b { 1 } else { 0 }) };
+                        unsafe {
+                            SET_LOGICAL_ELT(
+                                sexp,
+                                isize::try_from(i).expect("index overflow"),
+                                if *b { 1 } else { 0 },
+                            )
+                        };
                     }
                 }
                 return sexp;
@@ -424,9 +497,20 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
 
     // Heterogeneous or complex types -> list
     // Protect sexp before recursive calls that may trigger GC
-    let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, isize::try_from(arr.len()).expect("length exceeds R_xlen_t"))) };
+    let sexp = unsafe {
+        OwnedProtect::new(Rf_allocVector(
+            SEXPTYPE::VECSXP,
+            isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
+        ))
+    };
     for (i, v) in arr.iter().enumerate() {
-        unsafe { SET_VECTOR_ELT(sexp.get(), isize::try_from(i).expect("index overflow"), toml_value_to_sexp(v)) };
+        unsafe {
+            SET_VECTOR_ELT(
+                sexp.get(),
+                isize::try_from(i).expect("index overflow"),
+                toml_value_to_sexp(v),
+            )
+        };
     }
     // Return the SEXP - guard drops and unprotects
     sexp.get()
@@ -435,14 +519,32 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
 fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
     let len = table.len();
     // Protect both sexp and names before recursive calls that may trigger GC
-    let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, isize::try_from(len).expect("length exceeds R_xlen_t"))) };
-    let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, isize::try_from(len).expect("length exceeds R_xlen_t"))) };
+    let sexp = unsafe {
+        OwnedProtect::new(Rf_allocVector(
+            SEXPTYPE::VECSXP,
+            isize::try_from(len).expect("length exceeds R_xlen_t"),
+        ))
+    };
+    let names = unsafe {
+        OwnedProtect::new(Rf_allocVector(
+            SEXPTYPE::STRSXP,
+            isize::try_from(len).expect("length exceeds R_xlen_t"),
+        ))
+    };
 
     for (i, (key, value)) in table.iter().enumerate() {
         unsafe {
             let charsxp = crate::altrep_impl::checked_mkchar(key);
-            SET_STRING_ELT(names.get(), isize::try_from(i).expect("index overflow"), charsxp);
-            SET_VECTOR_ELT(sexp.get(), isize::try_from(i).expect("index overflow"), toml_value_to_sexp(value));
+            SET_STRING_ELT(
+                names.get(),
+                isize::try_from(i).expect("index overflow"),
+                charsxp,
+            );
+            SET_VECTOR_ELT(
+                sexp.get(),
+                isize::try_from(i).expect("index overflow"),
+                toml_value_to_sexp(value),
+            );
         }
     }
 
@@ -591,7 +693,8 @@ impl RTomlOps for TomlValue {
     }
 
     fn array_len(&self) -> Option<i32> {
-        TomlValue::as_array(self).map(|arr| i32::try_from(arr.len()).expect("array length exceeds i32"))
+        TomlValue::as_array(self)
+            .map(|arr| i32::try_from(arr.len()).expect("array length exceeds i32"))
     }
 
     fn table_keys(&self) -> Vec<String> {

@@ -43,14 +43,15 @@ fn map_to_named_list<V: IntoR>(
     iter: impl ExactSizeIterator<Item = (String, V)>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("map length exceeds isize::MAX");
-        let list =
-            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n);
+        let n: crate::ffi::R_xlen_t = iter
+            .len()
+            .try_into()
+            .expect("map length exceeds isize::MAX");
+        let list = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n);
         crate::ffi::Rf_protect(list);
 
         // Allocate names vector
-        let names =
-            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n);
+        let names = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n);
         crate::ffi::Rf_protect(names);
 
         for (i, (key, value)) in iter.enumerate() {
@@ -76,26 +77,19 @@ unsafe fn map_to_named_list_unchecked<V: IntoR>(
     iter: impl ExactSizeIterator<Item = (String, V)>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("map length exceeds isize::MAX");
-        let list = crate::ffi::Rf_allocVector_unchecked(
-            crate::ffi::SEXPTYPE::VECSXP,
-            n,
-        );
+        let n: crate::ffi::R_xlen_t = iter
+            .len()
+            .try_into()
+            .expect("map length exceeds isize::MAX");
+        let list = crate::ffi::Rf_allocVector_unchecked(crate::ffi::SEXPTYPE::VECSXP, n);
         crate::ffi::Rf_protect(list);
 
-        let names = crate::ffi::Rf_allocVector_unchecked(
-            crate::ffi::SEXPTYPE::STRSXP,
-            n,
-        );
+        let names = crate::ffi::Rf_allocVector_unchecked(crate::ffi::SEXPTYPE::STRSXP, n);
         crate::ffi::Rf_protect(names);
 
         for (i, (key, value)) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-            crate::ffi::SET_VECTOR_ELT_unchecked(
-                list,
-                idx,
-                value.into_sexp_unchecked(),
-            );
+            crate::ffi::SET_VECTOR_ELT_unchecked(list, idx, value.into_sexp_unchecked());
 
             let charsxp = str_to_charsxp_unchecked(&key);
             crate::ffi::SET_STRING_ELT_unchecked(names, idx, charsxp);

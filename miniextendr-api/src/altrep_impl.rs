@@ -1556,7 +1556,10 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
         // Static data cannot be modified. Panic is caught by RUnwind guard.
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1659,7 +1662,10 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1803,7 +1809,10 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())

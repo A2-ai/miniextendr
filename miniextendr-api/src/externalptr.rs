@@ -1465,7 +1465,5 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 }
 // endregion
 
-
 mod altrep_helpers;
 pub use altrep_helpers::*;
-

@@ -72,11 +72,7 @@ mod doc_lint_tests {
     #[test]
     fn test_implicit_description_is_second_paragraph() {
         // First paragraph = title, second paragraph = description
-        let attrs = make_doc_attrs(&[
-            "This is the title.",
-            "",
-            "This is the description.",
-        ]);
+        let attrs = make_doc_attrs(&["This is the title.", "", "This is the description."]);
         assert_eq!(
             implicit_description_from_attrs(&attrs),
             Some("This is the description.".to_string())
@@ -127,12 +123,7 @@ mod doc_lint_tests {
 
     #[test]
     fn test_implicit_description_skips_multiple_blank_lines() {
-        let attrs = make_doc_attrs(&[
-            "Title.",
-            "",
-            "",
-            "Description after multiple blanks.",
-        ]);
+        let attrs = make_doc_attrs(&["Title.", "", "", "Description after multiple blanks."]);
         assert_eq!(
             implicit_description_from_attrs(&attrs),
             Some("Description after multiple blanks.".to_string())

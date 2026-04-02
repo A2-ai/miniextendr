@@ -19,10 +19,13 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
         for ati in &data.attributed_trait_impls {
             let trait_style = ati.class_system.as_deref().unwrap_or("env");
 
-            if let Some((inherent_style, _)) =
-                data.inherent_impl_class_systems.get(&ati.type_name)
+            if let Some((inherent_style, _)) = data.inherent_impl_class_systems.get(&ati.type_name)
             {
-                let inherent = if inherent_style.is_empty() { "env" } else { inherent_style.as_str() };
+                let inherent = if inherent_style.is_empty() {
+                    "env"
+                } else {
+                    inherent_style.as_str()
+                };
 
                 // S3 trait dispatch works on any class system's objects
                 let compatible = trait_style == inherent || trait_style == "s3";

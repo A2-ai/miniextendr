@@ -42,7 +42,10 @@ impl NamedList {
     /// Returns `None` if the list has no `names` attribute.
     pub fn new(list: List) -> Option<Self> {
         let names_sexp = list.names()?;
-        let n: usize = list.len().try_into().expect("list length must be non-negative");
+        let n: usize = list
+            .len()
+            .try_into()
+            .expect("list length must be non-negative");
         let mut index = HashMap::with_capacity(n);
 
         for i in 0..n {

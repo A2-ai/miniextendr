@@ -1077,4 +1077,3 @@ pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
 
 mod io_adapters;
 pub use io_adapters::*;
-

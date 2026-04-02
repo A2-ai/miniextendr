@@ -529,7 +529,10 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
                 let value = list
                     .get_named::<crate::ffi::SEXP>(name)
                     .unwrap_or(unsafe { crate::ffi::R_NilValue });
-                columns.get_mut(name).expect("column inserted above").push(value);
+                columns
+                    .get_mut(name)
+                    .expect("column inserted above")
+                    .push(value);
             }
         }
 

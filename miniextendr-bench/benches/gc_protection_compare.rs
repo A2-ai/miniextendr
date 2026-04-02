@@ -660,14 +660,14 @@ mod freelist_strategy {
 
         bencher.bench_local(|| unsafe {
             let mut slots: Vec<usize> = Vec::with_capacity(n);
-            for i in 0..n {
-                slots.push(pool.insert(sexps[i]));
+            for sexp in &sexps[..n] {
+                slots.push(pool.insert(*sexp));
             }
             for slot in slots.drain(..n / 2) {
                 pool.release(slot);
             }
-            for i in 0..n / 2 {
-                slots.push(pool.insert(sexps[n + i]));
+            for sexp in &sexps[n..n + n / 2] {
+                slots.push(pool.insert(*sexp));
             }
             for slot in slots {
                 pool.release(slot);
@@ -684,8 +684,8 @@ mod freelist_strategy {
 
         bencher.bench_local(|| unsafe {
             let mut slots: Vec<usize> = Vec::with_capacity(n);
-            for i in 0..n {
-                slots.push(pool.insert(sexps[i]));
+            for sexp in &sexps[..n] {
+                slots.push(pool.insert(*sexp));
             }
             for slot in slots.drain(..n / 2) {
                 pool.release(slot);
