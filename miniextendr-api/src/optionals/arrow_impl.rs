@@ -331,7 +331,7 @@ pub type StringDictionaryArray = DictionaryArray<Int32Type>;
 
 /// Check if an R SEXP has a specific class (checks "class" attribute).
 unsafe fn r_inherits(sexp: SEXP, class: &str) -> bool {
-    unsafe { ffi::Rf_inherits(sexp, class.as_ptr().cast()) == Rboolean::TRUE }
+    unsafe { ffi::Rf_inherits(sexp, class.as_ptr().cast()) != Rboolean::FALSE }
 }
 
 /// Check if an R SEXP is a factor (INTSXP with "levels" attribute).
@@ -893,9 +893,9 @@ impl IntoR for BooleanArray {
                 *slot = if self.is_null(i) {
                     crate::altrep_traits::NA_LOGICAL
                 } else if self.value(i) {
-                    Rboolean::TRUE as i32
+                    1
                 } else {
-                    Rboolean::FALSE as i32
+                    0
                 };
             }
             sexp

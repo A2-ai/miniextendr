@@ -167,8 +167,8 @@
 use crate::ffi::{
     R_NewEnv, R_NilValue, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_ScalarComplex,
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal, Rf_ScalarString, Rf_allocList,
-    Rf_allocMatrix, Rf_allocVector, Rf_coerceVector, Rf_duplicate, Rf_mkCharLenCE, Rf_protect,
-    Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE,
+    Rf_allocMatrix, Rf_allocVector, Rf_duplicate, Rf_mkCharLenCE, Rf_protect,
+    Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
 use core::cell::Cell;
 use core::marker::PhantomData;
@@ -680,7 +680,7 @@ impl ProtectScope {
     /// Must be called from the R main thread. `x` must be a valid SEXP.
     #[inline]
     pub unsafe fn coerce<'a>(&'a self, x: SEXP, target: SEXPTYPE) -> Root<'a> {
-        unsafe { self.protect(Rf_coerceVector(x, target)) }
+        unsafe { self.protect(x.coerce(target)) }
     }
 
     /// Create a new environment, protected.

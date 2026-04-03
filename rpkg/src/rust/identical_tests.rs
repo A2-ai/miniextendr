@@ -15,7 +15,7 @@ pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {
     // Semantic equality (proper R semantics)
     // Use default flags (16 = ignore closure environments)
     use miniextendr_api::ffi::Rboolean;
-    let semantic_eq = unsafe { R_compute_identical(x, y, IDENT_USE_CLOENV) } == Rboolean::TRUE;
+    let semantic_eq = unsafe { R_compute_identical(x, y, IDENT_USE_CLOENV) } != Rboolean::FALSE;
 
     // Return list(pointer_eq = ..., semantic_eq = ...)
     unsafe {

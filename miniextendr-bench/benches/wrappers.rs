@@ -9,7 +9,7 @@
 //! - `argument_coercion`: wrapper path with type coercion
 //! - `class_methods`: Env/R6/S3/S4/S7-style method invocation overhead
 
-use miniextendr_api::ffi;
+use miniextendr_api::ffi::{self, SexpExt};
 use std::os::raw::c_char;
 
 // R_ext/Parse.h types not exposed in miniextendr-api FFI.
@@ -331,9 +331,8 @@ fn class_env_method(bencher: divan::Bencher) {
 /// R6-style: obj$value() via R6 dispatch.
 #[divan::bench]
 fn class_r6_method(bencher: divan::Bencher) {
-    let available =
-        unsafe { ffi::Rf_asLogical(r_eval_string("requireNamespace('R6', quietly = TRUE)")) };
-    if available != 1 {
+    let available = unsafe { r_eval_string("requireNamespace('R6', quietly = TRUE)") };
+    if available.as_logical() != Some(true) {
         return;
     }
 
@@ -370,9 +369,8 @@ fn class_s4_method(bencher: divan::Bencher) {
 /// S7-style: generic dispatch via S7.
 #[divan::bench]
 fn class_s7_method(bencher: divan::Bencher) {
-    let available =
-        unsafe { ffi::Rf_asLogical(r_eval_string("requireNamespace('S7', quietly = TRUE)")) };
-    if available != 1 {
+    let available = unsafe { r_eval_string("requireNamespace('S7', quietly = TRUE)") };
+    if available.as_logical() != Some(true) {
         return;
     }
 

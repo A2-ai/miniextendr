@@ -2,12 +2,12 @@
 //!
 //! Compares the cost of:
 //! - Direct type access (no coercion needed)
-//! - R-level coercion via Rf_coerceVector
+//! - R-level coercion via `sexp.coerce()`
 //! - Rust-level coercion via Coerce/TryCoerce traits
 
 use miniextendr_api::TryFromSexp;
 use miniextendr_api::coerce::{Coerce, TryCoerce};
-use miniextendr_api::ffi::{self, SEXPTYPE};
+use miniextendr_api::ffi::{SEXPTYPE, SexpExt};
 use miniextendr_bench::SIZES;
 
 fn main() {
@@ -34,11 +34,9 @@ fn scalar_int_direct() {
 #[divan::bench]
 fn scalar_int_to_real_r_coerce() {
     let sexp = fixtures().int_vec(0);
-    unsafe {
-        let coerced = ffi::Rf_coerceVector(sexp, SEXPTYPE::REALSXP);
-        let val: f64 = TryFromSexp::try_from_sexp(coerced).unwrap();
-        divan::black_box(val);
-    }
+    let coerced = sexp.coerce(SEXPTYPE::REALSXP);
+    let val: f64 = TryFromSexp::try_from_sexp(coerced).unwrap();
+    divan::black_box(val);
 }
 
 /// Rust-coerced: INTSXP -> i32 -> f64 (via Coerce trait)
@@ -62,11 +60,9 @@ fn scalar_real_direct() {
 #[divan::bench]
 fn scalar_real_to_int_r_coerce() {
     let sexp = fixtures().real_vec(0);
-    unsafe {
-        let coerced = ffi::Rf_coerceVector(sexp, SEXPTYPE::INTSXP);
-        let val: i32 = TryFromSexp::try_from_sexp(coerced).unwrap();
-        divan::black_box(val);
-    }
+    let coerced = sexp.coerce(SEXPTYPE::INTSXP);
+    let val: i32 = TryFromSexp::try_from_sexp(coerced).unwrap();
+    divan::black_box(val);
 }
 
 /// Rust-coerced: REALSXP -> f64 -> i32 (via TryCoerce, checks for overflow/precision)
@@ -93,11 +89,9 @@ fn vec_int_slice_direct(size_idx: usize) {
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn vec_int_to_real_r_coerce(size_idx: usize) {
     let sexp = fixtures().int_vec(size_idx);
-    unsafe {
-        let coerced = ffi::Rf_coerceVector(sexp, SEXPTYPE::REALSXP);
-        let slice: &[f64] = TryFromSexp::try_from_sexp(coerced).unwrap();
-        divan::black_box(slice);
-    }
+    let coerced = sexp.coerce(SEXPTYPE::REALSXP);
+    let slice: &[f64] = TryFromSexp::try_from_sexp(coerced).unwrap();
+    divan::black_box(slice);
 }
 
 /// Rust-coerced: INTSXP -> &[i32] -> Vec<f64> (element-wise)
@@ -121,11 +115,9 @@ fn vec_real_slice_direct(size_idx: usize) {
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn vec_real_to_int_r_coerce(size_idx: usize) {
     let sexp = fixtures().real_vec(size_idx);
-    unsafe {
-        let coerced = ffi::Rf_coerceVector(sexp, SEXPTYPE::INTSXP);
-        let slice: &[i32] = TryFromSexp::try_from_sexp(coerced).unwrap();
-        divan::black_box(slice);
-    }
+    let coerced = sexp.coerce(SEXPTYPE::INTSXP);
+    let slice: &[i32] = TryFromSexp::try_from_sexp(coerced).unwrap();
+    divan::black_box(slice);
 }
 
 /// Rust-coerced: REALSXP -> &[f64] -> Vec<i32> (element-wise with validation)
@@ -154,11 +146,9 @@ fn vec_lgl_direct(size_idx: usize) {
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn vec_lgl_to_int_r_coerce(size_idx: usize) {
     let sexp = fixtures().lgl_vec(size_idx);
-    unsafe {
-        let coerced = ffi::Rf_coerceVector(sexp, SEXPTYPE::INTSXP);
-        let slice: &[i32] = TryFromSexp::try_from_sexp(coerced).unwrap();
-        divan::black_box(slice);
-    }
+    let coerced = sexp.coerce(SEXPTYPE::INTSXP);
+    let slice: &[i32] = TryFromSexp::try_from_sexp(coerced).unwrap();
+    divan::black_box(slice);
 }
 
 /// R-coerced: INTSXP -> LGLSXP -> &[RLogical]
@@ -166,11 +156,9 @@ fn vec_lgl_to_int_r_coerce(size_idx: usize) {
 fn vec_int_to_lgl_r_coerce(size_idx: usize) {
     use miniextendr_api::ffi::RLogical;
     let sexp = fixtures().int_vec(size_idx);
-    unsafe {
-        let coerced = ffi::Rf_coerceVector(sexp, SEXPTYPE::LGLSXP);
-        let slice: &[RLogical] = TryFromSexp::try_from_sexp(coerced).unwrap();
-        divan::black_box(slice);
-    }
+    let coerced = sexp.coerce(SEXPTYPE::LGLSXP);
+    let slice: &[RLogical] = TryFromSexp::try_from_sexp(coerced).unwrap();
+    divan::black_box(slice);
 }
 // endregion
 
@@ -188,11 +176,9 @@ fn vec_raw_direct(size_idx: usize) {
 #[divan::bench(args = [0, 1, 2, 3, 4])]
 fn vec_raw_to_int_r_coerce(size_idx: usize) {
     let sexp = fixtures().raw_vec(size_idx);
-    unsafe {
-        let coerced = ffi::Rf_coerceVector(sexp, SEXPTYPE::INTSXP);
-        let slice: &[i32] = TryFromSexp::try_from_sexp(coerced).unwrap();
-        divan::black_box(slice);
-    }
+    let coerced = sexp.coerce(SEXPTYPE::INTSXP);
+    let slice: &[i32] = TryFromSexp::try_from_sexp(coerced).unwrap();
+    divan::black_box(slice);
 }
 
 /// Rust-coerced: RAWSXP -> &[u8] -> Vec<i32>

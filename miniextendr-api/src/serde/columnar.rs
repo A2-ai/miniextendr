@@ -105,7 +105,7 @@ unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
 /// Supports post-assembly customization via builder-style methods:
 ///
 /// ```ignore
-/// vec_to_dataframe(&rows)?
+/// ColumnarDataFrame::from_rows(&rows)?
 ///     .rename("hashes_blake3", "hash")
 ///     .drop("internal_id")
 /// ```
@@ -114,6 +114,76 @@ pub struct ColumnarDataFrame {
 }
 
 impl ColumnarDataFrame {
+    /// Convert a slice of serializable structs to an R data.frame in columnar layout.
+    ///
+    /// Each field of `T` becomes a column (R atomic vector). Nested structs are
+    /// recursively flattened into prefixed columns (`parent_child` naming).
+    ///
+    /// The result supports post-assembly customization:
+    ///
+    /// ```ignore
+    /// ColumnarDataFrame::from_rows(&rows)?
+    ///     .rename("hashes_blake3", "hash")
+    ///     .drop("internal_id")
+    /// ```
+    ///
+    /// # Supported Field Types
+    ///
+    /// | Rust Type | R Column Type |
+    /// |-----------|---------------|
+    /// | `bool` | `logical` |
+    /// | `i8/i16/i32` | `integer` |
+    /// | `i64/u64/f32/f64` | `numeric` |
+    /// | `String/&str` | `character` |
+    /// | `Option<T>` | Same type with NA for `None` |
+    /// | Nested struct | Recursively flattened with `parent_child` naming |
+    /// | Other | Falls back to per-element list column |
+    pub fn from_rows<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
+        if rows.is_empty() {
+            return Ok(ColumnarDataFrame {
+                sexp: empty_dataframe(),
+            });
+        }
+
+        // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
+        let schema = discover_schema_union(rows)?;
+        let ncol = schema.fields.len();
+        let nrow = rows.len();
+
+        if ncol == 0 {
+            return Err(RSerdeError::Message(
+                "ColumnarDataFrame::from_rows: type has no fields".into(),
+            ));
+        }
+
+        // Phase 2: Allocate column buffers
+        let mut columns: Vec<ColumnBuffer> = schema
+            .fields
+            .iter()
+            .map(|f| ColumnBuffer::new(f.col_type, nrow))
+            .collect();
+
+        // Phase 3: Fill columns from all rows
+        let mut filled = vec![false; ncol];
+        for row in rows {
+            let filler = ColumnFiller {
+                columns: &mut columns,
+                field_map: &schema.field_map,
+                filled: &mut filled,
+                col_start: 0,
+                col_count: ncol,
+                is_top_level: true,
+                pending_key: None,
+            };
+            row.serialize(filler)?;
+        }
+
+        // Phase 4: Assemble data.frame
+        Ok(ColumnarDataFrame {
+            sexp: unsafe { assemble_dataframe(&schema.fields, &columns, nrow) },
+        })
+    }
+
     /// Rename a column. No-op if `from` doesn't match any column name.
     pub fn rename(self, from: &str, to: &str) -> Self {
         unsafe {
@@ -279,74 +349,10 @@ impl From<crate::dataframe::DataFrameView> for ColumnarDataFrame {
     }
 }
 
-/// Convert a slice of serializable structs to an R data.frame in columnar layout.
-///
-/// Each field of `T` becomes a column (R atomic vector). Nested structs are
-/// recursively flattened into prefixed columns (`parent_child` naming).
-///
-/// The result supports post-assembly customization:
-///
-/// ```ignore
-/// vec_to_dataframe(&rows)?
-///     .rename("hashes_blake3", "hash")
-///     .drop("internal_id")
-/// ```
-///
-/// # Supported Field Types
-///
-/// | Rust Type | R Column Type |
-/// |-----------|---------------|
-/// | `bool` | `logical` |
-/// | `i8/i16/i32` | `integer` |
-/// | `i64/u64/f32/f64` | `numeric` |
-/// | `String/&str` | `character` |
-/// | `Option<T>` | Same type with NA for `None` |
-/// | Nested struct | Recursively flattened with `parent_child` naming |
-/// | Other | Falls back to per-element list column |
+/// Convenience alias for [`ColumnarDataFrame::from_rows`].
+#[inline]
 pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
-    if rows.is_empty() {
-        return Ok(ColumnarDataFrame {
-            sexp: empty_dataframe(),
-        });
-    }
-
-    // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
-    let schema = discover_schema_union(rows)?;
-    let ncol = schema.fields.len();
-    let nrow = rows.len();
-
-    if ncol == 0 {
-        return Err(RSerdeError::Message(
-            "vec_to_dataframe: type has no fields".into(),
-        ));
-    }
-
-    // Phase 2: Allocate column buffers
-    let mut columns: Vec<ColumnBuffer> = schema
-        .fields
-        .iter()
-        .map(|f| ColumnBuffer::new(f.col_type, nrow))
-        .collect();
-
-    // Phase 3: Fill columns from all rows
-    let mut filled = vec![false; ncol];
-    for row in rows {
-        let filler = ColumnFiller {
-            columns: &mut columns,
-            field_map: &schema.field_map,
-            filled: &mut filled,
-            col_start: 0,
-            col_count: ncol,
-            is_top_level: true,
-            pending_key: None,
-        };
-        row.serialize(filler)?;
-    }
-
-    // Phase 4: Assemble data.frame
-    Ok(ColumnarDataFrame {
-        sexp: unsafe { assemble_dataframe(&schema.fields, &columns, nrow) },
-    })
+    ColumnarDataFrame::from_rows(rows)
 }
 
 // region: Field mapping (recursive name → column routing)
@@ -466,7 +472,7 @@ fn discover_schema_union<T: Serialize>(rows: &[T]) -> Result<Schema, RSerdeError
 
     if unified_fields.is_empty() {
         return Err(RSerdeError::Message(
-            "vec_to_dataframe: no fields discovered from any row".into(),
+            "ColumnarDataFrame::from_rows: no fields discovered from any row".into(),
         ));
     }
 
@@ -618,7 +624,7 @@ impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
         })
     }
 
-    reject_non_struct!("vec_to_dataframe: expected struct", allow_some_none);
+    reject_non_struct!("ColumnarDataFrame::from_rows: expected struct", allow_some_none);
 }
 
 struct SchemaStructDiscoverer<'a> {
