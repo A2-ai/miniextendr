@@ -530,7 +530,10 @@ pub use list::{
 };
 pub use missing::{Missing, is_missing_arg};
 pub use named_vector::{AtomicElement, NamedVector};
-pub use strvec::{StrVec, StrVecBuilder, StrVecCowIter, StrVecIter};
+pub use strvec::{
+    ProtectedStrVec, ProtectedStrVecCowIter, ProtectedStrVecIter, StrVec, StrVecBuilder,
+    StrVecCowIter, StrVecIter,
+};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
     sexptype_name, validate_list,

@@ -1234,6 +1234,93 @@ impl IntoR for &[&str] {
     }
 }
 
+/// Convert `Vec<Cow<'_, str>>` to R character vector (STRSXP).
+impl IntoR for Vec<std::borrow::Cow<'_, str>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        str_iter_to_strsxp(self.iter().map(|s| s.as_ref()))
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_ref())) }
+    }
+}
+
+/// Convert `Box<[Cow<'_, str>]>` to R character vector (STRSXP).
+impl IntoR for Box<[std::borrow::Cow<'_, str>]> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        str_iter_to_strsxp(self.iter().map(|s| s.as_ref()))
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { str_iter_to_strsxp_unchecked(self.iter().map(|s| s.as_ref())) }
+    }
+}
+
+/// Convert `Vec<Option<Cow<'_, str>>>` to R character vector with NA support.
+///
+/// `None` values become `NA_character_` in R.
+impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+        Ok(unsafe { self.into_sexp_unchecked() })
+    }
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
+            let sexp =
+                OwnedProtect::new(crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n));
+            for (i, opt_s) in self.iter().enumerate() {
+                let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let charsxp = match opt_s {
+                    Some(s) => str_to_charsxp(s.as_ref()),
+                    None => crate::ffi::R_NaString,
+                };
+                crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
+            }
+            *sexp
+        }
+    }
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
+            let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
+                crate::ffi::SEXPTYPE::STRSXP,
+                n,
+            ));
+            for (i, opt_s) in self.iter().enumerate() {
+                let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
+                let charsxp = match opt_s {
+                    Some(s) => str_to_charsxp_unchecked(s.as_ref()),
+                    None => crate::ffi::R_NaString,
+                };
+                crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
+            }
+            *sexp
+        }
+    }
+}
+
 /// Convert `Vec<&str>` to R character vector (STRSXP).
 impl IntoR for Vec<&str> {
     type Error = std::convert::Infallible;

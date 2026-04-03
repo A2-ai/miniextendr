@@ -447,3 +447,226 @@ impl TryFromSexp for StrVec {
     }
 }
 // endregion
+
+// region: ProtectedStrVec — GC-protected string vector with proper lifetimes
+
+/// GC-protected view over an R character vector (`STRSXP`).
+///
+/// Unlike [`StrVec`] (which is `Copy` and trusts the caller for GC protection),
+/// `ProtectedStrVec` owns an [`OwnedProtect`] guard that keeps the STRSXP alive.
+/// All borrowed data (`&str`, iterators) has its lifetime tied to `&self`,
+/// not `'static` — preventing use-after-GC bugs at compile time.
+///
+/// # When to use
+///
+/// - **`StrVec`**: for SEXP arguments to `.Call` (R protects them), or when you
+///   manage protection yourself. Lightweight, `Copy`.
+/// - **`ProtectedStrVec`**: when you allocate or receive an STRSXP and need to
+///   keep it alive beyond the immediate scope. Not `Copy`.
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// pub fn count_unique(strings: ProtectedStrVec) -> i32 {
+///     let unique: HashSet<&str> = strings.iter()
+///         .filter_map(|s| s)
+///         .collect();
+///     unique.len() as i32
+/// }
+/// ```
+pub struct ProtectedStrVec {
+    inner: StrVec,
+    len: isize,
+    _protect: OwnedProtect,
+}
+
+impl ProtectedStrVec {
+    /// Create a protected view over an STRSXP.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid STRSXP.
+    /// - Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn new(sexp: SEXP) -> Self {
+        let guard = unsafe { OwnedProtect::new(sexp) };
+        let inner = unsafe { StrVec::from_raw(guard.get()) };
+        let len = inner.len();
+        Self {
+            inner,
+            len,
+            _protect: guard,
+        }
+    }
+
+    /// Number of elements.
+    #[inline]
+    pub fn len(&self) -> isize {
+        self.len
+    }
+
+    /// Whether the vector is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Get the string at index (zero-copy, lifetime tied to `&self`).
+    ///
+    /// Returns `None` for out-of-bounds or `NA_character_`.
+    #[inline]
+    pub fn get_str(&self, idx: isize) -> Option<&str> {
+        // charsxp_to_str returns &'static str, but lifetime elision
+        // restricts it to &'_ (tied to &self) — correct: data lives
+        // as long as OwnedProtect keeps the STRSXP alive.
+        self.inner.get_str(idx)
+    }
+
+    /// Get the string at index as `Cow<str>` (encoding-safe, lifetime tied to `&self`).
+    #[inline]
+    pub fn get_cow(&self, idx: isize) -> Option<Cow<'_, str>> {
+        self.inner.get_cow(idx)
+    }
+
+    /// Iterate over elements as `Option<&str>` (lifetime tied to `&self`).
+    #[inline]
+    pub fn iter(&self) -> ProtectedStrVecIter<'_> {
+        ProtectedStrVecIter {
+            vec: self,
+            idx: 0,
+            len: self.len,
+        }
+    }
+
+    /// Iterate over elements as `Option<Cow<str>>` (encoding-safe).
+    #[inline]
+    pub fn iter_cow(&self) -> ProtectedStrVecCowIter<'_> {
+        ProtectedStrVecCowIter {
+            vec: self,
+            idx: 0,
+            len: self.len,
+        }
+    }
+
+    /// Get the underlying SEXP (still protected by this handle).
+    #[inline]
+    pub fn as_sexp(&self) -> SEXP {
+        self.inner.as_sexp()
+    }
+
+    /// Get the inner `StrVec` (unprotected copy — caller assumes protection responsibility).
+    #[inline]
+    pub fn as_strvec(&self) -> StrVec {
+        self.inner
+    }
+}
+
+/// Iterator over `ProtectedStrVec` with lifetime tied to the protection guard.
+pub struct ProtectedStrVecIter<'a> {
+    vec: &'a ProtectedStrVec,
+    idx: isize,
+    len: isize,
+}
+
+impl<'a> Iterator for ProtectedStrVecIter<'a> {
+    type Item = Option<&'a str>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.len {
+            return None;
+        }
+        let result = self.vec.get_str(self.idx);
+        self.idx += 1;
+        // get_str returns None for NA; we need to distinguish "end of iter" from "NA element"
+        // Wrap: Some(None) = NA, Some(Some(&str)) = value, None = end
+        Some(result)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = (self.len - self.idx) as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for ProtectedStrVecIter<'_> {}
+
+/// Encoding-safe iterator over `ProtectedStrVec`.
+pub struct ProtectedStrVecCowIter<'a> {
+    vec: &'a ProtectedStrVec,
+    idx: isize,
+    len: isize,
+}
+
+impl<'a> Iterator for ProtectedStrVecCowIter<'a> {
+    type Item = Option<Cow<'a, str>>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.len {
+            return None;
+        }
+        let result = self.vec.get_cow(self.idx);
+        self.idx += 1;
+        Some(result)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = (self.len - self.idx) as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for ProtectedStrVecCowIter<'_> {}
+
+impl<'a> IntoIterator for &'a ProtectedStrVec {
+    type Item = Option<&'a str>;
+    type IntoIter = ProtectedStrVecIter<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl IntoR for ProtectedStrVec {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.as_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(self.as_sexp())
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.as_sexp()
+    }
+}
+
+impl TryFromSexp for ProtectedStrVec {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != STRSXP {
+            return Err(SexpTypeError {
+                expected: STRSXP,
+                actual,
+            }
+            .into());
+        }
+        Ok(unsafe { ProtectedStrVec::new(sexp) })
+    }
+}
+
+impl std::fmt::Debug for ProtectedStrVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProtectedStrVec")
+            .field("len", &self.len)
+            .finish()
+    }
+}
+// endregion
