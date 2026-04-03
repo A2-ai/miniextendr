@@ -32,7 +32,9 @@ fn pool_protects_from_gc() {
 
         // k1 should be stale, k2 still valid
         assert!(pool.get(k1).is_none(), "k1 should be stale after release");
-        let got2 = pool.get(k2).expect("k2 should survive after k1 release + GC");
+        let got2 = pool
+            .get(k2)
+            .expect("k2 should survive after k1 release + GC");
         assert_eq!(ffi::INTEGER_ELT(got2, 0), 99);
 
         pool.release(k2);
@@ -73,11 +75,10 @@ fn pool_growth_survives_gc() {
 
         // All 100 values should survive
         for (i, &k) in keys.iter().enumerate() {
-            let got = pool.get(k).unwrap_or_else(|| panic!("key {i} should be valid"));
-            assert_eq!(
-                ffi::INTEGER_ELT(got, 0),
-                i32::try_from(i).unwrap(),
-            );
+            let got = pool
+                .get(k)
+                .unwrap_or_else(|| panic!("key {i} should be valid"));
+            assert_eq!(ffi::INTEGER_ELT(got, 0), i32::try_from(i).unwrap(),);
         }
 
         for k in keys {

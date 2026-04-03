@@ -7,7 +7,9 @@
 
 use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp, coerce_value, is_na_real, r_slice};
+use crate::from_r::{
+    SexpError, SexpNaError, SexpTypeError, TryFromSexp, coerce_value, is_na_real, r_slice,
+};
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {

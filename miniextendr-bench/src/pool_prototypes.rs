@@ -30,8 +30,7 @@ impl VecPool {
     pub unsafe fn new(capacity: usize) -> Self {
         let capacity = capacity.max(1);
         unsafe {
-            let backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+            let backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -72,8 +71,7 @@ impl VecPool {
     unsafe fn grow(&mut self) {
         let new_cap = self.capacity * 2;
         unsafe {
-            let new_backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+            let new_backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {
@@ -116,8 +114,7 @@ impl DequePool {
     pub unsafe fn new(capacity: usize) -> Self {
         let capacity = capacity.max(1);
         unsafe {
-            let backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+            let backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -153,8 +150,7 @@ impl DequePool {
     unsafe fn grow(&mut self) {
         let new_cap = self.capacity * 2;
         unsafe {
-            let new_backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+            let new_backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {
@@ -182,7 +178,7 @@ impl Drop for DequePool {
 
 // region: SlotmapPool — slotmap with generational keys
 
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{SlotMap, new_key_type};
 
 new_key_type! {
     /// Generational key for VECSXP pool slots.
@@ -204,8 +200,7 @@ impl SlotmapPool {
     pub unsafe fn new(capacity: usize) -> Self {
         let capacity = capacity.max(1);
         unsafe {
-            let backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+            let backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -250,8 +245,7 @@ impl SlotmapPool {
     unsafe fn grow(&mut self) {
         let new_cap = self.capacity * 2;
         unsafe {
-            let new_backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+            let new_backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {
@@ -293,8 +287,7 @@ impl KeyedBacking {
     unsafe fn new(capacity: usize) -> Self {
         let capacity = capacity.max(1);
         unsafe {
-            let backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
+            let backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, capacity as ffi::R_xlen_t);
             R_PreserveObject(backing);
             Self {
                 backing,
@@ -338,8 +331,7 @@ impl KeyedBacking {
     unsafe fn grow(&mut self) {
         let new_cap = self.capacity * 2;
         unsafe {
-            let new_backing =
-                ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
+            let new_backing = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, new_cap as ffi::R_xlen_t);
             Rf_protect(new_backing);
             R_PreserveObject(new_backing);
             for i in 0..self.capacity {

@@ -166,7 +166,11 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
 
         // Create R matrix with RAII protection
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"));
+            let mat = crate::ffi::Rf_allocMatrix(
+                T::SEXP_TYPE,
+                i32::try_from(nrow).expect("nrow exceeds i32"),
+                i32::try_from(ncol).expect("ncol exceeds i32"),
+            );
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
@@ -208,7 +212,10 @@ fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
             ));
         }
 
-        Ok((usize::try_from(nrow).expect("nrow overflow"), usize::try_from(ncol).expect("ncol overflow")))
+        Ok((
+            usize::try_from(nrow).expect("nrow overflow"),
+            usize::try_from(ncol).expect("ncol overflow"),
+        ))
     }
 }
 // endregion
@@ -281,7 +288,11 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(R).expect("nrow exceeds i32"), i32::try_from(C).expect("ncol exceeds i32"));
+            let mat = crate::ffi::Rf_allocMatrix(
+                T::SEXP_TYPE,
+                i32::try_from(R).expect("nrow exceeds i32"),
+                i32::try_from(C).expect("ncol exceeds i32"),
+            );
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), R * C);
@@ -683,7 +694,10 @@ impl RMatrixOps for DMatrix<f64> {
     }
 
     fn shape(&self) -> (i32, i32) {
-        (i32::try_from(DMatrix::nrows(self)).expect("nrows exceeds i32"), i32::try_from(DMatrix::ncols(self)).expect("ncols exceeds i32"))
+        (
+            i32::try_from(DMatrix::nrows(self)).expect("nrows exceeds i32"),
+            i32::try_from(DMatrix::ncols(self)).expect("ncols exceeds i32"),
+        )
     }
 
     fn is_square(&self) -> bool {
@@ -965,11 +979,11 @@ where
 
 use crate::ffi;
 use crate::from_r::SexpTypeError;
+use nalgebra::base::Matrix;
 use nalgebra::base::allocator::Allocator;
 use nalgebra::base::default_allocator::DefaultAllocator;
 use nalgebra::base::dimension::{Dim, Dyn, U1};
 use nalgebra::base::storage::{IsContiguous, RawStorage, RawStorageMut, Storage};
-use nalgebra::base::Matrix;
 use std::marker::PhantomData;
 
 /// Column-major R-backed storage for nalgebra matrices.
@@ -1117,11 +1131,7 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
     /// # Safety
     ///
     /// Must be called on R's main thread.
-    pub unsafe fn new_matrix(
-        nrows: usize,
-        ncols: usize,
-        init: impl FnOnce(&mut [T]),
-    ) -> Self {
+    pub unsafe fn new_matrix(nrows: usize, ncols: usize, init: impl FnOnce(&mut [T])) -> Self {
         let total = nrows * ncols;
         let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, total as ffi::R_xlen_t) };
         unsafe { crate::ffi::R_PreserveObject(sexp) };
@@ -1146,9 +1156,8 @@ impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
 
     /// Consume, transfer GC protection to the protect stack, and return the SEXP.
     pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
-        let sexp = unsafe { scope.protect_raw(self.sexp) };
         // Drop runs → R_ReleaseObject, but sexp is now also on the protect stack.
-        sexp
+        unsafe { scope.protect_raw(self.sexp) }
     }
 
     /// Consume, release GC protection, and return the raw SEXP.
@@ -1239,9 +1248,7 @@ unsafe impl<T: RNativeType, C: Dim> RawStorageMut<T, Dyn, C> for RVecStorage<T, 
     }
 }
 
-unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, Dyn>
-    for RVecStorage<T, Dyn, Dyn>
-{
+unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, Dyn> for RVecStorage<T, Dyn, Dyn> {
     #[inline]
     fn into_owned(self) -> nalgebra::base::storage::Owned<T, Dyn, Dyn>
     where
@@ -1266,9 +1273,7 @@ unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, Dyn>
     }
 }
 
-unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, U1>
-    for RVecStorage<T, Dyn, U1>
-{
+unsafe impl<T: RNativeType + Scalar + Copy> Storage<T, Dyn, U1> for RVecStorage<T, Dyn, U1> {
     #[inline]
     fn into_owned(self) -> nalgebra::base::storage::Owned<T, Dyn, U1>
     where
@@ -1677,7 +1682,7 @@ impl RegisterAltrep for DVector<f64> {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <DVector<f64> as crate::altrep_data::InferBase>::make_class(
-                    b"nalgebra_DVector_f64\0".as_ptr().cast(),
+                    c"nalgebra_DVector_f64".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
@@ -1694,7 +1699,7 @@ impl RegisterAltrep for DVector<i32> {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <DVector<i32> as crate::altrep_data::InferBase>::make_class(
-                    b"nalgebra_DVector_i32\0".as_ptr().cast(),
+                    c"nalgebra_DVector_i32".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };

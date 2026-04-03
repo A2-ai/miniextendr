@@ -279,7 +279,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     // Check for cached materialized STRSXP in data2 slot
                     let data2 = $crate::ffi::R_altrep_data2(x);
                     if !data2.is_null()
-                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
                     {
                         // DATAPTR_RO on a standard (non-ALTREP) STRSXP gives the SEXP* array.
                         // Cast to mutable: safe because we own the materialized vector.
@@ -313,7 +313,7 @@ macro_rules! __impl_altvec_string_dataptr {
                 unsafe {
                     let data2 = $crate::ffi::R_altrep_data2(x);
                     if !data2.is_null()
-                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
                     {
                         $crate::ffi::DATAPTR_RO(data2)
                     } else {
@@ -341,7 +341,7 @@ macro_rules! __impl_altvec_extract_subset {
             ) -> $crate::ffi::SEXP {
                 // Validate that indx is an integer vector before calling INTEGER().
                 // Return NULL to signal R to use default subsetting if not.
-                if unsafe { $crate::ffi::TYPEOF(indx) } != $crate::ffi::SEXPTYPE::INTSXP {
+                if $crate::ffi::SexpExt::type_of(&indx) != $crate::ffi::SEXPTYPE::INTSXP {
                     return core::ptr::null_mut();
                 }
 
@@ -1556,7 +1556,10 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
         // Static data cannot be modified. Panic is caught by RUnwind guard.
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1659,7 +1662,10 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1803,7 +1809,10 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())

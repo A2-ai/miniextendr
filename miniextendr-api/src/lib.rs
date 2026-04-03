@@ -522,9 +522,9 @@ pub use convert::{
     AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, DataFrame, IntoDataFrame,
     ToDataFrame, ToDataFrameExt,
 };
-pub use into_r::Lazy;
 #[cfg(feature = "serde")]
 pub use convert::{AsSerializeRow, SerializeDataFrame};
+pub use into_r::Lazy;
 pub use list::{
     IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, TryFromList, collect_list,
 };
@@ -844,15 +844,15 @@ pub use optionals::{Array, ArrayVec, TinyVec};
 pub use optionals::arrow_impl;
 #[cfg(feature = "arrow")]
 pub use optionals::{
-    ArrowArray, ArrayRef, BooleanArray, DataType, Date32Array, DictionaryArray, Field,
+    ArrayRef, ArrowArray, BooleanArray, DataType, Date32Array, DictionaryArray, Field,
     Float64Array, Int32Array, RecordBatch, Schema, StringArray, StringDictionaryArray,
     TimestampSecondArray, UInt8Array,
 };
 
 #[cfg(feature = "datafusion")]
-pub use optionals::datafusion_impl;
-#[cfg(feature = "datafusion")]
 pub use optionals::RSessionContext;
+#[cfg(feature = "datafusion")]
+pub use optionals::datafusion_impl;
 
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;

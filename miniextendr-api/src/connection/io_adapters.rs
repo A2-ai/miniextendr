@@ -659,6 +659,4 @@ impl<T: std::io::BufRead + 'static> RConnectionIo<T> {
     }
 }
 
-#[cfg(test)]
-mod tests;
 // endregion

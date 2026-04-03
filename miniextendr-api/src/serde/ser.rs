@@ -454,7 +454,10 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
 
 /// Create an unnamed R list from SEXPs.
 fn create_r_list(elements: &[SEXP]) -> SEXP {
-    let n: isize = elements.len().try_into().expect("list length exceeds isize::MAX");
+    let n: isize = elements
+        .len()
+        .try_into()
+        .expect("list length exceeds isize::MAX");
     let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
 
     for (i, &elem) in elements.iter().enumerate() {
@@ -468,7 +471,10 @@ fn create_r_list(elements: &[SEXP]) -> SEXP {
 /// Create a named R list from string keys and SEXP values.
 fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
     debug_assert_eq!(keys.len(), values.len());
-    let n: isize = keys.len().try_into().expect("list length exceeds isize::MAX");
+    let n: isize = keys
+        .len()
+        .try_into()
+        .expect("list length exceeds isize::MAX");
 
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
@@ -490,7 +496,10 @@ fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
 /// Create a named R list from static string keys and SEXP values.
 fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
     debug_assert_eq!(keys.len(), values.len());
-    let n: isize = keys.len().try_into().expect("list length exceeds isize::MAX");
+    let n: isize = keys
+        .len()
+        .try_into()
+        .expect("list length exceeds isize::MAX");
 
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };

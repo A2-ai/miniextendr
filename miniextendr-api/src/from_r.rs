@@ -444,18 +444,12 @@ impl TryFromSexp for Option<SEXP> {
 }
 // endregion
 
-
 mod logical;
-
-
 
 mod coerced_scalars;
 pub(crate) use coerced_scalars::coerce_value;
 
-
-
 mod references;
-
 
 // region: Blanket implementations for slices with arbitrary lifetimes
 
@@ -592,9 +586,7 @@ where
 }
 // endregion
 
-
 mod strings;
-
 
 // region: Result conversions (NULL -> Err(()))
 
@@ -625,13 +617,9 @@ where
 }
 // endregion
 
-
 mod na_vectors;
 
-
-
 mod collections;
-
 
 // region: Fixed-size array conversions
 
@@ -720,9 +708,7 @@ where
 }
 // endregion
 
-
 mod cow_and_paths;
-
 
 // region: Option<Collection> conversions
 //

@@ -3,7 +3,7 @@
 //! Provides safe construction and element insertion for string vectors.
 
 use crate::ffi::SEXPTYPE::STRSXP;
-use crate::ffi::{self, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
@@ -308,7 +308,7 @@ impl TryFromSexp for StrVec {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = unsafe { ffi::TYPEOF(sexp) };
+        let actual = sexp.type_of();
         if actual != STRSXP {
             return Err(SexpTypeError {
                 expected: STRSXP,

@@ -4,8 +4,8 @@
 //! in `ExternalPtr` slots. Also provides the `Sidecar` marker type for
 //! `#[r_data]` fields.
 
-use crate::ffi::SEXP;
 use super::{ErasedExternalPtr, ExternalPtr, TypedExternal};
+use crate::ffi::SEXP;
 
 /// Extract the ALTREP data1 slot as a typed `ExternalPtr<T>`.
 ///

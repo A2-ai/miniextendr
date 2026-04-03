@@ -427,11 +427,7 @@ pub(crate) unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
             crate::ffi::R_BlankString
         } else {
             let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-            crate::ffi::Rf_mkCharLenCE_unchecked(
-                s.as_ptr().cast(),
-                len,
-                crate::ffi::CE_UTF8,
-            )
+            crate::ffi::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), len, crate::ffi::CE_UTF8)
         }
     }
 }

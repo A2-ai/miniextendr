@@ -73,12 +73,7 @@ impl<E: std::error::Error> std::fmt::Display for RCondition<E> {
 impl<E: std::error::Error> std::fmt::Debug for RCondition<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Debug shows the type name + Display output
-        write!(
-            f,
-            "RCondition<{}>({})",
-            std::any::type_name::<E>(),
-            self
-        )
+        write!(f, "RCondition<{}>({})", std::any::type_name::<E>(), self)
     }
 }
 

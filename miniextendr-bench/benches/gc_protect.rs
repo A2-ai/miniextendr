@@ -266,7 +266,7 @@ fn list_builder_construction(size_idx: usize) {
     let n = LIST_SIZES[size_idx];
     unsafe {
         let scope = ProtectScope::new();
-        let builder = ListBuilder::new(&scope, n);
+        let builder = ListBuilder::new(&scope, n as usize);
 
         for i in 0..n {
             let child = scope.protect_raw(ffi::Rf_ScalarInteger(i as i32));
@@ -339,7 +339,7 @@ fn strvec_builder_construction(size_idx: usize) {
     let n = LIST_SIZES[size_idx];
     unsafe {
         let scope = ProtectScope::new();
-        let builder = StrVecBuilder::new(&scope, n);
+        let builder = StrVecBuilder::new(&scope, n as usize);
 
         for i in 0..n {
             builder.set_str(i, "hello");
@@ -502,7 +502,7 @@ fn strvec_set_str_high_count(n: usize) {
 fn nested_lists_reprotect(outer_count: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let outer = ListBuilder::new(&scope, outer_count as isize);
+        let outer = ListBuilder::new(&scope, outer_count);
 
         for i in 0..outer_count {
             // Use reprotect slot for inner list - each iteration reuses slot
@@ -526,7 +526,7 @@ fn nested_lists_reprotect(outer_count: usize) {
 fn list_builder_grows_stack(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let builder = ListBuilder::new(&scope, n as isize);
+        let builder = ListBuilder::new(&scope, n);
 
         for i in 0..n {
             // Each child adds to protect stack
@@ -679,7 +679,7 @@ fn collect_into_vec_then_list(n: usize) {
         let values: Vec<i32> = (0..n).map(|i| i as i32).collect();
 
         // Then build list with known size
-        let builder = ListBuilder::new(&scope, values.len() as isize);
+        let builder = ListBuilder::new(&scope, values.len());
         for (i, v) in values.into_iter().enumerate() {
             builder.set_protected(i as isize, ffi::Rf_ScalarInteger(v));
         }
@@ -695,7 +695,7 @@ fn accumulator_vs_builder_known_size(n: usize) {
     unsafe {
         // ListBuilder (optimal for known size)
         let scope1 = ProtectScope::new();
-        let builder = ListBuilder::new(&scope1, n as isize);
+        let builder = ListBuilder::new(&scope1, n);
         for i in 0..n {
             builder.set_protected(i as isize, ffi::Rf_ScalarInteger(i as i32));
         }

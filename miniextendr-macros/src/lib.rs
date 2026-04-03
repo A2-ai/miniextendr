@@ -1421,6 +1421,22 @@ pub fn miniextendr(
         }
     }
 
+    // Auto-generate @param for any function parameter that doesn't have one yet.
+    // This prevents R CMD check warnings about undocumented arguments.
+    for arg in inputs.iter() {
+        if let syn::FnArg::Typed(pt) = arg
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+        {
+            let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+            let has_param = roxygen_tags
+                .iter()
+                .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
+            if !has_param {
+                roxygen_tags.push(format!("@param {r_name} (no documentation available)"));
+            }
+        }
+    }
+
     // Ensure a @title exists when we have auto-generated tags (e.g., @param from choices)
     // but the auto-title logic in roxygen_tags_from_attrs didn't fire (because has_any_tags
     // was false at that point — choices @param tags are added after extraction).
