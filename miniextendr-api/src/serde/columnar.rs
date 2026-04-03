@@ -14,9 +14,8 @@ use std::collections::HashMap;
 use super::error::RSerdeError;
 use crate::altrep_traits::NA_REAL;
 use crate::ffi::{
-    CE_UTF8, R_ClassSymbol, R_NaString, R_NamesSymbol, R_NilValue, R_RowNamesSymbol,
-    Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_setAttrib, Rf_unprotect, SET_STRING_ELT,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE,
+    CE_UTF8, R_NaString, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_unprotect,
+    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt,
 };
 use serde::ser::{self, Serialize};
 
@@ -86,18 +85,8 @@ unsafe fn col_name(names_sexp: SEXP, i: isize) -> &'static str {
 /// # Safety
 /// Both SEXPs must be valid VECSXPs.
 unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
-    unsafe {
-        Rf_setAttrib(
-            to,
-            R_ClassSymbol,
-            crate::ffi::Rf_getAttrib(from, R_ClassSymbol),
-        );
-        Rf_setAttrib(
-            to,
-            R_RowNamesSymbol,
-            crate::ffi::Rf_getAttrib(from, R_RowNamesSymbol),
-        );
-    }
+    to.set_class(from.get_class());
+    to.set_row_names(from.get_row_names());
 }
 
 /// A data.frame produced by the columnar serializer.
@@ -187,7 +176,7 @@ impl ColumnarDataFrame {
     /// Rename a column. No-op if `from` doesn't match any column name.
     pub fn rename(self, from: &str, to: &str) -> Self {
         unsafe {
-            let names_sexp = crate::ffi::Rf_getAttrib(self.sexp, R_NamesSymbol);
+            let names_sexp = self.sexp.get_names();
             if names_sexp == R_NilValue {
                 return self;
             }
@@ -208,7 +197,7 @@ impl ColumnarDataFrame {
     /// E.g., `.strip_prefix("metadata_")` turns `metadata_size` into `size`.
     pub fn strip_prefix(self, prefix: &str) -> Self {
         unsafe {
-            let names_sexp = crate::ffi::Rf_getAttrib(self.sexp, R_NamesSymbol);
+            let names_sexp = self.sexp.get_names();
             if names_sexp == R_NilValue {
                 return self;
             }
@@ -228,7 +217,7 @@ impl ColumnarDataFrame {
     /// Remove a column by name. No-op if the column doesn't exist.
     pub fn drop(self, col: &str) -> Self {
         unsafe {
-            let names_sexp = crate::ffi::Rf_getAttrib(self.sexp, R_NamesSymbol);
+            let names_sexp = self.sexp.get_names();
             if names_sexp == R_NilValue {
                 return self;
             }
@@ -254,7 +243,7 @@ impl ColumnarDataFrame {
                 j += 1;
             }
 
-            Rf_setAttrib(new_list, R_NamesSymbol, new_names);
+            new_list.set_names(new_names);
             copy_df_attrs(self.sexp, new_list);
 
             Rf_unprotect(2);
@@ -266,7 +255,7 @@ impl ColumnarDataFrame {
     /// Keep only the named columns, in the order given. Unknown names are skipped.
     pub fn select(self, cols: &[&str]) -> Self {
         unsafe {
-            let names_sexp = crate::ffi::Rf_getAttrib(self.sexp, R_NamesSymbol);
+            let names_sexp = self.sexp.get_names();
             if names_sexp == R_NilValue {
                 return self;
             }
@@ -289,7 +278,7 @@ impl ColumnarDataFrame {
                 SET_STRING_ELT(new_names, j_r, crate::ffi::STRING_ELT(names_sexp, src_idx));
             }
 
-            Rf_setAttrib(new_list, R_NamesSymbol, new_names);
+            new_list.set_names(new_names);
             copy_df_attrs(self.sexp, new_list);
 
             Rf_unprotect(2);
@@ -1286,14 +1275,14 @@ fn empty_dataframe() -> SEXP {
         Rf_protect(class_sexp);
         let class_str = Rf_mkCharLenCE(c"data.frame".as_ptr().cast(), 10, CE_UTF8);
         SET_STRING_ELT(class_sexp, 0, class_str);
-        Rf_setAttrib(list, R_ClassSymbol, class_sexp);
+        list.set_class(class_sexp);
 
         // Set compact row.names: c(NA_integer_, 0)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         Rf_protect(row_names);
         rn[0] = i32::MIN; // NA_integer_
         rn[1] = 0;
-        Rf_setAttrib(list, R_RowNamesSymbol, row_names);
+        list.set_row_names(row_names);
 
         Rf_unprotect(3);
         list
@@ -1335,21 +1324,21 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
             let charsxp = Rf_mkCharLenCE(field.name.as_ptr().cast(), name_len, CE_UTF8);
             SET_STRING_ELT(names_sexp, idx, charsxp);
         }
-        Rf_setAttrib(list, R_NamesSymbol, names_sexp);
+        list.set_names(names_sexp);
 
         // Set class = "data.frame"
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         Rf_protect(class_sexp);
         let class_str = Rf_mkCharLenCE(c"data.frame".as_ptr().cast(), 10, CE_UTF8);
         SET_STRING_ELT(class_sexp, 0, class_str);
-        Rf_setAttrib(list, R_ClassSymbol, class_sexp);
+        list.set_class(class_sexp);
 
         // Set compact row.names: c(NA_integer_, -nrow)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         Rf_protect(row_names);
         rn[0] = i32::MIN; // NA_integer_
         rn[1] = -i32::try_from(nrow).expect("data.frame row count exceeds i32::MAX");
-        Rf_setAttrib(list, R_RowNamesSymbol, row_names);
+        list.set_row_names(row_names);
 
         Rf_unprotect(4); // list, names, class, row_names
         list

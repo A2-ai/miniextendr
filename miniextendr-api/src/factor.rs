@@ -30,8 +30,8 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, INTEGER_ELT, PRINTNAME, R_ClassSymbol, R_LevelsSymbol, Rf_allocVector, Rf_getAttrib,
-    Rf_install, Rf_setAttrib, Rf_xlength, SET_STRING_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
+    INTEGER, INTEGER_ELT, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SET_STRING_ELT, SEXP,
+    SEXPTYPE, STRING_ELT, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
@@ -99,8 +99,8 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
     unsafe {
         let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(indices.len());
         dst.copy_from_slice(indices);
-        Rf_setAttrib(sexp, R_LevelsSymbol, levels);
-        Rf_setAttrib(sexp, R_ClassSymbol, factor_class_sexp());
+        sexp.set_levels(levels);
+        sexp.set_class(factor_class_sexp());
         sexp
     }
 }
@@ -144,7 +144,7 @@ impl<'a> Factor<'a> {
         let len = unsafe { Rf_xlength(sexp) } as usize;
         let ptr = unsafe { INTEGER(sexp) };
         let indices = unsafe { crate::from_r::r_slice(ptr, len) };
-        let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+        let levels_sexp = sexp.get_levels();
 
         Ok(Self {
             indices,
@@ -242,7 +242,7 @@ impl<'a> FactorMut<'a> {
         let len = unsafe { Rf_xlength(sexp) } as usize;
         let ptr = unsafe { INTEGER(sexp) };
         let indices = unsafe { crate::from_r::r_slice_mut(ptr, len) };
-        let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+        let levels_sexp = sexp.get_levels();
 
         Ok(Self {
             indices,
@@ -313,7 +313,7 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
         return Err(SexpError::InvalidValue("expected a factor".into()));
     }
 
-    let levels = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+    let levels = sexp.get_levels();
     if levels.type_of() != SEXPTYPE::STRSXP {
         return Err(SexpError::InvalidValue("levels is not STRSXP".into()));
     }
