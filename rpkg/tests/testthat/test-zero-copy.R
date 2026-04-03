@@ -69,6 +69,16 @@ test_that("Int32Array with NAs round-trip returns same object", {
   expect_true(zero_copy_arrow_i32_identity(x))
 })
 
+test_that("ALTREP compact integer (1:n) correctly falls through to copy", {
+  # 1:5 creates an ALTREP compact sequence — data isn't at fixed offset
+  # from SEXP header. Recovery must fail gracefully, returning a copy.
+  x <- 1:5
+  expect_false(zero_copy_cow_i32_identity(x))
+  expect_false(zero_copy_arrow_i32_identity(x))
+  # But values are preserved correctly
+  expect_equal(miniextendr:::arrow_i32_roundtrip(x), c(1L, 2L, 3L, 4L, 5L))
+})
+
 test_that("UInt8Array round-trip returns same R object (zero-copy)", {
   x <- as.raw(c(1, 2, 3))
   expect_true(zero_copy_arrow_u8_identity(x))

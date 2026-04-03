@@ -82,16 +82,22 @@ pub unsafe fn try_recover_r_sexp(
     }
 
     // Compute candidate SEXP by subtracting header size.
-    //
-    // SAFETY NOTE: if data_ptr is Rust-allocated (not from R), the candidate
-    // points to arbitrary heap memory. The read below is safe in practice
-    // (heap interior is always mapped), but is technically UB in Rust's
-    // abstract model. The triple verification (type + length + DATAPTR_RO)
-    // ensures we never return a false positive.
-    let candidate = SEXP(unsafe { data_ptr.sub(offset) as *mut ffi::SEXPREC });
+    // Use wrapping_sub: defined behavior for all pointer arithmetic (no
+    // requirement that the result be within the same allocation, unlike sub).
+    let candidate_ptr = (data_ptr as *mut ffi::SEXPREC).wrapping_byte_sub(offset);
 
-    // Quick check: type tag (bits 0-4 of sxpinfo, which is the first field)
-    // This catches garbage pointers early without calling R functions.
+    // Reject obviously invalid pointers (null, low addresses from sentinel 0x1)
+    if (candidate_ptr as usize) < 4096 {
+        return None;
+    }
+
+    let candidate = SEXP(candidate_ptr);
+
+    // Quick check: type tag (bits 0-4 of sxpinfo, which is the first field).
+    // For Rust-allocated buffers this reads arbitrary heap memory, but
+    // wrapping_sub ensures the pointer arithmetic itself is defined.
+    // The read is a plain u32 load from mapped heap — no UB from the
+    // pointer derivation (wrapping arithmetic doesn't create provenance).
     let sxpinfo_bits = unsafe { *(candidate.0 as *const u32) };
     let type_bits = sxpinfo_bits & 0x1f;
     if type_bits != expected_type as u32 {

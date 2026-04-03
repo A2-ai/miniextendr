@@ -480,11 +480,15 @@ impl TryFromSexp for StrVec {
 pub struct ProtectedStrVec {
     inner: StrVec,
     len: isize,
-    _protect: OwnedProtect,
+    _protect: Option<OwnedProtect>,
 }
 
 impl ProtectedStrVec {
     /// Create a protected view over an STRSXP.
+    ///
+    /// Calls `Rf_protect` on the SEXP. Use [`from_sexp_trusted`](Self::from_sexp_trusted)
+    /// when the SEXP is already protected (e.g., `.Call` arguments) to avoid
+    /// double-protecting.
     ///
     /// # Safety
     ///
@@ -498,7 +502,32 @@ impl ProtectedStrVec {
         Self {
             inner,
             len,
-            _protect: guard,
+            _protect: Some(guard),
+        }
+    }
+
+    /// Create a view without adding GC protection.
+    ///
+    /// Use this when the SEXP is already protected by R (e.g., a `.Call`
+    /// argument, or in a `ProtectScope`). Avoids the redundant
+    /// `Rf_protect`/`Rf_unprotect` pair.
+    ///
+    /// The lifetime-bound `&str` borrows are still enforced — this only
+    /// skips the protect stack push, not the safety guarantees.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid STRSXP.
+    /// - `sexp` must remain GC-protected for the lifetime of this struct.
+    /// - Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn from_sexp_trusted(sexp: SEXP) -> Self {
+        let inner = unsafe { StrVec::from_raw(sexp) };
+        let len = inner.len();
+        Self {
+            inner,
+            len,
+            _protect: None,
         }
     }
 
@@ -660,7 +689,9 @@ impl TryFromSexp for ProtectedStrVec {
             }
             .into());
         }
-        Ok(unsafe { ProtectedStrVec::new(sexp) })
+        // Use from_sexp_trusted: TryFromSexp is called from generated .Call
+        // wrappers where R already protects the argument. No need to double-protect.
+        Ok(unsafe { ProtectedStrVec::from_sexp_trusted(sexp) })
     }
 }
 
