@@ -52,8 +52,8 @@
 //! All functions in this module are unsafe and must be called from the R main thread.
 
 use crate::ffi::{
-    CAR, CDR, R_NilValue, R_PreserveObject, Rf_cons, Rf_protect, Rf_unprotect, SET_TAG, SETCAR,
-    SETCDR, SEXP,
+    CAR, CDR, R_PreserveObject, Rf_cons, Rf_protect, Rf_unprotect, SEXP, SET_TAG, SETCAR, SETCDR,
+    SexpExt,
 };
 use std::cell::OnceCell;
 
@@ -76,7 +76,7 @@ thread_local! {
 #[inline]
 unsafe fn init() -> SEXP {
     unsafe {
-        let out = Rf_cons(R_NilValue, Rf_cons(R_NilValue, R_NilValue));
+        let out = Rf_cons(SEXP::null(), Rf_cons(SEXP::null(), SEXP::null()));
         R_PreserveObject(out);
         out
     }
@@ -95,7 +95,7 @@ unsafe fn init_unchecked() -> SEXP {
     use crate::ffi::{R_PreserveObject_unchecked, Rf_cons_unchecked};
 
     unsafe {
-        let out = Rf_cons_unchecked(R_NilValue, Rf_cons_unchecked(R_NilValue, R_NilValue));
+        let out = Rf_cons_unchecked(SEXP::null(), Rf_cons_unchecked(SEXP::null(), SEXP::null()));
         R_PreserveObject_unchecked(out);
         out
     }
@@ -182,8 +182,8 @@ pub unsafe fn count_unchecked() -> crate::ffi::R_xlen_t {
 #[inline]
 pub unsafe fn insert(x: SEXP) -> SEXP {
     unsafe {
-        if std::ptr::addr_eq(x.0, R_NilValue.0) {
-            return R_NilValue;
+        if x.is_nil() {
+            return SEXP::null();
         }
 
         Rf_protect(x);
@@ -226,8 +226,8 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
     };
 
     unsafe {
-        if std::ptr::addr_eq(x.0, R_NilValue.0) {
-            return R_NilValue;
+        if x.is_nil() {
+            return SEXP::null();
         }
 
         Rf_protect_unchecked(x);
@@ -265,7 +265,7 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
 #[inline]
 pub unsafe fn release(cell: SEXP) {
     unsafe {
-        if std::ptr::addr_eq(cell.0, R_NilValue.0) {
+        if cell.is_nil() {
             return;
         }
 
@@ -299,7 +299,7 @@ pub unsafe fn release_unchecked(cell: SEXP) {
     use crate::ffi::{CAR_unchecked, CDR_unchecked, SETCAR_unchecked, SETCDR_unchecked};
 
     unsafe {
-        if std::ptr::addr_eq(cell.0, R_NilValue.0) {
+        if cell.is_nil() {
             return;
         }
 

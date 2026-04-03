@@ -145,7 +145,7 @@ impl IntoR for () {
     type Error = std::convert::Infallible;
     #[inline]
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { crate::ffi::R_NilValue })
+        Ok(crate::ffi::SEXP::null())
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
@@ -153,7 +153,7 @@ impl IntoR for () {
     }
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::R_NilValue }
+        crate::ffi::SEXP::null()
     }
 }
 
@@ -161,7 +161,7 @@ impl IntoR for std::convert::Infallible {
     type Error = std::convert::Infallible;
     #[inline]
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { crate::ffi::R_NilValue })
+        Ok(crate::ffi::SEXP::null())
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
@@ -169,7 +169,7 @@ impl IntoR for std::convert::Infallible {
     }
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::R_NilValue }
+        crate::ffi::SEXP::null()
     }
 }
 
@@ -936,14 +936,14 @@ impl<T: crate::ffi::RNativeType> IntoR for Option<Vec<T>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -963,14 +963,14 @@ impl IntoR for Option<Vec<String>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -990,14 +990,14 @@ impl<V: IntoR> IntoR for Option<HashMap<String, V>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -1017,14 +1017,14 @@ impl<V: IntoR> IntoR for Option<BTreeMap<String, V>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -1044,14 +1044,14 @@ impl<T: crate::ffi::RNativeType + Eq + Hash> IntoR for Option<HashSet<T>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -1071,14 +1071,14 @@ impl<T: crate::ffi::RNativeType + Ord> IntoR for Option<BTreeSet<T>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -1100,14 +1100,14 @@ macro_rules! impl_option_collection_into_r {
             fn into_sexp(self) -> crate::ffi::SEXP {
                 match self {
                     Some(v) => v.into_sexp(),
-                    None => unsafe { crate::ffi::R_NilValue },
+                    None => crate::ffi::SEXP::null(),
                 }
             }
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
                 match self {
                     Some(v) => unsafe { v.into_sexp_unchecked() },
-                    None => unsafe { crate::ffi::R_NilValue },
+                    None => crate::ffi::SEXP::null(),
                 }
             }
         }
