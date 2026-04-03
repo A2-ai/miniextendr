@@ -9,9 +9,13 @@ Items 1-3, 5 methods are done. Safe methods exist on `SexpExt` and `impl SEXP`:
 - Item 5: List element access (`vector_elt`, `set_vector_elt`) — methods added
 - String construction (`SEXP::charsxp`, `na_string`, `blank_string`) — methods added
 
+**Call-site migrations done**:
+- rpkg test fixtures: `Rf_ScalarInteger` → `SEXP::scalar_integer`, etc.
+- Integration tests: gc_protect, preserve, protect_pool, refcount_protect, from_r, externalptr, ndarray
+
 **Strategy**: Safe methods are available. Internal miniextendr-api code can migrate incrementally.
 Privatization (changing `pub` to `pub(crate)`) happens after all callers in rpkg, tests,
-bench, and cross-package are migrated. That's ~600 call sites — do it file by file.
+bench, and cross-package are migrated. Internal crate code can keep using raw FFI.
 
 Remaining items needing new methods:
 
