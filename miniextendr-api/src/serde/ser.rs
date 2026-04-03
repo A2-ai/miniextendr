@@ -6,7 +6,8 @@
 use super::error::RSerdeError;
 use crate::ffi::{
     R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
-    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, cetype_t,
+    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt,
+    cetype_t,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -261,7 +262,7 @@ impl ser::SerializeSeq for SeqSerializer {
 
         // Track homogeneity for smart dispatch
         let elem_len = unsafe { crate::ffi::Rf_xlength(elem) };
-        let elem_type = unsafe { crate::ffi::TYPEOF(elem) as SEXPTYPE };
+        let elem_type = elem.type_of();
 
         if elem_len != 1 {
             self.all_scalar = false;
@@ -536,7 +537,7 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
 
 /// Extract a string from a SEXP (must be STRSXP of length 1).
 fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
-    let sexp_type = unsafe { crate::ffi::TYPEOF(sexp) as SEXPTYPE };
+    let sexp_type = sexp.type_of();
     if sexp_type != SEXPTYPE::STRSXP {
         return Err(RSerdeError::NonStringKey);
     }

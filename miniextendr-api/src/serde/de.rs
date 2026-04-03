@@ -6,8 +6,8 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{
-    R_NaString, R_NamesSymbol, R_NilValue, Rf_getAttrib, Rf_xlength, SEXP, SEXPTYPE, STRING_ELT,
-    TYPEOF, VECTOR_ELT,
+    R_NaString, R_NamesSymbol, R_NilValue, Rf_getAttrib, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
+    STRING_ELT, VECTOR_ELT,
 };
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -56,7 +56,7 @@ impl RDeserializer {
     }
 
     fn sexp_type(&self) -> SEXPTYPE {
-        unsafe { TYPEOF(self.sexp) as SEXPTYPE }
+        self.sexp.type_of()
     }
 
     fn len(&self) -> usize {
@@ -710,7 +710,7 @@ impl VectorSeqAccess {
     fn new(sexp: SEXP) -> Self {
         VectorSeqAccess {
             sexp,
-            sexp_type: unsafe { TYPEOF(sexp) as SEXPTYPE },
+            sexp_type: sexp.type_of(),
             index: 0,
             len: unsafe { Rf_xlength(sexp) as usize },
         }
@@ -856,7 +856,7 @@ impl NamedListMapAccess {
                 actual: "list (no names attribute)".into(),
             });
         }
-        if unsafe { TYPEOF(names) } as SEXPTYPE != SEXPTYPE::STRSXP {
+        if names.type_of() != SEXPTYPE::STRSXP {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",
                 actual: "list (names attribute is not character)".into(),

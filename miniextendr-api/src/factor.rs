@@ -30,9 +30,8 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, INTEGER_ELT, PRINTNAME, R_ClassSymbol, R_LevelsSymbol, Rboolean, Rf_allocVector,
-    Rf_getAttrib, Rf_install, Rf_isFactor, Rf_setAttrib, Rf_xlength, SET_STRING_ELT, SEXP,
-    SEXPTYPE, STRING_ELT, SexpExt,
+    INTEGER, INTEGER_ELT, PRINTNAME, R_ClassSymbol, R_LevelsSymbol, Rf_allocVector, Rf_getAttrib,
+    Rf_install, Rf_setAttrib, Rf_xlength, SET_STRING_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
@@ -138,7 +137,7 @@ impl<'a> Factor<'a> {
     ///
     /// Returns an error if the SEXP is not a factor.
     pub fn try_new(sexp: SEXP) -> Result<Self, SexpError> {
-        if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+        if !sexp.is_factor() {
             return Err(SexpError::InvalidValue("expected a factor".into()));
         }
 
@@ -236,7 +235,7 @@ impl<'a> FactorMut<'a> {
     ///
     /// Returns an error if the SEXP is not a factor.
     pub fn try_new(sexp: SEXP) -> Result<Self, SexpError> {
-        if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+        if !sexp.is_factor() {
             return Err(SexpError::InvalidValue("expected a factor".into()));
         }
 
@@ -310,7 +309,7 @@ impl std::ops::DerefMut for FactorMut<'_> {
 
 /// Validate that a factor has the expected levels.
 pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<(), SexpError> {
-    if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+    if !sexp.is_factor() {
         return Err(SexpError::InvalidValue("expected a factor".into()));
     }
 

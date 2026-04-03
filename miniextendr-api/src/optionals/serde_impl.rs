@@ -180,9 +180,9 @@ impl JsonOptions {
     }
 }
 use crate::ffi::{
-    INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rboolean, Rf_allocVector, Rf_getAttrib, Rf_isFactor,
-    Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
+    INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rf_allocVector, Rf_getAttrib, Rf_setAttrib, Rf_xlength,
+    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP,
+    SEXPTYPE, STRING_ELT, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
@@ -353,7 +353,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
     }
 
     // Handle factors first (convert to string)
-    if unsafe { Rf_isFactor(sexp) } != Rboolean::FALSE {
+    if sexp.is_factor() {
         return factor_to_json(sexp, opts);
     }
 

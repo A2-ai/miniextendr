@@ -17,7 +17,7 @@
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
 use crate::ffi::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
-use crate::ffi::{self, Rboolean, SEXP, SexpExt};
+use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -49,7 +49,7 @@ impl List {
     /// Return true if the underlying SEXP is a list (VECSXP) according to R.
     #[inline]
     pub fn is_list(self) -> bool {
-        unsafe { ffi::Rf_isList(self.0) != Rboolean::FALSE }
+        self.0.is_pair_list()
     }
 
     /// Wrap an existing `VECSXP` without additional checks.
