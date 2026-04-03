@@ -838,6 +838,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - `sexp` must be a valid EXTPTRSXP created by this library
     /// - The caller must ensure no other ExternalPtr owns this SEXP
     pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
+        debug_assert_eq!(
+            unsafe { crate::ffi::TYPEOF(sexp) } as crate::ffi::SEXPTYPE,
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "wrap_sexp: expected EXTPTRSXP, got {:?}",
+            unsafe { crate::ffi::TYPEOF(sexp) }
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return None;
@@ -966,6 +972,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - The caller must ensure exclusive ownership
     #[inline]
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
+        debug_assert_eq!(
+            unsafe { crate::ffi::TYPEOF(sexp) } as crate::ffi::SEXPTYPE,
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "from_sexp_unchecked: expected EXTPTRSXP, got {:?}",
+            unsafe { crate::ffi::TYPEOF(sexp) }
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
 
