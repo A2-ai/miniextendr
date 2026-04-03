@@ -19,7 +19,11 @@ Items 1-3, 5 methods are done. Safe methods exist on `SexpExt` and `impl SEXP`:
 Privatization (changing `pub` to `pub(crate)`) happens after all callers in rpkg, tests,
 bench, and cross-package are migrated. Internal crate code can keep using raw FFI.
 
-Remaining items needing new methods:
+**Summary**: Items 1-5 are complete (methods + migration). Item 4 fully migrated (76+ sites).
+Items 6-10 have lower priority — safe wrappers already exist for most use cases, and the
+remaining call sites are internal to the crate.
+
+Remaining items:
 
 ## 2. String construction and access (~126 call sites)
 
