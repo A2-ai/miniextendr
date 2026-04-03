@@ -511,7 +511,7 @@ pub fn new_list_of(
     // Set size attribute if provided
     if let Some(s) = size {
         let size_sym = unsafe { Rf_install(c"size".as_ptr()) };
-        let size_sexp = unsafe { crate::ffi::Rf_ScalarInteger(s) };
+        let size_sexp = crate::ffi::SEXP::scalar_integer(s);
         data.set_attr(size_sym, size_sexp);
     }
 

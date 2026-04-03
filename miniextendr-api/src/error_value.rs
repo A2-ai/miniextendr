@@ -41,15 +41,13 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         let msg_cstr = std::ffi::CString::new(message)
             .unwrap_or_else(|_| std::ffi::CString::new("<invalid error message>").unwrap());
         let msg_charsxp = ffi::Rf_mkCharCE(msg_cstr.as_ptr(), ffi::CE_UTF8);
-        let msg_strsxp = ffi::Rf_ScalarString(msg_charsxp);
-        ffi::SET_VECTOR_ELT(list, 0, msg_strsxp);
+        ffi::SET_VECTOR_ELT(list, 0, SEXP::scalar_string(msg_charsxp));
 
         // Set list element 1: kind string
         let kind_cstr = std::ffi::CString::new(kind)
             .unwrap_or_else(|_| std::ffi::CString::new("other_rust_error").unwrap());
         let kind_charsxp = ffi::Rf_mkCharCE(kind_cstr.as_ptr(), ffi::CE_UTF8);
-        let kind_strsxp = ffi::Rf_ScalarString(kind_charsxp);
-        ffi::SET_VECTOR_ELT(list, 1, kind_strsxp);
+        ffi::SET_VECTOR_ELT(list, 1, SEXP::scalar_string(kind_charsxp));
 
         // Set list element 2: call SEXP
         let call_sexp = call.unwrap_or(SEXP::null());
@@ -75,7 +73,7 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
 
         // Set __rust_error__ attribute = TRUE (secondary marker)
         let attr_sym = ffi::Rf_install(c"__rust_error__".as_ptr());
-        list.set_attr(attr_sym, ffi::Rf_ScalarLogical(1));
+        list.set_attr(attr_sym, SEXP::scalar_logical(true));
 
         ffi::Rf_unprotect(3);
         list
