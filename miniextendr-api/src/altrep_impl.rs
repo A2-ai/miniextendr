@@ -1064,6 +1064,11 @@ impl_altraw_from_data!(Vec<u8>, serialize);
 impl_altstring_from_data!(Vec<String>, dataptr, serialize);
 // Vec<Option<String>> preserves NA_character_ through serialization roundtrips
 impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
+// Cow string vectors — zero-copy from R, ALTREP output without copying back.
+// Serialize: Rf_mkCharLenCE hits R's CHARSXP cache (no string data copy for borrowed).
+// Unserialize: TryFromSexp uses charsxp_to_cow (zero-copy borrow for UTF-8).
+impl_altstring_from_data!(Vec<std::borrow::Cow<'static, str>>, dataptr, serialize);
+impl_altstring_from_data!(Vec<Option<std::borrow::Cow<'static, str>>>, dataptr, serialize);
 
 // Complex types - Vec<Rcomplex> supports dataptr
 impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
