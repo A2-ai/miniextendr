@@ -107,7 +107,7 @@ use std::ptr::{self, NonNull};
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
-    R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_NilValue, R_RegisterCFinalizerEx,
+    R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
     R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
     Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
     Rf_unprotect_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
@@ -1388,7 +1388,7 @@ extern "C-unwind" fn release_any(sexp: SEXP) {
     if sexp.is_null() {
         return;
     }
-    if std::ptr::addr_eq(sexp.0, unsafe { R_NilValue.0 }) {
+    if sexp.is_nil() {
         return;
     }
 

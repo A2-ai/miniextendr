@@ -341,7 +341,7 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
     path_sexp: crate::ffi::SEXP,
 ) -> crate::ffi::SEXP {
     unsafe {
-        use crate::ffi::{R_CHAR_unchecked, R_NilValue, STRING_ELT_unchecked};
+        use crate::ffi::{R_CHAR_unchecked, SEXP, STRING_ELT_unchecked};
 
         let char_sexp = STRING_ELT_unchecked(path_sexp, 0);
         let c_str = std::ffi::CStr::from_ptr(R_CHAR_unchecked(char_sexp));
@@ -351,7 +351,7 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
 
         write_r_wrappers_to_file(path);
 
-        R_NilValue
+        SEXP::null()
     }
 }
 // endregion

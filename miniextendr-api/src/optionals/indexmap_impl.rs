@@ -52,7 +52,7 @@
 pub use indexmap::IndexMap;
 
 use crate::ffi::{
-    R_CHAR, R_NaString, R_NilValue, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect,
+    R_CHAR, R_NaString, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect,
     SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, VECTOR_ELT,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
