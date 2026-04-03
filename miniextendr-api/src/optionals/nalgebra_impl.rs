@@ -1156,9 +1156,8 @@ impl<T: RNativeType, R: Dim, C: Dim> RVecStorage<T, R, C> {
 
     /// Consume, transfer GC protection to the protect stack, and return the SEXP.
     pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
-        let sexp = unsafe { scope.protect_raw(self.sexp) };
         // Drop runs → R_ReleaseObject, but sexp is now also on the protect stack.
-        sexp
+        unsafe { scope.protect_raw(self.sexp) }
     }
 
     /// Consume, release GC protection, and return the raw SEXP.
@@ -1683,7 +1682,7 @@ impl RegisterAltrep for DVector<f64> {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <DVector<f64> as crate::altrep_data::InferBase>::make_class(
-                    b"nalgebra_DVector_f64\0".as_ptr().cast(),
+                    c"nalgebra_DVector_f64".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
@@ -1700,7 +1699,7 @@ impl RegisterAltrep for DVector<i32> {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <DVector<i32> as crate::altrep_data::InferBase>::make_class(
-                    b"nalgebra_DVector_i32\0".as_ptr().cast(),
+                    c"nalgebra_DVector_i32".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
