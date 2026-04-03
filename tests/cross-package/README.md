@@ -1,94 +1,97 @@
 # Cross-Package Trait Dispatch Test
 
-This directory contains example code demonstrating cross-package interoperability with miniextendr's trait ABI system.
+This directory contains example code demonstrating cross-package
+interoperability with miniextendr's trait ABI system.
 
 ## Overview
 
 Two R packages interact via trait dispatch:
 
-- **producer** - Defines `Counter` trait and implements it for `SimpleCounter`
-- **consumer** - Has generic functions that work with any `Counter` implementation
+- **producer** - Defines the `Counter` trait and implements it for
+  `SimpleCounter`
+- **consumer** - Accepts any `Counter` implementation through the erased trait
+  ABI
 
-The key insight: Objects created in producer can be passed to consumer's generic functions, which dispatch via vtables without consumer needing to depend on producer's concrete types.
+The key point: objects created in producer can be passed to consumer's generic
+functions, which dispatch via vtables without consumer depending on producer's
+concrete types.
 
-## Building the Packages
+## Building the packages
 
-This directory contains two complete R packages: `producer.pkg` and `consumer.pkg`.
+This directory contains two complete R packages: `producer.pkg` and
+`consumer.pkg`.
 
-### Quick Start
+### Quick start
 
 ```bash
 cd tests/cross-package
 just build-all
+just test-all
 ```
 
-This will:
-1. Configure producer.pkg (vendor dependencies)
-2. Build and install producer.pkg
-3. Configure consumer.pkg (vendor dependencies)
-4. Build and install consumer.pkg
+Common helpers from `tests/cross-package/justfile`:
 
-### Manual Build
+- `just configure-all` - run `autoconf` when available and generate build files
+- `just document-all` - regenerate wrapper files and roxygen output
+- `just build-all` - install both packages in dependency order
+- `just test-all` - run both test suites
+- `just check-all` - run `devtools::check()` for both packages
+- `just clean` - remove build artifacts
 
-If you don't have `just`, you can build manually:
+### Manual build
+
+If you are not using `just`, the equivalent manual flow is:
 
 ```bash
 # Build producer.pkg
 cd producer.pkg
-NOT_CRAN=true ./configure
-NOT_CRAN=true R CMD INSTALL .
+if command -v autoconf >/dev/null 2>&1; then autoconf; fi
+NOT_CRAN=true bash ./configure
+NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
 cd ..
 
 # Build consumer.pkg
 cd consumer.pkg
-NOT_CRAN=true ./configure
-NOT_CRAN=true R CMD INSTALL .
+if command -v autoconf >/dev/null 2>&1; then autoconf; fi
+NOT_CRAN=true bash ./configure
+NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
 cd ..
 ```
 
-### Running Tests
+If you change exported Rust functions or methods, regenerate wrappers and
+roxygen output before reinstalling:
 
 ```bash
-# Test both packages
-just test-all
-
-# Or individually
-just test-producer
-just test-consumer
+cd tests/cross-package
+just document-all
 ```
 
-### Cleaning Build Artifacts
+## Package structure
 
-```bash
-just clean
-```
+Each package is a complete R package with a Rust backend:
 
-## Package Structure
-
-Each package is a complete R package with Rust backend:
-
-```
+```text
 producer.pkg/
-├── DESCRIPTION          # R package metadata
-├── NAMESPACE            # R exports
-├── configure.ac         # Build system configuration
-├── configure            # Generated build script
-├── bootstrap.R          # Pre-build setup
-├── cleanup*             # Post-build cleanup
-├── R/                   # R source files (generated wrappers)
+├── DESCRIPTION
+├── NAMESPACE
+├── configure.ac
+├── configure
+├── bootstrap.R
+├── cleanup*
+├── R/
 ├── src/
-│   ├── Makevars.in      # Make configuration template
-│   ├── stub.c           # Minimal C stub for R linker
+│   ├── Makevars.in
+│   ├── stub.c
 │   └── rust/
-│       ├── Cargo.toml.in  # Cargo manifest template
-│       ├── lib.rs         # Rust implementation
-│       └── build.rs       # Build script
-└── tests/testthat/      # R test suite
+│       ├── Cargo.toml.in
+│       ├── lib.rs
+│       └── build.rs
+└── tests/testthat/
 ```
 
-## How It Works
+## How it works
 
-### 1. Producer Package (`producer/lib.rs`)
+### 1. Producer package (`producer/lib.rs`)
 
 ```rust
 #[miniextendr]
@@ -107,25 +110,23 @@ impl Counter for SimpleCounter {
     fn increment(&mut self) { self.value += 1; }
     fn add(&mut self, n: i32) { self.value += n; }
 }
-
-// Registration is automatic via #[miniextendr].
 ```
 
-**Generated infrastructure:**
-- `TAG_COUNTER` - 128-bit type tag for runtime identification
-- `CounterVTable` - Function pointer table for trait methods
-- `__VTABLE_COUNTER_FOR_SIMPLECOUNTER` - Concrete vtable for SimpleCounter
-- `__MxWrapperSimpleCounter` - Type-erased wrapper with mx_erased header
+Generated infrastructure includes:
 
-### 2. Consumer Package (`consumer/lib.rs`)
+- `TAG_COUNTER` - 128-bit type tag for runtime identification
+- `CounterVTable` - function pointer table for trait methods
+- `__VTABLE_COUNTER_FOR_SIMPLECOUNTER` - concrete vtable for `SimpleCounter`
+- `__MxWrapperSimpleCounter` - type-erased wrapper with `mx_erased` header
+
+### 2. Consumer package (`consumer/lib.rs`)
 
 ```rust
-// Same trait definition (ABI-compatible via type tags)
 #[miniextendr]
 pub trait Counter {
     fn value(&self) -> i32;
     fn increment(&mut self);
-    fn add(&mut self, n: i32;
+    fn add(&mut self, n: i32);
 }
 
 #[miniextendr]
@@ -133,8 +134,8 @@ fn increment_twice(counter_sexp: SEXP) -> i32 {
     unsafe {
         let mut counter_ptr = ErasedExternalPtr::from_sexp(counter_sexp);
 
-        // Downcast to trait object - works for ANY Counter impl
-        let counter = counter_ptr.downcast_trait_mut::<dyn Counter>()
+        let counter = counter_ptr
+            .downcast_trait_mut::<dyn Counter>()
             .expect("Not a Counter");
 
         counter.increment();
@@ -144,119 +145,91 @@ fn increment_twice(counter_sexp: SEXP) -> i32 {
 }
 ```
 
-**Key mechanisms:**
-- `ErasedExternalPtr` - Type-erased pointer with `mx_erased` header
-- `downcast_trait_mut/ref` - Queries vtable via type tag matching
-- Type tag matching ensures ABI compatibility between packages
+Key mechanisms:
 
-### 3. R Usage
+- `ErasedExternalPtr` - type-erased pointer with `mx_erased` header
+- `downcast_trait_mut` / `downcast_trait_ref` - vtable lookup via type tags
+- Type-tag matching ensures ABI compatibility between packages
+
+### 3. R usage
 
 ```r
-# Load both packages
 library(producer.pkg)
 library(consumer.pkg)
 
-# Create counter in producer
 counter <- SimpleCounter$new(10L)
 
-# Pass to consumer's generic function
-consumer.pkg::increment_twice(counter)  # Returns 12
-consumer.pkg::add_and_get(counter, 5L)  # Returns 17
+consumer.pkg::increment_twice(counter)  # 12
+consumer.pkg::add_and_get(counter, 5L)  # 17
 
-# Producer's methods still work
-counter$get_value()  # Returns 17
+counter$get_value()  # 17
 ```
 
-## ABI Compatibility Requirements
+## ABI compatibility requirements
 
 For cross-package trait dispatch to work:
 
-1. **Identical trait definitions** - Both packages must vendor the same trait definition
-2. **Type tag matching** - `TAG_COUNTER` must hash to the same value
-3. **Method signatures** - Same number/order of methods in trait
-4. **Registration** - Producer must have `#[miniextendr]` on `impl Trait for Type`
+1. Both packages must use the same trait definition.
+2. `TAG_COUNTER` must hash to the same value.
+3. Method signatures and method order must match.
+4. The producer side must register `#[miniextendr]` on `impl Trait for Type`.
 
-## What Gets Generated
+## What gets generated
 
-### Producer (`impl Counter for SimpleCounter;`)
+### Producer (`impl Counter for SimpleCounter`)
 
 ```rust
-// Type-erased wrapper
 struct __MxWrapperSimpleCounter {
-    erased: mx_erased,            // Header with tag + vtable ptr
+    erased: mx_erased,
     data: SimpleCounter,
 }
 
-// Base vtable (drop + query)
 static __MX_BASE_VTABLE_SIMPLECOUNTER: mx_base_vtable = ...;
+static __VTABLE_COUNTER_FOR_SIMPLECOUNTER: CounterVTable =
+    __counter_build_vtable::<SimpleCounter>();
 
-// Trait-specific vtable
-static __VTABLE_COUNTER_FOR_SIMPLECOUNTER: CounterVTable = __counter_build_vtable::<SimpleCounter>();
-
-// C-callable wrapper constructor
 #[no_mangle]
 extern "C-unwind" fn __mx_wrap_simplecounter(data: *mut SimpleCounter) -> *mut mx_erased;
 
-// C-callable query function
 #[no_mangle]
 extern "C-unwind" fn __mx_query_counter_simplecounter(ptr: *const mx_erased) -> i32;
 ```
 
-### Consumer (no specific type knowledge needed)
+### Consumer
 
-Consumer only knows about the `Counter` trait interface. The vtable dispatch happens at runtime:
+Consumer only needs the trait interface. At runtime it:
 
-1. `ErasedExternalPtr::from_sexp()` reads the `mx_erased` header
-2. Type tag is compared against `TAG_COUNTER`
-3. If match, vtable pointer is cast to `*const CounterVTable`
-4. Methods are called through function pointers
+1. reads the `mx_erased` header with `ErasedExternalPtr::from_sexp()`
+2. checks the tag against `TAG_COUNTER`
+3. casts the vtable pointer to `*const CounterVTable`
+4. calls methods through the function pointers
 
-## Testing Cross-Package Scenarios
+## Testing cross-package scenarios
 
-### Scenario 1: Plain ExternalPtr Passing
+### Scenario 1: Plain `ExternalPtr` passing
 
 ```r
-# Producer creates object
 obj <- SimpleCounter$new(5L)
-
-# Consumer receives as raw SEXP
-# downcast_mut<SimpleCounter>() would work if consumer has the type definition
 ```
 
-### Scenario 2: Trait Dispatch
+### Scenario 2: Trait dispatch
 
 ```r
-# Producer creates object (registered with trait vtable)
 counter <- SimpleCounter$new(5L)
-
-# Consumer uses via trait interface
 consumer.pkg::increment_twice(counter)
-# -> Dispatches via TAG_COUNTER match + vtable lookup
 ```
 
-### Scenario 3: Multiple Implementations
+### Scenario 3: Multiple implementations
 
 ```r
-# Producer could have multiple Counter impls
-struct FastCounter { value: i32 }
-struct AtomicCounter { value: AtomicI32 }
-
-# Consumer's generic functions work with all of them
 consumer.pkg::increment_twice(fast)
 consumer.pkg::increment_twice(atomic)
 ```
 
-## Implementation Notes
+## Implementation notes
 
-- Trait definitions must be **exactly identical** (same module path for consistent hashing)
-- Type tags use `mx_tag_from_path(concat!(module_path!(), "::Counter"))`
-- Vtables are statically initialized at compile time
-- No runtime codegen or dynamic linking required
-- Works across package boundaries via R's .Call interface
-
-## Future Enhancements
-
-- Shared trait crate to avoid duplication
-- Documentation generation for cross-package traits
-- Helper functions for common patterns
-- CI tests that build both packages and verify interop
+- Trait definitions must be exactly identical.
+- Type tags use `mx_tag_from_path(concat!(module_path!(), "::Counter"))`.
+- Vtables are statically initialized at compile time.
+- No runtime codegen or dynamic linking trickery is required.
+- Dispatch crosses package boundaries through R's `.Call` interface.
