@@ -108,6 +108,7 @@ mod aho_corasick_adapter_tests;
 mod altrep_sexp_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
+mod zero_copy_tests;
 mod as_coerce_tests;
 mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
