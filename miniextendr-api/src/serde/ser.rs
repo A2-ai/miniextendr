@@ -5,8 +5,7 @@
 
 use super::error::RSerdeError;
 use crate::ffi::{
-    R_NaString, Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_unprotect,
-    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, cetype_t,
+    R_NaString, Rf_allocVector, Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -481,12 +480,8 @@ fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
 
     for (i, (key, &value)) in keys.iter().zip(values.iter()).enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        let key_len: i32 = key.len().try_into().expect("key exceeds i32::MAX bytes");
-        unsafe {
-            SET_VECTOR_ELT(list.get(), idx, value);
-            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key_len, cetype_t::CE_UTF8);
-            SET_STRING_ELT(names.get(), idx, charsxp);
-        }
+        unsafe { SET_VECTOR_ELT(list.get(), idx, value) };
+        names.get().set_string_elt(idx, SEXP::charsxp(key));
     }
 
     list.get().set_names(names.get());
@@ -506,12 +501,8 @@ fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
 
     for (i, (&key, &value)) in keys.iter().zip(values.iter()).enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        let key_len: i32 = key.len().try_into().expect("key exceeds i32::MAX bytes");
-        unsafe {
-            SET_VECTOR_ELT(list.get(), idx, value);
-            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key_len, cetype_t::CE_UTF8);
-            SET_STRING_ELT(names.get(), idx, charsxp);
-        }
+        unsafe { SET_VECTOR_ELT(list.get(), idx, value) };
+        names.get().set_string_elt(idx, SEXP::charsxp(key));
     }
 
     list.get().set_names(names.get());
@@ -523,13 +514,9 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, 1)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1)) };
 
-    let tag_len: i32 = tag.len().try_into().expect("tag exceeds i32::MAX bytes");
-    unsafe {
-        SET_VECTOR_ELT(list.get(), 0, value);
-        let charsxp = Rf_mkCharLenCE(tag.as_ptr().cast(), tag_len, cetype_t::CE_UTF8);
-        SET_STRING_ELT(names.get(), 0, charsxp);
-        list.get().set_names(names.get());
-    }
+    unsafe { SET_VECTOR_ELT(list.get(), 0, value) };
+    names.get().set_string_elt(0, SEXP::charsxp(tag));
+    list.get().set_names(names.get());
 
     list.get()
 }

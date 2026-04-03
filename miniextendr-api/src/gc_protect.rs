@@ -166,8 +166,8 @@
 
 use crate::ffi::{
     R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_ScalarComplex,
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal, Rf_ScalarString, Rf_allocList,
-    Rf_allocMatrix, Rf_allocVector, Rf_duplicate, Rf_mkCharLenCE, Rf_protect,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal, Rf_allocList,
+    Rf_allocMatrix, Rf_allocVector, Rf_duplicate, Rf_protect,
     Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
 use core::cell::Cell;
@@ -624,13 +624,7 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn scalar_string<'a>(&'a self, s: &str) -> Root<'a> {
-        let charsxp = if s.is_empty() {
-            unsafe { crate::ffi::R_BlankString }
-        } else {
-            let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-            unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::CE_UTF8) }
-        };
-        unsafe { self.protect(Rf_ScalarString(charsxp)) }
+        unsafe { self.protect(SEXP::scalar_string(SEXP::charsxp(s))) }
     }
 
     // endregion
@@ -644,13 +638,7 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn mkchar<'a>(&'a self, s: &str) -> Root<'a> {
-        let charsxp = if s.is_empty() {
-            unsafe { crate::ffi::R_BlankString }
-        } else {
-            let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-            unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::CE_UTF8) }
-        };
-        unsafe { self.protect(charsxp) }
+        unsafe { self.protect(SEXP::charsxp(s)) }
     }
 
     /// Deep-duplicate a SEXP, protected.
