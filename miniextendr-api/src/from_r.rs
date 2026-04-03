@@ -50,84 +50,55 @@ pub(crate) fn is_na_real(value: f64) -> bool {
     value.to_bits() == NA_REAL.to_bits()
 }
 
-// region: CHARSXP to &str conversion helpers
+// region: CHARSXP to string conversion
 
-/// Convert CHARSXP to `&str` using LENGTH (O(1)) instead of strlen (O(n)).
+/// Convert CHARSXP to `&str` — zero-copy from R's string data.
 ///
-/// # Encoding Assumption
-///
-/// This function assumes the CHARSXP contains valid UTF-8 or ASCII bytes.
-/// Modern R (4.2+) with UTF-8 locale support typically ensures this, but R can
-/// store strings in other encodings (latin1, native, bytes).
+/// Uses `R_CHAR` + `LENGTH` (O(1), no strlen). UTF-8 validity is guaranteed
+/// by `miniextendr_assert_utf8_locale()` at package init, so no per-string
+/// validation is needed.
 ///
 /// # Safety
 ///
 /// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
-///
-/// # Panics
-///
-/// Panics if the CHARSXP bytes are not valid UTF-8. The R session's UTF-8 locale
-/// is validated once at package init (see entrypoint), so this should never fire.
 #[inline]
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
-    unsafe {
-        let ptr = crate::ffi::R_CHAR(charsxp);
-        let len: usize = crate::ffi::LENGTH(charsxp)
-            .try_into()
-            .expect("CHARSXP LENGTH must be non-negative");
-        let bytes = r_slice(ptr.cast::<u8>(), len);
-        std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
-    }
+    unsafe { charsxp_to_str_impl(crate::ffi::R_CHAR(charsxp), charsxp) }
 }
 
-/// Unchecked version of [`charsxp_to_str`] (skips R thread checks, still validates UTF-8).
+/// Unchecked version of [`charsxp_to_str`] (skips R thread checks on `R_CHAR`).
 #[inline]
 pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
+    unsafe { charsxp_to_str_impl(crate::ffi::R_CHAR_unchecked(charsxp), charsxp) }
+}
+
+/// Shared implementation: given a data pointer and CHARSXP, produce `&str`.
+///
+/// UTF-8 locale is asserted at init — `from_utf8_unchecked` is safe.
+#[inline]
+unsafe fn charsxp_to_str_impl(
+    ptr: *const std::os::raw::c_char,
+    charsxp: SEXP,
+) -> &'static str {
     unsafe {
-        let ptr = crate::ffi::R_CHAR_unchecked(charsxp);
         let len: usize = crate::ffi::LENGTH(charsxp)
             .try_into()
             .expect("CHARSXP LENGTH must be non-negative");
         let bytes = r_slice(ptr.cast::<u8>(), len);
-        std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
+        // SAFETY: miniextendr_assert_utf8_locale() at init guarantees all
+        // CHARSXPs in this session are valid UTF-8 or ASCII.
+        std::str::from_utf8_unchecked(bytes)
     }
 }
 
-/// Convert CHARSXP to `Cow<'static, str>` — zero-copy when UTF-8, copies otherwise.
-///
-/// Tries to borrow directly from R's CHARSXP data (O(1), no allocation). If the
-/// CHARSXP is not valid UTF-8 (rare: CE_LATIN1 or CE_BYTES in a UTF-8 session),
-/// falls back to `Rf_translateCharUTF8` which returns a translated copy managed by R.
-///
-/// # Safety
-///
-/// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
-/// - The returned reference is only valid as long as R doesn't GC the CHARSXP.
+/// `charsxp_to_cow` is now just an alias — all CHARSXPs are UTF-8 (asserted
+/// at init), so there's no non-UTF-8 fallback path. Returns `Cow::Borrowed`.
 #[inline]
 pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
-    unsafe {
-        let ptr = crate::ffi::R_CHAR(charsxp);
-        let len: usize = crate::ffi::LENGTH(charsxp)
-            .try_into()
-            .expect("CHARSXP LENGTH must be non-negative");
-        let bytes = r_slice(ptr.cast::<u8>(), len);
-        match std::str::from_utf8(bytes) {
-            Ok(s) => std::borrow::Cow::Borrowed(s),
-            Err(_) => {
-                // Non-UTF-8 CHARSXP (CE_LATIN1, CE_BYTES) — translate via R
-                let translated = crate::ffi::Rf_translateCharUTF8(charsxp);
-                if translated.is_null() {
-                    return std::borrow::Cow::Borrowed("");
-                }
-                let c_str = std::ffi::CStr::from_ptr(translated);
-                std::borrow::Cow::Owned(
-                    c_str.to_str().unwrap_or("").to_owned(),
-                )
-            }
-        }
-    }
+    std::borrow::Cow::Borrowed(unsafe { charsxp_to_str(charsxp) })
 }
+
 
 /// Create a slice from an R data pointer, handling the zero-length case.
 ///
