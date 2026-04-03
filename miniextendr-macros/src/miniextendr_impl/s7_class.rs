@@ -490,9 +490,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let full_params = ctx.instance_formals(true); // adds x, ..., params
         let method_attrs = &ctx.method.method_attrs;
 
-        // For fallback methods, use tryCatch to avoid slot-access errors on non-S7 objects
+        // For fallback methods (class_any), check class before using @ to extract
+        // the pointer. Using @ on non-S7 objects segfaults R < 4.5.
         let self_expr = if method_attrs.s7_fallback {
-            "tryCatch(x@.ptr, error = function(e) x)"
+            "if (inherits(x, \"S7_object\")) x@.ptr else x"
         } else {
             "x@.ptr"
         };
