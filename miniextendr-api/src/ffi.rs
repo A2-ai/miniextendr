@@ -164,6 +164,75 @@ impl SEXP {
     pub const fn from_ptr(ptr: *mut SEXPREC) -> Self {
         Self(ptr)
     }
+
+    // region: String construction
+
+    /// Create a CHARSXP from a Rust `&str` (UTF-8).
+    #[inline]
+    pub fn charsxp(s: &str) -> SEXP {
+        let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
+        unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), len, CE_UTF8) }
+    }
+
+    /// R's `NA_character_` singleton.
+    #[inline]
+    pub fn na_string() -> SEXP {
+        unsafe { R_NaString }
+    }
+
+    /// R's empty string `""` singleton.
+    #[inline]
+    pub fn blank_string() -> SEXP {
+        unsafe { R_BlankString }
+    }
+
+    // endregion
+
+    // region: Scalar construction
+
+    /// Create a length-1 integer vector.
+    #[inline]
+    pub fn scalar_integer(x: i32) -> SEXP {
+        unsafe { Rf_ScalarInteger(x) }
+    }
+
+    /// Create a length-1 real vector.
+    #[inline]
+    pub fn scalar_real(x: f64) -> SEXP {
+        unsafe { Rf_ScalarReal(x) }
+    }
+
+    /// Create a length-1 logical vector.
+    #[inline]
+    pub fn scalar_logical(x: bool) -> SEXP {
+        unsafe { Rf_ScalarLogical(if x { 1 } else { 0 }) }
+    }
+
+    /// Create a length-1 raw vector.
+    #[inline]
+    pub fn scalar_raw(x: u8) -> SEXP {
+        unsafe { Rf_ScalarRaw(x) }
+    }
+
+    /// Create a length-1 complex vector.
+    #[inline]
+    pub fn scalar_complex(x: Rcomplex) -> SEXP {
+        unsafe { Rf_ScalarComplex(x) }
+    }
+
+    /// Create a length-1 character vector from a CHARSXP.
+    #[inline]
+    pub fn scalar_string(charsxp: SEXP) -> SEXP {
+        unsafe { Rf_ScalarString(charsxp) }
+    }
+
+    /// Create a length-1 character vector from a Rust `&str`.
+    #[inline]
+    pub fn scalar_string_from_str(s: &str) -> SEXP {
+        Self::scalar_string(Self::charsxp(s))
+    }
+
+    // endregion
 }
 
 impl Default for SEXP {
@@ -436,6 +505,43 @@ pub trait SexpExt {
     ///
     /// Equivalent to R's `inherits(x, "class_name")`.
     fn inherits_class(&self, class: &std::ffi::CStr) -> bool;
+
+    // endregion
+
+    // region: String element access
+
+    /// Get the i-th CHARSXP element from a STRSXP.
+    ///
+    /// Equivalent to R's `STRING_ELT(x, i)`.
+    fn string_elt(&self, i: isize) -> SEXP;
+
+    /// Get the i-th string element as `Option<&str>`.
+    ///
+    /// Returns `None` for `NA_character_`. The returned `&str` borrows from R's
+    /// internal string cache and is valid as long as the SEXP is protected.
+    fn string_elt_str(&self, i: isize) -> Option<&str>;
+
+    /// Set the i-th CHARSXP element of a STRSXP.
+    ///
+    /// Equivalent to R's `SET_STRING_ELT(x, i, v)`.
+    fn set_string_elt(&self, i: isize, charsxp: SEXP);
+
+    /// Check if this CHARSXP is `NA_character_`.
+    fn is_na_string(&self) -> bool;
+
+    // endregion
+
+    // region: List element access
+
+    /// Get the i-th element of a VECSXP (generic vector / list).
+    ///
+    /// Equivalent to R's `VECTOR_ELT(x, i)`.
+    fn vector_elt(&self, i: isize) -> SEXP;
+
+    /// Set the i-th element of a VECSXP.
+    ///
+    /// Equivalent to R's `SET_VECTOR_ELT(x, i, v)`.
+    fn set_vector_elt(&self, i: isize, val: SEXP);
 
     // endregion
 }
@@ -765,6 +871,51 @@ impl SexpExt for SEXP {
     #[inline]
     fn inherits_class(&self, class: &std::ffi::CStr) -> bool {
         unsafe { Rf_inherits(*self, class.as_ptr()) != Rboolean::FALSE }
+    }
+
+    // endregion
+
+    // region: String element access
+
+    #[inline]
+    fn string_elt(&self, i: isize) -> SEXP {
+        unsafe { STRING_ELT(*self, i) }
+    }
+
+    #[inline]
+    fn string_elt_str(&self, i: isize) -> Option<&str> {
+        unsafe {
+            let charsxp = STRING_ELT(*self, i);
+            if std::ptr::addr_eq(charsxp.0, R_NaString.0) {
+                return None;
+            }
+            let p = R_CHAR(charsxp);
+            Some(std::ffi::CStr::from_ptr(p).to_str().unwrap_or(""))
+        }
+    }
+
+    #[inline]
+    fn set_string_elt(&self, i: isize, charsxp: SEXP) {
+        unsafe { SET_STRING_ELT(*self, i, charsxp) }
+    }
+
+    #[inline]
+    fn is_na_string(&self) -> bool {
+        unsafe { std::ptr::addr_eq(self.0, R_NaString.0) }
+    }
+
+    // endregion
+
+    // region: List element access
+
+    #[inline]
+    fn vector_elt(&self, i: isize) -> SEXP {
+        unsafe { VECTOR_ELT(*self, i) }
+    }
+
+    #[inline]
+    fn set_vector_elt(&self, i: isize, val: SEXP) {
+        unsafe { SET_VECTOR_ELT(*self, i, val); }
     }
 
     // endregion
