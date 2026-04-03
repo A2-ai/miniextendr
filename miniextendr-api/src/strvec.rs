@@ -2,9 +2,11 @@
 //!
 //! Provides safe construction and element insertion for string vectors.
 
+use std::borrow::Cow;
+
 use crate::ffi::SEXPTYPE::STRSXP;
 use crate::ffi::{self, SEXP, SexpExt};
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
 
@@ -56,9 +58,10 @@ impl StrVec {
         Some(unsafe { ffi::STRING_ELT(self.0, idx) })
     }
 
-    /// Get the string at the given index.
+    /// Get the string at the given index (zero-copy).
     ///
     /// Returns `None` if out of bounds or if the element is `NA_character_`.
+    /// Panics if the CHARSXP is not valid UTF-8 (should not happen in a UTF-8 locale).
     #[inline]
     pub fn get_str(self, idx: isize) -> Option<&'static str> {
         let charsxp = self.get_charsxp(idx)?;
@@ -66,11 +69,48 @@ impl StrVec {
             if charsxp == ffi::R_NaString {
                 return None;
             }
-            let ptr = ffi::R_CHAR(charsxp);
-            let len = ffi::Rf_xlength(charsxp) as usize;
-            let bytes = crate::from_r::r_slice(ptr.cast::<u8>(), len);
-            // R stores strings as UTF-8 (or native encoding), assume valid UTF-8
-            std::str::from_utf8(bytes).ok()
+            Some(charsxp_to_str(charsxp))
+        }
+    }
+
+    /// Get the string at the given index as `Cow<str>` (encoding-safe).
+    ///
+    /// Returns `Cow::Borrowed` for UTF-8 strings (zero-copy), `Cow::Owned` for
+    /// non-UTF-8 strings (translated via `Rf_translateCharUTF8`).
+    /// Returns `None` if out of bounds or `NA_character_`.
+    #[inline]
+    pub fn get_cow(self, idx: isize) -> Option<Cow<'static, str>> {
+        let charsxp = self.get_charsxp(idx)?;
+        unsafe {
+            if charsxp == ffi::R_NaString {
+                return None;
+            }
+            Some(charsxp_to_cow(charsxp))
+        }
+    }
+
+    /// Iterate over elements as `Option<&str>`.
+    ///
+    /// `NA_character_` elements yield `None`, valid strings yield `Some(&str)`.
+    /// Zero-copy — each `&str` borrows directly from R's CHARSXP.
+    #[inline]
+    pub fn iter(self) -> StrVecIter {
+        StrVecIter {
+            vec: self,
+            idx: 0,
+            len: self.len(),
+        }
+    }
+
+    /// Iterate over elements as `Option<Cow<str>>` (encoding-safe).
+    ///
+    /// Like [`iter`](Self::iter) but handles non-UTF-8 CHARSXPs gracefully.
+    #[inline]
+    pub fn iter_cow(self) -> StrVecCowIter {
+        StrVecCowIter {
+            vec: self,
+            idx: 0,
+            len: self.len(),
         }
     }
 
@@ -178,6 +218,95 @@ impl StrVec {
     }
     // endregion
 }
+
+// region: StrVec iterators
+
+/// Iterator over `StrVec` elements as `Option<&str>`.
+///
+/// Yields `None` for `NA_character_`, `Some(&str)` for valid strings.
+/// Zero-copy — each `&str` borrows directly from R's CHARSXP.
+pub struct StrVecIter {
+    vec: StrVec,
+    idx: isize,
+    len: isize,
+}
+
+impl Iterator for StrVecIter {
+    type Item = Option<&'static str>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.len {
+            return None;
+        }
+        let charsxp = unsafe { ffi::STRING_ELT(self.vec.0, self.idx) };
+        self.idx += 1;
+        unsafe {
+            if charsxp == ffi::R_NaString {
+                Some(None)
+            } else {
+                Some(Some(charsxp_to_str(charsxp)))
+            }
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = (self.len - self.idx) as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for StrVecIter {}
+
+/// Iterator over `StrVec` elements as `Option<Cow<'static, str>>`.
+///
+/// Like [`StrVecIter`] but handles non-UTF-8 CHARSXPs via `Rf_translateCharUTF8`.
+pub struct StrVecCowIter {
+    vec: StrVec,
+    idx: isize,
+    len: isize,
+}
+
+impl Iterator for StrVecCowIter {
+    type Item = Option<Cow<'static, str>>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.len {
+            return None;
+        }
+        let charsxp = unsafe { ffi::STRING_ELT(self.vec.0, self.idx) };
+        self.idx += 1;
+        unsafe {
+            if charsxp == ffi::R_NaString {
+                Some(None)
+            } else {
+                Some(Some(charsxp_to_cow(charsxp)))
+            }
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = (self.len - self.idx) as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for StrVecCowIter {}
+
+impl IntoIterator for StrVec {
+    type Item = Option<&'static str>;
+    type IntoIter = StrVecIter;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+// endregion
 
 // region: StrVecBuilder - efficient batch string vector construction
 
