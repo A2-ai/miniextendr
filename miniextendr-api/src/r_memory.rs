@@ -81,7 +81,13 @@ pub unsafe fn try_recover_r_sexp(
         return None;
     }
 
-    // Compute candidate SEXP by subtracting header size
+    // Compute candidate SEXP by subtracting header size.
+    //
+    // SAFETY NOTE: if data_ptr is Rust-allocated (not from R), the candidate
+    // points to arbitrary heap memory. The read below is safe in practice
+    // (heap interior is always mapped), but is technically UB in Rust's
+    // abstract model. The triple verification (type + length + DATAPTR_RO)
+    // ensures we never return a false positive.
     let candidate = SEXP(unsafe { data_ptr.sub(offset) as *mut ffi::SEXPREC });
 
     // Quick check: type tag (bits 0-4 of sxpinfo, which is the first field)
