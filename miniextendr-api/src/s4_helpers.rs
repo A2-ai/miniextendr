@@ -30,8 +30,7 @@
 /// ```
 use crate::expression::{RCall, REnv};
 use crate::ffi::{
-    self, R_ClassSymbol, Rboolean, Rf_getAttrib, Rf_isS4, Rf_protect, Rf_unprotect, SEXP,
-    STRING_ELT, SexpExt,
+    self, R_ClassSymbol, Rf_getAttrib, Rf_protect, Rf_unprotect, SEXP, STRING_ELT, SexpExt,
 };
 use std::ffi::CStr;
 
@@ -56,7 +55,7 @@ unsafe fn methods_namespace() -> Result<SEXP, String> {
 /// - Must be called from the R main thread.
 #[inline]
 pub unsafe fn s4_is(obj: SEXP) -> bool {
-    unsafe { Rf_isS4(obj) == Rboolean::TRUE }
+    obj.is_s4()
 }
 
 /// Check if an S4 object has a named slot.

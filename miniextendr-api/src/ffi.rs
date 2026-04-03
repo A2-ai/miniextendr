@@ -164,6 +164,96 @@ impl SEXP {
     pub const fn from_ptr(ptr: *mut SEXPREC) -> Self {
         Self(ptr)
     }
+
+    /// Check if this SEXP is R's `NULL` (`NILSXP`).
+    #[inline]
+    pub fn is_nil(self) -> bool {
+        unsafe { Rf_isNull(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is a factor.
+    #[inline]
+    pub fn is_factor(self) -> bool {
+        unsafe { Rf_isFactor(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is a pairlist (`LISTSXP` or `NILSXP`).
+    #[inline]
+    pub fn is_pair_list(self) -> bool {
+        unsafe { Rf_isList(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is a matrix.
+    #[inline]
+    pub fn is_matrix(self) -> bool {
+        unsafe { Rf_isMatrix(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is an array.
+    #[inline]
+    pub fn is_array(self) -> bool {
+        unsafe { Rf_isArray(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is a function.
+    #[inline]
+    pub fn is_function(self) -> bool {
+        unsafe { Rf_isFunction(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is an environment.
+    #[inline]
+    pub fn is_environment(self) -> bool {
+        unsafe { Rf_isEnvironment(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is an S4 object.
+    #[inline]
+    pub fn is_s4(self) -> bool {
+        unsafe { Rf_isS4(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is a data.frame.
+    #[inline]
+    pub fn is_data_frame(self) -> bool {
+        unsafe { Rf_isDataFrame(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is an R object.
+    #[inline]
+    pub fn is_object(self) -> bool {
+        unsafe { Rf_isObject(self) == Rboolean::TRUE }
+    }
+
+    /// Check if this SEXP is a numeric type.
+    #[inline]
+    pub fn is_numeric(self) -> bool {
+        unsafe { Rf_isNumeric(self) }
+    }
+
+    /// Check if this SEXP is a number type.
+    #[inline]
+    pub fn is_number(self) -> bool {
+        unsafe { Rf_isNumber(self) }
+    }
+
+    /// Check if this SEXP is an atomic vector.
+    #[inline]
+    pub fn is_vector_atomic(self) -> bool {
+        unsafe { Rf_isVectorAtomic(self) }
+    }
+
+    /// Check if this SEXP is a vector list.
+    #[inline]
+    pub fn is_vector_list(self) -> bool {
+        unsafe { Rf_isVectorList(self) }
+    }
+
+    /// Check if this SEXP is a vector.
+    #[inline]
+    pub fn is_vector(self) -> bool {
+        unsafe { Rf_isVector(self) }
+    }
 }
 
 impl Default for SEXP {
@@ -290,8 +380,69 @@ pub trait SexpExt {
     fn is_altrep(&self) -> bool;
 
     /// Check if this `SEXP` contains any elements.
-    ///
     fn is_empty(&self) -> bool;
+
+    /// Check if this SEXP is R's `NULL` (NILSXP).
+    fn is_nil(&self) -> bool;
+
+    /// Check if this SEXP is a factor.
+    ///
+    /// Equivalent to R's `Rf_isFactor(x)`.
+    fn is_factor(&self) -> bool;
+
+    /// Check if this SEXP is a pairlist (LISTSXP or NILSXP).
+    ///
+    /// Equivalent to R's `Rf_isList(x)`.
+    fn is_pair_list(&self) -> bool;
+
+    /// Check if this SEXP is a matrix.
+    ///
+    /// Equivalent to R's `Rf_isMatrix(x)`.
+    fn is_matrix(&self) -> bool;
+
+    /// Check if this SEXP is an array.
+    ///
+    /// Equivalent to R's `Rf_isArray(x)`.
+    fn is_array(&self) -> bool;
+
+    /// Check if this SEXP is a function (closure, builtin, or special).
+    ///
+    /// Equivalent to R's `Rf_isFunction(x)`.
+    fn is_function(&self) -> bool;
+
+    /// Check if this SEXP is an S4 object.
+    ///
+    /// Equivalent to R's `Rf_isS4(x)`.
+    fn is_s4(&self) -> bool;
+
+    /// Check if this SEXP is a data.frame.
+    ///
+    /// Equivalent to R's `Rf_isDataFrame(x)`.
+    fn is_data_frame(&self) -> bool;
+
+    /// Check if this SEXP is a numeric type (integer, logical, or real, excluding factors).
+    ///
+    /// Equivalent to R's `Rf_isNumeric(x)`.
+    fn is_numeric(&self) -> bool;
+
+    /// Check if this SEXP is a number type (numeric or complex).
+    ///
+    /// Equivalent to R's `Rf_isNumber(x)`.
+    fn is_number(&self) -> bool;
+
+    /// Check if this SEXP is an atomic vector.
+    ///
+    /// Returns true for logical, integer, real, complex, character, and raw vectors.
+    fn is_vector_atomic(&self) -> bool;
+
+    /// Check if this SEXP is a vector list (VECSXP or EXPRSXP).
+    fn is_vector_list(&self) -> bool;
+
+    /// Check if this SEXP is a vector (atomic vector or list).
+    fn is_vector(&self) -> bool;
+
+    /// Check if this SEXP is an R "object" (has a class attribute).
+    fn is_object(&self) -> bool;
 }
 
 impl SexpExt for SEXP {
@@ -396,7 +547,7 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn is_environment(&self) -> bool {
-        self.type_of() == SEXPTYPE::ENVSXP
+        SEXP::is_environment(*self)
     }
 
     #[inline]
@@ -417,6 +568,76 @@ impl SexpExt for SEXP {
     #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    #[inline]
+    fn is_nil(&self) -> bool {
+        SEXP::is_nil(*self)
+    }
+
+    #[inline]
+    fn is_factor(&self) -> bool {
+        SEXP::is_factor(*self)
+    }
+
+    #[inline]
+    fn is_pair_list(&self) -> bool {
+        SEXP::is_pair_list(*self)
+    }
+
+    #[inline]
+    fn is_matrix(&self) -> bool {
+        SEXP::is_matrix(*self)
+    }
+
+    #[inline]
+    fn is_array(&self) -> bool {
+        SEXP::is_array(*self)
+    }
+
+    #[inline]
+    fn is_function(&self) -> bool {
+        SEXP::is_function(*self)
+    }
+
+    #[inline]
+    fn is_s4(&self) -> bool {
+        SEXP::is_s4(*self)
+    }
+
+    #[inline]
+    fn is_data_frame(&self) -> bool {
+        SEXP::is_data_frame(*self)
+    }
+
+    #[inline]
+    fn is_numeric(&self) -> bool {
+        SEXP::is_numeric(*self)
+    }
+
+    #[inline]
+    fn is_number(&self) -> bool {
+        SEXP::is_number(*self)
+    }
+
+    #[inline]
+    fn is_vector_atomic(&self) -> bool {
+        SEXP::is_vector_atomic(*self)
+    }
+
+    #[inline]
+    fn is_vector_list(&self) -> bool {
+        SEXP::is_vector_list(*self)
+    }
+
+    #[inline]
+    fn is_vector(&self) -> bool {
+        SEXP::is_vector(*self)
+    }
+
+    #[inline]
+    fn is_object(&self) -> bool {
+        SEXP::is_object(*self)
     }
 }
 
@@ -1507,7 +1728,7 @@ unsafe extern "C-unwind" {
 
     // Type checking predicates
     #[doc(alias = "isNull")]
-    pub fn Rf_isNull(s: SEXP) -> Rboolean;
+    fn Rf_isNull(s: SEXP) -> Rboolean;
     #[doc(alias = "isSymbol")]
     pub fn Rf_isSymbol(s: SEXP) -> Rboolean;
     #[doc(alias = "isLogical")]
@@ -1519,35 +1740,35 @@ unsafe extern "C-unwind" {
     #[doc(alias = "isExpression")]
     pub fn Rf_isExpression(s: SEXP) -> Rboolean;
     #[doc(alias = "isEnvironment")]
-    pub fn Rf_isEnvironment(s: SEXP) -> Rboolean;
+    fn Rf_isEnvironment(s: SEXP) -> Rboolean;
     #[doc(alias = "isString")]
     pub fn Rf_isString(s: SEXP) -> Rboolean;
 
     // Composite type checking (from inline functions)
     #[doc(alias = "isArray")]
-    pub fn Rf_isArray(s: SEXP) -> Rboolean;
+    fn Rf_isArray(s: SEXP) -> Rboolean;
     #[doc(alias = "isMatrix")]
-    pub fn Rf_isMatrix(s: SEXP) -> Rboolean;
+    fn Rf_isMatrix(s: SEXP) -> Rboolean;
     #[doc(alias = "isList")]
-    pub fn Rf_isList(s: SEXP) -> Rboolean;
+    fn Rf_isList(s: SEXP) -> Rboolean;
     #[doc(alias = "isNewList")]
     pub fn Rf_isNewList(s: SEXP) -> Rboolean;
     #[doc(alias = "isPairList")]
     pub fn Rf_isPairList(s: SEXP) -> Rboolean;
     #[doc(alias = "isFunction")]
-    pub fn Rf_isFunction(s: SEXP) -> Rboolean;
+    fn Rf_isFunction(s: SEXP) -> Rboolean;
     #[doc(alias = "isPrimitive")]
     pub fn Rf_isPrimitive(s: SEXP) -> Rboolean;
     #[doc(alias = "isLanguage")]
     pub fn Rf_isLanguage(s: SEXP) -> Rboolean;
     #[doc(alias = "isDataFrame")]
-    pub fn Rf_isDataFrame(s: SEXP) -> Rboolean;
+    fn Rf_isDataFrame(s: SEXP) -> Rboolean;
     #[doc(alias = "isFactor")]
-    pub fn Rf_isFactor(s: SEXP) -> Rboolean;
+    fn Rf_isFactor(s: SEXP) -> Rboolean;
     #[doc(alias = "isInteger")]
     pub fn Rf_isInteger(s: SEXP) -> Rboolean;
     #[doc(alias = "isObject")]
-    pub fn Rf_isObject(s: SEXP) -> Rboolean;
+    fn Rf_isObject(s: SEXP) -> Rboolean;
 
     // Pairlist utilities
     #[doc(alias = "elt")]
@@ -1706,7 +1927,7 @@ unsafe extern "C-unwind" {
 ///
 /// - `arg1` must be a valid SEXP
 #[allow(non_snake_case)]
-pub unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
+unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
     unsafe extern "C-unwind" {
         #[link_name = "Rf_isS4"]
         pub fn Rf_isS4_original(arg1: SEXP) -> u32;
@@ -2093,7 +2314,7 @@ pub unsafe fn Rf_list4(s: SEXP, t: SEXP, u: SEXP, v: SEXP) -> SEXP {
 #[doc(alias = "isNumeric")]
 #[allow(non_snake_case)]
 #[inline]
-pub unsafe fn Rf_isNumeric(x: SEXP) -> bool {
+unsafe fn Rf_isNumeric(x: SEXP) -> bool {
     unsafe {
         let typ = TYPEOF(x);
         (typ == SEXPTYPE::INTSXP || typ == SEXPTYPE::LGLSXP || typ == SEXPTYPE::REALSXP)
@@ -2112,7 +2333,7 @@ pub unsafe fn Rf_isNumeric(x: SEXP) -> bool {
 #[doc(alias = "isNumber")]
 #[allow(non_snake_case)]
 #[inline]
-pub unsafe fn Rf_isNumber(x: SEXP) -> bool {
+unsafe fn Rf_isNumber(x: SEXP) -> bool {
     unsafe { Rf_isNumeric(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP }
 }
 
@@ -2128,7 +2349,7 @@ pub unsafe fn Rf_isNumber(x: SEXP) -> bool {
 #[doc(alias = "isVectorAtomic")]
 #[allow(non_snake_case)]
 #[inline]
-pub unsafe fn Rf_isVectorAtomic(x: SEXP) -> bool {
+unsafe fn Rf_isVectorAtomic(x: SEXP) -> bool {
     unsafe {
         let typ = TYPEOF(x);
         matches!(
@@ -2154,7 +2375,7 @@ pub unsafe fn Rf_isVectorAtomic(x: SEXP) -> bool {
 #[doc(alias = "isVectorList")]
 #[allow(non_snake_case)]
 #[inline]
-pub unsafe fn Rf_isVectorList(x: SEXP) -> bool {
+unsafe fn Rf_isVectorList(x: SEXP) -> bool {
     unsafe {
         let typ = TYPEOF(x);
         typ == SEXPTYPE::VECSXP || typ == SEXPTYPE::EXPRSXP
@@ -2172,7 +2393,7 @@ pub unsafe fn Rf_isVectorList(x: SEXP) -> bool {
 #[doc(alias = "isVector")]
 #[allow(non_snake_case)]
 #[inline]
-pub unsafe fn Rf_isVector(x: SEXP) -> bool {
+unsafe fn Rf_isVector(x: SEXP) -> bool {
     unsafe { Rf_isVectorAtomic(x) || Rf_isVectorList(x) }
 }
 
