@@ -15,8 +15,9 @@ use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 
 /// Blanket impl: Convert R vector to `Cow<'static, [T]>` where T: RNativeType.
 ///
-/// Always returns `Cow::Owned` since we can't safely return a borrowed slice
-/// with 'static lifetime from SEXP memory (it's not truly static).
+/// Returns `Cow::Borrowed` — the slice points directly into R's SEXP data with
+/// no copy. The `'static` lifetime is valid for the duration of the `.Call`
+/// invocation (R protects the SEXP from GC while Rust code is running).
 impl<T> TryFromSexp for Cow<'static, [T]>
 where
     T: crate::ffi::RNativeType + Copy + Clone,
@@ -25,30 +26,35 @@ where
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(Cow::Owned(slice.to_vec()))
+        Ok(Cow::Borrowed(slice))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(Cow::Owned(slice.to_vec()))
+        Ok(Cow::Borrowed(slice))
     }
 }
 
 /// Convert R character scalar to `Cow<'static, str>`.
 ///
-/// Always returns `Cow::Owned` since we can't safely return a borrowed &str
-/// with 'static lifetime from SEXP memory.
+/// Returns `Cow::Borrowed` — the `&str` points directly into R's CHARSXP data
+/// via `R_CHAR` + `LENGTH` (O(1), no strlen). No allocation or copy occurs.
+/// The `'static` lifetime is valid for the duration of the `.Call` invocation.
+///
+/// This delegates to the `&'static str` impl (which uses `charsxp_to_str`),
+/// giving the same zero-copy behavior. Use `Cow` when your code may need to
+/// mutate the string later — `to_mut()` will copy-on-write at that point.
 impl TryFromSexp for Cow<'static, str> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(Cow::Owned(s))
+        let s: &'static str = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(Cow::Borrowed(s))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(Cow::Owned(s))
+        let s: &'static str = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(Cow::Borrowed(s))
     }
 }
 
