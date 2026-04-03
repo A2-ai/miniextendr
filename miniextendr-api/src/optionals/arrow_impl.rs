@@ -330,7 +330,10 @@ impl TryFromSexp for StringArray {
 pub type StringDictionaryArray = DictionaryArray<Int32Type>;
 
 /// Check if an R SEXP has a specific class (checks "class" attribute).
+///
+/// `class` must be a NUL-terminated string (e.g., `"factor\0"`).
 unsafe fn r_inherits(sexp: SEXP, class: &str) -> bool {
+    debug_assert!(class.ends_with('\0'), "class must be NUL-terminated");
     unsafe { ffi::Rf_inherits(sexp, class.as_ptr().cast()) != Rboolean::FALSE }
 }
 
@@ -365,7 +368,7 @@ impl TryFromSexp for StringDictionaryArray {
         }
 
         let n = sexp.len();
-        let levels_sexp = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_LevelsSymbol) };
+        let levels_sexp = sexp.get_levels();
         if levels_sexp.type_of() != SEXPTYPE::STRSXP {
             return Err(SexpError::InvalidValue(
                 "factor missing levels attribute".into(),
@@ -453,7 +456,7 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
     let slice: &[f64] = unsafe { sexp.as_slice() };
 
     // Extract timezone if present
-    let tzone_sexp = unsafe { ffi::Rf_getAttrib(sexp, ffi::Rf_install(c"tzone".as_ptr())) };
+    let tzone_sexp = sexp.get_attr(unsafe { ffi::Rf_install(c"tzone".as_ptr()) });
     let tz: Option<Arc<str>> = if tzone_sexp.type_of() == SEXPTYPE::STRSXP && tzone_sexp.len() > 0 {
         let charsxp = unsafe { ffi::STRING_ELT(tzone_sexp, 0) };
         let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
@@ -526,14 +529,14 @@ impl IntoR for StringDictionaryArray {
             }
 
             // Set levels and class attributes
-            ffi::Rf_setAttrib(codes, ffi::R_LevelsSymbol, levels);
+            codes.set_levels(levels);
             let class_str = scope.alloc_character(1).into_raw();
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
                 ffi::Rf_mkCharLenCE(c"factor".as_ptr(), 6, ffi::cetype_t::CE_UTF8),
             );
-            ffi::Rf_setAttrib(codes, R_ClassSymbol, class_str);
+            codes.set_class(class_str);
 
             codes
         }
@@ -570,7 +573,7 @@ impl IntoR for Date32Array {
                 0,
                 ffi::Rf_mkCharLenCE(c"Date".as_ptr(), 4, ffi::cetype_t::CE_UTF8),
             );
-            ffi::Rf_setAttrib(sexp, R_ClassSymbol, class_str);
+            sexp.set_class(class_str);
 
             sexp
         }
@@ -617,7 +620,7 @@ impl IntoR for TimestampSecondArray {
                 1,
                 ffi::Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, ffi::cetype_t::CE_UTF8),
             );
-            ffi::Rf_setAttrib(sexp, R_ClassSymbol, class_str);
+            sexp.set_class(class_str);
 
             // Set tzone attribute if present
             if let Some(tz) = tz {
@@ -631,7 +634,7 @@ impl IntoR for TimestampSecondArray {
                         ffi::cetype_t::CE_UTF8,
                     ),
                 );
-                ffi::Rf_setAttrib(sexp, ffi::Rf_install(c"tzone".as_ptr()), tz_str);
+                sexp.set_attr(ffi::Rf_install(c"tzone".as_ptr()), tz_str);
             }
 
             sexp
@@ -743,7 +746,7 @@ impl TryFromSexp for RecordBatch {
         let ncol = sexp.len();
 
         // Get column names
-        let names_sexp = unsafe { ffi::Rf_getAttrib(sexp, R_NamesSymbol) };
+        let names_sexp = sexp.get_names();
         let names: Vec<String> = if names_sexp.type_of() == SEXPTYPE::STRSXP {
             (0..ncol)
                 .map(|i| {
@@ -1043,7 +1046,7 @@ impl IntoR for RecordBatch {
             }
 
             // Set names attribute
-            ffi::Rf_setAttrib(list, R_NamesSymbol, names);
+            list.set_names(names);
 
             // Set class = "data.frame"
             let class_str = scope.alloc_character(1).into_raw();
@@ -1052,14 +1055,14 @@ impl IntoR for RecordBatch {
                 0,
                 ffi::Rf_mkCharLenCE(c"data.frame".as_ptr(), 10, ffi::cetype_t::CE_UTF8),
             );
-            ffi::Rf_setAttrib(list, R_ClassSymbol, class_str);
+            list.set_class(class_str);
 
             // Set compact row.names: c(NA_integer_, -nrow)
             let (rownames, rn) = crate::into_r::alloc_r_vector::<i32>(2);
             scope.protect_raw(rownames);
             rn[0] = NA_INTEGER;
             rn[1] = -(nrow as i32);
-            ffi::Rf_setAttrib(list, R_RowNamesSymbol, rownames);
+            list.set_row_names(rownames);
 
             list
         }

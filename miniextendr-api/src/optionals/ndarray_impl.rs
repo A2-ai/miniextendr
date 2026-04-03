@@ -764,7 +764,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
             dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
             dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         }) // scope drops here, calling UNPROTECT(2+1)
@@ -809,7 +809,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
             dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
             dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
             dim_s[3] = i32::try_from(d3).expect("dimension exceeds i32");
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -853,7 +853,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4].iter()) {
                 *slot = i32::try_from(d).expect("dimension exceeds i32");
             }
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -894,7 +894,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4, d5].iter()) {
                 *slot = i32::try_from(d).expect("dimension exceeds i32");
             }
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -944,7 +944,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
                     *slot = i32::try_from(d).expect("dimension exceeds i32");
                 }
-                crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+                arr.set_dim(dim);
             }
 
             arr
@@ -1111,7 +1111,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
             dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
             dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -1153,7 +1153,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
                     *slot = i32::try_from(d).expect("dimension exceeds i32");
                 }
-                crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+                arr.set_dim(dim);
             }
 
             arr
@@ -1170,7 +1170,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
 /// Returns `None` if any dimension is negative or NA (NA_INTEGER = i32::MIN).
 fn get_array_dims(sexp: SEXP) -> Option<Vec<usize>> {
     unsafe {
-        let dim = crate::ffi::Rf_getAttrib(sexp, crate::ffi::R_DimSymbol);
+        let dim = sexp.get_dim();
         if dim.type_of() != SEXPTYPE::INTSXP {
             return None;
         }

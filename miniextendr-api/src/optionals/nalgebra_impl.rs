@@ -188,7 +188,7 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
 /// Get matrix dimensions from R object.
 fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
     unsafe {
-        let dim = crate::ffi::Rf_getAttrib(sexp, crate::ffi::R_DimSymbol);
+        let dim = sexp.get_dim();
         if dim.type_of() != SEXPTYPE::INTSXP {
             // Not a matrix, treat as column vector
             return Ok((sexp.len(), 1));
@@ -1351,7 +1351,7 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
         let sexp = self.data.as_sexp();
         // Ensure dim attribute is set for matrix return
         unsafe {
-            let dim = ffi::Rf_getAttrib(sexp, ffi::R_DimSymbol);
+            let dim = sexp.get_dim();
             if dim.type_of() != SEXPTYPE::INTSXP || dim.len() != 2 {
                 let nrow = self.nrows();
                 let ncol = self.ncols();
@@ -1359,7 +1359,7 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
                 let _guard = crate::gc_protect::OwnedProtect::new(dim_sexp);
                 dim_s[0] = i32::try_from(nrow).expect("nrow exceeds i32");
                 dim_s[1] = i32::try_from(ncol).expect("ncol exceeds i32");
-                ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);
+                sexp.set_dim(dim_sexp);
             }
         }
         // SAFETY: IntoR is called from generated .Call wrappers. R protects on receipt.

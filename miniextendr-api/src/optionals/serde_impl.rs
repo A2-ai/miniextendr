@@ -180,9 +180,9 @@ impl JsonOptions {
     }
 }
 use crate::ffi::{
-    INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rf_allocVector, Rf_getAttrib, Rf_setAttrib, Rf_xlength,
-    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP,
-    SEXPTYPE, STRING_ELT, SexpExt,
+    INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rf_allocVector, Rf_xlength, SET_INTEGER_ELT,
+    SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT,
+    SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
@@ -450,7 +450,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
         }
         SEXPTYPE::VECSXP => {
             // Check for names
-            let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
+            let names = sexp.get_names();
             let has_names = !names.is_null() && names.type_of() == SEXPTYPE::STRSXP;
 
             if has_names {
@@ -549,7 +549,7 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
     let len = unsafe { Rf_xlength(sexp) }
         .try_into()
         .expect("length overflow");
-    let levels = unsafe { Rf_getAttrib(sexp, crate::ffi::R_LevelsSymbol) };
+    let levels = sexp.get_levels();
 
     // Helper to convert factor index to JSON based on FactorHandling
     let index_to_json = |idx: i32| -> JsonValue {
@@ -795,7 +795,7 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
                 }
             }
 
-            unsafe { Rf_setAttrib(sexp.get(), crate::ffi::R_NamesSymbol, names.get()) };
+            sexp.get().set_names(names.get());
             // Return the SEXP - guards drop and unprotect
             sexp.get()
         }

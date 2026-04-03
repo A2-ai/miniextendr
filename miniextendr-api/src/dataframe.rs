@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use crate::ffi::{self, Rboolean, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};

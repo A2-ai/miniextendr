@@ -10,9 +10,8 @@ use crate::ffi::SEXP;
 // region: Construction helpers (Phase A)
 
 use crate::ffi::{
-    R_BlankString, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
-    Rf_install, Rf_setAttrib, Rf_type2char, Rf_xlength, SET_STRING_ELT, SEXPTYPE, STRING_ELT,
-    SexpExt, VECTOR_ELT,
+    R_BlankString, R_NaString, R_NilValue, R_xlen_t, Rf_allocVector, Rf_install, Rf_type2char,
+    Rf_xlength, SET_STRING_ELT, SEXPTYPE, STRING_ELT, SexpExt, VECTOR_ELT,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
@@ -315,21 +314,21 @@ pub fn new_vctr(
 
     // Build and set class
     let class_sexp = unsafe { build_class_vector(&class_parts) };
-    unsafe { Rf_setAttrib(data, crate::ffi::R_ClassSymbol, class_sexp.get()) };
+    data.set_class(class_sexp.get());
 
     // Repair NA names if present
-    let names = unsafe { Rf_getAttrib(data, R_NamesSymbol) };
+    let names = data.get_names();
     if names != unsafe { R_NilValue } {
         let repaired = unsafe { repair_na_names(names) };
         if repaired != names {
-            unsafe { Rf_setAttrib(data, R_NamesSymbol, repaired) };
+            data.set_names(repaired);
         }
     }
 
     // Set additional attributes
     for (name, value) in attrs {
         let name_sym = unsafe { install_symbol(name) };
-        unsafe { Rf_setAttrib(data, name_sym, *value) };
+        data.set_attr(name_sym, *value);
     }
 
     Ok(data)
@@ -428,12 +427,12 @@ pub fn new_rcrd(
 
     let class_sexp = unsafe { build_class_vector(&class_parts) };
     let data = fields.as_sexp();
-    unsafe { Rf_setAttrib(data, crate::ffi::R_ClassSymbol, class_sexp.get()) };
+    data.set_class(class_sexp.get());
 
     // Set additional attributes
     for (name, value) in attrs {
         let name_sym = unsafe { install_symbol(name) };
-        unsafe { Rf_setAttrib(data, name_sym, *value) };
+        data.set_attr(name_sym, *value);
     }
 
     Ok(data)
@@ -501,25 +500,25 @@ pub fn new_list_of(
 
     let class_sexp = unsafe { build_class_vector(&class_parts) };
     let data = x.as_sexp();
-    unsafe { Rf_setAttrib(data, crate::ffi::R_ClassSymbol, class_sexp.get()) };
+    data.set_class(class_sexp.get());
 
     // Set ptype attribute if provided
     if let Some(p) = ptype {
         let ptype_sym = unsafe { Rf_install(c"ptype".as_ptr()) };
-        unsafe { Rf_setAttrib(data, ptype_sym, p) };
+        data.set_attr(ptype_sym, p);
     }
 
     // Set size attribute if provided
     if let Some(s) = size {
         let size_sym = unsafe { Rf_install(c"size".as_ptr()) };
         let size_sexp = unsafe { crate::ffi::Rf_ScalarInteger(s) };
-        unsafe { Rf_setAttrib(data, size_sym, size_sexp) };
+        data.set_attr(size_sym, size_sexp);
     }
 
     // Set additional attributes
     for (name, value) in attrs {
         let name_sym = unsafe { install_symbol(name) };
-        unsafe { Rf_setAttrib(data, name_sym, *value) };
+        data.set_attr(name_sym, *value);
     }
 
     Ok(data)

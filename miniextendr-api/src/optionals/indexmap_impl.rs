@@ -52,9 +52,8 @@
 pub use indexmap::IndexMap;
 
 use crate::ffi::{
-    R_CHAR, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
-    Rf_protect, Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
-    STRING_ELT, SexpExt, VECTOR_ELT,
+    R_CHAR, R_NaString, R_NilValue, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect,
+    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, VECTOR_ELT,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -81,7 +80,7 @@ where
         let mut map = IndexMap::with_capacity(len);
 
         // Get names attribute (may be NULL if no names)
-        let names_sexp = unsafe { Rf_getAttrib(sexp, R_NamesSymbol) };
+        let names_sexp = sexp.get_names();
         // Only use names if present and length matches the list length
         let has_names = names_sexp != unsafe { R_NilValue } && names_sexp.len() == len;
 
@@ -152,7 +151,7 @@ where
             }
 
             // Attach names attribute
-            Rf_setAttrib(list, R_NamesSymbol, names);
+            list.set_names(names);
 
             Rf_unprotect(2);
             list

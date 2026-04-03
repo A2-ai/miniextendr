@@ -59,8 +59,8 @@ use std::fmt;
 use std::mem;
 
 use crate::ffi::{
-    RAW, Rf_ScalarString, Rf_allocVector, Rf_getAttrib, Rf_install, Rf_mkCharLenCE, Rf_setAttrib,
-    Rf_xlength, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
+    RAW, Rf_ScalarString, Rf_allocVector, Rf_install, Rf_mkCharLenCE, Rf_xlength, SEXP, SEXPTYPE,
+    STRING_ELT, SexpExt, cetype_t,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -296,7 +296,7 @@ impl<T: Pod> RawSliceTagged<T> {
 fn validate_raw_type_tag<T>(sexp: SEXP) -> Result<(), SexpError> {
     let expected = std::any::type_name::<T>();
     let attr_sym = unsafe { Rf_install(c"mx_raw_type".as_ptr()) };
-    let attr = unsafe { Rf_getAttrib(sexp, attr_sym) };
+    let attr = sexp.get_attr(attr_sym);
 
     if attr.type_of() == SEXPTYPE::NILSXP {
         return Err(SexpError::InvalidValue(format!(
@@ -456,7 +456,7 @@ impl<T: Pod> IntoR for RawTagged<T> {
                 type_name.len() as i32,
                 cetype_t::CE_UTF8,
             );
-            Rf_setAttrib(sexp, attr_sym, Rf_ScalarString(charsxp));
+            sexp.set_attr(attr_sym, Rf_ScalarString(charsxp));
 
             Ok(sexp)
         }
@@ -489,7 +489,7 @@ impl<T: Pod> IntoR for RawSliceTagged<T> {
                 type_name.len() as i32,
                 cetype_t::CE_UTF8,
             );
-            Rf_setAttrib(sexp, attr_sym, Rf_ScalarString(charsxp));
+            sexp.set_attr(attr_sym, Rf_ScalarString(charsxp));
 
             Ok(sexp)
         }

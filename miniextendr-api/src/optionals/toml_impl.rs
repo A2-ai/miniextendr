@@ -57,8 +57,8 @@
 pub use toml::Value as TomlValue;
 
 use crate::ffi::{
-    Rf_allocVector, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
-    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
+    Rf_allocVector, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
+    SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
@@ -549,7 +549,7 @@ fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
     }
 
     unsafe {
-        Rf_setAttrib(sexp.get(), crate::ffi::R_NamesSymbol, names.get());
+        sexp.get().set_names(names.get());
     }
     // Return the SEXP - guards drop and unprotect
     sexp.get()
