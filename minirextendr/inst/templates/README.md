@@ -1,18 +1,16 @@
 # miniextendr Templates
 
-This directory contains two template types for creating projects with miniextendr.
-These templates are consumed by the `minirextendr` package; see
-`../../README.md` for usage.
+This directory contains the project templates consumed by `minirextendr`.
+They are derived from the repo's `rpkg/` example package and kept in sync by
+the template snapshot checks in the root `justfile`.
 
-## Template Types
+## Template types
 
-### 1. `rpkg/` - Standalone R Package
+### 1. `rpkg/` - standalone R package
 
 A traditional R package with embedded Rust code in `src/rust/`.
 
-**Structure:**
-
-```
+```text
 my.package/
 ├── DESCRIPTION
 ├── R/
@@ -28,37 +26,39 @@ my.package/
 └── bootstrap.R
 ```
 
-**When to use:**
+Generated later during the build:
 
-- Building an R package that happens to use Rust internally
+- `configure`
+- `R/<package>-wrappers.R`
+- `NAMESPACE` / man pages via roxygen
+
+Use this template when:
+
+- building an R package that happens to use Rust internally
 - R is the primary interface
-- Standard CRAN submission workflow
+- you want the standard CRAN package workflow
 
-**Create with:**
+Create it with:
 
 ```r
-# Create new standalone R package:
 minirextendr::create_miniextendr_package("path/to/package")
-
-# Add to existing R package:
-minirextendr::use_miniextendr()  # Auto-detects rpkg template
+minirextendr::use_miniextendr()
 ```
 
-### 2. `monorepo/` - Rust Workspace with Embedded R Package
+### 2. `monorepo/` - Rust workspace with embedded R package
 
-A Rust workspace where the R package lives as a subdirectory. Similar to how this miniextendr repository itself is organized.
+A Rust workspace where the R package lives as a subdirectory, similar to this
+repository.
 
-**Structure:**
-
-```
+```text
 my-project/
-├── Cargo.toml              # Workspace root
+├── Cargo.toml
 ├── justfile
-├── my-crate/               # Main Rust library
+├── my-crate/
 │   ├── Cargo.toml
 │   └── src/
 │       └── lib.rs
-└── rpkg/                   # R package
+└── rpkg/
     ├── DESCRIPTION
     ├── R/
     ├── src/
@@ -71,66 +71,63 @@ my-project/
     └── configure.ac
 ```
 
-**When to use:**
+Use this template when:
 
-- Building a Rust library that happens to have R bindings
+- building a Rust project that also ships R bindings
 - Rust is the primary project
-- Want to use Rust workspace features
-- Multiple Rust crates with one R package
+- you want workspace-level dependency and tooling management
 
-**Create with:**
+Create it with:
 
 ```r
-# Create new monorepo from scratch:
 minirextendr::create_miniextendr_monorepo("path/to/project")
 
-# Customize names:
 minirextendr::create_miniextendr_monorepo(
   "path/to/project",
   crate_name = "my-lib",
-  rpkg_name = "r-bindings"  # Default: same as package name
+  rpkg_name = "r-bindings"
 )
 
-# Add R package to existing Rust crate:
-# (run from Rust crate directory)
-minirextendr::use_miniextendr()  # Auto-detects monorepo template, creates rpkg/
-
-# Customize R package directory name:
+minirextendr::use_miniextendr()
 minirextendr::use_miniextendr(rpkg_name = "r-bindings")
 ```
 
-## Template Placeholders
+## Template placeholders
 
 Templates use mustache-style `{{variable}}` substitution:
 
-- `{{package}}` - R package name (e.g., "my.package")
-- `{{package_rs}}` - Rust-safe variant (e.g., "my_package")
-- `{{Package}}` - Title-cased (e.g., "My.Package")
-- `{{crate_name}}` - Rust crate name (e.g., "my-crate") - monorepo only
-- `{{rpkg_name}}` - R package subdirectory name (e.g., "rpkg", "r-bindings") - monorepo only
-- `{{year}}` - Current year
+- `{{package}}` - R package name
+- `{{package_rs}}` - Rust-safe package name
+- `{{Package}}` - title-cased package name
+- `{{crate_name}}` - Rust crate name (monorepo only)
+- `{{rpkg_name}}` - R package subdirectory name (monorepo only)
+- `{{year}}` - current year
 
-Additionally, `.in` files use autoconf `@PLACEHOLDER@` markers that are expanded during `./configure`:
+Additionally, `.in` files use autoconf `@PLACEHOLDER@` markers expanded during
+`bash ./configure`:
 
-- `@PACKAGE_TARNAME_RS@` - Expands to Rust package name
-- `@PACKAGE_TARNAME_RS_UPPERCASE@` - Uppercase version
-- `@CARGO_STATICLIB_NAME@` - Extracted from Cargo.toml by configure
+- `@PACKAGE_TARNAME_RS@`
+- `@PACKAGE_TARNAME_RS_UPPERCASE@`
+- `@CARGO_STATICLIB_NAME@`
 
-## Template Snapshot Testing
+## Template snapshot testing
 
-See the root `justfile` for snapshot testing recipes that verify templates stay in sync with the `rpkg/` source package:
+Use the root `justfile` to verify that templates have not drifted from `rpkg/`:
 
 ```bash
-just templates-check    # Verify templates haven't drifted
-just templates-approve  # Accept current diffs as approved
+just templates-check
+just templates-approve
 ```
 
-The `patches/templates.patch` file captures approved differences between templates and rpkg sources (like placeholder markers).
+`patches/templates.patch` captures the approved differences between the live
+`rpkg/` package and the templated copies.
 
-## Vendor Tarball for CRAN
+## Vendor tarball for CRAN
 
-When submitting to CRAN, vendored crates are compressed into `inst/vendor.tar.xz`.
-This file is typically 5-10MB and does NOT require Git LFS (which is for files >50MB).
+For offline/CRAN builds, vendored crates are compressed into
+`inst/vendor.tar.xz`. In this repo the normal way to produce that tarball is
+`just vendor`; in generated packages the equivalent helper is
+`minirextendr::miniextendr_vendor()`.
 
-The tarball is created during `./configure` when `NOT_CRAN` is not set, and
-extracted during package installation. See the `minirextendr` README for details.
+During install, `configure` / `Makevars` use the tarball when `vendor/` is not
+present, so end users do not need network access during build.

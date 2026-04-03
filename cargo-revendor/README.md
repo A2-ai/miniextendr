@@ -1,11 +1,27 @@
 # cargo-revendor
 
-Vendor Rust dependencies for offline/hermetic builds, including workspace and path dependencies that `cargo vendor` skips.
+Vendor Rust dependencies for offline/hermetic builds, including workspace and
+path dependencies that plain `cargo vendor` skips.
 
-## Install
+This tool lives in `cargo-revendor/` and is intentionally excluded from the
+main workspace so vendoring logic can evolve independently of the runtime
+crates.
+
+## Build and install
+
+From the repo root:
 
 ```sh
+just revendor-build
+just revendor-test
 cargo install --path cargo-revendor
+```
+
+Or directly with Cargo:
+
+```sh
+cargo build --manifest-path cargo-revendor/Cargo.toml
+cargo test --manifest-path cargo-revendor/Cargo.toml
 ```
 
 ## Usage
@@ -28,56 +44,61 @@ cargo revendor \
 
 ## What it does
 
-1. **Discovers dependencies** via `cargo metadata`
-2. **Packages local crates** via `cargo package` (resolves workspace inheritance)
-3. **Vendors external deps** via `cargo vendor` (crates-io, git sources)
-4. **Extracts local crates** into vendor/ (overwrites cargo vendor placeholders)
-5. **Strips** test/bench/example directories and TOML sections (opt-in)
-6. **Rewrites** inter-crate path dependencies (`path = "../sibling"`)
-7. **Clears checksums** (`.cargo-checksum.json` → `{"files":{}}`)
-8. **Generates** `.cargo/config.toml` with source replacement entries
-9. **Strips** Cargo.lock checksums for vendored compatibility
+1. Discovers dependencies via `cargo metadata`
+2. Packages local crates via `cargo package`
+3. Vendors external deps via `cargo vendor`
+4. Extracts local crates into `vendor/`
+5. Strips test/bench/example directories and TOML sections (opt-in)
+6. Rewrites inter-crate path dependencies
+7. Clears vendored checksums
+8. Generates `.cargo/config.toml` with source replacement entries
+9. Strips `Cargo.lock` checksums for vendored compatibility
 
 ## Flags
 
 | Flag | Description |
 |---|---|
-| `--manifest-path` | Path to Cargo.toml (default: `src/rust/Cargo.toml`) |
+| `--manifest-path` | Path to `Cargo.toml` (default: `src/rust/Cargo.toml`) |
 | `--output` | Vendor directory (default: `vendor`) |
-| `--source-root` | Workspace root for path dep discovery |
+| `--source-root` | Workspace root for path-dependency discovery |
 | `--strip-tests` | Strip `tests/` directories |
 | `--strip-benches` | Strip `benches/` directories |
 | `--strip-examples` | Strip `examples/` directories |
 | `--strip-bins` | Strip binary targets |
 | `--strip-all` | Strip all of the above |
-| `--freeze` | Rewrite Cargo.toml to resolve everything from vendor/ |
-| `--compress <path>` | Compress vendor/ into a `.tar.xz` tarball |
+| `--freeze` | Rewrite `Cargo.toml` to resolve everything from `vendor/` |
+| `--compress <path>` | Compress `vendor/` into a `.tar.xz` tarball |
 | `--blank-md` | Blank `.md` files before compression |
 | `--source-marker` | Write `.vendor-source` provenance file |
 | `--json` | Machine-readable JSON output |
-| `--force` | Bypass cache, re-vendor unconditionally |
+| `--force` | Bypass cache and re-vendor unconditionally |
 | `-v` / `-vv` / `-vvv` | Verbosity levels |
 
 ## `--freeze`
 
-Rewrites `Cargo.toml` so the manifest is self-contained — all sources resolve from `vendor/` alone, with no network, git, or workspace context needed.
+Rewrites `Cargo.toml` so the manifest is self-contained: all sources resolve
+from `vendor/` alone, with no network, git, or workspace context needed.
 
-Specifically:
-- Rewrites `git = "https://..."` deps to `path = "../../vendor/<name>"`
-- Strips all `[patch.*]` sections (they reference external sources)
-- Adds `[patch.crates-io]` with vendor paths for transitive local deps
-- Regenerates `Cargo.lock` from the frozen manifest (`--offline`)
+Specifically it:
 
-After `--freeze`, `cargo build --offline` works with only the vendor directory.
+- rewrites `git = "https://..."` dependencies to vendor paths
+- strips `[patch.*]` sections that reference external sources
+- adds `[patch.crates-io]` entries for local vendored dependencies
+- regenerates `Cargo.lock` from the frozen manifest with `--offline`
+
+After `--freeze`, `cargo build --offline` works with only the vendor
+directory.
 
 ## Caching
 
-cargo-revendor hashes `Cargo.lock` + `Cargo.toml` and skips re-vendoring when unchanged. Use `--force` to override.
+cargo-revendor hashes `Cargo.lock` plus `Cargo.toml` and skips re-vendoring
+when unchanged. Use `--force` to override.
 
 ## Path dependency handling
 
-Unlike `cargo vendor` which silently skips path dependencies, cargo-revendor:
-1. Tries `cargo package` (resolves workspace inheritance via the packaging pipeline)
-2. Falls back to direct copy if packaging fails (unpublished deps)
-3. Resolves `*.workspace = true` fields via `toml_edit` in the fallback path
-4. Auto-adds `version = "*"` to path-only deps that lack a version
+Unlike `cargo vendor`, cargo-revendor:
+
+1. tries `cargo package` first
+2. falls back to direct copy if packaging fails
+3. resolves `*.workspace = true` fields in the fallback path
+4. adds `version = "*"` to path-only dependencies that do not declare one
