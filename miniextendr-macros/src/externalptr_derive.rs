@@ -358,15 +358,15 @@ fn generate_getter_body(
     // Helper: generate the pointer extraction code for Box<dyn Any> storage.
     // R_ExternalPtrAddr returns *mut Box<dyn Any>; we downcast to &T.
     let extract_ref = quote::quote! {
-        use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
+        use ::miniextendr_api::ffi::{R_ExternalPtrAddr, SEXP};
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
-            return R_NilValue;
+            return SEXP::null();
         }
         let any_box: &Box<dyn ::std::any::Any> = &*any_raw;
         let data: &#struct_name = match any_box.downcast_ref::<#struct_name>() {
             Some(v) => v,
-            None => return R_NilValue,
+            None => return SEXP::null(),
         };
     };
 

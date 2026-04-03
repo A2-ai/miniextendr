@@ -357,15 +357,14 @@ pub(crate) fn generate_altrep_impls(
                     use ::miniextendr_api::altrep_registration::RegisterAltrep;
                     use ::miniextendr_api::externalptr::ExternalPtr;
                     use ::miniextendr_api::ffi::altrep::R_new_altrep;
-                    use ::miniextendr_api::ffi::R_NilValue;
-                    use ::miniextendr_api::ffi::{Rf_protect, Rf_unprotect};
+                    use ::miniextendr_api::ffi::{SEXP, Rf_protect, Rf_unprotect};
 
                     let ext_ptr = ExternalPtr::new(self.0);
                     let cls = Self::get_or_init_class();
                     let data1 = ext_ptr.as_sexp();
                     unsafe {
                         Rf_protect(data1);
-                        let altrep = R_new_altrep(cls, data1, R_NilValue);
+                        let altrep = R_new_altrep(cls, data1, SEXP::null());
                         Rf_unprotect(1);
                         altrep
                     }
