@@ -7093,7 +7093,7 @@ if (!exists("describe_any", mode = "function")) {
   describe_any <- S7::new_generic("describe_any", "x", function(x, ...) S7::S7_dispatch())
 }
 S7::method(describe_any, S7::class_any) <- function(x, ...) {
-    .val <- .Call(C_S7Strict__describe_any, .call = match.call(), if (inherits(x, "S7_object")) x@.ptr else x)
+    .val <- .Call(C_S7Strict__describe_any, .call = match.call(), if (inherits(x, "S7_object")) x@.ptr else stop(paste0("expected an S7 object, got ", class(x)[[1]])))
     if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
       stop(structure(
         class = c("rust_error", "simpleError", "error", "condition"),

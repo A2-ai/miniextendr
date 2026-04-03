@@ -491,9 +491,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_attrs = &ctx.method.method_attrs;
 
         // For fallback methods (class_any), check class before using @ to extract
-        // the pointer. Using @ on non-S7 objects segfaults R < 4.5.
+        // the pointer. Non-S7 objects can't have @.ptr — error in R rather than
+        // passing a wrong type to Rust (which would segfault).
         let self_expr = if method_attrs.s7_fallback {
-            "if (inherits(x, \"S7_object\")) x@.ptr else x"
+            "if (inherits(x, \"S7_object\")) x@.ptr else stop(paste0(\"expected an S7 object, got \", class(x)[[1]]))"
         } else {
             "x@.ptr"
         };
