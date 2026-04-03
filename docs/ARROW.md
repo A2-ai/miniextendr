@@ -55,7 +55,6 @@ pub fn greet(name: Cow<'static, str>) -> String {
 #[miniextendr]
 pub fn upper_first(words: Vec<Cow<'static, str>>) -> Vec<String> {
     // Each element is Cow::Borrowed (zero-copy from R's CHARSXP pool)
-    // Only UTF-8 strings borrow; non-UTF-8 gets translated (rare, auto)
     words.iter().map(|w| {
         let mut s = w.to_string();
         if let Some(c) = s.get_mut(0..1) {
@@ -103,13 +102,14 @@ pub fn count_unique(strings: ProtectedStrVec) -> i32 {
     unique.len() as i32
 }
 
+// Note: can't return &str from ProtectedStrVec — it's consumed by IntoR,
+// so there's nothing to borrow from. Return String or the whole ProtectedStrVec.
 #[miniextendr]
-pub fn first_non_na(strings: ProtectedStrVec) -> &str {
-    // iter_cow() handles non-UTF-8 CHARSXPs gracefully
-    strings.iter_cow()
+pub fn first_non_na(strings: ProtectedStrVec) -> String {
+    strings.iter()
         .find_map(|s| s)
-        .map(|cow| cow.as_ref())
         .unwrap_or("")
+        .to_owned()
 }
 ```
 
@@ -200,24 +200,35 @@ pub fn df_add_column(df: RecordBatch) -> RecordBatch {
 
 ### `alloc_r_backed_buffer` — Rust→Arrow→R zero-copy
 
-Allocate an Arrow buffer backed by R memory from the start. When the array
-is later converted to R, pointer recovery finds the original SEXP.
+Allocate an Arrow buffer backed by R memory from the start. Write through
+the raw SEXP pointer, then wrap in Arrow types. When the array is later
+converted to R, pointer recovery finds the original SEXP.
 
 ```rust
 use miniextendr_api::optionals::arrow_impl::alloc_r_backed_buffer;
 
 #[miniextendr]
-pub fn generate_sequence(n: i32) -> Float64Array {
+pub fn generate_sequence(n: i32) -> SEXP {
+    use miniextendr_api::IntoR;
     let n = n as usize;
-    // Allocate buffer as R REALSXP
-    let (buffer, _sexp) = unsafe { alloc_r_backed_buffer::<f64>(n) };
-    let mut values = arrow_buffer::ScalarBuffer::<f64>::from(buffer);
 
-    // Fill via Arrow APIs
-    // ... (would need unsafe mutable access to the buffer)
+    // Allocate buffer as R REALSXP — data lives in R's heap
+    let (buffer, sexp) = unsafe { alloc_r_backed_buffer::<f64>(n) };
 
-    Float64Array::new(values, None)
-    // IntoR → pointer recovery → returns the REALSXP (zero-copy)
+    // Fill through the SEXP's raw pointer (before wrapping in Arrow)
+    unsafe {
+        let ptr = miniextendr_api::ffi::REAL(sexp);
+        for i in 0..n {
+            *ptr.add(i) = i as f64;
+        }
+    }
+
+    // Wrap as Arrow array
+    let values = arrow_buffer::ScalarBuffer::<f64>::from(buffer);
+    let array = Float64Array::new(values, None);
+
+    // IntoR → pointer recovery → returns the same REALSXP (zero-copy)
+    array.into_sexp()
 }
 ```
 
@@ -274,31 +285,37 @@ R stores vector data at a fixed offset from the SEXP header:
  SEXP                                         DATAPTR_RO(sexp)
 ```
 
-At package init, we measure this offset. Then:
+All R vector types (REALSXP, INTSXP, RAWSXP, STRSXP, VECSXP) use the same
+`VECTOR_SEXPREC` header. Non-vector types use larger `SEXPREC` but don't have
+data pointers.
+
+At package init, we measure the offset on a real R vector. Then in `IntoR`:
 
 ```
 candidate_sexp = data_ptr - offset
 verify: TYPEOF(candidate) == expected AND LENGTH(candidate) == expected AND DATAPTR_RO(candidate) == data_ptr
 ```
 
-This works because:
-- All R vector types use `VECTOR_SEXPREC` (same header size)
-- The offset is constant within an R session
-- ALTREP vectors fail the DATAPTR_RO check (data isn't at fixed offset)
-- Rust-allocated buffers fail the type/length checks
+**Safety consideration**: For Rust-allocated buffers, `data_ptr - offset` points to
+arbitrary heap memory. The 4-byte type-tag read at that address is technically undefined
+behavior in Rust's abstract model (the pointer wasn't derived from an R allocation).
+In practice, this is safe — the address is in mapped heap memory and the read is
+immediately validated by the triple check (type + length + DATAPTR_RO round-trip),
+which makes false positives impossible. ALTREP vectors also fail safely (the
+DATAPTR_RO round-trip check catches them, since ALTREP data isn't at a fixed offset).
 
-### Encoding-safe string conversion (`charsxp_to_cow`)
+### String conversion (`charsxp_to_str`)
 
-`charsxp_to_cow()` tries `from_utf8` on R's `R_CHAR` data (O(1) for validation).
-If the CHARSXP is valid UTF-8 (the common case in UTF-8 locales), returns
-`Cow::Borrowed` — zero-copy. For non-UTF-8 (CE_LATIN1, CE_BYTES), falls back to
-`Rf_translateCharUTF8` which copies. The caller doesn't need to think about encodings.
+`charsxp_to_str()` uses `R_CHAR` + `LENGTH` (O(1)) with `from_utf8_unchecked`.
+No per-string UTF-8 validation — `miniextendr_assert_utf8_locale()` at package init
+guarantees all CHARSXPs in the session are valid UTF-8. `charsxp_to_cow()` wraps
+the result in `Cow::Borrowed` (always borrowed, never owned).
 
 ## Type Decision Tree
 
 ```
 Need strings from R?
-├── Scalar → Cow<'static, str>          (zero-copy, encoding-safe)
+├── Scalar → Cow<'static, str>          (zero-copy)
 ├── Vector, need ownership → Vec<String> (copies, lossy NA→"")
 ├── Vector, read-only → Vec<Cow<'static, str>>  (zero-copy per element)
 ├── Vector, NA-aware → Vec<Option<Cow<'static, str>>>

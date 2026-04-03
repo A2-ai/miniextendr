@@ -116,6 +116,7 @@ mod lazy_tests;
 mod log_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
+mod zero_copy_tests;
 mod altrep_sexp_tests;
 mod as_coerce_tests;
 #[cfg(feature = "num-bigint")]
