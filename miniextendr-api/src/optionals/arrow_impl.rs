@@ -338,6 +338,41 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> arrow_buffer::Buff
     }
 }
 
+/// Allocate an Arrow Buffer backed by a new R vector.
+///
+/// The returned buffer points into a freshly allocated R vector (REALSXP,
+/// INTSXP, or RAWSXP depending on `T`). When this buffer is later used in
+/// an Arrow array and that array is converted back to R via `IntoR`, the
+/// SEXP pointer recovery will find the original R vector — zero-copy
+/// round-trip for the Rust→Arrow→R direction.
+///
+/// Returns `(buffer, sexp)` so callers can also work with the SEXP directly.
+///
+/// # Safety
+///
+/// Must be called on R's main thread.
+///
+/// # Example
+///
+/// ```ignore
+/// let (buffer, _sexp) = unsafe { alloc_r_backed_buffer::<f64>(1000) };
+/// let values = arrow_buffer::ScalarBuffer::<f64>::from(buffer);
+/// // Fill values via unsafe mutable access, then:
+/// let array = Float64Array::new(values, None);
+/// // array.into_sexp() → returns the original REALSXP (zero-copy)
+/// ```
+pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(
+    len: usize,
+) -> (arrow_buffer::Buffer, SEXP) {
+    if len == 0 {
+        return (arrow_buffer::Buffer::from(Vec::<u8>::new()), SEXP(std::ptr::null_mut()));
+    }
+    let len_isize: isize = len.try_into().expect("vector length exceeds isize::MAX");
+    let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len_isize) };
+    let buffer = unsafe { sexp_to_arrow_buffer::<T>(sexp) };
+    (buffer, sexp)
+}
+
 // endregion
 
 // region: NA bitmap construction
