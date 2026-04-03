@@ -264,13 +264,8 @@ impl List {
         unsafe {
             let class_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, class) in classes.iter().enumerate() {
-                let class_len: i32 = class
-                    .len()
-                    .try_into()
-                    .expect("class name exceeds i32::MAX bytes");
-                let chars = ffi::Rf_mkCharLenCE(class.as_ptr().cast(), class_len, ffi::CE_UTF8);
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_STRING_ELT(class_vec.get(), idx, chars);
+                class_vec.get().set_string_elt(idx, SEXP::charsxp(class));
             }
             self.0.set_class(class_vec.get());
         }
@@ -299,10 +294,8 @@ impl List {
         unsafe {
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in names.iter().enumerate() {
-                let name_len: i32 = name.len().try_into().expect("name exceeds i32::MAX bytes");
-                let chars = ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name_len, ffi::CE_UTF8);
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_STRING_ELT(names_vec.get(), idx, chars);
+                names_vec.get().set_string_elt(idx, SEXP::charsxp(name));
             }
             self.0.set_names(names_vec.get());
         }
@@ -366,10 +359,8 @@ impl List {
         unsafe {
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in row_names.iter().enumerate() {
-                let name_len: i32 = name.len().try_into().expect("name exceeds i32::MAX bytes");
-                let chars = ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name_len, ffi::CE_UTF8);
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_STRING_ELT(names_vec.get(), idx, chars);
+                names_vec.get().set_string_elt(idx, SEXP::charsxp(name));
             }
             self.0.set_row_names(names_vec.get());
         }
@@ -981,10 +972,8 @@ impl List {
                 ffi::SET_VECTOR_ELT(list.get(), idx, val);
 
                 let s = name.as_ref();
-                let s_len: i32 = s.len().try_into().expect("name exceeds i32::MAX bytes");
-                // Rf_mkCharLenCE allocates - list and names must be protected!
-                let chars = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s_len, ffi::CE_UTF8);
-                ffi::SET_STRING_ELT(names.get(), idx, chars);
+                // SEXP::charsxp allocates - list and names must be protected!
+                names.get().set_string_elt(idx, SEXP::charsxp(s));
             }
             list.get().set_names(names.get());
             List(list.get())

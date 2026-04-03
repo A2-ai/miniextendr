@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use super::error::RSerdeError;
 use crate::altrep_traits::NA_REAL;
 use crate::ffi::{
-    CE_UTF8, R_NaString, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_unprotect,
-    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt,
+    Rf_allocVector, Rf_protect, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
+    SexpExt,
 };
 use serde::ser::{self, Serialize};
 
@@ -183,9 +183,7 @@ impl ColumnarDataFrame {
             let ncol = crate::ffi::Rf_xlength(names_sexp);
             for i in 0..ncol {
                 if col_name(names_sexp, i) == from {
-                    let to_len: i32 = to.len().try_into().expect("name exceeds i32::MAX");
-                    let new_charsxp = Rf_mkCharLenCE(to.as_ptr().cast(), to_len, CE_UTF8);
-                    SET_STRING_ELT(names_sexp, i, new_charsxp);
+                    names_sexp.set_string_elt(i, SEXP::charsxp(to));
                     break;
                 }
             }
@@ -205,9 +203,7 @@ impl ColumnarDataFrame {
             for i in 0..ncol {
                 let name = col_name(names_sexp, i);
                 if let Some(stripped) = name.strip_prefix(prefix) {
-                    let len: i32 = stripped.len().try_into().expect("name exceeds i32::MAX");
-                    let new_charsxp = Rf_mkCharLenCE(stripped.as_ptr().cast(), len, CE_UTF8);
-                    SET_STRING_ELT(names_sexp, i, new_charsxp);
+                    names_sexp.set_string_elt(i, SEXP::charsxp(stripped));
                 }
             }
         }
@@ -1273,8 +1269,7 @@ fn empty_dataframe() -> SEXP {
         // Set class = "data.frame"
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         Rf_protect(class_sexp);
-        let class_str = Rf_mkCharLenCE(c"data.frame".as_ptr().cast(), 10, CE_UTF8);
-        SET_STRING_ELT(class_sexp, 0, class_str);
+        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
         list.set_class(class_sexp);
 
         // Set compact row.names: c(NA_integer_, 0)
@@ -1316,21 +1311,14 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
         Rf_protect(names_sexp);
         for (i, field) in fields.iter().enumerate() {
             let idx: isize = i.try_into().expect("field index exceeds isize::MAX");
-            let name_len: i32 = field
-                .name
-                .len()
-                .try_into()
-                .expect("field name exceeds i32::MAX bytes");
-            let charsxp = Rf_mkCharLenCE(field.name.as_ptr().cast(), name_len, CE_UTF8);
-            SET_STRING_ELT(names_sexp, idx, charsxp);
+            names_sexp.set_string_elt(idx, SEXP::charsxp(&field.name));
         }
         list.set_names(names_sexp);
 
         // Set class = "data.frame"
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         Rf_protect(class_sexp);
-        let class_str = Rf_mkCharLenCE(c"data.frame".as_ptr().cast(), 10, CE_UTF8);
-        SET_STRING_ELT(class_sexp, 0, class_str);
+        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
         list.set_class(class_sexp);
 
         // Set compact row.names: c(NA_integer_, -nrow)
@@ -1375,13 +1363,10 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     match val {
                         Some(s) => {
-                            let s_len: i32 =
-                                s.len().try_into().expect("string exceeds i32::MAX bytes");
-                            let charsxp = Rf_mkCharLenCE(s.as_ptr().cast(), s_len, CE_UTF8);
-                            SET_STRING_ELT(sexp, idx, charsxp);
+                            sexp.set_string_elt(idx, SEXP::charsxp(s));
                         }
                         None => {
-                            SET_STRING_ELT(sexp, idx, R_NaString);
+                            sexp.set_string_elt(idx, SEXP::na_string());
                         }
                     }
                 }
@@ -1395,7 +1380,7 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                     if let Some(elem) = val {
                         SET_VECTOR_ELT(sexp, idx, *elem);
                     } else {
-                        SET_VECTOR_ELT(sexp, idx, R_NilValue);
+                        SET_VECTOR_ELT(sexp, idx, SEXP::null());
                     }
                 }
                 sexp
