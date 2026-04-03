@@ -6,7 +6,7 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{
-    R_NaString, R_NilValue, Rf_xlength, SEXP, SEXPTYPE, SexpExt, STRING_ELT, VECTOR_ELT,
+    R_NaString, Rf_xlength, SEXP, SEXPTYPE, SexpExt, STRING_ELT, VECTOR_ELT,
 };
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -63,12 +63,12 @@ impl RDeserializer {
     }
 
     fn is_null(&self) -> bool {
-        self.sexp == unsafe { R_NilValue }
+        self.sexp == SEXP::null()
     }
 
     fn has_names(&self) -> bool {
         let names = self.sexp.get_names();
-        names != unsafe { R_NilValue }
+        names != SEXP::null()
     }
 
     fn type_name(&self) -> String {
@@ -849,7 +849,7 @@ struct NamedListMapAccess {
 impl NamedListMapAccess {
     fn new(sexp: SEXP) -> Result<Self, RSerdeError> {
         let names = sexp.get_names();
-        if names == unsafe { R_NilValue } {
+        if names == SEXP::null() {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",
                 actual: "list (no names attribute)".into(),

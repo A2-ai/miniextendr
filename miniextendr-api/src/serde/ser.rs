@@ -5,7 +5,7 @@
 
 use super::error::RSerdeError;
 use crate::ffi::{
-    R_NaString, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_unprotect,
+    R_NaString, Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_unprotect,
     SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, cetype_t,
 };
 use crate::gc_protect::OwnedProtect;
@@ -126,7 +126,7 @@ impl ser::Serializer for RSerializer {
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         // None becomes R NULL
         // For NA handling, use Option<T> which maps None -> NA in specific contexts
-        Ok(unsafe { R_NilValue })
+        Ok(SEXP::null())
     }
 
     fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<Self::Ok, Self::Error> {
@@ -134,11 +134,11 @@ impl ser::Serializer for RSerializer {
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok(unsafe { R_NilValue })
+        Ok(SEXP::null())
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok(unsafe { R_NilValue })
+        Ok(SEXP::null())
     }
 
     fn serialize_unit_variant(
@@ -489,7 +489,7 @@ fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
         }
     }
 
-    unsafe { list.get().set_names(names.get()) };
+    list.get().set_names(names.get());
     list.get()
 }
 
@@ -514,7 +514,7 @@ fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
         }
     }
 
-    unsafe { list.get().set_names(names.get()) };
+    list.get().set_names(names.get());
     list.get()
 }
 

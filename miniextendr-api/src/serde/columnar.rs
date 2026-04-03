@@ -177,7 +177,7 @@ impl ColumnarDataFrame {
     pub fn rename(self, from: &str, to: &str) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == R_NilValue {
+            if names_sexp == SEXP::null() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);
@@ -198,7 +198,7 @@ impl ColumnarDataFrame {
     pub fn strip_prefix(self, prefix: &str) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == R_NilValue {
+            if names_sexp == SEXP::null() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);
@@ -218,7 +218,7 @@ impl ColumnarDataFrame {
     pub fn drop(self, col: &str) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == R_NilValue {
+            if names_sexp == SEXP::null() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);
@@ -256,7 +256,7 @@ impl ColumnarDataFrame {
     pub fn select(self, cols: &[&str]) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == R_NilValue {
+            if names_sexp == SEXP::null() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);

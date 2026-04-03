@@ -742,10 +742,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
             if prot.is_null_or_nil() {
-                return R_NilValue;
+                return SEXP::null();
             }
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return R_NilValue;
+                return SEXP::null();
             }
             VECTOR_ELT(prot, PROT_USER_INDEX)
         }
@@ -766,10 +766,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe {
             let prot = R_ExternalPtrProtected_unchecked(self.sexp);
             if prot.is_null_or_nil() {
-                return R_NilValue;
+                return SEXP::null();
             }
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return R_NilValue;
+                return SEXP::null();
             }
             VECTOR_ELT_unchecked(prot, PROT_USER_INDEX)
         }

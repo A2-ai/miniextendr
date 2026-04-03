@@ -318,7 +318,7 @@ pub fn new_vctr(
 
     // Repair NA names if present
     let names = data.get_names();
-    if names != unsafe { R_NilValue } {
+    if names != SEXP::null() {
         let repaired = unsafe { repair_na_names(names) };
         if repaired != names {
             data.set_names(repaired);
@@ -390,7 +390,7 @@ pub fn new_rcrd(
     for i in 0..n_fields {
         // Check name
         let name_charsxp = unsafe { STRING_ELT(names_sexp, i) };
-        if name_charsxp == unsafe { R_NaString } || name_charsxp == unsafe { R_NilValue } {
+        if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::null() {
             return Err(VctrsBuildError::UnnamedFields);
         }
 

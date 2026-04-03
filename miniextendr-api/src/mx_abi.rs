@@ -7,7 +7,7 @@
 
 use crate::abi::{mx_erased, mx_tag};
 use crate::ffi::{
-    R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr, R_NilValue,
+    R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr,
     R_PreserveObject, R_RegisterCCallable, R_RegisterCFinalizerEx, Rboolean, Rf_install,
     Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
@@ -61,7 +61,7 @@ unsafe extern "C-unwind" fn mx_externalptr_finalizer(ptr: SEXP) {
 pub unsafe extern "C-unwind" fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
     unsafe {
         let tag = get_tag();
-        let sexp = Rf_protect(R_MakeExternalPtr(ptr.cast(), tag, R_NilValue));
+        let sexp = Rf_protect(R_MakeExternalPtr(ptr.cast(), tag, SEXP::null()));
         R_RegisterCFinalizerEx(sexp, Some(mx_externalptr_finalizer), Rboolean::TRUE);
         Rf_unprotect(1);
         sexp

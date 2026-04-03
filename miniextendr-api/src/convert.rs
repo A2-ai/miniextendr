@@ -528,7 +528,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
             for name in &col_names {
                 let value = list
                     .get_named::<crate::ffi::SEXP>(name)
-                    .unwrap_or(unsafe { crate::ffi::R_NilValue });
+                    .unwrap_or(crate::ffi::SEXP::null());
                 columns
                     .get_mut(name)
                     .expect("column inserted above")

@@ -943,7 +943,7 @@ impl RCustomConnection {
                 // Clean up the boxed state
                 let _ = Box::from_raw(state_ptr.cast::<T>());
                 // Return R_NilValue on failure (R will have signaled an error)
-                return R_NilValue;
+                return SEXP::null();
             }
 
             // Cast to our Rconn struct

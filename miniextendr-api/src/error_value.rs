@@ -52,7 +52,7 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         ffi::SET_VECTOR_ELT(list, 1, kind_strsxp);
 
         // Set list element 2: call SEXP
-        let call_sexp = call.unwrap_or(ffi::R_NilValue);
+        let call_sexp = call.unwrap_or(SEXP::null());
         ffi::SET_VECTOR_ELT(list, 2, call_sexp);
 
         // Set names: c("error", "kind", "call")

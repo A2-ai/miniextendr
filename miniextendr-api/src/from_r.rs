@@ -1317,7 +1317,7 @@ macro_rules! impl_vec_option_try_from_sexp_list {
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
                     let elem = unsafe { VECTOR_ELT(sexp, i as $crate::ffi::R_xlen_t) };
-                    if elem == unsafe { $crate::ffi::R_NilValue } {
+                    if elem == unsafe { $crate::ffi::SEXP::null() } {
                         result.push(None);
                     } else {
                         result.push(Some(<$t as $crate::from_r::TryFromSexp>::try_from_sexp(
@@ -1347,7 +1347,7 @@ macro_rules! impl_vec_option_try_from_sexp_list {
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
                     let elem = unsafe { VECTOR_ELT_unchecked(sexp, i as $crate::ffi::R_xlen_t) };
-                    if elem == unsafe { $crate::ffi::R_NilValue } {
+                    if elem == unsafe { $crate::ffi::SEXP::null() } {
                         result.push(None);
                     } else {
                         result.push(Some(unsafe {

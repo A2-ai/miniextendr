@@ -26,7 +26,7 @@
 //! ```
 
 use crate::ffi::{
-    self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_NilValue, R_tryEvalSilent, Rf_install, Rf_lcons,
+    self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_lcons,
     Rf_protect, Rf_unprotect, SET_TAG, SEXP,
 };
 use std::ffi::{CStr, CString};
@@ -270,7 +270,7 @@ impl RCall {
             // We protect intermediate results as we go.
             let mut n_protect: i32 = 0;
 
-            let mut tail = R_NilValue;
+            let mut tail = SEXP::null();
             for (name, value) in self.args.iter().rev() {
                 tail = ffi::Rf_cons(*value, tail);
                 Rf_protect(tail);

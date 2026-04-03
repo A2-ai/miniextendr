@@ -26,7 +26,7 @@
 //! }
 //! ```
 
-use crate::ffi::{R_NilValue, SEXP};
+use crate::ffi::SEXP;
 use crate::from_r::TryFromSexp;
 use crate::list::{List, ListFromSexpError};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
@@ -68,7 +68,7 @@ impl Dots {
     pub fn empty() -> Self {
         // SAFETY: R_NilValue is always valid and represents empty dots
         Dots {
-            inner: unsafe { R_NilValue },
+            inner: SEXP::null(),
         }
     }
 
@@ -184,6 +184,6 @@ mod tests {
     #[test]
     fn dots_empty_creates_nil() {
         let dots = Dots::empty();
-        assert_eq!(dots.inner, unsafe { R_NilValue });
+        assert_eq!(dots.inner, SEXP::null());
     }
 }

@@ -633,7 +633,7 @@ impl IntoR for Option<JsonValue> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(value) => json_value_to_sexp(&value),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -687,7 +687,7 @@ impl IntoR for Vec<Option<JsonValue>> {
         for (i, value) in self.iter().enumerate() {
             let elem = match value {
                 Some(v) => json_value_to_sexp(v),
-                None => unsafe { crate::ffi::R_NilValue },
+                None => crate::ffi::SEXP::null(),
             };
             unsafe {
                 SET_VECTOR_ELT(
@@ -731,7 +731,7 @@ fn json_discriminant(v: &JsonValue) -> u8 {
 
 fn json_value_to_sexp(value: &JsonValue) -> SEXP {
     match value {
-        JsonValue::Null => unsafe { crate::ffi::R_NilValue },
+        JsonValue::Null => crate::ffi::SEXP::null(),
         JsonValue::Bool(b) => {
             let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, 1) };
             unsafe { SET_LOGICAL_ELT(sexp, 0, if *b { 1 } else { 0 }) };

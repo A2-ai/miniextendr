@@ -41,7 +41,7 @@
 //! detects stale keys. Single free list for VECSXP slot reuse.
 
 use crate::ffi::{
-    R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
+    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
     Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
 };
 use std::marker::PhantomData;
@@ -181,7 +181,7 @@ impl ProtectPool {
             return;
         };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            unsafe { SET_VECTOR_ELT(self.backing, r_slot, R_NilValue) };
+            unsafe { SET_VECTOR_ELT(self.backing, r_slot, SEXP::null()) };
             self.generations[slot] = self.generations[slot].wrapping_add(1);
             self.free_slots.push(slot);
             self.len -= 1;

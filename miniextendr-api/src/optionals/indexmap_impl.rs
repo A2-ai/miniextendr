@@ -82,13 +82,13 @@ where
         // Get names attribute (may be NULL if no names)
         let names_sexp = sexp.get_names();
         // Only use names if present and length matches the list length
-        let has_names = names_sexp != unsafe { R_NilValue } && names_sexp.len() == len;
+        let has_names = names_sexp != SEXP::null() && names_sexp.len() == len;
 
         for i in 0..len {
             // Get name for this element
             let name = if has_names {
                 let name_charsxp = unsafe { STRING_ELT(names_sexp, i as R_xlen_t) };
-                if name_charsxp == unsafe { R_NaString } || name_charsxp == unsafe { R_NilValue } {
+                if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::null() {
                     // NA or missing name -> generate auto name
                     format!("V{}", i + 1)
                 } else {

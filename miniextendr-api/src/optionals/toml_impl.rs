@@ -233,7 +233,7 @@ impl IntoR for Option<TomlValue> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(value) => toml_value_to_sexp(&value),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }
@@ -287,7 +287,7 @@ impl IntoR for Vec<Option<TomlValue>> {
         for (i, value) in self.iter().enumerate() {
             let elem = match value {
                 Some(v) => toml_value_to_sexp(v),
-                None => unsafe { crate::ffi::R_NilValue },
+                None => crate::ffi::SEXP::null(),
             };
             unsafe {
                 SET_VECTOR_ELT(

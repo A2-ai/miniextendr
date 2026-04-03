@@ -591,7 +591,7 @@ where
             Some(&v) => v
                 .try_into_sexp()
                 .map_err(|e| crate::into_r_error::IntoRError::Inner(e.to_string())),
-            None => Ok(unsafe { crate::ffi::R_NilValue }),
+            None => Ok(crate::ffi::SEXP::null()),
         }
     }
     #[inline]
@@ -602,14 +602,14 @@ where
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(&v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(&v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::null(),
         }
     }
 }

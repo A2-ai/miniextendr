@@ -164,7 +164,7 @@ macro_rules! __impl_altrep_base {
 ///
 /// The `unserialize` implementation reconstructs the backing Rust value via
 /// [`AltrepSerialize::unserialize`] and then creates a fresh ALTREP instance via
-/// `R_new_altrep(class, data1, R_NilValue)` where `data1` is an `ExternalPtr<$ty>`.
+/// `R_new_altrep(class, data1, SEXP::null())` where `data1` is an `ExternalPtr<$ty>`.
 ///
 /// This matches the proc-macro-generated `IntoR::into_sexp` behavior (data is stored in `data1`,
 /// and `data2` is `R_NilValue`).
@@ -214,13 +214,13 @@ macro_rules! __impl_altrep_base_with_serialize {
                 unsafe {
                     use $crate::externalptr::ExternalPtr;
                     use $crate::ffi::altrep::{R_altrep_class_t, R_new_altrep};
-                    use $crate::ffi::{R_NilValue, Rf_protect_unchecked, Rf_unprotect_unchecked};
+                    use $crate::ffi::{SEXP, Rf_protect_unchecked, Rf_unprotect_unchecked};
 
                     let ext_ptr = ExternalPtr::new_unchecked(data);
                     let data1 = ext_ptr.as_sexp();
                     // Protect across the allocation in R_new_altrep.
                     Rf_protect_unchecked(data1);
-                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, R_NilValue);
+                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, SEXP::null());
                     Rf_unprotect_unchecked(1);
                     out
                 }
@@ -940,7 +940,7 @@ macro_rules! impl_altlist_from_data {
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| <$ty as $crate::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                    .unwrap_or(unsafe { $crate::ffi::R_NilValue })
+                    .unwrap_or(unsafe { $crate::ffi::SEXP::null() })
             }
         }
 
