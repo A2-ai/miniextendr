@@ -346,7 +346,7 @@ impl TypedList {
                 let name_cstr = unsafe { CStr::from_ptr(name_ptr) };
                 if let Ok(s) = name_cstr.to_str() {
                     if s == name {
-                        return Ok(unsafe { ffi::VECTOR_ELT(self.inner.as_sexp(), i) });
+                        return Ok(unsafe { self.inner.as_sexp().vector_elt(i) });
                     }
                 }
             }
@@ -424,7 +424,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
                 }
             }
             Some(&idx) => {
-                let elem = unsafe { ffi::VECTOR_ELT(list.as_sexp(), idx) };
+                let elem = unsafe { list.as_sexp().vector_elt(idx) };
                 validate_element(elem, entry)?;
             }
         }

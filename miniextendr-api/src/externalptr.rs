@@ -110,8 +110,7 @@ use crate::ffi::{
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
     R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
     Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
-    Rf_unprotect_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
-    VECTOR_ELT,
+    Rf_unprotect_unchecked, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
 };
 
 /// A wrapper around a raw pointer that implements [`Send`].
@@ -418,7 +417,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
-        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
+        unsafe { prot.set_vector_elt(PROT_TYPE_ID_INDEX, type_id_sym) };
 
         let sexp = unsafe { R_MakeExternalPtr(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };
@@ -747,7 +746,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return SEXP::null();
             }
-            VECTOR_ELT(prot, PROT_USER_INDEX)
+            prot.vector_elt(PROT_USER_INDEX)
         }
     }
 
@@ -802,7 +801,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 );
                 return false;
             }
-            SET_VECTOR_ELT(prot, PROT_USER_INDEX, user_prot);
+            prot.set_vector_elt(PROT_USER_INDEX, user_prot);
             true
         }
     }
@@ -957,7 +956,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
                         && prot.type_of() == SEXPTYPE::VECSXP
                         && prot.len() >= PROT_VEC_LEN as usize
                     {
-                        let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+                        let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
                         if stored_sym.type_of() == SEXPTYPE::SYMSXP {
                             symbol_name(stored_sym)
                         } else {
@@ -1030,7 +1029,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return None;
             }
-            let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+            let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
             if stored_sym.type_of() != SEXPTYPE::SYMSXP {
                 return None;
             }

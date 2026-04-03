@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::ffi::{self, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -76,7 +76,7 @@ impl NamedList {
     {
         let &idx = self.index.get(name)?;
         let idx_isize: isize = idx.try_into().ok()?;
-        let elem = unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx_isize) };
+        let elem = unsafe { self.list.as_sexp().vector_elt(idx_isize) };
         T::try_from_sexp(elem).ok()
     }
 
@@ -85,7 +85,7 @@ impl NamedList {
     pub fn get_raw(&self, name: &str) -> Option<SEXP> {
         let &idx = self.index.get(name)?;
         let idx_isize: isize = idx.try_into().ok()?;
-        Some(unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx_isize) })
+        Some(unsafe { self.list.as_sexp().vector_elt(idx_isize) })
     }
 
     /// Get element at 0-based index and convert to type `T`.

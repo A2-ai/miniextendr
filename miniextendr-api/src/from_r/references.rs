@@ -178,7 +178,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     let value: &'static $t = TryFromSexp::try_from_sexp(elem)?;
                     out.push(value);
                 }
@@ -204,7 +204,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                     } else {
@@ -235,7 +235,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
                     let ptr = std::ptr::from_mut(value);
                     if ptrs.iter().any(|&p| p == ptr) {
@@ -270,7 +270,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                         continue;
@@ -308,7 +308,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     let slice: &'static [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                     out.push(slice);
@@ -335,7 +335,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut out = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                     } else {
@@ -367,7 +367,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     let slice: &'static mut [$t] =
                         TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
                     if !slice.is_empty() {
@@ -405,7 +405,7 @@ macro_rules! impl_ref_conversions_for {
                 let mut ptrs: Vec<*mut $t> = Vec::new();
 
                 for i in 0..len {
-                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
                     if elem.type_of() == SEXPTYPE::NILSXP {
                         out.push(None);
                         continue;

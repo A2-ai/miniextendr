@@ -58,7 +58,7 @@ fn map_to_named_list<V: IntoR>(
         for (i, (key, value)) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             // Set list element
-            crate::ffi::SET_VECTOR_ELT(list, idx, value.into_sexp());
+            list.set_vector_elt(idx, value.into_sexp());
 
             // Set name
             let charsxp = str_to_charsxp(&key);

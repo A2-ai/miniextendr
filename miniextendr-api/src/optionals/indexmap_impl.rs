@@ -110,7 +110,7 @@ where
             };
 
             // Get and convert element
-            let elem_sexp = unsafe { VECTOR_ELT(sexp, i as R_xlen_t) };
+            let elem_sexp = unsafe { sexp.vector_elt(i as R_xlen_t) };
             let value = T::try_from_sexp(elem_sexp).map_err(|e| {
                 SexpError::InvalidValue(format!("failed to convert element '{}': {}", name, e))
             })?;
@@ -143,7 +143,7 @@ where
 
             for (i, (key, value)) in self.into_iter().enumerate() {
                 // Set list element
-                SET_VECTOR_ELT(list, i as R_xlen_t, value.into_sexp());
+                list.set_vector_elt(i as R_xlen_t, value.into_sexp());
 
                 // Set name
                 let charsxp = crate::altrep_impl::checked_mkchar(&key);

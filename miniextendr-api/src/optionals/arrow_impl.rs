@@ -762,7 +762,7 @@ impl TryFromSexp for RecordBatch {
         let mut columns: Vec<ArrayRef> = Vec::with_capacity(ncol);
 
         for (i, name) in names.iter().enumerate() {
-            let col_sexp = unsafe { ffi::VECTOR_ELT(sexp, i as R_xlen_t) };
+            let col_sexp = unsafe { sexp.vector_elt(i as R_xlen_t) };
             let (field, array) = sexp_column_to_arrow(col_sexp, name)?;
             fields.push(field);
             columns.push(array);
@@ -1034,7 +1034,7 @@ impl IntoR for RecordBatch {
 
             for (i, (col, field)) in self.columns().iter().zip(schema.fields()).enumerate() {
                 let col_sexp = arrow_array_to_sexp(col);
-                ffi::SET_VECTOR_ELT(list, i as R_xlen_t, col_sexp);
+                list.set_vector_elt(i as R_xlen_t, col_sexp);
 
                 let name = field.name();
                 let charsxp = ffi::Rf_mkCharLenCE(

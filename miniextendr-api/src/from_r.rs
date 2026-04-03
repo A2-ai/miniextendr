@@ -823,7 +823,7 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::VECTOR_ELT;
+        
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::VECSXP {
@@ -838,7 +838,7 @@ where
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
             let inner: Vec<T> = Vec::<T>::try_from_sexp(elem).map_err(Into::into)?;
             result.push(inner);
         }
@@ -847,7 +847,7 @@ where
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::VECTOR_ELT;
+        
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::VECSXP {
@@ -862,7 +862,7 @@ where
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
             let inner: Vec<T> =
                 unsafe { Vec::<T>::try_from_sexp_unchecked(elem).map_err(Into::into)? };
             result.push(inner);
@@ -1256,7 +1256,7 @@ macro_rules! impl_vec_try_from_sexp_list {
                 let len = sexp.len();
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
-                    let elem = unsafe { VECTOR_ELT(sexp, i as $crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as $crate::ffi::R_xlen_t) };
                     result.push(<$t as $crate::from_r::TryFromSexp>::try_from_sexp(elem)?);
                 }
                 Ok(result)
@@ -1316,7 +1316,7 @@ macro_rules! impl_vec_option_try_from_sexp_list {
                 let len = sexp.len();
                 let mut result = Vec::with_capacity(len);
                 for i in 0..len {
-                    let elem = unsafe { VECTOR_ELT(sexp, i as $crate::ffi::R_xlen_t) };
+                    let elem = unsafe { sexp.vector_elt(i as $crate::ffi::R_xlen_t) };
                     if elem == unsafe { $crate::ffi::SEXP::null() } {
                         result.push(None);
                     } else {

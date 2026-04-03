@@ -256,10 +256,8 @@ impl IntoR for Vec<TomlValue> {
         };
         for (i, value) in self.iter().enumerate() {
             unsafe {
-                SET_VECTOR_ELT(
-                    sexp.get(),
-                    isize::try_from(i).expect("index overflow"),
-                    toml_value_to_sexp(value),
+                
+                    sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), toml_value_to_sexp(value),
                 )
             };
         }
@@ -290,10 +288,8 @@ impl IntoR for Vec<Option<TomlValue>> {
                 None => crate::ffi::SEXP::null(),
             };
             unsafe {
-                SET_VECTOR_ELT(
-                    sexp.get(),
-                    isize::try_from(i).expect("index overflow"),
-                    elem,
+                
+                    sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), elem,
                 )
             };
         }
@@ -505,10 +501,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
     };
     for (i, v) in arr.iter().enumerate() {
         unsafe {
-            SET_VECTOR_ELT(
-                sexp.get(),
-                isize::try_from(i).expect("index overflow"),
-                toml_value_to_sexp(v),
+            
+                sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), toml_value_to_sexp(v),
             )
         };
     }
@@ -540,10 +534,8 @@ fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
                 isize::try_from(i).expect("index overflow"),
                 charsxp,
             );
-            SET_VECTOR_ELT(
-                sexp.get(),
-                isize::try_from(i).expect("index overflow"),
-                toml_value_to_sexp(value),
+            
+                sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), toml_value_to_sexp(value),
             );
         }
     }

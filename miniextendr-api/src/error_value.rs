@@ -41,17 +41,17 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         let msg_cstr = std::ffi::CString::new(message)
             .unwrap_or_else(|_| std::ffi::CString::new("<invalid error message>").unwrap());
         let msg_charsxp = ffi::Rf_mkCharCE(msg_cstr.as_ptr(), ffi::CE_UTF8);
-        ffi::SET_VECTOR_ELT(list, 0, SEXP::scalar_string(msg_charsxp));
+        list.set_vector_elt(0, SEXP::scalar_string(msg_charsxp));
 
         // Set list element 1: kind string
         let kind_cstr = std::ffi::CString::new(kind)
             .unwrap_or_else(|_| std::ffi::CString::new("other_rust_error").unwrap());
         let kind_charsxp = ffi::Rf_mkCharCE(kind_cstr.as_ptr(), ffi::CE_UTF8);
-        ffi::SET_VECTOR_ELT(list, 1, SEXP::scalar_string(kind_charsxp));
+        list.set_vector_elt(1, SEXP::scalar_string(kind_charsxp));
 
         // Set list element 2: call SEXP
         let call_sexp = call.unwrap_or(SEXP::null());
-        ffi::SET_VECTOR_ELT(list, 2, call_sexp);
+        list.set_vector_elt(2, call_sexp);
 
         // Set names: c("error", "kind", "call")
         let names = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 3);

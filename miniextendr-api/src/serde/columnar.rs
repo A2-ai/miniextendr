@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use super::error::RSerdeError;
 use crate::altrep_traits::NA_REAL;
 use crate::ffi::{
-    Rf_allocVector, Rf_protect, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
+    Rf_allocVector, Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
     SexpExt,
 };
 use serde::ser::{self, Serialize};
@@ -234,7 +234,7 @@ impl ColumnarDataFrame {
                 if i == drop_idx {
                     continue;
                 }
-                SET_VECTOR_ELT(new_list, j, crate::ffi::VECTOR_ELT(self.sexp, i));
+                new_list.set_vector_elt(j, self.sexp.vector_elt(i));
                 SET_STRING_ELT(new_names, j, crate::ffi::STRING_ELT(names_sexp, i));
                 j += 1;
             }
@@ -270,7 +270,7 @@ impl ColumnarDataFrame {
 
             for (j, &src_idx) in indices.iter().enumerate() {
                 let j_r: isize = j.try_into().expect("index overflow");
-                SET_VECTOR_ELT(new_list, j_r, crate::ffi::VECTOR_ELT(self.sexp, src_idx));
+                new_list.set_vector_elt(j_r, self.sexp.vector_elt(src_idx));
                 SET_STRING_ELT(new_names, j_r, crate::ffi::STRING_ELT(names_sexp, src_idx));
             }
 
@@ -1302,7 +1302,7 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
             let idx: isize = i.try_into().expect("column index exceeds isize::MAX");
             let col_sexp = column_to_sexp(col, nrow);
             Rf_protect(col_sexp);
-            SET_VECTOR_ELT(list, idx, col_sexp);
+            list.set_vector_elt(idx, col_sexp);
             Rf_unprotect(1); // col_sexp is now held by list
         }
 
@@ -1378,9 +1378,9 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(elem) = val {
-                        SET_VECTOR_ELT(sexp, idx, *elem);
+                        sexp.set_vector_elt(idx, *elem);
                     } else {
-                        SET_VECTOR_ELT(sexp, idx, SEXP::null());
+                        sexp.set_vector_elt(idx, SEXP::null());
                     }
                 }
                 sexp

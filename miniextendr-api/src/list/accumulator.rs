@@ -108,7 +108,7 @@ impl<'a> ListAccumulator<'a> {
         // Insert into list (list and temp are both protected)
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
-            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
+            self.list.get().set_vector_elt(len_isize, sexp);
         }
 
         self.names.push(None);
@@ -131,7 +131,7 @@ impl<'a> ListAccumulator<'a> {
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
             self.temp.set(sexp);
-            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
+            self.list.get().set_vector_elt(len_isize, sexp);
         }
 
         self.names.push(None);
@@ -153,7 +153,7 @@ impl<'a> ListAccumulator<'a> {
 
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
-            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
+            self.list.get().set_vector_elt(len_isize, sexp);
         }
 
         self.names.push(Some(name.to_string()));
@@ -219,8 +219,8 @@ impl<'a> ListAccumulator<'a> {
         // Copy existing elements
         for i in 0..self.len {
             let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-            let elem = unsafe { ffi::VECTOR_ELT(old_list, idx) };
-            unsafe { ffi::SET_VECTOR_ELT(new_list, idx, elem) };
+            let elem = unsafe { old_list.vector_elt(idx) };
+            unsafe { new_list.set_vector_elt(idx, elem) };
         }
 
         // Replace list slot with new list
@@ -372,7 +372,7 @@ impl ListMut {
         if idx < 0 || idx >= self.len() {
             return None;
         }
-        Some(unsafe { ffi::VECTOR_ELT(self.0, idx) })
+        Some(unsafe { self.0.vector_elt(idx) })
     }
 
     /// Set raw SEXP element at 0-based index.
@@ -381,7 +381,7 @@ impl ListMut {
         if idx < 0 || idx >= self.len() {
             return Err(SexpError::InvalidValue("index out of bounds".into()));
         }
-        unsafe { ffi::SET_VECTOR_ELT(self.0, idx, value) };
+        unsafe { self.0.set_vector_elt(idx, value) };
         Ok(())
     }
 }

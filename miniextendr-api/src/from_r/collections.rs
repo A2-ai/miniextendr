@@ -70,7 +70,7 @@ where
     M: Extend<(String, V)>,
     F: FnOnce(usize) -> M,
 {
-    use crate::ffi::{Rf_translateCharUTF8, STRING_ELT, VECTOR_ELT};
+    use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
 
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
@@ -117,7 +117,7 @@ where
             return Err(SexpError::DuplicateName(key));
         }
 
-        let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+        let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
         let value = V::try_from_sexp(elem).map_err(|e| e.into())?;
         map.extend(std::iter::once((key, value)));
     }
@@ -157,7 +157,7 @@ where
     M: TryFromSexp,
     M::Error: Into<SexpError>,
 {
-    use crate::ffi::VECTOR_ELT;
+    
 
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
@@ -172,7 +172,7 @@ where
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+        let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
         let map = M::try_from_sexp(elem).map_err(Into::into)?;
         result.push(map);
     }

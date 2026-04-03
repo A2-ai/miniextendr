@@ -87,7 +87,7 @@ impl List {
         if idx < 0 || idx >= self.len() {
             return None;
         }
-        Some(unsafe { ffi::VECTOR_ELT(self.0, idx) })
+        Some(unsafe { self.0.vector_elt(idx) })
     }
 
     /// Get element at 0-based index and convert to type `T`.
@@ -122,7 +122,7 @@ impl List {
             let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
             if let Ok(s) = name_cstr.to_str() {
                 if s == name {
-                    let elem = unsafe { ffi::VECTOR_ELT(self.0, i) };
+                    let elem = unsafe { self.0.vector_elt(i) };
                     return T::try_from_sexp(elem).ok();
                 }
             }
@@ -405,7 +405,7 @@ impl List {
         // SAFETY: caller guarantees R main thread and valid SEXPs
         unsafe {
             let _guard = OwnedProtect::new(child);
-            ffi::SET_VECTOR_ELT(self.0, idx, child);
+            self.0.set_vector_elt(idx, child);
         }
     }
 
@@ -424,7 +424,7 @@ impl List {
     pub unsafe fn set_elt_unchecked(self, idx: isize, child: SEXP) {
         debug_assert!(idx >= 0 && idx < self.len(), "index out of bounds");
         // SAFETY: caller guarantees child is protected and valid
-        unsafe { ffi::SET_VECTOR_ELT(self.0, idx, child) };
+        unsafe { self.0.set_vector_elt(idx, child) };
     }
 
     /// Set an element using a callback that produces the child.
@@ -459,7 +459,7 @@ impl List {
         // SAFETY: caller guarantees R main thread
         unsafe {
             let child = OwnedProtect::new(f());
-            ffi::SET_VECTOR_ELT(self.0, idx, child.get());
+            self.0.set_vector_elt(idx, child.get());
         }
     }
     // endregion
@@ -542,7 +542,7 @@ impl<'a> ListBuilder<'a> {
         // SAFETY: caller guarantees valid and protected child
         unsafe {
             debug_assert!(idx >= 0 && idx < ffi::Rf_xlength(self.list));
-            ffi::SET_VECTOR_ELT(self.list, idx, child);
+            self.list.set_vector_elt(idx, child);
         }
     }
 
@@ -559,7 +559,7 @@ impl<'a> ListBuilder<'a> {
         unsafe {
             debug_assert!(idx >= 0 && idx < ffi::Rf_xlength(self.list));
             let _guard = OwnedProtect::new(child);
-            ffi::SET_VECTOR_ELT(self.list, idx, child);
+            self.list.set_vector_elt(idx, child);
         }
     }
 
@@ -629,7 +629,7 @@ impl<T: IntoR> IntoList for Vec<T> {
             let list = ffi::Rf_allocVector(VECSXP, n);
             for (i, val) in converted.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_VECTOR_ELT(list, idx, val);
+                list.set_vector_elt(idx, val);
             }
             List(list)
         }
@@ -869,7 +869,7 @@ impl List {
             let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
             for (i, val) in values.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_VECTOR_ELT(list.get(), idx, val);
+                list.get().set_vector_elt(idx, val);
             }
             List(list.get())
         }
@@ -969,7 +969,7 @@ impl List {
             let names = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, (name, val)) in pairs.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_VECTOR_ELT(list.get(), idx, val);
+                list.get().set_vector_elt(idx, val);
 
                 let s = name.as_ref();
                 // SEXP::charsxp allocates - list and names must be protected!

@@ -26,6 +26,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+use crate::ffi::SexpExt;
 use crate::gc_protect::OwnedProtect;
 
 /// Trait for converting Rust types to R SEXP values.
@@ -1277,7 +1278,7 @@ where
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1323,7 +1324,7 @@ impl IntoR for Vec<Vec<String>> {
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1697,10 +1698,8 @@ macro_rules! impl_tuple_into_r {
                     crate::ffi::Rf_protect(list);
 
                     $(
-                        crate::ffi::SET_VECTOR_ELT(
-                            list,
-                            $idx as crate::ffi::R_xlen_t,
-                            self.$idx.into_sexp()
+                        
+                            list.set_vector_elt($idx as crate::ffi::R_xlen_t, self.$idx.into_sexp()
                         );
                     )+
 
@@ -1864,7 +1863,7 @@ where
             for (i, boxed_slice) in self.into_iter().enumerate() {
                 let vec: Vec<T> = boxed_slice.into_vec();
                 let inner_sexp = vec.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1892,7 +1891,7 @@ impl IntoR for Vec<Box<[String]>> {
             for (i, boxed_slice) in self.into_iter().enumerate() {
                 let vec: Vec<String> = boxed_slice.into_vec();
                 let inner_sexp = vec.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1926,7 +1925,7 @@ where
             for (i, array) in self.into_iter().enumerate() {
                 let vec: Vec<T> = array.into();
                 let inner_sexp = vec.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1944,7 +1943,7 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::ffi::SEXP {
             n as crate::ffi::R_xlen_t,
         ));
         for (i, item) in items.into_iter().enumerate() {
-            crate::ffi::SET_VECTOR_ELT(*list, i as crate::ffi::R_xlen_t, item.into_sexp());
+            list.get().set_vector_elt(i as crate::ffi::R_xlen_t, item.into_sexp());
         }
         *list
     }
@@ -2050,7 +2049,7 @@ fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::ffi::SEXP {
         crate::ffi::Rf_protect(list);
 
         for (i, map) in vec.into_iter().enumerate() {
-            crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, map.into_sexp());
+            list.set_vector_elt(i as crate::ffi::R_xlen_t, map.into_sexp());
         }
 
         crate::ffi::Rf_unprotect(1);

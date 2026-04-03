@@ -128,7 +128,7 @@
 //! ```ignore
 //! // WRONG - child unprotected between allocation and SET_VECTOR_ELT
 //! let child = Rf_allocVector(REALSXP, 10);  // unprotected!
-//! SET_VECTOR_ELT(list, 0, child);           // GC could occur before this!
+//! list.set_vector_elt(0, child);           // GC could occur before this!
 //!
 //! // CORRECT - use safe insertion methods
 //! let list = List::from_raw(scope.alloc_vecsxp(n).into_raw());

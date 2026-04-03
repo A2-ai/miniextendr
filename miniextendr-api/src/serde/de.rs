@@ -6,7 +6,7 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{
-    R_NaString, Rf_xlength, SEXP, SEXPTYPE, SexpExt, STRING_ELT, VECTOR_ELT,
+    R_NaString, Rf_xlength, SEXP, SEXPTYPE, SexpExt, STRING_ELT,
 };
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -593,7 +593,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 let names = self.sexp.get_names();
                 let name_charsxp = unsafe { STRING_ELT(names, 0) };
                 let variant = unsafe { charsxp_to_str(name_charsxp) };
-                let value = unsafe { VECTOR_ELT(self.sexp, 0) };
+                let value = unsafe { self.sexp.vector_elt(0) };
 
                 visitor.visit_enum(DataVariantAccess {
                     variant: variant.to_string(),
@@ -829,7 +829,7 @@ impl<'de> SeqAccess<'de> for ListSeqAccess {
             return Ok(None);
         }
 
-        let elem = unsafe { VECTOR_ELT(self.sexp, self.index as isize) };
+        let elem = unsafe { self.sexp.vector_elt(self.index as isize) };
         self.index += 1;
         seed.deserialize(RDeserializer::from_sexp(elem)).map(Some)
     }
@@ -900,7 +900,7 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
         &mut self,
         seed: V,
     ) -> Result<V::Value, Self::Error> {
-        let elem = unsafe { VECTOR_ELT(self.sexp, self.index as isize) };
+        let elem = unsafe { self.sexp.vector_elt(self.index as isize) };
         self.index += 1;
         seed.deserialize(RDeserializer::from_sexp(elem))
     }

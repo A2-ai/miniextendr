@@ -51,8 +51,7 @@
 //! but suitable for local, non-hostile environments.
 
 use crate::ffi::{
-    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
+    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -404,7 +403,7 @@ impl<M: MapStorage> ArenaState<M> {
                 entry.count += 1;
             } else {
                 let index = self.allocate_slot();
-                SET_VECTOR_ELT(self.backing, index as R_xlen_t, x);
+                self.backing.set_vector_elt(index as R_xlen_t, x);
                 self.map_mut().insert(key, Entry { count: 1, index });
                 self.len += 1;
             }
@@ -432,7 +431,7 @@ impl<M: MapStorage> ArenaState<M> {
             match self.map_mut().decrement_and_maybe_remove(&key) {
                 Some((true, index)) => {
                     // Entry was removed (count reached 0)
-                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, SEXP::null());
+                    self.backing.set_vector_elt(index as R_xlen_t, SEXP::null());
                     self.free_list.push(index);
                     self.len -= 1;
                 }
@@ -464,7 +463,7 @@ impl<M: MapStorage> ArenaState<M> {
             match self.map_mut().decrement_and_maybe_remove(&key) {
                 Some((true, index)) => {
                     // Entry was removed (count reached 0)
-                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, SEXP::null());
+                    self.backing.set_vector_elt(index as R_xlen_t, SEXP::null());
                     self.free_list.push(index);
                     self.len -= 1;
                     true
@@ -532,8 +531,8 @@ impl<M: MapStorage> ArenaState<M> {
 
             for i in 0..old_capacity {
                 let r_i = Self::capacity_as_r_xlen(i);
-                let elt = VECTOR_ELT(old_backing, r_i);
-                SET_VECTOR_ELT(new_backing, r_i, elt);
+                let elt = old_backing.vector_elt(r_i);
+                new_backing.set_vector_elt(r_i, elt);
             }
 
             R_ReleaseObject(old_backing);
@@ -552,7 +551,7 @@ impl<M: MapStorage> ArenaState<M> {
     pub unsafe fn clear(&mut self) {
         unsafe {
             self.map().for_each_entry(|entry| {
-                SET_VECTOR_ELT(self.backing, entry.index as R_xlen_t, SEXP::null());
+                self.backing.set_vector_elt(entry.index as R_xlen_t, SEXP::null());
             });
         }
         self.map_mut().clear();
