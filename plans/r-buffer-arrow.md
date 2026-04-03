@@ -49,7 +49,7 @@ If verification passes, return the original SEXP. No copy.
 - **Sliced buffers**: `array.slice()` shifts the data pointer. Recovery fails, falls through to copy.
 - **ALTREP vectors**: data isn't at fixed offset. Recovery fails (caught by DATAPTR_RO round-trip), copies.
 
-## Future work
+## Also done
 
-- `alloc_r_backed_buffer<T>(len)`: allocate Arrow buffers as R SEXPs for the Rust→Arrow→R path
-- Use `r_memory` in `Cow<[T]>` IntoR for automatic recovery of R-backed slices
+- `alloc_r_backed_buffer<T>(len)`: allocate Arrow buffers as R SEXPs for Rust→Arrow→R zero-copy
+- `Cow<'_, [T]>` IntoR: automatic SEXP recovery for borrowed slices from R
