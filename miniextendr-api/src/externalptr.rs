@@ -838,6 +838,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - `sexp` must be a valid EXTPTRSXP created by this library
     /// - The caller must ensure no other ExternalPtr owns this SEXP
     pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "wrap_sexp: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return None;
@@ -878,6 +884,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
         use crate::ffi::R_ExternalPtrAddr_unchecked;
 
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "wrap_sexp_unchecked: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr_unchecked(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return None;
@@ -911,6 +923,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// [`TryFromSexp`]: crate::TryFromSexp
     pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "wrap_sexp_with_error: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return Err(TypeMismatchError::NullPointer);
@@ -966,6 +984,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - The caller must ensure exclusive ownership
     #[inline]
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "from_sexp_unchecked: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
 
@@ -1465,7 +1489,5 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 }
 // endregion
 
-
 mod altrep_helpers;
 pub use altrep_helpers::*;
-

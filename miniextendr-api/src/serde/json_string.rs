@@ -36,15 +36,13 @@ impl<T: serde::Serialize> IntoR for AsJson<T> {
 
     #[inline]
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        let json =
-            serde_json::to_string(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
+        let json = serde_json::to_string(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
         Ok(json.into_sexp())
     }
 
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        let json =
-            serde_json::to_string(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
+        let json = serde_json::to_string(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
         Ok(unsafe { json.into_sexp_unchecked() })
     }
 }
@@ -62,15 +60,15 @@ impl<T: serde::Serialize> IntoR for AsJsonPretty<T> {
 
     #[inline]
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        let json = serde_json::to_string_pretty(&self.0)
-            .map_err(|e| IntoRError::Inner(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
         Ok(json.into_sexp())
     }
 
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        let json = serde_json::to_string_pretty(&self.0)
-            .map_err(|e| IntoRError::Inner(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
         Ok(unsafe { json.into_sexp_unchecked() })
     }
 }

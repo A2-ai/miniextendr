@@ -8,7 +8,10 @@
 //! `Vec<String>`, `Vec<&str>`, `Box<[String]>`.
 
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str, charsxp_to_str_unchecked};
+use crate::from_r::{
+    SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
+    charsxp_to_str_unchecked,
+};
 
 /// Convert R character vector (STRSXP) to Rust &str.
 ///

@@ -103,8 +103,6 @@ pub use either_impl::{Either, Left, Right};
 #[cfg(feature = "ndarray")]
 pub mod ndarray_impl;
 #[cfg(feature = "ndarray")]
-pub use ndarray_impl::{RndMat, RndVec};
-#[cfg(feature = "ndarray")]
 pub use ndarray_impl::{
     // Shared ownership
     ArcArray1,
@@ -153,6 +151,8 @@ pub use ndarray_impl::{
     // Shape builder
     ShapeBuilder,
 };
+#[cfg(feature = "ndarray")]
+pub use ndarray_impl::{RndMat, RndVec};
 // endregion
 
 // region: Nalgebra - Linear algebra

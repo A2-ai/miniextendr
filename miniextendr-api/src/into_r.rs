@@ -201,7 +201,11 @@ macro_rules! impl_scalar_into_r {
 impl_scalar_into_r!(i32, Rf_ScalarInteger, Rf_ScalarInteger_unchecked);
 impl_scalar_into_r!(f64, Rf_ScalarReal, Rf_ScalarReal_unchecked);
 impl_scalar_into_r!(u8, Rf_ScalarRaw, Rf_ScalarRaw_unchecked);
-impl_scalar_into_r!(crate::ffi::Rcomplex, Rf_ScalarComplex, Rf_ScalarComplex_unchecked);
+impl_scalar_into_r!(
+    crate::ffi::Rcomplex,
+    Rf_ScalarComplex,
+    Rf_ScalarComplex_unchecked
+);
 
 impl IntoR for Option<crate::ffi::Rcomplex> {
     type Error = std::convert::Infallible;
@@ -273,10 +277,8 @@ impl_into_r_via_coerce!(u16 => i32);
 impl_into_r_via_coerce!(f32 => f64);
 impl_into_r_via_coerce!(u32 => f64); // all u32 exactly representable in f64
 
-
 mod large_integers;
 pub(crate) use large_integers::{str_to_charsxp, str_to_charsxp_unchecked};
-
 
 // region: Vector conversions
 
@@ -384,8 +386,7 @@ pub(crate) unsafe fn alloc_r_vector_unchecked<T: crate::ffi::RNativeType>(
     n: usize,
 ) -> (crate::ffi::SEXP, &'static mut [T]) {
     unsafe {
-        let sexp =
-            crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
+        let sexp = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
         let slice = crate::from_r::r_slice_mut(T::dataptr_mut(sexp), n);
         (sexp, slice)
     }
@@ -558,14 +559,12 @@ impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
 impl_vec_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 // endregion
 
-
 mod altrep;
 mod collections;
 mod result;
 
 pub use altrep::*;
 pub use result::*;
-
 
 // region: Fixed-size array conversions
 
@@ -1129,11 +1128,11 @@ pub(crate) fn str_iter_to_strsxp<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("string vec length exceeds isize::MAX");
-        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
-            crate::ffi::SEXPTYPE::STRSXP,
-            n,
-        ));
+        let n: crate::ffi::R_xlen_t = iter
+            .len()
+            .try_into()
+            .expect("string vec length exceeds isize::MAX");
+        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n));
         for (i, s) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp(s);
@@ -1148,7 +1147,10 @@ pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("string vec length exceeds isize::MAX");
+        let n: crate::ffi::R_xlen_t = iter
+            .len()
+            .try_into()
+            .expect("string vec length exceeds isize::MAX");
         let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
             crate::ffi::SEXPTYPE::STRSXP,
             n,
@@ -1457,8 +1459,10 @@ macro_rules! impl_vec_option_coerce_into_r {
             }
             fn into_sexp(self) -> crate::ffi::SEXP {
                 // Delegate to the target Option type's impl (coerce inline)
-                let coerced: Vec<Option<$to>> =
-                    self.into_iter().map(|opt| opt.map(|x| <$to>::from(x))).collect();
+                let coerced: Vec<Option<$to>> = self
+                    .into_iter()
+                    .map(|opt| opt.map(|x| <$to>::from(x)))
+                    .collect();
                 coerced.into_sexp()
             }
         }
@@ -1478,8 +1482,7 @@ fn logical_iter_to_lglsxp(n: usize, iter: impl Iterator<Item = i32>) -> crate::f
     unsafe {
         let (sexp, dst) = alloc_r_vector::<crate::ffi::RLogical>(n);
         // RLogical is repr(transparent) over i32, safe to write i32 values.
-        let dst_i32: &mut [i32] =
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
+        let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
         for (slot, val) in dst_i32.iter_mut().zip(iter) {
             *slot = val;
         }
@@ -1494,8 +1497,7 @@ unsafe fn logical_iter_to_lglsxp_unchecked(
 ) -> crate::ffi::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector_unchecked::<crate::ffi::RLogical>(n);
-        let dst_i32: &mut [i32] =
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
+        let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
         for (slot, val) in dst_i32.iter_mut().zip(iter) {
             *slot = val;
         }
@@ -1625,11 +1627,12 @@ impl IntoR for Vec<Option<String>> {
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {
-            let n: crate::ffi::R_xlen_t = self.len().try_into().expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
-                crate::ffi::SEXPTYPE::STRSXP,
-                n,
-            ));
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
+            let sexp =
+                OwnedProtect::new(crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n));
 
             for (i, opt_s) in self.iter().enumerate() {
                 let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
@@ -1646,7 +1649,10 @@ impl IntoR for Vec<Option<String>> {
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         unsafe {
-            let n: crate::ffi::R_xlen_t = self.len().try_into().expect("vec length exceeds isize::MAX");
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
             let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
                 crate::ffi::SEXPTYPE::STRSXP,
                 n,
@@ -1736,7 +1742,6 @@ impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
 impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
 impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
 // endregion
-
 
 // region: ALTREP zero-copy extension trait
 
@@ -1833,7 +1838,6 @@ where
     }
 }
 // endregion
-
 
 // region: Additional collection type conversions for DataFrameRow support
 

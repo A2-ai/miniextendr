@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use crate::ffi::{self, Rboolean, SexpExt, SEXP, SEXPTYPE};
+use crate::ffi::{self, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
@@ -113,7 +113,7 @@ impl DataFrameView {
     /// Returns [`DataFrameError`] if validation fails.
     pub fn from_sexp(sexp: SEXP) -> Result<Self, DataFrameError> {
         // 1. Check it's a list (VECSXP)
-        let stype = unsafe { ffi::TYPEOF(sexp) } as SEXPTYPE;
+        let stype = sexp.type_of();
         if stype != SEXPTYPE::VECSXP {
             return Err(DataFrameError::NotList(format!(
                 "expected VECSXP, got {:?}",
@@ -301,7 +301,7 @@ fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
         return nrow_from_first_column(sexp);
     }
 
-    let rn_type = unsafe { ffi::TYPEOF(row_names) } as SEXPTYPE;
+    let rn_type = row_names.type_of();
     let rn_len = unsafe { ffi::Rf_xlength(row_names) };
 
     // Compact integer form: c(NA_integer_, -n) where n is the row count

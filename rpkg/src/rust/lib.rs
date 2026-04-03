@@ -136,6 +136,8 @@ mod connection_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
+#[cfg(feature = "serde")]
+mod columnar_flatten_tests;
 mod dataframe_examples;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;

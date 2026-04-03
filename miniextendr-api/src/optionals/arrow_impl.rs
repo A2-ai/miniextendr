@@ -38,19 +38,16 @@
 use std::sync::Arc;
 
 pub use arrow_array::{
-    self,
-    types::{
-        Date32Type, Float64Type, Int32Type, TimestampSecondType, UInt8Type,
-    },
-    Array, ArrayRef, BooleanArray, Date32Array, DictionaryArray, Float64Array, Int32Array,
+    self, Array, ArrayRef, BooleanArray, Date32Array, DictionaryArray, Float64Array, Int32Array,
     RecordBatch, StringArray, TimestampSecondArray, UInt8Array,
+    types::{Date32Type, Float64Type, Int32Type, TimestampSecondType, UInt8Type},
 };
 pub use arrow_buffer;
 pub use arrow_schema::{self, DataType, Field, Schema};
 
 use crate::ffi::{
-    self, RNativeType, R_NaString, R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt,
-    R_NamesSymbol, R_ClassSymbol, R_RowNamesSymbol,
+    self, R_ClassSymbol, R_NaString, R_NamesSymbol, R_RowNamesSymbol, R_xlen_t, RNativeType,
+    Rboolean, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -456,14 +453,15 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
     let slice: &[f64] = unsafe { sexp.as_slice() };
 
     // Extract timezone if present
-    let tzone_sexp = unsafe {
-        ffi::Rf_getAttrib(sexp, ffi::Rf_install(c"tzone".as_ptr()))
-    };
-    let tz: Option<Arc<str>> = if tzone_sexp.type_of() == SEXPTYPE::STRSXP && tzone_sexp.len() > 0
-    {
+    let tzone_sexp = unsafe { ffi::Rf_getAttrib(sexp, ffi::Rf_install(c"tzone".as_ptr())) };
+    let tz: Option<Arc<str>> = if tzone_sexp.type_of() == SEXPTYPE::STRSXP && tzone_sexp.len() > 0 {
         let charsxp = unsafe { ffi::STRING_ELT(tzone_sexp, 0) };
         let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
-        if s.is_empty() { None } else { Some(Arc::from(s)) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(Arc::from(s))
+        }
     } else {
         None
     };
@@ -519,15 +517,11 @@ impl IntoR for StringDictionaryArray {
 
             // Create levels character vector
             let n_levels = Array::len(&*values);
-            let levels =
-                scope.alloc_character(n_levels).into_raw();
+            let levels = scope.alloc_character(n_levels).into_raw();
             for i in 0..n_levels {
                 let s = values.value(i);
-                let charsxp = ffi::Rf_mkCharLenCE(
-                    s.as_ptr().cast(),
-                    s.len() as i32,
-                    ffi::cetype_t::CE_UTF8,
-                );
+                let charsxp =
+                    ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::cetype_t::CE_UTF8);
                 ffi::SET_STRING_ELT(levels, i as R_xlen_t, charsxp);
             }
 
@@ -680,11 +674,7 @@ fn sexp_column_to_arrow(col_sexp: SEXP, col_name: &str) -> Result<(Field, ArrayR
             let arr = posixct_to_timestamp(col_sexp)?;
             let nullable = arr.null_count() > 0;
             return Ok((
-                Field::new(
-                    col_name,
-                    arr.data_type().clone(),
-                    nullable,
-                ),
+                Field::new(col_name, arr.data_type().clone(), nullable),
                 Arc::new(arr),
             ));
         }
@@ -726,10 +716,7 @@ fn sexp_column_to_arrow(col_sexp: SEXP, col_name: &str) -> Result<(Field, ArrayR
         }
         SEXPTYPE::RAWSXP => {
             let arr = UInt8Array::try_from_sexp(col_sexp)?;
-            (
-                Field::new(col_name, DataType::UInt8, false),
-                Arc::new(arr),
-            )
+            (Field::new(col_name, DataType::UInt8, false), Arc::new(arr))
         }
         other => {
             return Err(SexpError::InvalidValue(format!(
@@ -779,8 +766,7 @@ impl TryFromSexp for RecordBatch {
         }
 
         let schema = Arc::new(Schema::new(fields));
-        RecordBatch::try_new(schema, columns)
-            .map_err(|e| SexpError::InvalidValue(e.to_string()))
+        RecordBatch::try_new(schema, columns).map_err(|e| SexpError::InvalidValue(e.to_string()))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -831,7 +817,11 @@ impl IntoR for Float64Array {
                 dst.copy_from_slice(self.values().as_ref());
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) { NA_REAL } else { self.value(i) };
+                    *slot = if self.is_null(i) {
+                        NA_REAL
+                    } else {
+                        self.value(i)
+                    };
                 }
             }
             sexp
@@ -853,7 +843,11 @@ impl IntoR for Int32Array {
                 dst.copy_from_slice(self.values().as_ref());
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) { NA_INTEGER } else { self.value(i) };
+                    *slot = if self.is_null(i) {
+                        NA_INTEGER
+                    } else {
+                        self.value(i)
+                    };
                 }
             }
             sexp
@@ -976,12 +970,10 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
         DataType::Boolean => array.as_boolean().clone().into_sexp(),
         DataType::Utf8 => array.as_string::<i32>().clone().into_sexp(),
         DataType::Date32 => array.as_primitive::<Date32Type>().clone().into_sexp(),
-        DataType::Timestamp(arrow_schema::TimeUnit::Second, _) => {
-            array
-                .as_primitive::<TimestampSecondType>()
-                .clone()
-                .into_sexp()
-        }
+        DataType::Timestamp(arrow_schema::TimeUnit::Second, _) => array
+            .as_primitive::<TimestampSecondType>()
+            .clone()
+            .into_sexp(),
         DataType::Dictionary(key_type, _) if key_type.as_ref() == &DataType::Int32 => {
             array
                 .as_any()
@@ -992,8 +984,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
                     // Not a string dictionary, fall through to default
                     let n = array.len();
                     unsafe {
-                        let sexp =
-                            ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
+                        let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
                         let guard = crate::gc_protect::OwnedProtect::new(sexp);
                         for i in 0..n {
                             ffi::SET_STRING_ELT(guard.get(), i as R_xlen_t, R_NaString);
@@ -1038,9 +1029,7 @@ impl IntoR for RecordBatch {
             // Create names vector
             let names = scope.alloc_character(ncol).into_raw();
 
-            for (i, (col, field)) in
-                self.columns().iter().zip(schema.fields()).enumerate()
-            {
+            for (i, (col, field)) in self.columns().iter().zip(schema.fields()).enumerate() {
                 let col_sexp = arrow_array_to_sexp(col);
                 ffi::SET_VECTOR_ELT(list, i as R_xlen_t, col_sexp);
 
@@ -1061,11 +1050,7 @@ impl IntoR for RecordBatch {
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
-                ffi::Rf_mkCharLenCE(
-                    c"data.frame".as_ptr(),
-                    10,
-                    ffi::cetype_t::CE_UTF8,
-                ),
+                ffi::Rf_mkCharLenCE(c"data.frame".as_ptr(), 10, ffi::cetype_t::CE_UTF8),
             );
             ffi::Rf_setAttrib(list, R_ClassSymbol, class_str);
 
@@ -1224,11 +1209,7 @@ impl AltIntegerData for Int32Array {
 
 impl AltRawData for UInt8Array {
     fn elt(&self, i: usize) -> u8 {
-        if self.is_null(i) {
-            0
-        } else {
-            self.value(i)
-        }
+        if self.is_null(i) { 0 } else { self.value(i) }
     }
 
     fn as_slice(&self) -> Option<&[u8]> {

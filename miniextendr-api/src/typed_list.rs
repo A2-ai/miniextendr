@@ -32,7 +32,7 @@
 //! let alpha: Vec<f64> = validated.get("alpha")?;
 //! ```
 
-use crate::ffi::{self, Rboolean, SEXP, SEXPTYPE};
+use crate::ffi::{self, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::list::{List, ListFromSexpError};
 use std::collections::HashSet;
@@ -451,7 +451,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
 
 /// Validate a single element against its type spec.
 fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError> {
-    let actual_type = unsafe { ffi::TYPEOF(elem) };
+    let actual_type = elem.type_of();
     let actual_len = unsafe { ffi::Rf_xlength(elem) };
 
     match &entry.spec {
@@ -689,7 +689,7 @@ pub fn sexptype_name(stype: SEXPTYPE) -> String {
 ///
 /// Includes class attribute if present.
 pub fn actual_type_string(sexp: SEXP) -> String {
-    let stype = unsafe { ffi::TYPEOF(sexp) };
+    let stype = sexp.type_of();
     let base_type = sexptype_name(stype);
 
     // Check if it has a class attribute

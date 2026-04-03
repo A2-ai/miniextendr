@@ -12,7 +12,7 @@ use crate::ffi::SEXP;
 use crate::ffi::{
     R_BlankString, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
     Rf_install, Rf_setAttrib, Rf_type2char, Rf_xlength, SET_STRING_ELT, SEXPTYPE, STRING_ELT,
-    TYPEOF, VECTOR_ELT,
+    SexpExt, VECTOR_ELT,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
@@ -197,7 +197,7 @@ unsafe fn install_symbol(name: &str) -> SEXP {
 ///
 /// Must be called from R's main thread with a valid SEXP.
 unsafe fn get_typeof_name(sexp: SEXP) -> &'static str {
-    let sexptype = unsafe { TYPEOF(sexp) };
+    let sexptype = sexp.type_of();
     let cstr = unsafe { Rf_type2char(sexptype) };
     let cstr = unsafe { std::ffi::CStr::from_ptr(cstr) };
     // SAFETY: R's type names are ASCII strings
@@ -287,7 +287,7 @@ pub fn new_vctr(
     inherit_base_type: Option<bool>,
 ) -> Result<SEXP, VctrsBuildError> {
     // Validate: data must be a vector type
-    let data_type = unsafe { TYPEOF(data) };
+    let data_type = data.type_of();
     if !is_vector_type(data_type) {
         return Err(VctrsBuildError::NotAVector);
     }

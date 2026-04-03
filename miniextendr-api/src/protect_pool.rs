@@ -174,8 +174,12 @@ impl ProtectPool {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn release(&mut self, key: ProtectKey) {
-        let Ok(slot) = usize::try_from(key.slot) else { return };
-        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return;
+        };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else {
+            return;
+        };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
             unsafe { SET_VECTOR_ELT(self.backing, r_slot, R_NilValue) };
             self.generations[slot] = self.generations[slot].wrapping_add(1);
@@ -187,8 +191,12 @@ impl ProtectPool {
     /// Get the SEXP for a key, or `None` if the key is stale.
     #[inline]
     pub fn get(&self, key: ProtectKey) -> Option<SEXP> {
-        let Ok(slot) = usize::try_from(key.slot) else { return None };
-        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return None };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return None;
+        };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else {
+            return None;
+        };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
             Some(unsafe { VECTOR_ELT(self.backing, r_slot) })
         } else {
@@ -208,8 +216,12 @@ impl ProtectPool {
     /// Must be called from the R main thread. `sexp` must be a valid SEXP.
     #[inline]
     pub unsafe fn replace(&mut self, key: ProtectKey, sexp: SEXP) -> bool {
-        let Ok(slot) = usize::try_from(key.slot) else { return false };
-        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return false };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return false;
+        };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else {
+            return false;
+        };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
             unsafe { SET_VECTOR_ELT(self.backing, r_slot, sexp) };
             true
@@ -221,7 +233,9 @@ impl ProtectPool {
     /// Check if a key is currently valid (not stale).
     #[inline]
     pub fn contains_key(&self, key: ProtectKey) -> bool {
-        let Ok(slot) = usize::try_from(key.slot) else { return false };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return false;
+        };
         slot < self.generations.len() && self.generations[slot] == key.generation
     }
 
@@ -301,7 +315,10 @@ mod tests {
         let mut gens: Vec<u32> = vec![0; 4];
         let mut free: Vec<usize> = Vec::new();
 
-        let k1 = ProtectKey { slot: 0, generation: gens[0] };
+        let k1 = ProtectKey {
+            slot: 0,
+            generation: gens[0],
+        };
         assert_eq!(gens[0], k1.generation);
 
         gens[0] = gens[0].wrapping_add(1);

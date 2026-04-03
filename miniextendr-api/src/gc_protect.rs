@@ -165,10 +165,10 @@
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
 use crate::ffi::{
-    R_NewEnv, R_NilValue, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList,
+    R_NewEnv, R_NilValue, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_ScalarComplex,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal, Rf_ScalarString, Rf_allocList,
     Rf_allocMatrix, Rf_allocVector, Rf_coerceVector, Rf_duplicate, Rf_mkCharLenCE, Rf_protect,
-    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal,
-    Rf_ScalarString, Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE,
+    Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE,
 };
 use core::cell::Cell;
 use core::marker::PhantomData;
@@ -1221,9 +1221,7 @@ impl<'a> ReprotectSlot<'a> {
 // reference is live. Use `get()` instead, which returns SEXP by value.
 // endregion
 
-
 pub mod tls;
-
 
 // region: WorkerUnprotectGuard — Send-safe unprotect for worker threads
 
