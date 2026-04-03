@@ -13,6 +13,8 @@ new_percent(x, ...)
 \item{x}{Numeric values (as proportions, e.g., 0.5 for 50\%).}
 
 \item{...}{Additional arguments (ignored, for vctrs compatibility).}
+
+\item{dots}{(no documentation available)}
 }
 \value{
 A percent vector.
