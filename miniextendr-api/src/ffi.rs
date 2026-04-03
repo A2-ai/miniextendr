@@ -387,6 +387,57 @@ pub trait SexpExt {
     fn as_char(&self) -> SEXP;
 
     // endregion
+
+    // region: Attribute access
+
+    /// Get an attribute by symbol.
+    fn get_attr(&self, name: SEXP) -> SEXP;
+
+    /// Set an attribute by symbol.
+    fn set_attr(&self, name: SEXP, val: SEXP);
+
+    /// Get the `names` attribute.
+    fn get_names(&self) -> SEXP;
+
+    /// Set the `names` attribute.
+    fn set_names(&self, names: SEXP);
+
+    /// Get the `class` attribute.
+    fn get_class(&self) -> SEXP;
+
+    /// Set the `class` attribute.
+    fn set_class(&self, class: SEXP);
+
+    /// Get the `dim` attribute.
+    fn get_dim(&self) -> SEXP;
+
+    /// Set the `dim` attribute.
+    fn set_dim(&self, dim: SEXP);
+
+    /// Get the `dimnames` attribute.
+    fn get_dimnames(&self) -> SEXP;
+
+    /// Set the `dimnames` attribute.
+    fn set_dimnames(&self, dimnames: SEXP);
+
+    /// Get the `levels` attribute (factors).
+    fn get_levels(&self) -> SEXP;
+
+    /// Set the `levels` attribute (factors).
+    fn set_levels(&self, levels: SEXP);
+
+    /// Get the `row.names` attribute.
+    fn get_row_names(&self) -> SEXP;
+
+    /// Set the `row.names` attribute.
+    fn set_row_names(&self, row_names: SEXP);
+
+    /// Check if this SEXP inherits from a class.
+    ///
+    /// Equivalent to R's `inherits(x, "class_name")`.
+    fn inherits_class(&self, class: &std::ffi::CStr) -> bool;
+
+    // endregion
 }
 
 impl SexpExt for SEXP {
@@ -635,6 +686,85 @@ impl SexpExt for SEXP {
     #[inline]
     fn as_char(&self) -> SEXP {
         unsafe { Rf_asChar(*self) }
+    }
+
+    // endregion
+
+    // region: Attribute access
+
+    #[inline]
+    fn get_attr(&self, name: SEXP) -> SEXP {
+        unsafe { Rf_getAttrib(*self, name) }
+    }
+
+    #[inline]
+    fn set_attr(&self, name: SEXP, val: SEXP) {
+        unsafe { Rf_setAttrib(*self, name, val); }
+    }
+
+    #[inline]
+    fn get_names(&self) -> SEXP {
+        unsafe { Rf_getAttrib(*self, R_NamesSymbol) }
+    }
+
+    #[inline]
+    fn set_names(&self, names: SEXP) {
+        unsafe { Rf_namesgets(*self, names); }
+    }
+
+    #[inline]
+    fn get_class(&self) -> SEXP {
+        unsafe { Rf_getAttrib(*self, R_ClassSymbol) }
+    }
+
+    #[inline]
+    fn set_class(&self, class: SEXP) {
+        unsafe { Rf_classgets(*self, class); }
+    }
+
+    #[inline]
+    fn get_dim(&self) -> SEXP {
+        unsafe { Rf_getAttrib(*self, R_DimSymbol) }
+    }
+
+    #[inline]
+    fn set_dim(&self, dim: SEXP) {
+        unsafe { Rf_dimgets(*self, dim); }
+    }
+
+    #[inline]
+    fn get_dimnames(&self) -> SEXP {
+        unsafe { Rf_getAttrib(*self, R_DimNamesSymbol) }
+    }
+
+    #[inline]
+    fn set_dimnames(&self, dimnames: SEXP) {
+        unsafe { Rf_dimnamesgets(*self, dimnames); }
+    }
+
+    #[inline]
+    fn get_levels(&self) -> SEXP {
+        unsafe { Rf_getAttrib(*self, R_LevelsSymbol) }
+    }
+
+    #[inline]
+    fn set_levels(&self, levels: SEXP) {
+        unsafe { Rf_setAttrib(*self, R_LevelsSymbol, levels); }
+    }
+
+    #[inline]
+    fn get_row_names(&self) -> SEXP {
+        unsafe { Rf_getAttrib(*self, R_RowNamesSymbol) }
+    }
+
+    #[inline]
+    fn set_row_names(&self, row_names: SEXP) {
+        unsafe { Rf_setAttrib(*self, R_RowNamesSymbol, row_names); }
+    }
+
+    #[inline]
+    fn inherits_class(&self, class: &std::ffi::CStr) -> bool {
+        unsafe { Rf_inherits(*self, class.as_ptr()) != Rboolean::FALSE }
     }
 
     // endregion
