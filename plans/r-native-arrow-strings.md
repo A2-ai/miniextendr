@@ -12,28 +12,30 @@ Arrow's string layout: one contiguous data buffer + an offsets array. No per-str
 
 ## Done
 
-### Scalar Cow (commit 1)
+### Commit 1: Scalar Cow fix
 
-`Cow<'static, str>` now returns `Cow::Borrowed` — delegates to the `&'static str` impl, zero-copy via `charsxp_to_str`. Same fix applied to `Cow<'static, [T]>` for numeric slices.
+`Cow<'static, str>` and `Cow<'static, [T]>` now return `Cow::Borrowed` — zero-copy.
 
-### Vec<Cow> + encoding-aware helper + StrVec iterators (commit 2)
+### Commit 2: Vec<Cow> + encoding-safe helper + StrVec iterators
 
-- **`charsxp_to_cow()`** — encoding-safe helper: tries `from_utf8` on `R_CHAR` data (O(1) zero-copy), falls back to `Rf_translateCharUTF8` + copy only for non-UTF-8 CHARSXPs.
-- **`Vec<Cow<'static, str>>`**, **`Vec<Option<Cow<'static, str>>>`**, **`Box<[Cow<'static, str>]>`** — zero per-element allocation for UTF-8 strings.
-- **`StrVec::get_cow()`** — encoding-safe element access returning `Option<Cow<str>>`.
-- **`StrVec::iter()`** → `StrVecIter` — zero-copy iteration yielding `Option<&str>`.
-- **`StrVec::iter_cow()`** → `StrVecCowIter` — encoding-safe iteration yielding `Option<Cow<str>>`.
-- **`IntoIterator for StrVec`** — `for elem in strvec { ... }` works.
+- `charsxp_to_cow()` — tries `from_utf8` on `R_CHAR` (O(1) zero-copy), falls back to `Rf_translateCharUTF8` for non-UTF-8.
+- `Vec<Cow<'static, str>>`, `Vec<Option<Cow<'static, str>>>`, `Box<[Cow<'static, str>]>` TryFromSexp.
+- `StrVec::get_cow()`, `iter()`, `iter_cow()`, `IntoIterator`.
 
-## Remaining
+### Commit 3: ProtectedStrVec + IntoR for Cow vectors
 
-### String ALTREP integration
+- `ProtectedStrVec` — owns `OwnedProtect`, ties all borrowed data to `&self` lifetime (not `'static`). Prevents use-after-GC at compile time.
+- `IntoR` for `Vec<Cow<str>>`, `Box<[Cow<str>]>`, `Vec<Option<Cow<str>>>` — complete round-trip.
+- `ProtectedStrVec` has `TryFromSexp`, `IntoR`, `iter()`, `iter_cow()`, `Debug`.
 
-`StrVec` could back a string ALTREP — R sees a STRSXP, but the `Elt` method delegates to Rust-computed strings. This enables lazy computation of string elements (e.g., from a Rust iterator or database cursor) while presenting as a normal R character vector.
+### Commit 4: ALTREP with seamless serialization
 
-This is already partially supported via the existing ALTREP string infrastructure (`AltrepString` trait). The zero-copy *input* path (R → Rust) is now done; ALTREP is the lazy *output* path (Rust → R).
+- `Vec<Cow<'static, str>>` and `Vec<Option<Cow<'static, str>>>` get full ALTREP support (dataptr + serialize).
+- Serialize: `Rf_mkCharLenCE` hits R's CHARSXP cache for borrowed strings — no string data copy.
+- Unserialize: `TryFromSexp` uses `charsxp_to_cow` → `Cow::Borrowed` for UTF-8 — zero-copy back.
 
-## What this does NOT cover
+## Design decisions
 
-- Contiguous string buffers (Arrow's actual layout with offsets into one `u8` buffer) — R's STRSXP stores strings as individual CHARSXPs, not contiguously. There's no way to get Arrow's layout without copying. But we avoid per-*element* allocation, which is the main cost.
-- Mutable string vectors — R strings are immutable (CHARSXPs are interned). Mutation requires `SET_STRING_ELT` with a new CHARSXP. `StrVec` is read-only by design.
+- **`'static` on `TryFromSexp` types**: `TryFromSexp` returns `Self` with no lifetime parameter, so borrowed types must use `'static`. This is already the case for `&'static str`, `&'static [T]`, etc. `ProtectedStrVec` is the opt-in safe alternative with proper lifetimes.
+- **Encoding fallback in `charsxp_to_cow`**: Uses `from_utf8` first (O(1)), falls back to `Rf_translateCharUTF8` + `Cow::Owned` for non-UTF-8. Works seamlessly — caller doesn't need to think about encodings.
+- **NA semantics**: Non-Option variants map NA to `""` (matches `Vec<String>` behavior). Option variants preserve NA as `None`.
