@@ -5,9 +5,8 @@
 
 use super::error::RSerdeError;
 use crate::ffi::{
-    R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
-    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt,
-    cetype_t,
+    R_NaString, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_unprotect,
+    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, cetype_t,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -490,7 +489,7 @@ fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
         }
     }
 
-    unsafe { Rf_setAttrib(list.get(), R_NamesSymbol, names.get()) };
+    unsafe { list.get().set_names(names.get()) };
     list.get()
 }
 
@@ -515,7 +514,7 @@ fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
         }
     }
 
-    unsafe { Rf_setAttrib(list.get(), R_NamesSymbol, names.get()) };
+    unsafe { list.get().set_names(names.get()) };
     list.get()
 }
 
@@ -529,7 +528,7 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
         SET_VECTOR_ELT(list.get(), 0, value);
         let charsxp = Rf_mkCharLenCE(tag.as_ptr().cast(), tag_len, cetype_t::CE_UTF8);
         SET_STRING_ELT(names.get(), 0, charsxp);
-        Rf_setAttrib(list.get(), R_NamesSymbol, names.get());
+        list.get().set_names(names.get());
     }
 
     list.get()

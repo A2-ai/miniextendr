@@ -70,7 +70,7 @@ where
     M: Extend<(String, V)>,
     F: FnOnce(usize) -> M,
 {
-    use crate::ffi::{Rf_getAttrib, Rf_translateCharUTF8, STRING_ELT, VECTOR_ELT};
+    use crate::ffi::{Rf_translateCharUTF8, STRING_ELT, VECTOR_ELT};
 
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
@@ -85,7 +85,7 @@ where
     let mut map = create_map(len);
 
     // Get names attribute
-    let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
+    let names = sexp.get_names();
     let has_names = names.type_of() == SEXPTYPE::STRSXP && names.len() == len;
 
     // Single-pass: check duplicates AND convert in one loop

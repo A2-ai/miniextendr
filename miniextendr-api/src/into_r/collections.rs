@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
+use crate::ffi::SexpExt;
 use crate::into_r::{IntoR, str_to_charsxp, str_to_charsxp_unchecked};
 
 macro_rules! impl_map_into_r {
@@ -65,7 +66,7 @@ fn map_to_named_list<V: IntoR>(
         }
 
         // Attach names attribute
-        crate::ffi::Rf_setAttrib(list, crate::ffi::R_NamesSymbol, names);
+        list.set_names(names);
 
         crate::ffi::Rf_unprotect(2);
         list

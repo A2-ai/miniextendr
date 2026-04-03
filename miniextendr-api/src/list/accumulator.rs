@@ -5,7 +5,7 @@
 //! `ReprotectSlot` internally to maintain O(1) protect stack usage.
 
 use crate::ffi::SEXPTYPE::{STRSXP, VECSXP};
-use crate::ffi::{self, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::SexpError;
 use crate::gc_protect::{OwnedProtect, ProtectScope, ReprotectSlot, Root};
 use crate::into_r::IntoR;
@@ -285,7 +285,7 @@ impl<'a> ListAccumulator<'a> {
                         ffi::SET_STRING_ELT(names_sexp.get(), idx, ffi::R_BlankString);
                     }
                 }
-                ffi::Rf_setAttrib(root.get(), ffi::R_NamesSymbol, names_sexp.get());
+                root.get().set_names(names_sexp.get());
             }
         }
 

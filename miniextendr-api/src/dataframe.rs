@@ -122,7 +122,7 @@ impl DataFrameView {
         }
 
         // 2. Check it inherits from data.frame
-        let inherits = unsafe { ffi::Rf_inherits(sexp, c"data.frame".as_ptr()) } != Rboolean::FALSE;
+        let inherits = sexp.is_data_frame();
         if !inherits {
             return Err(DataFrameError::NotDataFrame);
         }
@@ -294,9 +294,9 @@ impl IntoR for DataFrameView {
 ///
 /// If no row.names attribute exists, we fall back to the length of the first column.
 fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
-    let row_names = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_RowNamesSymbol) };
+    let row_names = sexp.get_row_names();
 
-    if row_names == unsafe { ffi::R_NilValue } {
+    if row_names.is_nil() {
         // No row.names — fall back to first column length
         return nrow_from_first_column(sexp);
     }

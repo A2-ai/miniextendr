@@ -150,8 +150,8 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
         // Accept factors: extract the level label
         SEXPTYPE::INTSXP => {
             // Check if it's a factor (has "levels" attribute)
-            let levels = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_LevelsSymbol) };
-            if levels == unsafe { ffi::R_NilValue } || levels.type_of() != SEXPTYPE::STRSXP {
+            let levels = sexp.get_levels();
+            if levels.is_nil() || levels.type_of() != SEXPTYPE::STRSXP {
                 return Err(MatchArgError::InvalidType(actual_type));
             }
             let len = sexp.len();

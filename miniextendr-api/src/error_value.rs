@@ -16,7 +16,7 @@
 //! - class attribute: `"rust_error_value"`
 //! - `__rust_error__` attribute: `TRUE`
 
-use crate::ffi::{self, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 
 /// Build a tagged error-value SEXP for transport across the Rust→R boundary.
 ///
@@ -61,7 +61,7 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         ffi::SET_STRING_ELT(names, 0, ffi::Rf_mkCharCE(c"error".as_ptr(), ffi::CE_UTF8));
         ffi::SET_STRING_ELT(names, 1, ffi::Rf_mkCharCE(c"kind".as_ptr(), ffi::CE_UTF8));
         ffi::SET_STRING_ELT(names, 2, ffi::Rf_mkCharCE(c"call".as_ptr(), ffi::CE_UTF8));
-        ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+        list.set_names(names);
 
         // Set class: "rust_error_value"
         let class = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1);
@@ -71,11 +71,11 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
             0,
             ffi::Rf_mkCharCE(c"rust_error_value".as_ptr(), ffi::CE_UTF8),
         );
-        ffi::Rf_setAttrib(list, ffi::R_ClassSymbol, class);
+        list.set_class(class);
 
         // Set __rust_error__ attribute = TRUE (secondary marker)
         let attr_sym = ffi::Rf_install(c"__rust_error__".as_ptr());
-        ffi::Rf_setAttrib(list, attr_sym, ffi::Rf_ScalarLogical(1));
+        list.set_attr(attr_sym, ffi::Rf_ScalarLogical(1));
 
         ffi::Rf_unprotect(3);
         list

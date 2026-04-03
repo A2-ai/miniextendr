@@ -30,7 +30,7 @@
 /// ```
 use crate::expression::{RCall, REnv};
 use crate::ffi::{
-    self, R_ClassSymbol, Rf_getAttrib, Rf_protect, Rf_unprotect, SEXP, STRING_ELT, SexpExt,
+    self, Rf_protect, Rf_unprotect, SEXP, STRING_ELT, SexpExt,
 };
 use std::ffi::CStr;
 
@@ -135,7 +135,7 @@ pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(),
 /// - Must be called from the R main thread.
 pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
     unsafe {
-        let class_attr = Rf_getAttrib(obj, R_ClassSymbol);
+        let class_attr = obj.get_class();
         if class_attr.is_null_or_nil() || ffi::Rf_xlength(class_attr) == 0 {
             return None;
         }

@@ -6,8 +6,7 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{
-    R_NaString, R_NamesSymbol, R_NilValue, Rf_getAttrib, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
-    STRING_ELT, VECTOR_ELT,
+    R_NaString, R_NilValue, Rf_xlength, SEXP, SEXPTYPE, SexpExt, STRING_ELT, VECTOR_ELT,
 };
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -68,7 +67,7 @@ impl RDeserializer {
     }
 
     fn has_names(&self) -> bool {
-        let names = unsafe { Rf_getAttrib(self.sexp, R_NamesSymbol) };
+        let names = self.sexp.get_names();
         names != unsafe { R_NilValue }
     }
 
@@ -591,7 +590,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             }
             // Named list with single element -> data variant
             SEXPTYPE::VECSXP if self.has_names() && self.len() == 1 => {
-                let names = unsafe { Rf_getAttrib(self.sexp, R_NamesSymbol) };
+                let names = self.sexp.get_names();
                 let name_charsxp = unsafe { STRING_ELT(names, 0) };
                 let variant = unsafe { charsxp_to_str(name_charsxp) };
                 let value = unsafe { VECTOR_ELT(self.sexp, 0) };
@@ -849,7 +848,7 @@ struct NamedListMapAccess {
 
 impl NamedListMapAccess {
     fn new(sexp: SEXP) -> Result<Self, RSerdeError> {
-        let names = unsafe { Rf_getAttrib(sexp, R_NamesSymbol) };
+        let names = sexp.get_names();
         if names == unsafe { R_NilValue } {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",

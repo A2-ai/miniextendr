@@ -58,8 +58,8 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         "must be called from R main thread"
     );
     use crate::ffi::{
-        LOGICAL, R_BaseEnv, R_NamesSymbol, Rf_eval, Rf_getAttrib, Rf_install, Rf_protect,
-        Rf_unprotect, Rf_xlength, STRING_ELT, VECTOR_ELT,
+        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, STRING_ELT,
+        SexpExt, VECTOR_ELT,
     };
 
     unsafe {
@@ -70,7 +70,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         Rf_protect(info);
 
         // Find the "UTF-8" element by name
-        let names = Rf_getAttrib(info, R_NamesSymbol);
+        let names = info.get_names();
         let n = Rf_xlength(info);
         let mut is_utf8 = false;
         for i in 0..n {

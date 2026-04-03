@@ -542,8 +542,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
                     expected: format!("class: {class_name}"),
                     actual: "invalid class name (contains NUL byte)".to_string(),
                 })?;
-            let inherits =
-                unsafe { ffi::Rf_inherits(elem, c_str.as_ptr()) } != ffi::Rboolean::FALSE;
+            let inherits = elem.inherits_class(&c_str);
             if !inherits {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
@@ -691,8 +690,8 @@ pub fn actual_type_string(sexp: SEXP) -> String {
     let base_type = sexptype_name(stype);
 
     // Check if it has a class attribute
-    let class_attr = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_ClassSymbol) };
-    if class_attr != unsafe { ffi::R_NilValue } {
+    let class_attr = sexp.get_class();
+    if !class_attr.is_nil() {
         let class_len = unsafe { ffi::Rf_xlength(class_attr) };
         if class_len > 0 {
             let first_class = unsafe { ffi::STRING_ELT(class_attr, 0) };

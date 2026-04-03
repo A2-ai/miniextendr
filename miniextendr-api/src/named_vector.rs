@@ -223,7 +223,7 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
             ffi::SET_STRING_ELT(names, i as ffi::R_xlen_t, charsxp);
         }
 
-        ffi::Rf_setAttrib(sexp, ffi::R_NamesSymbol, names);
+        sexp.set_names(names);
         ffi::Rf_unprotect(1);
     }
 }
@@ -232,9 +232,9 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
 ///
 /// Errors on: missing names attribute, NA names, empty names, duplicate names.
 fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
-    use ffi::{Rf_getAttrib, Rf_translateCharUTF8, STRING_ELT};
+    use ffi::{Rf_translateCharUTF8, STRING_ELT};
 
-    let names = unsafe { Rf_getAttrib(sexp, ffi::R_NamesSymbol) };
+    let names = sexp.get_names();
     let len = sexp.len();
 
     if names.type_of() != SEXPTYPE::STRSXP || names.len() != len {
