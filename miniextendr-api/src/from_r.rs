@@ -94,6 +94,41 @@ pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
     }
 }
 
+/// Convert CHARSXP to `Cow<'static, str>` — zero-copy when UTF-8, copies otherwise.
+///
+/// Tries to borrow directly from R's CHARSXP data (O(1), no allocation). If the
+/// CHARSXP is not valid UTF-8 (rare: CE_LATIN1 or CE_BYTES in a UTF-8 session),
+/// falls back to `Rf_translateCharUTF8` which returns a translated copy managed by R.
+///
+/// # Safety
+///
+/// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
+/// - The returned reference is only valid as long as R doesn't GC the CHARSXP.
+#[inline]
+pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
+    unsafe {
+        let ptr = crate::ffi::R_CHAR(charsxp);
+        let len: usize = crate::ffi::LENGTH(charsxp)
+            .try_into()
+            .expect("CHARSXP LENGTH must be non-negative");
+        let bytes = r_slice(ptr.cast::<u8>(), len);
+        match std::str::from_utf8(bytes) {
+            Ok(s) => std::borrow::Cow::Borrowed(s),
+            Err(_) => {
+                // Non-UTF-8 CHARSXP (CE_LATIN1, CE_BYTES) — translate via R
+                let translated = crate::ffi::Rf_translateCharUTF8(charsxp);
+                if translated.is_null() {
+                    return std::borrow::Cow::Borrowed("");
+                }
+                let c_str = std::ffi::CStr::from_ptr(translated);
+                std::borrow::Cow::Owned(
+                    c_str.to_str().unwrap_or("").to_owned(),
+                )
+            }
+        }
+    }
+}
+
 /// Create a slice from an R data pointer, handling the zero-length case.
 ///
 /// R returns a sentinel pointer (`0x1`) instead of null for empty vectors
