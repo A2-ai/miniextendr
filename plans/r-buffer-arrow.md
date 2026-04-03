@@ -4,135 +4,155 @@
 
 Arrow→R always copies, even when the Arrow buffer IS R memory.
 
-Currently: `Float64Array.into_sexp()` allocates a new REALSXP and `copy_from_slice`s into it. But if that Float64Array was created from an R REALSXP via `sexp_to_arrow_buffer` (which uses `Buffer::from_custom_allocation(RPreservedSexp)`), the data is already in R's heap — we're copying from R to R.
+`Float64Array.into_sexp()` allocates a new REALSXP and `copy_from_slice`s. But if that Float64Array was created from R via `sexp_to_arrow_buffer` (which uses `Buffer::from_custom_allocation(RPreservedSexp)`), the data is already in R's heap.
 
-## Goal
+## Design: Trait + Generic Newtype
 
-Round-trip R→Arrow→R should be zero-copy for types where the memory layouts are compatible (primitives: f64, i32, u8). The Arrow array is a view over R's SEXP data, and converting back to R returns the original SEXP.
-
-## Architecture
-
-### Buffer provenance tracking
-
-When `sexp_to_arrow_buffer` creates an Arrow Buffer from an R SEXP, register the mapping in a global registry:
+### The `RSourced` trait
 
 ```rust
-/// Maps Arrow buffer data pointers back to their source R SEXPs.
-static R_BUFFER_REGISTRY: Mutex<HashMap<*const u8, SEXP>> = ...;
+/// Trait for Arrow types that may be backed by R memory.
+pub trait RSourced {
+    /// The original R SEXP if this value is zero-copy from R.
+    fn r_source(&self) -> Option<SEXP>;
 
-unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Buffer {
-    // ... existing code: R_PreserveObject, from_custom_allocation ...
-    let ptr = ffi::DATAPTR_RO(sexp) as *const u8;
-    R_BUFFER_REGISTRY.lock().insert(ptr, sexp);
-    // ...
+    /// Whether nulls came from R sentinels (safe to return SEXP as-is).
+    /// False means Arrow operations added/changed nulls.
+    fn nulls_from_sentinels(&self) -> bool;
 }
 ```
 
-On `RPreservedSexp::drop`, remove the entry:
+### Generic newtype: `RPrimitive<T>`
+
+One type covers all primitive Arrow arrays (f64, i32, u8, etc.):
+
 ```rust
-impl Drop for RPreservedSexp {
-    fn drop(&mut self) {
-        let ptr = unsafe { ffi::DATAPTR_RO(self.0) } as *const u8;
-        R_BUFFER_REGISTRY.lock().remove(&ptr);
-        unsafe { ffi::R_ReleaseObject_unchecked(self.0) }
+pub struct RPrimitive<T: ArrowPrimitiveType> {
+    array: PrimitiveArray<T>,
+    source: Option<SEXP>,
+    sentinel_nulls: bool,
+}
+
+impl<T: ArrowPrimitiveType> RSourced for RPrimitive<T> {
+    fn r_source(&self) -> Option<SEXP> { self.source }
+    fn nulls_from_sentinels(&self) -> bool { self.sentinel_nulls }
+}
+
+impl<T: ArrowPrimitiveType> Deref for RPrimitive<T> {
+    type Target = PrimitiveArray<T>;
+    fn deref(&self) -> &PrimitiveArray<T> { &self.array }
+}
+
+impl<T: ArrowPrimitiveType> AsRef<PrimitiveArray<T>> for RPrimitive<T> { ... }
+impl<T: ArrowPrimitiveType> AsRef<dyn Array> for RPrimitive<T> { ... }
+```
+
+### How conversion works
+
+**TryFromSexp** (R→Arrow, zero-copy):
+```rust
+impl TryFromSexp for RPrimitive<Float64Type> {
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, _> {
+        let array = Float64Array::try_from_sexp(sexp)?;  // existing zero-copy path
+        Ok(RPrimitive {
+            array,
+            source: Some(sexp),
+            sentinel_nulls: true,  // nulls came from R's NA sentinels
+        })
     }
 }
 ```
 
-### Zero-copy Arrow→R for R-backed buffers
-
-In `IntoR for Float64Array` (and Int32Array, UInt8Array):
-
+**IntoR** (Arrow→R, zero-copy when R-backed):
 ```rust
-impl IntoR for Float64Array {
+impl IntoR for RPrimitive<Float64Type> {
     fn into_sexp(self) -> SEXP {
-        // Check if this array's values buffer came from R
-        if self.null_count() == 0 {
-            let ptr = self.values().as_ptr() as *const u8;
-            if let Some(sexp) = R_BUFFER_REGISTRY.lock().get(&ptr) {
-                // Zero-copy: return the original R SEXP
-                return *sexp;
+        if self.sentinel_nulls {
+            if let Some(sexp) = self.source {
+                return sexp;  // zero-copy: return original R vector
             }
         }
-        // Fallback: allocate new R vector and copy (current behavior)
-        // ...
+        // Fallback: copy (current behavior)
+        self.array.into_sexp()
     }
 }
 ```
 
-The `null_count() == 0` check is required because R uses sentinel NAs (NA_integer_, NA_real_) while Arrow uses a separate null bitmap. If the Arrow code added nulls that weren't NA sentinels, we can't return the original SEXP.
+### String wrapper: `RStringArray`
 
-### R-allocated Arrow buffers (Rust→Arrow→R)
-
-For Arrow arrays created in Rust that will go to R: allocate the buffer as an R vector from the start.
+R's STRSXP and Arrow's StringArray have incompatible layouts (per-element CHARSXPs vs contiguous data+offsets). Zero-copy is impossible for the data, but round-trip tracking avoids rebuilding:
 
 ```rust
-/// Allocate an Arrow Buffer backed by a new R vector.
-/// When this array is later converted to R, the SEXP is returned directly.
-pub fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (Buffer, SEXP) {
-    unsafe {
-        let (sexp, _) = alloc_r_vector::<T>(len);
-        let buffer = sexp_to_arrow_buffer::<T>(sexp);
-        (buffer, sexp)
+pub struct RStringArray {
+    array: StringArray,
+    source: Option<SEXP>,  // original STRSXP
+}
+
+impl RSourced for RStringArray { ... }
+impl Deref for RStringArray { type Target = StringArray; ... }
+```
+
+IntoR: if source is Some and no mutations occurred, return the original STRSXP.
+
+### RecordBatch wrapper: `RRecordBatch`
+
+```rust
+pub struct RRecordBatch {
+    batch: RecordBatch,
+    column_sources: Vec<Option<SEXP>>,  // per-column R vectors
+    sentinel_nulls: Vec<bool>,
+}
+
+impl Deref for RRecordBatch { type Target = RecordBatch; ... }
+```
+
+Data frame round-trips: each column tracks its R source independently.
+
+### Serialization
+
+No special handling needed. Serialization goes through the inner Arrow type (which handles it). On deserialize, `source` is `None` — falls through to copy path. Clean.
+
+### Arrow compute on R-backed arrays
+
+When Arrow compute kernels operate on `RPrimitive<T>`, they access the inner array via Deref. The result is a plain Arrow array (no R provenance). Wrapping the result:
+
+```rust
+impl<T: ArrowPrimitiveType> RPrimitive<T> {
+    /// Wrap a computed Arrow array (no R source).
+    pub fn from_arrow(array: PrimitiveArray<T>) -> Self {
+        RPrimitive { array, source: None, sentinel_nulls: false }
+    }
+
+    /// Wrap with known R source.
+    pub fn from_r(array: PrimitiveArray<T>, sexp: SEXP) -> Self {
+        RPrimitive { array, source: Some(sexp), sentinel_nulls: true }
     }
 }
 ```
 
-Usage:
-```rust
-fn compute_in_rust(n: usize) -> Float64Array {
-    let (buffer, _sexp) = alloc_r_backed_buffer::<f64>(n);
-    let mut slice: &mut [f64] = unsafe { /* mutable view of buffer */ };
-    for i in 0..n {
-        slice[i] = (i as f64).sqrt();
-    }
-    Float64Array::new(ScalarBuffer::from(buffer), None)
-}
-// When this array is returned to R, IntoR detects the R-backed buffer → zero-copy
-```
-
-### Null bitmap considerations
-
-Arrow's null bitmap is separate from the data buffer. When converting Arrow→R:
-- **No nulls**: Return original SEXP directly (data unchanged)
-- **Has nulls**: Must write NA sentinels into the data, which means we need a mutable copy. For R-backed buffers, we could mutate in-place if we have exclusive ownership (Arc refcount == 1). Otherwise, copy.
-
-The Arrow `try_new` methods accept a `NullBuffer` parameter. For R-backed arrays, the null bitmap should be constructed from R's NA sentinels (already done in `build_i32_null_buffer` / `build_f64_null_buffer`). The data buffer retains the NA sentinels, so Arrow→R can ignore the bitmap if the source was R.
-
-Track this with a flag: did nulls come from R sentinels or from Arrow operations?
+### Usage in #[miniextendr] functions
 
 ```rust
-struct RBackedMeta {
-    sexp: SEXP,
-    nulls_from_sentinels: bool,  // true = R NAs, safe to return SEXP as-is
+#[miniextendr]
+pub fn double_values(x: RPrimitive<Float64Type>) -> RPrimitive<Float64Type> {
+    // x derefs to &Float64Array, so Arrow APIs work transparently
+    let result: Float64Array = x.iter()
+        .map(|v| v.map(|f| f * 2.0))
+        .collect();
+    RPrimitive::from_arrow(result)  // no R source → will copy on IntoR
+}
+
+#[miniextendr]
+pub fn passthrough(x: RPrimitive<Float64Type>) -> RPrimitive<Float64Type> {
+    x  // R source preserved → zero-copy round-trip!
 }
 ```
-
-### Strings
-
-R's STRSXP (array of CHARSXP pointers) and Arrow's StringArray (contiguous data + offsets) are fundamentally different layouts. Zero-copy is impossible in either direction.
-
-However, for the round-trip case (R→StringArray→R): if we track the source STRSXP, we can return it on the way back. The Arrow StringArray is a read-only view; if no mutations occurred, the original STRSXP is still valid.
-
-For Rust→Arrow→R strings: no shortcut. Must build STRSXP element by element (current behavior).
-
-### What `try_new` enables
-
-Arrow's `PrimitiveArray::try_new(values: ScalarBuffer<T>, nulls: Option<NullBuffer>)` accepts pre-built buffers. This is the key API: we construct `ScalarBuffer` from `Buffer::from_custom_allocation` (R memory), pass it to `try_new`, and get an Arrow array backed by R.
-
-Similarly `GenericByteArray::try_new` for strings, `StructArray::try_new` for data frames, etc. The pattern is always: build Buffers from R memory, pass to `try_new`.
 
 ## Implementation order
 
-1. **Buffer provenance registry** — global `HashMap<*const u8, SEXP>`, register in `sexp_to_arrow_buffer`, deregister in `RPreservedSexp::drop`
-2. **Zero-copy `IntoR` for R-backed primitives** — check registry in Float64Array, Int32Array, UInt8Array `into_sexp()`
-3. **`alloc_r_backed_buffer`** — allocate Arrow buffers as R SEXPs for the Rust→Arrow→R path
-4. **Null bitmap handling** — track whether nulls came from R sentinels; write NA sentinels back when needed
-5. **String round-trip** — track source STRSXP for StringArray, return it on IntoR if unmodified
-6. **RecordBatch** — apply column-level zero-copy to data frame round-trips
-
-## What this does NOT cover
-
-- Arrow compute kernels operating on R-backed buffers — these create new Arrow-allocated buffers, breaking the R provenance. The result would go through the copy path on IntoR.
-- ALTREP output for Arrow arrays — already implemented separately.
-- Arrow string layouts (contiguous data + offsets) in R — would require a custom R representation, not standard STRSXP.
+1. `RSourced` trait + `RPrimitive<T>` with Deref/AsRef
+2. `TryFromSexp` for `RPrimitive<Float64Type>`, `RPrimitive<Int32Type>`, `RPrimitive<UInt8Type>`
+3. `IntoR` with zero-copy fast path
+4. `RStringArray` wrapper
+5. `RRecordBatch` wrapper
+6. Proc-macro support (ensure #[miniextendr] handles RPrimitive<T> in function signatures)
