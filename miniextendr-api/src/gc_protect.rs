@@ -165,7 +165,7 @@
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
 use crate::ffi::{
-    R_NewEnv, R_NilValue, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_ScalarComplex,
+    R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_ScalarComplex,
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal, Rf_ScalarString, Rf_allocList,
     Rf_allocMatrix, Rf_allocVector, Rf_duplicate, Rf_mkCharLenCE, Rf_protect,
     Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
@@ -1155,7 +1155,7 @@ impl<'a> ReprotectSlot<'a> {
     #[inline]
     pub unsafe fn take(&self) -> SEXP {
         let old = self.cur.get();
-        let nil = unsafe { R_NilValue };
+        let nil = SEXP::null();
         unsafe { R_Reprotect(nil, self.idx) };
         self.cur.set(nil);
         old
@@ -1199,7 +1199,7 @@ impl<'a> ReprotectSlot<'a> {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn clear(&self) {
-        let nil = unsafe { R_NilValue };
+        let nil = SEXP::null();
         unsafe { R_Reprotect(nil, self.idx) };
         self.cur.set(nil);
     }
@@ -1211,7 +1211,7 @@ impl<'a> ReprotectSlot<'a> {
     /// Must be called from the R main thread (accesses R's `R_NilValue`).
     #[inline]
     pub unsafe fn is_nil(&self) -> bool {
-        self.cur.get() == unsafe { R_NilValue }
+        self.cur.get() == SEXP::null()
     }
 }
 

@@ -51,8 +51,8 @@
 //! but suitable for local, non-hostile environments.
 
 use crate::ffi::{
-    R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
-    Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
+    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect,
+    SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -394,7 +394,7 @@ impl<M: MapStorage> ArenaState<M> {
     #[inline]
     pub unsafe fn protect(&mut self, x: SEXP) -> SEXP {
         unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
+            if x.is_nil() {
                 return x;
             }
 
@@ -422,7 +422,7 @@ impl<M: MapStorage> ArenaState<M> {
     #[inline]
     pub unsafe fn unprotect(&mut self, x: SEXP) {
         unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
+            if x.is_nil() {
                 return;
             }
 
@@ -432,7 +432,7 @@ impl<M: MapStorage> ArenaState<M> {
             match self.map_mut().decrement_and_maybe_remove(&key) {
                 Some((true, index)) => {
                     // Entry was removed (count reached 0)
-                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
+                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, SEXP::null());
                     self.free_list.push(index);
                     self.len -= 1;
                 }
@@ -454,7 +454,7 @@ impl<M: MapStorage> ArenaState<M> {
     #[inline]
     pub unsafe fn try_unprotect(&mut self, x: SEXP) -> bool {
         unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
+            if x.is_nil() {
                 return false;
             }
 
@@ -464,7 +464,7 @@ impl<M: MapStorage> ArenaState<M> {
             match self.map_mut().decrement_and_maybe_remove(&key) {
                 Some((true, index)) => {
                     // Entry was removed (count reached 0)
-                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
+                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, SEXP::null());
                     self.free_list.push(index);
                     self.len -= 1;
                     true
@@ -481,7 +481,7 @@ impl<M: MapStorage> ArenaState<M> {
     #[inline]
     /// Returns true if this arena currently protects `x`.
     pub fn is_protected(&self, x: SEXP) -> bool {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+        if x.is_nil() {
             return false;
         }
         let key = x.0 as usize;
@@ -491,9 +491,9 @@ impl<M: MapStorage> ArenaState<M> {
     #[inline]
     /// Returns the current reference count for `x` in this arena.
     ///
-    /// Returns 0 if `x` is not protected or is `R_NilValue`.
+    /// Returns 0 if `x` is not protected or is `SEXP::null()`.
     pub fn ref_count(&self, x: SEXP) -> usize {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+        if x.is_nil() {
             return 0;
         }
         let key = x.0 as usize;
@@ -552,7 +552,7 @@ impl<M: MapStorage> ArenaState<M> {
     pub unsafe fn clear(&mut self) {
         unsafe {
             self.map().for_each_entry(|entry| {
-                SET_VECTOR_ELT(self.backing, entry.index as R_xlen_t, R_NilValue);
+                SET_VECTOR_ELT(self.backing, entry.index as R_xlen_t, SEXP::null());
             });
         }
         self.map_mut().clear();
