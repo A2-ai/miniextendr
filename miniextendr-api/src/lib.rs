@@ -586,6 +586,8 @@ pub use refcount_protect::{
 pub mod allocator;
 pub use allocator::RAllocator;
 
+pub mod r_memory;
+
 // region: Trait ABI Support
 //
 // Cross-package trait dispatch using a stable C ABI.

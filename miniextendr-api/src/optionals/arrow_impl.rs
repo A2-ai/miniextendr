@@ -362,89 +362,7 @@ impl Drop for RPreservedSexp {
 
 // endregion
 
-// region: SEXP recovery from Arrow buffer data pointers
-
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-/// Offset from SEXP address to data pointer, computed at init time.
-/// `DATAPTR_RO(sexp) == (sexp as *const u8).add(SEXPREC_DATA_OFFSET)` for standard vectors.
-static SEXPREC_DATA_OFFSET: AtomicUsize = AtomicUsize::new(0);
-
-/// Compute and store the SEXPREC data offset by measuring a real R vector.
-///
-/// Must be called from R's main thread during package init.
-/// After this, [`try_recover_r_sexp`] can recover source SEXPs from Arrow buffers.
-///
-/// # Safety
-///
-/// Must be called on R's main thread. Called automatically during ALTREP class
-/// registration (which happens at package init).
-pub(crate) unsafe fn init_sexprec_data_offset() {
-    unsafe {
-        let test = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::REALSXP, 1));
-        let sexp_addr = test.0 as usize;
-        let data_addr = ffi::DATAPTR_RO(test) as usize;
-        SEXPREC_DATA_OFFSET.store(data_addr - sexp_addr, Ordering::Relaxed);
-        ffi::Rf_unprotect(1);
-    }
-}
-
-/// Try to recover the source R SEXP from an Arrow buffer's data pointer.
-///
-/// Given a data pointer that may point into an R vector's data area, this
-/// subtracts the known SEXPREC header size to get a candidate SEXP, then
-/// verifies it by checking:
-/// 1. The SEXP type tag matches `expected_type`
-/// 2. The vector length matches `expected_len`
-/// 3. `DATAPTR_RO(candidate)` round-trips to the original pointer
-///
-/// Returns `None` if the pointer doesn't come from an R vector (e.g., it's
-/// Rust-allocated or from ALTREP where data isn't at a fixed offset).
-///
-/// # Safety
-///
-/// Must be called on R's main thread. The data pointer must be valid.
-unsafe fn try_recover_r_sexp(
-    data_ptr: *const u8,
-    expected_type: SEXPTYPE,
-    expected_len: usize,
-) -> Option<SEXP> {
-    let offset = SEXPREC_DATA_OFFSET.load(Ordering::Relaxed);
-    if offset == 0 {
-        // Not initialized yet
-        return None;
-    }
-
-    // Compute candidate SEXP by subtracting header size
-    let candidate = SEXP(unsafe { data_ptr.sub(offset) as *mut ffi::SEXPREC });
-
-    // Quick check: type tag (bits 0-4 of sxpinfo, which is the first field)
-    // This catches garbage pointers early without calling R functions.
-    let sxpinfo_bits = unsafe { *(candidate.0 as *const u32) };
-    let type_bits = sxpinfo_bits & 0x1f;
-    if type_bits != expected_type as u32 {
-        return None;
-    }
-
-    // Length check — uses R's LENGTH which is safe for valid SEXPs
-    let candidate_len: usize = match unsafe { ffi::LENGTH(candidate) }.try_into() {
-        Ok(len) => len,
-        Err(_) => return None,
-    };
-    if candidate_len != expected_len {
-        return None;
-    }
-
-    // Final verification: DATAPTR_RO round-trip
-    let actual_ptr = unsafe { ffi::DATAPTR_RO(candidate) } as *const u8;
-    if actual_ptr != data_ptr {
-        return None;
-    }
-
-    Some(candidate)
-}
-
-// endregion
+// SEXP recovery uses crate::r_memory::try_recover_r_sexp (initialized at package init)
 
 // region: Zero-copy buffer helpers
 
@@ -1180,7 +1098,7 @@ impl IntoR for Float64Array {
         // Try zero-copy: recover the source R SEXP from the buffer pointer.
         // This succeeds when the array was created from R via sexp_to_arrow_buffer.
         if let Some(sexp) = unsafe {
-            try_recover_r_sexp(
+            crate::r_memory::try_recover_r_sexp(
                 self.values().as_ptr() as *const u8,
                 SEXPTYPE::REALSXP,
                 self.len(),
@@ -1217,7 +1135,7 @@ impl IntoR for Int32Array {
 
     fn into_sexp(self) -> SEXP {
         if let Some(sexp) = unsafe {
-            try_recover_r_sexp(
+            crate::r_memory::try_recover_r_sexp(
                 self.values().as_ptr() as *const u8,
                 SEXPTYPE::INTSXP,
                 self.len(),
@@ -1253,7 +1171,7 @@ impl IntoR for UInt8Array {
 
     fn into_sexp(self) -> SEXP {
         if let Some(sexp) = unsafe {
-            try_recover_r_sexp(
+            crate::r_memory::try_recover_r_sexp(
                 self.values().as_ptr() as *const u8,
                 SEXPTYPE::RAWSXP,
                 self.len(),
