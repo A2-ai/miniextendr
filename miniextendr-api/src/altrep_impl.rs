@@ -279,7 +279,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     // Check for cached materialized STRSXP in data2 slot
                     let data2 = $crate::ffi::R_altrep_data2(x);
                     if !data2.is_null()
-                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
                     {
                         // DATAPTR_RO on a standard (non-ALTREP) STRSXP gives the SEXP* array.
                         // Cast to mutable: safe because we own the materialized vector.
@@ -313,7 +313,7 @@ macro_rules! __impl_altvec_string_dataptr {
                 unsafe {
                     let data2 = $crate::ffi::R_altrep_data2(x);
                     if !data2.is_null()
-                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
                     {
                         $crate::ffi::DATAPTR_RO(data2)
                     } else {
@@ -341,7 +341,7 @@ macro_rules! __impl_altvec_extract_subset {
             ) -> $crate::ffi::SEXP {
                 // Validate that indx is an integer vector before calling INTEGER().
                 // Return NULL to signal R to use default subsetting if not.
-                if unsafe { $crate::ffi::TYPEOF(indx) } != $crate::ffi::SEXPTYPE::INTSXP {
+                if $crate::ffi::SexpExt::type_of(&indx) != $crate::ffi::SEXPTYPE::INTSXP {
                     return core::ptr::null_mut();
                 }
 

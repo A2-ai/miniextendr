@@ -302,11 +302,11 @@ impl<T: serde::Serialize> From<T> for AsSerializeRow<T> {
 #[cfg(feature = "serde")]
 impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
     fn into_list(self) -> List {
-        use crate::ffi::{SEXPTYPE, TYPEOF};
+        use crate::ffi::{SEXPTYPE, SexpExt};
         use crate::serde::RSerializer;
         match RSerializer::to_sexp(&self.0) {
             Ok(sexp) => {
-                if unsafe { TYPEOF(sexp) } as SEXPTYPE == SEXPTYPE::VECSXP {
+                if sexp.type_of() == SEXPTYPE::VECSXP {
                     unsafe { List::from_raw(sexp) }
                 } else {
                     // Non-list SEXP (e.g., scalar) — wrap in a single-element list

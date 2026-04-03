@@ -952,10 +952,10 @@ impl List {
             return Self::from_raw_values(Vec::new());
         }
 
-        let first_type = unsafe { ffi::TYPEOF(elements[0]) } as SEXPTYPE;
-        let all_scalar_same_type = elements.iter().all(|&e| unsafe {
-            ffi::Rf_xlength(e) == 1 && (ffi::TYPEOF(e) as SEXPTYPE) == first_type
-        });
+        let first_type = elements[0].type_of();
+        let all_scalar_same_type = elements
+            .iter()
+            .all(|&e| unsafe { ffi::Rf_xlength(e) == 1 && e.type_of() == first_type });
 
         if !all_scalar_same_type {
             return Self::from_raw_values(elements.to_vec());
@@ -1112,7 +1112,7 @@ impl TryFromSexp for List {
     type Error = ListFromSexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = unsafe { ffi::TYPEOF(sexp) };
+        let actual = sexp.type_of();
 
         // Accept VECSXP (generic list) directly
         // Also accept LISTSXP (pairlist) by coercing to VECSXP
@@ -1191,7 +1191,7 @@ impl TryFromSexp for ListMut {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = unsafe { ffi::TYPEOF(sexp) };
+        let actual = sexp.type_of();
         if actual != VECSXP {
             return Err(SexpTypeError {
                 expected: VECSXP,

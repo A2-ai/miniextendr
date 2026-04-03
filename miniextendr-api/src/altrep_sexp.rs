@@ -47,7 +47,7 @@
 //! See also: `docs/ALTREP_SEXP.md` for the full guide on receiving ALTREP
 //! vectors from R.
 
-use crate::ffi::{self, Rcomplex, SEXP, SEXPTYPE};
+use crate::ffi::{self, Rcomplex, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::r_slice;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -147,7 +147,7 @@ impl AltrepSexp {
     ///
     /// Must be called on the R main thread.
     pub unsafe fn materialize(self) -> SEXP {
-        let typ = unsafe { ffi::TYPEOF(self.sexp) } as SEXPTYPE;
+        let typ = self.sexp.type_of();
         match typ {
             SEXPTYPE::STRSXP => {
                 let n = unsafe { ffi::Rf_xlength(self.sexp) };
@@ -261,7 +261,7 @@ impl AltrepSexp {
     /// Get the SEXPTYPE of the underlying vector.
     #[inline]
     pub fn sexptype(&self) -> SEXPTYPE {
-        (unsafe { ffi::TYPEOF(self.sexp) }) as SEXPTYPE
+        self.sexp.type_of()
     }
 
     /// Get the length of the underlying vector.
