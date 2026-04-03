@@ -4,7 +4,7 @@ mod r_test_utils;
 
 use miniextendr_api::ffi::{
     R_NamesSymbol, Rboolean, Rf_getAttrib, Rf_isNewList, Rf_translateCharUTF8, Rf_xlength,
-    SEXPTYPE, STRING_ELT, TYPEOF,
+    STRING_ELT, SexpExt,
 };
 use miniextendr_api::from_r::{SexpLengthError, TryFromSexp};
 use miniextendr_api::into_r::IntoR;
@@ -82,7 +82,7 @@ fn derive_into_list_and_back() {
 
         let list = foo.into_list();
         unsafe {
-            assert_eq!(TYPEOF(list.as_sexp()), SEXPTYPE::VECSXP);
+            assert!(list.as_sexp().is_list());
             assert_ne!(Rf_isNewList(list.as_sexp()), Rboolean::FALSE);
             assert_eq!(Rf_xlength(list.as_sexp()), 2);
         }
@@ -128,7 +128,7 @@ fn into_r_prefers_externalptr_over_list() {
     r_test_utils::with_r_thread(|| {
         let dual = Dual(10);
         let sexp = dual.into_sexp();
-        assert_eq!(unsafe { TYPEOF(sexp) }, SEXPTYPE::EXTPTRSXP);
+        assert!(sexp.is_external_ptr());
     });
 }
 
@@ -142,6 +142,6 @@ fn prefer_list_changes_intor() {
     r_test_utils::with_r_thread(|| {
         let lf = ListFirst { a: 5 };
         let sexp = lf.into_sexp();
-        assert_eq!(unsafe { TYPEOF(sexp) }, SEXPTYPE::VECSXP);
+        assert!(sexp.is_list());
     });
 }

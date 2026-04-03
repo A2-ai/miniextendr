@@ -107,7 +107,7 @@ pub fn test_columnar_nested() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
@@ -127,7 +127,7 @@ pub fn test_columnar_optional_struct() -> ColumnarDataFrame {
             extra: Some(Inner { x: 5.0, y: 6.0 }),
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
@@ -149,7 +149,7 @@ pub fn test_columnar_deep_nesting() -> ColumnarDataFrame {
             },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
@@ -165,7 +165,7 @@ pub fn test_columnar_serde_flatten() -> ColumnarDataFrame {
             coords: Inner { x: 30.0, y: 40.0 },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
@@ -188,7 +188,7 @@ pub fn test_columnar_skip_serializing_if() -> ColumnarDataFrame {
             value: 3.0,
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
@@ -204,8 +204,8 @@ pub fn test_columnar_rename() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows)
-        .expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows)
+        .expect("from_rows")
         .rename("point_x", "px")
         .rename("point_y", "py")
 }
@@ -214,15 +214,15 @@ pub fn test_columnar_rename() -> ColumnarDataFrame {
 #[miniextendr]
 pub fn test_columnar_rename_noop() -> ColumnarDataFrame {
     let rows = vec![Inner { x: 1.0, y: 2.0 }];
-    miniextendr_api::serde::vec_to_dataframe(&rows)
-        .expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows)
+        .expect("from_rows")
         .rename("nonexistent", "z")
 }
 
 /// @export
 #[miniextendr]
 pub fn test_columnar_empty() -> ColumnarDataFrame {
-    miniextendr_api::serde::vec_to_dataframe::<Inner>(&[]).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows::<Inner>(&[]).expect("from_rows")
 }
 
 /// @export
@@ -238,8 +238,8 @@ pub fn test_columnar_drop() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows)
-        .expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows)
+        .expect("from_rows")
         .drop("point_y")
 }
 
@@ -256,8 +256,8 @@ pub fn test_columnar_select() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows)
-        .expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows)
+        .expect("from_rows")
         .select(&["point_y", "label"])
 }
 
@@ -276,8 +276,8 @@ pub fn test_columnar_strip_prefix() -> ColumnarDataFrame {
             point: Inner { x: 3.0, y: 4.0 },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows)
-        .expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows)
+        .expect("from_rows")
         .strip_prefix("point_")
 }
 
@@ -309,7 +309,7 @@ pub fn test_columnar_untagged_enum() -> ColumnarDataFrame {
             },
         },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// Internally tagged enum: "kind" column acts as discriminator.
@@ -322,5 +322,5 @@ pub fn test_columnar_tagged_enum() -> ColumnarDataFrame {
         TaggedEvent::Scroll { delta: -3.5 },
         TaggedEvent::Click { x: 30.0, y: 40.0 },
     ];
-    miniextendr_api::serde::vec_to_dataframe(&rows).expect("vec_to_dataframe")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }

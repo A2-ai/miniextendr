@@ -129,7 +129,7 @@ pub fn check_connections_version() {
 /// ```
 pub unsafe fn check_connections_runtime() -> Result<(), String> {
     use crate::expression::RCall;
-    use crate::ffi::{R_BaseEnv, Rf_asInteger, Rf_protect, Rf_unprotect};
+    use crate::ffi::{R_BaseEnv, Rf_protect, Rf_unprotect, SexpExt};
 
     unsafe {
         // Evaluate R.Version() in base env
@@ -163,7 +163,7 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
             .inspect_err(|_| {
                 Rf_unprotect(3);
             })?;
-        let major = Rf_asInteger(major_int);
+        let major = major_int.as_integer().expect("R.Version()$major is not NA");
 
         // Parse minor: it's a string like "3.1", we only need the part before the dot
         let minor_int = RCall::new("as.integer")
@@ -181,7 +181,7 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
             .inspect_err(|_| {
                 Rf_unprotect(3);
             })?;
-        let minor = Rf_asInteger(minor_int);
+        let minor = minor_int.as_integer().expect("R.Version()$minor is not NA");
 
         Rf_unprotect(3); // version_list, major_sexp, minor_sexp
 
@@ -244,12 +244,12 @@ impl ConnectionCapabilities {
         let conn = handle.cast::<Rconn>().cast_const();
         unsafe {
             ConnectionCapabilities {
-                can_read: (*conn).canread == Rboolean::TRUE,
-                can_write: (*conn).canwrite == Rboolean::TRUE,
-                can_seek: (*conn).canseek == Rboolean::TRUE,
-                is_text: (*conn).text == Rboolean::TRUE,
-                is_open: (*conn).isopen == Rboolean::TRUE,
-                is_blocking: (*conn).blocking == Rboolean::TRUE,
+                can_read: (*conn).canread != Rboolean::FALSE,
+                can_write: (*conn).canwrite != Rboolean::FALSE,
+                can_seek: (*conn).canseek != Rboolean::FALSE,
+                is_text: (*conn).text != Rboolean::FALSE,
+                is_open: (*conn).isopen != Rboolean::FALSE,
+                is_blocking: (*conn).blocking != Rboolean::FALSE,
             }
         }
     }
@@ -263,12 +263,12 @@ impl ConnectionCapabilities {
         let conn = handle.cast::<Rconn>().cast_const();
         unsafe {
             ConnectionCapabilities {
-                can_read: (*conn).canread == Rboolean::TRUE,
-                can_write: (*conn).canwrite == Rboolean::TRUE,
-                can_seek: (*conn).canseek == Rboolean::TRUE,
-                is_text: (*conn).text == Rboolean::TRUE,
-                is_open: (*conn).isopen == Rboolean::TRUE,
-                is_blocking: (*conn).blocking == Rboolean::TRUE,
+                can_read: (*conn).canread != Rboolean::FALSE,
+                can_write: (*conn).canwrite != Rboolean::FALSE,
+                can_seek: (*conn).canseek != Rboolean::FALSE,
+                is_text: (*conn).text != Rboolean::FALSE,
+                is_open: (*conn).isopen != Rboolean::FALSE,
+                is_blocking: (*conn).blocking != Rboolean::FALSE,
             }
         }
     }

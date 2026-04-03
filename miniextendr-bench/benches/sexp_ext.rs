@@ -33,12 +33,10 @@ fn sexp_is_integer_ext() {
 }
 
 #[divan::bench]
-fn sexp_is_integer_raw() {
+fn sexp_is_integer_type_of() {
     let sexp = miniextendr_bench::fixtures().int_vec(2);
-    unsafe {
-        let out = ffi::TYPEOF(sexp) == ffi::SEXPTYPE::INTSXP;
-        divan::black_box(out);
-    }
+    let out = sexp.type_of() == ffi::SEXPTYPE::INTSXP;
+    divan::black_box(out);
 }
 
 #[divan::bench(args = SIZE_INDICES)]

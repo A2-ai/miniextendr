@@ -36,8 +36,8 @@ pub fn passthrough_ptr(ptr: SEXP) -> SEXP {
 /// @export
 #[miniextendr]
 pub fn is_external_ptr(sexp: SEXP) -> bool {
-    use miniextendr_api::ffi::{SEXPTYPE, TYPEOF};
-    unsafe { TYPEOF(sexp) == SEXPTYPE::EXTPTRSXP }
+    use miniextendr_api::ffi::SexpExt;
+    sexp.is_external_ptr()
 }
 
 /// Get class of any R object (for cross-package testing)
@@ -57,11 +57,11 @@ pub fn consumer_get_class(x: SEXP) -> SEXP {
 #[miniextendr]
 pub fn has_class(x: SEXP, class_name: String) -> bool {
     use miniextendr_api::ffi::{
-        R_CHAR, R_ClassSymbol, Rf_getAttrib, Rf_xlength, SEXPTYPE, STRING_ELT, TYPEOF,
+        R_CHAR, R_ClassSymbol, Rf_getAttrib, Rf_xlength, STRING_ELT, SexpExt,
     };
     unsafe {
         let class_attr = Rf_getAttrib(x, R_ClassSymbol);
-        if TYPEOF(class_attr) != SEXPTYPE::STRSXP {
+        if !class_attr.is_character() {
             return false;
         }
         let len = Rf_xlength(class_attr);

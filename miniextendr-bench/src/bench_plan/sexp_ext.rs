@@ -1,7 +1,7 @@
 //! Benchmarks for SexpExt helpers vs raw access.
 //!
 //! Planned cases:
-//! - `type_of` vs `TYPEOF` direct
+//! - `is_integer` vs `type_of() == INTSXP`
 //! - `len` vs `Rf_xlength` direct
 //! - `as_slice` vs manual pointer + slice creation
 //! - unchecked variants where available

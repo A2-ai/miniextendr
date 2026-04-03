@@ -1121,7 +1121,7 @@ impl TryFromSexp for List {
             sexp
         } else if actual == LISTSXP {
             // Accept pairlists by coercing to a VECSXP list.
-            unsafe { ffi::Rf_coerceVector(sexp, VECSXP) }
+            sexp.coerce(VECSXP)
         } else {
             return Err(crate::from_r::SexpTypeError {
                 expected: VECSXP,

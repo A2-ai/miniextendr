@@ -712,9 +712,9 @@ pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
 /// @noRd
 #[miniextendr]
 pub fn altrep_from_list(x: SEXP) -> ListDataClass {
-    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SEXPTYPE, TYPEOF};
+    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SexpExt};
 
-    if unsafe { TYPEOF(x) } != SEXPTYPE::VECSXP {
+    if !x.is_list() {
         panic!("altrep_from_list: expected a list (VECSXP)");
     }
 

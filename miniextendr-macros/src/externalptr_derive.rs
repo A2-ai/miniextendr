@@ -478,40 +478,40 @@ fn generate_setter_body(
         }
         SlotKind::ScalarInt => {
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_asInteger;
+                use ::miniextendr_api::ffi::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = Rf_asInteger(value);
+                    data.#field_name = value.as_integer().unwrap_or(::miniextendr_api::altrep_traits::NA_INTEGER);
                     x
                 }
             }
         }
         SlotKind::ScalarReal => {
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_asReal;
+                use ::miniextendr_api::ffi::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = Rf_asReal(value);
+                    data.#field_name = value.as_real().unwrap_or(::miniextendr_api::altrep_traits::NA_REAL);
                     x
                 }
             }
         }
         SlotKind::ScalarLogical => {
             quote::quote! {
-                use ::miniextendr_api::ffi::{Rf_asLogical, Rboolean};
+                use ::miniextendr_api::ffi::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = Rf_asLogical(value) == Rboolean::TRUE as i32;
+                    data.#field_name = value.as_logical().unwrap_or(false);
                     x
                 }
             }
         }
         SlotKind::ScalarRaw => {
             quote::quote! {
-                use ::miniextendr_api::ffi::{RAW, Rf_coerceVector, SEXPTYPE};
+                use ::miniextendr_api::ffi::{RAW, SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
-                    let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
+                    let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
                     data.#field_name = *RAW(raw_vec);
                     x
                 }
