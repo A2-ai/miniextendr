@@ -110,7 +110,7 @@ where
             };
 
             // Get and convert element
-            let elem_sexp = unsafe { sexp.vector_elt(i as R_xlen_t) };
+            let elem_sexp = sexp.vector_elt(i as R_xlen_t);
             let value = T::try_from_sexp(elem_sexp).map_err(|e| {
                 SexpError::InvalidValue(format!("failed to convert element '{}': {}", name, e))
             })?;

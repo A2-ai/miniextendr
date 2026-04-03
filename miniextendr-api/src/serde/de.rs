@@ -593,7 +593,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 let names = self.sexp.get_names();
                 let name_charsxp = unsafe { STRING_ELT(names, 0) };
                 let variant = unsafe { charsxp_to_str(name_charsxp) };
-                let value = unsafe { self.sexp.vector_elt(0) };
+                let value = self.sexp.vector_elt(0);
 
                 visitor.visit_enum(DataVariantAccess {
                     variant: variant.to_string(),
@@ -829,7 +829,7 @@ impl<'de> SeqAccess<'de> for ListSeqAccess {
             return Ok(None);
         }
 
-        let elem = unsafe { self.sexp.vector_elt(self.index as isize) };
+        let elem = self.sexp.vector_elt(self.index as isize);
         self.index += 1;
         seed.deserialize(RDeserializer::from_sexp(elem)).map(Some)
     }
@@ -900,7 +900,7 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
         &mut self,
         seed: V,
     ) -> Result<V::Value, Self::Error> {
-        let elem = unsafe { self.sexp.vector_elt(self.index as isize) };
+        let elem = self.sexp.vector_elt(self.index as isize);
         self.index += 1;
         seed.deserialize(RDeserializer::from_sexp(elem))
     }

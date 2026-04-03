@@ -408,7 +408,7 @@ pub fn new_rcrd(
 
         // Check length (skip first, already used for expected_len)
         if i > 0 {
-            let field = unsafe { fields.as_sexp().vector_elt(i) };
+            let field = fields.as_sexp().vector_elt(i);
             let field_len = unsafe { Rf_xlength(field) };
             if field_len != expected_len {
                 return Err(VctrsBuildError::FieldLengthMismatch {

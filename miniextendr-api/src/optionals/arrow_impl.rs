@@ -762,7 +762,7 @@ impl TryFromSexp for RecordBatch {
         let mut columns: Vec<ArrayRef> = Vec::with_capacity(ncol);
 
         for (i, name) in names.iter().enumerate() {
-            let col_sexp = unsafe { sexp.vector_elt(i as R_xlen_t) };
+            let col_sexp = sexp.vector_elt(i as R_xlen_t);
             let (field, array) = sexp_column_to_arrow(col_sexp, name)?;
             fields.push(field);
             columns.push(array);

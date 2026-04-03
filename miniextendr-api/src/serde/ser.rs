@@ -461,7 +461,7 @@ fn create_r_list(elements: &[SEXP]) -> SEXP {
 
     for (i, &elem) in elements.iter().enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        unsafe { sexp.get().set_vector_elt(idx, elem) };
+        sexp.get().set_vector_elt(idx, elem);
     }
 
     sexp.get()
@@ -480,7 +480,7 @@ fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
 
     for (i, (key, &value)) in keys.iter().zip(values.iter()).enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        unsafe { list.get().set_vector_elt(idx, value) };
+        list.get().set_vector_elt(idx, value);
         names.get().set_string_elt(idx, SEXP::charsxp(key));
     }
 
@@ -501,7 +501,7 @@ fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
 
     for (i, (&key, &value)) in keys.iter().zip(values.iter()).enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        unsafe { list.get().set_vector_elt(idx, value) };
+        list.get().set_vector_elt(idx, value);
         names.get().set_string_elt(idx, SEXP::charsxp(key));
     }
 
@@ -514,7 +514,7 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, 1)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1)) };
 
-    unsafe { list.get().set_vector_elt(0, value) };
+    list.get().set_vector_elt(0, value);
     names.get().set_string_elt(0, SEXP::charsxp(tag));
     list.get().set_names(names.get());
 

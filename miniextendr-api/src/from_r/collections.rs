@@ -117,7 +117,7 @@ where
             return Err(SexpError::DuplicateName(key));
         }
 
-        let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
+        let elem = sexp.vector_elt(i as crate::ffi::R_xlen_t);
         let value = V::try_from_sexp(elem).map_err(|e| e.into())?;
         map.extend(std::iter::once((key, value)));
     }
@@ -172,7 +172,7 @@ where
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let elem = unsafe { sexp.vector_elt(i as crate::ffi::R_xlen_t) };
+        let elem = sexp.vector_elt(i as crate::ffi::R_xlen_t);
         let map = M::try_from_sexp(elem).map_err(Into::into)?;
         result.push(map);
     }

@@ -87,7 +87,7 @@ impl List {
         if idx < 0 || idx >= self.len() {
             return None;
         }
-        Some(unsafe { self.0.vector_elt(idx) })
+        Some(self.0.vector_elt(idx))
     }
 
     /// Get element at 0-based index and convert to type `T`.
@@ -122,7 +122,7 @@ impl List {
             let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
             if let Ok(s) = name_cstr.to_str() {
                 if s == name {
-                    let elem = unsafe { self.0.vector_elt(i) };
+                    let elem = self.0.vector_elt(i);
                     return T::try_from_sexp(elem).ok();
                 }
             }
@@ -424,7 +424,7 @@ impl List {
     pub unsafe fn set_elt_unchecked(self, idx: isize, child: SEXP) {
         debug_assert!(idx >= 0 && idx < self.len(), "index out of bounds");
         // SAFETY: caller guarantees child is protected and valid
-        unsafe { self.0.set_vector_elt(idx, child) };
+        self.0.set_vector_elt(idx, child);
     }
 
     /// Set an element using a callback that produces the child.

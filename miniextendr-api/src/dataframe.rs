@@ -334,7 +334,7 @@ fn nrow_from_first_column(sexp: SEXP) -> Result<usize, DataFrameError> {
         // 0 columns → 0 rows
         return Ok(0);
     }
-    let first_col = unsafe { sexp.vector_elt(0) };
+    let first_col = sexp.vector_elt(0);
     if first_col == SEXP::null() {
         return Ok(0);
     }
@@ -361,7 +361,7 @@ fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
     }
 
     // Get the length of the first column
-    let first_col = unsafe { list.as_sexp().vector_elt(0) };
+    let first_col = list.as_sexp().vector_elt(0);
     let expected: usize = unsafe { ffi::Rf_xlength(first_col) }
         .try_into()
         .expect("column length must be non-negative");
@@ -369,7 +369,7 @@ fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
     // Check all columns match
     let names_sexp = list.names();
     for i in 1..n {
-        let col = unsafe { list.as_sexp().vector_elt(i) };
+        let col = list.as_sexp().vector_elt(i);
         let col_len: usize = unsafe { ffi::Rf_xlength(col) }
             .try_into()
             .expect("column length must be non-negative");

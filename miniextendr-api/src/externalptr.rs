@@ -417,7 +417,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
-        unsafe { prot.set_vector_elt(PROT_TYPE_ID_INDEX, type_id_sym) };
+        prot.set_vector_elt(PROT_TYPE_ID_INDEX, type_id_sym);
 
         let sexp = unsafe { R_MakeExternalPtr(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };

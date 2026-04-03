@@ -157,7 +157,7 @@ impl ProtectPool {
         // slot < capacity ≤ R_xlen_t::MAX (checked in with_capacity/grow),
         // so this conversion is safe.
         let r_slot = R_xlen_t::try_from(slot).expect("slot exceeds R_xlen_t::MAX");
-        unsafe { self.backing.set_vector_elt(r_slot, sexp) };
+        self.backing.set_vector_elt(r_slot, sexp);
         self.len += 1;
         ProtectKey {
             slot: u32::try_from(slot).expect("slot exceeds u32::MAX"),
@@ -181,7 +181,7 @@ impl ProtectPool {
             return;
         };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            unsafe { self.backing.set_vector_elt(r_slot, SEXP::null()) };
+            self.backing.set_vector_elt(r_slot, SEXP::null());
             self.generations[slot] = self.generations[slot].wrapping_add(1);
             self.free_slots.push(slot);
             self.len -= 1;
@@ -198,7 +198,7 @@ impl ProtectPool {
             return None;
         };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            Some(unsafe { self.backing.vector_elt(r_slot) })
+            Some(self.backing.vector_elt(r_slot))
         } else {
             None
         }
@@ -223,7 +223,7 @@ impl ProtectPool {
             return false;
         };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            unsafe { self.backing.set_vector_elt(r_slot, sexp) };
+            self.backing.set_vector_elt(r_slot, sexp);
             true
         } else {
             false
