@@ -42,11 +42,11 @@ pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::Externa
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::ffi::Rf_ScalarInteger;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         match ExternalPtr::<Counter>::wrap_sexp(ptr) {
-            Some(ext) => Rf_ScalarInteger(ext.value),
-            None => Rf_ScalarInteger(i32::MIN), // NA_INTEGER equivalent
+            Some(ext) => SEXP::scalar_integer(ext.value),
+            None => SEXP::scalar_integer(i32::MIN), // NA_INTEGER equivalent
         }
     }
 }
@@ -56,15 +56,15 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
-    use miniextendr_api::ffi::Rf_ScalarInteger;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         // Get mutable access via downcast_mut on erased pointer
         let mut erased = ErasedExternalPtr::from_sexp(ptr);
         if let Some(counter) = erased.downcast_mut::<Counter>() {
             counter.value += 1;
-            return Rf_ScalarInteger(counter.value);
+            return SEXP::scalar_integer(counter.value);
         }
-        Rf_ScalarInteger(i32::MIN) // NA_INTEGER equivalent
+        SEXP::scalar_integer(i32::MIN) // NA_INTEGER equivalent
     }
 }
 
@@ -80,11 +80,11 @@ pub fn extptr_point_new(x: f64, y: f64) -> miniextendr_api::externalptr::Externa
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::ffi::Rf_ScalarReal;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         match ExternalPtr::<Point>::wrap_sexp(ptr) {
-            Some(ext) => Rf_ScalarReal(ext.x),
-            None => Rf_ScalarReal(f64::NAN),
+            Some(ext) => SEXP::scalar_real(ext.x),
+            None => SEXP::scalar_real(f64::NAN),
         }
     }
 }
@@ -95,11 +95,11 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::ffi::Rf_ScalarReal;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         match ExternalPtr::<Point>::wrap_sexp(ptr) {
-            Some(ext) => Rf_ScalarReal(ext.y),
-            None => Rf_ScalarReal(f64::NAN),
+            Some(ext) => SEXP::scalar_real(ext.y),
+            None => SEXP::scalar_real(f64::NAN),
         }
     }
 }
@@ -110,12 +110,12 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::ffi::Rf_ScalarInteger;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         // Try to interpret a Point as a Counter - should return None
         match ExternalPtr::<Counter>::wrap_sexp(ptr) {
-            Some(_) => Rf_ScalarInteger(1), // Unexpected success
-            None => Rf_ScalarInteger(0),    // Expected failure - type mismatch
+            Some(_) => SEXP::scalar_integer(1), // Unexpected success
+            None => SEXP::scalar_integer(0),    // Expected failure - type mismatch
         }
     }
 }
@@ -126,13 +126,13 @@ pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::ffi::Rf_ScalarInteger;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         // R's new("externalptr") creates a null external pointer
         // Our wrap_sexp should return None for it
         match ExternalPtr::<Counter>::wrap_sexp(ptr) {
-            Some(_) => Rf_ScalarInteger(1), // Unexpected - null pointer should fail
-            None => Rf_ScalarInteger(0),    // Expected - null pointer detected
+            Some(_) => SEXP::scalar_integer(1), // Unexpected - null pointer should fail
+            None => SEXP::scalar_integer(0),    // Expected - null pointer detected
         }
     }
 }
@@ -142,13 +142,13 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
-    use miniextendr_api::ffi::Rf_ScalarInteger;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         let erased = ErasedExternalPtr::from_sexp(ptr);
         if erased.is::<Counter>() {
-            Rf_ScalarInteger(1)
+            SEXP::scalar_integer(1)
         } else {
-            Rf_ScalarInteger(0)
+            SEXP::scalar_integer(0)
         }
     }
 }
@@ -158,13 +158,13 @@ pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
-    use miniextendr_api::ffi::Rf_ScalarInteger;
+    use miniextendr_api::ffi::SEXP;
     unsafe {
         let erased = ErasedExternalPtr::from_sexp(ptr);
         if erased.is::<Point>() {
-            Rf_ScalarInteger(1)
+            SEXP::scalar_integer(1)
         } else {
-            Rf_ScalarInteger(0)
+            SEXP::scalar_integer(0)
         }
     }
 }

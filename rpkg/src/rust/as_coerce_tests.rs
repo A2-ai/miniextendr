@@ -5,7 +5,8 @@
 
 use miniextendr_api::as_coerce::AsCoerceError;
 use miniextendr_api::{
-    ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, ffi, miniextendr,
+    ExternalPtr, IntoR, List, ListBuilder, OwnedProtect, ProtectScope, ffi, ffi::SexpExt,
+    miniextendr,
 };
 
 /// Test struct for as.<class> coercion methods.
@@ -114,8 +115,7 @@ impl AsCoerceTestData {
         // Create a character vector of length 1
         unsafe {
             let result = OwnedProtect::new(ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1));
-            let chars = ffi::Rf_mkCharLenCE(desc.as_ptr().cast(), desc.len() as i32, ffi::CE_UTF8);
-            ffi::SET_STRING_ELT(result.get(), 0, chars);
+            result.get().set_string_elt(0, ffi::SEXP::charsxp(&desc));
             Ok(result.into_sexp())
         }
     }

@@ -1257,7 +1257,8 @@ impl AltrepLen for ListData {
 
 impl AltListData for ListData {
     fn elt(&self, i: usize) -> SEXP {
-        unsafe { miniextendr_api::ffi::VECTOR_ELT(self.list, i as miniextendr_api::ffi::R_xlen_t) }
+        use miniextendr_api::ffi::SexpExt;
+        self.list.vector_elt(i as miniextendr_api::ffi::R_xlen_t)
     }
 }
 

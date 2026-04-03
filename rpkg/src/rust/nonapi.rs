@@ -24,7 +24,7 @@ pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
     .expect("failed to spawn");
 
     let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// Test StackCheckGuard with Rust's default 2 MiB stack.
@@ -39,5 +39,5 @@ pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {
     });
 
     let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }

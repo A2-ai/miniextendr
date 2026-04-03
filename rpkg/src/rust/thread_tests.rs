@@ -31,7 +31,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
         .expect("failed to spawn thread");
 
     let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -47,5 +47,5 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
         })
         .expect("thread failed");
 
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }

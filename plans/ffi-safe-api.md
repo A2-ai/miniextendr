@@ -1,6 +1,19 @@
 # FFI Safe API Migration — Remaining Items
 
-Item 1 (attribute access) is done. These items remain.
+Items 1-3, 5 methods are done. Safe methods exist on `SexpExt` and `impl SEXP`:
+
+**Done — methods added**:
+- Item 1: Attribute access (`get_attr`, `set_attr`, `get_names`, `set_names`, etc.) — methods + migration complete
+- Item 2: String access (`string_elt`, `string_elt_str`, `set_string_elt`, `is_na_string`) — methods added
+- Item 3: Scalar construction (`SEXP::scalar_integer`, `scalar_real`, `scalar_logical`, etc.) — methods added
+- Item 5: List element access (`vector_elt`, `set_vector_elt`) — methods added
+- String construction (`SEXP::charsxp`, `na_string`, `blank_string`) — methods added
+
+**Strategy**: Safe methods are available. Internal miniextendr-api code can migrate incrementally.
+Privatization (changing `pub` to `pub(crate)`) happens after all callers in rpkg, tests,
+bench, and cross-package are migrated. That's ~600 call sites — do it file by file.
+
+Remaining items needing new methods:
 
 ## 2. String construction and access (~126 call sites)
 

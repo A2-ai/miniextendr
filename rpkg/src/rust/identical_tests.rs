@@ -7,7 +7,7 @@ use miniextendr_api::miniextendr;
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{Rf_ScalarLogical, Rf_allocVector, SET_VECTOR_ELT, SEXPTYPE};
+    use miniextendr_api::ffi::{Rf_allocVector, SEXPTYPE, SexpExt};
 
     // Pointer equality (what == does on SEXP)
     let pointer_eq = x == y;
@@ -20,15 +20,14 @@ pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {
     // Return list(pointer_eq = ..., semantic_eq = ...)
     unsafe {
         let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarLogical(pointer_eq as i32));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarLogical(semantic_eq as i32));
+        result.set_vector_elt(0, SEXP::scalar_logical(pointer_eq));
+        result.set_vector_elt(1, SEXP::scalar_logical(semantic_eq));
 
         // Add names
-        use miniextendr_api::ffi::{Rf_mkChar, Rf_namesgets, SET_STRING_ELT};
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        SET_STRING_ELT(names, 0, Rf_mkChar(c"pointer_eq".as_ptr()));
-        SET_STRING_ELT(names, 1, Rf_mkChar(c"semantic_eq".as_ptr()));
-        Rf_namesgets(result, names);
+        names.set_string_elt(0, SEXP::charsxp("pointer_eq"));
+        names.set_string_elt(1, SEXP::charsxp("semantic_eq"));
+        result.set_names(names);
 
         result
     }

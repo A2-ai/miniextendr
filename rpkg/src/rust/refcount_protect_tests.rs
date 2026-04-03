@@ -1,6 +1,6 @@
 //! Test fixtures for refcount_protect (RefCountedArena).
 
-use miniextendr_api::ffi::Rf_ScalarInteger;
+use miniextendr_api::ffi::SEXP;
 use miniextendr_api::prelude::*;
 use miniextendr_api::refcount_protect::RefCountedArena;
 
@@ -9,7 +9,7 @@ use miniextendr_api::refcount_protect::RefCountedArena;
 pub fn refcount_arena_roundtrip() -> bool {
     unsafe {
         let arena = RefCountedArena::new();
-        let sexp = Rf_ScalarInteger(42);
+        let sexp = SEXP::scalar_integer(42);
 
         // Protect it
         let protected = arena.protect(sexp);
