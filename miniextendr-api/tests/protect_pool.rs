@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{self, Rf_ScalarInteger};
+use miniextendr_api::ffi::{self, SEXP};
 use miniextendr_api::protect_pool::ProtectPool;
 
 #[test]
@@ -12,8 +12,8 @@ fn pool_protects_from_gc() {
         let mut pool = ProtectPool::new(4);
 
         // Insert some SEXPs
-        let s1 = Rf_ScalarInteger(42);
-        let s2 = Rf_ScalarInteger(99);
+        let s1 = SEXP::scalar_integer(42);
+        let s2 = SEXP::scalar_integer(99);
         let k1 = pool.insert(s1);
         let k2 = pool.insert(s2);
 
@@ -48,8 +48,8 @@ fn pool_replace_survives_gc() {
     r_test_utils::with_r_thread(|| unsafe {
         let mut pool = ProtectPool::new(4);
 
-        let k = pool.insert(Rf_ScalarInteger(1));
-        pool.replace(k, Rf_ScalarInteger(2));
+        let k = pool.insert(SEXP::scalar_integer(1));
+        pool.replace(k, SEXP::scalar_integer(2));
 
         ffi::R_gc();
 
@@ -68,7 +68,7 @@ fn pool_growth_survives_gc() {
 
         let mut keys = Vec::new();
         for i in 0..100 {
-            keys.push(pool.insert(Rf_ScalarInteger(i)));
+            keys.push(pool.insert(SEXP::scalar_integer(i)));
         }
 
         ffi::R_gc();
@@ -94,11 +94,11 @@ fn pool_stale_key_after_reuse() {
     r_test_utils::with_r_thread(|| unsafe {
         let mut pool = ProtectPool::new(4);
 
-        let k1 = pool.insert(Rf_ScalarInteger(10));
+        let k1 = pool.insert(SEXP::scalar_integer(10));
         pool.release(k1);
 
         // Reuse the slot
-        let k2 = pool.insert(Rf_ScalarInteger(20));
+        let k2 = pool.insert(SEXP::scalar_integer(20));
 
         // k1 is stale — different generation
         assert!(pool.get(k1).is_none());
@@ -118,7 +118,7 @@ fn pool_double_release_is_noop() {
     r_test_utils::with_r_thread(|| unsafe {
         let mut pool = ProtectPool::new(4);
 
-        let k = pool.insert(Rf_ScalarInteger(77));
+        let k = pool.insert(SEXP::scalar_integer(77));
         assert_eq!(pool.len(), 1);
 
         // First release — valid
@@ -134,7 +134,7 @@ fn pool_double_release_is_noop() {
         assert_eq!(pool.len(), 0);
 
         // Pool should still be functional
-        let k2 = pool.insert(Rf_ScalarInteger(88));
+        let k2 = pool.insert(SEXP::scalar_integer(88));
         assert_eq!(pool.len(), 1);
         assert_eq!(ffi::INTEGER_ELT(pool.get(k2).unwrap(), 0), 88);
         pool.release(k2);

@@ -5,8 +5,8 @@ mod r_test_utils;
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use miniextendr_api::coerce::Coerced;
 use miniextendr_api::ffi::{
-    INTEGER, LOGICAL, R_NaString, R_xlen_t, RAW, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal,
-    Rf_allocVector, Rf_mkChar, Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
+    INTEGER, LOGICAL, R_NaString, R_xlen_t, RAW, Rf_ScalarLogical, Rf_allocVector, Rf_mkChar,
+    Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
 };
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
@@ -96,8 +96,8 @@ fn from_r_suite() {
 fn test_scalar_conversions() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let int_sexp = guard.protect(Rf_ScalarInteger(42));
-        let real_sexp = guard.protect(Rf_ScalarReal(3.5));
+        let int_sexp = guard.protect(SEXP::scalar_integer(42));
+        let real_sexp = guard.protect(SEXP::scalar_real(3.5));
         let log_sexp = guard.protect(Rf_ScalarLogical(1));
 
         let int_val: i32 = TryFromSexp::try_from_sexp(int_sexp).unwrap();
@@ -113,8 +113,8 @@ fn test_scalar_conversions() {
 fn test_option_scalars() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let na_int = guard.protect(Rf_ScalarInteger(NA_INTEGER));
-        let na_real = guard.protect(Rf_ScalarReal(NA_REAL));
+        let na_int = guard.protect(SEXP::scalar_integer(NA_INTEGER));
+        let na_real = guard.protect(SEXP::scalar_real(NA_REAL));
         let na_log = guard.protect(Rf_ScalarLogical(NA_LOGICAL));
 
         let opt_i32: Option<i32> = TryFromSexp::try_from_sexp(na_int).unwrap();
@@ -215,7 +215,7 @@ fn test_string_conversions() {
 fn test_coerced_conversions() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let int_scalar = guard.protect(Rf_ScalarInteger(7));
+        let int_scalar = guard.protect(SEXP::scalar_integer(7));
         let coerced: Coerced<i64, i32> = TryFromSexp::try_from_sexp(int_scalar).unwrap();
         assert_eq!(coerced.into_inner(), 7i64);
     }
@@ -224,8 +224,8 @@ fn test_coerced_conversions() {
 fn test_error_cases() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let int_scalar = guard.protect(Rf_ScalarInteger(1));
-        let real_scalar = guard.protect(Rf_ScalarReal(1.0));
+        let int_scalar = guard.protect(SEXP::scalar_integer(1));
+        let real_scalar = guard.protect(SEXP::scalar_real(1.0));
         let int_vec = make_int_vec(&[1, 2], &mut guard);
 
         let err = <i32 as TryFromSexp>::try_from_sexp(real_scalar).unwrap_err();
@@ -242,7 +242,7 @@ fn test_error_cases() {
             TryFromSexp::try_from_sexp(int_scalar);
         assert!(coerced_err.is_ok());
 
-        let big_int = guard.protect(Rf_ScalarInteger(1000));
+        let big_int = guard.protect(SEXP::scalar_integer(1000));
         let coerced_err: Result<Coerced<u8, i32>, SexpError> = TryFromSexp::try_from_sexp(big_int);
         assert!(matches!(coerced_err, Err(SexpError::InvalidValue(_))));
     }
@@ -360,7 +360,7 @@ fn json_value_option_from_sexp() {
         let mut guard = ProtectCount::default();
         unsafe {
             // Test with an integer scalar - converts to JSON number
-            let int_sexp = guard.protect(Rf_ScalarInteger(42));
+            let int_sexp = guard.protect(SEXP::scalar_integer(42));
             let opt: Option<JsonValue> = TryFromSexp::try_from_sexp(int_sexp).unwrap();
             assert!(opt.is_some());
             let val = opt.unwrap();
@@ -379,7 +379,7 @@ fn json_value_vec_from_list() {
         let mut guard = ProtectCount::default();
         unsafe {
             // Create R objects that convert to different JSON types
-            let int_sexp = guard.protect(Rf_ScalarInteger(42)); // -> JSON number
+            let int_sexp = guard.protect(SEXP::scalar_integer(42)); // -> JSON number
             let str_vec = make_str_vec(&[Some("hello"), Some("world")], &mut guard); // -> JSON array
             let list = make_list(&[int_sexp, str_vec], &mut guard);
 
@@ -402,7 +402,7 @@ fn json_value_vec_option_from_list() {
             // Create R objects: logical -> JSON bool, NULL -> None, integer -> JSON number
             let bool_sexp = guard.protect(Rf_ScalarLogical(1)); // -> JSON true
             let nil = miniextendr_api::ffi::R_NilValue;
-            let int_sexp = guard.protect(Rf_ScalarInteger(42)); // -> JSON 42
+            let int_sexp = guard.protect(SEXP::scalar_integer(42)); // -> JSON 42
             let list = make_list(&[bool_sexp, nil, int_sexp], &mut guard);
 
             let vec: Vec<Option<JsonValue>> = TryFromSexp::try_from_sexp(list).unwrap();
@@ -567,7 +567,7 @@ fn json_value_unchecked_vec_option() {
     r_test_utils::with_r_thread(|| {
         let mut guard = ProtectCount::default();
         unsafe {
-            let int_sexp = guard.protect(Rf_ScalarInteger(100));
+            let int_sexp = guard.protect(SEXP::scalar_integer(100));
             let nil = miniextendr_api::ffi::R_NilValue;
             let list = make_list(&[int_sexp, nil], &mut guard);
 

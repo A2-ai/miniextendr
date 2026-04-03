@@ -130,10 +130,10 @@ fn array3_i32_blanket_impl() {
 fn array0_scalar_blanket_impl() {
     // Verify Array0 (scalar) blanket impl works
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::Rf_ScalarInteger;
+        use miniextendr_api::ffi::SEXP;
 
         unsafe {
-            let sexp = Rf_ScalarInteger(42);
+            let sexp = SEXP::scalar_integer(42);
             let arr: Array0<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(arr[()], 42);
         }
