@@ -155,15 +155,7 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
     let class_sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for (i, class_name) in classes.iter().enumerate() {
-        // Use Rf_mkCharLenCE with UTF-8 encoding since Rust strings are always UTF-8
-        let charsxp = unsafe {
-            crate::ffi::Rf_mkCharLenCE(
-                class_name.as_ptr().cast::<i8>(),
-                class_name.len() as i32,
-                crate::ffi::cetype_t::CE_UTF8,
-            )
-        };
-        unsafe { SET_STRING_ELT(class_sexp.get(), i as R_xlen_t, charsxp) };
+        class_sexp.get().set_string_elt(i as R_xlen_t, SEXP::charsxp(class_name));
     }
 
     class_sexp
@@ -178,15 +170,7 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
 ///
 /// Must be called from R's main thread.
 unsafe fn install_symbol(name: &str) -> SEXP {
-    // Create a CHARSXP with proper length
-    let charsxp = unsafe {
-        crate::ffi::Rf_mkCharLenCE(
-            name.as_ptr().cast::<i8>(),
-            name.len() as i32,
-            crate::ffi::cetype_t::CE_UTF8,
-        )
-    };
-    // Convert to symbol
+    let charsxp = SEXP::charsxp(name);
     unsafe { crate::ffi::Rf_installChar(charsxp) }
 }
 

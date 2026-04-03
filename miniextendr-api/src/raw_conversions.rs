@@ -451,12 +451,7 @@ impl<T: Pod> IntoR for RawTagged<T> {
             // Set type attribute
             let type_name = std::any::type_name::<T>();
             let attr_sym = Rf_install(c"mx_raw_type".as_ptr());
-            let charsxp = Rf_mkCharLenCE(
-                type_name.as_ptr().cast(),
-                type_name.len() as i32,
-                cetype_t::CE_UTF8,
-            );
-            sexp.set_attr(attr_sym, Rf_ScalarString(charsxp));
+            sexp.set_attr(attr_sym, SEXP::scalar_string(SEXP::charsxp(type_name)));
 
             Ok(sexp)
         }
@@ -484,12 +479,7 @@ impl<T: Pod> IntoR for RawSliceTagged<T> {
             // Set type attribute
             let type_name = std::any::type_name::<T>();
             let attr_sym = Rf_install(c"mx_raw_type".as_ptr());
-            let charsxp = Rf_mkCharLenCE(
-                type_name.as_ptr().cast(),
-                type_name.len() as i32,
-                cetype_t::CE_UTF8,
-            );
-            sexp.set_attr(attr_sym, Rf_ScalarString(charsxp));
+            sexp.set_attr(attr_sym, SEXP::scalar_string(SEXP::charsxp(type_name)));
 
             Ok(sexp)
         }

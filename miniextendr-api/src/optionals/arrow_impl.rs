@@ -625,15 +625,7 @@ impl IntoR for TimestampSecondArray {
             // Set tzone attribute if present
             if let Some(tz) = tz {
                 let tz_str = scope.alloc_character(1).into_raw();
-                ffi::SET_STRING_ELT(
-                    tz_str,
-                    0,
-                    ffi::Rf_mkCharLenCE(
-                        tz.as_ptr().cast(),
-                        tz.len() as i32,
-                        ffi::cetype_t::CE_UTF8,
-                    ),
-                );
+                tz_str.set_string_elt(0, SEXP::charsxp(tz));
                 sexp.set_attr(ffi::Rf_install(c"tzone".as_ptr()), tz_str);
             }
 
@@ -920,15 +912,10 @@ impl IntoR for StringArray {
             let guard = crate::gc_protect::OwnedProtect::new(sexp);
             for i in 0..n {
                 if self.is_null(i) {
-                    ffi::SET_STRING_ELT(guard.get(), i as R_xlen_t, R_NaString);
+                    guard.get().set_string_elt(i as R_xlen_t, SEXP::na_string());
                 } else {
                     let s = self.value(i);
-                    let charsxp = ffi::Rf_mkCharLenCE(
-                        s.as_ptr().cast(),
-                        s.len() as i32,
-                        ffi::cetype_t::CE_UTF8,
-                    );
-                    ffi::SET_STRING_ELT(guard.get(), i as R_xlen_t, charsxp);
+                    guard.get().set_string_elt(i as R_xlen_t, SEXP::charsxp(s));
                 }
             }
             guard.get()
@@ -1037,12 +1024,7 @@ impl IntoR for RecordBatch {
                 list.set_vector_elt(i as R_xlen_t, col_sexp);
 
                 let name = field.name();
-                let charsxp = ffi::Rf_mkCharLenCE(
-                    name.as_ptr().cast(),
-                    name.len() as i32,
-                    ffi::cetype_t::CE_UTF8,
-                );
-                ffi::SET_STRING_ELT(names, i as R_xlen_t, charsxp);
+                names.set_string_elt(i as R_xlen_t, SEXP::charsxp(name));
             }
 
             // Set names attribute
