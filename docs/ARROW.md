@@ -87,7 +87,45 @@ pub fn passthrough_cow(x: Cow<'static, [i32]>) -> Cow<'static, [i32]> {
 }
 ```
 
-### `ProtectedStrVec` — GC-safe string view with proper lifetimes
+### `ProtectedStrVec` vs `StrVec` — safety vs speed
+
+`ProtectedStrVec` and `StrVec` both wrap an R STRSXP and provide zero-copy
+`&str` access to its elements. They differ in GC safety:
+
+| | `StrVec` | `ProtectedStrVec` |
+|---|---|---|
+| Size | 1 word (just the SEXP) | 3 words (SEXP + len + OwnedProtect) |
+| Copy | `Copy` | `!Copy` (owns protection guard) |
+| GC protection | None — caller's responsibility | `OwnedProtect` keeps STRSXP alive |
+| Borrow lifetime | `&'static str` (lie) | `&'a str` tied to `&'a self` |
+| Iterator | `StrVecIter` (`Option<&'static str>`) | `ProtectedStrVecIter<'a>` (`Option<&'a str>`) |
+
+**The key difference is lifetime safety.** `ProtectedStrVec` ties all borrows
+to the struct's lifetime. The compiler catches use-after-free:
+
+```rust
+let dangling: &str;
+{
+    let sv = unsafe { ProtectedStrVec::new(sexp) };
+    dangling = sv.get_str(0).unwrap(); // borrows &sv
+} // sv dropped → SEXP unprotected
+// dangling is now invalid — COMPILER ERROR: sv doesn't live long enough
+```
+
+With `StrVec` or `Vec<&'static str>`, the same code **compiles silently** and
+produces a dangling pointer — the `'static` lifetime is a lie (the data is only
+valid while R protects the SEXP).
+
+**When to use which:**
+
+- **`StrVec`** / **`Vec<&'static str>`** — inside a `#[miniextendr]` function
+  where R protects the `.Call` argument. Lightweight, fine. The SEXP won't be
+  GC'd during the call.
+- **`ProtectedStrVec`** — when you store the string vector beyond the immediate
+  scope, pass it to a closure, or want the compiler to catch lifetime bugs.
+  The `OwnedProtect` guard keeps the STRSXP alive until the struct is dropped.
+
+**Usage examples:**
 
 ```rust
 use miniextendr_api::ProtectedStrVec;
@@ -95,15 +133,15 @@ use std::collections::HashSet;
 
 #[miniextendr]
 pub fn count_unique(strings: ProtectedStrVec) -> i32 {
-    // Lifetimes tied to &self (not 'static) — compile-time GC safety
+    // Lifetimes tied to &self — compiler enforces GC safety
     let unique: HashSet<&str> = strings.iter()
         .filter_map(|s| s)  // skip NA
         .collect();
     unique.len() as i32
 }
 
-// Note: can't return &str from ProtectedStrVec — it's consumed by IntoR,
-// so there's nothing to borrow from. Return String or the whole ProtectedStrVec.
+// Can't return &str — ProtectedStrVec is consumed by IntoR, so there's
+// nothing to borrow from. Return String or the whole ProtectedStrVec.
 #[miniextendr]
 pub fn first_non_na(strings: ProtectedStrVec) -> String {
     strings.iter()
@@ -113,15 +151,13 @@ pub fn first_non_na(strings: ProtectedStrVec) -> String {
 }
 ```
 
-### `StrVec` — lightweight STRSXP wrapper (Copy, no protection)
-
 ```rust
 use miniextendr_api::StrVec;
 
 #[miniextendr]
 pub fn has_empty(strings: StrVec) -> bool {
-    // StrVec is Copy — just a SEXP wrapper. Caller must ensure GC protection.
-    // Safe in .Call context (R protects arguments).
+    // StrVec is Copy — just a SEXP wrapper. R protects .Call arguments,
+    // so this is safe within the function body.
     strings.iter().any(|opt| opt == Some(""))
 }
 ```
