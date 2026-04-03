@@ -219,7 +219,7 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
 
         for (i, key) in keys.iter().enumerate() {
             let s = key.as_ref();
-            let charsxp = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8);
+            let charsxp = SEXP::charsxp(s);
             ffi::SET_STRING_ELT(names, i as ffi::R_xlen_t, charsxp);
         }
 

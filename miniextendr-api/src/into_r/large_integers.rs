@@ -413,8 +413,8 @@ pub(crate) fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
         if s.is_empty() {
             crate::ffi::R_BlankString
         } else {
-            let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-            crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::CE_UTF8)
+            let _len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
+            crate::ffi::SEXP::charsxp(s)
         }
     }
 }

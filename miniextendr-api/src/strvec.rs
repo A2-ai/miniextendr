@@ -133,7 +133,7 @@ impl StrVec {
         assert!(idx >= 0 && idx < self.len(), "index out of bounds");
         // SAFETY: caller guarantees R main thread
         unsafe {
-            let charsxp = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8);
+            let charsxp = SEXP::charsxp(s);
             // CHARSXP may be cached, but protect anyway for safety
             let _guard = OwnedProtect::new(charsxp);
             ffi::SET_STRING_ELT(self.0, idx, charsxp);
@@ -225,7 +225,7 @@ impl<'a> StrVecBuilder<'a> {
         debug_assert!(idx >= 0 && idx < unsafe { ffi::Rf_xlength(self.vec) });
         // SAFETY: caller guarantees R main thread
         unsafe {
-            let charsxp = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8);
+            let charsxp = SEXP::charsxp(s);
             ffi::SET_STRING_ELT(self.vec, idx, charsxp);
         }
     }

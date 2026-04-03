@@ -116,7 +116,7 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
             let charsxp = if s.is_empty() {
                 ffi::R_BlankString
             } else {
-                ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8)
+                SEXP::charsxp(s)
             };
             ffi::SET_STRING_ELT(vec, i as ffi::R_xlen_t, charsxp);
         }

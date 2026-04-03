@@ -274,8 +274,8 @@ impl<'a> ListAccumulator<'a> {
                 for (i, name) in self.names.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(n) = name {
-                        let n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
-                        let charsxp = ffi::Rf_mkCharLenCE(n.as_ptr().cast(), n_len, ffi::CE_UTF8);
+                        let _n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
+                        let charsxp = ffi::SEXP::charsxp(n);
                         ffi::SET_STRING_ELT(names_sexp.get(), idx, charsxp);
                     } else {
                         ffi::SET_STRING_ELT(names_sexp.get(), idx, ffi::R_BlankString);

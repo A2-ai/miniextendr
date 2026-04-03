@@ -524,7 +524,7 @@ impl IntoR for StringDictionaryArray {
             for i in 0..n_levels {
                 let s = values.value(i);
                 let charsxp =
-                    ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::cetype_t::CE_UTF8);
+                    SEXP::charsxp(s);
                 ffi::SET_STRING_ELT(levels, i as R_xlen_t, charsxp);
             }
 
@@ -534,7 +534,7 @@ impl IntoR for StringDictionaryArray {
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
-                ffi::Rf_mkCharLenCE(c"factor".as_ptr(), 6, ffi::cetype_t::CE_UTF8),
+                SEXP::charsxp("factor"),
             );
             codes.set_class(class_str);
 
@@ -571,7 +571,7 @@ impl IntoR for Date32Array {
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
-                ffi::Rf_mkCharLenCE(c"Date".as_ptr(), 4, ffi::cetype_t::CE_UTF8),
+                SEXP::charsxp("Date"),
             );
             sexp.set_class(class_str);
 
@@ -613,12 +613,12 @@ impl IntoR for TimestampSecondArray {
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
-                ffi::Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, ffi::cetype_t::CE_UTF8),
+                SEXP::charsxp("POSIXct"),
             );
             ffi::SET_STRING_ELT(
                 class_str,
                 1,
-                ffi::Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, ffi::cetype_t::CE_UTF8),
+                SEXP::charsxp("POSIXt"),
             );
             sexp.set_class(class_str);
 
@@ -1053,7 +1053,7 @@ impl IntoR for RecordBatch {
             ffi::SET_STRING_ELT(
                 class_str,
                 0,
-                ffi::Rf_mkCharLenCE(c"data.frame".as_ptr(), 10, ffi::cetype_t::CE_UTF8),
+                SEXP::charsxp("data.frame"),
             );
             list.set_class(class_str);
 

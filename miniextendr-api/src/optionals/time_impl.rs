@@ -130,8 +130,8 @@ impl IntoR for OffsetDateTime {
             // Set class = c("POSIXct", "POSIXt")
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(class_vec);
-            let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
-            let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
+            let posixct = SEXP::charsxp("POSIXct");
+            let posixt = SEXP::charsxp("POSIXt");
             SET_STRING_ELT(class_vec, 0, posixct);
             SET_STRING_ELT(class_vec, 1, posixt);
             let class_sym = Rf_install(c"class".as_ptr());
@@ -212,8 +212,8 @@ impl IntoR for Option<OffsetDateTime> {
                 // Set class = c("POSIXct", "POSIXt")
                 let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
                 Rf_protect(class_vec);
-                let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
-                let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
+                let posixct = SEXP::charsxp("POSIXct");
+                let posixt = SEXP::charsxp("POSIXt");
                 SET_STRING_ELT(class_vec, 0, posixct);
                 SET_STRING_ELT(class_vec, 1, posixt);
                 let class_sym = Rf_install(c"class".as_ptr());
@@ -295,8 +295,8 @@ impl IntoR for Vec<OffsetDateTime> {
             // Set class = c("POSIXct", "POSIXt")
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(class_vec);
-            let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
-            let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
+            let posixct = SEXP::charsxp("POSIXct");
+            let posixt = SEXP::charsxp("POSIXt");
             SET_STRING_ELT(class_vec, 0, posixct);
             SET_STRING_ELT(class_vec, 1, posixt);
             let class_sym = Rf_install(c"class".as_ptr());
@@ -379,8 +379,8 @@ impl IntoR for Vec<Option<OffsetDateTime>> {
             // Set class = c("POSIXct", "POSIXt")
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(class_vec);
-            let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
-            let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
+            let posixct = SEXP::charsxp("POSIXct");
+            let posixt = SEXP::charsxp("POSIXt");
             SET_STRING_ELT(class_vec, 0, posixct);
             SET_STRING_ELT(class_vec, 1, posixt);
             let class_sym = Rf_install(c"class".as_ptr());
