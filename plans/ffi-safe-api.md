@@ -13,7 +13,7 @@ Items 1-3, 5 methods are done. Safe methods exist on `SexpExt` and `impl SEXP`:
 - rpkg test fixtures: `Rf_ScalarInteger` → `SEXP::scalar_integer`, etc.
 - Integration tests: gc_protect, preserve, protect_pool, refcount_protect, from_r, externalptr, ndarray
 - Macro codegen: `R_NilValue` → `SEXP::null()` in all 5 macro files (c_wrapper_builder, return_type_analysis, altrep, altrep_derive, externalptr_derive)
-- Item 4 (R_NilValue) macro blocker resolved — can now privatize R_NilValue after internal migration
+- Item 4 (R_NilValue) — complete. All 76+ call sites migrated to SEXP::null(). Macro codegen updated. Only ffi.rs static decl + doc comments remain.
 
 **Strategy**: Safe methods are available. Internal miniextendr-api code can migrate incrementally.
 Privatization (changing `pub` to `pub(crate)`) happens after all callers in rpkg, tests,
