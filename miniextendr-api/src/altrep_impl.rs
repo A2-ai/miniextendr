@@ -899,10 +899,10 @@ macro_rules! __impl_altstring_methods {
                             i.max(0) as usize,
                         ) {
                             Some(s) => unsafe { $crate::altrep_impl::checked_mkchar(s) },
-                            None => unsafe { $crate::ffi::R_NaString },
+                            None => $crate::ffi::SEXP::na_string(),
                         }
                     }
-                    None => unsafe { $crate::ffi::R_NaString },
+                    None => $crate::ffi::SEXP::na_string(),
                 }
             }
 
@@ -1326,10 +1326,10 @@ impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
                     i.max(0) as usize,
                 ) {
                     Some(s) => unsafe { checked_mkchar(s) },
-                    None => unsafe { crate::ffi::R_NaString },
+                    None => crate::ffi::SEXP::na_string(),
                 }
             }
-            None => unsafe { crate::ffi::R_NaString },
+            None => crate::ffi::SEXP::na_string(),
         }
     }
 }
@@ -1879,9 +1879,9 @@ impl crate::altrep_traits::AltString for &'static [String] {
         match unsafe { crate::altrep_data1_as::<&'static [String]>(x) } {
             Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
                 Some(s) => unsafe { checked_mkchar(s) },
-                None => unsafe { crate::ffi::R_NaString },
+                None => crate::ffi::SEXP::na_string(),
             },
-            None => unsafe { crate::ffi::R_NaString },
+            None => crate::ffi::SEXP::na_string(),
         }
     }
 
@@ -1916,9 +1916,9 @@ impl crate::altrep_traits::AltString for &'static [&'static str] {
         match unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) } {
             Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
                 Some(s) => unsafe { checked_mkchar(s) },
-                None => unsafe { crate::ffi::R_NaString },
+                None => crate::ffi::SEXP::na_string(),
             },
-            None => unsafe { crate::ffi::R_NaString },
+            None => crate::ffi::SEXP::na_string(),
         }
     }
 

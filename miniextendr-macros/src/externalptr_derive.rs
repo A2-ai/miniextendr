@@ -381,43 +381,38 @@ fn generate_getter_body(
             }
         }
         SlotKind::ScalarInt => {
-            // i32 field - convert to R integer
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_ScalarInteger;
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    Rf_ScalarInteger(data.#field_name)
+                    SEXP::scalar_integer(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarReal => {
-            // f64 field - convert to R real
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_ScalarReal;
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    Rf_ScalarReal(data.#field_name)
+                    SEXP::scalar_real(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarLogical => {
-            // bool field - convert to R logical
             quote::quote! {
-                use ::miniextendr_api::ffi::{Rf_ScalarLogical, Rboolean};
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    let val = if data.#field_name { Rboolean::TRUE } else { Rboolean::FALSE };
-                    Rf_ScalarLogical(val as i32)
+                    SEXP::scalar_logical(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarRaw => {
-            // u8 field - convert to R raw
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_ScalarRaw;
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    Rf_ScalarRaw(data.#field_name)
+                    SEXP::scalar_raw(data.#field_name)
                 }
             }
         }

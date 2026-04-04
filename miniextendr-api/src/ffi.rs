@@ -1334,7 +1334,7 @@ unsafe extern "C-unwind" {
 
     #[doc(alias = "NA_STRING")]
     /// Missing string singleton (`NA_STRING`).
-    pub static R_NaString: SEXP;
+    pub(crate) static R_NaString: SEXP;
     /// Empty string CHARSXP (length 0).
     pub(crate) static R_BlankString: SEXP;
     /// Symbol for `names` attribute.
