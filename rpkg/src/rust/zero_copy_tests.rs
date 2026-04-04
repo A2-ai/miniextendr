@@ -124,6 +124,32 @@ mod arrow {
     pub fn zero_copy_sexprec_offset() -> i32 {
         miniextendr_api::r_memory::sexprec_data_offset() as i32
     }
+
+    /// Round-trip Float64Array through Arrow and return the result.
+    /// Used to test saveRDS/readRDS on R-backed Arrow output.
+    /// @export
+    #[miniextendr]
+    pub fn zero_copy_arrow_f64_roundtrip(x: miniextendr_api::arrow_impl::Float64Array) -> miniextendr_api::arrow_impl::Float64Array {
+        x
+    }
+
+    /// Round-trip Int32Array through Arrow and return the result.
+    /// @export
+    #[miniextendr]
+    pub fn zero_copy_arrow_i32_roundtrip(x: miniextendr_api::arrow_impl::Int32Array) -> miniextendr_api::arrow_impl::Int32Array {
+        x
+    }
+}
+
+// endregion
+
+// region: Cow<[f64]> roundtrip for serialization test
+
+/// Round-trip Cow<[f64]> and return the result.
+/// @export
+#[miniextendr]
+pub fn zero_copy_cow_f64_roundtrip(x: std::borrow::Cow<'static, [f64]>) -> std::borrow::Cow<'static, [f64]> {
+    x
 }
 
 // endregion
