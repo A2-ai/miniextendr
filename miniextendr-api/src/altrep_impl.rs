@@ -1085,6 +1085,58 @@ impl_altlogical_from_data!(Box<[bool]>, serialize);
 impl_altraw_from_data!(Box<[u8]>, serialize);
 impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
 impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
+
+/// Eagerly register all built-in ALTREP classes.
+///
+/// Must be called during `R_init` so that R can find these classes when
+/// unserializing (readRDS) in a fresh session. Without this, the lazy
+/// `OnceLock` registration means classes don't exist until first use —
+/// too late for readRDS.
+pub(crate) fn register_builtin_altrep_classes() {
+    use crate::altrep::RegisterAltrep;
+
+    // Vec<T>
+    Vec::<i32>::get_or_init_class();
+    Vec::<f64>::get_or_init_class();
+    Vec::<bool>::get_or_init_class();
+    Vec::<u8>::get_or_init_class();
+    Vec::<String>::get_or_init_class();
+    Vec::<Option<String>>::get_or_init_class();
+    Vec::<crate::ffi::Rcomplex>::get_or_init_class();
+
+    // Note: Vec<Cow<str>> ALTREP classes don't have RegisterAltrep
+    // (they use impl_altstring_from_data! without a hand-written RegisterAltrep).
+    // They'll be registered lazily on first use. Cross-session readRDS won't
+    // work for Cow ALTREP — but Cow vectors are primarily used for zero-copy
+    // input, not ALTREP output.
+
+    // Box<[T]>
+    Box::<[i32]>::get_or_init_class();
+    Box::<[f64]>::get_or_init_class();
+    Box::<[bool]>::get_or_init_class();
+    Box::<[u8]>::get_or_init_class();
+    Box::<[String]>::get_or_init_class();
+    Box::<[crate::ffi::Rcomplex]>::get_or_init_class();
+
+    // Range types
+    std::ops::Range::<i32>::get_or_init_class();
+    std::ops::Range::<i64>::get_or_init_class();
+    std::ops::Range::<f64>::get_or_init_class();
+}
+
+/// Register Arrow ALTREP classes (behind feature gate).
+#[cfg(feature = "arrow")]
+pub(crate) fn register_arrow_altrep_classes() {
+    use crate::altrep::RegisterAltrep;
+    use crate::optionals::arrow_impl::*;
+
+    Float64Array::get_or_init_class();
+    Int32Array::get_or_init_class();
+    UInt8Array::get_or_init_class();
+    BooleanArray::get_or_init_class();
+    StringArray::get_or_init_class();
+}
+
 // endregion
 
 // region: Array implementations (const generics - can't use macros)
@@ -1421,7 +1473,7 @@ impl<const N: usize> crate::altrep_data::InferBase for [i32; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
+            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, crate::altrep_dll_info())
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)
@@ -1442,7 +1494,7 @@ impl<const N: usize> crate::altrep_data::InferBase for [f64; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
+            crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, crate::altrep_dll_info())
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)
@@ -1463,7 +1515,7 @@ impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut())
+            crate::ffi::altrep::R_make_altlogical_class(class_name, pkg_name, crate::altrep_dll_info())
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)

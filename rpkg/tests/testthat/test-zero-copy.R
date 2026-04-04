@@ -175,7 +175,36 @@ test_that("ALTREP with NAs: same-session readRDS preserves NAs", {
   expect_equal(loaded[3], 30.0)
 })
 
-# NOTE: Cross-session readRDS is a known bug — ALTREP class not found,
-# returns empty vector. Tracked for investigation.
+test_that("ALTREP cross-session readRDS works (classes registered at init)", {
+  x <- c(1.0, 2.0, 3.0)
+  altrep_result <- zero_copy_arrow_f64_altrep(x)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep_result, tmp)
+
+  # Fresh R session — library(miniextendr) registers ALTREP classes at init
+  loaded <- callr::r(function(path) {
+    library(miniextendr)
+    readRDS(path)
+  }, args = list(path = tmp))
+
+  expect_equal(loaded, c(10.0, 20.0, 30.0))
+})
+
+test_that("ALTREP cross-session readRDS WITHOUT package returns plain vector", {
+  x <- c(1.0, 2.0, 3.0)
+  altrep_result <- zero_copy_arrow_f64_altrep(x)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep_result, tmp)
+
+  # Fresh session WITHOUT miniextendr — R should fall back to serialized state
+  loaded <- callr::r(function(path) {
+    readRDS(path)
+  }, args = list(path = tmp))
+
+  # R reconstructs from the serialized state (a plain numeric vector)
+  expect_equal(loaded, c(10.0, 20.0, 30.0))
+})
 
 # endregion
