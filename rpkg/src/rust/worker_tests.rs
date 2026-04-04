@@ -107,14 +107,13 @@ pub extern "C-unwind" fn C_test_worker_multiple_r_calls() -> SEXP {
 
     // Create the SEXP vector on main thread
     unsafe {
-        let vec = miniextendr_api::ffi::Rf_allocVector(miniextendr_api::ffi::SEXPTYPE::INTSXP, 3);
-        miniextendr_api::ffi::Rf_protect(vec);
-        let ptr = miniextendr_api::ffi::INTEGER(vec);
+        let scope = miniextendr_api::gc_protect::ProtectScope::new();
+        let vec = scope.alloc_integer(3);
+        let ptr = miniextendr_api::ffi::INTEGER(vec.get());
         *ptr.offset(0) = values.0;
         *ptr.offset(1) = values.1;
         *ptr.offset(2) = values.2;
-        miniextendr_api::ffi::Rf_unprotect(1);
-        vec
+        vec.get()
     }
 }
 // endregion
@@ -340,28 +339,23 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 
     // Create ExternalPtrs on main thread
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::ffi::{
-        Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt,
-    };
+    use miniextendr_api::ffi::SexpExt;
+    use miniextendr_api::gc_protect::ProtectScope;
 
     unsafe {
-        // Create a list of 2 elements
-        let list = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        Rf_protect(list);
+        let scope = ProtectScope::new();
+        let list = scope.alloc_vecsxp(2);
 
-        // Create Counter ExternalPtr
         let counter_ptr = ExternalPtr::new(Counter { value: counter_val });
-        list.set_vector_elt(0, counter_ptr.as_sexp());
+        list.get().set_vector_elt(0, counter_ptr.as_sexp());
 
-        // Create Point ExternalPtr
         let point_ptr = ExternalPtr::new(Point {
             x: point_x,
             y: point_y,
         });
-        list.set_vector_elt(1, point_ptr.as_sexp());
+        list.get().set_vector_elt(1, point_ptr.as_sexp());
 
-        Rf_unprotect(1);
-        list
+        list.get()
     }
 }
 // endregion
