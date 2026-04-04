@@ -207,4 +207,83 @@ test_that("ALTREP cross-session readRDS WITHOUT package returns plain vector", {
   expect_equal(loaded, c(10.0, 20.0, 30.0))
 })
 
+test_that("Vec<f64> ALTREP cross-session readRDS", {
+  altrep_result <- zero_copy_vec_f64_altrep(4L)
+  expect_equal(altrep_result, c(0.0, 1.5, 3.0, 4.5))
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep_result, tmp)
+
+  loaded <- callr::r(function(path) {
+    library(miniextendr)
+    readRDS(path)
+  }, args = list(path = tmp))
+  expect_equal(loaded, c(0.0, 1.5, 3.0, 4.5))
+
+  # Also without package
+  loaded2 <- callr::r(function(path) readRDS(path), args = list(path = tmp))
+  expect_equal(loaded2, c(0.0, 1.5, 3.0, 4.5))
+})
+
+test_that("Int32 ALTREP cross-session readRDS", {
+  altrep_result <- zero_copy_arrow_i32_altrep(c(1L, 2L, 3L))
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep_result, tmp)
+
+  loaded <- callr::r(function(path) {
+    library(miniextendr)
+    readRDS(path)
+  }, args = list(path = tmp))
+  expect_equal(loaded, c(101L, 102L, 103L))
+})
+
+test_that("Arrow ALTREP with NAs cross-session readRDS", {
+  x <- c(1.0, NA, 3.0)
+  altrep_result <- zero_copy_arrow_f64_altrep(x)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep_result, tmp)
+
+  loaded <- callr::r(function(path) {
+    library(miniextendr)
+    readRDS(path)
+  }, args = list(path = tmp))
+  expect_equal(loaded[1], 10.0)
+  expect_true(is.na(loaded[2]))
+  expect_equal(loaded[3], 30.0)
+})
+
+test_that("Double round-trip: saveRDS → readRDS → saveRDS → readRDS", {
+  altrep_result <- zero_copy_vec_f64_altrep(3L)
+  expected <- c(0.0, 1.5, 3.0)
+
+  tmp1 <- tempfile(fileext = ".rds")
+  tmp2 <- tempfile(fileext = ".rds")
+  on.exit(unlink(c(tmp1, tmp2)), add = TRUE)
+
+  saveRDS(altrep_result, tmp1)
+  loaded1 <- readRDS(tmp1)
+  expect_equal(loaded1, expected)
+
+  saveRDS(loaded1, tmp2)
+  loaded2 <- callr::r(function(path) readRDS(path), args = list(path = tmp2))
+  expect_equal(loaded2, expected)
+})
+
+test_that("Materialized ALTREP serializes correctly", {
+  altrep_result <- zero_copy_arrow_f64_altrep(c(1.0, 2.0, 3.0))
+  # Force materialization by accessing all elements
+  dummy <- sum(altrep_result)
+  expect_equal(dummy, 60.0)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep_result, tmp)
+
+  loaded <- callr::r(function(path) readRDS(path), args = list(path = tmp))
+  expect_equal(loaded, c(10.0, 20.0, 30.0))
+})
+
 # endregion
