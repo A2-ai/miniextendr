@@ -60,8 +60,8 @@ pub use crate::{Coerce, IntoR, IntoRAltrep, TryCoerce, TryFromSexp};
 
 // region: Types
 pub use crate::{
-    IntoList, Lazy, List, ListBuilder, ListMut, Missing, NamedVector, OwnedProtect,
-    ProtectedStrVec, ProtectScope, StrVec, StrVecBuilder,
+    IntoList, Lazy, List, ListBuilder, ListMut, Missing, NamedVector, OwnedProtect, ProtectScope,
+    ProtectedStrVec, StrVec, StrVecBuilder,
 };
 // endregion
 

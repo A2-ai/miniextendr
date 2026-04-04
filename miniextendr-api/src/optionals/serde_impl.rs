@@ -181,8 +181,8 @@ impl JsonOptions {
 }
 use crate::ffi::{
     INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rf_allocVector, Rf_getAttrib, Rf_setAttrib, Rf_xlength,
-    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP,
-    SEXPTYPE, STRING_ELT, SexpExt,
+    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
+    STRING_ELT, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;

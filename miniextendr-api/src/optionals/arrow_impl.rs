@@ -361,11 +361,12 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> arrow_buffer::Buff
 /// let array = Float64Array::new(values, None);
 /// // array.into_sexp() → returns the original REALSXP (zero-copy)
 /// ```
-pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(
-    len: usize,
-) -> (arrow_buffer::Buffer, SEXP) {
+pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer::Buffer, SEXP) {
     if len == 0 {
-        return (arrow_buffer::Buffer::from(Vec::<u8>::new()), SEXP(std::ptr::null_mut()));
+        return (
+            arrow_buffer::Buffer::from(Vec::<u8>::new()),
+            SEXP(std::ptr::null_mut()),
+        );
     }
     let len_isize: isize = len.try_into().expect("vector length exceeds isize::MAX");
     let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len_isize) };

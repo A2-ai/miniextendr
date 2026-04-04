@@ -6,8 +6,8 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{
-    R_NaString, R_NamesSymbol, R_NilValue, Rf_getAttrib, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
-    STRING_ELT, VECTOR_ELT,
+    R_NaString, R_NamesSymbol, R_NilValue, Rf_getAttrib, Rf_xlength, SEXP, SEXPTYPE, STRING_ELT,
+    SexpExt, VECTOR_ELT,
 };
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};

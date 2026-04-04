@@ -6,8 +6,7 @@
 use super::error::RSerdeError;
 use crate::ffi::{
     R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
-    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt,
-    cetype_t,
+    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, cetype_t,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;

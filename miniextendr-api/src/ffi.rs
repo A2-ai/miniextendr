@@ -2302,7 +2302,6 @@ pub unsafe fn Rf_list4(s: SEXP, t: SEXP, u: SEXP, v: SEXP) -> SEXP {
     unsafe { Rf_cons(s, Rf_cons(t, Rf_cons(u, Rf_cons(v, R_NilValue)))) }
 }
 
-
 /// Build a language object (call) with 1 element (the function).
 ///
 /// Rust equivalent of R's inline `Rf_lang1(s)`.

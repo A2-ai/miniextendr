@@ -81,15 +81,24 @@ pub unsafe fn try_recover_r_sexp(
         return None;
     }
 
-    // Compute candidate SEXP by subtracting header size.
-    // Use wrapping_sub: defined behavior for all pointer arithmetic (no
-    // requirement that the result be within the same allocation, unlike sub).
-    let candidate_ptr = (data_ptr as *mut ffi::SEXPREC).wrapping_byte_sub(offset);
-
-    // Reject obviously invalid pointers (null, low addresses from sentinel 0x1)
-    if (candidate_ptr as usize) < 4096 {
+    // Zero-length vectors can't be recovered (R uses sentinel pointer 0x1,
+    // and empty Arrow buffers use dangling pointers).
+    if expected_len == 0 {
         return None;
     }
+
+    let data_addr = data_ptr as usize;
+
+    // Reject pointers that would wraparound or are in invalid ranges.
+    // R's sentinel for empty vectors is 0x1; wrapping_byte_sub on small
+    // addresses produces huge values (top of address space) → segfault.
+    if data_addr < offset.saturating_add(4096) {
+        return None;
+    }
+
+    // Compute candidate SEXP by subtracting header size.
+    // wrapping_byte_sub is defined behavior for all pointer arithmetic.
+    let candidate_ptr = (data_ptr as *mut ffi::SEXPREC).wrapping_byte_sub(offset);
 
     let candidate = SEXP(candidate_ptr);
 

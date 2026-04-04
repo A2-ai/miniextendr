@@ -624,7 +624,10 @@ impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
         })
     }
 
-    reject_non_struct!("ColumnarDataFrame::from_rows: expected struct", allow_some_none);
+    reject_non_struct!(
+        "ColumnarDataFrame::from_rows: expected struct",
+        allow_some_none
+    );
 }
 
 struct SchemaStructDiscoverer<'a> {
