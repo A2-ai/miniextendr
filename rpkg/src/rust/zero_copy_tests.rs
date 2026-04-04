@@ -126,7 +126,7 @@ mod arrow {
     }
 
     /// Round-trip Float64Array through Arrow and return the result.
-    /// Used to test saveRDS/readRDS on R-backed Arrow output.
+    /// The zero-copy path returns the original R SEXP — serialization is trivial.
     /// @export
     #[miniextendr]
     pub fn zero_copy_arrow_f64_roundtrip(x: miniextendr_api::arrow_impl::Float64Array) -> miniextendr_api::arrow_impl::Float64Array {
@@ -138,6 +138,37 @@ mod arrow {
     #[miniextendr]
     pub fn zero_copy_arrow_i32_roundtrip(x: miniextendr_api::arrow_impl::Int32Array) -> miniextendr_api::arrow_impl::Int32Array {
         x
+    }
+
+    /// Create a Rust-allocated Float64Array (NOT R-backed) and return as ALTREP.
+    /// The data lives in Rust memory — this is the interesting serialization case.
+    /// @export
+    #[miniextendr]
+    pub fn zero_copy_arrow_f64_altrep(x: miniextendr_api::arrow_impl::Float64Array) -> miniextendr_api::ffi::SEXP {
+        use miniextendr_api::IntoRAltrep;
+        // Compute creates a Rust-owned buffer (not R-backed)
+        let computed: miniextendr_api::arrow_impl::Float64Array =
+            x.iter().map(|v| v.map(|f| f * 10.0)).collect();
+        computed.into_sexp_altrep()
+    }
+
+    /// Create a Rust-allocated Int32Array and return as ALTREP.
+    /// @export
+    #[miniextendr]
+    pub fn zero_copy_arrow_i32_altrep(x: miniextendr_api::arrow_impl::Int32Array) -> miniextendr_api::ffi::SEXP {
+        use miniextendr_api::IntoRAltrep;
+        let computed: miniextendr_api::arrow_impl::Int32Array =
+            x.iter().map(|v| v.map(|i| i + 100)).collect();
+        computed.into_sexp_altrep()
+    }
+
+    /// Create a Vec<f64> ALTREP (not Arrow, just plain Rust vec).
+    /// @export
+    #[miniextendr]
+    pub fn zero_copy_vec_f64_altrep(n: i32) -> miniextendr_api::ffi::SEXP {
+        use miniextendr_api::IntoRAltrep;
+        let data: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
+        data.into_sexp_altrep()
     }
 }
 
