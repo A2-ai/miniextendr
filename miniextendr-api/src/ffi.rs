@@ -1371,13 +1371,13 @@ unsafe extern "C-unwind" {
     ///
     /// This is a non-API function and requires the `nonapi` feature.
     #[allow(non_snake_case)]
-    pub fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
+    pub(crate) fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
 }
 
 // Console hooks (non-API; declared in Rinterface.h)
 #[cfg(feature = "nonapi")]
 unsafe extern "C-unwind" {
-    pub static ptr_R_WriteConsoleEx: Option<
+    pub(crate) static ptr_R_WriteConsoleEx: Option<
         unsafe extern "C-unwind" fn(
             *const ::std::os::raw::c_char,
             ::std::os::raw::c_int,
@@ -1513,22 +1513,22 @@ unsafe extern "C-unwind" {
     /// while NULL is an explicit value.
     ///
     /// In R: `f <- function(x) missing(x); f()` returns `TRUE`.
-    pub static R_MissingArg: SEXP;
+    pub(crate) static R_MissingArg: SEXP;
 
     // Rinterface.h
-    pub fn R_FlushConsole();
+    pub(crate) fn R_FlushConsole();
 
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.
     #[cfg(feature = "nonapi")]
     /// Non-API TRUE singleton.
-    pub static R_TrueValue: SEXP;
+    pub(crate) static R_TrueValue: SEXP;
     #[cfg(feature = "nonapi")]
     /// Non-API FALSE singleton.
-    pub static R_FalseValue: SEXP;
+    pub(crate) static R_FalseValue: SEXP;
     #[cfg(feature = "nonapi")]
     /// Non-API NA logical singleton.
-    pub static R_LogicalNAValue: SEXP;
+    pub(crate) static R_LogicalNAValue: SEXP;
 
     // Rinternals.h
     #[doc(alias = "mkChar")]
@@ -1555,9 +1555,9 @@ unsafe extern "C-unwind" {
     #[doc(alias = "charIsLatin1")]
     pub(crate) fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
-    pub fn R_MakeUnwindCont() -> SEXP;
-    pub fn R_ContinueUnwind(cont: SEXP) -> !;
-    pub fn R_UnwindProtect(
+    pub(crate) fn R_MakeUnwindCont() -> SEXP;
+    pub(crate) fn R_ContinueUnwind(cont: SEXP) -> !;
+    pub(crate) fn R_UnwindProtect(
         fun: ::std::option::Option<
             unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP,
         >,
@@ -1571,7 +1571,7 @@ unsafe extern "C-unwind" {
 
     /// Version of `R_UnwindProtect` that accepts `extern "C-unwind"` function pointers
     #[link_name = "R_UnwindProtect"]
-    pub fn R_UnwindProtect_C_unwind(
+    pub(crate) fn R_UnwindProtect_C_unwind(
         fun: ::std::option::Option<
             unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP,
         >,
@@ -1587,7 +1587,7 @@ unsafe extern "C-unwind" {
     #[doc = " External pointer interface"]
     pub(crate) fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
     pub fn R_ExternalPtrAddr(s: SEXP) -> *mut ::std::os::raw::c_void;
-    pub fn R_ExternalPtrTag(s: SEXP) -> SEXP;
+    pub(crate) fn R_ExternalPtrTag(s: SEXP) -> SEXP;
     pub(crate) fn R_ExternalPtrProtected(s: SEXP) -> SEXP;
     pub(crate) fn R_ClearExternalPtr(s: SEXP);
     pub(crate) fn R_SetExternalPtrAddr(s: SEXP, p: *mut ::std::os::raw::c_void);
@@ -2072,7 +2072,7 @@ unsafe extern "C-unwind" {
     #[doc(alias = "install")]
     pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
     /// Get the print name (CHARSXP) of a symbol (SYMSXP)
-    pub fn PRINTNAME(x: SEXP) -> SEXP;
+    pub(crate) fn PRINTNAME(x: SEXP) -> SEXP;
     /// Get the C string pointer from a CHARSXP
     #[doc(alias = "CHAR")]
     pub(crate) fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
@@ -2239,9 +2239,9 @@ unsafe extern "C-unwind" {
     #[doc(alias = "dimnamesgets")]
     pub(crate) fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
     #[doc(alias = "GetRowNames")]
-    pub fn Rf_GetRowNames(dimnames: SEXP) -> SEXP;
+    pub(crate) fn Rf_GetRowNames(dimnames: SEXP) -> SEXP;
     #[doc(alias = "GetColNames")]
-    pub fn Rf_GetColNames(dimnames: SEXP) -> SEXP;
+    pub(crate) fn Rf_GetColNames(dimnames: SEXP) -> SEXP;
 
     // Environment operations
     #[doc(alias = "findVar")]
@@ -2304,7 +2304,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `description`, `mode`, and `class_name` must be valid C strings
     /// - `ptr` must be a valid pointer to store the connection handle
-    pub fn R_new_custom_connection(
+    pub(crate) fn R_new_custom_connection(
         description: *const ::std::os::raw::c_char,
         mode: *const ::std::os::raw::c_char,
         class_name: *const ::std::os::raw::c_char,
@@ -2321,7 +2321,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `con` must be a valid Rconnection handle
     /// - `buf` must be a valid buffer with at least `n` bytes
-    pub fn R_ReadConnection(con: Rconnection, buf: *mut ::std::os::raw::c_void, n: usize) -> usize;
+    pub(crate) fn R_ReadConnection(con: Rconnection, buf: *mut ::std::os::raw::c_void, n: usize) -> usize;
 
     /// Write to a connection.
     ///
@@ -2333,7 +2333,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `con` must be a valid Rconnection handle
     /// - `buf` must contain at least `n` valid bytes
-    pub fn R_WriteConnection(
+    pub(crate) fn R_WriteConnection(
         con: Rconnection,
         buf: *const ::std::os::raw::c_void,
         n: usize,
@@ -2349,7 +2349,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// - `sConn` must be a valid connection SEXP
-    pub fn R_GetConnection(sConn: SEXP) -> Rconnection;
+    pub(crate) fn R_GetConnection(sConn: SEXP) -> Rconnection;
 }
 // endregion: Connections API
 
@@ -2458,7 +2458,7 @@ pub type R_ExternalMethodDef = R_CallMethodDef;
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 unsafe extern "C-unwind" {
-    pub fn R_registerRoutines(
+    pub(crate) fn R_registerRoutines(
         info: *mut DllInfo,
         croutines: *const R_CMethodDef,
         callRoutines: *const R_CallMethodDef,
@@ -2551,14 +2551,14 @@ pub mod nonapi_encoding {
     #[r_ffi_checked]
     #[allow(clashing_extern_declarations)]
     unsafe extern "C-unwind" {
-        pub fn R_nativeEncoding() -> *const ::std::os::raw::c_char;
+        pub(crate) fn R_nativeEncoding() -> *const ::std::os::raw::c_char;
 
         // Locale flags
-        pub static utf8locale: super::Rboolean;
-        pub static latin1locale: super::Rboolean;
+        pub(crate) static utf8locale: super::Rboolean;
+        pub(crate) static latin1locale: super::Rboolean;
 
         // Set when R "knows" it is running in UTF-8.
-        pub static known_to_be_utf8: super::Rboolean;
+        pub(crate) static known_to_be_utf8: super::Rboolean;
     }
 }
 
@@ -2598,7 +2598,7 @@ pub mod nonapi_stack {
         /// On Unix, determined via `__libc_stack_end`, `KERN_USRSTACK`, or
         /// `thr_stksegment`. On Windows, via `VirtualQuery`.
         #[allow(non_upper_case_globals)]
-        pub static R_CStackStart: usize;
+        pub(crate) static R_CStackStart: usize;
 
         /// Stack size limit. Set to `usize::MAX` to disable stack checking.
         ///
@@ -2610,7 +2610,7 @@ pub mod nonapi_stack {
         ///
         /// Most systems (x86, ARM) grow down (-1).
         #[allow(non_upper_case_globals)]
-        pub static R_CStackDir: ::std::os::raw::c_int;
+        pub(crate) static R_CStackDir: ::std::os::raw::c_int;
     }
 
     /// Write to `R_CStackLimit`.
@@ -2627,19 +2627,19 @@ pub mod nonapi_stack {
 
     /// Read `R_CStackLimit`.
     #[inline]
-    pub fn get_r_cstack_limit() -> usize {
+    pub(crate) fn get_r_cstack_limit() -> usize {
         unsafe { R_CStackLimit }
     }
 
     /// Read `R_CStackStart`.
     #[inline]
-    pub fn get_r_cstack_start() -> usize {
+    pub(crate) fn get_r_cstack_start() -> usize {
         unsafe { R_CStackStart }
     }
 
     /// Read `R_CStackDir`.
     #[inline]
-    pub fn get_r_cstack_dir() -> ::std::os::raw::c_int {
+    pub(crate) fn get_r_cstack_dir() -> ::std::os::raw::c_int {
         unsafe { R_CStackDir }
     }
 }
@@ -3539,7 +3539,7 @@ unsafe extern "C-unwind" {
 
     /// Set vector length (long vector version).
     #[doc(alias = "xlengthgets")]
-    pub fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+    pub(crate) fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
 
     // Protection (indexed — see cost table in the "GC protection" region above)
 
@@ -3602,7 +3602,7 @@ unsafe extern "C-unwind" {
     ///
     /// Like `Rf_install()` but takes a CHARSXP instead of C string.
     #[doc(alias = "installChar")]
-    pub fn Rf_installChar(x: SEXP) -> SEXP;
+    pub(crate) fn Rf_installChar(x: SEXP) -> SEXP;
 }
 
 // endregion
