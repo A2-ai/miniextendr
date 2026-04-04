@@ -1496,7 +1496,7 @@ unsafe extern "C-unwind" {
     /// Symbol for factor levels.
     pub(crate) static R_LevelsSymbol: SEXP;
     /// Symbol for `tsp` attribute.
-    pub static R_TspSymbol: SEXP;
+    pub(crate) static R_TspSymbol: SEXP;
 
     /// Global environment (`.GlobalEnv`).
     pub static R_GlobalEnv: SEXP;
@@ -1547,13 +1547,13 @@ unsafe extern "C-unwind" {
     #[doc(alias = "translateCharUTF8")]
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
     #[doc(alias = "getCharCE")]
-    pub fn Rf_getCharCE(x: SEXP) -> cetype_t;
+    pub(crate) fn Rf_getCharCE(x: SEXP) -> cetype_t;
     #[doc(alias = "charIsASCII")]
-    pub fn Rf_charIsASCII(x: SEXP) -> Rboolean;
+    pub(crate) fn Rf_charIsASCII(x: SEXP) -> Rboolean;
     #[doc(alias = "charIsUTF8")]
-    pub fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
+    pub(crate) fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
     #[doc(alias = "charIsLatin1")]
-    pub fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
+    pub(crate) fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
     pub fn R_MakeUnwindCont() -> SEXP;
     pub fn R_ContinueUnwind(cont: SEXP) -> !;
@@ -1585,31 +1585,31 @@ unsafe extern "C-unwind" {
 
     // Rinternals.h
     #[doc = " External pointer interface"]
-    pub fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
+    pub(crate) fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
     pub fn R_ExternalPtrAddr(s: SEXP) -> *mut ::std::os::raw::c_void;
     pub fn R_ExternalPtrTag(s: SEXP) -> SEXP;
-    pub fn R_ExternalPtrProtected(s: SEXP) -> SEXP;
-    pub fn R_ClearExternalPtr(s: SEXP);
-    pub fn R_SetExternalPtrAddr(s: SEXP, p: *mut ::std::os::raw::c_void);
-    pub fn R_SetExternalPtrTag(s: SEXP, tag: SEXP);
-    pub fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
+    pub(crate) fn R_ExternalPtrProtected(s: SEXP) -> SEXP;
+    pub(crate) fn R_ClearExternalPtr(s: SEXP);
+    pub(crate) fn R_SetExternalPtrAddr(s: SEXP, p: *mut ::std::os::raw::c_void);
+    pub(crate) fn R_SetExternalPtrTag(s: SEXP, tag: SEXP);
+    pub(crate) fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
     #[doc = " Added in R 3.4.0"]
-    pub fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
-    pub fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
-    pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
-    pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
-    pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
-    pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
+    pub(crate) fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
+    pub(crate) fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
+    pub(crate) fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
+    pub(crate) fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
+    pub(crate) fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
+    pub(crate) fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
 
     // R_ext/Rdynload.h - C-callable interface
     /// Register a C-callable function for cross-package access.
-    pub fn R_RegisterCCallable(
+    pub(crate) fn R_RegisterCCallable(
         package: *const ::std::os::raw::c_char,
         name: *const ::std::os::raw::c_char,
         fptr: DL_FUNC,
     );
     /// Get a C-callable function from another package.
-    pub fn R_GetCCallable(
+    pub(crate) fn R_GetCCallable(
         package: *const ::std::os::raw::c_char,
         name: *const ::std::os::raw::c_char,
     ) -> DL_FUNC;
@@ -1708,9 +1708,9 @@ unsafe extern "C-unwind" {
         ncol: ::std::os::raw::c_int,
     ) -> SEXP;
     #[doc(alias = "allocArray")]
-    pub fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
+    pub(crate) fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
     #[doc(alias = "alloc3DArray")]
-    pub fn Rf_alloc3DArray(
+    pub(crate) fn Rf_alloc3DArray(
         sexptype: SEXPTYPE,
         nrow: ::std::os::raw::c_int,
         ncol: ::std::os::raw::c_int,
@@ -1719,21 +1719,21 @@ unsafe extern "C-unwind" {
 
     // Pairlist allocation
     #[doc(alias = "allocList")]
-    pub fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocLang")]
-    pub fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocS4Object")]
-    pub fn Rf_allocS4Object() -> SEXP;
+    pub(crate) fn Rf_allocS4Object() -> SEXP;
     #[doc(alias = "allocSExp")]
-    pub fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
+    pub(crate) fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
 
     // Pairlist construction
     #[doc(alias = "CONS")]
     #[doc(alias = "cons")]
-    pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
+    pub(crate) fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
     #[doc(alias = "LCONS")]
     #[doc(alias = "lcons")]
-    pub fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
+    pub(crate) fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
 
     // Attribute manipulation
     #[doc(alias = "setAttrib")]
@@ -1757,9 +1757,9 @@ unsafe extern "C-unwind" {
     /// Non-API function - use DATAPTR_RO or DATAPTR_OR_NULL instead.
     /// Only available with `nonapi` feature.
     #[cfg(feature = "nonapi")]
-    pub fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
+    pub(crate) fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
     pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
-    pub fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
+    pub(crate) fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
 
     // region: Cons Cell (Pairlist) Accessors
     //
@@ -1794,7 +1794,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
-    pub fn CAR(e: SEXP) -> SEXP;
+    pub(crate) fn CAR(e: SEXP) -> SEXP;
 
     /// Get the CDR (tail/rest) of a pairlist node.
     ///
@@ -1804,7 +1804,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
-    pub fn CDR(e: SEXP) -> SEXP;
+    pub(crate) fn CDR(e: SEXP) -> SEXP;
 
     /// Get the CAR of the CAR (value of the first element's value).
     ///
@@ -1813,7 +1813,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a valid nested pairlist
-    pub fn CAAR(e: SEXP) -> SEXP;
+    pub(crate) fn CAAR(e: SEXP) -> SEXP;
 
     /// Get the CDR of the CAR (tail of the first element).
     ///
@@ -1822,7 +1822,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a valid nested pairlist
-    pub fn CDAR(e: SEXP) -> SEXP;
+    pub(crate) fn CDAR(e: SEXP) -> SEXP;
 
     /// Get the CAR of the CDR (second element's value).
     ///
@@ -1831,7 +1831,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a pairlist with at least 2 elements
-    pub fn CADR(e: SEXP) -> SEXP;
+    pub(crate) fn CADR(e: SEXP) -> SEXP;
 
     /// Get the CDR of the CDR (list starting from 3rd element).
     ///
@@ -1840,7 +1840,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a pairlist with at least 2 elements
-    pub fn CDDR(e: SEXP) -> SEXP;
+    pub(crate) fn CDDR(e: SEXP) -> SEXP;
 
     /// Get the value of the third element.
     ///
@@ -1849,7 +1849,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a pairlist with at least 3 elements
-    pub fn CADDR(e: SEXP) -> SEXP;
+    pub(crate) fn CADDR(e: SEXP) -> SEXP;
 
     /// Get the value of the fourth element.
     ///
@@ -1858,7 +1858,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a pairlist with at least 4 elements
-    pub fn CADDDR(e: SEXP) -> SEXP;
+    pub(crate) fn CADDDR(e: SEXP) -> SEXP;
 
     /// Get the value of the fifth element.
     ///
@@ -1867,7 +1867,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a pairlist with at least 5 elements
-    pub fn CAD4R(e: SEXP) -> SEXP;
+    pub(crate) fn CAD4R(e: SEXP) -> SEXP;
 
     /// Get the TAG (name) of a pairlist node.
     ///
@@ -1877,7 +1877,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
-    pub fn TAG(e: SEXP) -> SEXP;
+    pub(crate) fn TAG(e: SEXP) -> SEXP;
 
     /// Set the TAG (name) of a pairlist node.
     ///
@@ -1885,7 +1885,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `x` must be a valid mutable pairlist node
     /// - `y` must be a symbol (SYMSXP) or R_NilValue
-    pub fn SET_TAG(x: SEXP, y: SEXP);
+    pub(crate) fn SET_TAG(x: SEXP, y: SEXP);
 
     /// Set the CAR (value) of a pairlist node.
     ///
@@ -1894,7 +1894,7 @@ unsafe extern "C-unwind" {
     /// - `x` must be a valid mutable pairlist node
     /// - `y` must be a valid SEXP
     /// - Returns `y` for convenience
-    pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
+    pub(crate) fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
 
     /// Set the CDR (tail) of a pairlist node.
     ///
@@ -1903,7 +1903,7 @@ unsafe extern "C-unwind" {
     /// - `x` must be a valid mutable pairlist node
     /// - `y` must be a pairlist or R_NilValue
     /// - Returns `y` for convenience
-    pub fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
+    pub(crate) fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
 
     /// Set the value of the second element.
     ///
@@ -1912,7 +1912,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `x` must be a pairlist with at least 2 elements
-    pub fn SETCADR(x: SEXP, y: SEXP) -> SEXP;
+    pub(crate) fn SETCADR(x: SEXP, y: SEXP) -> SEXP;
 
     /// Set the value of the third element.
     ///
@@ -1921,7 +1921,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `x` must be a pairlist with at least 3 elements
-    pub fn SETCADDR(x: SEXP, y: SEXP) -> SEXP;
+    pub(crate) fn SETCADDR(x: SEXP, y: SEXP) -> SEXP;
 
     /// Set the value of the fourth element.
     ///
@@ -1930,7 +1930,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `x` must be a pairlist with at least 4 elements
-    pub fn SETCADDDR(x: SEXP, y: SEXP) -> SEXP;
+    pub(crate) fn SETCADDDR(x: SEXP, y: SEXP) -> SEXP;
 
     /// Set the value of the fifth element.
     ///
@@ -1939,12 +1939,12 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `x` must be a pairlist with at least 5 elements
-    pub fn SETCAD4R(e: SEXP, y: SEXP) -> SEXP;
-    pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
-    pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
-    pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
-    pub fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
-    pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
+    pub(crate) fn SETCAD4R(e: SEXP, y: SEXP) -> SEXP;
+    pub(crate) fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    pub(crate) fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    pub(crate) fn REAL_OR_NULL(x: SEXP) -> *const f64;
+    pub(crate) fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
+    pub(crate) fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
 
     // Element-wise accessors (ALTREP-aware)
     pub(crate) fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
@@ -1970,55 +1970,55 @@ unsafe extern "C-unwind" {
     ///
     /// For long vectors, use `Rf_xlength()` instead.
     /// Returns 0 for R_NilValue.
-    pub fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
+    pub(crate) fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Get the length of a SEXP as `R_xlen_t` (supports long vectors).
     ///
     /// ALTREP-aware: will call ALTREP Length method if needed.
-    pub fn XLENGTH(x: SEXP) -> R_xlen_t;
+    pub(crate) fn XLENGTH(x: SEXP) -> R_xlen_t;
 
     /// Get the true length (allocated capacity) of a vector.
     ///
     /// May be larger than LENGTH for vectors with reserved space.
     /// ALTREP-aware.
-    pub fn TRUELENGTH(x: SEXP) -> R_xlen_t;
+    pub(crate) fn TRUELENGTH(x: SEXP) -> R_xlen_t;
 
     /// Get the attributes pairlist of a SEXP.
     ///
     /// Returns R_NilValue if no attributes.
-    pub fn ATTRIB(x: SEXP) -> SEXP;
+    pub(crate) fn ATTRIB(x: SEXP) -> SEXP;
 
     /// Set the attributes pairlist of a SEXP.
     ///
     /// # Safety
     ///
     /// `v` must be a pairlist or R_NilValue
-    pub fn SET_ATTRIB(x: SEXP, v: SEXP);
+    pub(crate) fn SET_ATTRIB(x: SEXP, v: SEXP);
 
     /// Check if SEXP has the "object" bit set (has a class).
     ///
     /// Returns non-zero if object has a class attribute.
-    pub fn OBJECT(x: SEXP) -> ::std::os::raw::c_int;
+    pub(crate) fn OBJECT(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Set the "object" bit.
-    pub fn SET_OBJECT(x: SEXP, v: ::std::os::raw::c_int);
+    pub(crate) fn SET_OBJECT(x: SEXP, v: ::std::os::raw::c_int);
 
     /// Get the LEVELS field (for factors).
-    pub fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
+    pub(crate) fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Set the LEVELS field (for factors).
     ///
     /// Returns the value that was set.
-    pub fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
+    pub(crate) fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 
     // endregion
 
     // region: ALTREP support
 
-    pub fn ALTREP_CLASS(x: SEXP) -> SEXP;
+    pub(crate) fn ALTREP_CLASS(x: SEXP) -> SEXP;
     pub fn R_altrep_data1(x: SEXP) -> SEXP;
     pub fn R_altrep_data2(x: SEXP) -> SEXP;
-    pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
+    pub(crate) fn R_set_altrep_data1(x: SEXP, v: SEXP);
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
 
     /// Check if a SEXP is an ALTREP object (returns non-zero if true).
@@ -2046,7 +2046,7 @@ unsafe extern "C-unwind" {
     /// Get mutable pointer to complex vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
-    pub fn COMPLEX(x: SEXP) -> *mut Rcomplex;
+    pub(crate) fn COMPLEX(x: SEXP) -> *mut Rcomplex;
 
     /// Get mutable pointer to raw vector data.
     ///
@@ -2075,7 +2075,7 @@ unsafe extern "C-unwind" {
     pub fn PRINTNAME(x: SEXP) -> SEXP;
     /// Get the C string pointer from a CHARSXP
     #[doc(alias = "CHAR")]
-    pub fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
+    pub(crate) fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // Attribute access
     /// Read an attribute from an object by symbol (e.g. `R_NamesSymbol`).
@@ -2092,9 +2092,9 @@ unsafe extern "C-unwind" {
 
     // Duplication
     #[doc(alias = "duplicate")]
-    pub fn Rf_duplicate(s: SEXP) -> SEXP;
+    pub(crate) fn Rf_duplicate(s: SEXP) -> SEXP;
     #[doc(alias = "shallow_duplicate")]
-    pub fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
+    pub(crate) fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
 
     // Object comparison
     /// Check if two R objects are identical (deep semantic equality).
@@ -2150,31 +2150,31 @@ unsafe extern "C-unwind" {
 
     // Matrix utilities
     #[doc(alias = "nrows")]
-    pub fn Rf_nrows(x: SEXP) -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_nrows(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "ncols")]
-    pub fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
 
     // Inheritance checking
     #[doc(alias = "inherits")]
-    pub fn Rf_inherits(x: SEXP, klass: *const ::std::os::raw::c_char) -> Rboolean;
+    pub(crate) fn Rf_inherits(x: SEXP, klass: *const ::std::os::raw::c_char) -> Rboolean;
 
     // Type checking predicates
     #[doc(alias = "isNull")]
     fn Rf_isNull(s: SEXP) -> Rboolean;
     #[doc(alias = "isSymbol")]
-    pub fn Rf_isSymbol(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isSymbol(s: SEXP) -> Rboolean;
     #[doc(alias = "isLogical")]
-    pub fn Rf_isLogical(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isLogical(s: SEXP) -> Rboolean;
     #[doc(alias = "isReal")]
-    pub fn Rf_isReal(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isReal(s: SEXP) -> Rboolean;
     #[doc(alias = "isComplex")]
-    pub fn Rf_isComplex(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isComplex(s: SEXP) -> Rboolean;
     #[doc(alias = "isExpression")]
-    pub fn Rf_isExpression(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isExpression(s: SEXP) -> Rboolean;
     #[doc(alias = "isEnvironment")]
     fn Rf_isEnvironment(s: SEXP) -> Rboolean;
     #[doc(alias = "isString")]
-    pub fn Rf_isString(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isString(s: SEXP) -> Rboolean;
 
     // Composite type checking (from inline functions)
     #[doc(alias = "isArray")]
@@ -2184,33 +2184,33 @@ unsafe extern "C-unwind" {
     #[doc(alias = "isList")]
     fn Rf_isList(s: SEXP) -> Rboolean;
     #[doc(alias = "isNewList")]
-    pub fn Rf_isNewList(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isNewList(s: SEXP) -> Rboolean;
     #[doc(alias = "isPairList")]
-    pub fn Rf_isPairList(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isPairList(s: SEXP) -> Rboolean;
     #[doc(alias = "isFunction")]
     fn Rf_isFunction(s: SEXP) -> Rboolean;
     #[doc(alias = "isPrimitive")]
-    pub fn Rf_isPrimitive(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isPrimitive(s: SEXP) -> Rboolean;
     #[doc(alias = "isLanguage")]
-    pub fn Rf_isLanguage(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isLanguage(s: SEXP) -> Rboolean;
     #[doc(alias = "isDataFrame")]
     fn Rf_isDataFrame(s: SEXP) -> Rboolean;
     #[doc(alias = "isFactor")]
     fn Rf_isFactor(s: SEXP) -> Rboolean;
     #[doc(alias = "isInteger")]
-    pub fn Rf_isInteger(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isInteger(s: SEXP) -> Rboolean;
     #[doc(alias = "isObject")]
     fn Rf_isObject(s: SEXP) -> Rboolean;
 
     // Pairlist utilities
     #[doc(alias = "elt")]
-    pub fn Rf_elt(list: SEXP, i: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_elt(list: SEXP, i: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "lastElt")]
-    pub fn Rf_lastElt(list: SEXP) -> SEXP;
+    pub(crate) fn Rf_lastElt(list: SEXP) -> SEXP;
     #[doc(alias = "nthcdr")]
-    pub fn Rf_nthcdr(list: SEXP, n: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_nthcdr(list: SEXP, n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "listAppend")]
-    pub fn Rf_listAppend(s: SEXP, t: SEXP) -> SEXP;
+    pub(crate) fn Rf_listAppend(s: SEXP, t: SEXP) -> SEXP;
 
     // More attribute setters (using R's "gets" suffix convention)
     //
@@ -2245,23 +2245,23 @@ unsafe extern "C-unwind" {
 
     // Environment operations
     #[doc(alias = "findVar")]
-    pub fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
+    pub(crate) fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
     #[doc(alias = "findVarInFrame")]
-    pub fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
+    pub(crate) fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
     #[doc(alias = "findVarInFrame3")]
-    pub fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
+    pub(crate) fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
     #[doc(alias = "defineVar")]
-    pub fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    pub(crate) fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "setVar")]
-    pub fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    pub(crate) fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "findFun")]
-    pub fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
+    pub(crate) fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
 
     // Evaluation
     #[doc(alias = "eval")]
     pub fn Rf_eval(expr: SEXP, rho: SEXP) -> SEXP;
     #[doc(alias = "applyClosure")]
-    pub fn Rf_applyClosure(
+    pub(crate) fn Rf_applyClosure(
         call: SEXP,
         op: SEXP,
         args: SEXP,
@@ -2269,13 +2269,13 @@ unsafe extern "C-unwind" {
         suppliedvars: SEXP,
         check: Rboolean,
     ) -> SEXP;
-    pub fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
-    pub fn R_tryEvalSilent(
+    pub(crate) fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn R_tryEvalSilent(
         expr: SEXP,
         env: SEXP,
         error_occurred: *mut ::std::os::raw::c_int,
     ) -> SEXP;
-    pub fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
+    pub(crate) fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
 }
 
 // region: Connections API (R_ext/Connections.h)
@@ -2362,7 +2362,7 @@ unsafe extern "C-unwind" {
 unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
     unsafe extern "C-unwind" {
         #[link_name = "Rf_isS4"]
-        pub fn Rf_isS4_original(arg1: SEXP) -> u32;
+        pub(crate) fn Rf_isS4_original(arg1: SEXP) -> u32;
     }
 
     unsafe {
@@ -2466,8 +2466,8 @@ unsafe extern "C-unwind" {
         externalRoutines: *const R_ExternalMethodDef,
     ) -> ::std::os::raw::c_int;
 
-    pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
-    pub fn R_forceSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
+    pub(crate) fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
+    pub(crate) fn R_forceSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
 }
 
 // endregion
@@ -2506,28 +2506,28 @@ pub mod legacy_c {
     }
 
     // Legacy `extern "C"` registration/finalizer declarations.
-    #[allow(missing_docs)]
+    #[allow(missing_docs, dead_code)]
     #[r_ffi_checked]
     unsafe extern "C" {
         /// Register a C finalizer callback.
         #[link_name = "R_RegisterCFinalizer"]
-        pub fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);
+        pub(crate) fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);
 
         /// Register a C finalizer callback with `onexit` behavior.
         #[link_name = "R_RegisterCFinalizerEx"]
-        pub fn R_RegisterCFinalizerEx_C(s: SEXP, fun: R_CFinalizer_t_C, onexit: Rboolean);
+        pub(crate) fn R_RegisterCFinalizerEx_C(s: SEXP, fun: R_CFinalizer_t_C, onexit: Rboolean);
 
         /// Create function external pointer (`R_MakeExternalPtrFn`).
         #[link_name = "R_MakeExternalPtrFn"]
-        pub fn R_MakeExternalPtrFn_C(p: DL_FUNC_C, tag: SEXP, prot: SEXP) -> SEXP;
+        pub(crate) fn R_MakeExternalPtrFn_C(p: DL_FUNC_C, tag: SEXP, prot: SEXP) -> SEXP;
 
         /// Extract function pointer from external pointer.
         #[link_name = "R_ExternalPtrAddrFn"]
-        pub fn R_ExternalPtrAddrFn_C(s: SEXP) -> DL_FUNC_C;
+        pub(crate) fn R_ExternalPtrAddrFn_C(s: SEXP) -> DL_FUNC_C;
 
         /// Register native routines using legacy ABI types.
         #[link_name = "R_registerRoutines"]
-        pub fn R_registerRoutines_C(
+        pub(crate) fn R_registerRoutines_C(
             info: *mut super::DllInfo,
             croutines: *const ::std::os::raw::c_void,
             callRoutines: *const R_CallMethodDef_C,
@@ -2960,7 +2960,7 @@ unsafe extern "C-unwind" {
     pub fn R_unif_index(dn: f64) -> f64;
 
     /// Get the current discrete uniform sample method.
-    pub fn R_sample_kind() -> Sampletype;
+    pub(crate) fn R_sample_kind() -> Sampletype;
 }
 
 // endregion
@@ -2985,7 +2985,7 @@ unsafe extern "C-unwind" {
     ///     vmaxset(watermark); // frees buf
     /// }
     /// ```
-    pub fn vmaxget() -> *mut ::std::os::raw::c_void;
+    pub(crate) fn vmaxget() -> *mut ::std::os::raw::c_void;
 
     /// Set the R memory stack watermark, freeing memory allocated since the mark.
     ///
@@ -2993,7 +2993,7 @@ unsafe extern "C-unwind" {
     ///
     /// `ovmax` must be a value returned by `vmaxget()` called earlier in the
     /// same R evaluation context.
-    pub fn vmaxset(ovmax: *const ::std::os::raw::c_void);
+    pub(crate) fn vmaxset(ovmax: *const ::std::os::raw::c_void);
 
     /// Run the R garbage collector.
     ///
@@ -3003,7 +3003,7 @@ unsafe extern "C-unwind" {
     /// Check if the garbage collector is currently running.
     ///
     /// Returns non-zero if GC is in progress.
-    pub fn R_gc_running() -> ::std::os::raw::c_int;
+    pub(crate) fn R_gc_running() -> ::std::os::raw::c_int;
 
     /// Allocate memory on R's memory stack.
     ///
@@ -3018,14 +3018,14 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Pointer to allocated memory (as `char*` for compatibility with S).
-    pub fn R_alloc(nelem: usize, eltsize: ::std::os::raw::c_int) -> *mut ::std::os::raw::c_char;
+    pub(crate) fn R_alloc(nelem: usize, eltsize: ::std::os::raw::c_int) -> *mut ::std::os::raw::c_char;
 
     /// Allocate an array of long doubles on R's memory stack.
     ///
     /// # Parameters
     ///
     /// - `nelem`: Number of long double elements to allocate
-    pub fn R_allocLD(nelem: usize) -> *mut f64; // Note: f64 is close enough for most uses
+    pub(crate) fn R_allocLD(nelem: usize) -> *mut f64; // Note: f64 is close enough for most uses
 
     /// S compatibility: allocate zeroed memory on R's memory stack.
     ///
@@ -3033,7 +3033,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `nelem`: Number of elements
     /// - `eltsize`: Size of each element
-    pub fn S_alloc(
+    pub(crate) fn S_alloc(
         nelem: ::std::os::raw::c_long,
         eltsize: ::std::os::raw::c_int,
     ) -> *mut ::std::os::raw::c_char;
@@ -3043,7 +3043,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// `ptr` must have been allocated by `S_alloc`.
-    pub fn S_realloc(
+    pub(crate) fn S_realloc(
         ptr: *mut ::std::os::raw::c_char,
         newsize: ::std::os::raw::c_long,
         oldsize: ::std::os::raw::c_long,
@@ -3054,19 +3054,19 @@ unsafe extern "C-unwind" {
     ///
     /// Triggers GC if allocation fails, then retries.
     /// Memory must be freed with `free()`.
-    pub fn R_malloc_gc(size: usize) -> *mut ::std::os::raw::c_void;
+    pub(crate) fn R_malloc_gc(size: usize) -> *mut ::std::os::raw::c_void;
 
     /// GC-aware calloc.
     ///
     /// Triggers GC if allocation fails, then retries.
     /// Memory must be freed with `free()`.
-    pub fn R_calloc_gc(nelem: usize, eltsize: usize) -> *mut ::std::os::raw::c_void;
+    pub(crate) fn R_calloc_gc(nelem: usize, eltsize: usize) -> *mut ::std::os::raw::c_void;
 
     /// GC-aware realloc.
     ///
     /// Triggers GC if allocation fails, then retries.
     /// Memory must be freed with `free()`.
-    pub fn R_realloc_gc(
+    pub(crate) fn R_realloc_gc(
         ptr: *mut ::std::os::raw::c_void,
         size: usize,
     ) -> *mut ::std::os::raw::c_void;
@@ -3084,7 +3084,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `x`: Pointer to integer array
     /// - `n`: Number of elements
-    pub fn R_isort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+    pub(crate) fn R_isort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
 
     /// Sort a double vector in place (ascending order).
     ///
@@ -3092,7 +3092,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `x`: Pointer to double array
     /// - `n`: Number of elements
-    pub fn R_rsort(x: *mut f64, n: ::std::os::raw::c_int);
+    pub(crate) fn R_rsort(x: *mut f64, n: ::std::os::raw::c_int);
 
     /// Sort a complex vector in place.
     ///
@@ -3100,7 +3100,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `x`: Pointer to Rcomplex array
     /// - `n`: Number of elements
-    pub fn R_csort(x: *mut Rcomplex, n: ::std::os::raw::c_int);
+    pub(crate) fn R_csort(x: *mut Rcomplex, n: ::std::os::raw::c_int);
 
     /// Sort doubles in descending order, carrying along an index array.
     ///
@@ -3110,7 +3110,7 @@ unsafe extern "C-unwind" {
     /// - `ib`: Pointer to integer array (permuted alongside `a`)
     /// - `n`: Number of elements
     #[doc(alias = "Rf_revsort")]
-    pub fn revsort(a: *mut f64, ib: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+    pub(crate) fn revsort(a: *mut f64, ib: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
 
     /// Sort doubles with index array.
     ///
@@ -3119,7 +3119,7 @@ unsafe extern "C-unwind" {
     /// - `x`: Pointer to double array (sorted in place)
     /// - `indx`: Pointer to integer array (permuted alongside `x`)
     /// - `n`: Number of elements
-    pub fn rsort_with_index(
+    pub(crate) fn rsort_with_index(
         x: *mut f64,
         indx: *mut ::std::os::raw::c_int,
         n: ::std::os::raw::c_int,
@@ -3133,7 +3133,7 @@ unsafe extern "C-unwind" {
     /// - `n`: Number of elements
     /// - `k`: Target position (0-indexed)
     #[doc(alias = "Rf_iPsort")]
-    pub fn iPsort(
+    pub(crate) fn iPsort(
         x: *mut ::std::os::raw::c_int,
         n: ::std::os::raw::c_int,
         k: ::std::os::raw::c_int,
@@ -3147,7 +3147,7 @@ unsafe extern "C-unwind" {
     /// - `n`: Number of elements
     /// - `k`: Target position (0-indexed)
     #[doc(alias = "Rf_rPsort")]
-    pub fn rPsort(x: *mut f64, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+    pub(crate) fn rPsort(x: *mut f64, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
 
     /// Partial sort complex numbers.
     ///
@@ -3157,7 +3157,7 @@ unsafe extern "C-unwind" {
     /// - `n`: Number of elements
     /// - `k`: Target position (0-indexed)
     #[doc(alias = "Rf_cPsort")]
-    pub fn cPsort(x: *mut Rcomplex, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+    pub(crate) fn cPsort(x: *mut Rcomplex, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
 
     /// Quicksort doubles in place.
     ///
@@ -3166,7 +3166,7 @@ unsafe extern "C-unwind" {
     /// - `v`: Pointer to double array
     /// - `i`: Start index (1-indexed for R compatibility)
     /// - `j`: End index (1-indexed)
-    pub fn R_qsort(v: *mut f64, i: usize, j: usize);
+    pub(crate) fn R_qsort(v: *mut f64, i: usize, j: usize);
 
     /// Quicksort doubles with index array.
     ///
@@ -3176,7 +3176,7 @@ unsafe extern "C-unwind" {
     /// - `indx`: Pointer to index array (permuted alongside v)
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    pub fn R_qsort_I(
+    pub(crate) fn R_qsort_I(
         v: *mut f64,
         indx: *mut ::std::os::raw::c_int,
         i: ::std::os::raw::c_int,
@@ -3190,7 +3190,7 @@ unsafe extern "C-unwind" {
     /// - `iv`: Pointer to integer array
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    pub fn R_qsort_int(iv: *mut ::std::os::raw::c_int, i: usize, j: usize);
+    pub(crate) fn R_qsort_int(iv: *mut ::std::os::raw::c_int, i: usize, j: usize);
 
     /// Quicksort integers with index array.
     ///
@@ -3200,7 +3200,7 @@ unsafe extern "C-unwind" {
     /// - `indx`: Pointer to index array
     /// - `i`: Start index (1-indexed)
     /// - `j`: End index (1-indexed)
-    pub fn R_qsort_int_I(
+    pub(crate) fn R_qsort_int_I(
         iv: *mut ::std::os::raw::c_int,
         indx: *mut ::std::os::raw::c_int,
         i: ::std::os::raw::c_int,
@@ -3212,17 +3212,17 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Pointer to expanded path (in R's internal buffer, do not free).
-    pub fn R_ExpandFileName(s: *const ::std::os::raw::c_char) -> *const ::std::os::raw::c_char;
+    pub(crate) fn R_ExpandFileName(s: *const ::std::os::raw::c_char) -> *const ::std::os::raw::c_char;
 
     /// Convert string to double, always using '.' as decimal point.
     ///
     /// Also accepts "NA" as input, returning NA_REAL.
-    pub fn R_atof(str: *const ::std::os::raw::c_char) -> f64;
+    pub(crate) fn R_atof(str: *const ::std::os::raw::c_char) -> f64;
 
     /// Convert string to double with end pointer, using '.' as decimal point.
     ///
     /// Like `strtod()` but locale-independent.
-    pub fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char)
+    pub(crate) fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char)
     -> f64;
 
     /// Generate a temporary filename.
@@ -3235,7 +3235,7 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Newly allocated string (must be freed with `R_free_tmpnam`).
-    pub fn R_tmpnam(
+    pub(crate) fn R_tmpnam(
         prefix: *const ::std::os::raw::c_char,
         tempdir: *const ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_char;
@@ -3251,26 +3251,26 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Newly allocated string (must be freed with `R_free_tmpnam`).
-    pub fn R_tmpnam2(
+    pub(crate) fn R_tmpnam2(
         prefix: *const ::std::os::raw::c_char,
         tempdir: *const ::std::os::raw::c_char,
         fileext: *const ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_char;
 
     /// Free a temporary filename allocated by `R_tmpnam` or `R_tmpnam2`.
-    pub fn R_free_tmpnam(name: *mut ::std::os::raw::c_char);
+    pub(crate) fn R_free_tmpnam(name: *mut ::std::os::raw::c_char);
 
     /// Check for R stack overflow.
     ///
     /// Throws an R error if stack is nearly exhausted.
-    pub fn R_CheckStack();
+    pub(crate) fn R_CheckStack();
 
     /// Check for R stack overflow with extra space requirement.
     ///
     /// # Parameters
     ///
     /// - `extra`: Additional bytes needed
-    pub fn R_CheckStack2(extra: usize);
+    pub(crate) fn R_CheckStack2(extra: usize);
 
     /// Find the interval containing a value (binary search).
     ///
@@ -3289,7 +3289,7 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Interval index (1-indexed).
-    pub fn findInterval(
+    pub(crate) fn findInterval(
         xt: *const f64,
         n: ::std::os::raw::c_int,
         x: f64,
@@ -3301,7 +3301,7 @@ unsafe extern "C-unwind" {
 
     /// Extended interval finding with left-open option.
     #[allow(clippy::too_many_arguments)]
-    pub fn findInterval2(
+    pub(crate) fn findInterval2(
         xt: *const f64,
         n: ::std::os::raw::c_int,
         x: f64,
@@ -3321,7 +3321,7 @@ unsafe extern "C-unwind" {
     /// - `nc`: Number of columns
     /// - `maxes`: Output array for column maxima indices (1-indexed)
     /// - `ties_meth`: How to handle ties (1=first, 2=random, 3=last)
-    pub fn R_max_col(
+    pub(crate) fn R_max_col(
         matrix: *const f64,
         nr: *const ::std::os::raw::c_int,
         nc: *const ::std::os::raw::c_int,
@@ -3333,17 +3333,17 @@ unsafe extern "C-unwind" {
     ///
     /// Recognizes "FALSE", "false", "False", "F", "f", etc.
     #[doc(alias = "Rf_StringFalse")]
-    pub fn StringFalse(s: *const ::std::os::raw::c_char) -> Rboolean;
+    pub(crate) fn StringFalse(s: *const ::std::os::raw::c_char) -> Rboolean;
 
     /// Check if a string represents TRUE in R.
     ///
     /// Recognizes "TRUE", "true", "True", "T", "t", etc.
     #[doc(alias = "Rf_StringTrue")]
-    pub fn StringTrue(s: *const ::std::os::raw::c_char) -> Rboolean;
+    pub(crate) fn StringTrue(s: *const ::std::os::raw::c_char) -> Rboolean;
 
     /// Check if a string is blank (empty or only whitespace).
     #[doc(alias = "Rf_isBlankString")]
-    pub fn isBlankString(s: *const ::std::os::raw::c_char) -> Rboolean;
+    pub(crate) fn isBlankString(s: *const ::std::os::raw::c_char) -> Rboolean;
 }
 
 // endregion
@@ -3376,7 +3376,7 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Character count or -1 on error.
-    pub fn R_nchar(
+    pub(crate) fn R_nchar(
         x: SEXP,
         ntype: ::std::os::raw::c_int,
         allowNA: Rboolean,
@@ -3388,13 +3388,13 @@ unsafe extern "C-unwind" {
     ///
     /// Returns a string like "INTSXP", "REALSXP", etc.
     #[doc(alias = "type2char")]
-    pub fn Rf_type2char(sexptype: SEXPTYPE) -> *const ::std::os::raw::c_char;
+    pub(crate) fn Rf_type2char(sexptype: SEXPTYPE) -> *const ::std::os::raw::c_char;
 
     /// Print an R value to the console.
     ///
     /// Uses R's standard print method for the object.
     #[doc(alias = "PrintValue")]
-    pub fn Rf_PrintValue(x: SEXP);
+    pub(crate) fn Rf_PrintValue(x: SEXP);
 
     // Environment functions
 
@@ -3405,26 +3405,26 @@ unsafe extern "C-unwind" {
     /// - `enclos`: Enclosing environment
     /// - `hash`: Whether to use a hash table
     /// - `size`: Initial hash table size (if hash is TRUE)
-    pub fn R_NewEnv(enclos: SEXP, hash: Rboolean, size: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn R_NewEnv(enclos: SEXP, hash: Rboolean, size: ::std::os::raw::c_int) -> SEXP;
 
     /// Check if a variable exists in an environment frame.
     ///
     /// Does not search enclosing environments.
-    pub fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
+    pub(crate) fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
 
     /// Remove a variable from an environment frame.
     ///
     /// # Returns
     ///
     /// The removed value, or R_NilValue if not found.
-    pub fn R_removeVarFromFrame(symbol: SEXP, env: SEXP) -> SEXP;
+    pub(crate) fn R_removeVarFromFrame(symbol: SEXP, env: SEXP) -> SEXP;
 
     /// Get the top-level environment.
     ///
     /// Walks up enclosing environments until reaching a top-level env
     /// (global, namespace, or base).
     #[doc(alias = "topenv")]
-    pub fn Rf_topenv(target: SEXP, envir: SEXP) -> SEXP;
+    pub(crate) fn Rf_topenv(target: SEXP, envir: SEXP) -> SEXP;
 
     // Matching functions
 
@@ -3442,7 +3442,7 @@ unsafe extern "C-unwind" {
     ///
     /// Integer vector of match positions (1-indexed, nomatch for non-matches).
     #[doc(alias = "match")]
-    pub fn Rf_match(x: SEXP, table: SEXP, nomatch: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_match(x: SEXP, table: SEXP, nomatch: ::std::os::raw::c_int) -> SEXP;
 
     // Duplication and copying
 
@@ -3450,7 +3450,7 @@ unsafe extern "C-unwind" {
     ///
     /// Copies all attributes except names, dim, and dimnames.
     #[doc(alias = "copyMostAttrib")]
-    pub fn Rf_copyMostAttrib(source: SEXP, target: SEXP);
+    pub(crate) fn Rf_copyMostAttrib(source: SEXP, target: SEXP);
 
     /// Find first duplicated element.
     ///
@@ -3463,7 +3463,7 @@ unsafe extern "C-unwind" {
     ///
     /// 0 if no duplicates, otherwise 1-indexed position of first duplicate.
     #[doc(alias = "any_duplicated")]
-    pub fn Rf_any_duplicated(x: SEXP, fromLast: Rboolean) -> R_xlen_t;
+    pub(crate) fn Rf_any_duplicated(x: SEXP, fromLast: Rboolean) -> R_xlen_t;
 
     // S4 functions
 
@@ -3474,11 +3474,11 @@ unsafe extern "C-unwind" {
     /// - `object`: Object to convert
     /// - `flag`: Conversion flag
     #[doc(alias = "asS4")]
-    pub fn Rf_asS4(object: SEXP, flag: Rboolean, complete: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_asS4(object: SEXP, flag: Rboolean, complete: ::std::os::raw::c_int) -> SEXP;
 
     /// Get the S3 class of an S4 object.
     #[doc(alias = "S3Class")]
-    pub fn Rf_S3Class(object: SEXP) -> SEXP;
+    pub(crate) fn Rf_S3Class(object: SEXP) -> SEXP;
 
     // Option access
 
@@ -3490,29 +3490,29 @@ unsafe extern "C-unwind" {
     ///
     /// - `tag`: Symbol for option name
     #[doc(alias = "GetOption1")]
-    pub fn Rf_GetOption1(tag: SEXP) -> SEXP;
+    pub(crate) fn Rf_GetOption1(tag: SEXP) -> SEXP;
 
     /// Get the `digits` option.
     ///
     /// Returns the value of `getOption("digits")`.
     #[doc(alias = "GetOptionDigits")]
-    pub fn Rf_GetOptionDigits() -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_GetOptionDigits() -> ::std::os::raw::c_int;
 
     /// Get the `width` option.
     ///
     /// Returns the value of `getOption("width")`.
     #[doc(alias = "GetOptionWidth")]
-    pub fn Rf_GetOptionWidth() -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_GetOptionWidth() -> ::std::os::raw::c_int;
 
     // Factor functions
 
     /// Check if a factor is ordered.
     #[doc(alias = "isOrdered")]
-    pub fn Rf_isOrdered(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isOrdered(s: SEXP) -> Rboolean;
 
     /// Check if a factor is unordered.
     #[doc(alias = "isUnordered")]
-    pub fn Rf_isUnordered(s: SEXP) -> Rboolean;
+    pub(crate) fn Rf_isUnordered(s: SEXP) -> Rboolean;
 
     /// Check if a vector is unsorted.
     ///
@@ -3521,7 +3521,7 @@ unsafe extern "C-unwind" {
     /// - `x`: Vector to check
     /// - `strictly`: If TRUE, check for strictly increasing
     #[doc(alias = "isUnsorted")]
-    pub fn Rf_isUnsorted(x: SEXP, strictly: Rboolean) -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_isUnsorted(x: SEXP, strictly: Rboolean) -> ::std::os::raw::c_int;
 
     // Expression and evaluation
 
@@ -3529,13 +3529,13 @@ unsafe extern "C-unwind" {
     ///
     /// Like R's `substitute()` function.
     #[doc(alias = "substitute")]
-    pub fn Rf_substitute(lang: SEXP, rho: SEXP) -> SEXP;
+    pub(crate) fn Rf_substitute(lang: SEXP, rho: SEXP) -> SEXP;
 
     /// Set vector length.
     ///
     /// For short vectors (length < 2^31).
     #[doc(alias = "lengthgets")]
-    pub fn Rf_lengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+    pub(crate) fn Rf_lengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
 
     /// Set vector length (long vector version).
     #[doc(alias = "xlengthgets")]
@@ -3572,29 +3572,29 @@ unsafe extern "C-unwind" {
     /// - `val`: The value to associate
     /// - `fin`: Finalizer function (or R_NilValue)
     /// - `onexit`: Whether to run finalizer on R exit
-    pub fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: Rboolean) -> SEXP;
+    pub(crate) fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: Rboolean) -> SEXP;
 
     /// Create a weak reference with C finalizer.
-    pub fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: Rboolean) -> SEXP;
+    pub(crate) fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: Rboolean) -> SEXP;
 
     /// Get the key from a weak reference.
-    pub fn R_WeakRefKey(w: SEXP) -> SEXP;
+    pub(crate) fn R_WeakRefKey(w: SEXP) -> SEXP;
 
     /// Get the value from a weak reference.
-    pub fn R_WeakRefValue(w: SEXP) -> SEXP;
+    pub(crate) fn R_WeakRefValue(w: SEXP) -> SEXP;
 
     /// Run pending finalizers.
-    pub fn R_RunPendingFinalizers();
+    pub(crate) fn R_RunPendingFinalizers();
 
     // Conversion list/vector
 
     /// Convert a pairlist to a generic vector (list).
     #[doc(alias = "PairToVectorList")]
-    pub fn Rf_PairToVectorList(x: SEXP) -> SEXP;
+    pub(crate) fn Rf_PairToVectorList(x: SEXP) -> SEXP;
 
     /// Convert a generic vector (list) to a pairlist.
     #[doc(alias = "VectorToPairList")]
-    pub fn Rf_VectorToPairList(x: SEXP) -> SEXP;
+    pub(crate) fn Rf_VectorToPairList(x: SEXP) -> SEXP;
 
     // Install with CHARSXP
 
