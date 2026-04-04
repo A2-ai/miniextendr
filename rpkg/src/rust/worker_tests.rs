@@ -1,6 +1,6 @@
 //! Tests for worker thread (run_on_worker) and with_r_thread functionality.
 
-use miniextendr_api::ffi::{R_NilValue, SEXP};
+use miniextendr_api::ffi::{R_NilValue, SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::worker::{panic_message_to_r_error, run_on_worker, with_r_thread};
 
@@ -79,7 +79,7 @@ pub extern "C-unwind" fn C_test_worker_with_r_thread() -> SEXP {
         // Call R API on main thread, return i32 (Send)
         with_r_thread(move || {
             let sexp = miniextendr_api::ffi::SEXP::scalar_integer(value);
-            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+            sexp.as_integer().unwrap()
         })
     });
     // Convert to SEXP on main thread after run_on_worker returns
@@ -109,10 +109,10 @@ pub extern "C-unwind" fn C_test_worker_multiple_r_calls() -> SEXP {
     unsafe {
         let scope = miniextendr_api::gc_protect::ProtectScope::new();
         let vec = scope.alloc_integer(3);
-        let ptr = miniextendr_api::ffi::INTEGER(vec.get());
-        *ptr.offset(0) = values.0;
-        *ptr.offset(1) = values.1;
-        *ptr.offset(2) = values.2;
+        let slice: &mut [i32] = vec.get().as_mut_slice();
+        slice[0] = values.0;
+        slice[1] = values.1;
+        slice[2] = values.2;
         vec.get()
     }
 }
@@ -367,7 +367,7 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 pub fn test_main_thread_r_api() -> i32 {
     // This runs on main thread, can call R API directly
     let sexp = miniextendr_api::ffi::SEXP::scalar_integer(42);
-    unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+    sexp.as_integer().unwrap()
 }
 
 /// @noRd
@@ -416,7 +416,7 @@ fn helper_r_call_value(value: i32) -> i32 {
     with_r_thread(move || {
         // Create SEXP on main thread, extract value, return i32
         let sexp = miniextendr_api::ffi::SEXP::scalar_integer(value * 2);
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        sexp.as_integer().unwrap()
     })
 }
 

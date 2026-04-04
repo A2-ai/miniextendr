@@ -324,6 +324,14 @@ pub trait SexpExt {
     /// - Additionally, must be called from R's main thread (no debug assertions)
     unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T];
 
+    /// Get a mutable slice view of this SEXP's data.
+    ///
+    /// # Safety
+    ///
+    /// Same requirements as [`as_slice`](Self::as_slice), plus the caller must
+    /// ensure no other references to the data exist.
+    unsafe fn as_mut_slice<T: RNativeType>(&self) -> &'static mut [T];
+
     // Type checking methods (equivalent to R's type check macros)
 
     /// Check if this SEXP is an integer vector (INTSXP).
@@ -608,6 +616,22 @@ impl SexpExt for SEXP {
             &[]
         } else {
             unsafe { std::slice::from_raw_parts(DATAPTR_RO(*self).cast(), len) }
+        }
+    }
+
+    #[inline]
+    unsafe fn as_mut_slice<T: RNativeType>(&self) -> &'static mut [T] {
+        debug_assert!(
+            self.type_of() == T::SEXP_TYPE,
+            "SEXP type mismatch: expected {:?}, got {:?}",
+            T::SEXP_TYPE,
+            self.type_of()
+        );
+        let len = self.len();
+        if len == 0 {
+            &mut []
+        } else {
+            unsafe { std::slice::from_raw_parts_mut(T::dataptr_mut(*self), len) }
         }
     }
 

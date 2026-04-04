@@ -1,4 +1,4 @@
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
 
@@ -19,7 +19,7 @@ use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
 pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
     let handle = spawn_with_r(|| {
         let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(999) };
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        sexp.as_integer().unwrap()
     })
     .expect("failed to spawn");
 
@@ -35,7 +35,7 @@ pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {
     let handle = std::thread::spawn(|| {
         let _guard = StackCheckGuard::disable();
         let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(777) };
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        sexp.as_integer().unwrap()
     });
 
     let result = handle.join().expect("thread panicked");

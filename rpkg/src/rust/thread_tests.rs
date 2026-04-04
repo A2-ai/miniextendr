@@ -1,6 +1,6 @@
 //! Tests for RThreadBuilder and thread safety.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::thread::RThreadBuilder;
 
@@ -26,7 +26,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
         .spawn(|| {
             // mxl::allow(MXL301)
             let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(123) };
-            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+            sexp.as_integer().unwrap()
         })
         .expect("failed to spawn thread");
 
@@ -43,7 +43,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
         .spawn_join(|| {
             // mxl::allow(MXL301)
             let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(456) };
-            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+            sexp.as_integer().unwrap()
         })
         .expect("thread failed");
 
