@@ -712,7 +712,7 @@ pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
 /// @noRd
 #[miniextendr]
 pub fn altrep_from_list(x: SEXP) -> ListDataClass {
-    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SexpExt};
+    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, SexpExt};
 
     if !x.is_list() {
         panic!("altrep_from_list: expected a list (VECSXP)");
@@ -722,7 +722,7 @@ pub fn altrep_from_list(x: SEXP) -> ListDataClass {
         unsafe { R_PreserveObject(x) };
     }
 
-    let len = unsafe { Rf_xlength(x) } as usize;
+    let len = x.len();
     ListDataClass(ListData { list: x, len })
 }
 // endregion
@@ -913,9 +913,9 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
 
     fn unserialize(state: SEXP) -> Option<Self> {
         const NA_LOGICAL: i32 = i32::MIN;
-        unsafe {
-            use miniextendr_api::ffi::{Rf_xlength, SexpExt};
-            let n = Rf_xlength(state) as usize;
+        {
+            use miniextendr_api::ffi::SexpExt;
+            let n = state.len();
             let mut data = Vec::with_capacity(n);
             for i in 0..n {
                 let raw = state.logical_elt(i as isize);
