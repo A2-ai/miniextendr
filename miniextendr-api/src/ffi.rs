@@ -550,6 +550,23 @@ pub trait SexpExt {
     fn set_vector_elt(&self, i: isize, val: SEXP);
 
     // endregion
+
+    // region: Unchecked variants (bypass thread-check, for perf-critical paths)
+
+    /// Get the i-th CHARSXP from a STRSXP. No thread check.
+    unsafe fn string_elt_unchecked(&self, i: isize) -> SEXP;
+    /// Set the i-th CHARSXP of a STRSXP. No thread check.
+    unsafe fn set_string_elt_unchecked(&self, i: isize, charsxp: SEXP);
+    /// Get the i-th element of a VECSXP. No thread check.
+    unsafe fn vector_elt_unchecked(&self, i: isize) -> SEXP;
+    /// Set the i-th element of a VECSXP. No thread check.
+    unsafe fn set_vector_elt_unchecked(&self, i: isize, val: SEXP);
+    /// Get an attribute by symbol. No thread check.
+    unsafe fn get_attr_unchecked(&self, name: SEXP) -> SEXP;
+    /// Set an attribute by symbol. No thread check.
+    unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP);
+
+    // endregion
 }
 
 impl SexpExt for SEXP {
@@ -922,6 +939,40 @@ impl SexpExt for SEXP {
     #[inline]
     fn set_vector_elt(&self, i: isize, val: SEXP) {
         unsafe { SET_VECTOR_ELT(*self, i, val); }
+    }
+
+    // endregion
+
+    // region: Unchecked variants
+
+    #[inline]
+    unsafe fn string_elt_unchecked(&self, i: isize) -> SEXP {
+        unsafe { STRING_ELT_unchecked(*self, i) }
+    }
+
+    #[inline]
+    unsafe fn set_string_elt_unchecked(&self, i: isize, charsxp: SEXP) {
+        unsafe { SET_STRING_ELT_unchecked(*self, i, charsxp) }
+    }
+
+    #[inline]
+    unsafe fn vector_elt_unchecked(&self, i: isize) -> SEXP {
+        unsafe { VECTOR_ELT_unchecked(*self, i) }
+    }
+
+    #[inline]
+    unsafe fn set_vector_elt_unchecked(&self, i: isize, val: SEXP) {
+        unsafe { SET_VECTOR_ELT_unchecked(*self, i, val); }
+    }
+
+    #[inline]
+    unsafe fn get_attr_unchecked(&self, name: SEXP) -> SEXP {
+        unsafe { Rf_getAttrib_unchecked(*self, name) }
+    }
+
+    #[inline]
+    unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP) {
+        unsafe { Rf_setAttrib_unchecked(*self, name, val); }
     }
 
     // endregion
