@@ -1157,7 +1157,7 @@ pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
         for (i, s) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp_unchecked(s);
-            crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
+            sexp.set_string_elt_unchecked(idx, charsxp);
         }
         *sexp
     }
@@ -1295,7 +1295,7 @@ where
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                crate::ffi::SET_VECTOR_ELT_unchecked(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1341,7 +1341,7 @@ impl IntoR for Vec<Vec<String>> {
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                crate::ffi::SET_VECTOR_ELT_unchecked(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1663,7 +1663,7 @@ impl IntoR for Vec<Option<String>> {
                     Some(s) => str_to_charsxp_unchecked(s),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
+                sexp.set_string_elt_unchecked(idx, charsxp);
             }
 
             *sexp
@@ -1715,10 +1715,8 @@ macro_rules! impl_tuple_into_r {
                     crate::ffi::Rf_protect(list);
 
                     $(
-                        crate::ffi::SET_VECTOR_ELT_unchecked(
-                            list,
-                            $idx as crate::ffi::R_xlen_t,
-                            self.$idx.into_sexp_unchecked()
+                        
+                            list.set_vector_elt_unchecked($idx as crate::ffi::R_xlen_t, self.$idx.into_sexp_unchecked()
                         );
                     )+
 

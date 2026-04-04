@@ -110,7 +110,7 @@ use crate::ffi::{
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
     R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
     Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
-    Rf_unprotect_unchecked, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
+    Rf_unprotect_unchecked, SEXP, SEXPTYPE, SexpExt,
 };
 
 /// A wrapper around a raw pointer that implements [`Send`].
@@ -446,7 +446,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect_unchecked(prot) };
-        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
+        unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
 
         let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
@@ -760,7 +760,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// or other contexts where you're certain you're on the main thread.
     #[inline]
     pub unsafe fn protected_unchecked(&self) -> SEXP {
-        use crate::ffi::{R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked};
+        use crate::ffi::R_ExternalPtrProtected_unchecked;
 
         unsafe {
             let prot = R_ExternalPtrProtected_unchecked(self.sexp);
@@ -770,7 +770,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return SEXP::null();
             }
-            VECTOR_ELT_unchecked(prot, PROT_USER_INDEX)
+            prot.vector_elt_unchecked(PROT_USER_INDEX)
         }
     }
 

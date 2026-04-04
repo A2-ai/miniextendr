@@ -90,13 +90,13 @@ unsafe fn map_to_named_list_unchecked<V: IntoR>(
 
         for (i, (key, value)) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
-            crate::ffi::SET_VECTOR_ELT_unchecked(list, idx, value.into_sexp_unchecked());
+            list.set_vector_elt_unchecked(idx, value.into_sexp_unchecked());
 
             let charsxp = str_to_charsxp_unchecked(&key);
-            crate::ffi::SET_STRING_ELT_unchecked(names, idx, charsxp);
+            names.set_string_elt_unchecked(idx, charsxp);
         }
 
-        crate::ffi::Rf_setAttrib_unchecked(list, crate::ffi::R_NamesSymbol, names);
+        list.set_attr_unchecked(crate::ffi::R_NamesSymbol, names);
 
         crate::ffi::Rf_unprotect(2);
         list
