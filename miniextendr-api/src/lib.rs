@@ -339,8 +339,7 @@ pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::
 // DllInfo global — stored during package_init, used by ALTREP class registration.
 // R needs DllInfo to associate ALTREP classes with their package for serialization.
 // Without it, readRDS in a fresh session can't find the class.
-static ALTREP_DLL_INFO: AtomicPtr<std::ffi::c_void> =
-    AtomicPtr::new(std::ptr::null_mut());
+static ALTREP_DLL_INFO: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 /// Get the stored DllInfo pointer for ALTREP class registration.
 #[doc(hidden)]

@@ -77,10 +77,7 @@ pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
 ///
 /// UTF-8 locale is asserted at init — `from_utf8_unchecked` is safe.
 #[inline]
-unsafe fn charsxp_to_str_impl(
-    ptr: *const std::os::raw::c_char,
-    charsxp: SEXP,
-) -> &'static str {
+unsafe fn charsxp_to_str_impl(ptr: *const std::os::raw::c_char, charsxp: SEXP) -> &'static str {
     unsafe {
         let len: usize = crate::ffi::LENGTH(charsxp)
             .try_into()
@@ -98,7 +95,6 @@ unsafe fn charsxp_to_str_impl(
 pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
     std::borrow::Cow::Borrowed(unsafe { charsxp_to_str(charsxp) })
 }
-
 
 /// Create a slice from an R data pointer, handling the zero-length case.
 ///

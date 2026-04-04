@@ -1068,7 +1068,11 @@ impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
 // Serialize: Rf_mkCharLenCE hits R's CHARSXP cache (no string data copy for borrowed).
 // Unserialize: TryFromSexp uses charsxp_to_cow (zero-copy borrow for UTF-8).
 impl_altstring_from_data!(Vec<std::borrow::Cow<'static, str>>, dataptr, serialize);
-impl_altstring_from_data!(Vec<Option<std::borrow::Cow<'static, str>>>, dataptr, serialize);
+impl_altstring_from_data!(
+    Vec<Option<std::borrow::Cow<'static, str>>>,
+    dataptr,
+    serialize
+);
 
 // Complex types - Vec<Rcomplex> supports dataptr
 impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
@@ -1473,7 +1477,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [i32; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, crate::altrep_dll_info())
+            crate::ffi::altrep::R_make_altinteger_class(
+                class_name,
+                pkg_name,
+                crate::altrep_dll_info(),
+            )
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)
@@ -1515,7 +1523,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altlogical_class(class_name, pkg_name, crate::altrep_dll_info())
+            crate::ffi::altrep::R_make_altlogical_class(
+                class_name,
+                pkg_name,
+                crate::altrep_dll_info(),
+            )
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)
