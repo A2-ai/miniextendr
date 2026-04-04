@@ -54,7 +54,7 @@ pub fn rdata_sidecar_env_new(
     flag: bool,
     name: String,
 ) -> ExternalPtr<SidecarEnv> {
-    use miniextendr_api::ffi::R_NilValue;
+    use miniextendr_api::ffi::SEXP;
 
     ExternalPtr::new(SidecarEnv {
         _internal_value: 999,
@@ -63,7 +63,7 @@ pub fn rdata_sidecar_env_new(
         score,
         flag,
         name,
-        raw_slot: unsafe { R_NilValue },
+        raw_slot: SEXP::null(),
     })
 }
 // endregion
@@ -297,16 +297,16 @@ impl SidecarRawSexp {}
 /// @noRd
 #[miniextendr]
 pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
-    use miniextendr_api::ffi::R_NilValue;
+    use miniextendr_api::ffi::SEXP;
 
     ExternalPtr::new(SidecarRawSexp {
         _r: RSidecar,
-        int_vec: unsafe { R_NilValue },
-        real_vec: unsafe { R_NilValue },
-        char_vec: unsafe { R_NilValue },
-        list_val: unsafe { R_NilValue },
-        func_val: unsafe { R_NilValue },
-        env_val: unsafe { R_NilValue },
+        int_vec: SEXP::null(),
+        real_vec: SEXP::null(),
+        char_vec: SEXP::null(),
+        list_val: SEXP::null(),
+        func_val: SEXP::null(),
+        env_val: SEXP::null(),
     })
 }
 // endregion

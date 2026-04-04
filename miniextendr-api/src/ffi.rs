@@ -210,6 +210,8 @@ impl SEXP {
 
     /// Create a length-1 logical vector from raw i32 (0=FALSE, 1=TRUE, NA_LOGICAL=NA).
     #[inline]
+    /// Accepts 0 (FALSE), 1 (TRUE), or `NA_LOGICAL` (`i32::MIN`) for NA.
+    /// Prefer [`scalar_logical`](Self::scalar_logical) for non-NA values.
     pub fn scalar_logical_raw(x: i32) -> SEXP {
         unsafe { Rf_ScalarLogical(x) }
     }
@@ -328,8 +330,11 @@ pub trait SexpExt {
     ///
     /// # Safety
     ///
-    /// Same requirements as [`as_slice`](Self::as_slice), plus the caller must
-    /// ensure no other references to the data exist.
+    /// - All safety requirements of [`as_slice`](Self::as_slice) apply.
+    /// - The caller must ensure **exclusive access**: no other `&[T]` or `&mut [T]`
+    ///   slices derived from this SEXP may exist simultaneously. Multiple calls to
+    ///   `as_mut_slice` on the same SEXP without dropping the previous slice is UB.
+    /// - The SEXP must not be shared (ALTREP or NAMED > 0 objects may alias).
     unsafe fn as_mut_slice<T: RNativeType>(&self) -> &'static mut [T];
 
     // Type checking methods (equivalent to R's type check macros)
@@ -476,6 +481,12 @@ pub trait SexpExt {
     /// Get an attribute by symbol.
     fn get_attr(&self, name: SEXP) -> SEXP;
 
+    /// Get an attribute by symbol, returning `None` for `R_NilValue`.
+    fn get_attr_opt(&self, name: SEXP) -> Option<SEXP> {
+        let attr = self.get_attr(name);
+        if attr.is_nil() { None } else { Some(attr) }
+    }
+
     /// Set an attribute by symbol.
     fn set_attr(&self, name: SEXP, val: SEXP);
 
@@ -532,7 +543,11 @@ pub trait SexpExt {
     /// Get the i-th string element as `Option<&str>`.
     ///
     /// Returns `None` for `NA_character_`. The returned `&str` borrows from R's
-    /// internal string cache and is valid as long as the SEXP is protected.
+    /// internal string cache (CHARSXP global pool) and is valid as long as the
+    /// parent STRSXP is protected from GC. The lifetime is tied to `&self` by
+    /// the borrow checker, but the true validity depends on GC protection —
+    /// do not hold the `&str` across allocation boundaries without ensuring
+    /// the SEXP remains protected.
     fn string_elt_str(&self, i: isize) -> Option<&str>;
 
     /// Set the i-th CHARSXP element of a STRSXP.
