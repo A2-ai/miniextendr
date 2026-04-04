@@ -1664,10 +1664,58 @@ impl AltrepDataptr<u8> for UInt8Array {
 // impl_alt*_from_data! generates the bridge traits (Altrep, AltVec, AltReal/etc.)
 // AND calls impl_inferbase_*! to register the class creation.
 
-crate::impl_altreal_from_data!(Float64Array, dataptr);
-crate::impl_altinteger_from_data!(Int32Array, dataptr);
-crate::impl_altraw_from_data!(UInt8Array, dataptr);
-crate::impl_altlogical_from_data!(BooleanArray);
+// Serialize support: materialize Arrow array into native R vector for saveRDS.
+// On readRDS, the native vector is loaded directly (no Rust/Arrow needed).
+
+impl crate::altrep_data::AltrepSerialize for Float64Array {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for Int32Array {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for UInt8Array {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for BooleanArray {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for StringArray {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+crate::impl_altreal_from_data!(Float64Array, dataptr, serialize);
+crate::impl_altinteger_from_data!(Int32Array, dataptr, serialize);
+crate::impl_altraw_from_data!(UInt8Array, dataptr, serialize);
+crate::impl_altlogical_from_data!(BooleanArray, serialize);
 
 use crate::altrep::RegisterAltrep;
 
@@ -1769,7 +1817,7 @@ impl crate::altrep_data::AltStringData for StringArray {
     }
 }
 
-crate::impl_altstring_from_data!(StringArray);
+crate::impl_altstring_from_data!(StringArray, serialize);
 
 impl RegisterAltrep for StringArray {
     fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
