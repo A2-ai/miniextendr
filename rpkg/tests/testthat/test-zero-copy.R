@@ -115,3 +115,58 @@ test_that("ProtectedStrVec handles NA", {
 })
 
 # endregion
+
+# region: Serialization round-trip (saveRDS → fresh session → readRDS)
+
+test_that("R-backed Arrow f64 survives saveRDS/readRDS in new session", {
+  x <- c(1.5, 2.5, NA, 4.5)
+  result <- zero_copy_arrow_f64_roundtrip(x)
+  expect_equal(result, x)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(result, tmp)
+
+  # Load in a completely fresh R session — no shared memory, no miniextendr loaded
+  loaded <- callr::r(function(path) {
+    readRDS(path)
+  }, args = list(path = tmp))
+
+  expect_equal(loaded, x)
+  expect_true(is.na(loaded[3]))
+})
+
+test_that("R-backed Arrow i32 survives saveRDS/readRDS in new session", {
+  x <- c(1L, 2L, NA, 4L)
+  result <- zero_copy_arrow_i32_roundtrip(x)
+  expect_equal(result, x)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(result, tmp)
+
+  loaded <- callr::r(function(path) {
+    readRDS(path)
+  }, args = list(path = tmp))
+
+  expect_equal(loaded, x)
+  expect_true(is.na(loaded[3]))
+})
+
+test_that("R-backed Cow<[f64]> survives saveRDS/readRDS in new session", {
+  x <- c(10.0, 20.0, 30.0)
+  result <- zero_copy_cow_f64_roundtrip(x)
+  expect_equal(result, x)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(result, tmp)
+
+  loaded <- callr::r(function(path) {
+    readRDS(path)
+  }, args = list(path = tmp))
+
+  expect_equal(loaded, x)
+})
+
+# endregion
