@@ -287,3 +287,21 @@ test_that("Materialized ALTREP serializes correctly", {
 })
 
 # endregion
+
+# region: alloc_r_backed_buffer round-trip
+
+test_that("alloc_r_backed_buffer creates R-backed Arrow that returns same SEXP", {
+  result <- zero_copy_alloc_r_backed(3L)
+  expect_equal(result, c(100.0, 200.0, 300.0))
+})
+
+# endregion
+
+# region: Sliced buffer fallback
+
+test_that("Sliced Arrow array does NOT return original SEXP (different pointer)", {
+  x <- c(10.0, 20.0, 30.0, 40.0)
+  expect_true(zero_copy_arrow_f64_sliced(x))
+})
+
+# endregion

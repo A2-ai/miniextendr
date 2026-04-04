@@ -652,6 +652,24 @@ where
 
 use std::borrow::Cow;
 
+/// Try SEXP pointer recovery for a borrowed Cow slice.
+#[inline]
+fn try_recover_cow_slice<T: crate::ffi::RNativeType>(
+    cow: &Cow<'_, [T]>,
+) -> Option<crate::ffi::SEXP> {
+    if let Cow::Borrowed(slice) = cow {
+        unsafe {
+            crate::r_memory::try_recover_r_sexp(
+                slice.as_ptr() as *const u8,
+                T::SEXP_TYPE,
+                slice.len(),
+            )
+        }
+    } else {
+        None
+    }
+}
+
 /// Convert `Cow<'_, [T]>` to R vector where T: RNativeType.
 ///
 /// For `Cow::Borrowed` slices that came from R (e.g., via `TryFromSexp`),
@@ -670,30 +688,14 @@ where
         Ok(unsafe { self.into_sexp_unchecked() })
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
-        if let Cow::Borrowed(slice) = &self {
-            if let Some(sexp) = unsafe {
-                crate::r_memory::try_recover_r_sexp(
-                    slice.as_ptr() as *const u8,
-                    T::SEXP_TYPE,
-                    slice.len(),
-                )
-            } {
-                return sexp;
-            }
+        if let Some(sexp) = try_recover_cow_slice(&self) {
+            return sexp;
         }
         self.as_ref().into_sexp()
     }
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        if let Cow::Borrowed(slice) = &self {
-            if let Some(sexp) = unsafe {
-                crate::r_memory::try_recover_r_sexp(
-                    slice.as_ptr() as *const u8,
-                    T::SEXP_TYPE,
-                    slice.len(),
-                )
-            } {
-                return sexp;
-            }
+        if let Some(sexp) = try_recover_cow_slice(&self) {
+            return sexp;
         }
         unsafe { self.as_ref().into_sexp_unchecked() }
     }

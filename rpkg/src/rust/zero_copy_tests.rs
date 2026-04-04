@@ -170,6 +170,42 @@ mod arrow {
         let data: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
         data.into_sexp_altrep()
     }
+
+    /// Allocate an R-backed Arrow buffer, fill it, return as Float64Array.
+    /// Tests the alloc_r_backed_buffer → pointer recovery round-trip.
+    /// @export
+    #[miniextendr]
+    pub fn zero_copy_alloc_r_backed(n: i32) -> miniextendr_api::ffi::SEXP {
+        use miniextendr_api::into_r::IntoR;
+        use miniextendr_api::optionals::arrow_impl::alloc_r_backed_buffer;
+        let n = n as usize;
+        let (buffer, sexp) = unsafe { alloc_r_backed_buffer::<f64>(n) };
+        // Fill via the SEXP's raw pointer
+        unsafe {
+            let ptr = miniextendr_api::ffi::REAL(sexp);
+            for i in 0..n {
+                *ptr.add(i) = (i + 1) as f64 * 100.0;
+            }
+        }
+        let values = miniextendr_api::optionals::arrow_impl::arrow_buffer::ScalarBuffer::<f64>::from(buffer);
+        let array = miniextendr_api::optionals::arrow_impl::Float64Array::new(values, None);
+        array.into_sexp()
+    }
+
+    /// Slice a Float64Array and return it — recovery should fail (different pointer).
+    /// @export
+    #[miniextendr]
+    pub fn zero_copy_arrow_f64_sliced(x: miniextendr_api::ffi::SEXP) -> bool {
+        use miniextendr_api::arrow_impl::{Array, Float64Array};
+        use miniextendr_api::from_r::TryFromSexp;
+        use miniextendr_api::into_r::IntoR;
+
+        let arr: Float64Array = TryFromSexp::try_from_sexp(x).unwrap();
+        let sliced = arr.slice(1, arr.len() - 1);
+        let result = sliced.into_sexp();
+        // Sliced pointer is shifted — recovery fails, result is a NEW SEXP
+        result != x
+    }
 }
 
 // endregion
