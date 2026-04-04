@@ -199,7 +199,7 @@ pub extern "C-unwind" fn C_just_panic() -> SEXP {
 pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
     let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
     let _ = dbg!(result);
-    unsafe { ::miniextendr_api::ffi::R_NilValue }
+    ::miniextendr_api::ffi::SEXP::null()
 }
 
 /// @noRd
@@ -223,7 +223,7 @@ pub extern "C-unwind" fn C_r_error_in_catch() -> SEXP {
             miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr())
         }))
         .unwrap();
-        miniextendr_api::ffi::R_NilValue
+        miniextendr_api::ffi::SEXP::null()
     }
 }
 
@@ -267,7 +267,7 @@ pub extern "C-unwind" fn C_r_print_in_thread() -> SEXP {
     .join();
 
     match result {
-        Ok(()) => unsafe { miniextendr_api::ffi::R_NilValue },
+        Ok(()) => miniextendr_api::ffi::SEXP::null(),
         Err(e) => panic!("{}", extract_panic_message(e)),
     }
 }

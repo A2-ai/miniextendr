@@ -16,7 +16,7 @@ use miniextendr_api::miniextendr;
 pub extern "C-unwind" fn C_altrep_sexp_check(x: SEXP) -> SEXP {
     let is_altrep = unsafe { ffi::ALTREP(x) } != 0;
     let sexptype = x.type_of();
-    let len = (unsafe { ffi::Rf_xlength(x) }) as usize;
+    let len = (x.xlength()) as usize;
 
     vec![
         format!("is_altrep={}", is_altrep),

@@ -1,5 +1,6 @@
 //! Tests for R dots (`...`) handling.
 
+use miniextendr_api::ffi::SexpExt;
 use miniextendr_api::{miniextendr, typed_list};
 
 #[miniextendr]
@@ -52,7 +53,7 @@ pub fn greetings_last_as_nameless_dots(_exclamations: i32, _dots: ...) {}
 #[miniextendr]
 /// @param ... Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
 pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
-    use miniextendr_api::ffi;
+    
 
     let args = dots
         .typed(typed_list!(
@@ -64,7 +65,7 @@ pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
 
     // Get the raw SEXP and return its length
     let alpha = args.get_raw("alpha").map_err(|e| e.to_string())?;
-    Ok(unsafe { ffi::Rf_xlength(alpha) } as i32)
+    Ok(alpha.xlength() as i32)
 }
 
 /// @noRd
@@ -85,7 +86,7 @@ pub fn validate_strict_args(dots: ...) -> Result<String, String> {
 #[miniextendr]
 /// @param ... Named arguments: `data` (data.frame).
 pub fn validate_class_args(dots: ...) -> Result<i32, String> {
-    use miniextendr_api::ffi;
+    
 
     let args = dots
         .typed(typed_list!(data => "data.frame"))
@@ -93,7 +94,7 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
 
     // Data frame is a list of columns, so Rf_xlength returns ncol
     let data = args.get_raw("data").map_err(|e| e.to_string())?;
-    let ncol = unsafe { ffi::Rf_xlength(data) };
+    let ncol = data.xlength();
 
     Ok(ncol as i32)
 }

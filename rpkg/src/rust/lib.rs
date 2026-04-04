@@ -1242,7 +1242,7 @@ pub struct ListData {
 impl Drop for ListData {
     fn drop(&mut self) {
         unsafe {
-            if self.list != miniextendr_api::ffi::R_NilValue {
+            if self.list != miniextendr_api::ffi::SEXP::null() {
                 miniextendr_api::ffi::R_ReleaseObject(self.list);
             }
         }
