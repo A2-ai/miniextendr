@@ -1336,19 +1336,19 @@ unsafe extern "C-unwind" {
     /// Missing string singleton (`NA_STRING`).
     pub static R_NaString: SEXP;
     /// Empty string CHARSXP (length 0).
-    pub static R_BlankString: SEXP;
+    pub(crate) static R_BlankString: SEXP;
     /// Symbol for `names` attribute.
-    pub static R_NamesSymbol: SEXP;
+    pub(crate) static R_NamesSymbol: SEXP;
     /// Symbol for `dim` attribute.
-    pub static R_DimSymbol: SEXP;
+    pub(crate) static R_DimSymbol: SEXP;
     /// Symbol for `dimnames` attribute.
-    pub static R_DimNamesSymbol: SEXP;
+    pub(crate) static R_DimNamesSymbol: SEXP;
     /// Symbol for `class` attribute.
-    pub static R_ClassSymbol: SEXP;
+    pub(crate) static R_ClassSymbol: SEXP;
     /// Symbol for row names.
-    pub static R_RowNamesSymbol: SEXP;
+    pub(crate) static R_RowNamesSymbol: SEXP;
     /// Symbol for factor levels.
-    pub static R_LevelsSymbol: SEXP;
+    pub(crate) static R_LevelsSymbol: SEXP;
     /// Symbol for `tsp` attribute.
     pub static R_TspSymbol: SEXP;
 
@@ -1386,9 +1386,9 @@ unsafe extern "C-unwind" {
 
     // Rinternals.h
     #[doc(alias = "mkChar")]
-    pub fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
+    pub(crate) fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
     #[doc(alias = "mkCharLen")]
-    pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
+    pub(crate) fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     #[doc(alias = "mkCharLenCE")]
     pub fn Rf_mkCharLenCE(
         x: *const ::std::os::raw::c_char,
@@ -1591,7 +1591,7 @@ unsafe extern "C-unwind" {
 
     // Attribute manipulation
     #[doc(alias = "setAttrib")]
-    pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
+    pub(crate) fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
     #[doc(alias = "ScalarComplex")]
@@ -1806,15 +1806,15 @@ unsafe extern "C-unwind" {
     pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
     pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
-    pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    pub fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
+    pub(crate) fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub(crate) fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub(crate) fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
     pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
     pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
     pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
-    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
+    pub(crate) fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
 
     // endregion
 
@@ -1936,13 +1936,13 @@ unsafe extern "C-unwind" {
     ///
     /// Returns `R_NilValue` if the attribute is not set.
     #[doc(alias = "getAttrib")]
-    pub fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
+    pub(crate) fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
     /// Set the `names` attribute; returns the updated object.
     #[doc(alias = "namesgets")]
-    pub fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
+    pub(crate) fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
     /// Set the `dim` attribute; returns the updated object.
     #[doc(alias = "dimgets")]
-    pub fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
+    pub(crate) fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
 
     // Duplication
     #[doc(alias = "duplicate")]
@@ -1992,15 +1992,15 @@ pub const IDENT_EXTPTR_AS_REF: ::std::os::raw::c_int = 64;
 unsafe extern "C-unwind" {
     // Type coercion
     #[doc(alias = "asLogical")]
-    pub fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "asInteger")]
-    pub fn Rf_asInteger(x: SEXP) -> ::std::os::raw::c_int;
+    pub(crate) fn Rf_asInteger(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "asReal")]
-    pub fn Rf_asReal(x: SEXP) -> f64;
+    pub(crate) fn Rf_asReal(x: SEXP) -> f64;
     #[doc(alias = "asChar")]
-    pub fn Rf_asChar(x: SEXP) -> SEXP;
+    pub(crate) fn Rf_asChar(x: SEXP) -> SEXP;
     #[doc(alias = "coerceVector")]
-    pub fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
+    pub(crate) fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
 
     // Matrix utilities
     #[doc(alias = "nrows")]
@@ -2080,7 +2080,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns the modified vector (like all "*gets" functions).
     #[doc(alias = "classgets")]
-    pub fn Rf_classgets(vec: SEXP, klass: SEXP) -> SEXP;
+    pub(crate) fn Rf_classgets(vec: SEXP, klass: SEXP) -> SEXP;
 
     /// Set the dimnames attribute of an array/matrix.
     ///
@@ -2091,7 +2091,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns the modified vector.
     #[doc(alias = "dimnamesgets")]
-    pub fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
+    pub(crate) fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
     #[doc(alias = "GetRowNames")]
     pub fn Rf_GetRowNames(dimnames: SEXP) -> SEXP;
     #[doc(alias = "GetColNames")]
@@ -3215,7 +3215,7 @@ unsafe extern "C-unwind" {
     /// - `s`: C string
     /// - `encoding`: Character encoding (CE_UTF8, CE_LATIN1, etc.)
     #[doc(alias = "mkCharCE")]
-    pub fn Rf_mkCharCE(s: *const ::std::os::raw::c_char, encoding: cetype_t) -> SEXP;
+    pub(crate) fn Rf_mkCharCE(s: *const ::std::os::raw::c_char, encoding: cetype_t) -> SEXP;
 
     /// Get the number of characters in a string/character.
     ///

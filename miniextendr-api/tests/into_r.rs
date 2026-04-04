@@ -4,8 +4,8 @@ mod r_test_utils;
 
 use miniextendr_api::altrep_traits::NA_LOGICAL;
 use miniextendr_api::ffi::{
-    LOGICAL, R_NaString, R_xlen_t, RLogical, Rboolean, Rf_translateCharUTF8, Rf_xlength, SEXP,
-    SEXPTYPE, STRING_ELT, SexpExt,
+    LOGICAL, R_xlen_t, RLogical, Rboolean, Rf_translateCharUTF8, Rf_xlength, SEXP, SEXPTYPE,
+    SexpExt,
 };
 use miniextendr_api::into_r::IntoR;
 use std::ffi::CStr;
@@ -14,16 +14,8 @@ unsafe fn scalar_logical(sexp: SEXP) -> i32 {
     unsafe { *LOGICAL(sexp) }
 }
 
-unsafe fn string_elt(sexp: SEXP, idx: usize) -> Option<String> {
-    unsafe {
-        let charsxp = STRING_ELT(sexp, idx as R_xlen_t);
-        if charsxp == R_NaString {
-            None
-        } else {
-            let c_str = Rf_translateCharUTF8(charsxp);
-            Some(CStr::from_ptr(c_str).to_string_lossy().into_owned())
-        }
-    }
+fn string_elt_val(sexp: SEXP, idx: usize) -> Option<String> {
+    sexp.string_elt_str(idx as R_xlen_t).map(|s| s.to_string())
 }
 
 #[test]
@@ -77,28 +69,24 @@ fn test_string_slice() {
     assert_eq!(sexp.type_of(), SEXPTYPE::STRSXP);
     assert_eq!(unsafe { Rf_xlength(sexp) }, 2);
 
-    assert_eq!(unsafe { string_elt(sexp, 0) }, Some("alpha".to_string()));
-    assert_eq!(unsafe { string_elt(sexp, 1) }, Some("beta".to_string()));
+    assert_eq!(string_elt_val(sexp, 0), Some("alpha".to_string()));
+    assert_eq!(string_elt_val(sexp, 1), Some("beta".to_string()));
 }
 
 // region: AsNamedList / AsNamedVector tests
 
-use miniextendr_api::ffi::{INTEGER, R_NamesSymbol, REAL, Rf_getAttrib, VECTOR_ELT};
+use miniextendr_api::ffi::{INTEGER, REAL};
 use miniextendr_api::{AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt};
 
 /// Extract names from an R SEXP as Vec<String>.
-unsafe fn extract_names(sexp: SEXP) -> Vec<String> {
-    unsafe {
-        let names = Rf_getAttrib(sexp, R_NamesSymbol);
-        let n = Rf_xlength(names);
-        (0..n)
-            .map(|i| {
-                let charsxp = STRING_ELT(names, i);
-                let c_str = Rf_translateCharUTF8(charsxp);
-                CStr::from_ptr(c_str).to_string_lossy().into_owned()
-            })
-            .collect()
-    }
+fn extract_names(sexp: SEXP) -> Vec<String> {
+    let names = sexp.get_names();
+    let n = names.len();
+    (0..n)
+        .map(|i| {
+            names.string_elt_str(i as R_xlen_t).unwrap_or("").to_string()
+        })
+        .collect()
 }
 
 fn test_as_named_list_vec() {
@@ -111,9 +99,9 @@ fn test_as_named_list_vec() {
     assert_eq!(names, vec!["a", "b", "c"]);
 
     // Values are length-1 integer vectors
-    assert_eq!(unsafe { *INTEGER(VECTOR_ELT(sexp, 0)) }, 1);
-    assert_eq!(unsafe { *INTEGER(VECTOR_ELT(sexp, 1)) }, 2);
-    assert_eq!(unsafe { *INTEGER(VECTOR_ELT(sexp, 2)) }, 3);
+    assert_eq!(sexp.vector_elt(0).as_integer(), Some(1));
+    assert_eq!(sexp.vector_elt(1).as_integer(), Some(2));
+    assert_eq!(sexp.vector_elt(2).as_integer(), Some(3));
 }
 
 fn test_as_named_list_array() {

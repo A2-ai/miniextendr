@@ -3,8 +3,7 @@
 mod r_test_utils;
 
 use miniextendr_api::ffi::{
-    R_NamesSymbol, Rboolean, Rf_getAttrib, Rf_isNewList, Rf_translateCharUTF8, Rf_xlength,
-    STRING_ELT, SexpExt,
+    Rboolean, Rf_isNewList, Rf_xlength, SexpExt,
 };
 use miniextendr_api::from_r::{SexpLengthError, TryFromSexp};
 use miniextendr_api::into_r::IntoR;
@@ -57,19 +56,18 @@ impl TryFromList for Foo {
 }
 
 fn names_as_vec(list: List) -> Vec<String> {
-    unsafe {
-        let names = Rf_getAttrib(list.as_sexp(), R_NamesSymbol);
-        if names == miniextendr_api::ffi::R_NilValue {
-            return vec![];
-        }
-        let len = Rf_xlength(names) as usize;
-        (0..len)
-            .map(|i| {
-                let c = Rf_translateCharUTF8(STRING_ELT(names, i as isize));
-                CStr::from_ptr(c).to_string_lossy().into_owned()
-            })
-            .collect()
+    let names = list.as_sexp().get_names();
+    if names.is_nil() {
+        return vec![];
     }
+    let len = names.len();
+    (0..len)
+        .map(|i| {
+            names.string_elt_str(i as miniextendr_api::ffi::R_xlen_t)
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect()
 }
 
 #[test]

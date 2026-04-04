@@ -199,18 +199,12 @@ unsafe fn init_r_once() {
 unsafe fn init_fixtures_once() {
     let _ = FIXTURES.get_or_init(|| unsafe {
         use miniextendr_api::ffi::{
-            INTEGER, LOGICAL, R_NamesSymbol, RAW, REAL, Rf_ScalarInteger, Rf_allocMatrix,
-            Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_setAttrib, SET_STRING_ELT,
-            SET_VECTOR_ELT, SEXPTYPE,
+            INTEGER, LOGICAL, RAW, REAL, Rf_allocMatrix, Rf_allocVector, Rf_mkCharLenCE,
+            Rf_protect, SEXPTYPE, SexpExt,
         };
 
         // UTF-8 string.
-        let utf8_bytes: &[u8] = b"hello";
-        let utf8_charsxp = Rf_mkCharLenCE(
-            utf8_bytes.as_ptr().cast::<c_char>(),
-            utf8_bytes.len() as i32,
-            ffi::CE_UTF8,
-        );
+        let utf8_charsxp = SEXP::charsxp("hello");
 
         // Latin-1 "café" (0xE9).
         let latin1_bytes: &[u8] = &[0x63, 0x61, 0x66, 0xE9];
@@ -222,10 +216,10 @@ unsafe fn init_fixtures_once() {
 
         // STRSXP(1) wrappers to mirror the `TryFromSexp` path.
         let utf8_strsxp = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-        SET_STRING_ELT(utf8_strsxp, 0, utf8_charsxp);
+        utf8_strsxp.set_string_elt(0, utf8_charsxp);
 
         let latin1_strsxp = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-        SET_STRING_ELT(latin1_strsxp, 0, latin1_charsxp);
+        latin1_strsxp.set_string_elt(0, latin1_charsxp);
 
         // Pre-allocate vectors for each size in SIZES
         let mut int_vecs = [SEXP::null(); 5];
@@ -272,8 +266,7 @@ unsafe fn init_fixtures_once() {
         for (i, &size) in SIZES.iter().enumerate() {
             let s: String = "x".repeat(size);
             let strsxp = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-            let charsxp = Rf_mkCharLenCE(s.as_ptr().cast::<c_char>(), size as i32, ffi::CE_UTF8);
-            SET_STRING_ELT(strsxp, 0, charsxp);
+            strsxp.set_string_elt(0, SEXP::charsxp(&s));
             str_vecs[i] = strsxp;
         }
 
@@ -284,19 +277,12 @@ unsafe fn init_fixtures_once() {
             let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, len as ffi::R_xlen_t));
 
             for i in 0..len {
-                let val = Rf_ScalarInteger(i as i32);
-                SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
-
+                list.set_vector_elt(i as ffi::R_xlen_t, SEXP::scalar_integer(i as i32));
                 let key = format!("k{i}");
-                let chars = Rf_mkCharLenCE(
-                    key.as_ptr().cast::<c_char>(),
-                    key.len() as i32,
-                    ffi::CE_UTF8,
-                );
-                SET_STRING_ELT(names, i as ffi::R_xlen_t, chars);
+                names.set_string_elt(i as ffi::R_xlen_t, SEXP::charsxp(&key));
             }
 
-            Rf_setAttrib(list, R_NamesSymbol, names);
+            list.set_names(names);
             named_list_i32[idx] = list;
         }
 
