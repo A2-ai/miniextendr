@@ -1543,7 +1543,7 @@ unsafe extern "C-unwind" {
     ) -> SEXP;
     #[doc(alias = "xlength")]
     #[doc(alias = "XLENGTH")]
-    pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
+    pub(crate) fn Rf_xlength(x: SEXP) -> R_xlen_t;
     #[doc(alias = "translateCharUTF8")]
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
     #[doc(alias = "getCharCE")]
