@@ -1595,17 +1595,17 @@ unsafe extern "C-unwind" {
 
     // Rinternals.h
     #[doc(alias = "ScalarComplex")]
-    pub fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
+    pub(crate) fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
     #[doc(alias = "ScalarInteger")]
-    pub fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "ScalarLogical")]
-    pub fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "ScalarRaw")]
-    pub fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
+    pub(crate) fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
     #[doc(alias = "ScalarReal")]
-    pub fn Rf_ScalarReal(x: f64) -> SEXP;
+    pub(crate) fn Rf_ScalarReal(x: f64) -> SEXP;
     #[doc(alias = "ScalarString")]
-    pub fn Rf_ScalarString(x: SEXP) -> SEXP;
+    pub(crate) fn Rf_ScalarString(x: SEXP) -> SEXP;
 
     // Rinternals.h
     /// Non-API function - use DATAPTR_RO or DATAPTR_OR_NULL instead.

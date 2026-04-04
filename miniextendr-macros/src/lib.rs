@@ -1912,6 +1912,7 @@ pub fn r_ffi_checked(
                     let source_loc_doc_lit = syn::LitStr::new(&source_loc_doc, fn_name.span());
 
                     // Generate the unchecked FFI binding with #[link_name]
+                    // Always pub — downstream crates need _unchecked for perf-critical paths
                     let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
                     let unchecked_fn: syn::ForeignItem = syn::parse_quote! {
                         #(#attrs)*
@@ -1919,7 +1920,7 @@ pub fn r_ffi_checked(
                         #[doc = #source_loc_doc_lit]
                         #[doc = concat!("Generated from source file `", file!(), "`.")]
                         #[link_name = #link_name]
-                        #vis fn #unchecked_name(#inputs) #output;
+                        pub fn #unchecked_name(#inputs) #output;
                     };
                     unchecked_items.push(unchecked_fn);
 
