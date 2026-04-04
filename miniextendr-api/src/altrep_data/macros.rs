@@ -21,7 +21,10 @@ macro_rules! __impl_inferbase {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                let cls = unsafe { $make_fn(class_name, pkg_name, core::ptr::null_mut()) };
+                // Use stored DllInfo from package_init. R needs this to find
+                // the ALTREP class during cross-session deserialization (readRDS).
+                let dll = $crate::altrep_dll_info();
+                let cls = unsafe { $make_fn(class_name, pkg_name, dll) };
                 let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
                 $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::$base)
             }
