@@ -152,7 +152,7 @@ macro_rules! impl_logical_into_r {
             type Error = std::convert::Infallible;
             #[inline]
             fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-                Ok(unsafe { crate::ffi::Rf_ScalarLogical($to_i32(self)) })
+                Ok(crate::ffi::SEXP::scalar_logical_raw($to_i32(self)))
             }
             #[inline]
             unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
@@ -160,7 +160,7 @@ macro_rules! impl_logical_into_r {
             }
             #[inline]
             fn into_sexp(self) -> crate::ffi::SEXP {
-                unsafe { crate::ffi::Rf_ScalarLogical($to_i32(self)) }
+                crate::ffi::SEXP::scalar_logical_raw($to_i32(self))
             }
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
@@ -188,7 +188,7 @@ impl IntoR for Option<i32> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::Rf_ScalarInteger(NA_INTEGER) },
+            None => crate::ffi::SEXP::scalar_integer(NA_INTEGER),
         }
     }
     #[inline]
@@ -214,7 +214,7 @@ impl IntoR for Option<f64> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::Rf_ScalarReal(NA_REAL) },
+            None => crate::ffi::SEXP::scalar_real(NA_REAL),
         }
     }
     #[inline]
@@ -240,8 +240,8 @@ impl IntoR for Option<crate::ffi::Rboolean> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             // Rboolean is repr(i32), `as i32` is a no-op transmute
-            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v as i32) },
-            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+            Some(v) => crate::ffi::SEXP::scalar_logical_raw(v as i32),
+            None => crate::ffi::SEXP::scalar_logical_raw(NA_LOGICAL),
         }
     }
     #[inline]
@@ -267,7 +267,7 @@ impl IntoR for Option<crate::ffi::RLogical> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v.to_i32()) },
-            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+            None => crate::ffi::SEXP::scalar_logical_raw(NA_LOGICAL),
         }
     }
     #[inline]
@@ -293,7 +293,7 @@ impl IntoR for Option<bool> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+            None => crate::ffi::SEXP::scalar_logical_raw(NA_LOGICAL),
         }
     }
     #[inline]
@@ -325,7 +325,7 @@ macro_rules! impl_option_smart_i64_into_r {
                 match self {
                     Some(x) if $fits_i32(x) => (x as i32).into_sexp(),
                     Some(x) => (x as f64).into_sexp(),
-                    None => unsafe { crate::ffi::Rf_ScalarInteger(NA_INTEGER) },
+                    None => crate::ffi::SEXP::scalar_integer(NA_INTEGER),
                 }
             }
         }
@@ -467,10 +467,7 @@ impl IntoR for char {
         // Convert char to a single-character string — always ≤ 4 bytes, cannot overflow i32
         let mut buf = [0u8; 4];
         let s = self.encode_utf8(&mut buf);
-        unsafe {
-            let charsxp = str_to_charsxp(s);
-            crate::ffi::Rf_ScalarString(charsxp)
-        }
+        crate::ffi::SEXP::scalar_string(str_to_charsxp(s))
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
@@ -486,10 +483,7 @@ impl IntoR for &str {
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
         let _len = i32::try_from(self.len())
             .map_err(|_| crate::into_r_error::IntoRError::StringTooLong { len: self.len() })?;
-        Ok(unsafe {
-            let charsxp = str_to_charsxp(self);
-            crate::ffi::Rf_ScalarString(charsxp)
-        })
+        Ok(crate::ffi::SEXP::scalar_string(str_to_charsxp(self)))
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
@@ -497,10 +491,7 @@ impl IntoR for &str {
     }
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe {
-            let charsxp = str_to_charsxp(self);
-            crate::ffi::Rf_ScalarString(charsxp)
-        }
+        crate::ffi::SEXP::scalar_string(str_to_charsxp(self))
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
@@ -519,12 +510,9 @@ impl IntoR for Option<&str> {
             Some(s) => {
                 let _len = i32::try_from(s.len())
                     .map_err(|_| crate::into_r_error::IntoRError::StringTooLong { len: s.len() })?;
-                Ok(unsafe {
-                    let charsxp = str_to_charsxp(s);
-                    crate::ffi::Rf_ScalarString(charsxp)
-                })
+                Ok(crate::ffi::SEXP::scalar_string(str_to_charsxp(s)))
             }
-            None => Ok(unsafe { crate::ffi::Rf_ScalarString(crate::ffi::R_NaString) }),
+            None => Ok(crate::ffi::SEXP::scalar_string(crate::ffi::SEXP::na_string())),
         }
     }
     #[inline]
@@ -538,7 +526,7 @@ impl IntoR for Option<&str> {
                 Some(s) => str_to_charsxp(s),
                 None => crate::ffi::R_NaString,
             };
-            crate::ffi::Rf_ScalarString(charsxp)
+            crate::ffi::SEXP::scalar_string(charsxp)
         }
     }
     #[inline]

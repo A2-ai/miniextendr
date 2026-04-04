@@ -165,8 +165,7 @@
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
 use crate::ffi::{
-    R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_ScalarComplex,
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarRaw, Rf_ScalarReal, Rf_allocList,
+    R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList,
     Rf_allocMatrix, Rf_allocVector, Rf_duplicate, Rf_protect,
     Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
@@ -574,7 +573,7 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn scalar_integer<'a>(&'a self, x: i32) -> Root<'a> {
-        unsafe { self.protect(Rf_ScalarInteger(x)) }
+        unsafe { self.protect(SEXP::scalar_integer(x)) }
     }
 
     /// Create a scalar real (length-1 REALSXP), protected.
@@ -584,7 +583,7 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn scalar_real<'a>(&'a self, x: f64) -> Root<'a> {
-        unsafe { self.protect(Rf_ScalarReal(x)) }
+        unsafe { self.protect(SEXP::scalar_real(x)) }
     }
 
     /// Create a scalar logical (length-1 LGLSXP), protected.
@@ -594,7 +593,7 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn scalar_logical<'a>(&'a self, x: bool) -> Root<'a> {
-        unsafe { self.protect(Rf_ScalarLogical(if x { 1 } else { 0 })) }
+        unsafe { self.protect(SEXP::scalar_logical(x)) }
     }
 
     /// Create a scalar complex (length-1 CPLXSXP), protected.
@@ -604,7 +603,7 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn scalar_complex<'a>(&'a self, x: crate::ffi::Rcomplex) -> Root<'a> {
-        unsafe { self.protect(Rf_ScalarComplex(x)) }
+        unsafe { self.protect(SEXP::scalar_complex(x)) }
     }
 
     /// Create a scalar raw (length-1 RAWSXP), protected.
@@ -614,7 +613,7 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn scalar_raw<'a>(&'a self, x: u8) -> Root<'a> {
-        unsafe { self.protect(Rf_ScalarRaw(x)) }
+        unsafe { self.protect(SEXP::scalar_raw(x)) }
     }
 
     /// Create a scalar string (length-1 STRSXP) from a Rust `&str`, protected.

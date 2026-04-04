@@ -165,7 +165,7 @@ unsafe fn scalar_string(s: &str) -> SEXP {
         let c_str = CString::new(s).expect("slot name must not contain null bytes");
         let charsxp = ffi::Rf_mkChar(c_str.as_ptr());
         Rf_protect(charsxp);
-        let strsxp = ffi::Rf_ScalarString(charsxp);
+        let strsxp = SEXP::scalar_string(charsxp);
         Rf_unprotect(1);
         strsxp
     }

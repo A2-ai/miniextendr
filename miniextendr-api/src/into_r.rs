@@ -222,12 +222,10 @@ impl IntoR for Option<crate::ffi::Rcomplex> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe {
-                crate::ffi::Rf_ScalarComplex(crate::ffi::Rcomplex {
-                    r: NA_REAL,
-                    i: NA_REAL,
-                })
-            },
+            None => crate::ffi::SEXP::scalar_complex(crate::ffi::Rcomplex {
+                r: NA_REAL,
+                i: NA_REAL,
+            }),
         }
     }
     #[inline]

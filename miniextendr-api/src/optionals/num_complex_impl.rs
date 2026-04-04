@@ -133,7 +133,7 @@ impl IntoR for Complex<f64> {
     }
     fn into_sexp(self) -> SEXP {
         use crate::ffi::Rf_ScalarComplex;
-        unsafe { Rf_ScalarComplex(to_rcomplex(self)) }
+        SEXP::scalar_complex(to_rcomplex(self))
     }
 }
 // endregion
@@ -187,8 +187,8 @@ impl IntoR for Option<Complex<f64>> {
     fn into_sexp(self) -> SEXP {
         use crate::ffi::Rf_ScalarComplex;
         match self {
-            Some(c) => unsafe { Rf_ScalarComplex(to_rcomplex(c)) },
-            None => unsafe { Rf_ScalarComplex(na_rcomplex()) },
+            Some(c) => SEXP::scalar_complex(to_rcomplex(c)),
+            None => SEXP::scalar_complex(na_rcomplex()),
         }
     }
 }

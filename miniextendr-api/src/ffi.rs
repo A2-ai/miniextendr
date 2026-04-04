@@ -208,6 +208,12 @@ impl SEXP {
         unsafe { Rf_ScalarLogical(if x { 1 } else { 0 }) }
     }
 
+    /// Create a length-1 logical vector from raw i32 (0=FALSE, 1=TRUE, NA_LOGICAL=NA).
+    #[inline]
+    pub fn scalar_logical_raw(x: i32) -> SEXP {
+        unsafe { Rf_ScalarLogical(x) }
+    }
+
     /// Create a length-1 raw vector.
     #[inline]
     pub fn scalar_raw(x: u8) -> SEXP {
