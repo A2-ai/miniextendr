@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{self, SEXP};
+use miniextendr_api::ffi::{SexpExt, self, SEXP};
 use miniextendr_api::protect_pool::ProtectPool;
 
 #[test]
@@ -23,8 +23,8 @@ fn pool_protects_from_gc() {
         // Values should survive GC
         let got1 = pool.get(k1).expect("k1 should be valid after GC");
         let got2 = pool.get(k2).expect("k2 should be valid after GC");
-        assert_eq!(ffi::INTEGER_ELT(got1, 0), 42);
-        assert_eq!(ffi::INTEGER_ELT(got2, 0), 99);
+        assert_eq!(got1.integer_elt(0), 42);
+        assert_eq!(got2.integer_elt(0), 99);
 
         // Release k1, GC again
         pool.release(k1);
@@ -35,7 +35,7 @@ fn pool_protects_from_gc() {
         let got2 = pool
             .get(k2)
             .expect("k2 should survive after k1 release + GC");
-        assert_eq!(ffi::INTEGER_ELT(got2, 0), 99);
+        assert_eq!(got2.integer_elt(0), 99);
 
         pool.release(k2);
         assert!(pool.is_empty());
@@ -54,7 +54,7 @@ fn pool_replace_survives_gc() {
         ffi::R_gc();
 
         let got = pool.get(k).expect("replaced value should survive GC");
-        assert_eq!(ffi::INTEGER_ELT(got, 0), 2);
+        assert_eq!(got.integer_elt(0), 2);
 
         pool.release(k);
     });
@@ -78,7 +78,7 @@ fn pool_growth_survives_gc() {
             let got = pool
                 .get(k)
                 .unwrap_or_else(|| panic!("key {i} should be valid"));
-            assert_eq!(ffi::INTEGER_ELT(got, 0), i32::try_from(i).unwrap(),);
+            assert_eq!(got.integer_elt(0), i32::try_from(i).unwrap(),);
         }
 
         for k in keys {
@@ -102,7 +102,7 @@ fn pool_stale_key_after_reuse() {
 
         // k1 is stale — different generation
         assert!(pool.get(k1).is_none());
-        assert_eq!(ffi::INTEGER_ELT(pool.get(k2).unwrap(), 0), 20);
+        assert_eq!(pool.get(k2).unwrap().integer_elt(0), 20);
 
         // Releasing k1 should be a no-op (stale)
         pool.release(k1);
@@ -136,7 +136,7 @@ fn pool_double_release_is_noop() {
         // Pool should still be functional
         let k2 = pool.insert(SEXP::scalar_integer(88));
         assert_eq!(pool.len(), 1);
-        assert_eq!(ffi::INTEGER_ELT(pool.get(k2).unwrap(), 0), 88);
+        assert_eq!(pool.get(k2).unwrap().integer_elt(0), 88);
         pool.release(k2);
     });
 }

@@ -3,7 +3,7 @@
 //! Measures the cost of calling R C-API functions through checked vs unchecked
 //! wrappers.
 
-use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
+use miniextendr_api::ffi::{SexpExt, self, SEXP, SEXPTYPE};
 use miniextendr_bench::SIZES;
 
 fn main() {
@@ -162,7 +162,7 @@ fn xlength(size_idx: usize) {
 fn integer_elt(size_idx: usize) {
     let fixtures = miniextendr_bench::fixtures();
     unsafe {
-        let val = ffi::INTEGER_ELT(fixtures.int_vec(size_idx), 0);
+        let val = fixtures.int_vec(size_idx).integer_elt(0);
         divan::black_box(val);
     }
 }
@@ -171,7 +171,7 @@ fn integer_elt(size_idx: usize) {
 fn real_elt(size_idx: usize) {
     let fixtures = miniextendr_bench::fixtures();
     unsafe {
-        let val = ffi::REAL_ELT(fixtures.real_vec(size_idx), 0);
+        let val = fixtures.real_vec(size_idx).real_elt(0);
         divan::black_box(val);
     }
 }
@@ -180,7 +180,7 @@ fn real_elt(size_idx: usize) {
 fn logical_elt(size_idx: usize) {
     let fixtures = miniextendr_bench::fixtures();
     unsafe {
-        let val = ffi::LOGICAL_ELT(fixtures.lgl_vec(size_idx), 0);
+        let val = fixtures.lgl_vec(size_idx).logical_elt(0);
         divan::black_box(val);
     }
 }

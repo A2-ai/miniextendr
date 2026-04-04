@@ -19,7 +19,7 @@ fn altrep_iter_int_elt(size_idx: usize) {
     let data = IterIntData::from_iter(0..len as i32, len);
     let sexp = BenchIterInt::from(data).into_sexp();
     unsafe {
-        let val = ffi::INTEGER_ELT(sexp, 0);
+        let val = sexp.integer_elt(0);
         divan::black_box(val);
     }
 }

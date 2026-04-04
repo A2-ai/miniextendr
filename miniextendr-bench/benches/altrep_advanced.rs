@@ -91,7 +91,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -106,7 +106,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -121,7 +121,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -135,7 +135,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -168,7 +168,7 @@ mod materialization {
         unsafe {
             let mut sum: i64 = 0;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -303,7 +303,7 @@ mod complex_altrep {
             .collect();
         let sexp = BenchComplex::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::COMPLEX_ELT(sexp, 0));
+            divan::black_box(sexp.complex_elt(0));
         }
     }
 
@@ -337,7 +337,7 @@ mod complex_altrep {
         unsafe {
             let mut sum_r = 0.0f64;
             for i in 0..len {
-                sum_r += ffi::COMPLEX_ELT(sexp, i as ffi::R_xlen_t).r;
+                sum_r += sexp.complex_elt(i as ffi::R_xlen_t).r;
             }
             divan::black_box(sum_r);
         }
@@ -381,7 +381,7 @@ mod zero_alloc {
         let data = ConstantRealData { value: 1.0, len };
         let sexp = BenchConstantReal(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::REAL_ELT(sexp, 0));
+            divan::black_box(sexp.real_elt(0));
         }
     }
 
@@ -392,7 +392,7 @@ mod zero_alloc {
         let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
         let sexp = BenchRealVec::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::REAL_ELT(sexp, 0));
+            divan::black_box(sexp.real_elt(0));
         }
     }
 
@@ -405,7 +405,7 @@ mod zero_alloc {
         unsafe {
             let mut sum = 0.0f64;
             for i in 0..len {
-                sum += ffi::REAL_ELT(sexp, i as ffi::R_xlen_t);
+                sum += sexp.real_elt(i as ffi::R_xlen_t);
             }
             divan::black_box(sum);
         }
@@ -420,7 +420,7 @@ mod zero_alloc {
         unsafe {
             let mut sum = 0.0f64;
             for i in 0..len {
-                sum += ffi::REAL_ELT(sexp, i as ffi::R_xlen_t);
+                sum += sexp.real_elt(i as ffi::R_xlen_t);
             }
             divan::black_box(sum);
         }

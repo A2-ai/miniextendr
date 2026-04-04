@@ -30,7 +30,7 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, INTEGER_ELT, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP,
+    INTEGER, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP,
     SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
@@ -359,7 +359,7 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
         )));
     }
 
-    let idx = unsafe { INTEGER_ELT(sexp, 0) };
+    let idx = sexp.integer_elt(0);
     if idx == NA_INTEGER {
         return Err(SexpError::InvalidValue("unexpected NA".into()));
     }
@@ -376,7 +376,7 @@ pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, Sex
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let idx = unsafe { INTEGER_ELT(sexp, i as isize) };
+        let idx = sexp.integer_elt(i as isize);
         if idx == NA_INTEGER {
             return Err(SexpError::InvalidValue(format!("NA at index {}", i)));
         }
@@ -400,7 +400,7 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let idx = unsafe { INTEGER_ELT(sexp, i as isize) };
+        let idx = sexp.integer_elt(i as isize);
         if idx == NA_INTEGER {
             result.push(None);
         } else {

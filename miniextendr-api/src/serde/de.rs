@@ -105,7 +105,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::LGLSXP if len == 1 => {
-                let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.logical_elt(0) };
                 if val == NA_LOGICAL {
                     visitor.visit_none()
                 } else {
@@ -113,7 +113,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
             }
             SEXPTYPE::INTSXP if len == 1 => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.integer_elt(0) };
                 if val == NA_INTEGER {
                     visitor.visit_none()
                 } else {
@@ -121,7 +121,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
             }
             SEXPTYPE::REALSXP if len == 1 => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.real_elt(0) };
                 if val.to_bits() == NA_REAL.to_bits() {
                     visitor.visit_none()
                 } else {
@@ -164,7 +164,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             });
         }
 
-        let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, 0) };
+        let val = unsafe { self.sexp.logical_elt(0) };
         if val == NA_LOGICAL {
             return Err(RSerdeError::UnexpectedNa);
         }
@@ -210,14 +210,14 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.integer_elt(0) };
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 visitor.visit_i64(val as i64)
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.real_elt(0) };
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -251,7 +251,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
     fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
         // First try raw vector
         if self.sexp_type() == SEXPTYPE::RAWSXP && self.len() == 1 {
-            let val = unsafe { crate::ffi::RAW_ELT(self.sexp, 0) };
+            let val = unsafe { self.sexp.raw_elt(0) };
             return visitor.visit_u8(val);
         }
         // Fall back to integer
@@ -288,7 +288,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.integer_elt(0) };
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -301,7 +301,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 visitor.visit_u32(val as u32)
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.real_elt(0) };
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -337,7 +337,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.integer_elt(0) };
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -350,7 +350,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 visitor.visit_u64(val as u64)
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.real_elt(0) };
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -446,19 +446,19 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         if self.len() == 1 {
             match sexp_type {
                 SEXPTYPE::LGLSXP => {
-                    let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, 0) };
+                    let val = unsafe { self.sexp.logical_elt(0) };
                     if val == NA_LOGICAL {
                         return visitor.visit_none();
                     }
                 }
                 SEXPTYPE::INTSXP => {
-                    let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                    let val = unsafe { self.sexp.integer_elt(0) };
                     if val == NA_INTEGER {
                         return visitor.visit_none();
                     }
                 }
                 SEXPTYPE::REALSXP => {
-                    let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                    let val = unsafe { self.sexp.real_elt(0) };
                     if val.to_bits() == NA_REAL.to_bits() {
                         return visitor.visit_none();
                     }
@@ -626,7 +626,7 @@ impl RDeserializer {
             });
         }
 
-        let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+        let val = unsafe { self.sexp.integer_elt(0) };
         if val == NA_INTEGER {
             return Err(RSerdeError::UnexpectedNa);
         }
@@ -644,14 +644,14 @@ impl RDeserializer {
 
         match sexp_type {
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.real_elt(0) };
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 Ok(val)
             }
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = unsafe { self.sexp.integer_elt(0) };
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -752,7 +752,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
         match self.sexp_type {
             SEXPTYPE::LGLSXP => {
-                let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, self.index as isize) };
+                let val = unsafe { self.sexp.logical_elt(self.index as isize) };
                 if val == NA_LOGICAL {
                     visitor.visit_none()
                 } else {
@@ -760,7 +760,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, self.index as isize) };
+                let val = unsafe { self.sexp.integer_elt(self.index as isize) };
                 if val == NA_INTEGER {
                     visitor.visit_none()
                 } else {
@@ -768,7 +768,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, self.index as isize) };
+                let val = unsafe { self.sexp.real_elt(self.index as isize) };
                 if val.to_bits() == NA_REAL.to_bits() {
                     visitor.visit_none()
                 } else {
@@ -785,7 +785,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::RAWSXP => {
-                let val = unsafe { crate::ffi::RAW_ELT(self.sexp, self.index as isize) };
+                let val = unsafe { self.sexp.raw_elt(self.index as isize) };
                 visitor.visit_u8(val)
             }
             _ => Err(RSerdeError::UnsupportedType {

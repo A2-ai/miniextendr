@@ -150,7 +150,7 @@ fn iterate_int_elt(size_idx: usize) {
         let len = ffi::Rf_xlength(sexp);
         let mut sum = 0i64;
         for i in 0..len {
-            sum += ffi::INTEGER_ELT(sexp, i) as i64;
+            sum += sexp.integer_elt(i) as i64;
         }
         divan::black_box(sum);
     }

@@ -559,6 +559,32 @@ pub trait SexpExt {
 
     // endregion
 
+    // region: Typed single-element access
+
+    /// Get the i-th integer element.
+    fn integer_elt(&self, i: isize) -> i32;
+    /// Get the i-th real element.
+    fn real_elt(&self, i: isize) -> f64;
+    /// Get the i-th logical element (raw i32: 0/1/NA_LOGICAL).
+    fn logical_elt(&self, i: isize) -> i32;
+    /// Get the i-th complex element.
+    fn complex_elt(&self, i: isize) -> Rcomplex;
+    /// Get the i-th raw element.
+    fn raw_elt(&self, i: isize) -> u8;
+
+    /// Set the i-th integer element.
+    fn set_integer_elt(&self, i: isize, v: i32);
+    /// Set the i-th real element.
+    fn set_real_elt(&self, i: isize, v: f64);
+    /// Set the i-th logical element (raw i32: 0/1/NA_LOGICAL).
+    fn set_logical_elt(&self, i: isize, v: i32);
+    /// Set the i-th complex element.
+    fn set_complex_elt(&self, i: isize, v: Rcomplex);
+    /// Set the i-th raw element.
+    fn set_raw_elt(&self, i: isize, v: u8);
+
+    // endregion
+
     // region: Unchecked variants (bypass thread-check, for perf-critical paths)
 
     /// Get the i-th CHARSXP from a STRSXP. No thread check.
@@ -963,6 +989,51 @@ impl SexpExt for SEXP {
     #[inline]
     fn set_vector_elt(&self, i: isize, val: SEXP) {
         unsafe { SET_VECTOR_ELT(*self, i, val); }
+    }
+
+    // endregion
+
+    // region: Typed single-element access
+
+    #[inline]
+    fn integer_elt(&self, i: isize) -> i32 {
+        unsafe { INTEGER_ELT(*self, i) }
+    }
+    #[inline]
+    fn real_elt(&self, i: isize) -> f64 {
+        unsafe { REAL_ELT(*self, i) }
+    }
+    #[inline]
+    fn logical_elt(&self, i: isize) -> i32 {
+        unsafe { LOGICAL_ELT(*self, i) }
+    }
+    #[inline]
+    fn complex_elt(&self, i: isize) -> Rcomplex {
+        unsafe { COMPLEX_ELT(*self, i) }
+    }
+    #[inline]
+    fn raw_elt(&self, i: isize) -> u8 {
+        unsafe { RAW_ELT(*self, i) }
+    }
+    #[inline]
+    fn set_integer_elt(&self, i: isize, v: i32) {
+        unsafe { SET_INTEGER_ELT(*self, i, v) }
+    }
+    #[inline]
+    fn set_real_elt(&self, i: isize, v: f64) {
+        unsafe { SET_REAL_ELT(*self, i, v) }
+    }
+    #[inline]
+    fn set_logical_elt(&self, i: isize, v: i32) {
+        unsafe { SET_LOGICAL_ELT(*self, i, v) }
+    }
+    #[inline]
+    fn set_complex_elt(&self, i: isize, v: Rcomplex) {
+        unsafe { SET_COMPLEX_ELT(*self, i, v) }
+    }
+    #[inline]
+    fn set_raw_elt(&self, i: isize, v: u8) {
+        unsafe { SET_RAW_ELT(*self, i, v) }
     }
 
     // endregion
@@ -1876,19 +1947,19 @@ unsafe extern "C-unwind" {
     pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
 
     // Element-wise accessors (ALTREP-aware)
-    pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
-    pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
-    pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
+    pub(crate) fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    pub(crate) fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
+    pub(crate) fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    pub(crate) fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
+    pub(crate) fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
     pub(crate) fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub(crate) fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub(crate) fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
-    pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
-    pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
-    pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
+    pub(crate) fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    pub(crate) fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    pub(crate) fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
+    pub(crate) fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
+    pub(crate) fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
     pub(crate) fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
 
     // endregion

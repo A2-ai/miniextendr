@@ -330,17 +330,15 @@ fn int_to_sexp(i: i64) -> SEXP {
     unsafe {
         if i64_fits_r_int(i) {
             let sexp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-            SET_INTEGER_ELT(
-                sexp,
-                0,
-                i32::try_from(i).expect("validated by i64_fits_r_int"),
+            
+                sexp.set_integer_elt(0, i32::try_from(i).expect("validated by i64_fits_r_int"),
             );
             sexp
         } else {
             // Value out of R integer range — store as double
             let sexp = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             #[allow(clippy::cast_precision_loss)]
-            SET_REAL_ELT(sexp, 0, i as f64);
+            sexp.set_real_elt(0, i as f64);
             sexp
         }
     }
@@ -349,7 +347,7 @@ fn int_to_sexp(i: i64) -> SEXP {
 fn float_to_sexp(f: f64) -> SEXP {
     unsafe {
         let sexp = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        SET_REAL_ELT(sexp, 0, f);
+        sexp.set_real_elt(0, f);
         sexp
     }
 }
@@ -357,7 +355,7 @@ fn float_to_sexp(f: f64) -> SEXP {
 fn bool_to_sexp(b: bool) -> SEXP {
     unsafe {
         let sexp = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
-        SET_LOGICAL_ELT(sexp, 0, if b { 1 } else { 0 });
+        sexp.set_logical_elt(0, if b { 1 } else { 0 });
         sexp
     }
 }
@@ -416,10 +414,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                     for (i, v) in arr.iter().enumerate() {
                         if let TomlValue::Integer(n) = v {
                             unsafe {
-                                SET_INTEGER_ELT(
-                                    sexp,
-                                    isize::try_from(i).expect("index overflow"),
-                                    i32::try_from(*n).expect("validated by i64_fits_r_int"),
+                                
+                                    sexp.set_integer_elt(isize::try_from(i).expect("index overflow"), i32::try_from(*n).expect("validated by i64_fits_r_int"),
                                 )
                             };
                         }
@@ -437,10 +433,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                     if let TomlValue::Integer(n) = v {
                         #[allow(clippy::cast_precision_loss)]
                         unsafe {
-                            SET_REAL_ELT(
-                                sexp,
-                                isize::try_from(i).expect("index overflow"),
-                                *n as f64,
+                            
+                                sexp.set_real_elt(isize::try_from(i).expect("index overflow"), *n as f64,
                             )
                         };
                     }
@@ -457,7 +451,7 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Float(f) = v {
                         unsafe {
-                            SET_REAL_ELT(sexp, isize::try_from(i).expect("index overflow"), *f)
+                            sexp.set_real_elt(isize::try_from(i).expect("index overflow"), *f)
                         };
                     }
                 }
@@ -473,10 +467,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Boolean(b) = v {
                         unsafe {
-                            SET_LOGICAL_ELT(
-                                sexp,
-                                isize::try_from(i).expect("index overflow"),
-                                if *b { 1 } else { 0 },
+                            
+                                sexp.set_logical_elt(isize::try_from(i).expect("index overflow"), if *b { 1 } else { 0 },
                             )
                         };
                     }

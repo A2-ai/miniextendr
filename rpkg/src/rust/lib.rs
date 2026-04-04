@@ -576,22 +576,22 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
         // Store start, step, len in an integer vector
         // Note: We don't serialize the materialized buffer - it will be recomputed on demand
         unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SET_INTEGER_ELT, SEXPTYPE};
+            use miniextendr_api::ffi::{Rf_allocVector, SEXPTYPE, SexpExt};
             let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
-            SET_INTEGER_ELT(state, 0, self.start);
-            SET_INTEGER_ELT(state, 1, self.step);
-            SET_INTEGER_ELT(state, 2, self.len as i32);
+            state.set_integer_elt(0, self.start);
+            state.set_integer_elt(1, self.step);
+            state.set_integer_elt(2, self.len as i32);
             state
         }
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn unserialize(state: SEXP) -> Option<Self> {
-        unsafe {
-            use miniextendr_api::ffi::INTEGER_ELT;
-            let start = INTEGER_ELT(state, 0);
-            let step = INTEGER_ELT(state, 1);
-            let len = INTEGER_ELT(state, 2) as usize;
+        {
+            use miniextendr_api::ffi::SexpExt;
+            let start = state.integer_elt(0);
+            let step = state.integer_elt(1);
+            let len = state.integer_elt(2) as usize;
             Some(LazyIntSeqData {
                 start,
                 step,
@@ -896,7 +896,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
         // NA_LOGICAL in R is the same as NA_INTEGER = i32::MIN
         const NA_LOGICAL: i32 = i32::MIN;
         unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SET_LOGICAL_ELT, SEXPTYPE};
+            use miniextendr_api::ffi::{Rf_allocVector, SEXPTYPE, SexpExt};
             let n = self.data.len();
             let state = Rf_allocVector(SEXPTYPE::LGLSXP, n as isize);
             for (i, v) in self.data.iter().enumerate() {
@@ -905,7 +905,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
                     Logical::False => 0,
                     Logical::Na => NA_LOGICAL,
                 };
-                SET_LOGICAL_ELT(state, i as isize, raw);
+                state.set_logical_elt(i as isize, raw);
             }
             state
         }
@@ -914,11 +914,11 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
     fn unserialize(state: SEXP) -> Option<Self> {
         const NA_LOGICAL: i32 = i32::MIN;
         unsafe {
-            use miniextendr_api::ffi::{LOGICAL_ELT, Rf_xlength};
+            use miniextendr_api::ffi::{Rf_xlength, SexpExt};
             let n = Rf_xlength(state) as usize;
             let mut data = Vec::with_capacity(n);
             for i in 0..n {
-                let raw = LOGICAL_ELT(state, i as isize);
+                let raw = state.logical_elt(i as isize);
                 let v = if raw == NA_LOGICAL {
                     Logical::Na
                 } else if raw != 0 {

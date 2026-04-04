@@ -196,7 +196,7 @@ where
             }));
         }
 
-        let int_val = unsafe { INTEGER_ELT(sexp, 0) };
+        let int_val = unsafe { sexp.integer_elt(0) };
         if int_val == NA_INTEGER {
             return Err(SexpError::InvalidValue(
                 "NA not allowed for bitflags".to_string(),
@@ -246,7 +246,7 @@ where
             }));
         }
 
-        let int_val = unsafe { INTEGER_ELT(sexp, 0) };
+        let int_val = unsafe { sexp.integer_elt(0) };
         if int_val == NA_INTEGER {
             return Ok(None);
         }
