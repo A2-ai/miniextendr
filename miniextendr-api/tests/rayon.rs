@@ -10,7 +10,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP};
+use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP, SexpExt};
 use miniextendr_api::rayon_bridge::{
     new_r_array, new_r_matrix, par_map, par_map2, par_map3, with_r_array, with_r_matrix,
     with_r_vec, with_r_vec_map,
@@ -219,7 +219,7 @@ fn test_with_r_matrix_basic() {
 
     // Verify the dim attribute
     let dim =
-        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
+        sexp.get_dim();
     let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
     let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 2) };
     assert_eq!(dim_slice[0], 3); // nrow
@@ -280,7 +280,7 @@ fn test_with_r_array_basic() {
 
     // Verify the dim attribute
     let dim =
-        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
+        sexp.get_dim();
     let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
     let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 3) };
     assert_eq!(dim_slice[0], 2);

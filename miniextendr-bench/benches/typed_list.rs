@@ -5,7 +5,7 @@
 //! medium (10 fields), and large (50 fields) specs, plus failure paths and strict
 //! (`@exact`) mode.
 
-use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
+use miniextendr_api::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::list::List;
 use miniextendr_api::typed_list::{TypeSpec, TypedEntry, TypedListSpec, validate_list};
 
@@ -23,19 +23,13 @@ fn make_numeric_list(n: usize) -> SEXP {
         let names = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t));
 
         for i in 0..n {
-            let val = ffi::Rf_ScalarReal(i as f64);
-            ffi::SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
+            list.set_vector_elt(i as ffi::R_xlen_t, SEXP::scalar_real(i as f64));
 
             let key = format!("f{i}");
-            let chars = ffi::Rf_mkCharLenCE(
-                key.as_ptr().cast::<std::os::raw::c_char>(),
-                key.len() as i32,
-                ffi::CE_UTF8,
-            );
-            ffi::SET_STRING_ELT(names, i as ffi::R_xlen_t, chars);
+            names.set_string_elt(i as ffi::R_xlen_t, SEXP::charsxp(&key));
         }
 
-        ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+        list.set_names(names);
         ffi::Rf_unprotect(2);
         list
     }
@@ -93,29 +87,18 @@ fn make_mixed_list(n: usize) -> SEXP {
 
         for i in 0..n {
             let val = match i % 4 {
-                0 => ffi::Rf_ScalarReal(i as f64),
-                1 => ffi::Rf_ScalarInteger(i as i32),
-                2 => {
-                    let s = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::STRSXP, 1));
-                    let c = ffi::Rf_mkCharLenCE(b"x".as_ptr().cast(), 1, ffi::CE_UTF8);
-                    ffi::SET_STRING_ELT(s, 0, c);
-                    ffi::Rf_unprotect(1);
-                    s
-                }
-                _ => ffi::Rf_ScalarLogical(1),
+                0 => SEXP::scalar_real(i as f64),
+                1 => SEXP::scalar_integer(i as i32),
+                2 => SEXP::scalar_string_from_str("x"),
+                _ => SEXP::scalar_logical(true),
             };
-            ffi::SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
+            list.set_vector_elt(i as ffi::R_xlen_t, val);
 
             let key = format!("f{i}");
-            let chars = ffi::Rf_mkCharLenCE(
-                key.as_ptr().cast::<std::os::raw::c_char>(),
-                key.len() as i32,
-                ffi::CE_UTF8,
-            );
-            ffi::SET_STRING_ELT(names, i as ffi::R_xlen_t, chars);
+            names.set_string_elt(i as ffi::R_xlen_t, SEXP::charsxp(&key));
         }
 
-        ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+        list.set_names(names);
         ffi::Rf_unprotect(2);
         list
     }
