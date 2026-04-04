@@ -266,7 +266,7 @@ impl IntoR for Option<crate::ffi::RLogical> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
-            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v.to_i32()) },
+            Some(v) => crate::ffi::SEXP::scalar_logical_raw(v.to_i32()),
             None => crate::ffi::SEXP::scalar_logical_raw(NA_LOGICAL),
         }
     }

@@ -10,7 +10,7 @@ use crate::ffi::SEXP;
 // region: Construction helpers (Phase A)
 
 use crate::ffi::{
-    R_BlankString, R_NaString, R_NilValue, R_xlen_t, Rf_allocVector, Rf_install, Rf_type2char,
+    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_install, Rf_type2char,
     Rf_xlength, SET_STRING_ELT, SEXPTYPE, STRING_ELT, SexpExt, VECTOR_ELT,
 };
 use crate::gc_protect::OwnedProtect;

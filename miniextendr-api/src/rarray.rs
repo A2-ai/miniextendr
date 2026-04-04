@@ -514,7 +514,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     pub unsafe fn get_rownames(&self) -> Option<SEXP> {
         unsafe {
             let rownames = ffi::Rf_GetRowNames(self.sexp);
-            if rownames == ffi::R_NilValue {
+            if rownames .is_nil() {
                 None
             } else {
                 Some(rownames)
@@ -533,11 +533,11 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     pub unsafe fn get_colnames(&self) -> Option<SEXP> {
         unsafe {
             let dimnames = self.sexp.get_dimnames();
-            if dimnames == ffi::R_NilValue {
+            if dimnames .is_nil() {
                 return None;
             }
             let colnames = ffi::Rf_GetColNames(dimnames);
-            if colnames == ffi::R_NilValue {
+            if colnames .is_nil() {
                 None
             } else {
                 Some(colnames)
