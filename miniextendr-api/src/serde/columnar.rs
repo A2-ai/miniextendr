@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use super::error::RSerdeError;
 use crate::altrep_traits::NA_REAL;
 use crate::ffi::{
-    Rf_allocVector, Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
+    Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
     SexpExt,
 };
 use serde::ser::{self, Serialize};
@@ -74,7 +74,7 @@ macro_rules! reject_non_struct {
 /// `names_sexp` must be a valid STRSXP and `i` must be in bounds.
 unsafe fn col_name(names_sexp: SEXP, i: isize) -> &'static str {
     unsafe {
-        let s = crate::ffi::STRING_ELT(names_sexp, i);
+        let s = names_sexp.string_elt(i);
         let p = crate::ffi::R_CHAR(s);
         std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
     }
@@ -235,7 +235,7 @@ impl ColumnarDataFrame {
                     continue;
                 }
                 new_list.set_vector_elt(j, self.sexp.vector_elt(i));
-                SET_STRING_ELT(new_names, j, crate::ffi::STRING_ELT(names_sexp, i));
+                new_names.set_string_elt(j, names_sexp.string_elt(i));
                 j += 1;
             }
 
@@ -271,7 +271,7 @@ impl ColumnarDataFrame {
             for (j, &src_idx) in indices.iter().enumerate() {
                 let j_r: isize = j.try_into().expect("index overflow");
                 new_list.set_vector_elt(j_r, self.sexp.vector_elt(src_idx));
-                SET_STRING_ELT(new_names, j_r, crate::ffi::STRING_ELT(names_sexp, src_idx));
+                new_names.set_string_elt(j_r, names_sexp.string_elt(src_idx));
             }
 
             new_list.set_names(new_names);

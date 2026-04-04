@@ -305,7 +305,7 @@ impl TryFromSexp for StringArray {
         let mut builder = arrow_array::builder::StringBuilder::with_capacity(len, len * 8);
 
         for i in 0..len {
-            let charsxp = unsafe { ffi::STRING_ELT(sexp, i as R_xlen_t) };
+            let charsxp = sexp.string_elt(i as R_xlen_t);
             if std::ptr::addr_eq(charsxp.0, unsafe { R_NaString.0 }) {
                 builder.append_null();
             } else {
@@ -380,7 +380,7 @@ impl TryFromSexp for StringDictionaryArray {
         let mut dict_builder =
             arrow_array::builder::StringBuilder::with_capacity(n_levels, n_levels * 8);
         for i in 0..n_levels {
-            let charsxp = unsafe { ffi::STRING_ELT(levels_sexp, i as R_xlen_t) };
+            let charsxp = levels_sexp.string_elt(i as R_xlen_t);
             let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
             dict_builder.append_value(s);
         }
@@ -458,7 +458,7 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
     // Extract timezone if present
     let tzone_sexp = sexp.get_attr(unsafe { ffi::Rf_install(c"tzone".as_ptr()) });
     let tz: Option<Arc<str>> = if tzone_sexp.type_of() == SEXPTYPE::STRSXP && tzone_sexp.len() > 0 {
-        let charsxp = unsafe { ffi::STRING_ELT(tzone_sexp, 0) };
+        let charsxp = tzone_sexp.string_elt(0);
         let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
         if s.is_empty() {
             None
@@ -525,16 +525,14 @@ impl IntoR for StringDictionaryArray {
                 let s = values.value(i);
                 let charsxp =
                     SEXP::charsxp(s);
-                ffi::SET_STRING_ELT(levels, i as R_xlen_t, charsxp);
+                levels.set_string_elt(i as R_xlen_t, charsxp);
             }
 
             // Set levels and class attributes
             codes.set_levels(levels);
             let class_str = scope.alloc_character(1).into_raw();
-            ffi::SET_STRING_ELT(
-                class_str,
-                0,
-                SEXP::charsxp("factor"),
+            
+                class_str.set_string_elt(0, SEXP::charsxp("factor"),
             );
             codes.set_class(class_str);
 
@@ -568,10 +566,8 @@ impl IntoR for Date32Array {
 
             // Set class = "Date"
             let class_str = scope.alloc_character(1).into_raw();
-            ffi::SET_STRING_ELT(
-                class_str,
-                0,
-                SEXP::charsxp("Date"),
+            
+                class_str.set_string_elt(0, SEXP::charsxp("Date"),
             );
             sexp.set_class(class_str);
 
@@ -610,15 +606,11 @@ impl IntoR for TimestampSecondArray {
 
             // Set class = c("POSIXct", "POSIXt")
             let class_str = scope.alloc_character(2).into_raw();
-            ffi::SET_STRING_ELT(
-                class_str,
-                0,
-                SEXP::charsxp("POSIXct"),
+            
+                class_str.set_string_elt(0, SEXP::charsxp("POSIXct"),
             );
-            ffi::SET_STRING_ELT(
-                class_str,
-                1,
-                SEXP::charsxp("POSIXt"),
+            
+                class_str.set_string_elt(1, SEXP::charsxp("POSIXt"),
             );
             sexp.set_class(class_str);
 
@@ -742,7 +734,7 @@ impl TryFromSexp for RecordBatch {
         let names: Vec<String> = if names_sexp.type_of() == SEXPTYPE::STRSXP {
             (0..ncol)
                 .map(|i| {
-                    let charsxp = unsafe { ffi::STRING_ELT(names_sexp, i as R_xlen_t) };
+                    let charsxp = names_sexp.string_elt(i as R_xlen_t);
                     unsafe { crate::from_r::charsxp_to_str(charsxp) }.to_string()
                 })
                 .collect()
@@ -977,7 +969,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
                         let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
                         let guard = crate::gc_protect::OwnedProtect::new(sexp);
                         for i in 0..n {
-                            ffi::SET_STRING_ELT(guard.get(), i as R_xlen_t, R_NaString);
+                            guard.get().set_string_elt(i as R_xlen_t, R_NaString);
                         }
                         guard.get()
                     }
@@ -990,7 +982,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
                 let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
                 let guard = crate::gc_protect::OwnedProtect::new(sexp);
                 for i in 0..n {
-                    ffi::SET_STRING_ELT(guard.get(), i as R_xlen_t, R_NaString);
+                    guard.get().set_string_elt(i as R_xlen_t, R_NaString);
                 }
                 guard.get()
             }
@@ -1032,10 +1024,8 @@ impl IntoR for RecordBatch {
 
             // Set class = "data.frame"
             let class_str = scope.alloc_character(1).into_raw();
-            ffi::SET_STRING_ELT(
-                class_str,
-                0,
-                SEXP::charsxp("data.frame"),
+            
+                class_str.set_string_elt(0, SEXP::charsxp("data.frame"),
             );
             list.set_class(class_str);
 

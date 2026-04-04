@@ -201,7 +201,7 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
 
     // First pass: check if any NA
     for i in 0..n {
-        if unsafe { STRING_ELT(names, i) == R_NaString } {
+        if unsafe { names.string_elt(i) == R_NaString } {
             has_na = true;
             break;
         }
@@ -214,13 +214,13 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
     // Second pass: create repaired copy
     let repaired = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
     for i in 0..n {
-        let elem = unsafe { STRING_ELT(names, i) };
+        let elem = names.string_elt(i);
         let new_elem = if elem == unsafe { R_NaString } {
             unsafe { R_BlankString }
         } else {
             elem
         };
-        unsafe { SET_STRING_ELT(repaired.get(), i, new_elem) };
+        repaired.get().set_string_elt(i, new_elem);
     }
 
     // Return the SEXP - guard drops and unprotects
@@ -373,7 +373,7 @@ pub fn new_rcrd(
 
     for i in 0..n_fields {
         // Check name
-        let name_charsxp = unsafe { STRING_ELT(names_sexp, i) };
+        let name_charsxp = names_sexp.string_elt(i);
         if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::null() {
             return Err(VctrsBuildError::UnnamedFields);
         }

@@ -276,9 +276,9 @@ impl<'a> ListAccumulator<'a> {
                     if let Some(n) = name {
                         let _n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
                         let charsxp = ffi::SEXP::charsxp(n);
-                        ffi::SET_STRING_ELT(names_sexp.get(), idx, charsxp);
+                        names_sexp.get().set_string_elt(idx, charsxp);
                     } else {
-                        ffi::SET_STRING_ELT(names_sexp.get(), idx, ffi::R_BlankString);
+                        names_sexp.get().set_string_elt(idx, ffi::R_BlankString);
                     }
                 }
                 root.get().set_names(names_sexp.get());

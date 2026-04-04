@@ -70,7 +70,7 @@ where
     M: Extend<(String, V)>,
     F: FnOnce(usize) -> M,
 {
-    use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+    use crate::ffi::Rf_translateCharUTF8;
 
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
@@ -93,7 +93,7 @@ where
 
     for i in 0..len {
         let key = if has_names {
-            let charsxp = unsafe { STRING_ELT(names, i as crate::ffi::R_xlen_t) };
+            let charsxp = names.string_elt(i as crate::ffi::R_xlen_t);
             if charsxp == unsafe { crate::ffi::R_NaString } {
                 String::new()
             } else {

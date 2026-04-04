@@ -60,7 +60,7 @@
 //! | Type has multiple valid representations | Don't use `Prefer*`; use `As*` or `return` |
 
 use crate::externalptr::{ExternalPtr, IntoExternalPtr};
-use crate::ffi::RNativeType;
+use crate::ffi::{RNativeType, SexpExt};
 use crate::into_r::IntoR;
 use crate::list::{IntoList, List};
 use crate::named_vector::AtomicElement;
@@ -505,7 +505,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         let mut col_names = Vec::with_capacity(n_cols as usize);
         for i in 0..n_cols {
             unsafe {
-                let name_sexp = crate::ffi::STRING_ELT(names_sexp, i);
+                let name_sexp = names_sexp.string_elt(i);
                 let name_ptr = crate::ffi::R_CHAR(name_sexp);
                 let name_cstr = std::ffi::CStr::from_ptr(name_ptr);
                 if let Ok(s) = name_cstr.to_str() {

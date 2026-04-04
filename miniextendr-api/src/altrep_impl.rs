@@ -296,7 +296,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     // Populate using the AltString::elt method (which handles Option→NA)
                     for i in 0..n {
                         let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
-                        $crate::ffi::SET_STRING_ELT(strsxp, i, elt);
+                        $crate::ffi::SexpExt::set_string_elt(&strsxp, i, elt);
                     }
 
                     // Cache in data2 slot (R will GC-protect it as part of the ALTREP object)

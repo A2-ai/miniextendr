@@ -114,7 +114,7 @@ impl List {
 
         // Search for matching name
         for i in 0..n {
-            let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };
+            let name_sexp = names_sexp.string_elt(i);
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }
@@ -702,7 +702,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, idx) };
+                let name_sexp = names.string_elt(idx);
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
@@ -759,7 +759,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, idx) };
+                let name_sexp = names.string_elt(idx);
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
@@ -938,7 +938,7 @@ impl List {
                 let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as isize));
                 for (i, &elem) in elements.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                    ffi::SET_STRING_ELT(v.get(), idx, ffi::STRING_ELT(elem, 0));
+                    v.get().set_string_elt(idx, elem.string_elt(0));
                 }
                 v.get()
             },
@@ -1080,7 +1080,7 @@ impl TryFromSexp for List {
             let mut seen = HashSet::with_capacity(n_usize);
 
             for i in 0..n {
-                let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };
+                let name_sexp = names_sexp.string_elt(i);
                 // Skip NA names
                 if name_sexp == unsafe { ffi::R_NaString } {
                     continue;

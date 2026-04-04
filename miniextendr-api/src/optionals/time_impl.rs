@@ -132,8 +132,8 @@ impl IntoR for OffsetDateTime {
             Rf_protect(class_vec);
             let posixct = SEXP::charsxp("POSIXct");
             let posixt = SEXP::charsxp("POSIXt");
-            SET_STRING_ELT(class_vec, 0, posixct);
-            SET_STRING_ELT(class_vec, 1, posixt);
+            class_vec.set_string_elt(0, posixct);
+            class_vec.set_string_elt(1, posixt);
             let class_sym = Rf_install(c"class".as_ptr());
             vec.set_attr(class_sym, class_vec);
 
@@ -214,8 +214,8 @@ impl IntoR for Option<OffsetDateTime> {
                 Rf_protect(class_vec);
                 let posixct = SEXP::charsxp("POSIXct");
                 let posixt = SEXP::charsxp("POSIXt");
-                SET_STRING_ELT(class_vec, 0, posixct);
-                SET_STRING_ELT(class_vec, 1, posixt);
+                class_vec.set_string_elt(0, posixct);
+                class_vec.set_string_elt(1, posixt);
                 let class_sym = Rf_install(c"class".as_ptr());
                 vec.set_attr(class_sym, class_vec);
 
@@ -297,8 +297,8 @@ impl IntoR for Vec<OffsetDateTime> {
             Rf_protect(class_vec);
             let posixct = SEXP::charsxp("POSIXct");
             let posixt = SEXP::charsxp("POSIXt");
-            SET_STRING_ELT(class_vec, 0, posixct);
-            SET_STRING_ELT(class_vec, 1, posixt);
+            class_vec.set_string_elt(0, posixct);
+            class_vec.set_string_elt(1, posixt);
             let class_sym = Rf_install(c"class".as_ptr());
             vec.set_attr(class_sym, class_vec);
 
@@ -381,8 +381,8 @@ impl IntoR for Vec<Option<OffsetDateTime>> {
             Rf_protect(class_vec);
             let posixct = SEXP::charsxp("POSIXct");
             let posixt = SEXP::charsxp("POSIXt");
-            SET_STRING_ELT(class_vec, 0, posixct);
-            SET_STRING_ELT(class_vec, 1, posixt);
+            class_vec.set_string_elt(0, posixct);
+            class_vec.set_string_elt(1, posixt);
             let class_sym = Rf_install(c"class".as_ptr());
             vec.set_attr(class_sym, class_vec);
 

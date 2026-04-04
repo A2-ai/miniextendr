@@ -53,7 +53,7 @@ impl StrVec {
         if idx < 0 || idx >= self.len() {
             return None;
         }
-        Some(unsafe { ffi::STRING_ELT(self.0, idx) })
+        Some(self.0.string_elt(idx))
     }
 
     /// Get the string at the given index.
@@ -98,7 +98,7 @@ impl StrVec {
             // Note: Rf_mkCharLenCE returns a CHARSXP that may be from the global
             // CHARSXP cache, but protection is still needed for newly allocated ones.
             let _guard = OwnedProtect::new(charsxp);
-            ffi::SET_STRING_ELT(self.0, idx, charsxp);
+            self.0.set_string_elt(idx, charsxp);
         }
     }
 
@@ -113,7 +113,7 @@ impl StrVec {
     pub unsafe fn set_charsxp_unchecked(self, idx: isize, charsxp: SEXP) {
         debug_assert!(idx >= 0 && idx < self.len(), "index out of bounds");
         // SAFETY: caller guarantees charsxp is protected/cached
-        unsafe { ffi::SET_STRING_ELT(self.0, idx, charsxp) };
+        self.0.set_string_elt(idx, charsxp);
     }
 
     /// Set an element from a Rust string.
@@ -136,7 +136,7 @@ impl StrVec {
             let charsxp = SEXP::charsxp(s);
             // CHARSXP may be cached, but protect anyway for safety
             let _guard = OwnedProtect::new(charsxp);
-            ffi::SET_STRING_ELT(self.0, idx, charsxp);
+            self.0.set_string_elt(idx, charsxp);
         }
     }
 
@@ -151,11 +151,11 @@ impl StrVec {
     ///
     /// Panics if `idx` is out of bounds.
     #[inline]
-    pub unsafe fn set_na(self, idx: isize) {
+    pub unsafe fn set_na(self, idx: isize) { unsafe {
         assert!(idx >= 0 && idx < self.len(), "index out of bounds");
         // R_NaString is a global constant, no protection needed
-        unsafe { ffi::SET_STRING_ELT(self.0, idx, ffi::R_NaString) };
-    }
+        self.0.set_string_elt(idx, ffi::R_NaString);
+    }}
 
     /// Set an element from an optional string.
     ///
@@ -223,11 +223,8 @@ impl<'a> StrVecBuilder<'a> {
     #[inline]
     pub unsafe fn set_str(&self, idx: isize, s: &str) {
         debug_assert!(idx >= 0 && idx < unsafe { ffi::Rf_xlength(self.vec) });
-        // SAFETY: caller guarantees R main thread
-        unsafe {
-            let charsxp = SEXP::charsxp(s);
-            ffi::SET_STRING_ELT(self.vec, idx, charsxp);
-        }
+        let charsxp = SEXP::charsxp(s);
+        self.vec.set_string_elt(idx, charsxp);
     }
 
     /// Set an element to `NA_character_`.
@@ -238,8 +235,7 @@ impl<'a> StrVecBuilder<'a> {
     #[inline]
     pub unsafe fn set_na(&self, idx: isize) {
         debug_assert!(idx >= 0 && idx < unsafe { ffi::Rf_xlength(self.vec) });
-        // SAFETY: R_NaString is a global constant
-        unsafe { ffi::SET_STRING_ELT(self.vec, idx, ffi::R_NaString) };
+        self.vec.set_string_elt(idx, SEXP::na_string());
     }
 
     /// Set an element from an optional string.

@@ -62,7 +62,7 @@ fn map_to_named_list<V: IntoR>(
 
             // Set name
             let charsxp = str_to_charsxp(&key);
-            crate::ffi::SET_STRING_ELT(names, idx, charsxp);
+            names.set_string_elt(idx, charsxp);
         }
 
         // Attach names attribute

@@ -30,8 +30,8 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, INTEGER_ELT, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SET_STRING_ELT, SEXP,
-    SEXPTYPE, STRING_ELT, SexpExt,
+    INTEGER, INTEGER_ELT, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP,
+    SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
@@ -46,7 +46,7 @@ fn factor_class_sexp() -> SEXP {
         crate::ffi::R_PreserveObject(class_sexp);
         // Use symbol PRINTNAME for permanent CHARSXP
         let sym = Rf_install(c"factor".as_ptr());
-        SET_STRING_ELT(class_sexp, 0, PRINTNAME(sym));
+        class_sexp.set_string_elt(0, PRINTNAME(sym));
         class_sexp
     })
 }
@@ -79,7 +79,7 @@ pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
             // Install as symbol - symbols and their PRINTNAMEs are never GC'd
             let c_str = CString::new(*level).expect("level name contains null byte");
             let sym = Rf_install(c_str.as_ptr());
-            SET_STRING_ELT(sexp, i as isize, PRINTNAME(sym));
+            sexp.set_string_elt(i as isize, PRINTNAME(sym));
         }
         sexp
     }
@@ -185,7 +185,7 @@ impl<'a> Factor<'a> {
             "level index {idx} out of bounds (n_levels = {})",
             self.n_levels()
         );
-        let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
+        let charsxp = self.levels_sexp.string_elt(idx as isize);
         unsafe { charsxp_to_str(charsxp) }
     }
 }
@@ -283,7 +283,7 @@ impl<'a> FactorMut<'a> {
             "level index {idx} out of bounds (n_levels = {})",
             self.n_levels()
         );
-        let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
+        let charsxp = self.levels_sexp.string_elt(idx as isize);
         unsafe { charsxp_to_str(charsxp) }
     }
 }
@@ -328,7 +328,7 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
     }
 
     for (i, exp) in expected.iter().enumerate() {
-        let charsxp = unsafe { STRING_ELT(levels, i as isize) };
+        let charsxp = levels.string_elt(i as isize);
         let actual = unsafe { charsxp_to_str(charsxp) };
         if actual != *exp {
             return Err(SexpError::InvalidValue(format!(

@@ -533,7 +533,7 @@ fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
         return Err(RSerdeError::NonStringKey);
     }
 
-    let charsxp = unsafe { crate::ffi::STRING_ELT(sexp, 0) };
+    let charsxp = sexp.string_elt(0);
     if charsxp == unsafe { R_NaString } {
         return Err(RSerdeError::NonStringKey);
     }

@@ -9,13 +9,13 @@
 //! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
 //! | CPLXSXP | `Rcomplex` | `COMPLEX()` / `DATAPTR_RO` |
-//! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` / `Rf_translateCharUTF8()` |
+//! | STRSXP | `&str`, `String` | `)` + `R_CHAR()` / `Rf_translateCharUTF8()` |
 //!
 //! # Submodules
 //!
 //! | Module | Contents |
 //! |--------|----------|
-//! | [`logical`] | `Rboolean`, `bool`, `Option<bool>` |
+//! | [`logical`] | `Rboolean`.string_elt(`bool`, `Option<bool>` |
 //! | [`coerced_scalars`] | Multi-source numeric scalars (`i8`..`usize`) + large integers (`i64`, `u64`) |
 //! | [`references`] | Borrowed views: `&T`, `&mut T`, `&[T]`, `Vec<&T>` |
 //! | [`strings`] | `&str`, `String`, `char` from STRSXP |

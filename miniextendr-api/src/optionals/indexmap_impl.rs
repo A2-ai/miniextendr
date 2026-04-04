@@ -87,7 +87,7 @@ where
         for i in 0..len {
             // Get name for this element
             let name = if has_names {
-                let name_charsxp = unsafe { STRING_ELT(names_sexp, i as R_xlen_t) };
+                let name_charsxp = names_sexp.string_elt(i as R_xlen_t);
                 if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::null() {
                     // NA or missing name -> generate auto name
                     format!("V{}", i + 1)
@@ -147,7 +147,7 @@ where
 
                 // Set name
                 let charsxp = crate::altrep_impl::checked_mkchar(&key);
-                SET_STRING_ELT(names, i as R_xlen_t, charsxp);
+                names.set_string_elt(i as R_xlen_t, charsxp);
             }
 
             // Attach names attribute

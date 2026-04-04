@@ -6,7 +6,7 @@
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{
-    R_NaString, Rf_xlength, SEXP, SEXPTYPE, SexpExt, STRING_ELT,
+    R_NaString, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -129,7 +129,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
             }
             SEXPTYPE::STRSXP if len == 1 => {
-                let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+                let charsxp = self.sexp.string_elt(0);
                 if charsxp == unsafe { R_NaString } {
                     visitor.visit_none()
                 } else {
@@ -464,7 +464,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                     }
                 }
                 SEXPTYPE::STRSXP => {
-                    let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+                    let charsxp = self.sexp.string_elt(0);
                     if charsxp == unsafe { R_NaString } {
                         return visitor.visit_none();
                     }
@@ -579,7 +579,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         match sexp_type {
             // String -> unit variant
             SEXPTYPE::STRSXP if self.len() == 1 => {
-                let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+                let charsxp = self.sexp.string_elt(0);
                 if charsxp == unsafe { R_NaString } {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -591,7 +591,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             // Named list with single element -> data variant
             SEXPTYPE::VECSXP if self.has_names() && self.len() == 1 => {
                 let names = self.sexp.get_names();
-                let name_charsxp = unsafe { STRING_ELT(names, 0) };
+                let name_charsxp = names.string_elt(0);
                 let variant = unsafe { charsxp_to_str(name_charsxp) };
                 let value = self.sexp.vector_elt(0);
 
@@ -673,7 +673,7 @@ impl RDeserializer {
             });
         }
 
-        let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+        let charsxp = self.sexp.string_elt(0);
         if charsxp == unsafe { R_NaString } {
             return Err(RSerdeError::UnexpectedNa);
         }
@@ -776,7 +776,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::STRSXP => {
-                let charsxp = unsafe { STRING_ELT(self.sexp, self.index as isize) };
+                let charsxp = self.sexp.string_elt(self.index as isize);
                 if charsxp == unsafe { R_NaString } {
                     visitor.visit_none()
                 } else {
@@ -889,7 +889,7 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
             return Ok(None);
         }
 
-        let name_charsxp = unsafe { STRING_ELT(self.names, self.index as isize) };
+        let name_charsxp = self.names.string_elt(self.index as isize);
         let name = unsafe { charsxp_to_str(name_charsxp) };
 
         // Create a string deserializer for the key

@@ -137,7 +137,7 @@ impl TryFromSexp for TomlValue {
             )));
         }
 
-        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+        let charsxp = sexp.string_elt(0);
         if charsxp == unsafe { crate::ffi::R_NaString } {
             return Err(SexpError::InvalidValue(
                 "NA not allowed for TOML parsing".to_string(),
@@ -315,7 +315,7 @@ fn string_to_sexp(s: &str) -> SEXP {
         // Protect sexp before checked_mkchar which can trigger GC
         let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1));
         let charsxp = crate::altrep_impl::checked_mkchar(s);
-        SET_STRING_ELT(sexp.get(), 0, charsxp);
+        sexp.get().set_string_elt(0, charsxp);
         // Return the SEXP - guard drops and unprotects
         sexp.get()
     }
@@ -387,10 +387,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                     if let TomlValue::String(s) = v {
                         unsafe {
                             let charsxp = crate::altrep_impl::checked_mkchar(s);
-                            SET_STRING_ELT(
-                                sexp.get(),
-                                isize::try_from(i).expect("index overflow"),
-                                charsxp,
+                            
+                                sexp.get().set_string_elt(isize::try_from(i).expect("index overflow"), charsxp,
                             );
                         }
                     }
@@ -529,10 +527,8 @@ fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
     for (i, (key, value)) in table.iter().enumerate() {
         unsafe {
             let charsxp = crate::altrep_impl::checked_mkchar(key);
-            SET_STRING_ELT(
-                names.get(),
-                isize::try_from(i).expect("index overflow"),
-                charsxp,
+            
+                names.get().set_string_elt(isize::try_from(i).expect("index overflow"), charsxp,
             );
             
                 sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), toml_value_to_sexp(value),

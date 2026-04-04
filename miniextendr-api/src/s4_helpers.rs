@@ -30,7 +30,7 @@
 /// ```
 use crate::expression::{RCall, REnv};
 use crate::ffi::{
-    self, Rf_protect, Rf_unprotect, SEXP, STRING_ELT, SexpExt,
+    self, Rf_protect, Rf_unprotect, SEXP, SexpExt,
 };
 use std::ffi::CStr;
 
@@ -140,7 +140,7 @@ pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
             return None;
         }
 
-        let first = STRING_ELT(class_attr, 0);
+        let first = class_attr.string_elt(0);
         if first.is_null_or_nil() {
             return None;
         }

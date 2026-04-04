@@ -56,18 +56,16 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         // Set names: c("error", "kind", "call")
         let names = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 3);
         ffi::Rf_protect(names);
-        ffi::SET_STRING_ELT(names, 0, ffi::Rf_mkCharCE(c"error".as_ptr(), ffi::CE_UTF8));
-        ffi::SET_STRING_ELT(names, 1, ffi::Rf_mkCharCE(c"kind".as_ptr(), ffi::CE_UTF8));
-        ffi::SET_STRING_ELT(names, 2, ffi::Rf_mkCharCE(c"call".as_ptr(), ffi::CE_UTF8));
+        names.set_string_elt(0, ffi::Rf_mkCharCE(c"error".as_ptr(), ffi::CE_UTF8));
+        names.set_string_elt(1, ffi::Rf_mkCharCE(c"kind".as_ptr(), ffi::CE_UTF8));
+        names.set_string_elt(2, ffi::Rf_mkCharCE(c"call".as_ptr(), ffi::CE_UTF8));
         list.set_names(names);
 
         // Set class: "rust_error_value"
         let class = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1);
         ffi::Rf_protect(class);
-        ffi::SET_STRING_ELT(
-            class,
-            0,
-            ffi::Rf_mkCharCE(c"rust_error_value".as_ptr(), ffi::CE_UTF8),
+        
+            class.set_string_elt(0, ffi::Rf_mkCharCE(c"rust_error_value".as_ptr(), ffi::CE_UTF8),
         );
         list.set_class(class);
 

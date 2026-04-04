@@ -50,7 +50,7 @@ impl NamedList {
 
         for i in 0..n {
             let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-            let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, idx) };
+            let name_sexp = names_sexp.string_elt(idx);
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }

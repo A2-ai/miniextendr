@@ -1137,7 +1137,7 @@ pub(crate) fn str_iter_to_strsxp<'a>(
         for (i, s) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp(s);
-            crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
+            sexp.set_string_elt(idx, charsxp);
         }
         *sexp
     }
@@ -1641,7 +1641,7 @@ impl IntoR for Vec<Option<String>> {
                     Some(s) => str_to_charsxp(s),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
+                sexp.set_string_elt(idx, charsxp);
             }
 
             *sexp

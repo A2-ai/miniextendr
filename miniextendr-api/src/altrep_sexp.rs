@@ -152,7 +152,7 @@ impl AltrepSexp {
             SEXPTYPE::STRSXP => {
                 let n = unsafe { ffi::Rf_xlength(self.sexp) };
                 for i in 0..n {
-                    let _ = unsafe { ffi::STRING_ELT(self.sexp, i) };
+                    let _ = self.sexp.string_elt(i);
                 }
             }
             SEXPTYPE::INTSXP
@@ -233,7 +233,7 @@ impl AltrepSexp {
         let n = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
-            let elt = unsafe { ffi::STRING_ELT(self.sexp, i as ffi::R_xlen_t) };
+            let elt = self.sexp.string_elt(i as ffi::R_xlen_t);
             if elt == unsafe { ffi::R_NaString } {
                 out.push(None);
             } else {

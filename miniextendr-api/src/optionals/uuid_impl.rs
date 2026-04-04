@@ -115,7 +115,7 @@ impl TryFromSexp for Vec<Uuid> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
 
             // Check for NA
             if charsxp == unsafe { crate::ffi::R_NaString } {

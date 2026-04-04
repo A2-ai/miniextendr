@@ -58,7 +58,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         "must be called from R main thread"
     );
     use crate::ffi::{
-        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, STRING_ELT,
+        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength,
         SexpExt,
     };
 
@@ -74,7 +74,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         let n = Rf_xlength(info);
         let mut is_utf8 = false;
         for i in 0..n {
-            let name_charsxp = STRING_ELT(names, i);
+            let name_charsxp = names.string_elt(i);
             let name_ptr = crate::ffi::R_CHAR(name_charsxp);
             let name = std::ffi::CStr::from_ptr(name_ptr);
             if name == c"UTF-8" {
