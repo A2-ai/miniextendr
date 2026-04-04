@@ -19,7 +19,19 @@ Items 1-3, 5 methods are done. Safe methods exist on `SexpExt` and `impl SEXP`:
 Privatization (changing `pub` to `pub(crate)`) happens after all callers in rpkg, tests,
 bench, and cross-package are migrated. Internal crate code can keep using raw FFI.
 
-**Summary**: Items 1-5 are complete (methods + migration). Item 4 fully migrated (76+ sites).
+**Summary**: Items 1-5 methods complete. Items 1, 4, 5 fully migrated. Items 2-3 partially migrated.
+**Completed migrations**:
+- `VECTOR_ELT`/`SET_VECTOR_ELT` → `.vector_elt()`/`.set_vector_elt()` — all 104 internal sites done
+- `Rf_mkCharLenCE` → `SEXP::charsxp()` — all 45 internal sites done (zero remaining outside ffi.rs)
+- `R_NilValue` → `SEXP::null()` — all internal + macro + rpkg sites done
+- `Rf_getAttrib`/`Rf_setAttrib` → SexpExt attribute methods — all 55 internal sites done
+- `Rf_ScalarInteger`/etc → `SEXP::scalar_*()` — rpkg + tests done; ~40 internal remain in impl layer (into_r.rs, altrep_impl.rs)
+- 76 unnecessary `unsafe` blocks removed
+
+**Remaining internal migrations** (lower value — these are in the implementation layer):
+- `STRING_ELT`/`SET_STRING_ELT` — 108 internal sites. Methods exist (`.string_elt()`/`.set_string_elt()`) but migration is tangled with shared import lines. Need careful per-file work.
+- `Rf_ScalarInteger`/etc — ~40 sites in into_r.rs (the IntoR impls themselves) and altrep_impl.rs (macro-generated). These ARE the implementation layer.
+
 Items 6-10 have lower priority — safe wrappers already exist for most use cases, and the
 remaining call sites are internal to the crate.
 
