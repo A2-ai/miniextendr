@@ -7,13 +7,47 @@
 //!
 //! This is used by:
 //! - Arrow integration: zero-copy IntoR when the buffer is R-backed
-//! - Future: Cow<[T]> round-trip, allocator validation
+//! - `Cow<[T]>` IntoR round-trip
 //!
 //! # Initialization
 //!
 //! [`init_sexprec_data_offset`] must be called during package init (before any
 //! recovery attempts). It measures the offset on a real R vector, so it works
 //! across R versions and platforms.
+//!
+//! # R's VECTOR_SEXPREC layout
+//!
+//! ```text
+//! // From R's Defn.h:
+//! typedef struct VECTOR_SEXPREC {
+//!     SEXPREC_HEADER;           // sxpinfo(8) + attrib(8) + gengc_next(8) + gengc_prev(8)
+//!     struct vecsxp_struct {    // length(8) + truelength(8)
+//!         R_xlen_t length;
+//!         R_xlen_t truelength;
+//!     } vecsxp;
+//! } VECTOR_SEXPREC;
+//!
+//! typedef union { VECTOR_SEXPREC s; double align; } SEXPREC_ALIGN;
+//! #define STDVEC_DATAPTR(x) ((void *)(((SEXPREC_ALIGN *)(x)) + 1))
+//! ```
+//!
+//! On 64-bit: `sizeof(VECTOR_SEXPREC)` = 48 bytes, `sizeof(SEXPREC_ALIGN)` = 48.
+//! Data starts at `sexp + 48`. All vector types (REALSXP, INTSXP, RAWSXP,
+//! STRSXP, VECSXP) use the same `VECTOR_SEXPREC` header.
+//!
+//! # Why not `#[repr(C)]` mirror struct?
+//!
+//! A Rust `#[repr(C)]` struct mirroring `VECTOR_SEXPREC` would give a
+//! compile-time `size_of` instead of runtime measurement. However:
+//! - R's layout can vary by version and compile options (32-bit, padding)
+//! - The runtime measurement is one allocation at init — negligible
+//! - A `repr(C)` mirror struct doesn't help with the real safety issue:
+//!   reading from a speculative pointer. `addr_of!` computes field addresses
+//!   without dereferencing, but we still need to `read()` the type tag — and
+//!   that read is from potentially invalid memory for non-R pointers.
+//!
+//! The triple verification (type tag + length + DATAPTR_RO round-trip) is
+//! what prevents false positives, not the struct layout.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
