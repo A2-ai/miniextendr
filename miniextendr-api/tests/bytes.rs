@@ -120,8 +120,8 @@ fn option_bytes_none() {
         let opt: Option<Bytes> = None;
         let sexp = opt.into_sexp();
 
-        use miniextendr_api::ffi::{R_NilValue, SEXPTYPE, SexpExt};
-        assert_eq!(sexp, unsafe { R_NilValue });
+        use miniextendr_api::ffi::{SEXPTYPE, SexpExt};
+        assert!(sexp.is_nil());
         assert_eq!(sexp.type_of(), SEXPTYPE::NILSXP);
     });
 }

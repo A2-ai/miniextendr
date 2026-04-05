@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{R_NilValue, SEXP};
+use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::preserve;
 
 #[test]
@@ -18,8 +18,8 @@ fn preserve_insert_release() {
         preserve::release(cell_b);
 
         // R_NilValue is never collected, so insert returns R_NilValue itself
-        let nil_cell = preserve::insert(R_NilValue);
-        assert!(std::ptr::addr_eq(nil_cell.0, R_NilValue.0));
+        let nil_cell = preserve::insert(SEXP::null());
+        assert!(nil_cell.is_nil());
     });
 }
 
@@ -43,8 +43,8 @@ fn preserve_count_tracking() {
         preserve::release(cell_b);
         assert_eq!(preserve::count(), initial);
 
-        let nil_cell = preserve::insert(R_NilValue);
-        assert!(std::ptr::addr_eq(nil_cell.0, R_NilValue.0));
+        let nil_cell = preserve::insert(SEXP::null());
+        assert!(nil_cell.is_nil());
         assert_eq!(preserve::count(), initial);
     });
 }
