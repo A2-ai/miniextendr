@@ -10,8 +10,8 @@ use crate::ffi::SEXP;
 // region: Construction helpers (Phase A)
 
 use crate::ffi::{
-    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_install, Rf_type2char,
-    Rf_xlength, SET_STRING_ELT, SEXPTYPE, STRING_ELT, SexpExt, VECTOR_ELT,
+    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_install, Rf_type2char, Rf_xlength,
+    SET_STRING_ELT, SEXPTYPE, STRING_ELT, SexpExt, VECTOR_ELT,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
@@ -155,7 +155,9 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
     let class_sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for (i, class_name) in classes.iter().enumerate() {
-        class_sexp.get().set_string_elt(i as R_xlen_t, SEXP::charsxp(class_name));
+        class_sexp
+            .get()
+            .set_string_elt(i as R_xlen_t, SEXP::charsxp(class_name));
     }
 
     class_sexp

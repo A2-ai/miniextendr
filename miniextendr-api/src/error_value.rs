@@ -64,8 +64,10 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         // Set class: "rust_error_value"
         let class = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1);
         ffi::Rf_protect(class);
-        
-            class.set_string_elt(0, ffi::Rf_mkCharCE(c"rust_error_value".as_ptr(), ffi::CE_UTF8),
+
+        class.set_string_elt(
+            0,
+            ffi::Rf_mkCharCE(c"rust_error_value".as_ptr(), ffi::CE_UTF8),
         );
         list.set_class(class);
 

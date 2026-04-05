@@ -52,7 +52,7 @@
 //! All functions in this module are unsafe and must be called from the R main thread.
 
 use crate::ffi::{
-    CAR, CDR, R_PreserveObject, Rf_cons, Rf_protect, Rf_unprotect, SEXP, SET_TAG, SETCAR, SETCDR,
+    CAR, CDR, R_PreserveObject, Rf_cons, Rf_protect, Rf_unprotect, SET_TAG, SETCAR, SETCDR, SEXP,
     SexpExt,
 };
 use std::cell::OnceCell;

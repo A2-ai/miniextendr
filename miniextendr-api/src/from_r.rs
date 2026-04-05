@@ -823,8 +823,6 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::VECSXP {
             return Err(SexpTypeError {
@@ -847,8 +845,6 @@ where
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::VECSXP {
             return Err(SexpTypeError {

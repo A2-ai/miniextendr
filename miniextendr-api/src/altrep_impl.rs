@@ -214,7 +214,7 @@ macro_rules! __impl_altrep_base_with_serialize {
                 unsafe {
                     use $crate::externalptr::ExternalPtr;
                     use $crate::ffi::altrep::{R_altrep_class_t, R_new_altrep};
-                    use $crate::ffi::{SEXP, Rf_protect_unchecked, Rf_unprotect_unchecked};
+                    use $crate::ffi::{Rf_protect_unchecked, Rf_unprotect_unchecked, SEXP};
 
                     let ext_ptr = ExternalPtr::new_unchecked(data);
                     let data1 = ext_ptr.as_sexp();

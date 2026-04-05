@@ -26,8 +26,8 @@
 //! ```
 
 use crate::ffi::{
-    self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_lcons,
-    Rf_protect, Rf_unprotect, SET_TAG, SEXP, SexpExt,
+    self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_lcons, Rf_protect,
+    Rf_unprotect, SET_TAG, SEXP, SexpExt,
 };
 use std::ffi::{CStr, CString};
 

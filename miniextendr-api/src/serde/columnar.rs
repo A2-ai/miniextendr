@@ -13,10 +13,7 @@ use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::NA_REAL;
-use crate::ffi::{
-    Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
-    SexpExt,
-};
+use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
 /// Generate serde `Serializer` error stubs for methods that should reject non-struct input.
@@ -609,7 +606,10 @@ impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
         })
     }
 
-    reject_non_struct!("ColumnarDataFrame::from_rows: expected struct", allow_some_none);
+    reject_non_struct!(
+        "ColumnarDataFrame::from_rows: expected struct",
+        allow_some_none
+    );
 }
 
 struct SchemaStructDiscoverer<'a> {

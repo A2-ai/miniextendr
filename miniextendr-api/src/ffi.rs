@@ -893,7 +893,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_attr(&self, name: SEXP, val: SEXP) {
-        unsafe { Rf_setAttrib(*self, name, val); }
+        unsafe {
+            Rf_setAttrib(*self, name, val);
+        }
     }
 
     #[inline]
@@ -903,7 +905,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_names(&self, names: SEXP) {
-        unsafe { Rf_namesgets(*self, names); }
+        unsafe {
+            Rf_namesgets(*self, names);
+        }
     }
 
     #[inline]
@@ -913,7 +917,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_class(&self, class: SEXP) {
-        unsafe { Rf_classgets(*self, class); }
+        unsafe {
+            Rf_classgets(*self, class);
+        }
     }
 
     #[inline]
@@ -923,7 +929,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_dim(&self, dim: SEXP) {
-        unsafe { Rf_dimgets(*self, dim); }
+        unsafe {
+            Rf_dimgets(*self, dim);
+        }
     }
 
     #[inline]
@@ -933,7 +941,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_dimnames(&self, dimnames: SEXP) {
-        unsafe { Rf_dimnamesgets(*self, dimnames); }
+        unsafe {
+            Rf_dimnamesgets(*self, dimnames);
+        }
     }
 
     #[inline]
@@ -943,7 +953,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_levels(&self, levels: SEXP) {
-        unsafe { Rf_setAttrib(*self, R_LevelsSymbol, levels); }
+        unsafe {
+            Rf_setAttrib(*self, R_LevelsSymbol, levels);
+        }
     }
 
     #[inline]
@@ -953,7 +965,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_row_names(&self, row_names: SEXP) {
-        unsafe { Rf_setAttrib(*self, R_RowNamesSymbol, row_names); }
+        unsafe {
+            Rf_setAttrib(*self, R_RowNamesSymbol, row_names);
+        }
     }
 
     #[inline]
@@ -1003,7 +1017,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn set_vector_elt(&self, i: isize, val: SEXP) {
-        unsafe { SET_VECTOR_ELT(*self, i, val); }
+        unsafe {
+            SET_VECTOR_ELT(*self, i, val);
+        }
     }
 
     // endregion
@@ -1072,7 +1088,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     unsafe fn set_vector_elt_unchecked(&self, i: isize, val: SEXP) {
-        unsafe { SET_VECTOR_ELT_unchecked(*self, i, val); }
+        unsafe {
+            SET_VECTOR_ELT_unchecked(*self, i, val);
+        }
     }
 
     #[inline]
@@ -1082,7 +1100,9 @@ impl SexpExt for SEXP {
 
     #[inline]
     unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP) {
-        unsafe { Rf_setAttrib_unchecked(*self, name, val); }
+        unsafe {
+            Rf_setAttrib_unchecked(*self, name, val);
+        }
     }
 
     // endregion
@@ -2284,7 +2304,11 @@ unsafe extern "C-unwind" {
         suppliedvars: SEXP,
         check: Rboolean,
     ) -> SEXP;
-    pub(crate) fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
+    pub(crate) fn R_tryEval(
+        expr: SEXP,
+        env: SEXP,
+        error_occurred: *mut ::std::os::raw::c_int,
+    ) -> SEXP;
     pub(crate) fn R_tryEvalSilent(
         expr: SEXP,
         env: SEXP,
@@ -2336,7 +2360,11 @@ unsafe extern "C-unwind" {
     ///
     /// - `con` must be a valid Rconnection handle
     /// - `buf` must be a valid buffer with at least `n` bytes
-    pub(crate) fn R_ReadConnection(con: Rconnection, buf: *mut ::std::os::raw::c_void, n: usize) -> usize;
+    pub(crate) fn R_ReadConnection(
+        con: Rconnection,
+        buf: *mut ::std::os::raw::c_void,
+        n: usize,
+    ) -> usize;
 
     /// Write to a connection.
     ///
@@ -2750,7 +2778,6 @@ pub unsafe fn Rf_list4(s: SEXP, t: SEXP, u: SEXP, v: SEXP) -> SEXP {
     unsafe { Rf_cons(s, Rf_cons(t, Rf_cons(u, Rf_cons(v, R_NilValue)))) }
 }
 
-
 /// Build a language object (call) with 1 element (the function).
 ///
 /// Rust equivalent of R's inline `Rf_lang1(s)`.
@@ -3033,7 +3060,10 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Pointer to allocated memory (as `char*` for compatibility with S).
-    pub(crate) fn R_alloc(nelem: usize, eltsize: ::std::os::raw::c_int) -> *mut ::std::os::raw::c_char;
+    pub(crate) fn R_alloc(
+        nelem: usize,
+        eltsize: ::std::os::raw::c_int,
+    ) -> *mut ::std::os::raw::c_char;
 
     /// Allocate an array of long doubles on R's memory stack.
     ///
@@ -3227,7 +3257,9 @@ unsafe extern "C-unwind" {
     /// # Returns
     ///
     /// Pointer to expanded path (in R's internal buffer, do not free).
-    pub(crate) fn R_ExpandFileName(s: *const ::std::os::raw::c_char) -> *const ::std::os::raw::c_char;
+    pub(crate) fn R_ExpandFileName(
+        s: *const ::std::os::raw::c_char,
+    ) -> *const ::std::os::raw::c_char;
 
     /// Convert string to double, always using '.' as decimal point.
     ///
@@ -3237,8 +3269,10 @@ unsafe extern "C-unwind" {
     /// Convert string to double with end pointer, using '.' as decimal point.
     ///
     /// Like `strtod()` but locale-independent.
-    pub(crate) fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char)
-    -> f64;
+    pub(crate) fn R_strtod(
+        c: *const ::std::os::raw::c_char,
+        end: *mut *mut ::std::os::raw::c_char,
+    ) -> f64;
 
     /// Generate a temporary filename.
     ///
@@ -3590,7 +3624,12 @@ unsafe extern "C-unwind" {
     pub(crate) fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: Rboolean) -> SEXP;
 
     /// Create a weak reference with C finalizer.
-    pub(crate) fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: Rboolean) -> SEXP;
+    pub(crate) fn R_MakeWeakRefC(
+        key: SEXP,
+        val: SEXP,
+        fin: R_CFinalizer_t,
+        onexit: Rboolean,
+    ) -> SEXP;
 
     /// Get the key from a weak reference.
     pub(crate) fn R_WeakRefKey(w: SEXP) -> SEXP;

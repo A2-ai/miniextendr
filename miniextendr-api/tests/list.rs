@@ -2,13 +2,10 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{
-    Rboolean, Rf_isNewList, SexpExt,
-};
+use miniextendr_api::ffi::SexpExt;
 use miniextendr_api::from_r::{SexpLengthError, TryFromSexp};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::list::{IntoList as _, List, TryFromList};
-use std::ffi::CStr;
 
 #[derive(Debug, PartialEq)]
 struct Foo {
@@ -63,7 +60,8 @@ fn names_as_vec(list: List) -> Vec<String> {
     let len = names.len();
     (0..len)
         .map(|i| {
-            names.string_elt_str(i as miniextendr_api::ffi::R_xlen_t)
+            names
+                .string_elt_str(i as miniextendr_api::ffi::R_xlen_t)
                 .unwrap_or("")
                 .to_string()
         })
@@ -79,11 +77,8 @@ fn derive_into_list_and_back() {
         };
 
         let list = foo.into_list();
-        unsafe {
-            assert!(list.as_sexp().is_list());
-            assert_ne!(Rf_isNewList(list.as_sexp()), Rboolean::FALSE);
-            assert_eq!(list.as_sexp().xlength(), 2);
-        }
+        assert!(list.as_sexp().is_list());
+        assert_eq!(list.as_sexp().xlength(), 2);
         assert_eq!(names_as_vec(list), vec!["a", "b"]);
 
         let roundtrip = Foo::try_from_list(list).unwrap();

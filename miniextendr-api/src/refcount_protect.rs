@@ -51,7 +51,8 @@
 //! but suitable for local, non-hostile environments.
 
 use crate::ffi::{
-    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
+    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP,
+    SEXPTYPE, SexpExt,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -544,7 +545,8 @@ impl<M: MapStorage> ArenaState<M> {
     /// Must be called from the R main thread.
     pub unsafe fn clear(&mut self) {
         self.map().for_each_entry(|entry| {
-            self.backing.set_vector_elt(entry.index as R_xlen_t, SEXP::null());
+            self.backing
+                .set_vector_elt(entry.index as R_xlen_t, SEXP::null());
         });
         self.map_mut().clear();
         self.free_list.clear();

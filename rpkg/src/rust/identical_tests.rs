@@ -16,8 +16,12 @@ pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {
     unsafe {
         let scope = ProtectScope::new();
         let result = scope.alloc_vecsxp(2);
-        result.get().set_vector_elt(0, SEXP::scalar_logical(pointer_eq));
-        result.get().set_vector_elt(1, SEXP::scalar_logical(semantic_eq));
+        result
+            .get()
+            .set_vector_elt(0, SEXP::scalar_logical(pointer_eq));
+        result
+            .get()
+            .set_vector_elt(1, SEXP::scalar_logical(semantic_eq));
 
         let names = scope.alloc_strsxp(2);
         names.get().set_string_elt(0, SEXP::charsxp("pointer_eq"));

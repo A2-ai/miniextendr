@@ -18,7 +18,7 @@ use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
     let handle = spawn_with_r(|| {
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(999) };
+        let sexp = unsafe { crate::raw_ffi::Rf_ScalarInteger(999) };
         sexp.as_integer().unwrap()
     })
     .expect("failed to spawn");
@@ -34,7 +34,7 @@ pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
 pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {
     let handle = std::thread::spawn(|| {
         let _guard = StackCheckGuard::disable();
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(777) };
+        let sexp = unsafe { crate::raw_ffi::Rf_ScalarInteger(777) };
         sexp.as_integer().unwrap()
     });
 

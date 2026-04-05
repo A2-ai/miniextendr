@@ -22,6 +22,7 @@ use miniextendr_api::ffi::{self, SEXP};
 
 pub mod bench_plan;
 pub mod pool_prototypes;
+pub mod raw_ffi;
 
 // region: Size matrix for parameterized benchmarks
 
@@ -198,10 +199,10 @@ unsafe fn init_r_once() {
 /// Builds and caches all benchmark fixtures exactly once.
 unsafe fn init_fixtures_once() {
     let _ = FIXTURES.get_or_init(|| unsafe {
-        use miniextendr_api::ffi::{
-            INTEGER, LOGICAL, RAW, REAL, Rf_allocMatrix, Rf_allocVector, Rf_mkCharLenCE,
-            Rf_protect, SEXPTYPE, SexpExt,
+        use crate::raw_ffi::{
+            INTEGER, LOGICAL, RAW, REAL, Rf_allocMatrix, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
         };
+        use miniextendr_api::ffi::{SEXPTYPE, SexpExt};
 
         // UTF-8 string.
         let utf8_charsxp = SEXP::charsxp("hello");

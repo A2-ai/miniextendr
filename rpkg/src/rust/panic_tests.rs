@@ -208,7 +208,7 @@ pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_r_error() -> SEXP {
     // mxl::allow(MXL300, MXL301)
-    unsafe { miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr()) }
+    unsafe { crate::raw_ffi::Rf_error(c"arg1".as_ptr()) }
 }
 
 /// @noRd
@@ -220,7 +220,7 @@ pub extern "C-unwind" fn C_r_error_in_catch() -> SEXP {
     unsafe {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             // mxl::allow(MXL300, MXL301)
-            miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr())
+            crate::raw_ffi::Rf_error(c"arg1".as_ptr())
         }))
         .unwrap();
         miniextendr_api::ffi::SEXP::null()

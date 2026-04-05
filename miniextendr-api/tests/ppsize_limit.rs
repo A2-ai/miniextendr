@@ -15,7 +15,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{OnceLock, mpsc};
 
-use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE};
+use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE, SexpExt};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::strvec::StrVecBuilder;
@@ -135,7 +135,7 @@ fn reprotect_slot_no_overflow() {
         );
 
         // Verify the slot contains a valid vector
-        let len = ffi::Rf_xlength(slot.get());
+        let len = slot.get().xlength();
         assert_eq!(len, 100, "slot should contain final vector");
     });
 }

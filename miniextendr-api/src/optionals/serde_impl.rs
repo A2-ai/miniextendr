@@ -434,9 +434,8 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
             } else {
                 let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
                     .map(|i| {
-                        let charsxp = unsafe {
-                            sexp.string_elt(isize::try_from(i).expect("index overflow"))
-                        };
+                        let charsxp =
+                            unsafe { sexp.string_elt(isize::try_from(i).expect("index overflow")) };
                         if charsxp == unsafe { crate::ffi::R_NaString } {
                             handle_na(opts, Some(i))
                         } else {
@@ -457,16 +456,14 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                 // Convert to object
                 let mut map = serde_json::Map::new();
                 for i in 0..len {
-                    let charsxp =
-                        names.string_elt(isize::try_from(i).expect("index overflow"));
+                    let charsxp = names.string_elt(isize::try_from(i).expect("index overflow"));
                     let key = if charsxp == unsafe { crate::ffi::R_NaString } {
                         format!("V{}", i + 1) // Auto-name for NA keys
                     } else {
                         unsafe { charsxp_to_str(charsxp) }.to_string()
                     };
-                    let elem = unsafe {
-                        sexp.vector_elt(isize::try_from(i).expect("index overflow"))
-                    };
+                    let elem =
+                        unsafe { sexp.vector_elt(isize::try_from(i).expect("index overflow")) };
                     let val = sexp_to_json_value(elem, opts)?;
                     map.insert(key, val);
                 }
@@ -475,11 +472,8 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                 // Convert to array
                 let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
                     .map(|i| {
-                        let elem = unsafe {
-                            
-                                sexp.vector_elt(isize::try_from(i).expect("index overflow"),
-                            )
-                        };
+                        let elem =
+                            unsafe { sexp.vector_elt(isize::try_from(i).expect("index overflow")) };
                         sexp_to_json_value(elem, opts)
                     })
                     .collect();
@@ -555,9 +549,8 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
         match opts.factor {
             FactorHandling::Label => {
                 // Factor indices are 1-based
-                let charsxp = unsafe {
-                    levels.string_elt(isize::try_from(idx - 1).expect("index overflow"))
-                };
+                let charsxp =
+                    unsafe { levels.string_elt(isize::try_from(idx - 1).expect("index overflow")) };
                 let s = unsafe { charsxp_to_str(charsxp) };
                 JsonValue::String(s.to_string())
             }
@@ -655,8 +648,9 @@ impl IntoR for Vec<JsonValue> {
         };
         for (i, value) in self.iter().enumerate() {
             unsafe {
-                
-                    sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), json_value_to_sexp(value),
+                sexp.get().set_vector_elt(
+                    isize::try_from(i).expect("index overflow"),
+                    json_value_to_sexp(value),
                 )
             };
         }
@@ -687,9 +681,8 @@ impl IntoR for Vec<Option<JsonValue>> {
                 None => crate::ffi::SEXP::null(),
             };
             unsafe {
-                
-                    sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), elem,
-                )
+                sexp.get()
+                    .set_vector_elt(isize::try_from(i).expect("index overflow"), elem)
             };
         }
         // Return the SEXP - guard drops and unprotects
@@ -737,8 +730,10 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
                 let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 1) };
                 unsafe {
                     let i = n.as_i64().expect("json_number_fits_i32 verified this");
-                    
-                        sexp.set_integer_elt(0, i32::try_from(i).expect("json_number_fits_i32 verified range"),
+
+                    sexp.set_integer_elt(
+                        0,
+                        i32::try_from(i).expect("json_number_fits_i32 verified range"),
                     );
                 };
                 return sexp;
@@ -775,11 +770,13 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
             for (i, (key, val)) in map.iter().enumerate() {
                 let charsxp = unsafe { crate::altrep_impl::checked_mkchar(key) };
                 unsafe {
-                    
-                        names.get().set_string_elt(isize::try_from(i).expect("index overflow"), charsxp,
-                    );
-                    
-                        sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), json_value_to_sexp(val),
+                    names
+                        .get()
+                        .set_string_elt(isize::try_from(i).expect("index overflow"), charsxp);
+
+                    sexp.get().set_vector_elt(
+                        isize::try_from(i).expect("index overflow"),
+                        json_value_to_sexp(val),
                     );
                 }
             }
@@ -820,8 +817,9 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let JsonValue::Bool(b) = v {
                         unsafe {
-                            
-                                sexp.set_logical_elt(isize::try_from(i).expect("index overflow"), if *b { 1 } else { 0 },
+                            sexp.set_logical_elt(
+                                isize::try_from(i).expect("index overflow"),
+                                if *b { 1 } else { 0 },
                             )
                         };
                     }
@@ -851,8 +849,10 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                                 let i64_val = n.as_i64().expect("all_i32 check verified this");
                                 let i32_val =
                                     i32::try_from(i64_val).expect("all_i32 check verified range");
-                                
-                                    sexp.set_integer_elt(isize::try_from(i).expect("index overflow"), i32_val,
+
+                                sexp.set_integer_elt(
+                                    isize::try_from(i).expect("index overflow"),
+                                    i32_val,
                                 )
                             };
                         }
@@ -870,8 +870,9 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let JsonValue::Number(n) = v {
                         unsafe {
-                            
-                                sexp.set_real_elt(isize::try_from(i).expect("index overflow"), n.as_f64().unwrap_or(f64::NAN),
+                            sexp.set_real_elt(
+                                isize::try_from(i).expect("index overflow"),
+                                n.as_f64().unwrap_or(f64::NAN),
                             )
                         };
                     }
@@ -890,8 +891,10 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                     if let JsonValue::String(s) = v {
                         unsafe {
                             let charsxp = crate::altrep_impl::checked_mkchar(s);
-                            
-                                sexp.get().set_string_elt(isize::try_from(i).expect("index overflow"), charsxp,
+
+                            sexp.get().set_string_elt(
+                                isize::try_from(i).expect("index overflow"),
+                                charsxp,
                             );
                         }
                     }
@@ -913,8 +916,9 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
     };
     for (i, elem) in arr.iter().enumerate() {
         unsafe {
-            
-                sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), json_value_to_sexp(elem),
+            sexp.get().set_vector_elt(
+                isize::try_from(i).expect("index overflow"),
+                json_value_to_sexp(elem),
             )
         };
     }

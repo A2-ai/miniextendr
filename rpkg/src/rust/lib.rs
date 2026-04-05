@@ -99,25 +99,17 @@ miniextendr_api::miniextendr_init!();
 #[cfg(feature = "serde")]
 pub use miniextendr_api::serde_crate as serde;
 
+mod raw_ffi;
+
 // Test modules
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
-mod backtrace_tests;
-mod collect_tests;
-mod condition_tests;
-#[cfg(feature = "datafusion")]
-mod datafusion_tests;
-mod display_fromstr_tests;
-#[cfg(feature = "serde")]
-mod json_string_tests;
-mod lazy_tests;
-#[cfg(feature = "log")]
-mod log_tests;
+mod altrep_sexp_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
-mod altrep_sexp_tests;
 mod as_coerce_tests;
+mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
 mod bigint_adapter_tests;
 #[cfg(feature = "bitflags")]
@@ -131,19 +123,24 @@ mod box_slice_tests;
 mod bytes_adapter_tests;
 mod class_system_matrix;
 mod coerce_tests;
+mod collect_tests;
+#[cfg(feature = "serde")]
+mod columnar_flatten_tests;
+mod condition_tests;
 #[cfg(feature = "connections")]
 mod connection_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
-#[cfg(feature = "serde")]
-mod columnar_flatten_tests;
 mod dataframe_examples;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
+#[cfg(feature = "datafusion")]
+mod datafusion_tests;
 #[cfg(feature = "rust_decimal")]
 mod decimal_adapter_tests;
 mod default_tests;
+mod display_fromstr_tests;
 mod doc_attr_tests;
 mod dots_tests;
 #[cfg(feature = "either")]
@@ -152,53 +149,58 @@ mod encoding_tests;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_any_tests;
-mod externalslice_tests;
 mod externalptr_tests;
+mod externalslice_tests;
 mod factor_tests;
 mod ffi_guard_tests;
-#[cfg(feature = "growth-debug")]
-mod growth_debug_tests;
-mod impl_trait_tests;
-mod into_r_as_tests;
-mod into_r_error_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
+#[cfg(feature = "growth-debug")]
+mod growth_debug_tests;
 mod identical_tests;
+mod impl_trait_tests;
 #[cfg(feature = "indexmap")]
 mod indexmap_adapter_tests;
 #[cfg(feature = "indicatif")]
 mod indicatif_adapter_tests;
 mod interrupt_tests;
+mod into_r_as_tests;
+mod into_r_error_tests;
+#[cfg(feature = "serde")]
+mod json_string_tests;
+mod lazy_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
+#[cfg(feature = "log")]
+mod log_tests;
 mod macro_equivalence;
 mod match_arg_tests;
 mod misc_tests;
-mod panic_telemetry_tests;
-mod protect_pool_tests;
 mod missing_tests;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;
-#[cfg(all(feature = "nalgebra", feature = "ndarray"))]
-mod r_backed_tests;
 #[cfg(feature = "num-complex")]
 mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]
 mod num_traits_adapter_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
+mod panic_telemetry_tests;
 mod panic_tests;
+mod protect_pool_tests;
 mod r6_default_tests;
 mod r6_tests;
+#[cfg(all(feature = "nalgebra", feature = "ndarray"))]
+mod r_backed_tests;
 mod r_wrapper_attrs;
+mod rarray_tests;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
-mod rarray_tests;
 mod rdata_sidecar_tests;
-mod refcount_protect_tests;
 mod receiver_tests;
+mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rng_tests;
@@ -206,7 +208,6 @@ mod s3_tests;
 mod s4_helpers_tests;
 mod s4_tests;
 mod s7_tests;
-mod streaming_altrep_tests;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]
@@ -214,6 +215,7 @@ mod serde_r_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
 mod shared_trait_test;
+mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
 mod thread_tests;

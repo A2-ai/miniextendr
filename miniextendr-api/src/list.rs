@@ -167,16 +167,26 @@ impl List {
     #[inline]
     pub fn get_rownames(self) -> Option<SEXP> {
         let rownames = unsafe { ffi::Rf_GetRowNames(self.0) };
-        if rownames.is_nil() { None } else { Some(rownames) }
+        if rownames.is_nil() {
+            None
+        } else {
+            Some(rownames)
+        }
     }
 
     /// Get column names from the `dimnames` attribute.
     #[inline]
     pub fn get_colnames(self) -> Option<SEXP> {
         let dimnames = self.0.get_dimnames();
-        if dimnames.is_nil() { return None; }
+        if dimnames.is_nil() {
+            return None;
+        }
         let colnames = unsafe { ffi::Rf_GetColNames(dimnames) };
-        if colnames.is_nil() { None } else { Some(colnames) }
+        if colnames.is_nil() {
+            None
+        } else {
+            Some(colnames)
+        }
     }
 
     /// Get the `levels` attribute if present (for factors).

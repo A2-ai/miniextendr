@@ -58,8 +58,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         "must be called from R main thread"
     );
     use crate::ffi::{
-        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength,
-        SexpExt,
+        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SexpExt,
     };
 
     unsafe {

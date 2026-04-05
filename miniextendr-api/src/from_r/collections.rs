@@ -157,8 +157,6 @@ where
     M: TryFromSexp,
     M::Error: Into<SexpError>,
 {
-    
-
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
         return Err(SexpTypeError {

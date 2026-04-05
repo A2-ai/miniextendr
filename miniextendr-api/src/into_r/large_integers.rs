@@ -512,7 +512,9 @@ impl IntoR for Option<&str> {
                     .map_err(|_| crate::into_r_error::IntoRError::StringTooLong { len: s.len() })?;
                 Ok(crate::ffi::SEXP::scalar_string(str_to_charsxp(s)))
             }
-            None => Ok(crate::ffi::SEXP::scalar_string(crate::ffi::SEXP::na_string())),
+            None => Ok(crate::ffi::SEXP::scalar_string(
+                crate::ffi::SEXP::na_string(),
+            )),
         }
     }
     #[inline]

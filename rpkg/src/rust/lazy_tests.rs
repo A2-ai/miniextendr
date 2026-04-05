@@ -23,7 +23,7 @@ pub fn test_lazy_vec_i32(n: i32) -> Lazy<Vec<i32>> {
 // region: Lazy<Arrow arrays>
 
 #[cfg(feature = "arrow")]
-use miniextendr_api::optionals::arrow_impl::{Float64Array, Int32Array, BooleanArray, StringArray};
+use miniextendr_api::optionals::arrow_impl::{BooleanArray, Float64Array, Int32Array, StringArray};
 
 /// @export
 #[cfg(feature = "arrow")]
@@ -105,7 +105,10 @@ use miniextendr_api::optionals::nalgebra_impl::DVector;
 #[cfg(feature = "nalgebra")]
 #[miniextendr]
 pub fn test_lazy_nalgebra_f64(n: i32) -> Lazy<DVector<f64>> {
-    Altrep(DVector::from_iterator(n as usize, (0..n).map(|i| (i as f64) * 2.0)))
+    Altrep(DVector::from_iterator(
+        n as usize,
+        (0..n).map(|i| (i as f64) * 2.0),
+    ))
 }
 
 /// @export

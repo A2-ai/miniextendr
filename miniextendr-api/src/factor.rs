@@ -30,8 +30,7 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP,
-    SEXPTYPE, SexpExt,
+    INTEGER, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;

@@ -256,8 +256,9 @@ impl IntoR for Vec<TomlValue> {
         };
         for (i, value) in self.iter().enumerate() {
             unsafe {
-                
-                    sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), toml_value_to_sexp(value),
+                sexp.get().set_vector_elt(
+                    isize::try_from(i).expect("index overflow"),
+                    toml_value_to_sexp(value),
                 )
             };
         }
@@ -288,9 +289,8 @@ impl IntoR for Vec<Option<TomlValue>> {
                 None => crate::ffi::SEXP::null(),
             };
             unsafe {
-                
-                    sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), elem,
-                )
+                sexp.get()
+                    .set_vector_elt(isize::try_from(i).expect("index overflow"), elem)
             };
         }
         // Return the SEXP - guard drops and unprotects
@@ -330,9 +330,8 @@ fn int_to_sexp(i: i64) -> SEXP {
     unsafe {
         if i64_fits_r_int(i) {
             let sexp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-            
-                sexp.set_integer_elt(0, i32::try_from(i).expect("validated by i64_fits_r_int"),
-            );
+
+            sexp.set_integer_elt(0, i32::try_from(i).expect("validated by i64_fits_r_int"));
             sexp
         } else {
             // Value out of R integer range — store as double
@@ -385,8 +384,10 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                     if let TomlValue::String(s) = v {
                         unsafe {
                             let charsxp = crate::altrep_impl::checked_mkchar(s);
-                            
-                                sexp.get().set_string_elt(isize::try_from(i).expect("index overflow"), charsxp,
+
+                            sexp.get().set_string_elt(
+                                isize::try_from(i).expect("index overflow"),
+                                charsxp,
                             );
                         }
                     }
@@ -414,8 +415,9 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                     for (i, v) in arr.iter().enumerate() {
                         if let TomlValue::Integer(n) = v {
                             unsafe {
-                                
-                                    sexp.set_integer_elt(isize::try_from(i).expect("index overflow"), i32::try_from(*n).expect("validated by i64_fits_r_int"),
+                                sexp.set_integer_elt(
+                                    isize::try_from(i).expect("index overflow"),
+                                    i32::try_from(*n).expect("validated by i64_fits_r_int"),
                                 )
                             };
                         }
@@ -433,8 +435,9 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                     if let TomlValue::Integer(n) = v {
                         #[allow(clippy::cast_precision_loss)]
                         unsafe {
-                            
-                                sexp.set_real_elt(isize::try_from(i).expect("index overflow"), *n as f64,
+                            sexp.set_real_elt(
+                                isize::try_from(i).expect("index overflow"),
+                                *n as f64,
                             )
                         };
                     }
@@ -467,8 +470,9 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Boolean(b) = v {
                         unsafe {
-                            
-                                sexp.set_logical_elt(isize::try_from(i).expect("index overflow"), if *b { 1 } else { 0 },
+                            sexp.set_logical_elt(
+                                isize::try_from(i).expect("index overflow"),
+                                if *b { 1 } else { 0 },
                             )
                         };
                     }
@@ -491,8 +495,9 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
     };
     for (i, v) in arr.iter().enumerate() {
         unsafe {
-            
-                sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), toml_value_to_sexp(v),
+            sexp.get().set_vector_elt(
+                isize::try_from(i).expect("index overflow"),
+                toml_value_to_sexp(v),
             )
         };
     }
@@ -519,11 +524,14 @@ fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
     for (i, (key, value)) in table.iter().enumerate() {
         unsafe {
             let charsxp = crate::altrep_impl::checked_mkchar(key);
-            
-                names.get().set_string_elt(isize::try_from(i).expect("index overflow"), charsxp,
-            );
-            
-                sexp.get().set_vector_elt(isize::try_from(i).expect("index overflow"), toml_value_to_sexp(value),
+
+            names
+                .get()
+                .set_string_elt(isize::try_from(i).expect("index overflow"), charsxp);
+
+            sexp.get().set_vector_elt(
+                isize::try_from(i).expect("index overflow"),
+                toml_value_to_sexp(value),
             );
         }
     }

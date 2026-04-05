@@ -1,6 +1,7 @@
 //! SexpExt helper benchmarks.
 
 use miniextendr_api::ffi::{self, SexpExt};
+use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
@@ -20,7 +21,7 @@ fn sexp_len_ext(size_idx: usize) {
 fn sexp_len_raw(size_idx: usize) {
     let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
     unsafe {
-        let len = ffi::Rf_xlength(sexp);
+        let len = raw_ffi::Rf_xlength(sexp);
         divan::black_box(len);
     }
 }
@@ -52,8 +53,8 @@ fn sexp_as_slice_ext(size_idx: usize) {
 fn sexp_as_slice_raw(size_idx: usize) {
     let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
     unsafe {
-        let ptr = ffi::INTEGER(sexp);
-        let len = ffi::Rf_xlength(sexp) as usize;
+        let ptr = raw_ffi::INTEGER(sexp);
+        let len = raw_ffi::Rf_xlength(sexp) as usize;
         let slice = std::slice::from_raw_parts(ptr, len);
         divan::black_box(slice.as_ptr());
     }

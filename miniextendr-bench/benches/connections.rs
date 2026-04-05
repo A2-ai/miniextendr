@@ -8,8 +8,9 @@
 use miniextendr_api::connection::{
     RConnectionIo, Rconn, get_connection, read_connection, write_connection,
 };
-#[cfg(feature = "connections")]
 use miniextendr_api::ffi;
+#[cfg(feature = "connections")]
+use miniextendr_bench::raw_ffi;
 #[cfg(feature = "connections")]
 use std::io::Cursor;
 
@@ -22,7 +23,7 @@ struct ProtectedConn {
 impl Drop for ProtectedConn {
     fn drop(&mut self) {
         unsafe {
-            ffi::Rf_unprotect(1);
+            raw_ffi::Rf_unprotect(1);
         }
     }
 }
@@ -47,7 +48,7 @@ fn make_connection() -> ProtectedConn {
         .mode("rb+")
         .build_read_write_seek();
     unsafe {
-        ffi::Rf_protect(sexp);
+        raw_ffi::Rf_protect(sexp);
         open_connection(sexp);
     }
     ProtectedConn { sexp }
@@ -64,7 +65,7 @@ fn make_readable_connection(size: usize) -> ProtectedConn {
         .mode("rb+")
         .build_read_write_seek();
     unsafe {
-        ffi::Rf_protect(sexp);
+        raw_ffi::Rf_protect(sexp);
         open_connection(sexp);
     }
     ProtectedConn { sexp }

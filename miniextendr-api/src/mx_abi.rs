@@ -7,9 +7,9 @@
 
 use crate::abi::{mx_erased, mx_tag};
 use crate::ffi::{
-    R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr,
-    R_PreserveObject, R_RegisterCCallable, R_RegisterCFinalizerEx, Rboolean, Rf_install,
-    Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
+    R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr, R_PreserveObject,
+    R_RegisterCCallable, R_RegisterCFinalizerEx, Rboolean, Rf_install, Rf_protect, Rf_unprotect,
+    SEXP, SEXPTYPE, SexpExt,
 };
 use std::ffi::CStr;
 use std::sync::OnceLock;

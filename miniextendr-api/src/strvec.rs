@@ -151,11 +151,13 @@ impl StrVec {
     ///
     /// Panics if `idx` is out of bounds.
     #[inline]
-    pub unsafe fn set_na(self, idx: isize) { unsafe {
-        assert!(idx >= 0 && idx < self.len(), "index out of bounds");
-        // R_NaString is a global constant, no protection needed
-        self.0.set_string_elt(idx, ffi::R_NaString);
-    }}
+    pub unsafe fn set_na(self, idx: isize) {
+        unsafe {
+            assert!(idx >= 0 && idx < self.len(), "index out of bounds");
+            // R_NaString is a global constant, no protection needed
+            self.0.set_string_elt(idx, ffi::R_NaString);
+        }
+    }
 
     /// Set an element from an optional string.
     ///

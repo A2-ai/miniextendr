@@ -4,8 +4,7 @@ mod r_test_utils;
 
 use miniextendr_api::altrep_traits::NA_LOGICAL;
 use miniextendr_api::ffi::{
-    LOGICAL, R_xlen_t, RLogical, Rboolean, Rf_translateCharUTF8, Rf_xlength, SEXP, SEXPTYPE,
-    SexpExt,
+    LOGICAL, R_xlen_t, RLogical, Rboolean, Rf_translateCharUTF8, SEXP, SEXPTYPE, SexpExt,
 };
 use miniextendr_api::into_r::IntoR;
 use std::ffi::CStr;
@@ -48,7 +47,7 @@ fn test_option_rlogical_scalar() {
 fn test_vec_option_rlogical() {
     let sexp = vec![Some(RLogical::TRUE), None, Some(RLogical::FALSE)].into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::LGLSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 3);
+    assert_eq!(sexp.xlength(), 3);
 
     let slice = unsafe { std::slice::from_raw_parts(LOGICAL(sexp), 3) };
     assert_eq!(slice, &[1, NA_LOGICAL, 0]);
@@ -57,7 +56,7 @@ fn test_vec_option_rlogical() {
 fn test_vec_option_rboolean() {
     let sexp = vec![Some(Rboolean::TRUE), None, Some(Rboolean::FALSE)].into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::LGLSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 3);
+    assert_eq!(sexp.xlength(), 3);
 
     let slice = unsafe { std::slice::from_raw_parts(LOGICAL(sexp), 3) };
     assert_eq!(slice, &[1, NA_LOGICAL, 0]);
@@ -67,7 +66,7 @@ fn test_string_slice() {
     let items = vec!["alpha".to_string(), "beta".to_string()];
     let sexp = items.as_slice().into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::STRSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 2);
+    assert_eq!(sexp.xlength(), 2);
 
     assert_eq!(string_elt_val(sexp, 0), Some("alpha".to_string()));
     assert_eq!(string_elt_val(sexp, 1), Some("beta".to_string()));
@@ -84,7 +83,10 @@ fn extract_names(sexp: SEXP) -> Vec<String> {
     let n = names.len();
     (0..n)
         .map(|i| {
-            names.string_elt_str(i as R_xlen_t).unwrap_or("").to_string()
+            names
+                .string_elt_str(i as R_xlen_t)
+                .unwrap_or("")
+                .to_string()
         })
         .collect()
 }
@@ -93,7 +95,7 @@ fn test_as_named_list_vec() {
     let pairs: Vec<(String, i32)> = vec![("a".into(), 1), ("b".into(), 2), ("c".into(), 3)];
     let sexp = AsNamedList(pairs).into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::VECSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 3);
+    assert_eq!(sexp.xlength(), 3);
 
     let names = unsafe { extract_names(sexp) };
     assert_eq!(names, vec!["a", "b", "c"]);
@@ -108,7 +110,7 @@ fn test_as_named_list_array() {
     let pairs = [("x", 1.0f64), ("y", 2.0)];
     let sexp = pairs.as_named_list().into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::VECSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 2);
+    assert_eq!(sexp.xlength(), 2);
 
     let names = unsafe { extract_names(sexp) };
     assert_eq!(names, vec!["x", "y"]);
@@ -118,7 +120,7 @@ fn test_as_named_vector_vec() {
     let pairs: Vec<(&str, i32)> = vec![("alice", 95), ("bob", 87)];
     let sexp = AsNamedVector(pairs).into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::INTSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 2);
+    assert_eq!(sexp.xlength(), 2);
 
     let names = unsafe { extract_names(sexp) };
     assert_eq!(names, vec!["alice", "bob"]);
@@ -130,7 +132,7 @@ fn test_as_named_vector_array() {
     let pairs = [("x", 1.0f64), ("y", 2.0), ("z", 3.0)];
     let sexp = pairs.as_named_vector().into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 3);
+    assert_eq!(sexp.xlength(), 3);
 
     let names = unsafe { extract_names(sexp) };
     assert_eq!(names, vec!["x", "y", "z"]);
@@ -143,7 +145,7 @@ fn test_as_named_vector_option() {
     let pairs: Vec<(&str, Option<i32>)> = vec![("a", Some(1)), ("b", None), ("c", Some(3))];
     let sexp = AsNamedVector(pairs).into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::INTSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 3);
+    assert_eq!(sexp.xlength(), 3);
 
     let names = unsafe { extract_names(sexp) };
     assert_eq!(names, vec!["a", "b", "c"]);
@@ -158,7 +160,7 @@ fn test_as_named_list_slice() {
     let pairs: &[(&str, i32)] = &[("a", 1), ("b", 2)];
     let sexp = AsNamedList(pairs).into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::VECSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 2);
+    assert_eq!(sexp.xlength(), 2);
 
     let names = unsafe { extract_names(sexp) };
     assert_eq!(names, vec!["a", "b"]);
@@ -168,7 +170,7 @@ fn test_as_named_vector_slice() {
     let pairs: &[(&str, f64)] = &[("x", 1.0), ("y", 2.0)];
     let sexp = pairs.as_named_vector().into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
-    assert_eq!(unsafe { Rf_xlength(sexp) }, 2);
+    assert_eq!(sexp.xlength(), 2);
 
     let names = unsafe { extract_names(sexp) };
     assert_eq!(names, vec!["x", "y"]);

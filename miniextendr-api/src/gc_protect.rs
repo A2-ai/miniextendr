@@ -165,9 +165,9 @@
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
 use crate::ffi::{
-    R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList,
-    Rf_allocMatrix, Rf_allocVector, Rf_duplicate, Rf_protect,
-    Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
+    R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList, Rf_allocMatrix,
+    Rf_allocVector, Rf_duplicate, Rf_protect, Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE,
+    SexpExt,
 };
 use core::cell::Cell;
 use core::marker::PhantomData;

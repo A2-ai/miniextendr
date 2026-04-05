@@ -8,6 +8,7 @@
 use miniextendr_api::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::list::List;
 use miniextendr_api::typed_list::{TypeSpec, TypedEntry, TypedListSpec, validate_list};
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -19,8 +20,14 @@ fn main() {
 /// Build a named VECSXP with `n` numeric(1) entries named "f0", "f1", ..., "f{n-1}".
 fn make_numeric_list(n: usize) -> SEXP {
     unsafe {
-        let list = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t));
-        let names = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t));
+        let list = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
+            SEXPTYPE::VECSXP,
+            n as ffi::R_xlen_t,
+        ));
+        let names = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
+            SEXPTYPE::STRSXP,
+            n as ffi::R_xlen_t,
+        ));
 
         for i in 0..n {
             list.set_vector_elt(i as ffi::R_xlen_t, SEXP::scalar_real(i as f64));
@@ -30,7 +37,7 @@ fn make_numeric_list(n: usize) -> SEXP {
         }
 
         list.set_names(names);
-        ffi::Rf_unprotect(2);
+        raw_ffi::Rf_unprotect(2);
         list
     }
 }
@@ -82,8 +89,14 @@ fn make_mixed_spec(n: usize) -> TypedListSpec {
 /// Build a named list with mixed types matching `make_mixed_spec`.
 fn make_mixed_list(n: usize) -> SEXP {
     unsafe {
-        let list = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::VECSXP, n as ffi::R_xlen_t));
-        let names = ffi::Rf_protect(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t));
+        let list = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
+            SEXPTYPE::VECSXP,
+            n as ffi::R_xlen_t,
+        ));
+        let names = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(
+            SEXPTYPE::STRSXP,
+            n as ffi::R_xlen_t,
+        ));
 
         for i in 0..n {
             let val = match i % 4 {
@@ -99,7 +112,7 @@ fn make_mixed_list(n: usize) -> SEXP {
         }
 
         list.set_names(names);
-        ffi::Rf_unprotect(2);
+        raw_ffi::Rf_unprotect(2);
         list
     }
 }

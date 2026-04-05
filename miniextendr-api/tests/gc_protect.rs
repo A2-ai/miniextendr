@@ -264,8 +264,11 @@ fn protect3_convenience() {
     r_test_utils::with_r_thread(|| unsafe {
         let scope = ProtectScope::new();
 
-        let (a, b, c) =
-            scope.protect3(SEXP::scalar_integer(1), SEXP::scalar_real(2.0), SEXP::scalar_integer(3));
+        let (a, b, c) = scope.protect3(
+            SEXP::scalar_integer(1),
+            SEXP::scalar_real(2.0),
+            SEXP::scalar_integer(3),
+        );
 
         assert!(!a.get().is_null());
         assert!(!b.get().is_null());

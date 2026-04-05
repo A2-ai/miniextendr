@@ -474,6 +474,7 @@ pub fn debug_shared_data_type_name() -> String {
 /// @export
 #[miniextendr]
 pub fn get_r_class(x: SEXP) -> SEXP {
-    unsafe { miniextendr_api::ffi::Rf_getAttrib(x, miniextendr_api::ffi::R_ClassSymbol) }
+    use miniextendr_api::ffi::SexpExt;
+    x.get_class()
 }
 // endregion

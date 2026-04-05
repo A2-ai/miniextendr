@@ -523,17 +523,15 @@ impl IntoR for StringDictionaryArray {
             let levels = scope.alloc_character(n_levels).into_raw();
             for i in 0..n_levels {
                 let s = values.value(i);
-                let charsxp =
-                    SEXP::charsxp(s);
+                let charsxp = SEXP::charsxp(s);
                 levels.set_string_elt(i as R_xlen_t, charsxp);
             }
 
             // Set levels and class attributes
             codes.set_levels(levels);
             let class_str = scope.alloc_character(1).into_raw();
-            
-                class_str.set_string_elt(0, SEXP::charsxp("factor"),
-            );
+
+            class_str.set_string_elt(0, SEXP::charsxp("factor"));
             codes.set_class(class_str);
 
             codes
@@ -566,9 +564,8 @@ impl IntoR for Date32Array {
 
             // Set class = "Date"
             let class_str = scope.alloc_character(1).into_raw();
-            
-                class_str.set_string_elt(0, SEXP::charsxp("Date"),
-            );
+
+            class_str.set_string_elt(0, SEXP::charsxp("Date"));
             sexp.set_class(class_str);
 
             sexp
@@ -606,12 +603,10 @@ impl IntoR for TimestampSecondArray {
 
             // Set class = c("POSIXct", "POSIXt")
             let class_str = scope.alloc_character(2).into_raw();
-            
-                class_str.set_string_elt(0, SEXP::charsxp("POSIXct"),
-            );
-            
-                class_str.set_string_elt(1, SEXP::charsxp("POSIXt"),
-            );
+
+            class_str.set_string_elt(0, SEXP::charsxp("POSIXct"));
+
+            class_str.set_string_elt(1, SEXP::charsxp("POSIXt"));
             sexp.set_class(class_str);
 
             // Set tzone attribute if present
@@ -1024,9 +1019,8 @@ impl IntoR for RecordBatch {
 
             // Set class = "data.frame"
             let class_str = scope.alloc_character(1).into_raw();
-            
-                class_str.set_string_elt(0, SEXP::charsxp("data.frame"),
-            );
+
+            class_str.set_string_elt(0, SEXP::charsxp("data.frame"));
             list.set_class(class_str);
 
             // Set compact row.names: c(NA_integer_, -nrow)

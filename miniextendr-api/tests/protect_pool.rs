@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{SexpExt, self, SEXP};
+use miniextendr_api::ffi::{self, SEXP, SexpExt};
 use miniextendr_api::protect_pool::ProtectPool;
 
 #[test]

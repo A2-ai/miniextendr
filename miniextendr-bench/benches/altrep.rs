@@ -1,7 +1,9 @@
 //! ALTREP benchmarks.
 
 use miniextendr_api::ffi;
+use miniextendr_api::ffi::SexpExt;
 use miniextendr_api::{IntoR, miniextendr};
+use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
@@ -51,7 +53,7 @@ fn plain_int_elt(size_idx: usize) {
 fn plain_int_dataptr(size_idx: usize) {
     let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
     unsafe {
-        let ptr = ffi::INTEGER(sexp);
+        let ptr = raw_ffi::INTEGER(sexp);
         divan::black_box(ptr);
     }
 }

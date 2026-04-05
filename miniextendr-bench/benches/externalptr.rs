@@ -142,13 +142,14 @@ fn from_box() {
 #[divan::bench]
 fn set_protected(bencher: divan::Bencher) {
     use miniextendr_api::ffi;
+    use miniextendr_bench::raw_ffi;
     bencher
         .with_inputs(|| {
             let payload = SmallPayload { value: 42 };
             ExternalPtr::new(payload)
         })
         .bench_local_refs(|ptr| unsafe {
-            let nil = ffi::R_NilValue;
+            let nil = raw_ffi::R_NilValue;
             ptr.set_protected(nil);
             divan::black_box(ptr);
         });
@@ -199,7 +200,7 @@ struct ProtectedSexp {
 
 impl Drop for ProtectedSexp {
     fn drop(&mut self) {
-        unsafe { miniextendr_api::ffi::Rf_unprotect(1) };
+        unsafe { miniextendr_bench::raw_ffi::Rf_unprotect(1) };
     }
 }
 
@@ -209,7 +210,7 @@ fn erased_is_hit(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let ptr = ExternalPtr::new(SmallPayload { value: 42 });
             let sexp = ptr.as_sexp();
-            miniextendr_api::ffi::Rf_protect(sexp);
+            miniextendr_bench::raw_ffi::Rf_protect(sexp);
             ProtectedSexp { sexp }
         })
         .bench_local_refs(|p| {
@@ -224,7 +225,7 @@ fn erased_is_miss(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let ptr = ExternalPtr::new(SmallPayload { value: 42 });
             let sexp = ptr.as_sexp();
-            miniextendr_api::ffi::Rf_protect(sexp);
+            miniextendr_bench::raw_ffi::Rf_protect(sexp);
             ProtectedSexp { sexp }
         })
         .bench_local_refs(|p| {
@@ -239,7 +240,7 @@ fn erased_downcast_ref_hit(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let ptr = ExternalPtr::new(SmallPayload { value: 42 });
             let sexp = ptr.as_sexp();
-            miniextendr_api::ffi::Rf_protect(sexp);
+            miniextendr_bench::raw_ffi::Rf_protect(sexp);
             ProtectedSexp { sexp }
         })
         .bench_local_refs(|p| {
@@ -255,7 +256,7 @@ fn erased_downcast_mut_hit(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let ptr = ExternalPtr::new(SmallPayload { value: 42 });
             let sexp = ptr.as_sexp();
-            miniextendr_api::ffi::Rf_protect(sexp);
+            miniextendr_bench::raw_ffi::Rf_protect(sexp);
             ProtectedSexp { sexp }
         })
         .bench_local_refs(|p| {

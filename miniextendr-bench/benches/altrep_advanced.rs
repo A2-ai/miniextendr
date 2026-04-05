@@ -7,7 +7,9 @@
 
 use miniextendr_api::ffi;
 use miniextendr_api::ffi::Rcomplex;
+use miniextendr_api::ffi::SexpExt;
 use miniextendr_api::{IntoR, miniextendr};
+use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
@@ -196,7 +198,7 @@ mod materialization {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
         unsafe {
-            let ptr = ffi::INTEGER(sexp);
+            let ptr = raw_ffi::INTEGER(sexp);
             let mut sum: i64 = 0;
             for i in 0..len {
                 sum += *ptr.add(i) as i64;
@@ -236,7 +238,7 @@ mod string_altrep {
         let data: Vec<Option<String>> = (0..len).map(|i| Some(format!("str_{i}"))).collect();
         let sexp = BenchString::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::STRING_ELT(sexp, 0));
+            divan::black_box(raw_ffi::STRING_ELT(sexp, 0));
         }
     }
 
@@ -255,7 +257,7 @@ mod string_altrep {
             .collect();
         let sexp = BenchString::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::STRING_ELT(sexp, (len - 1) as isize));
+            divan::black_box(raw_ffi::STRING_ELT(sexp, (len - 1) as isize));
         }
     }
 
@@ -277,7 +279,7 @@ mod string_altrep {
         let strings: Vec<String> = (0..len).map(|i| format!("str_{i}")).collect();
         let sexp = strings.into_sexp();
         unsafe {
-            divan::black_box(ffi::STRING_ELT(sexp, 0));
+            divan::black_box(raw_ffi::STRING_ELT(sexp, 0));
         }
     }
 }
@@ -432,7 +434,7 @@ mod zero_alloc {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().real_vec(size_idx);
         unsafe {
-            let ptr = ffi::REAL(sexp);
+            let ptr = raw_ffi::REAL(sexp);
             let mut sum = 0.0f64;
             for i in 0..len {
                 sum += *ptr.add(i);

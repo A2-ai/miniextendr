@@ -1696,7 +1696,7 @@ macro_rules! impl_tuple_into_r {
                     crate::ffi::Rf_protect(list);
 
                     $(
-                        
+
                             list.set_vector_elt($idx as crate::ffi::R_xlen_t, self.$idx.into_sexp()
                         );
                     )+
@@ -1715,7 +1715,7 @@ macro_rules! impl_tuple_into_r {
                     crate::ffi::Rf_protect(list);
 
                     $(
-                        
+
                             list.set_vector_elt_unchecked($idx as crate::ffi::R_xlen_t, self.$idx.into_sexp_unchecked()
                         );
                     )+
@@ -1939,7 +1939,8 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::ffi::SEXP {
             n as crate::ffi::R_xlen_t,
         ));
         for (i, item) in items.into_iter().enumerate() {
-            list.get().set_vector_elt(i as crate::ffi::R_xlen_t, item.into_sexp());
+            list.get()
+                .set_vector_elt(i as crate::ffi::R_xlen_t, item.into_sexp());
         }
         *list
     }

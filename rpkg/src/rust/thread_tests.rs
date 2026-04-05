@@ -25,7 +25,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
         .name("test-r-worker".to_string())
         .spawn(|| {
             // mxl::allow(MXL301)
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(123) };
+            let sexp = unsafe { crate::raw_ffi::Rf_ScalarInteger(123) };
             sexp.as_integer().unwrap()
         })
         .expect("failed to spawn thread");
@@ -42,7 +42,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
     let result = RThreadBuilder::new()
         .spawn_join(|| {
             // mxl::allow(MXL301)
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(456) };
+            let sexp = unsafe { crate::raw_ffi::Rf_ScalarInteger(456) };
             sexp.as_integer().unwrap()
         })
         .expect("thread failed");

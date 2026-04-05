@@ -2,6 +2,7 @@
 
 use miniextendr_api::ffi;
 use miniextendr_api::unwind_protect::with_r_unwind_protect;
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -24,7 +25,7 @@ fn direct_noop() {
 
 #[divan::bench]
 fn unwind_r_call() {
-    let out = with_r_unwind_protect(|| unsafe { ffi::Rf_ScalarInteger(1) }, None);
+    let out = with_r_unwind_protect(|| unsafe { raw_ffi::Rf_ScalarInteger(1) }, None);
     divan::black_box(out);
 }
 // endregion
@@ -59,7 +60,7 @@ fn catch_unwind_panic(bencher: divan::Bencher) {
 #[divan::bench]
 fn unwind_nested_2() {
     let out = with_r_unwind_protect(
-        || with_r_unwind_protect(|| unsafe { ffi::Rf_ScalarInteger(1) }, None),
+        || with_r_unwind_protect(|| unsafe { raw_ffi::Rf_ScalarInteger(1) }, None),
         None,
     );
     divan::black_box(out);
@@ -76,7 +77,7 @@ fn unwind_nested_5() {
                             with_r_unwind_protect(
                                 || {
                                     with_r_unwind_protect(
-                                        || unsafe { ffi::Rf_ScalarInteger(1) },
+                                        || unsafe { raw_ffi::Rf_ScalarInteger(1) },
                                         None,
                                     )
                                 },

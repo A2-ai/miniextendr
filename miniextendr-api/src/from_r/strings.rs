@@ -35,8 +35,6 @@ impl TryFromSexp for &'static str {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -72,8 +70,6 @@ impl TryFromSexp for &'static str {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -113,8 +109,6 @@ impl TryFromSexp for Option<&'static str> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        
-
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
@@ -150,8 +144,6 @@ impl TryFromSexp for Option<&'static str> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        
-
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }

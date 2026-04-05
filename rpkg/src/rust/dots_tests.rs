@@ -53,8 +53,6 @@ pub fn greetings_last_as_nameless_dots(_exclamations: i32, _dots: ...) {}
 #[miniextendr]
 /// @param ... Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
 pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
-    
-
     let args = dots
         .typed(typed_list!(
             alpha => numeric(4),
@@ -86,8 +84,6 @@ pub fn validate_strict_args(dots: ...) -> Result<String, String> {
 #[miniextendr]
 /// @param ... Named arguments: `data` (data.frame).
 pub fn validate_class_args(dots: ...) -> Result<i32, String> {
-    
-
     let args = dots
         .typed(typed_list!(data => "data.frame"))
         .map_err(|e| e.to_string())?;
