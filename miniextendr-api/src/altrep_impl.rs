@@ -264,8 +264,9 @@ macro_rules! __impl_altvec_dataptr {
 /// Internal macro: impl AltVec with dataptr support for string ALTREP.
 ///
 /// String vectors (STRSXP) store CHARSXP pointers, not contiguous data. This macro
-/// materializes the Rust strings into a native R STRSXP cached in the ALTREP data2 slot.
-/// Subsequent calls return the cached STRSXP's data pointer directly.
+/// materializes remaining uncached elements into the data2 STRSXP cache (which may
+/// already have some elements from prior `Elt` calls). Returns the cached STRSXP's
+/// data pointer.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_string_dataptr {
@@ -276,34 +277,35 @@ macro_rules! __impl_altvec_string_dataptr {
 
             fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
                 unsafe {
-                    // Check for cached materialized STRSXP in data2 slot
-                    let data2 = $crate::ffi::R_altrep_data2(x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
-                    {
-                        // DATAPTR_RO on a standard (non-ALTREP) STRSXP gives the SEXP* array.
-                        // Cast to mutable: safe because we own the materialized vector.
-                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
-                    }
-
-                    // Materialize: create a native STRSXP from the Rust strings
                     let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let strsxp = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
-                        $crate::ffi::SEXPTYPE::STRSXP,
-                        n,
-                    ));
 
-                    // Populate using the AltString::elt method (which handles Option→NA)
-                    for i in 0..n {
-                        let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
-                        $crate::ffi::SexpExt::set_string_elt(&strsxp, i, elt);
+                    // Get or allocate the data2 cache STRSXP
+                    let mut data2 = $crate::ffi::R_altrep_data2(x);
+                    if data2.is_null()
+                        || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP
+                    {
+                        data2 = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                            $crate::ffi::SEXPTYPE::STRSXP,
+                            n,
+                        ));
+                        $crate::ffi::R_set_altrep_data2(x, data2);
+                        $crate::ffi::Rf_unprotect(1);
                     }
 
-                    // Cache in data2 slot (R will GC-protect it as part of the ALTREP object)
-                    $crate::ffi::R_set_altrep_data2(x, strsxp);
-                    $crate::ffi::Rf_unprotect(1);
+                    // Fill uncached elements only — elements already cached by Elt
+                    // are non-NA CHARSXPs and are skipped. NA elements are re-probed
+                    // from Rust (O(1)) to handle mixed cached/uncached NA slots.
+                    for i in 0..n {
+                        let cached = $crate::ffi::SexpExt::string_elt(&data2, i);
+                        if cached != $crate::ffi::R_NaString {
+                            continue; // already cached by a prior Elt call
+                        }
+                        // Compute from Rust and store
+                        let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
+                        $crate::ffi::SexpExt::set_string_elt(&data2, i, elt);
+                    }
 
-                    $crate::ffi::DATAPTR_RO(strsxp).cast_mut()
+                    $crate::ffi::DATAPTR_RO(data2).cast_mut()
                 }
             }
 
@@ -315,6 +317,9 @@ macro_rules! __impl_altvec_string_dataptr {
                     if !data2.is_null()
                         && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
                     {
+                        // Return pointer even if partially cached — R expects
+                        // DATAPTR_OR_NULL to return non-null when data exists.
+                        // Uncached slots are R_NaString which is valid.
                         $crate::ffi::DATAPTR_RO(data2)
                     } else {
                         core::ptr::null()
@@ -893,19 +898,58 @@ macro_rules! __impl_altstring_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltString for $ty {
-            // String elt is special: Option<&str> → CHARSXP or R_NaString
+            // String elt with lazy per-element caching in data2 STRSXP.
+            //
+            // On first access, allocates a STRSXP in data2 (initialized to R_NaString).
+            // Each element is computed from Rust on first access and cached. Subsequent
+            // accesses return the cached CHARSXP directly.
+            //
+            // For NA elements (Rust elt returns None), data2[i] stays R_NaString — we
+            // re-probe Rust each time (O(1) index, returns None immediately). This is
+            // simpler than a separate materialization bitmap and the cost is negligible.
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
-                match unsafe { $crate::altrep_data1_as::<$ty>(x) } {
-                    Some(d) => {
-                        match <$ty as $crate::altrep_data::AltStringData>::elt(
-                            &*d,
-                            i.max(0) as usize,
-                        ) {
-                            Some(s) => unsafe { $crate::altrep_impl::checked_mkchar(s) },
-                            None => $crate::ffi::SEXP::na_string(),
+                unsafe {
+                    let idx = i.max(0) as usize;
+
+                    // Get or allocate the data2 cache STRSXP
+                    let mut data2 = $crate::ffi::R_altrep_data2(x);
+                    if data2.is_null()
+                        || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP
+                    {
+                        let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
+                        // Allocate STRSXP — R inits to R_BlankString (""), NOT R_NaString.
+                        // Fill with R_NaString so we can use it as "not yet cached" sentinel.
+                        data2 = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                            $crate::ffi::SEXPTYPE::STRSXP,
+                            n,
+                        ));
+                        for j in 0..n {
+                            $crate::ffi::SexpExt::set_string_elt(&data2, j, $crate::ffi::R_NaString);
                         }
+                        $crate::ffi::R_set_altrep_data2(x, data2);
+                        $crate::ffi::Rf_unprotect(1);
                     }
-                    None => $crate::ffi::SEXP::na_string(),
+
+                    // Check cache: non-NA means already materialized
+                    let cached = $crate::ffi::SexpExt::string_elt(&data2, i);
+                    if cached != $crate::ffi::R_NaString {
+                        return cached;
+                    }
+
+                    // Cache miss (or genuine NA) — probe Rust source
+                    match $crate::altrep_data1_as::<$ty>(x) {
+                        Some(d) => {
+                            match <$ty as $crate::altrep_data::AltStringData>::elt(&*d, idx) {
+                                Some(s) => {
+                                    let charsxp = $crate::altrep_impl::checked_mkchar(s);
+                                    $crate::ffi::SexpExt::set_string_elt(&data2, i, charsxp);
+                                    charsxp
+                                }
+                                None => $crate::ffi::R_NaString,
+                            }
+                        }
+                        None => $crate::ffi::R_NaString,
+                    }
                 }
             }
 
