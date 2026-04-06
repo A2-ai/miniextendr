@@ -63,7 +63,6 @@ impl TryFromSexp for RBitVec {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::LOGICAL_ELT;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::LGLSXP {
@@ -106,7 +105,7 @@ impl IntoR for RBitVec {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector, SET_LOGICAL_ELT};
+        use crate::ffi::{Rf_allocVector};
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, len as crate::ffi::R_xlen_t) };
@@ -143,7 +142,6 @@ impl TryFromSexp for BitVec<u8, Msb0> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::LOGICAL_ELT;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::LGLSXP {
@@ -183,7 +181,7 @@ impl IntoR for BitVec<u8, Msb0> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector, SET_LOGICAL_ELT};
+        use crate::ffi::{Rf_allocVector};
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, len as crate::ffi::R_xlen_t) };

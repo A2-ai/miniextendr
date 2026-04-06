@@ -111,7 +111,7 @@ impl TryFromSexp for Complex<f64> {
             }));
         }
 
-        let rcomplex = unsafe { sexp.complex_elt(0) };
+        let rcomplex = sexp.complex_elt(0);
         if is_na_rcomplex(&rcomplex) {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::CPLXSXP,
@@ -164,7 +164,7 @@ impl TryFromSexp for Option<Complex<f64>> {
             }));
         }
 
-        let rcomplex = unsafe { sexp.complex_elt(0) };
+        let rcomplex = sexp.complex_elt(0);
         if is_na_rcomplex(&rcomplex) {
             Ok(None)
         } else {
@@ -210,7 +210,7 @@ impl TryFromSexp for Vec<Complex<f64>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let rcomplex = unsafe { sexp.complex_elt(i as crate::ffi::R_xlen_t) };
+            let rcomplex = sexp.complex_elt(i as crate::ffi::R_xlen_t);
             if is_na_rcomplex(&rcomplex) {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for Vec<Complex<f64>>",
@@ -239,7 +239,7 @@ impl IntoR for Vec<Complex<f64>> {
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
 
         for (i, c) in self.into_iter().enumerate() {
-            unsafe { sexp.set_complex_elt(i as crate::ffi::R_xlen_t, to_rcomplex(c)) };
+            sexp.set_complex_elt(i as crate::ffi::R_xlen_t, to_rcomplex(c));
         }
 
         sexp
@@ -267,7 +267,7 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let rcomplex = unsafe { sexp.complex_elt(i as crate::ffi::R_xlen_t) };
+            let rcomplex = sexp.complex_elt(i as crate::ffi::R_xlen_t);
             if is_na_rcomplex(&rcomplex) {
                 result.push(None);
             } else {
@@ -298,7 +298,7 @@ impl IntoR for Vec<Option<Complex<f64>>> {
                 Some(c) => to_rcomplex(c),
                 None => na_rcomplex(),
             };
-            unsafe { sexp.set_complex_elt(i as crate::ffi::R_xlen_t, rcomplex) };
+            sexp.set_complex_elt(i as crate::ffi::R_xlen_t, rcomplex);
         }
 
         sexp

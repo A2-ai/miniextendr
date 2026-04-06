@@ -46,7 +46,7 @@ pub use arrow_buffer;
 pub use arrow_schema::{self, DataType, Field, Schema};
 
 use crate::ffi::{
-    self, R_ClassSymbol, R_NaString, R_NamesSymbol, R_RowNamesSymbol, R_xlen_t, RNativeType,
+    self, R_NaString, R_xlen_t, RNativeType,
     Rboolean, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
@@ -612,7 +612,7 @@ impl IntoR for TimestampSecondArray {
             // Set tzone attribute if present
             if let Some(tz) = tz {
                 let tz_str = scope.alloc_character(1).into_raw();
-                tz_str.set_string_elt(0, SEXP::charsxp(tz));
+                tz_str.set_string_elt(0, SEXP::charsxp(&tz));
                 sexp.set_attr(ffi::Rf_install(c"tzone".as_ptr()), tz_str);
             }
 

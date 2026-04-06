@@ -59,8 +59,8 @@ use std::fmt;
 use std::mem;
 
 use crate::ffi::{
-    RAW, Rf_ScalarString, Rf_allocVector, Rf_install, Rf_mkCharLenCE, Rf_xlength, SEXP, SEXPTYPE,
-    STRING_ELT, SexpExt, cetype_t,
+    RAW, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE,
+    SexpExt,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;

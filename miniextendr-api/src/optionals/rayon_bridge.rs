@@ -193,7 +193,7 @@
 //! on primitive types (`i32`, `f64`, `bool`, etc.) and standard Rust collections.
 
 use crate::IntoR;
-use crate::ffi::{RNativeType, SEXP};
+use crate::ffi::{RNativeType, SEXP, SexpExt};
 use crate::worker::with_r_thread;
 
 #[cfg(feature = "rayon")]

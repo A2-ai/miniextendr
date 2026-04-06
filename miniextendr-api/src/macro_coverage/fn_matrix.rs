@@ -11,7 +11,7 @@
 //! Every `MiniextendrFnAttrs` option has at least one atomic fixture,
 //! and common combinations are also covered.
 
-use crate::ffi;
+use crate::ffi::{self, SEXP};
 use crate::miniextendr;
 
 #[derive(Debug)]
@@ -97,6 +97,7 @@ pub(crate) fn cov_fn_named_dots(dots: ...) {
 pub(crate) fn cov_fn_unused_named_dots(_dots: ...) {}
 
 #[miniextendr]
+#[allow(varargs_without_pattern)]
 pub(crate) fn cov_fn_unnamed_dots(...) {}
 
 #[miniextendr]
@@ -105,6 +106,7 @@ pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
 }
 
 #[miniextendr]
+#[allow(varargs_without_pattern)]
 pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, ...) {}
 // endregion
 

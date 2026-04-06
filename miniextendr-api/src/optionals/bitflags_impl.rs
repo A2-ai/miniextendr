@@ -177,7 +177,6 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::INTEGER_ELT;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::INTSXP {
@@ -223,7 +222,6 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::INTEGER_ELT;
 
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
