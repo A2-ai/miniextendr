@@ -925,7 +925,11 @@ macro_rules! __impl_altstring_methods {
                             n,
                         ));
                         for j in 0..n {
-                            $crate::ffi::SexpExt::set_string_elt(&data2, j, $crate::ffi::R_NaString);
+                            $crate::ffi::SexpExt::set_string_elt(
+                                &data2,
+                                j,
+                                $crate::ffi::R_NaString,
+                            );
                         }
                         $crate::ffi::R_set_altrep_data2(x, data2);
                         $crate::ffi::Rf_unprotect(1);
