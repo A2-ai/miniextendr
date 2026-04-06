@@ -52,8 +52,7 @@
 pub use indexmap::IndexMap;
 
 use crate::ffi::{
-    R_CHAR, R_NaString, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect,
-    SEXP, SEXPTYPE, SexpExt,
+    R_CHAR, R_NaString, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;

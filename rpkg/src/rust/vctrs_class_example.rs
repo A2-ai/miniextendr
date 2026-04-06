@@ -12,7 +12,8 @@
 //! The vctrs documentation example uses "double wins" (`percent + double = double`).
 //! Both are valid design choices - we chose to preserve the specialized type.
 
-use miniextendr_api::ffi::{Rf_allocVector, Rf_duplicate, SEXP, SEXPTYPE, SexpExt};
+use crate::raw_ffi::Rf_duplicate;
+use miniextendr_api::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::gc_protect::OwnedProtect;
 use miniextendr_api::miniextendr;
 use miniextendr_api::vctrs::new_vctr;

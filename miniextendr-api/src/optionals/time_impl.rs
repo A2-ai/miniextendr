@@ -51,8 +51,8 @@
 pub use time::{Date, OffsetDateTime};
 
 use crate::ffi::{
-    REAL, Rf_allocVector, Rf_install, Rf_mkString, Rf_protect,
-    Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
+    REAL, Rf_allocVector, Rf_install, Rf_mkString, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
+    SexpExt,
 };
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;

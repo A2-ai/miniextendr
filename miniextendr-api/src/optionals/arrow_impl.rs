@@ -45,10 +45,7 @@ pub use arrow_array::{
 pub use arrow_buffer;
 pub use arrow_schema::{self, DataType, Field, Schema};
 
-use crate::ffi::{
-    self, R_NaString, R_xlen_t, RNativeType,
-    Rboolean, SEXP, SEXPTYPE, SexpExt,
-};
+use crate::ffi::{self, R_NaString, R_xlen_t, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 

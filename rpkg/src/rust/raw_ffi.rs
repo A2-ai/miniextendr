@@ -14,3 +14,9 @@ unsafe extern "C-unwind" {
     /// mxl::allow(MXL300)
     pub fn Rf_error(fmt: *const std::os::raw::c_char, ...) -> !;
 }
+
+#[allow(non_snake_case, dead_code)]
+unsafe extern "C-unwind" {
+    /// Direct binding to `Rf_duplicate`.
+    pub fn Rf_duplicate(x: SEXP) -> SEXP;
+}

@@ -100,7 +100,7 @@ impl TryFromSexp for Vec<Uuid> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{Rf_translateCharUTF8};
+        use crate::ffi::Rf_translateCharUTF8;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {

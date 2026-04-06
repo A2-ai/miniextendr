@@ -56,10 +56,7 @@
 
 pub use toml::Value as TomlValue;
 
-use crate::ffi::{
-    Rf_allocVector, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
-};
+use crate::ffi::{Rf_allocVector, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
 use crate::impl_option_try_from_sexp;

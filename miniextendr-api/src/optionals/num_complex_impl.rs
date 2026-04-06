@@ -93,7 +93,6 @@ impl TryFromSexp for Complex<f64> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        
         let actual = sexp.type_of();
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
@@ -142,7 +141,6 @@ impl TryFromSexp for Option<Complex<f64>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        
         let actual = sexp.type_of();
         // NULL -> None
         if actual == SEXPTYPE::NILSXP {
@@ -196,7 +194,6 @@ impl TryFromSexp for Vec<Complex<f64>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        
         let actual = sexp.type_of();
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
@@ -233,7 +230,7 @@ impl IntoR for Vec<Complex<f64>> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector};
+        use crate::ffi::Rf_allocVector;
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
@@ -253,7 +250,6 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        
         let actual = sexp.type_of();
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
@@ -288,7 +284,7 @@ impl IntoR for Vec<Option<Complex<f64>>> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector};
+        use crate::ffi::Rf_allocVector;
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
