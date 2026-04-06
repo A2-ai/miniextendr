@@ -761,7 +761,10 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn is_nil(&self) -> bool {
-        self.type_of() == SEXPTYPE::NILSXP
+        // Pointer comparison, not type dereference — safe on dangling pointers.
+        // R_NilValue is the singleton NILSXP; checking type_of() would crash
+        // on freed SEXPs during cleanup.
+        unsafe { std::ptr::addr_eq(self.0, R_NilValue.0) }
     }
 
     #[inline]
