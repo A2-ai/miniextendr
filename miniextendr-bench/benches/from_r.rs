@@ -4,6 +4,8 @@
 
 use miniextendr_api::TryFromSexp;
 use miniextendr_api::ffi;
+use miniextendr_api::ffi::SexpExt;
+use miniextendr_bench::raw_ffi;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 fn main() {
@@ -21,7 +23,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
 #[divan::bench]
 fn scalar_i32() {
     unsafe {
-        let sexp = ffi::Rf_ScalarInteger(42);
+        let sexp = raw_ffi::Rf_ScalarInteger(42);
         let val: i32 = TryFromSexp::try_from_sexp(sexp).unwrap();
         divan::black_box(val);
     }
@@ -30,7 +32,7 @@ fn scalar_i32() {
 #[divan::bench]
 fn scalar_f64() {
     unsafe {
-        let sexp = ffi::Rf_ScalarReal(std::f64::consts::PI);
+        let sexp = raw_ffi::Rf_ScalarReal(std::f64::consts::PI);
         let val: f64 = TryFromSexp::try_from_sexp(sexp).unwrap();
         divan::black_box(val);
     }
@@ -39,7 +41,7 @@ fn scalar_f64() {
 #[divan::bench]
 fn scalar_bool() {
     unsafe {
-        let sexp = ffi::Rf_ScalarLogical(1);
+        let sexp = raw_ffi::Rf_ScalarLogical(1);
         let val: bool = TryFromSexp::try_from_sexp(sexp).unwrap();
         divan::black_box(val);
     }
@@ -48,7 +50,7 @@ fn scalar_bool() {
 #[divan::bench]
 fn scalar_option_i32_value() {
     unsafe {
-        let sexp = ffi::Rf_ScalarInteger(42);
+        let sexp = raw_ffi::Rf_ScalarInteger(42);
         let val: Option<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
         divan::black_box(val);
     }
@@ -57,7 +59,7 @@ fn scalar_option_i32_value() {
 #[divan::bench]
 fn scalar_option_i32_na() {
     unsafe {
-        let sexp = ffi::Rf_ScalarInteger(i32::MIN); // NA_INTEGER
+        let sexp = raw_ffi::Rf_ScalarInteger(i32::MIN); // NA_INTEGER
         let val: Option<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
         divan::black_box(val);
     }
@@ -94,8 +96,8 @@ fn slice_u8(size_idx: usize) {
 fn manual_slice_i32(size_idx: usize) {
     let sexp = fixtures().int_vec(size_idx);
     unsafe {
-        let ptr = ffi::INTEGER(sexp);
-        let len = ffi::Rf_xlength(sexp) as usize;
+        let ptr = raw_ffi::INTEGER(sexp);
+        let len = raw_ffi::Rf_xlength(sexp) as usize;
         let slice = std::slice::from_raw_parts(ptr, len);
         divan::black_box(slice);
     }
@@ -105,8 +107,8 @@ fn manual_slice_i32(size_idx: usize) {
 fn manual_slice_f64(size_idx: usize) {
     let sexp = fixtures().real_vec(size_idx);
     unsafe {
-        let ptr = ffi::REAL(sexp);
-        let len = ffi::Rf_xlength(sexp) as usize;
+        let ptr = raw_ffi::REAL(sexp);
+        let len = raw_ffi::Rf_xlength(sexp) as usize;
         let slice = std::slice::from_raw_parts(ptr, len);
         divan::black_box(slice);
     }
@@ -116,8 +118,8 @@ fn manual_slice_f64(size_idx: usize) {
 fn manual_slice_u8(size_idx: usize) {
     let sexp = fixtures().raw_vec(size_idx);
     unsafe {
-        let ptr = ffi::RAW(sexp);
-        let len = ffi::Rf_xlength(sexp) as usize;
+        let ptr = raw_ffi::RAW(sexp);
+        let len = raw_ffi::Rf_xlength(sexp) as usize;
         let slice = std::slice::from_raw_parts(ptr, len);
         divan::black_box(slice);
     }
@@ -147,10 +149,10 @@ fn string_latin1() {
 fn iterate_int_elt(size_idx: usize) {
     let sexp = fixtures().int_vec(size_idx);
     unsafe {
-        let len = ffi::Rf_xlength(sexp);
+        let len = raw_ffi::Rf_xlength(sexp);
         let mut sum = 0i64;
         for i in 0..len {
-            sum += ffi::INTEGER_ELT(sexp, i) as i64;
+            sum += sexp.integer_elt(i) as i64;
         }
         divan::black_box(sum);
     }
@@ -160,8 +162,8 @@ fn iterate_int_elt(size_idx: usize) {
 fn iterate_int_ptr(size_idx: usize) {
     let sexp = fixtures().int_vec(size_idx);
     unsafe {
-        let ptr = ffi::INTEGER(sexp);
-        let len = ffi::Rf_xlength(sexp) as usize;
+        let ptr = raw_ffi::INTEGER(sexp);
+        let len = raw_ffi::Rf_xlength(sexp) as usize;
         let mut sum = 0i64;
         for i in 0..len {
             sum += *ptr.add(i) as i64;

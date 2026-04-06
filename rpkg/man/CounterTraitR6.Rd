@@ -43,6 +43,7 @@ Static trait method MatrixCounter::default_value()
 \if{html}{\out{<a id="method-CounterTraitR6-new"></a>}}
 \if{latex}{\out{\hypertarget{method-CounterTraitR6-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new counter with initial value
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{CounterTraitR6$new(v, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -50,6 +51,8 @@ Static trait method MatrixCounter::default_value()
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
+\item{\code{v}}{Initial counter value.}
+
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
 \if{html}{\out{</div>}}
@@ -59,6 +62,7 @@ Static trait method MatrixCounter::default_value()
 \if{html}{\out{<a id="method-CounterTraitR6-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-CounterTraitR6-get_value}{}}}
 \subsection{Method \code{get_value()}}{
+Get the current counter value.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{CounterTraitR6$get_value()}\if{html}{\out{</div>}}
 }

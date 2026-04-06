@@ -1,7 +1,9 @@
 //! Iterator-backed ALTREP benchmarks.
 
 use miniextendr_api::ffi;
+use miniextendr_api::ffi::SexpExt;
 use miniextendr_api::{IntoR, IterIntData, miniextendr};
+use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
@@ -19,7 +21,7 @@ fn altrep_iter_int_elt(size_idx: usize) {
     let data = IterIntData::from_iter(0..len as i32, len);
     let sexp = BenchIterInt::from(data).into_sexp();
     unsafe {
-        let val = ffi::INTEGER_ELT(sexp, 0);
+        let val = sexp.integer_elt(0);
         divan::black_box(val);
     }
 }
@@ -30,7 +32,7 @@ fn altrep_iter_int_xlength(size_idx: usize) {
     let data = IterIntData::from_iter(0..len as i32, len);
     let sexp = BenchIterInt::from(data).into_sexp();
     unsafe {
-        let len = ffi::Rf_xlength(sexp);
+        let len = raw_ffi::Rf_xlength(sexp);
         divan::black_box(len);
     }
 }

@@ -3,7 +3,7 @@
 mod r_test_utils;
 
 use miniextendr_api::externalptr::ExternalPtr;
-use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_install, SEXP};
+use miniextendr_api::ffi::{Rf_install, SEXP};
 use std::ffi::CString;
 
 #[test]
@@ -36,7 +36,7 @@ fn test_tag_and_protected() {
     };
     assert!(std::ptr::eq(tag.0, expected.0));
 
-    let protected = unsafe { Rf_ScalarInteger(123) };
+    let protected = unsafe { SEXP::scalar_integer(123) };
     let ok = unsafe { ext.set_protected(protected) };
     assert!(ok);
     let stored = ext.protected();

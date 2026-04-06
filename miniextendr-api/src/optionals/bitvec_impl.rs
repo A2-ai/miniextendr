@@ -63,8 +63,6 @@ impl TryFromSexp for RBitVec {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::LOGICAL_ELT;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::LGLSXP {
             return Err(SexpTypeError {
@@ -78,7 +76,7 @@ impl TryFromSexp for RBitVec {
         let mut bits = RBitVec::with_capacity(len);
 
         for i in 0..len {
-            let val = unsafe { LOGICAL_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let val = sexp.logical_elt(i as crate::ffi::R_xlen_t);
             if val == NA_LOGICAL {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for RBitVec",
@@ -106,14 +104,14 @@ impl IntoR for RBitVec {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector, SET_LOGICAL_ELT};
+        use crate::ffi::Rf_allocVector;
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, len as crate::ffi::R_xlen_t) };
 
         for (i, bit) in self.iter().enumerate() {
             let val = if *bit { 1 } else { 0 };
-            unsafe { SET_LOGICAL_ELT(sexp, i as crate::ffi::R_xlen_t, val) };
+            sexp.set_logical_elt(i as crate::ffi::R_xlen_t, val);
         }
 
         sexp
@@ -131,7 +129,7 @@ impl IntoR for Option<RBitVec> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(bits) => bits.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -143,8 +141,6 @@ impl TryFromSexp for BitVec<u8, Msb0> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::LOGICAL_ELT;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::LGLSXP {
             return Err(SexpTypeError {
@@ -158,7 +154,7 @@ impl TryFromSexp for BitVec<u8, Msb0> {
         let mut bits = BitVec::<u8, Msb0>::with_capacity(len);
 
         for i in 0..len {
-            let val = unsafe { LOGICAL_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let val = sexp.logical_elt(i as crate::ffi::R_xlen_t);
             if val == NA_LOGICAL {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for BitVec",
@@ -183,14 +179,14 @@ impl IntoR for BitVec<u8, Msb0> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector, SET_LOGICAL_ELT};
+        use crate::ffi::Rf_allocVector;
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, len as crate::ffi::R_xlen_t) };
 
         for (i, bit) in self.iter().enumerate() {
             let val = if *bit { 1 } else { 0 };
-            unsafe { SET_LOGICAL_ELT(sexp, i as crate::ffi::R_xlen_t, val) };
+            sexp.set_logical_elt(i as crate::ffi::R_xlen_t, val);
         }
 
         sexp
@@ -208,7 +204,7 @@ impl IntoR for Option<BitVec<u8, Msb0>> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(bits) => bits.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }

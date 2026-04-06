@@ -1,6 +1,6 @@
 //! Tests for RThreadBuilder and thread safety.
 
-use miniextendr_api::ffi::SEXP;
+use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::thread::RThreadBuilder;
 
@@ -25,13 +25,13 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
         .name("test-r-worker".to_string())
         .spawn(|| {
             // mxl::allow(MXL301)
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(123) };
-            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+            let sexp = unsafe { crate::raw_ffi::Rf_ScalarInteger(123) };
+            sexp.as_integer().unwrap()
         })
         .expect("failed to spawn thread");
 
     let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -42,10 +42,10 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
     let result = RThreadBuilder::new()
         .spawn_join(|| {
             // mxl::allow(MXL301)
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(456) };
-            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+            let sexp = unsafe { crate::raw_ffi::Rf_ScalarInteger(456) };
+            sexp.as_integer().unwrap()
         })
         .expect("thread failed");
 
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }

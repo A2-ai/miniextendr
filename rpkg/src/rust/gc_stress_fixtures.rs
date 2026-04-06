@@ -3,7 +3,7 @@
 //! Provides `SharedData` (R6 class) and `into_sexp_altrep` for the GC stress
 //! and ALTREP serialization test suites.
 
-use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
+use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::{IntoRAltrep, miniextendr};
 
 /// Simple R6 class for GC stress tests.
@@ -35,12 +35,12 @@ impl SharedData {
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then
-/// re-wrapping. Dispatches on TYPEOF: INTSXP, REALSXP, STRSXP.
+/// re-wrapping. Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
 ///
 /// @noRd
 #[miniextendr]
 pub fn into_sexp_altrep(x: SEXP) -> SEXP {
-    let sxp_type = unsafe { ffi::TYPEOF(x) };
+    let sxp_type = x.type_of();
     match sxp_type {
         SEXPTYPE::INTSXP => {
             let v: Vec<i32> = miniextendr_api::from_r::TryFromSexp::try_from_sexp(x).unwrap();

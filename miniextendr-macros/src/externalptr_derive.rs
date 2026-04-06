@@ -358,15 +358,15 @@ fn generate_getter_body(
     // Helper: generate the pointer extraction code for Box<dyn Any> storage.
     // R_ExternalPtrAddr returns *mut Box<dyn Any>; we downcast to &T.
     let extract_ref = quote::quote! {
-        use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
+        use ::miniextendr_api::ffi::{R_ExternalPtrAddr, SEXP};
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
-            return R_NilValue;
+            return SEXP::nil();
         }
         let any_box: &Box<dyn ::std::any::Any> = &*any_raw;
         let data: &#struct_name = match any_box.downcast_ref::<#struct_name>() {
             Some(v) => v,
-            None => return R_NilValue,
+            None => return SEXP::nil(),
         };
     };
 
@@ -381,43 +381,38 @@ fn generate_getter_body(
             }
         }
         SlotKind::ScalarInt => {
-            // i32 field - convert to R integer
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_ScalarInteger;
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    Rf_ScalarInteger(data.#field_name)
+                    SEXP::scalar_integer(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarReal => {
-            // f64 field - convert to R real
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_ScalarReal;
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    Rf_ScalarReal(data.#field_name)
+                    SEXP::scalar_real(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarLogical => {
-            // bool field - convert to R logical
             quote::quote! {
-                use ::miniextendr_api::ffi::{Rf_ScalarLogical, Rboolean};
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    let val = if data.#field_name { Rboolean::TRUE } else { Rboolean::FALSE };
-                    Rf_ScalarLogical(val as i32)
+                    SEXP::scalar_logical(data.#field_name)
                 }
             }
         }
         SlotKind::ScalarRaw => {
-            // u8 field - convert to R raw
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_ScalarRaw;
+                use ::miniextendr_api::ffi::SEXP;
                 unsafe {
                     #extract_ref
-                    Rf_ScalarRaw(data.#field_name)
+                    SEXP::scalar_raw(data.#field_name)
                 }
             }
         }
@@ -478,40 +473,40 @@ fn generate_setter_body(
         }
         SlotKind::ScalarInt => {
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_asInteger;
+                use ::miniextendr_api::ffi::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = Rf_asInteger(value);
+                    data.#field_name = value.as_integer().unwrap_or(::miniextendr_api::altrep_traits::NA_INTEGER);
                     x
                 }
             }
         }
         SlotKind::ScalarReal => {
             quote::quote! {
-                use ::miniextendr_api::ffi::Rf_asReal;
+                use ::miniextendr_api::ffi::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = Rf_asReal(value);
+                    data.#field_name = value.as_real().unwrap_or(::miniextendr_api::altrep_traits::NA_REAL);
                     x
                 }
             }
         }
         SlotKind::ScalarLogical => {
             quote::quote! {
-                use ::miniextendr_api::ffi::{Rf_asLogical, Rboolean};
+                use ::miniextendr_api::ffi::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = Rf_asLogical(value) == Rboolean::TRUE as i32;
+                    data.#field_name = value.as_logical().unwrap_or(false);
                     x
                 }
             }
         }
         SlotKind::ScalarRaw => {
             quote::quote! {
-                use ::miniextendr_api::ffi::{RAW, Rf_coerceVector, SEXPTYPE};
+                use ::miniextendr_api::ffi::{RAW, SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
-                    let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
+                    let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
                     data.#field_name = *RAW(raw_vec);
                     x
                 }

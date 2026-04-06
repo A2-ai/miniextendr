@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::ffi::{self, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -42,12 +42,15 @@ impl NamedList {
     /// Returns `None` if the list has no `names` attribute.
     pub fn new(list: List) -> Option<Self> {
         let names_sexp = list.names()?;
-        let n: usize = list.len().try_into().expect("list length must be non-negative");
+        let n: usize = list
+            .len()
+            .try_into()
+            .expect("list length must be non-negative");
         let mut index = HashMap::with_capacity(n);
 
         for i in 0..n {
             let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-            let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, idx) };
+            let name_sexp = names_sexp.string_elt(idx);
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }
@@ -73,7 +76,7 @@ impl NamedList {
     {
         let &idx = self.index.get(name)?;
         let idx_isize: isize = idx.try_into().ok()?;
-        let elem = unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx_isize) };
+        let elem = self.list.as_sexp().vector_elt(idx_isize);
         T::try_from_sexp(elem).ok()
     }
 
@@ -82,7 +85,7 @@ impl NamedList {
     pub fn get_raw(&self, name: &str) -> Option<SEXP> {
         let &idx = self.index.get(name)?;
         let idx_isize: isize = idx.try_into().ok()?;
-        Some(unsafe { ffi::VECTOR_ELT(self.list.as_sexp(), idx_isize) })
+        Some(self.list.as_sexp().vector_elt(idx_isize))
     }
 
     /// Get element at 0-based index and convert to type `T`.
@@ -171,7 +174,7 @@ impl TryFromSexp for Option<NamedList> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp == unsafe { ffi::R_NilValue } {
+        if sexp == SEXP::nil() {
             return Ok(None);
         }
         let named = NamedList::try_from_sexp(sexp)?;

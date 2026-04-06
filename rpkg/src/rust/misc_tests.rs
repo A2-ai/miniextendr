@@ -19,5 +19,5 @@ pub fn underscore_it_all(_: i32, _: f64) {}
 /// @noRd
 #[miniextendr]
 pub fn do_nothing() -> SEXP {
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) }
+    miniextendr_api::ffi::SEXP::scalar_integer(42)
 }

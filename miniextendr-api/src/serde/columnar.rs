@@ -4,84 +4,361 @@
 //! module transposes the data into column-oriented R vectors — one atomic
 //! vector per field. This is more memory-efficient and produces native R
 //! data.frames directly.
+//!
+//! Nested structs are recursively flattened into prefixed columns
+//! (e.g., `metadata_size`). `#[serde(flatten)]` and `#[serde(skip_serializing_if)]`
+//! are handled correctly.
+
+use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::NA_REAL;
-use crate::ffi::{
-    CE_UTF8, R_ClassSymbol, R_NaString, R_NamesSymbol, R_NilValue, R_RowNamesSymbol,
-    Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_setAttrib, Rf_unprotect, SET_STRING_ELT,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE,
-};
+use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
-/// Convert a slice of serializable structs to an R data.frame in columnar layout.
+/// Generate serde `Serializer` error stubs for methods that should reject non-struct input.
+/// Accepts `struct`/`map` to allow, and an error message for the rest.
+macro_rules! reject_non_struct {
+    ($msg:expr, allow_some_none) => {
+        fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<(), RSerdeError> {
+            value.serialize(self)
+        }
+        fn serialize_none(self) -> Result<(), RSerdeError> {
+            Err(RSerdeError::Message(concat!($msg, " (got None)").into()))
+        }
+        reject_non_struct!(@primitives $msg);
+    };
+    ($msg:expr) => {
+        fn serialize_some<T: ?Sized + Serialize>(self, _: &T) -> Result<(), RSerdeError> {
+            Err(RSerdeError::Message($msg.into()))
+        }
+        fn serialize_none(self) -> Result<(), RSerdeError> {
+            Err(RSerdeError::Message($msg.into()))
+        }
+        reject_non_struct!(@primitives $msg);
+    };
+    (@primitives $msg:expr) => {
+        fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_char(self, _: char) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_str(self, _: &str) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_unit(self) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, _: &T) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, _: &T) -> Result<(), RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) -> Result<Self::SerializeTupleVariant, RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+        fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) -> Result<Self::SerializeStructVariant, RSerdeError> { Err(RSerdeError::Message($msg.into())) }
+    };
+}
+
+/// Read a column name from an R STRSXP names vector at index `i`.
 ///
-/// Each field of `T` becomes a column (R atomic vector). This avoids the
-/// row-oriented pattern of serializing each struct as a named list.
+/// # Safety
+/// `names_sexp` must be a valid STRSXP and `i` must be in bounds.
+unsafe fn col_name(names_sexp: SEXP, i: isize) -> &'static str {
+    unsafe {
+        let s = names_sexp.string_elt(i);
+        let p = crate::ffi::R_CHAR(s);
+        std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
+    }
+}
+
+/// Copy class and row.names attributes from one data.frame SEXP to another.
 ///
-/// # Supported Field Types
+/// # Safety
+/// Both SEXPs must be valid VECSXPs.
+unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
+    to.set_class(from.get_class());
+    to.set_row_names(from.get_row_names());
+}
+
+/// A data.frame produced by the columnar serializer.
 ///
-/// | Rust Type | R Column Type |
-/// |-----------|---------------|
-/// | `bool` | `logical` |
-/// | `i8/i16/i32` | `integer` |
-/// | `i64/u64/f32/f64` | `numeric` |
-/// | `String/&str` | `character` |
-/// | `Option<T>` | Same type with NA for `None` |
-/// | Other | Falls back to per-element list column |
-///
-/// # Example
+/// Supports post-assembly customization via builder-style methods:
 ///
 /// ```ignore
-/// use serde::Serialize;
-/// use miniextendr_api::serde::columnar::vec_to_dataframe;
-///
-/// #[derive(Serialize)]
-/// struct Point { x: f64, y: f64, label: String }
-///
-/// let points = vec![
-///     Point { x: 1.0, y: 2.0, label: "a".into() },
-///     Point { x: 3.0, y: 4.0, label: "b".into() },
-/// ];
-///
-/// let df = vec_to_dataframe(&points).unwrap();
-/// // Result: data.frame with columns x (numeric), y (numeric), label (character)
+/// ColumnarDataFrame::from_rows(&rows)?
+///     .rename("hashes_blake3", "hash")
+///     .drop("internal_id")
 /// ```
-pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<SEXP, RSerdeError> {
-    if rows.is_empty() {
-        return Ok(empty_dataframe());
-    }
-
-    // Phase 1: Discover schema from first element
-    let schema = discover_schema(&rows[0])?;
-    let ncol = schema.fields.len();
-    let nrow = rows.len();
-
-    if ncol == 0 {
-        return Err(RSerdeError::Message(
-            "vec_to_dataframe: type has no fields".into(),
-        ));
-    }
-
-    // Phase 2: Allocate column buffers
-    let mut columns: Vec<ColumnBuffer> = schema
-        .fields
-        .iter()
-        .map(|f| ColumnBuffer::new(f.col_type, nrow))
-        .collect();
-
-    // Phase 3: Fill columns from all rows
-    for row in rows {
-        let filler = ColumnFiller {
-            columns: &mut columns,
-            field_idx: 0,
-        };
-        row.serialize(filler)?;
-    }
-
-    // Phase 4: Assemble data.frame
-    Ok(unsafe { assemble_dataframe(&schema.fields, &columns, nrow) })
+pub struct ColumnarDataFrame {
+    sexp: SEXP,
 }
+
+impl ColumnarDataFrame {
+    /// Convert a slice of serializable structs to an R data.frame in columnar layout.
+    ///
+    /// Each field of `T` becomes a column (R atomic vector). Nested structs are
+    /// recursively flattened into prefixed columns (`parent_child` naming).
+    ///
+    /// The result supports post-assembly customization:
+    ///
+    /// ```ignore
+    /// ColumnarDataFrame::from_rows(&rows)?
+    ///     .rename("hashes_blake3", "hash")
+    ///     .drop("internal_id")
+    /// ```
+    ///
+    /// # Supported Field Types
+    ///
+    /// | Rust Type | R Column Type |
+    /// |-----------|---------------|
+    /// | `bool` | `logical` |
+    /// | `i8/i16/i32` | `integer` |
+    /// | `i64/u64/f32/f64` | `numeric` |
+    /// | `String/&str` | `character` |
+    /// | `Option<T>` | Same type with NA for `None` |
+    /// | Nested struct | Recursively flattened with `parent_child` naming |
+    /// | Other | Falls back to per-element list column |
+    pub fn from_rows<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
+        if rows.is_empty() {
+            return Ok(ColumnarDataFrame {
+                sexp: empty_dataframe(),
+            });
+        }
+
+        // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
+        let schema = discover_schema_union(rows)?;
+        let ncol = schema.fields.len();
+        let nrow = rows.len();
+
+        if ncol == 0 {
+            return Err(RSerdeError::Message(
+                "ColumnarDataFrame::from_rows: type has no fields".into(),
+            ));
+        }
+
+        // Phase 2: Allocate column buffers
+        let mut columns: Vec<ColumnBuffer> = schema
+            .fields
+            .iter()
+            .map(|f| ColumnBuffer::new(f.col_type, nrow))
+            .collect();
+
+        // Phase 3: Fill columns from all rows
+        let mut filled = vec![false; ncol];
+        for row in rows {
+            let filler = ColumnFiller {
+                columns: &mut columns,
+                field_map: &schema.field_map,
+                filled: &mut filled,
+                col_start: 0,
+                col_count: ncol,
+                is_top_level: true,
+                pending_key: None,
+            };
+            row.serialize(filler)?;
+        }
+
+        // Phase 4: Assemble data.frame
+        Ok(ColumnarDataFrame {
+            sexp: unsafe { assemble_dataframe(&schema.fields, &columns, nrow) },
+        })
+    }
+
+    /// Rename a column. No-op if `from` doesn't match any column name.
+    pub fn rename(self, from: &str, to: &str) -> Self {
+        unsafe {
+            let names_sexp = self.sexp.get_names();
+            if names_sexp == SEXP::nil() {
+                return self;
+            }
+            let ncol = crate::ffi::Rf_xlength(names_sexp);
+            for i in 0..ncol {
+                if col_name(names_sexp, i) == from {
+                    names_sexp.set_string_elt(i, SEXP::charsxp(to));
+                    break;
+                }
+            }
+        }
+        self
+    }
+
+    /// Strip a prefix from all column names that start with it.
+    /// E.g., `.strip_prefix("metadata_")` turns `metadata_size` into `size`.
+    pub fn strip_prefix(self, prefix: &str) -> Self {
+        unsafe {
+            let names_sexp = self.sexp.get_names();
+            if names_sexp == SEXP::nil() {
+                return self;
+            }
+            let ncol = crate::ffi::Rf_xlength(names_sexp);
+            for i in 0..ncol {
+                let name = col_name(names_sexp, i);
+                if let Some(stripped) = name.strip_prefix(prefix) {
+                    names_sexp.set_string_elt(i, SEXP::charsxp(stripped));
+                }
+            }
+        }
+        self
+    }
+
+    /// Remove a column by name. No-op if the column doesn't exist.
+    pub fn drop(self, col: &str) -> Self {
+        unsafe {
+            let names_sexp = self.sexp.get_names();
+            if names_sexp == SEXP::nil() {
+                return self;
+            }
+            let ncol = crate::ffi::Rf_xlength(names_sexp);
+            let drop_idx = (0..ncol).find(|&i| col_name(names_sexp, i) == col);
+            let Some(drop_idx) = drop_idx else {
+                return self;
+            };
+
+            let new_ncol = ncol - 1;
+            let new_list = Rf_allocVector(SEXPTYPE::VECSXP, new_ncol);
+            Rf_protect(new_list);
+            let new_names = Rf_allocVector(SEXPTYPE::STRSXP, new_ncol);
+            Rf_protect(new_names);
+
+            let mut j: isize = 0;
+            for i in 0..ncol {
+                if i == drop_idx {
+                    continue;
+                }
+                new_list.set_vector_elt(j, self.sexp.vector_elt(i));
+                new_names.set_string_elt(j, names_sexp.string_elt(i));
+                j += 1;
+            }
+
+            new_list.set_names(new_names);
+            copy_df_attrs(self.sexp, new_list);
+
+            Rf_unprotect(2);
+
+            ColumnarDataFrame { sexp: new_list }
+        }
+    }
+
+    /// Keep only the named columns, in the order given. Unknown names are skipped.
+    pub fn select(self, cols: &[&str]) -> Self {
+        unsafe {
+            let names_sexp = self.sexp.get_names();
+            if names_sexp == SEXP::nil() {
+                return self;
+            }
+            let ncol = crate::ffi::Rf_xlength(names_sexp);
+
+            let indices: Vec<isize> = cols
+                .iter()
+                .filter_map(|&want| (0..ncol).find(|&i| col_name(names_sexp, i) == want))
+                .collect();
+
+            let new_ncol: isize = indices.len().try_into().expect("ncol overflow");
+            let new_list = Rf_allocVector(SEXPTYPE::VECSXP, new_ncol);
+            Rf_protect(new_list);
+            let new_names = Rf_allocVector(SEXPTYPE::STRSXP, new_ncol);
+            Rf_protect(new_names);
+
+            for (j, &src_idx) in indices.iter().enumerate() {
+                let j_r: isize = j.try_into().expect("index overflow");
+                new_list.set_vector_elt(j_r, self.sexp.vector_elt(src_idx));
+                new_names.set_string_elt(j_r, names_sexp.string_elt(src_idx));
+            }
+
+            new_list.set_names(new_names);
+            copy_df_attrs(self.sexp, new_list);
+
+            Rf_unprotect(2);
+
+            ColumnarDataFrame { sexp: new_list }
+        }
+    }
+}
+
+impl crate::IntoR for ColumnarDataFrame {
+    type Error = std::convert::Infallible;
+
+    fn into_sexp(self) -> SEXP {
+        self.sexp
+    }
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.sexp)
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(self.sexp)
+    }
+}
+
+/// Convert a row-oriented `DataFrame<T>` into a `ColumnarDataFrame` for
+/// post-assembly customization (rename, drop, select).
+impl<T: crate::list::IntoList> From<crate::convert::DataFrame<T>> for ColumnarDataFrame {
+    fn from(df: crate::convert::DataFrame<T>) -> Self {
+        use crate::IntoR;
+        use crate::convert::IntoDataFrame;
+        ColumnarDataFrame {
+            sexp: df.into_data_frame().into_sexp(),
+        }
+    }
+}
+
+impl crate::from_r::TryFromSexp for ColumnarDataFrame {
+    type Error = crate::from_r::SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Validate it's a data.frame before wrapping
+        crate::dataframe::DataFrameView::from_sexp(sexp)
+            .map(ColumnarDataFrame::from)
+            .map_err(|e| crate::from_r::SexpError::InvalidValue(e.to_string()))
+    }
+}
+
+/// Convert a `DataFrameView` (received from R) into a `ColumnarDataFrame`
+/// for post-hoc customization (rename, drop, select).
+impl From<crate::dataframe::DataFrameView> for ColumnarDataFrame {
+    fn from(view: crate::dataframe::DataFrameView) -> Self {
+        use crate::IntoR;
+        ColumnarDataFrame {
+            sexp: view.into_sexp(),
+        }
+    }
+}
+
+/// Convenience alias for [`ColumnarDataFrame::from_rows`].
+#[inline]
+pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
+    ColumnarDataFrame::from_rows(rows)
+}
+
+// region: Field mapping (recursive name → column routing)
+
+/// Maps a field name to its column location in the flat column array.
+enum FieldMapping {
+    /// Scalar field: writes directly to one column.
+    Scalar { col_idx: usize },
+    /// Compound field (flattened nested struct): spans multiple columns.
+    Compound {
+        col_start: usize,
+        col_count: usize,
+        sub_fields: FieldMap,
+    },
+}
+
+/// Name-to-column mapping for one level of struct fields.
+struct FieldMap {
+    map: HashMap<String, FieldMapping>,
+    col_start: usize,
+    total_cols: usize,
+}
+
+// endregion
 
 // region: Schema discovery
 
@@ -101,18 +378,206 @@ struct FieldInfo {
 
 struct Schema {
     fields: Vec<FieldInfo>,
+    field_map: FieldMap,
 }
 
-fn discover_schema<T: Serialize>(sample: &T) -> Result<Schema, RSerdeError> {
-    let mut discoverer = SchemaDiscoverer { fields: Vec::new() };
-    sample.serialize(&mut discoverer)?;
+/// Discover schema by probing rows and taking the union of field sets.
+///
+/// Different rows may serialize different fields (e.g., enum variants).
+/// The unified schema contains every field seen in any row. During filling,
+/// fields absent from a particular row get NA via the padding mechanism.
+fn discover_schema_union<T: Serialize>(rows: &[T]) -> Result<Schema, RSerdeError> {
+    let mut unified_fields: Vec<FieldInfo> = Vec::new();
+    let mut unified_mappings: HashMap<String, FieldMapping> = HashMap::new();
+
+    for (row_idx, row) in rows.iter().enumerate() {
+        let fields_before = unified_fields.len();
+
+        let mut discoverer = SchemaDiscoverer::new(0);
+        if row.serialize(&mut discoverer).is_err() {
+            continue; // skip rows that fail discovery (e.g., None-only)
+        }
+
+        // Iterate over key_order (preserves struct field order) instead of HashMap
+        for key in &discoverer.key_order {
+            if unified_mappings.contains_key(key) {
+                continue; // already have this field's schema
+            }
+
+            let Some(mapping) = discoverer.mappings.remove(key) else {
+                continue;
+            };
+
+            let new_start = unified_fields.len();
+
+            match mapping {
+                FieldMapping::Scalar { col_idx } => {
+                    let field = &discoverer.fields[col_idx];
+                    unified_fields.push(FieldInfo {
+                        name: field.name.clone(),
+                        col_type: field.col_type,
+                    });
+                    unified_mappings
+                        .insert(key.clone(), FieldMapping::Scalar { col_idx: new_start });
+                }
+                FieldMapping::Compound {
+                    col_start,
+                    col_count,
+                    sub_fields,
+                } => {
+                    for i in col_start..col_start + col_count {
+                        let field = &discoverer.fields[i];
+                        unified_fields.push(FieldInfo {
+                            name: field.name.clone(),
+                            col_type: field.col_type,
+                        });
+                    }
+                    let remapped = remap_field_map(sub_fields, col_start, new_start);
+                    unified_mappings.insert(
+                        key.clone(),
+                        FieldMapping::Compound {
+                            col_start: new_start,
+                            col_count,
+                            sub_fields: remapped,
+                        },
+                    );
+                }
+            }
+        }
+
+        // Short-circuit: if this row contributed no new fields and it's not the first row,
+        // the schema is complete (all distinct field sets have been seen).
+        if row_idx > 0 && unified_fields.len() == fields_before {
+            break;
+        }
+    }
+
+    if unified_fields.is_empty() {
+        return Err(RSerdeError::Message(
+            "ColumnarDataFrame::from_rows: no fields discovered from any row".into(),
+        ));
+    }
+
+    let total = unified_fields.len();
     Ok(Schema {
-        fields: discoverer.fields,
+        fields: unified_fields,
+        field_map: FieldMap {
+            map: unified_mappings,
+            col_start: 0,
+            total_cols: total,
+        },
     })
+}
+
+/// Remap all column indices in a FieldMap from old base to new base.
+fn remap_field_map(old: FieldMap, old_base: usize, new_base: usize) -> FieldMap {
+    FieldMap {
+        map: old
+            .map
+            .into_iter()
+            .map(|(k, v)| (k, remap_field_mapping(v, old_base, new_base)))
+            .collect(),
+        col_start: new_base,
+        total_cols: old.total_cols,
+    }
+}
+
+fn remap_field_mapping(m: FieldMapping, old_base: usize, new_base: usize) -> FieldMapping {
+    match m {
+        FieldMapping::Scalar { col_idx } => FieldMapping::Scalar {
+            col_idx: col_idx - old_base + new_base,
+        },
+        FieldMapping::Compound {
+            col_start,
+            col_count,
+            sub_fields,
+        } => {
+            let new_col_start = col_start - old_base + new_base;
+            FieldMapping::Compound {
+                col_start: new_col_start,
+                col_count,
+                sub_fields: remap_field_map(sub_fields, col_start, new_col_start),
+            }
+        }
+    }
+}
+
+/// Try to recursively discover and flatten a nested struct value.
+/// Returns (flat_fields, field_map) if the value serializes as a struct.
+fn try_discover_nested<T: ?Sized + Serialize>(
+    value: &T,
+    col_offset: usize,
+) -> Option<(Vec<FieldInfo>, FieldMap)> {
+    // Use single-row discovery for nested values (they're not enums at this level)
+    let mut discoverer = SchemaDiscoverer::new(col_offset);
+    if value.serialize(&mut discoverer).is_ok() && !discoverer.fields.is_empty() {
+        let total = discoverer.fields.len();
+        Some((
+            discoverer.fields,
+            FieldMap {
+                map: discoverer.mappings,
+                col_start: col_offset,
+                total_cols: total,
+            },
+        ))
+    } else {
+        None
+    }
 }
 
 struct SchemaDiscoverer {
     fields: Vec<FieldInfo>,
+    mappings: HashMap<String, FieldMapping>,
+    key_order: Vec<String>,
+    col_offset: usize,
+}
+
+impl SchemaDiscoverer {
+    fn new(col_offset: usize) -> Self {
+        Self {
+            fields: Vec::new(),
+            mappings: HashMap::new(),
+            key_order: Vec::new(),
+            col_offset,
+        }
+    }
+
+    /// Process a field: try to flatten as nested struct, else probe as scalar.
+    fn process_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &str,
+        value: &T,
+    ) -> Result<(), RSerdeError> {
+        self.key_order.push(key.to_string());
+        let abs_col = self.col_offset + self.fields.len();
+        if let Some((sub_fields, sub_map)) = try_discover_nested(value, abs_col) {
+            let count = sub_fields.len();
+            for mut field in sub_fields {
+                field.name = format!("{key}_{}", field.name);
+                self.fields.push(field);
+            }
+            self.mappings.insert(
+                key.to_string(),
+                FieldMapping::Compound {
+                    col_start: abs_col,
+                    col_count: count,
+                    sub_fields: sub_map,
+                },
+            );
+        } else {
+            let mut type_probe = TypeProbe {
+                col_type: ColumnType::Generic,
+            };
+            let _ = value.serialize(&mut type_probe);
+            self.fields.push(FieldInfo {
+                name: key.to_string(),
+                col_type: type_probe.col_type,
+            });
+            self.mappings
+                .insert(key.to_string(), FieldMapping::Scalar { col_idx: abs_col });
+        }
+        Ok(())
+    }
 }
 
 impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
@@ -122,7 +587,7 @@ impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
     type SerializeTuple = ser::Impossible<(), RSerdeError>;
     type SerializeTupleStruct = ser::Impossible<(), RSerdeError>;
     type SerializeTupleVariant = ser::Impossible<(), RSerdeError>;
-    type SerializeMap = ser::Impossible<(), RSerdeError>;
+    type SerializeMap = SchemaMapDiscoverer<'a>;
     type SerializeStruct = SchemaStructDiscoverer<'a>;
     type SerializeStructVariant = ser::Impossible<(), RSerdeError>;
 
@@ -134,172 +599,17 @@ impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
         Ok(SchemaStructDiscoverer { parent: self })
     }
 
-    fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_char(self, _: char) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_str(self, _: &str) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_none(self) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_some<T: ?Sized + Serialize>(self, _: &T) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_unit(self) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_unit_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-    ) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(
-        self,
-        _: &'static str,
-        _: &T,
-    ) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: &T,
-    ) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_tuple_struct(
-        self,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeTupleStruct, RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
-    fn serialize_tuple_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeTupleVariant, RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
+        Ok(SchemaMapDiscoverer {
+            parent: self,
+            pending_key: None,
+        })
     }
-    fn serialize_struct_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeStructVariant, RSerdeError> {
-        Err(RSerdeError::Message(
-            "vec_to_dataframe: expected struct".into(),
-        ))
-    }
+
+    reject_non_struct!(
+        "ColumnarDataFrame::from_rows: expected struct",
+        allow_some_none
+    );
 }
 
 struct SchemaStructDiscoverer<'a> {
@@ -315,16 +625,37 @@ impl ser::SerializeStruct for SchemaStructDiscoverer<'_> {
         key: &'static str,
         value: &T,
     ) -> Result<(), RSerdeError> {
-        let mut type_probe = TypeProbe {
-            col_type: ColumnType::Generic,
-        };
-        // Best-effort type detection; fall back to Generic on error
-        let _ = value.serialize(&mut type_probe);
-        self.parent.fields.push(FieldInfo {
-            name: key.to_string(),
-            col_type: type_probe.col_type,
-        });
+        self.parent.process_field(key, value)
+    }
+
+    fn end(self) -> Result<(), RSerdeError> {
         Ok(())
+    }
+}
+
+/// Map-based schema discoverer for structs using `#[serde(flatten)]`.
+struct SchemaMapDiscoverer<'a> {
+    parent: &'a mut SchemaDiscoverer,
+    pending_key: Option<String>,
+}
+
+impl ser::SerializeMap for SchemaMapDiscoverer<'_> {
+    type Ok = ();
+    type Error = RSerdeError;
+
+    fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<(), RSerdeError> {
+        let mut extractor = ValueExtractor::default();
+        key.serialize(&mut extractor)?;
+        self.pending_key = match extractor.value {
+            ExtractedValue::Str(s) => Some(s),
+            _ => Some(String::new()),
+        };
+        Ok(())
+    }
+
+    fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
+        let key = self.pending_key.take().unwrap_or_default();
+        self.parent.process_field(&key, value)
     }
 
     fn end(self) -> Result<(), RSerdeError> {
@@ -519,6 +850,16 @@ impl ColumnBuffer {
         }
     }
 
+    fn push_na(&mut self) {
+        match self {
+            ColumnBuffer::Logical(v) => v.push(i32::MIN),
+            ColumnBuffer::Integer(v) => v.push(i32::MIN),
+            ColumnBuffer::Real(v) => v.push(NA_REAL),
+            ColumnBuffer::Character(v) => v.push(None),
+            ColumnBuffer::Generic(v) => v.push(None),
+        }
+    }
+
     fn push_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
         match self {
             ColumnBuffer::Logical(v) => {
@@ -614,7 +955,6 @@ impl ser::Serializer for &mut ValueExtractor {
         Ok(())
     }
     fn serialize_i64(self, v: i64) -> Result<(), RSerdeError> {
-        // i64 may lose precision > 2^53, but R has no native i64 type
         self.value = ExtractedValue::Real(v as f64);
         Ok(())
     }
@@ -635,7 +975,6 @@ impl ser::Serializer for &mut ValueExtractor {
         Ok(())
     }
     fn serialize_u64(self, v: u64) -> Result<(), RSerdeError> {
-        // u64 may lose precision > 2^53, but R has no native u64 type
         self.value = ExtractedValue::Real(v as f64);
         Ok(())
     }
@@ -756,16 +1095,80 @@ impl ser::Serializer for &mut ValueExtractor {
 }
 // endregion
 
-// region: Column filler (second pass — fills column buffers by field position)
+// region: Column filling (name-based, handles skip_serializing_if)
 
-/// Serializer that fills pre-allocated column buffers.
+/// Column filler. Dispatches each field by name to the correct column(s).
 ///
-/// Consumed by value: implements both `Serializer` (accepts the struct) and
-/// `SerializeStruct` (iterates over fields). This avoids the lifetime issues
-/// of having a separate `StructFiller` borrow `ColumnFiller` mutably.
+/// When `is_top_level` is true, this is the top-level row filler: `pad_unfilled`
+/// resets filled flags for the next row. When false, this is a sub-filler for
+/// nested struct fields: `pad_unfilled` marks columns as filled (the top-level
+/// filler handles the reset), and `serialize_some`/`serialize_none` support
+/// Option-wrapped nested structs with NA-fill logic.
 struct ColumnFiller<'a> {
     columns: &'a mut [ColumnBuffer],
-    field_idx: usize,
+    field_map: &'a FieldMap,
+    filled: &'a mut Vec<bool>,
+    col_start: usize,
+    col_count: usize,
+    is_top_level: bool,
+    pending_key: Option<String>,
+}
+
+impl ColumnFiller<'_> {
+    fn fill_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &str,
+        value: &T,
+    ) -> Result<(), RSerdeError> {
+        match self.field_map.map.get(key) {
+            Some(FieldMapping::Scalar { col_idx }) => {
+                self.columns[*col_idx].push_value(value)?;
+                self.filled[*col_idx] = true;
+            }
+            Some(FieldMapping::Compound {
+                sub_fields,
+                col_start,
+                col_count,
+                ..
+            }) => {
+                let sub = ColumnFiller {
+                    columns: self.columns,
+                    field_map: sub_fields,
+                    filled: self.filled,
+                    col_start: *col_start,
+                    col_count: *col_count,
+                    is_top_level: false,
+                    pending_key: None,
+                };
+                value.serialize(sub)?;
+            }
+            None => {
+                // Field not in schema — ignore (may happen with dynamic types)
+            }
+        }
+        Ok(())
+    }
+
+    fn pad_unfilled(&mut self) {
+        let start = self.field_map.col_start;
+        let end = start + self.field_map.total_cols;
+        if self.is_top_level {
+            for i in start..end {
+                if !self.filled[i] {
+                    self.columns[i].push_na();
+                }
+                self.filled[i] = false; // reset for next row
+            }
+        } else {
+            for i in start..end {
+                if !self.filled[i] {
+                    self.columns[i].push_na();
+                }
+                // Don't reset — the top-level filler handles reset
+                self.filled[i] = true;
+            }
+        }
+    }
 }
 
 impl<'a> ser::Serializer for ColumnFiller<'a> {
@@ -775,130 +1178,40 @@ impl<'a> ser::Serializer for ColumnFiller<'a> {
     type SerializeTuple = ser::Impossible<(), RSerdeError>;
     type SerializeTupleStruct = ser::Impossible<(), RSerdeError>;
     type SerializeTupleVariant = ser::Impossible<(), RSerdeError>;
-    type SerializeMap = ser::Impossible<(), RSerdeError>;
+    type SerializeMap = Self;
     type SerializeStruct = Self;
     type SerializeStructVariant = ser::Impossible<(), RSerdeError>;
 
     fn serialize_struct(
         self,
-        _name: &'static str,
-        _len: usize,
+        _: &'static str,
+        _: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(self)
     }
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
+        Ok(self)
+    }
 
-    fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_char(self, _: char) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_str(self, _: &str) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
+    fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<(), RSerdeError> {
+        if self.is_top_level {
+            return Err(RSerdeError::Message("expected struct".into()));
+        }
+        value.serialize(self)
     }
     fn serialize_none(self) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
+        if self.is_top_level {
+            return Err(RSerdeError::Message("expected struct".into()));
+        }
+        // Fill all columns owned by this sub-filler with NA
+        for i in self.col_start..self.col_start + self.col_count {
+            self.columns[i].push_na();
+            self.filled[i] = true;
+        }
+        Ok(())
     }
-    fn serialize_some<T: ?Sized + Serialize>(self, _: &T) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_unit(self) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_unit_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-    ) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(
-        self,
-        _: &'static str,
-        _: &T,
-    ) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: &T,
-    ) -> Result<(), RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_tuple_struct(
-        self,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeTupleStruct, RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_tuple_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeTupleVariant, RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
-    fn serialize_struct_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeStructVariant, RSerdeError> {
-        Err(RSerdeError::Message("expected struct".into()))
-    }
+
+    reject_non_struct!(@primitives "expected struct");
 }
 
 impl ser::SerializeStruct for ColumnFiller<'_> {
@@ -907,17 +1220,39 @@ impl ser::SerializeStruct for ColumnFiller<'_> {
 
     fn serialize_field<T: ?Sized + Serialize>(
         &mut self,
-        _key: &'static str,
+        key: &'static str,
         value: &T,
     ) -> Result<(), RSerdeError> {
-        if self.field_idx < self.columns.len() {
-            self.columns[self.field_idx].push_value(value)?;
-        }
-        self.field_idx += 1;
+        self.fill_field(key, value)
+    }
+
+    fn end(mut self) -> Result<(), RSerdeError> {
+        self.pad_unfilled();
+        Ok(())
+    }
+}
+
+impl ser::SerializeMap for ColumnFiller<'_> {
+    type Ok = ();
+    type Error = RSerdeError;
+
+    fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<(), RSerdeError> {
+        let mut extractor = ValueExtractor::default();
+        key.serialize(&mut extractor)?;
+        self.pending_key = match extractor.value {
+            ExtractedValue::Str(s) => Some(s),
+            _ => Some(String::new()),
+        };
         Ok(())
     }
 
-    fn end(self) -> Result<(), RSerdeError> {
+    fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
+        let key = self.pending_key.take().unwrap_or_default();
+        self.fill_field(&key, value)
+    }
+
+    fn end(mut self) -> Result<(), RSerdeError> {
+        self.pad_unfilled();
         Ok(())
     }
 }
@@ -934,16 +1269,15 @@ fn empty_dataframe() -> SEXP {
         // Set class = "data.frame"
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         Rf_protect(class_sexp);
-        let class_str = Rf_mkCharLenCE(c"data.frame".as_ptr().cast(), 10, CE_UTF8);
-        SET_STRING_ELT(class_sexp, 0, class_str);
-        Rf_setAttrib(list, R_ClassSymbol, class_sexp);
+        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
+        list.set_class(class_sexp);
 
         // Set compact row.names: c(NA_integer_, 0)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         Rf_protect(row_names);
         rn[0] = i32::MIN; // NA_integer_
         rn[1] = 0;
-        Rf_setAttrib(list, R_RowNamesSymbol, row_names);
+        list.set_row_names(row_names);
 
         Rf_unprotect(3);
         list
@@ -968,7 +1302,7 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
             let idx: isize = i.try_into().expect("column index exceeds isize::MAX");
             let col_sexp = column_to_sexp(col, nrow);
             Rf_protect(col_sexp);
-            SET_VECTOR_ELT(list, idx, col_sexp);
+            list.set_vector_elt(idx, col_sexp);
             Rf_unprotect(1); // col_sexp is now held by list
         }
 
@@ -977,26 +1311,22 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
         Rf_protect(names_sexp);
         for (i, field) in fields.iter().enumerate() {
             let idx: isize = i.try_into().expect("field index exceeds isize::MAX");
-            let name_len: i32 = field.name.len().try_into().expect("field name exceeds i32::MAX bytes");
-            let charsxp =
-                Rf_mkCharLenCE(field.name.as_ptr().cast(), name_len, CE_UTF8);
-            SET_STRING_ELT(names_sexp, idx, charsxp);
+            names_sexp.set_string_elt(idx, SEXP::charsxp(&field.name));
         }
-        Rf_setAttrib(list, R_NamesSymbol, names_sexp);
+        list.set_names(names_sexp);
 
         // Set class = "data.frame"
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         Rf_protect(class_sexp);
-        let class_str = Rf_mkCharLenCE(c"data.frame".as_ptr().cast(), 10, CE_UTF8);
-        SET_STRING_ELT(class_sexp, 0, class_str);
-        Rf_setAttrib(list, R_ClassSymbol, class_sexp);
+        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
+        list.set_class(class_sexp);
 
         // Set compact row.names: c(NA_integer_, -nrow)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         Rf_protect(row_names);
         rn[0] = i32::MIN; // NA_integer_
         rn[1] = -i32::try_from(nrow).expect("data.frame row count exceeds i32::MAX");
-        Rf_setAttrib(list, R_RowNamesSymbol, row_names);
+        list.set_row_names(row_names);
 
         Rf_unprotect(4); // list, names, class, row_names
         list
@@ -1004,16 +1334,12 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
 }
 
 /// Convert a single column buffer into an R SEXP vector.
-///
-/// For native types (integer, real, logical), uses `alloc_r_vector` + `copy_from_slice`.
-/// For STRSXP/VECSXP, uses per-element SET_*_ELT (no slice access for CHARSXP/SEXP elements).
 unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
     use crate::into_r::alloc_r_vector;
 
     unsafe {
         match col {
             ColumnBuffer::Logical(v) => {
-                // RLogical is repr(transparent) over i32, same layout as LGLSXP data.
                 let (sexp, dst) = alloc_r_vector::<crate::ffi::RLogical>(nrow);
                 let dst_i32: &mut [i32] =
                     std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), nrow);
@@ -1037,13 +1363,10 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     match val {
                         Some(s) => {
-                            let s_len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-                            let charsxp =
-                                Rf_mkCharLenCE(s.as_ptr().cast(), s_len, CE_UTF8);
-                            SET_STRING_ELT(sexp, idx, charsxp);
+                            sexp.set_string_elt(idx, SEXP::charsxp(s));
                         }
                         None => {
-                            SET_STRING_ELT(sexp, idx, R_NaString);
+                            sexp.set_string_elt(idx, SEXP::na_string());
                         }
                     }
                 }
@@ -1055,9 +1378,9 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(elem) = val {
-                        SET_VECTOR_ELT(sexp, idx, *elem);
+                        sexp.set_vector_elt(idx, *elem);
                     } else {
-                        SET_VECTOR_ELT(sexp, idx, R_NilValue);
+                        sexp.set_vector_elt(idx, SEXP::nil());
                     }
                 }
                 sexp

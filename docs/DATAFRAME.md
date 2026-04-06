@@ -395,7 +395,7 @@ directly to R data frames without deriving `DataFrameRow`:
 
 ```rust
 use serde::Serialize;
-use miniextendr_api::serde::vec_to_dataframe;
+use miniextendr_api::serde::ColumnarDataFrame;
 
 #[derive(Serialize)]
 struct LogEntry {
@@ -410,7 +410,7 @@ fn get_logs() -> miniextendr_api::ffi::SEXP {
         LogEntry { timestamp: 1.0, level: "INFO".into(), message: "started".into() },
         LogEntry { timestamp: 2.0, level: "ERROR".into(), message: "failed".into() },
     ];
-    vec_to_dataframe(&logs).expect("serialization failed")
+    ColumnarDataFrame::from_rows(&logs).expect("serialization failed")
 }
 ```
 

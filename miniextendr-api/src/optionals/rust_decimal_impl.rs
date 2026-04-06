@@ -47,7 +47,7 @@
 pub use rust_decimal::Decimal;
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
-use crate::ffi::{SEXP, SEXPTYPE, TYPEOF};
+use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::IntoR;
 use std::str::FromStr;
@@ -140,7 +140,7 @@ fn decimal_from_f64(f: f64) -> Result<Decimal, SexpError> {
 
 /// Get the SEXP type (safe wrapper)
 fn sexp_type(sexp: SEXP) -> SEXPTYPE {
-    unsafe { TYPEOF(sexp) }
+    sexp.type_of()
 }
 
 impl TryFromSexp for Decimal {

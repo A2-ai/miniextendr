@@ -19,6 +19,7 @@ use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
 use miniextendr_api::list::{List, ListAccumulator, ListBuilder, collect_list};
 use miniextendr_api::preserve;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -31,7 +32,7 @@ fn main() {
 #[divan::bench]
 fn raw_protect_unprotect() {
     unsafe {
-        let sexp = ffi::Rf_ScalarInteger(42);
+        let sexp = raw_ffi::Rf_ScalarInteger(42);
         Rf_protect(sexp);
         Rf_unprotect(1);
         divan::black_box(sexp);
@@ -42,7 +43,7 @@ fn raw_protect_unprotect() {
 #[divan::bench]
 fn preserve_insert_release() {
     unsafe {
-        let sexp = ffi::Rf_ScalarInteger(42);
+        let sexp = raw_ffi::Rf_ScalarInteger(42);
         let cell = preserve::insert(sexp);
         preserve::release(cell);
         divan::black_box(cell);
@@ -53,7 +54,7 @@ fn preserve_insert_release() {
 #[divan::bench]
 fn preserve_insert_release_unchecked() {
     unsafe {
-        let sexp = ffi::Rf_ScalarInteger(42);
+        let sexp = raw_ffi::Rf_ScalarInteger(42);
         let cell = preserve::insert_unchecked(sexp);
         preserve::release_unchecked(cell);
         divan::black_box(cell);
@@ -66,7 +67,7 @@ fn preserve_multiple(n: usize) {
     unsafe {
         let mut cells = Vec::with_capacity(n);
         for i in 0..n {
-            let sexp = ffi::Rf_ScalarInteger(i as i32);
+            let sexp = raw_ffi::Rf_ScalarInteger(i as i32);
             cells.push(preserve::insert_unchecked(sexp));
         }
         // Release in reverse order (typical LIFO pattern)
@@ -83,7 +84,7 @@ fn preserve_release_arbitrary_order(n: usize) {
     unsafe {
         let mut cells = Vec::with_capacity(n);
         for i in 0..n {
-            let sexp = ffi::Rf_ScalarInteger(i as i32);
+            let sexp = raw_ffi::Rf_ScalarInteger(i as i32);
             cells.push(preserve::insert_unchecked(sexp));
         }
         // Release in "random" order (every 3rd, then every 2nd, then rest)
@@ -114,7 +115,7 @@ fn preserve_ppsize_scale(n: usize) {
     unsafe {
         let mut cells = Vec::with_capacity(n);
         for i in 0..n {
-            let sexp = ffi::Rf_ScalarInteger((i % 1000) as i32);
+            let sexp = raw_ffi::Rf_ScalarInteger((i % 1000) as i32);
             cells.push(preserve::insert_unchecked(sexp));
         }
         // Release all
@@ -130,7 +131,7 @@ fn preserve_ppsize_arbitrary_order(n: usize) {
     unsafe {
         let mut cells = Vec::with_capacity(n);
         for i in 0..n {
-            let sexp = ffi::Rf_ScalarInteger((i % 1000) as i32);
+            let sexp = raw_ffi::Rf_ScalarInteger((i % 1000) as i32);
             cells.push(preserve::insert_unchecked(sexp));
         }
         // Release in "random" order
@@ -150,7 +151,7 @@ fn preserve_ppsize_arbitrary_order(n: usize) {
 #[divan::bench]
 fn owned_protect() {
     unsafe {
-        let guard = OwnedProtect::new(ffi::Rf_ScalarInteger(42));
+        let guard = OwnedProtect::new(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(guard.get());
     }
 }
@@ -160,7 +161,7 @@ fn owned_protect() {
 fn protect_scope_single() {
     unsafe {
         let scope = ProtectScope::new();
-        let root = scope.protect(ffi::Rf_ScalarInteger(42));
+        let root = scope.protect(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(root.get());
     }
 }
@@ -171,7 +172,7 @@ fn protect_scope_multiple(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
         for _ in 0..n {
-            let _ = scope.protect(ffi::Rf_ScalarInteger(42));
+            let _ = scope.protect(raw_ffi::Rf_ScalarInteger(42));
         }
         divan::black_box(scope.count());
     }
@@ -182,7 +183,7 @@ fn protect_scope_multiple(n: usize) {
 fn raw_protect_multiple(n: usize) {
     unsafe {
         for _ in 0..n {
-            Rf_protect(ffi::Rf_ScalarInteger(42));
+            Rf_protect(raw_ffi::Rf_ScalarInteger(42));
         }
         Rf_unprotect(n as i32);
     }
@@ -197,8 +198,8 @@ fn raw_expensive_reference() {
     unsafe {
         // Preserve / release (precious list)
         let preserved = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-        ffi::R_PreserveObject(preserved);
-        ffi::R_ReleaseObject(preserved);
+        raw_ffi::R_PreserveObject(preserved);
+        raw_ffi::R_ReleaseObject(preserved);
 
         // Protect-with-index + reprotect (replace-in-place)
         let mut idx: ProtectIndex = 0;
@@ -226,10 +227,10 @@ fn raw_expensive_reference() {
 fn reprotect_slot_set(iterations: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let slot = scope.protect_with_index(ffi::Rf_ScalarInteger(0));
+        let slot = scope.protect_with_index(raw_ffi::Rf_ScalarInteger(0));
 
         for i in 0..iterations {
-            slot.set(ffi::Rf_ScalarInteger(i as i32));
+            slot.set(raw_ffi::Rf_ScalarInteger(i as i32));
         }
 
         divan::black_box(slot.get());
@@ -243,12 +244,12 @@ fn owned_protect_repeated(iterations: usize) {
         let scope = ProtectScope::new();
 
         // Start with a protected value
-        let mut current = scope.protect_raw(ffi::Rf_ScalarInteger(0));
+        let mut current = scope.protect_raw(raw_ffi::Rf_ScalarInteger(0));
 
         for i in 0..iterations {
             // Each iteration: protect new, forget old protection
             // This grows the stack (bad pattern, but shows cost)
-            current = scope.protect_raw(ffi::Rf_ScalarInteger(i as i32));
+            current = scope.protect_raw(raw_ffi::Rf_ScalarInteger(i as i32));
         }
 
         divan::black_box(current);
@@ -266,10 +267,10 @@ fn list_builder_construction(size_idx: usize) {
     let n = LIST_SIZES[size_idx];
     unsafe {
         let scope = ProtectScope::new();
-        let builder = ListBuilder::new(&scope, n);
+        let builder = ListBuilder::new(&scope, n as usize);
 
         for i in 0..n {
-            let child = scope.protect_raw(ffi::Rf_ScalarInteger(i as i32));
+            let child = scope.protect_raw(raw_ffi::Rf_ScalarInteger(i as i32));
             builder.set(i, child);
         }
 
@@ -286,8 +287,8 @@ fn list_manual_construction(size_idx: usize) {
         let list = scope.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, n));
 
         for i in 0..n {
-            let child = scope.protect_raw(ffi::Rf_ScalarInteger(i as i32));
-            ffi::SET_VECTOR_ELT(list, i, child);
+            let child = scope.protect_raw(raw_ffi::Rf_ScalarInteger(i as i32));
+            raw_ffi::SET_VECTOR_ELT(list, i, child);
         }
 
         divan::black_box(list);
@@ -304,7 +305,7 @@ fn list_set_elt_safe(size_idx: usize) {
 
         for i in 0..n {
             // Child is unprotected - set_elt handles protection
-            let child = ffi::Rf_ScalarInteger(i as i32);
+            let child = raw_ffi::Rf_ScalarInteger(i as i32);
             list.set_elt(i, child);
         }
 
@@ -322,7 +323,7 @@ fn list_set_elt_unchecked(size_idx: usize) {
 
         for i in 0..n {
             // Pre-protect child, then use unchecked
-            let child = scope.protect_raw(ffi::Rf_ScalarInteger(i as i32));
+            let child = scope.protect_raw(raw_ffi::Rf_ScalarInteger(i as i32));
             list.set_elt_unchecked(i, child);
         }
 
@@ -339,7 +340,7 @@ fn strvec_builder_construction(size_idx: usize) {
     let n = LIST_SIZES[size_idx];
     unsafe {
         let scope = ProtectScope::new();
-        let builder = StrVecBuilder::new(&scope, n);
+        let builder = StrVecBuilder::new(&scope, n as usize);
 
         for i in 0..n {
             builder.set_str(i, "hello");
@@ -368,8 +369,8 @@ fn strvec_manual_construction(size_idx: usize) {
 
         for i in 0..n {
             // UNSAFE: charsxp unprotected - GC risk! See doc comment above.
-            let charsxp = ffi::Rf_mkCharLenCE("hello".as_ptr().cast(), 5, ffi::CE_UTF8);
-            ffi::SET_STRING_ELT(vec, i, charsxp);
+            let charsxp = raw_ffi::Rf_mkCharLenCE("hello".as_ptr().cast(), 5, ffi::CE_UTF8);
+            raw_ffi::SET_STRING_ELT(vec, i, charsxp);
         }
 
         divan::black_box(vec);
@@ -403,18 +404,22 @@ fn build_named_list_realistic() {
         let builder = ListBuilder::new(&scope, 5);
 
         // Integer
-        builder.set(0, scope.protect_raw(ffi::Rf_ScalarInteger(42)));
+        builder.set(0, scope.protect_raw(raw_ffi::Rf_ScalarInteger(42)));
         // Real
-        builder.set(1, scope.protect_raw(ffi::Rf_ScalarReal(1.5)));
+        builder.set(1, scope.protect_raw(raw_ffi::Rf_ScalarReal(1.5)));
         // Logical
-        builder.set(2, scope.protect_raw(ffi::Rf_ScalarLogical(1)));
+        builder.set(2, scope.protect_raw(raw_ffi::Rf_ScalarLogical(1)));
         // String - protect CHARSXP before passing to Rf_ScalarString
-        let s = scope.protect_raw(ffi::Rf_mkCharLenCE("test".as_ptr().cast(), 4, ffi::CE_UTF8));
-        builder.set(3, scope.protect_raw(ffi::Rf_ScalarString(s)));
+        let s = scope.protect_raw(raw_ffi::Rf_mkCharLenCE(
+            "test".as_ptr().cast(),
+            4,
+            ffi::CE_UTF8,
+        ));
+        builder.set(3, scope.protect_raw(raw_ffi::Rf_ScalarString(s)));
         // Nested list
         let inner = ListBuilder::new(&scope, 2);
-        inner.set(0, scope.protect_raw(ffi::Rf_ScalarInteger(1)));
-        inner.set(1, scope.protect_raw(ffi::Rf_ScalarInteger(2)));
+        inner.set(0, scope.protect_raw(raw_ffi::Rf_ScalarInteger(1)));
+        inner.set(1, scope.protect_raw(raw_ffi::Rf_ScalarInteger(2)));
         builder.set(4, inner.into_sexp());
 
         divan::black_box(builder.into_sexp());
@@ -452,10 +457,10 @@ fn accumulator_pattern(iterations: usize) {
 fn reprotect_slot_high_iterations(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let slot = scope.protect_with_index(ffi::Rf_ScalarInteger(0));
+        let slot = scope.protect_with_index(raw_ffi::Rf_ScalarInteger(0));
 
         for i in 0..n {
-            slot.set(ffi::Rf_ScalarInteger((i % 1000) as i32));
+            slot.set(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
         }
 
         // Stack usage: always 1
@@ -472,7 +477,7 @@ fn list_set_elt_high_count(n: usize) {
 
         for i in 0..n {
             // set_elt protects/unprotects internally - constant stack
-            list.set_elt(i as isize, ffi::Rf_ScalarInteger(i as i32));
+            list.set_elt(i as isize, raw_ffi::Rf_ScalarInteger(i as i32));
         }
 
         // Stack usage: always 1
@@ -502,7 +507,7 @@ fn strvec_set_str_high_count(n: usize) {
 fn nested_lists_reprotect(outer_count: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let outer = ListBuilder::new(&scope, outer_count as isize);
+        let outer = ListBuilder::new(&scope, outer_count);
 
         for i in 0..outer_count {
             // Use reprotect slot for inner list - each iteration reuses slot
@@ -510,7 +515,7 @@ fn nested_lists_reprotect(outer_count: usize) {
             let inner = List::from_raw(slot.get());
 
             for j in 0..5isize {
-                inner.set_elt(j, ffi::Rf_ScalarInteger((i * 5 + j as usize) as i32));
+                inner.set_elt(j, raw_ffi::Rf_ScalarInteger((i * 5 + j as usize) as i32));
             }
 
             outer.set(i as isize, slot.get());
@@ -526,11 +531,11 @@ fn nested_lists_reprotect(outer_count: usize) {
 fn list_builder_grows_stack(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let builder = ListBuilder::new(&scope, n as isize);
+        let builder = ListBuilder::new(&scope, n);
 
         for i in 0..n {
             // Each child adds to protect stack
-            let child = scope.protect_raw(ffi::Rf_ScalarInteger(i as i32));
+            let child = scope.protect_raw(raw_ffi::Rf_ScalarInteger(i as i32));
             builder.set(i as isize, child);
         }
 
@@ -549,7 +554,7 @@ fn list_constant_vs_growing(n: usize) {
         let list1 =
             List::from_raw(scope1.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)));
         for i in 0..n {
-            list1.set_elt(i as isize, ffi::Rf_ScalarInteger(i as i32));
+            list1.set_elt(i as isize, raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(list1.as_sexp());
         // scope1 drops: unprotect 1
@@ -559,7 +564,7 @@ fn list_constant_vs_growing(n: usize) {
         let list2 =
             List::from_raw(scope2.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)));
         for i in 0..n {
-            let child = scope2.protect_raw(ffi::Rf_ScalarInteger(i as i32));
+            let child = scope2.protect_raw(raw_ffi::Rf_ScalarInteger(i as i32));
             list2.set_elt_unchecked(i as isize, child);
         }
         divan::black_box(list2.as_sexp());
@@ -595,11 +600,11 @@ fn alloc_then_protect() {
 fn reprotect_set_with(iterations: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let slot = scope.protect_with_index(ffi::Rf_ScalarInteger(0));
+        let slot = scope.protect_with_index(raw_ffi::Rf_ScalarInteger(0));
 
         for i in 0..iterations {
             // Safe pattern: set_with handles temp protection internally
-            slot.set_with(|| ffi::Rf_ScalarInteger(i as i32));
+            slot.set_with(|| raw_ffi::Rf_ScalarInteger(i as i32));
         }
 
         divan::black_box(slot.get());
@@ -611,11 +616,11 @@ fn reprotect_set_with(iterations: usize) {
 fn reprotect_manual_pattern(iterations: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let slot = scope.protect_with_index(ffi::Rf_ScalarInteger(0));
+        let slot = scope.protect_with_index(raw_ffi::Rf_ScalarInteger(0));
 
         for i in 0..iterations {
             // Manual pattern - more verbose, same result
-            let new_val = ffi::Rf_ScalarInteger(i as i32);
+            let new_val = raw_ffi::Rf_ScalarInteger(i as i32);
             Rf_protect(new_val);
             slot.set(new_val);
             Rf_unprotect(1);
@@ -679,9 +684,9 @@ fn collect_into_vec_then_list(n: usize) {
         let values: Vec<i32> = (0..n).map(|i| i as i32).collect();
 
         // Then build list with known size
-        let builder = ListBuilder::new(&scope, values.len() as isize);
+        let builder = ListBuilder::new(&scope, values.len());
         for (i, v) in values.into_iter().enumerate() {
-            builder.set_protected(i as isize, ffi::Rf_ScalarInteger(v));
+            builder.set_protected(i as isize, raw_ffi::Rf_ScalarInteger(v));
         }
 
         divan::black_box(builder.into_sexp());
@@ -695,9 +700,9 @@ fn accumulator_vs_builder_known_size(n: usize) {
     unsafe {
         // ListBuilder (optimal for known size)
         let scope1 = ProtectScope::new();
-        let builder = ListBuilder::new(&scope1, n as isize);
+        let builder = ListBuilder::new(&scope1, n);
         for i in 0..n {
-            builder.set_protected(i as isize, ffi::Rf_ScalarInteger(i as i32));
+            builder.set_protected(i as isize, raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(builder.into_sexp());
 
@@ -770,7 +775,7 @@ fn manual_typed_vector(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
         let vec = scope.protect(Rf_allocVector(SEXPTYPE::INTSXP, n as isize));
-        let ptr = ffi::INTEGER(vec.get());
+        let ptr = raw_ffi::INTEGER(vec.get());
 
         for i in 0..n {
             *ptr.add(i) = i as i32;

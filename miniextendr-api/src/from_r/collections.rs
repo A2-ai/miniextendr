@@ -70,7 +70,7 @@ where
     M: Extend<(String, V)>,
     F: FnOnce(usize) -> M,
 {
-    use crate::ffi::{Rf_getAttrib, Rf_translateCharUTF8, STRING_ELT, VECTOR_ELT};
+    use crate::ffi::Rf_translateCharUTF8;
 
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
@@ -85,7 +85,7 @@ where
     let mut map = create_map(len);
 
     // Get names attribute
-    let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
+    let names = sexp.get_names();
     let has_names = names.type_of() == SEXPTYPE::STRSXP && names.len() == len;
 
     // Single-pass: check duplicates AND convert in one loop
@@ -93,7 +93,7 @@ where
 
     for i in 0..len {
         let key = if has_names {
-            let charsxp = unsafe { STRING_ELT(names, i as crate::ffi::R_xlen_t) };
+            let charsxp = names.string_elt(i as crate::ffi::R_xlen_t);
             if charsxp == unsafe { crate::ffi::R_NaString } {
                 String::new()
             } else {
@@ -117,7 +117,7 @@ where
             return Err(SexpError::DuplicateName(key));
         }
 
-        let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+        let elem = sexp.vector_elt(i as crate::ffi::R_xlen_t);
         let value = V::try_from_sexp(elem).map_err(|e| e.into())?;
         map.extend(std::iter::once((key, value)));
     }
@@ -157,8 +157,6 @@ where
     M: TryFromSexp,
     M::Error: Into<SexpError>,
 {
-    use crate::ffi::VECTOR_ELT;
-
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
         return Err(SexpTypeError {
@@ -172,7 +170,7 @@ where
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+        let elem = sexp.vector_elt(i as crate::ffi::R_xlen_t);
         let map = M::try_from_sexp(elem).map_err(Into::into)?;
         result.push(map);
     }

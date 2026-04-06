@@ -116,6 +116,17 @@ growth-debug = []
 ## Enable fast hasher for refcount protect arenas. Uses ahash instead of SipHash
 ## for improved throughput on large collections. Not DOS-resistant.
 refcount-fast-hash = ["dep:ahash"]
+## All additive features (excludes mutually exclusive default-r6/default-s7 and nonapi/connections).
+## Use for local development checks: `cargo check -p miniextendr-api --features full`
+full = [
+    "serde", "serde_json", "num-complex", "uuid", "url", "aho-corasick",
+    "bitflags", "bitvec", "arrow", "datafusion", "toml", "time", "ndarray",
+    "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions", "vctrs",
+    "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
+    "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
+    "either", "log", "worker-thread", "macro-coverage",
+    "debug-preserve", "growth-debug",
+]
 
 [dependencies]
 linkme = { workspace = true }

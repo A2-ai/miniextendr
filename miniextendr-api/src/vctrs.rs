@@ -10,9 +10,8 @@ use crate::ffi::SEXP;
 // region: Construction helpers (Phase A)
 
 use crate::ffi::{
-    R_BlankString, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
-    Rf_install, Rf_setAttrib, Rf_type2char, Rf_xlength, SET_STRING_ELT, SEXPTYPE, STRING_ELT,
-    TYPEOF, VECTOR_ELT,
+    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_install, Rf_type2char, Rf_xlength,
+    SEXPTYPE, SexpExt,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
@@ -156,15 +155,9 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
     let class_sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for (i, class_name) in classes.iter().enumerate() {
-        // Use Rf_mkCharLenCE with UTF-8 encoding since Rust strings are always UTF-8
-        let charsxp = unsafe {
-            crate::ffi::Rf_mkCharLenCE(
-                class_name.as_ptr().cast::<i8>(),
-                class_name.len() as i32,
-                crate::ffi::cetype_t::CE_UTF8,
-            )
-        };
-        unsafe { SET_STRING_ELT(class_sexp.get(), i as R_xlen_t, charsxp) };
+        class_sexp
+            .get()
+            .set_string_elt(i as R_xlen_t, SEXP::charsxp(class_name));
     }
 
     class_sexp
@@ -179,15 +172,7 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
 ///
 /// Must be called from R's main thread.
 unsafe fn install_symbol(name: &str) -> SEXP {
-    // Create a CHARSXP with proper length
-    let charsxp = unsafe {
-        crate::ffi::Rf_mkCharLenCE(
-            name.as_ptr().cast::<i8>(),
-            name.len() as i32,
-            crate::ffi::cetype_t::CE_UTF8,
-        )
-    };
-    // Convert to symbol
+    let charsxp = SEXP::charsxp(name);
     unsafe { crate::ffi::Rf_installChar(charsxp) }
 }
 
@@ -197,7 +182,7 @@ unsafe fn install_symbol(name: &str) -> SEXP {
 ///
 /// Must be called from R's main thread with a valid SEXP.
 unsafe fn get_typeof_name(sexp: SEXP) -> &'static str {
-    let sexptype = unsafe { TYPEOF(sexp) };
+    let sexptype = sexp.type_of();
     let cstr = unsafe { Rf_type2char(sexptype) };
     let cstr = unsafe { std::ffi::CStr::from_ptr(cstr) };
     // SAFETY: R's type names are ASCII strings
@@ -218,7 +203,7 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
 
     // First pass: check if any NA
     for i in 0..n {
-        if unsafe { STRING_ELT(names, i) == R_NaString } {
+        if unsafe { names.string_elt(i) == R_NaString } {
             has_na = true;
             break;
         }
@@ -231,13 +216,13 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
     // Second pass: create repaired copy
     let repaired = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
     for i in 0..n {
-        let elem = unsafe { STRING_ELT(names, i) };
+        let elem = names.string_elt(i);
         let new_elem = if elem == unsafe { R_NaString } {
             unsafe { R_BlankString }
         } else {
             elem
         };
-        unsafe { SET_STRING_ELT(repaired.get(), i, new_elem) };
+        repaired.get().set_string_elt(i, new_elem);
     }
 
     // Return the SEXP - guard drops and unprotects
@@ -287,7 +272,7 @@ pub fn new_vctr(
     inherit_base_type: Option<bool>,
 ) -> Result<SEXP, VctrsBuildError> {
     // Validate: data must be a vector type
-    let data_type = unsafe { TYPEOF(data) };
+    let data_type = data.type_of();
     if !is_vector_type(data_type) {
         return Err(VctrsBuildError::NotAVector);
     }
@@ -315,21 +300,21 @@ pub fn new_vctr(
 
     // Build and set class
     let class_sexp = unsafe { build_class_vector(&class_parts) };
-    unsafe { Rf_setAttrib(data, crate::ffi::R_ClassSymbol, class_sexp.get()) };
+    data.set_class(class_sexp.get());
 
     // Repair NA names if present
-    let names = unsafe { Rf_getAttrib(data, R_NamesSymbol) };
-    if names != unsafe { R_NilValue } {
+    let names = data.get_names();
+    if names != SEXP::nil() {
         let repaired = unsafe { repair_na_names(names) };
         if repaired != names {
-            unsafe { Rf_setAttrib(data, R_NamesSymbol, repaired) };
+            data.set_names(repaired);
         }
     }
 
     // Set additional attributes
     for (name, value) in attrs {
         let name_sym = unsafe { install_symbol(name) };
-        unsafe { Rf_setAttrib(data, name_sym, *value) };
+        data.set_attr(name_sym, *value);
     }
 
     Ok(data)
@@ -390,8 +375,8 @@ pub fn new_rcrd(
 
     for i in 0..n_fields {
         // Check name
-        let name_charsxp = unsafe { STRING_ELT(names_sexp, i) };
-        if name_charsxp == unsafe { R_NaString } || name_charsxp == unsafe { R_NilValue } {
+        let name_charsxp = names_sexp.string_elt(i);
+        if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::nil() {
             return Err(VctrsBuildError::UnnamedFields);
         }
 
@@ -409,7 +394,7 @@ pub fn new_rcrd(
 
         // Check length (skip first, already used for expected_len)
         if i > 0 {
-            let field = unsafe { VECTOR_ELT(fields.as_sexp(), i) };
+            let field = fields.as_sexp().vector_elt(i);
             let field_len = unsafe { Rf_xlength(field) };
             if field_len != expected_len {
                 return Err(VctrsBuildError::FieldLengthMismatch {
@@ -428,12 +413,12 @@ pub fn new_rcrd(
 
     let class_sexp = unsafe { build_class_vector(&class_parts) };
     let data = fields.as_sexp();
-    unsafe { Rf_setAttrib(data, crate::ffi::R_ClassSymbol, class_sexp.get()) };
+    data.set_class(class_sexp.get());
 
     // Set additional attributes
     for (name, value) in attrs {
         let name_sym = unsafe { install_symbol(name) };
-        unsafe { Rf_setAttrib(data, name_sym, *value) };
+        data.set_attr(name_sym, *value);
     }
 
     Ok(data)
@@ -501,25 +486,25 @@ pub fn new_list_of(
 
     let class_sexp = unsafe { build_class_vector(&class_parts) };
     let data = x.as_sexp();
-    unsafe { Rf_setAttrib(data, crate::ffi::R_ClassSymbol, class_sexp.get()) };
+    data.set_class(class_sexp.get());
 
     // Set ptype attribute if provided
     if let Some(p) = ptype {
         let ptype_sym = unsafe { Rf_install(c"ptype".as_ptr()) };
-        unsafe { Rf_setAttrib(data, ptype_sym, p) };
+        data.set_attr(ptype_sym, p);
     }
 
     // Set size attribute if provided
     if let Some(s) = size {
         let size_sym = unsafe { Rf_install(c"size".as_ptr()) };
-        let size_sexp = unsafe { crate::ffi::Rf_ScalarInteger(s) };
-        unsafe { Rf_setAttrib(data, size_sym, size_sexp) };
+        let size_sexp = crate::ffi::SEXP::scalar_integer(s);
+        data.set_attr(size_sym, size_sexp);
     }
 
     // Set additional attributes
     for (name, value) in attrs {
         let name_sym = unsafe { install_symbol(name) };
-        unsafe { Rf_setAttrib(data, name_sym, *value) };
+        data.set_attr(name_sym, *value);
     }
 
     Ok(data)

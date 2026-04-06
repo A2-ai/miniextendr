@@ -60,7 +60,7 @@
 //! | Type has multiple valid representations | Don't use `Prefer*`; use `As*` or `return` |
 
 use crate::externalptr::{ExternalPtr, IntoExternalPtr};
-use crate::ffi::RNativeType;
+use crate::ffi::{RNativeType, SexpExt};
 use crate::into_r::IntoR;
 use crate::list::{IntoList, List};
 use crate::named_vector::AtomicElement;
@@ -302,11 +302,11 @@ impl<T: serde::Serialize> From<T> for AsSerializeRow<T> {
 #[cfg(feature = "serde")]
 impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
     fn into_list(self) -> List {
-        use crate::ffi::{SEXPTYPE, TYPEOF};
+        use crate::ffi::{SEXPTYPE, SexpExt};
         use crate::serde::RSerializer;
         match RSerializer::to_sexp(&self.0) {
             Ok(sexp) => {
-                if unsafe { TYPEOF(sexp) } as SEXPTYPE == SEXPTYPE::VECSXP {
+                if sexp.type_of() == SEXPTYPE::VECSXP {
                     unsafe { List::from_raw(sexp) }
                 } else {
                     // Non-list SEXP (e.g., scalar) — wrap in a single-element list
@@ -505,7 +505,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         let mut col_names = Vec::with_capacity(n_cols as usize);
         for i in 0..n_cols {
             unsafe {
-                let name_sexp = crate::ffi::STRING_ELT(names_sexp, i);
+                let name_sexp = names_sexp.string_elt(i);
                 let name_ptr = crate::ffi::R_CHAR(name_sexp);
                 let name_cstr = std::ffi::CStr::from_ptr(name_ptr);
                 if let Ok(s) = name_cstr.to_str() {
@@ -528,8 +528,11 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
             for name in &col_names {
                 let value = list
                     .get_named::<crate::ffi::SEXP>(name)
-                    .unwrap_or(unsafe { crate::ffi::R_NilValue });
-                columns.get_mut(name).expect("column inserted above").push(value);
+                    .unwrap_or(crate::ffi::SEXP::nil());
+                columns
+                    .get_mut(name)
+                    .expect("column inserted above")
+                    .push(value);
             }
         }
 

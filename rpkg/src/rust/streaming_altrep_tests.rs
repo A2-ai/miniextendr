@@ -2,7 +2,9 @@
 //!
 //! Uses the standard rpkg pattern: data struct + wrapper struct with #[miniextendr].
 
-use miniextendr_api::altrep_data::{AltIntegerData, AltRealData, AltrepLen, StreamingIntData, StreamingRealData};
+use miniextendr_api::altrep_data::{
+    AltIntegerData, AltRealData, AltrepLen, StreamingIntData, StreamingRealData,
+};
 use miniextendr_api::prelude::*;
 
 // region: StreamingIntData
@@ -32,18 +34,22 @@ miniextendr_api::impl_altinteger_from_data!(StreamingIntRangeData);
 #[miniextendr(class = "StreamingIntRange")]
 pub struct StreamingIntRange(pub StreamingIntRangeData);
 
-/// Create a streaming integer ALTREP [1..=n].
+/// Create a streaming integer ALTREP `1..=n`.
 #[miniextendr]
 pub fn streaming_int_range(n: i32) -> StreamingIntRange {
     let len = n as usize;
     StreamingIntRange(StreamingIntRangeData {
-        inner: StreamingIntData::new(len, 64, Box::new(move |start, buf| {
-            let count = buf.len().min(len.saturating_sub(start));
-            for (i, slot) in buf[..count].iter_mut().enumerate() {
-                *slot = (start + i + 1) as i32;
-            }
-            count
-        })),
+        inner: StreamingIntData::new(
+            len,
+            64,
+            Box::new(move |start, buf| {
+                let count = buf.len().min(len.saturating_sub(start));
+                for (i, slot) in buf[..count].iter_mut().enumerate() {
+                    *slot = (start + i + 1) as i32;
+                }
+                count
+            }),
+        ),
     })
 }
 
@@ -76,19 +82,23 @@ miniextendr_api::impl_altreal_from_data!(StreamingRealSquaresData);
 #[miniextendr(class = "StreamingRealSquares")]
 pub struct StreamingRealSquares(pub StreamingRealSquaresData);
 
-/// Create a streaming real ALTREP [1^2, 2^2, ..., n^2].
+/// Create a streaming real ALTREP `1^2, 2^2, ..., n^2`.
 #[miniextendr]
 pub fn streaming_real_squares(n: i32) -> StreamingRealSquares {
     let len = n as usize;
     StreamingRealSquares(StreamingRealSquaresData {
-        inner: StreamingRealData::new(len, 32, Box::new(move |start, buf| {
-            let count = buf.len().min(len.saturating_sub(start));
-            for (i, slot) in buf[..count].iter_mut().enumerate() {
-                let v = (start + i + 1) as f64;
-                *slot = v * v;
-            }
-            count
-        })),
+        inner: StreamingRealData::new(
+            len,
+            32,
+            Box::new(move |start, buf| {
+                let count = buf.len().min(len.saturating_sub(start));
+                for (i, slot) in buf[..count].iter_mut().enumerate() {
+                    let v = (start + i + 1) as f64;
+                    *slot = v * v;
+                }
+                count
+            }),
+        ),
     })
 }
 

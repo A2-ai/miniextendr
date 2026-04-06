@@ -26,8 +26,8 @@
 //! ```
 
 use crate::ffi::{
-    self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_NilValue, R_tryEvalSilent, Rf_install, Rf_lcons,
-    Rf_protect, Rf_unprotect, SET_TAG, SEXP,
+    self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_lcons, Rf_protect,
+    Rf_unprotect, SET_TAG, SEXP, SexpExt,
 };
 use std::ffi::{CStr, CString};
 
@@ -270,7 +270,7 @@ impl RCall {
             // We protect intermediate results as we go.
             let mut n_protect: i32 = 0;
 
-            let mut tail = R_NilValue;
+            let mut tail = SEXP::nil();
             for (name, value) in self.args.iter().rev() {
                 tail = ffi::Rf_cons(*value, tail);
                 Rf_protect(tail);
@@ -373,7 +373,7 @@ unsafe fn get_r_error_message() -> String {
 
         // geterrmessage() returns character(1)
         let result = if ffi::Rf_xlength(msg_sexp) > 0 {
-            let charsxp = ffi::STRING_ELT(msg_sexp, 0);
+            let charsxp = msg_sexp.string_elt(0);
             if !charsxp.is_null() {
                 let ptr = ffi::R_CHAR(charsxp);
                 if !ptr.is_null() {

@@ -2,6 +2,7 @@
 
 use miniextendr_api::ffi;
 use miniextendr_api::worker::{run_on_worker, with_r_thread};
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -16,13 +17,13 @@ fn run_on_worker_no_r() {
 
 #[divan::bench]
 fn run_on_worker_with_r_thread() {
-    let out = run_on_worker(|| with_r_thread(|| unsafe { ffi::Rf_ScalarInteger(1) })).unwrap();
+    let out = run_on_worker(|| with_r_thread(|| unsafe { raw_ffi::Rf_ScalarInteger(1) })).unwrap();
     divan::black_box(out);
 }
 
 #[divan::bench]
 fn with_r_thread_main() {
-    let out = with_r_thread(|| unsafe { ffi::Rf_ScalarInteger(1) });
+    let out = with_r_thread(|| unsafe { raw_ffi::Rf_ScalarInteger(1) });
     divan::black_box(out);
 }
 
@@ -48,8 +49,8 @@ fn worker_batching(n: usize) {
     run_on_worker(move || {
         let mut sum = 0i32;
         for _ in 0..n {
-            let sexp = with_r_thread(|| unsafe { ffi::Rf_ScalarInteger(1) });
-            sum += unsafe { ffi::Rf_asInteger(sexp) } as i32;
+            let sexp = with_r_thread(|| unsafe { raw_ffi::Rf_ScalarInteger(1) });
+            sum += unsafe { raw_ffi::Rf_asInteger(sexp) } as i32;
         }
         divan::black_box(sum);
     })

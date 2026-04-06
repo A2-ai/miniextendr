@@ -32,7 +32,7 @@
 //! let alpha: Vec<f64> = validated.get("alpha")?;
 //! ```
 
-use crate::ffi::{self, Rboolean, SEXP, SEXPTYPE};
+use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::list::{List, ListFromSexpError};
 use std::collections::HashSet;
@@ -139,17 +139,17 @@ pub enum TypeSpec {
     Class(&'static str),
     /// Data frame (inherits `data.frame`).
     DataFrame,
-    /// Factor (uses `Rf_isFactor`).
+    /// Factor (`SEXP::is_factor`).
     Factor,
-    /// Matrix (uses `Rf_isMatrix`).
+    /// Matrix (`SEXP::is_matrix`).
     Matrix,
-    /// Array (uses `Rf_isArray`).
+    /// Array (`SEXP::is_array`).
     Array,
-    /// Function (uses `Rf_isFunction`).
+    /// Function (`SEXP::is_function`).
     Function,
-    /// Environment (uses `Rf_isEnvironment`).
+    /// Environment (`SEXP::is_environment`).
     Environment,
-    /// NULL only.
+    /// NULL only (`SEXP::is_nil`).
     Null,
 }
 
@@ -338,7 +338,7 @@ impl TypedList {
 
         if let Some(names) = names_sexp {
             for i in 0..n {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, i) };
+                let name_sexp = names.string_elt(i);
                 if name_sexp == unsafe { ffi::R_NaString } {
                     continue;
                 }
@@ -346,7 +346,7 @@ impl TypedList {
                 let name_cstr = unsafe { CStr::from_ptr(name_ptr) };
                 if let Ok(s) = name_cstr.to_str() {
                     if s == name {
-                        return Ok(unsafe { ffi::VECTOR_ELT(self.inner.as_sexp(), i) });
+                        return Ok(self.inner.as_sexp().vector_elt(i));
                     }
                 }
             }
@@ -389,7 +389,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
 
     if let Some(names) = names_sexp {
         for i in 0..n {
-            let name_sexp = unsafe { ffi::STRING_ELT(names, i) };
+            let name_sexp = names.string_elt(i);
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }
@@ -424,7 +424,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
                 }
             }
             Some(&idx) => {
-                let elem = unsafe { ffi::VECTOR_ELT(list.as_sexp(), idx) };
+                let elem = list.as_sexp().vector_elt(idx);
                 validate_element(elem, entry)?;
             }
         }
@@ -451,7 +451,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
 
 /// Validate a single element against its type spec.
 fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError> {
-    let actual_type = unsafe { ffi::TYPEOF(elem) };
+    let actual_type = elem.type_of();
     let actual_len = unsafe { ffi::Rf_xlength(elem) };
 
     match &entry.spec {
@@ -524,8 +524,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::List(len) => {
-            let is_list = unsafe { ffi::Rf_isList(elem) } != Rboolean::FALSE
-                || actual_type == SEXPTYPE::VECSXP;
+            let is_list = elem.is_pair_list() || actual_type == SEXPTYPE::VECSXP;
             if !is_list {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
@@ -543,7 +542,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
                     expected: format!("class: {class_name}"),
                     actual: "invalid class name (contains NUL byte)".to_string(),
                 })?;
-            let inherits = unsafe { ffi::Rf_inherits(elem, c_str.as_ptr()) } != Rboolean::FALSE;
+            let inherits = elem.inherits_class(&c_str);
             if !inherits {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
@@ -555,9 +554,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::DataFrame => {
-            let inherits =
-                unsafe { ffi::Rf_inherits(elem, c"data.frame".as_ptr()) } != Rboolean::FALSE;
-            if !inherits {
+            if !elem.is_data_frame() {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),
@@ -568,7 +565,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::Factor => {
-            if unsafe { ffi::Rf_isFactor(elem) } == Rboolean::FALSE {
+            if !elem.is_factor() {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),
@@ -579,7 +576,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::Matrix => {
-            if unsafe { ffi::Rf_isMatrix(elem) } == Rboolean::FALSE {
+            if !elem.is_matrix() {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),
@@ -590,7 +587,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::Array => {
-            if unsafe { ffi::Rf_isArray(elem) } == Rboolean::FALSE {
+            if !elem.is_array() {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),
@@ -601,7 +598,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::Function => {
-            if unsafe { ffi::Rf_isFunction(elem) } == Rboolean::FALSE {
+            if !elem.is_function() {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),
@@ -612,7 +609,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::Environment => {
-            if unsafe { ffi::Rf_isEnvironment(elem) } == Rboolean::FALSE {
+            if !elem.is_environment() {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),
@@ -623,7 +620,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::Null => {
-            if unsafe { ffi::Rf_isNull(elem) } == Rboolean::FALSE {
+            if !elem.is_nil() {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),
@@ -689,15 +686,15 @@ pub fn sexptype_name(stype: SEXPTYPE) -> String {
 ///
 /// Includes class attribute if present.
 pub fn actual_type_string(sexp: SEXP) -> String {
-    let stype = unsafe { ffi::TYPEOF(sexp) };
+    let stype = sexp.type_of();
     let base_type = sexptype_name(stype);
 
     // Check if it has a class attribute
-    let class_attr = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_ClassSymbol) };
-    if class_attr != unsafe { ffi::R_NilValue } {
+    let class_attr = sexp.get_class();
+    if !class_attr.is_nil() {
         let class_len = unsafe { ffi::Rf_xlength(class_attr) };
         if class_len > 0 {
-            let first_class = unsafe { ffi::STRING_ELT(class_attr, 0) };
+            let first_class = class_attr.string_elt(0);
             if first_class != unsafe { ffi::R_NaString } {
                 let class_ptr = unsafe { ffi::R_CHAR(first_class) };
                 let class_cstr = unsafe { CStr::from_ptr(class_ptr) };

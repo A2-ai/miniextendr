@@ -7,9 +7,9 @@
 
 use crate::abi::{mx_erased, mx_tag};
 use crate::ffi::{
-    R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr, R_NilValue,
-    R_PreserveObject, R_RegisterCCallable, R_RegisterCFinalizerEx, Rboolean, Rf_install,
-    Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, TYPEOF,
+    R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr, R_PreserveObject,
+    R_RegisterCCallable, R_RegisterCFinalizerEx, Rboolean, Rf_install, Rf_protect, Rf_unprotect,
+    SEXP, SEXPTYPE, SexpExt,
 };
 use std::ffi::CStr;
 use std::sync::OnceLock;
@@ -37,6 +37,7 @@ unsafe fn get_tag() -> SEXP {
 /// Invokes the object's drop function to clean up the Rust allocation.
 unsafe extern "C-unwind" fn mx_externalptr_finalizer(ptr: SEXP) {
     unsafe {
+        debug_assert_eq!(ptr.type_of(), crate::ffi::SEXPTYPE::EXTPTRSXP,);
         let erased = R_ExternalPtrAddr(ptr) as *mut mx_erased;
         if !erased.is_null() {
             let base = (*erased).base;
@@ -60,7 +61,7 @@ unsafe extern "C-unwind" fn mx_externalptr_finalizer(ptr: SEXP) {
 pub unsafe extern "C-unwind" fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
     unsafe {
         let tag = get_tag();
-        let sexp = Rf_protect(R_MakeExternalPtr(ptr.cast(), tag, R_NilValue));
+        let sexp = Rf_protect(R_MakeExternalPtr(ptr.cast(), tag, SEXP::nil()));
         R_RegisterCFinalizerEx(sexp, Some(mx_externalptr_finalizer), Rboolean::TRUE);
         Rf_unprotect(1);
         sexp
@@ -80,7 +81,7 @@ pub unsafe extern "C-unwind" fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn mx_get(sexp: SEXP) -> *mut mx_erased {
     unsafe {
-        if TYPEOF(sexp) != SEXPTYPE::EXTPTRSXP {
+        if sexp.type_of() != SEXPTYPE::EXTPTRSXP {
             return std::ptr::null_mut();
         }
         if R_ExternalPtrTag(sexp) != get_tag() {

@@ -177,8 +177,6 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::INTEGER_ELT;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::INTSXP {
             return Err(SexpTypeError {
@@ -196,7 +194,7 @@ where
             }));
         }
 
-        let int_val = unsafe { INTEGER_ELT(sexp, 0) };
+        let int_val = sexp.integer_elt(0);
         if int_val == NA_INTEGER {
             return Err(SexpError::InvalidValue(
                 "NA not allowed for bitflags".to_string(),
@@ -223,8 +221,6 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::INTEGER_ELT;
-
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
@@ -246,7 +242,7 @@ where
             }));
         }
 
-        let int_val = unsafe { INTEGER_ELT(sexp, 0) };
+        let int_val = sexp.integer_elt(0);
         if int_val == NA_INTEGER {
             return Ok(None);
         }

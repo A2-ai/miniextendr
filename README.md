@@ -1,242 +1,151 @@
 # `miniextendr`
 
-Rust <-> R interoperability workspace. This repo contains the core Rust crates,
-an example R package, and build tooling for embedding R, exporting Rust
-functions into R, ALTREP support, and safe threading patterns.
+Rust <-> R interoperability workspace. This repository contains the runtime
+crates, proc macros, CLI/tooling, an example R package, and the helper package
+used to scaffold standalone packages and monorepos.
 
 ## Workspace layout
 
-### Rust crates
+### Core crates and tooling
 
-- `miniextendr-api/` - Core runtime: R FFI bindings, conversions, worker-thread
-  pattern, ALTREP traits, and macro re-exports.
-- `miniextendr-macros/` - Procedural macros (`#[miniextendr]`,
-  `#[r_ffi_checked]`, `ExternalPtr`, `RNativeType`).
-- `miniextendr-engine/` - Standalone R embedding engine for Rust-only
-  binaries/tests; uses non-API R internals.
-- `miniextendr-bench/` - Benchmarks for conversions and R interop.
-- `miniextendr-lint/` - Internal build-time linter (proc-macro helper); not
-  intended for external consumption.
+- `miniextendr-api/` - Runtime crate: R FFI bindings, conversions, worker-thread
+  routing, ALTREP, class systems, trait ABI, and macro re-exports.
+- `miniextendr-macros/` - Proc macros such as `#[miniextendr]`,
+  `#[r_ffi_checked]`, `ExternalPtr`, and `RNativeType`.
+- `miniextendr-macros-core/` - Shared parsing/generation support used by the
+  proc-macro crate.
+- `miniextendr-engine/` - Standalone R embedding engine for Rust-only binaries
+  and integration tests.
+- `miniextendr-cli/` - CLI for scaffolding, workflow, vendoring, and cargo
+  operations.
+- `miniextendr-bench/` - Benchmarks for conversions and feature-gated paths.
+- `miniextendr-lint/` - Internal linter used during builds.
+- `cargo-revendor/` - Standalone vendoring tool for hermetic/offline builds.
+  It is intentionally excluded from the main Cargo workspace.
 
-### R packages and tooling
+### R packages and test fixtures
 
-- `rpkg/` – Example R package that exercises the Rust crates. Includes the
-  autoconf build, vendoring, and wrapper generation flow.
-- `minirextendr/` – Helper R package for scaffolding, autoconf/configure wiring,
-  vendoring helpers, and cargo wrappers for R package workflows.
-- `tests/cross-package/` – Producer/consumer R packages used to validate the
+- `rpkg/` - Example R package that exercises the Rust crates and the
+  autoconf/configure flow.
+- `minirextendr/` - R helper package for scaffolding, configure wiring,
+  vendoring helpers, and cargo wrappers.
+- `tests/cross-package/` - Producer/consumer R packages used to validate the
   cross-package trait ABI dispatch flow.
-- `rpkg_0.0.0.9000.tar.gz` – Example built tarball (when present).
 
-## Crate details
+## What `miniextendr-api` provides
 
-### `miniextendr-api`
+- FFI bindings to R's C API plus safer `SEXP`-oriented helpers.
+- Rust <-> R conversions for common scalars, vectors, lists, matrices, and
+  user-defined types.
+- The default worker-thread pattern that keeps panics and Drop behavior safe in
+  the presence of R longjmp.
+- ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
+- Env, S3, S4, S7, and R6 class generation from Rust impl blocks.
+- Type-erased cross-package trait dispatch via tags and vtables.
+- Adapter traits such as `RDebug`, `RDisplay`, `RHash`, `ROrd`, and
+  `RPartialOrd`.
+- Re-exports of the `miniextendr-macros` proc macros so most downstream crates
+  only need one dependency.
 
-Core runtime crate for R interop.
+Feature families in the runtime crate include:
 
-Highlights:
+- Runtime/build: `nonapi`, `rayon`, `connections`, `indicatif`, `vctrs`,
+  `worker-thread`, `default-worker`, `log`
+- Serialization/data: `serde` (native R), `serde_json` (JSON), `borsh`,
+  `arrow`, `datafusion`
+- Ecosystem conversions: `either`, `uuid`, `regex`, `url`, `time`,
+  `ordered-float`, `num-bigint`, `rust_decimal`, `num-complex`, `indexmap`,
+  `bitflags`, `bitvec`, `ndarray`, `nalgebra`, `tinyvec`, `bytes`,
+  `raw_conversions`, `aho-corasick`, `toml`, `tabled`, `rand`, `rand_distr`,
+  `num-traits`
+- Proc-macro defaults and diagnostics: `default-strict`, `default-coerce`,
+  `default-r6`, `default-s7`, `doc-lint`, `debug-preserve`, `growth-debug`,
+  `macro-coverage`, `refcount-fast-hash`
 
-- Rust <-> R conversions for common types.
-- Worker-thread pattern for panic isolation and Drop safety under R longjmp.
-- ALTREP traits and utilities.
-- Adapter traits (`RDebug`, `RDisplay`, `RHash`, `ROrd`, `RPartialOrd`) with
-  blanket impls for std traits.
-- Re-exports macros from `miniextendr-macros` so downstream crates can depend
-  on a single crate.
+See `miniextendr-api/README.md` and `docs/FEATURES.md` for the current feature
+matrix.
 
-Feature flags (core):
+## Example R package flow (`rpkg`)
 
-| Feature | Description |
-|---------|-------------|
-| `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`). May break with R updates. |
-| `rayon` | Parallel iterators via Rayon. Adds `RParallelIterator`, `RParallelExtend`. |
-| `connections` | Experimental R connection framework. **Unstable R API.** |
-| `indicatif` | Progress bars via R console. Requires `nonapi`. |
-| `vctrs` | Access to vctrs C API (`obj_is_vector`, `short_vec_size`, `short_vec_recycle`). |
+`rpkg/` is a real R package that vendors Rust crates and builds a shared
+library via cargo during `R CMD INSTALL`.
 
-Feature flags (type conversions):
+The high-level flow is:
 
-| Feature | Rust Type | R Type |
-|---------|-----------|--------|
-| `either` | `Either<L, R>` | Tries L then R |
-| `uuid` | `Uuid`, `Vec<Uuid>` | `character` |
-| `regex` | `Regex` | `character(1)` |
-| `url` | `Url`, `Vec<Url>` | `character` |
-| `time` | `OffsetDateTime`, `Date` | `POSIXct`, `Date` |
-| `ordered-float` | `OrderedFloat<f64>` | `numeric` |
-| `num-bigint` | `BigInt`, `BigUint` | `character` |
-| `rust_decimal` | `Decimal` | `character` |
-| `num-complex` | `Complex<f64>` | `complex` |
-| `indexmap` | `IndexMap<String, T>` | named `list` |
-| `bitflags` | `RFlags<T>` | `integer` |
-| `bitvec` | `RBitVec` | `logical` |
-| `ndarray` | `Array1`–`Array6`, views | R vectors/matrices |
-| `nalgebra` | `DVector`, `DMatrix` | R vectors/matrices |
-| `rand` / `rand_distr` | `RRng`, `RDistributions` | R's RNG with rand traits |
-| `serde` | `RSerialize`, `RDeserialize` | JSON via serde_json |
-| `serde_r` | `RSerializeNative`, `RDeserializeNative` | Direct Rust ↔ R |
-| `num-traits` | `RNum`, `RSigned`, `RFloat` | Generic numeric ops |
-| `bytes` | `RBuf`, `RBufMut` | Byte buffer ops |
-| `aho-corasick` | `AhoCorasick` | Multi-pattern search |
-| `toml` | `TomlValue` | TOML parsing |
-| `tabled` | `table_to_string` | Table formatting |
-| `sha2` | `sha256_str`, `sha512_bytes` | Cryptographic hashing |
-| `raw_conversions` | `Raw<T>`, `RawSlice<T>` | POD ↔ raw vectors |
+1. `bootstrap.R` runs `configure`.
+2. `configure` generates `src/Makevars`, `src/rust/Cargo.toml`, and
+   `src/rust/.cargo/config.toml`, and picks the dev or CRAN/offline source
+   layout.
+3. `Makevars` builds the Rust static library and a temporary cdylib used to
+   write `R/miniextendr-wrappers.R`.
 
-### `miniextendr-macros`
+Generated artifacts that must stay committed:
 
-Proc-macro crate that generates the R-facing glue.
+- `rpkg/configure`
+- `rpkg/R/miniextendr-wrappers.R`
+- `rpkg/config.guess`
+- `rpkg/config.sub`
 
-Main macros:
-
-- `#[miniextendr]` – exports Rust functions to R, generates wrappers and
-  conversion glue. Registration is automatic via linkme.
-- `#[r_ffi_checked]` – routes R FFI calls to the main thread when needed.
-- Derives: `ExternalPtr`, `RNativeType`.
-
-### `miniextendr-engine`
-
-Standalone embedding crate for initializing R in Rust-only binaries/tests.
-
-Notes:
-
-- Uses `Rembedded.h`/`Rinterface.h` (non-API), so it is **not** intended for
-  use inside R packages.
-- Centralizes `R_HOME` discovery/linking and avoids double-calling
-  `setup_Rmainloop()` while keeping initialization order consistent.
-- Intentionally does not call `Rf_endEmbeddedR` on drop (non-reentrant cleanup).
-
-### `miniextendr-bench`
-
-Benchmarks for translation and conversion costs. Uses `divan` and depends on
-`miniextendr-engine` to embed R.
-
-Run:
+Common workflows from the repo root:
 
 ```sh
-cd miniextendr-bench
-cargo bench --bench translate
+just configure        # dev configure + sync vendored workspace crates
+just devtools-load    # compile Rust, regenerate wrappers, load rpkg
+just devtools-test    # run rpkg tests
+just vendor           # build rpkg/inst/vendor.tar.xz for CRAN/offline builds
+just configure-cran   # configure rpkg against vendored sources only
+just r-cmd-check      # build tarball and run R CMD check
 ```
-
-### `miniextendr-lint`
-
-Internal proc-macro tooling used during builds. It is part of the workspace
-but not intended as a public crate.
-
-## R package (`rpkg`) build flow
-
-`rpkg/` is a real R package that vendors the Rust crates and builds a shared
-library via `cargo` during `R CMD INSTALL`.
-
-Key files that must be committed:
-
-- `rpkg/configure` (generated by autoconf from `configure.ac`).
-- `rpkg/R/miniextendr_wrappers.R` (generated by the `document` binary).
-
-Developer workflow (from repo root):
-
-```sh
-just configure       # vendor deps + run rpkg/configure for monorepo dev
-just devtools-load   # build Rust + generate wrappers + load R package
-just r-cmd-check     # run R CMD check
-```
-
-Standalone R package notes:
-
-- `bootstrap.R` runs before build and only invokes `rpkg/configure` to support
-  monorepos where the R package is a subdirectory of the Rust workspace.
-- `configure` generates `src/Makevars` and Rust config for `cargo build`.
 
 ## Development setup
 
 Requirements:
 
-- Rust toolchain (edition 2024).
-- R (with headers and `R` on PATH).
-- `autoconf` (for `rpkg/configure` regeneration).
-- `just` (recommended for repo tasks).
+- Rust toolchain (edition 2024)
+- R with headers and `R` on `PATH`
+- `autoconf` for regenerating `configure`
+- `just` for the repo task wrappers
 
 Common tasks:
 
 ```sh
 just --list
 just check
+just check-features
 just test
 just clippy
 just devtools-test
+just cross-test
 ```
 
-More tasks (minirextendr helpers, cross-package tests, templates, vendor/lint
-sync) are listed in `justfile` and `tests/cross-package/justfile`.
+## Documentation
 
-## Additional docs
-
-### Core concepts
-- `SAFETY.md` – Thread safety invariants, FFI safety, and memory model.
-- `THREADS.md` – Worker-thread model and safety notes.
-- `RAYON.md` – Rayon integration guide with patterns and performance tips.
-- `ENTRYPOINT.md` – R_init_* requirements and initialization order.
-
-### Type system and conversions
-- `COERCE.md` – Coercion rules and conversion behavior.
-- `COERCE.md` also covers `IntoR` behavior and review notes.
-- `TRAIT_AS_R.md` – Trait ABI and cross-package dispatch.
-- `ADAPTER_TRAITS.md` – Exporting external traits to R via adapter pattern.
-- `ADAPTER_COOKBOOK.md` – Practical recipes: iterators, serde, IO, comparison, hashing.
-
-### Build and linking
-- `LINKING.md` – Linking strategy for R packages and standalone binaries.
-- `VENDOR.md` – Vendoring and sync checks.
-- `ENGINE.md` – Embedding engine notes.
-
-### Reference
-- `NONAPI.md` – Non-API R symbols and policy.
-- `TRACK_CALLER.md` – `#[track_caller]` usage and error reporting details.
-- `ALTREP.md` – ALTREP notes and design context.
-- `MAINTAINER.md` – Maintenance and release checklist.
-
-## Threading model (two modes)
-
-1) **Default worker-thread pattern**
-   - `#[miniextendr]` runs Rust code on a worker thread so panics and Drops are
-     safe even if R errors via longjmp. R API calls are marshalled back to the
-     main thread.
-
-2) **Opt-in non-main-thread R calls (unsafe)**
-   - `miniextendr_api::thread` under feature `nonapi` disables stack checking.
-   - You must still serialize R access; R is not thread-safe.
-   - Non-API usage is feature gated (e.g., `R_CStack*`, mutable `DATAPTR`).
+- `docs/README.md` - docs index for architecture, build system, features, and
+  troubleshooting
+- `miniextendr-cli/README.md` - CLI surface and command groups
+- `miniextendr-api/README.md` - runtime crate overview and feature summary
+- `minirextendr/README.md` - scaffolding and R-side workflow helpers
+- `tests/cross-package/README.md` - end-to-end trait ABI example
+- `cargo-revendor/README.md` - standalone vendoring tool for offline builds
 
 ## Publishing to CRAN
 
-This workspace supports CRAN-compatible packages through `rpkg/`, but only
-under the following constraints:
-
-- **Do not embed R** in a CRAN-facing package. `miniextendr-engine` is for
-  Rust-only binaries and tests, not for package shared libraries.
-- **Avoid non-API symbols** unless you are prepared for CRAN checks to flag
-  them. Keep `nonapi` disabled by default.
-- **Vendor Rust dependencies** into `rpkg/vendor/` and include them in the
-  source tarball.
-- **Commit generated artifacts** required by CRAN: `rpkg/configure`,
-  `rpkg/config.guess`, `rpkg/config.sub`, and `rpkg/R/miniextendr_wrappers.R`.
-- **Run `R CMD check`** on the release tarball before submission.
-
-See `rpkg/README.md` for the complete CRAN workflow.
+- Do not embed R in the CRAN-facing package shared library.
+  `miniextendr-engine` is for standalone binaries/tests, not for R packages.
+- Keep `nonapi` disabled unless you are prepared for CRAN checks to flag
+  non-API symbol usage.
+- Vendor Rust dependencies into the package tarball and include
+  `inst/vendor.tar.xz` when building offline/CRAN releases.
+- Keep `configure`, `config.guess`, `config.sub`, and the generated wrappers
+  committed.
+- Run `R CMD check` on the release tarball before submission.
 
 ## Maintainer
 
-- Keep non-API usage feature-gated and documented in code.
 - Regenerate `rpkg/configure` whenever `rpkg/configure.ac` changes.
-- Update `rpkg/config.guess` and `rpkg/config.sub` from GNU config when needed
-  (`https://cgit.git.savannah.gnu.org/cgit/config.git/tree/`).
-- Ensure wrapper generation remains in sync with macro behavior.
-- Run CI/local checks across Rust and R tooling before releases.
-
-## Notes on release builds
-
-The workspace keeps `debug-assertions = true` in the release profile (see
-`Cargo.toml`) so debug-only safety checks remain enabled.
+- Update `config.guess` and `config.sub` from GNU config when needed.
+- Keep wrapper generation aligned with macro output.
+- Run both Rust and R validation paths before cutting releases.
 
 ## License
 

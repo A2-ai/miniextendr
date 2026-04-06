@@ -47,7 +47,7 @@ pub use tabled::settings::object::Columns;
 pub use tabled::settings::{Alignment, Modify, Style, Width};
 pub use tabled::{Table, Tabled};
 
-use crate::ffi::{Rf_allocVector, SET_STRING_ELT, SEXP, SEXPTYPE};
+use crate::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 
@@ -207,7 +207,7 @@ impl IntoR for Table {
             // Protect sexp before checked_mkchar which can trigger GC
             let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1));
             let charsxp = crate::altrep_impl::checked_mkchar(&s);
-            SET_STRING_ELT(sexp.get(), 0, charsxp);
+            sexp.get().set_string_elt(0, charsxp);
             // Return the SEXP - guard drops and unprotects
             sexp.get()
         }

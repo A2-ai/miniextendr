@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use crate::ffi::{self, Rboolean, SexpExt, SEXP, SEXPTYPE};
+use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
@@ -113,7 +113,7 @@ impl DataFrameView {
     /// Returns [`DataFrameError`] if validation fails.
     pub fn from_sexp(sexp: SEXP) -> Result<Self, DataFrameError> {
         // 1. Check it's a list (VECSXP)
-        let stype = unsafe { ffi::TYPEOF(sexp) } as SEXPTYPE;
+        let stype = sexp.type_of();
         if stype != SEXPTYPE::VECSXP {
             return Err(DataFrameError::NotList(format!(
                 "expected VECSXP, got {:?}",
@@ -122,7 +122,7 @@ impl DataFrameView {
         }
 
         // 2. Check it inherits from data.frame
-        let inherits = unsafe { ffi::Rf_inherits(sexp, c"data.frame".as_ptr()) } != Rboolean::FALSE;
+        let inherits = sexp.is_data_frame();
         if !inherits {
             return Err(DataFrameError::NotDataFrame);
         }
@@ -294,14 +294,14 @@ impl IntoR for DataFrameView {
 ///
 /// If no row.names attribute exists, we fall back to the length of the first column.
 fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
-    let row_names = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_RowNamesSymbol) };
+    let row_names = sexp.get_row_names();
 
-    if row_names == unsafe { ffi::R_NilValue } {
+    if row_names.is_nil() {
         // No row.names — fall back to first column length
         return nrow_from_first_column(sexp);
     }
 
-    let rn_type = unsafe { ffi::TYPEOF(row_names) } as SEXPTYPE;
+    let rn_type = row_names.type_of();
     let rn_len = unsafe { ffi::Rf_xlength(row_names) };
 
     // Compact integer form: c(NA_integer_, -n) where n is the row count
@@ -334,8 +334,8 @@ fn nrow_from_first_column(sexp: SEXP) -> Result<usize, DataFrameError> {
         // 0 columns → 0 rows
         return Ok(0);
     }
-    let first_col = unsafe { ffi::VECTOR_ELT(sexp, 0) };
-    if first_col == unsafe { ffi::R_NilValue } {
+    let first_col = sexp.vector_elt(0);
+    if first_col == SEXP::nil() {
         return Ok(0);
     }
     let len = unsafe { ffi::Rf_xlength(first_col) };
@@ -361,7 +361,7 @@ fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
     }
 
     // Get the length of the first column
-    let first_col = unsafe { ffi::VECTOR_ELT(list.as_sexp(), 0) };
+    let first_col = list.as_sexp().vector_elt(0);
     let expected: usize = unsafe { ffi::Rf_xlength(first_col) }
         .try_into()
         .expect("column length must be non-negative");
@@ -369,14 +369,14 @@ fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
     // Check all columns match
     let names_sexp = list.names();
     for i in 1..n {
-        let col = unsafe { ffi::VECTOR_ELT(list.as_sexp(), i) };
+        let col = list.as_sexp().vector_elt(i);
         let col_len: usize = unsafe { ffi::Rf_xlength(col) }
             .try_into()
             .expect("column length must be non-negative");
         if col_len != expected {
             // Try to get the column name for the error message
             let col_name = if let Some(names) = names_sexp {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, i) };
+                let name_sexp = names.string_elt(i);
                 if name_sexp != unsafe { ffi::R_NaString } {
                     let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
                     let name_cstr = unsafe { CStr::from_ptr(name_ptr) };

@@ -124,7 +124,7 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Ok(value) => value.into_sexp(),
-            Err(NullOnErr) => unsafe { crate::ffi::R_NilValue },
+            Err(NullOnErr) => crate::ffi::SEXP::nil(),
         }
     }
 }

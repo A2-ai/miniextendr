@@ -165,9 +165,12 @@ pub struct CounterTraitR6 {
 
 #[miniextendr(r6)]
 impl CounterTraitR6 {
+    /// Create a new counter with initial value.
+    /// @param v Initial counter value.
     pub fn new(v: i32) -> Self {
         Self { value: v }
     }
+    /// Get the current counter value.
     pub fn get_value(&self) -> i32 {
         self.value
     }

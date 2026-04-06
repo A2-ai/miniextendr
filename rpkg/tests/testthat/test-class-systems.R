@@ -179,7 +179,6 @@ test_that("S7Strict describe_any method works", {
 
 test_that("S7 fallback does not fail with slot-access error on ordinary objects", {
   # describe_any is registered for class_any (fallback). Calling it on a
-
   # non-S7Strict object should produce a type-conversion error from Rust,
   # NOT a raw slot-access failure like "no applicable method for `@`".
   msg <- tryCatch(

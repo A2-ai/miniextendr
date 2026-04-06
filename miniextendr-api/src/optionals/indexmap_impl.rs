@@ -52,9 +52,7 @@
 pub use indexmap::IndexMap;
 
 use crate::ffi::{
-    R_CHAR, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
-    Rf_protect, Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
-    STRING_ELT, SexpExt, VECTOR_ELT,
+    R_CHAR, R_NaString, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -81,15 +79,15 @@ where
         let mut map = IndexMap::with_capacity(len);
 
         // Get names attribute (may be NULL if no names)
-        let names_sexp = unsafe { Rf_getAttrib(sexp, R_NamesSymbol) };
+        let names_sexp = sexp.get_names();
         // Only use names if present and length matches the list length
-        let has_names = names_sexp != unsafe { R_NilValue } && names_sexp.len() == len;
+        let has_names = names_sexp != SEXP::nil() && names_sexp.len() == len;
 
         for i in 0..len {
             // Get name for this element
             let name = if has_names {
-                let name_charsxp = unsafe { STRING_ELT(names_sexp, i as R_xlen_t) };
-                if name_charsxp == unsafe { R_NaString } || name_charsxp == unsafe { R_NilValue } {
+                let name_charsxp = names_sexp.string_elt(i as R_xlen_t);
+                if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::nil() {
                     // NA or missing name -> generate auto name
                     format!("V{}", i + 1)
                 } else {
@@ -111,7 +109,7 @@ where
             };
 
             // Get and convert element
-            let elem_sexp = unsafe { VECTOR_ELT(sexp, i as R_xlen_t) };
+            let elem_sexp = sexp.vector_elt(i as R_xlen_t);
             let value = T::try_from_sexp(elem_sexp).map_err(|e| {
                 SexpError::InvalidValue(format!("failed to convert element '{}': {}", name, e))
             })?;
@@ -144,15 +142,15 @@ where
 
             for (i, (key, value)) in self.into_iter().enumerate() {
                 // Set list element
-                SET_VECTOR_ELT(list, i as R_xlen_t, value.into_sexp());
+                list.set_vector_elt(i as R_xlen_t, value.into_sexp());
 
                 // Set name
                 let charsxp = crate::altrep_impl::checked_mkchar(&key);
-                SET_STRING_ELT(names, i as R_xlen_t, charsxp);
+                names.set_string_elt(i as R_xlen_t, charsxp);
             }
 
             // Attach names attribute
-            Rf_setAttrib(list, R_NamesSymbol, names);
+            list.set_names(names);
 
             Rf_unprotect(2);
             list

@@ -669,8 +669,8 @@ where
     I: Iterator<Item = SEXP>,
 {
     fn elt(&self, i: usize) -> SEXP {
-        use crate::ffi::R_NilValue;
-        self.state.get_element(i).unwrap_or(unsafe { R_NilValue })
+        use crate::ffi::SEXP;
+        self.state.get_element(i).unwrap_or(SEXP::nil())
     }
 }
 
@@ -713,7 +713,7 @@ impl<I: Iterator<Item = SEXP> + 'static> crate::altrep_traits::AltList for IterL
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<Self>(x) }
             .map(|d| AltListData::elt(&*d, i as usize))
-            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+            .unwrap_or(crate::ffi::SEXP::nil())
     }
 }
 

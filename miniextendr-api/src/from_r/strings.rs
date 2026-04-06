@@ -8,7 +8,10 @@
 //! `Vec<String>`, `Vec<&str>`, `Box<[String]>`.
 
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str, charsxp_to_str_unchecked};
+use crate::from_r::{
+    SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
+    charsxp_to_str_unchecked,
+};
 
 /// Convert R character vector (STRSXP) to Rust &str.
 ///
@@ -32,8 +35,6 @@ impl TryFromSexp for &'static str {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -53,7 +54,7 @@ impl TryFromSexp for &'static str {
         }
 
         // Get the CHARSXP at index 0
-        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+        let charsxp = sexp.string_elt(0);
 
         // Check for NA_STRING or R_BlankString
         if charsxp == unsafe { crate::ffi::R_NaString } {
@@ -69,8 +70,6 @@ impl TryFromSexp for &'static str {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT_unchecked;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -90,7 +89,7 @@ impl TryFromSexp for &'static str {
         }
 
         // Get the CHARSXP at index 0
-        let charsxp = unsafe { STRING_ELT_unchecked(sexp, 0) };
+        let charsxp = unsafe { sexp.string_elt_unchecked(0) };
 
         // Check for NA_STRING or R_BlankString
         if charsxp == unsafe { crate::ffi::R_NaString } {
@@ -110,8 +109,6 @@ impl TryFromSexp for Option<&'static str> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT;
-
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
@@ -134,7 +131,7 @@ impl TryFromSexp for Option<&'static str> {
             .into());
         }
 
-        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+        let charsxp = sexp.string_elt(0);
         if charsxp == unsafe { crate::ffi::R_NaString } {
             return Ok(None);
         }
@@ -147,8 +144,6 @@ impl TryFromSexp for Option<&'static str> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT_unchecked;
-
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
@@ -171,7 +166,7 @@ impl TryFromSexp for Option<&'static str> {
             .into());
         }
 
-        let charsxp = unsafe { STRING_ELT_unchecked(sexp, 0) };
+        let charsxp = unsafe { sexp.string_elt_unchecked(0) };
         if charsxp == unsafe { crate::ffi::R_NaString } {
             return Ok(None);
         }
@@ -238,7 +233,7 @@ impl TryFromSexp for String {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+        use crate::ffi::Rf_translateCharUTF8;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -259,7 +254,7 @@ impl TryFromSexp for String {
         }
 
         // Get the CHARSXP at index 0
-        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+        let charsxp = sexp.string_elt(0);
 
         // Check for NA_STRING
         if charsxp == unsafe { crate::ffi::R_NaString } {
@@ -284,7 +279,7 @@ impl TryFromSexp for String {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{Rf_translateCharUTF8_unchecked, STRING_ELT_unchecked};
+        use crate::ffi::Rf_translateCharUTF8_unchecked;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -305,7 +300,7 @@ impl TryFromSexp for String {
         }
 
         // Get the CHARSXP at index 0
-        let charsxp = unsafe { STRING_ELT_unchecked(sexp, 0) };
+        let charsxp = unsafe { sexp.string_elt_unchecked(0) };
 
         // Check for NA_STRING
         if charsxp == unsafe { crate::ffi::R_NaString } {
@@ -344,7 +339,7 @@ impl TryFromSexp for Option<String> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+        use crate::ffi::Rf_translateCharUTF8;
 
         let actual = sexp.type_of();
         // NULL -> None
@@ -368,7 +363,7 @@ impl TryFromSexp for Option<String> {
             .into());
         }
 
-        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+        let charsxp = sexp.string_elt(0);
 
         // Return None for NA_STRING
         if charsxp == unsafe { crate::ffi::R_NaString } {

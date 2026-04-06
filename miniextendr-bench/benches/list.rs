@@ -7,6 +7,7 @@
 
 use miniextendr_api::ffi;
 use miniextendr_api::list::{IntoList as IntoListTrait, List, TryFromList as TryFromListTrait};
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -93,7 +94,7 @@ struct ProtectedSexp {
 
 impl Drop for ProtectedSexp {
     fn drop(&mut self) {
-        unsafe { ffi::Rf_unprotect(1) };
+        unsafe { raw_ffi::Rf_unprotect(1) };
     }
 }
 
@@ -109,7 +110,7 @@ fn derive_try_from_list_named(bencher: divan::Bencher) {
             }
             .into_list();
             let sexp = list.as_sexp();
-            ffi::Rf_protect(sexp);
+            raw_ffi::Rf_protect(sexp);
             ProtectedSexp { sexp }
         })
         .bench_local_refs(|protected| {
@@ -125,7 +126,7 @@ fn derive_try_from_list_tuple(bencher: divan::Bencher) {
         .with_inputs(|| unsafe {
             let list = Tuple3(1, 2, 3).into_list();
             let sexp = list.as_sexp();
-            ffi::Rf_protect(sexp);
+            raw_ffi::Rf_protect(sexp);
             ProtectedSexp { sexp }
         })
         .bench_local_refs(|protected| {
