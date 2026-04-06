@@ -67,8 +67,6 @@ new_percent(x, ...)
 \item{to}{(no documentation available)}
 
 \item{y}{(no documentation available)}
-
-\item{dots}{(no documentation available)}
 }
 \value{
 A percent vector.

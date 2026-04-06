@@ -1423,10 +1423,15 @@ pub fn miniextendr(
 
     // Auto-generate @param for any function parameter that doesn't have one yet.
     // This prevents R CMD check warnings about undocumented arguments.
+    // Skip dots params (they become `...` in R formals, not a named param).
     for arg in inputs.iter() {
         if let syn::FnArg::Typed(pt) = arg
             && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
         {
+            // Skip dots parameters — they map to `...` in R, which can't have @param
+            if parsed.is_dots_param(&pat_ident.ident) {
+                continue;
+            }
             let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
             let has_param = roxygen_tags
                 .iter()

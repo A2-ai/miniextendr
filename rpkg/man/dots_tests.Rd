@@ -13,8 +13,6 @@ greetings_with_named_dots(...)
 }
 \arguments{
 \item{...}{Additional arguments (captured as dots).}
-
-\item{dots}{(no documentation available)}
 }
 \description{
 Dots (\code{...}) handling tests

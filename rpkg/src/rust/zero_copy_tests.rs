@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 // region: Cow<[T]> round-trip identity
 
-/// Returns TRUE if Cow<[f64]> round-trip returns the same R object.
+/// Returns TRUE if `Cow<[f64]>` round-trip returns the same R object.
 /// @export
 #[miniextendr]
 pub fn zero_copy_cow_f64_identity(x: SEXP) -> bool {
@@ -21,7 +21,7 @@ pub fn zero_copy_cow_f64_identity(x: SEXP) -> bool {
     result == x
 }
 
-/// Returns TRUE if Cow<[i32]> round-trip returns the same R object.
+/// Returns TRUE if `Cow<[i32]>` round-trip returns the same R object.
 /// @export
 #[miniextendr]
 pub fn zero_copy_cow_i32_identity(x: SEXP) -> bool {
@@ -212,7 +212,7 @@ mod arrow {
 
 // region: Cow<[f64]> roundtrip for serialization test
 
-/// Round-trip Cow<[f64]> and return the result.
+/// Round-trip `Cow<[f64]>` and return the result.
 /// @export
 #[miniextendr]
 pub fn zero_copy_cow_f64_roundtrip(x: std::borrow::Cow<'static, [f64]>) -> std::borrow::Cow<'static, [f64]> {
