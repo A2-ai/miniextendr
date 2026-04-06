@@ -796,7 +796,7 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn is_data_frame(&self) -> bool {
-        unsafe { Rf_isDataFrame(*self) != Rboolean::FALSE }
+        self.inherits_class(c"data.frame")
     }
 
     #[inline]
