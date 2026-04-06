@@ -11,12 +11,17 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
 
 /// Blanket impl: Convert R vector to `Cow<'static, [T]>` where T: RNativeType.
 ///
-/// Always returns `Cow::Owned` since we can't safely return a borrowed slice
-/// with 'static lifetime from SEXP memory (it's not truly static).
+/// Returns `Cow::Borrowed` — the slice points directly into R's SEXP data with
+/// no copy. The `'static` lifetime is valid for the duration of the `.Call`
+/// invocation (R protects the SEXP from GC while Rust code is running).
+///
+/// **Important:** Do not send the borrowed `Cow` to another thread or store it
+/// past the `.Call` return — the underlying R memory is only valid while
+/// R's protection stack guards this SEXP.
 impl<T> TryFromSexp for Cow<'static, [T]>
 where
     T: crate::ffi::RNativeType + Copy + Clone,
@@ -25,30 +30,124 @@ where
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(Cow::Owned(slice.to_vec()))
+        Ok(Cow::Borrowed(slice))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(Cow::Owned(slice.to_vec()))
+        Ok(Cow::Borrowed(slice))
     }
 }
 
 /// Convert R character scalar to `Cow<'static, str>`.
 ///
-/// Always returns `Cow::Owned` since we can't safely return a borrowed &str
-/// with 'static lifetime from SEXP memory.
+/// Returns `Cow::Borrowed` — the `&str` points directly into R's CHARSXP data
+/// via `R_CHAR` + `LENGTH` (O(1), no strlen). No allocation or copy occurs.
+/// The `'static` lifetime is valid for the duration of the `.Call` invocation.
+///
+/// This delegates to the `&'static str` impl (which uses `charsxp_to_str`),
+/// giving the same zero-copy behavior. Use `Cow` when your code may need to
+/// mutate the string later — `to_mut()` will copy-on-write at that point.
 impl TryFromSexp for Cow<'static, str> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(Cow::Owned(s))
+        let s: &'static str = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(Cow::Borrowed(s))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(Cow::Owned(s))
+        let s: &'static str = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(Cow::Borrowed(s))
+    }
+}
+
+/// Convert R character vector to `Vec<Cow<'static, str>>` — zero-copy per element.
+///
+/// Each element borrows directly from R's CHARSXP data when UTF-8 (the common case).
+/// Non-UTF-8 elements fall back to `Rf_translateCharUTF8` (copies only those).
+///
+/// # NA Handling
+///
+/// **Warning:** `NA_character_` is converted to `Cow::Borrowed("")`. This is lossy!
+/// Use `Vec<Option<Cow<'static, str>>>` to distinguish NA from empty strings.
+impl TryFromSexp for Vec<Cow<'static, str>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::STRING_ELT;
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            if charsxp == unsafe { crate::ffi::R_NaString }
+                || charsxp == unsafe { crate::ffi::R_BlankString }
+            {
+                result.push(Cow::Borrowed(""));
+            } else {
+                result.push(unsafe { charsxp_to_cow(charsxp) });
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+/// Convert R character vector to `Vec<Option<Cow<'static, str>>>` — zero-copy, NA-aware.
+///
+/// `NA_character_` → `None`, valid strings → `Some(Cow::Borrowed(&str))`.
+impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::STRING_ELT;
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            if charsxp == unsafe { crate::ffi::R_NaString } {
+                result.push(None);
+            } else {
+                // charsxp_to_cow returns Cow::Borrowed("") for R_BlankString-equivalent
+                result.push(Some(unsafe { charsxp_to_cow(charsxp) }));
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+/// Convert R character vector to `Box<[Cow<'static, str>]>` — zero-copy per element.
+///
+/// **Warning:** `NA_character_` values are converted to `Cow::Borrowed("")`.
+impl TryFromSexp for Box<[Cow<'static, str>]> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<Cow<'static, str>> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_boxed_slice())
     }
 }
 

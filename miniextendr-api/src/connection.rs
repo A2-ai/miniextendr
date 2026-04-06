@@ -61,7 +61,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 
-use crate::ffi::{R_CONNECTIONS_VERSION, R_NilValue, Rboolean, Rconnection, SEXP};
+use crate::ffi::{R_CONNECTIONS_VERSION, Rboolean, Rconnection, SEXP};
 
 /// The expected R connections API version this module is compatible with.
 ///

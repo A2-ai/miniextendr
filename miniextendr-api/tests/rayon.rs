@@ -10,7 +10,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP, SexpExt};
+use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::rayon_bridge::{
     new_r_array, new_r_matrix, par_map, par_map2, par_map3, with_r_array, with_r_matrix,
     with_r_vec, with_r_vec_map,
@@ -18,14 +18,7 @@ use miniextendr_api::rayon_bridge::{
 
 /// Helper to read f64 values from an R REALSXP vector.
 unsafe fn read_real_vec(sexp: SEXP) -> Vec<f64> {
-    unsafe {
-        let len = Rf_xlength(sexp) as usize;
-        if len == 0 {
-            return Vec::new();
-        }
-        let ptr = REAL(sexp);
-        std::slice::from_raw_parts(ptr, len).to_vec()
-    }
+    unsafe { sexp.as_slice::<f64>().to_vec() }
 }
 
 #[test]
@@ -87,7 +80,7 @@ fn test_with_r_vec_i32() {
         }
     });
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, 100);
 
     let slice: &[i32] = unsafe { sexp.as_slice() };
@@ -111,7 +104,7 @@ fn test_with_r_vec_empty() {
         panic!("should not be called for empty vec");
     });
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, 0);
 }
 
@@ -123,12 +116,11 @@ fn test_with_r_vec_large() {
         }
     });
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, SIZE);
 
     // Spot check some values
-    let ptr = unsafe { REAL(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts(ptr, SIZE) };
+    let slice: &[f64] = unsafe { sexp.as_slice() };
     assert_eq!(slice[0], 0.0);
     assert_eq!(slice[999], 999.0);
     assert_eq!(slice[1000], 0.0);
@@ -189,14 +181,14 @@ fn test_par_map3() {
 fn test_par_map_empty() {
     let input: Vec<f64> = Vec::new();
     let sexp = par_map(&input, |&v: &f64| v.sqrt());
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, 0);
 
     // par_map2 with empty slices
     let a: Vec<f64> = Vec::new();
     let b: Vec<f64> = Vec::new();
     let sexp = par_map2(&a, &b, |&x: &f64, &y: &f64| x + y);
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, 0);
 }
 // endregion
@@ -213,7 +205,7 @@ fn test_with_r_matrix_basic() {
         }
     });
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, 12);
 
     // Verify the dim attribute
@@ -223,8 +215,7 @@ fn test_with_r_matrix_basic() {
     assert_eq!(dim_slice[1], 4); // ncol
 
     // Verify values (column-major)
-    let ptr = unsafe { REAL(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts(ptr, 12) };
+    let slice: &[f64] = unsafe { sexp.as_slice() };
     // Column 0: rows 0,1,2 -> values 0,10,20
     assert_eq!(slice[0], 0.0);
     assert_eq!(slice[1], 10.0);
@@ -246,12 +237,11 @@ fn test_with_r_matrix_parallel() {
         }
     });
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, nrow * ncol);
 
     // Spot check
-    let ptr = unsafe { REAL(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let slice: &[f64] = unsafe { sexp.as_slice() };
     // [0,0] = 0+0 = 0
     assert_eq!(slice[0], 0.0);
     // [1,0] = 1+0 = 1
@@ -272,20 +262,18 @@ fn test_with_r_array_basic() {
         }
     });
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, 24);
 
     // Verify the dim attribute
     let dim = sexp.get_dim();
-    let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
-    let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 3) };
+    let dim_slice: &[i32] = unsafe { dim.as_slice() };
     assert_eq!(dim_slice[0], 2);
     assert_eq!(dim_slice[1], 3);
     assert_eq!(dim_slice[2], 4);
 
     // Verify values
-    let ptr = unsafe { REAL(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts(ptr, 24) };
+    let slice: &[f64] = unsafe { sexp.as_slice() };
     for (i, &v) in slice.iter().enumerate() {
         assert_eq!(v, i as f64);
     }
@@ -303,12 +291,11 @@ fn test_with_r_array_parallel() {
         }
     });
 
-    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let len = sexp.len();
     assert_eq!(len, total);
 
     // Spot check
-    let ptr = unsafe { REAL(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts(ptr, total) };
+    let slice: &[f64] = unsafe { sexp.as_slice() };
     assert_eq!(slice[0], 0.0);
     assert_eq!(slice[1], 2.0);
     assert_eq!(slice[100], 200.0);

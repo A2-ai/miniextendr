@@ -1,6 +1,5 @@
 //! Worker thread benchmarks.
 
-use miniextendr_api::ffi;
 use miniextendr_api::worker::{run_on_worker, with_r_thread};
 use miniextendr_bench::raw_ffi;
 

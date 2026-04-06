@@ -336,6 +336,23 @@ pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::
     ALTREP_PKG_NAME_PTR.store(name.cast_mut(), Ordering::Release);
 }
 
+// DllInfo global — stored during package_init, used by ALTREP class registration.
+// R needs DllInfo to associate ALTREP classes with their package for serialization.
+// Without it, readRDS in a fresh session can't find the class.
+static ALTREP_DLL_INFO: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Get the stored DllInfo pointer for ALTREP class registration.
+#[doc(hidden)]
+pub fn altrep_dll_info() -> *mut ffi::DllInfo {
+    ALTREP_DLL_INFO.load(Ordering::Acquire).cast()
+}
+
+/// Store the DllInfo pointer during package init.
+#[doc(hidden)]
+pub fn set_altrep_dll_info(dll: *mut ffi::DllInfo) {
+    ALTREP_DLL_INFO.store(dll.cast(), Ordering::Release);
+}
+
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
@@ -530,7 +547,10 @@ pub use list::{
 };
 pub use missing::{Missing, is_missing_arg};
 pub use named_vector::{AtomicElement, NamedVector};
-pub use strvec::{StrVec, StrVecBuilder};
+pub use strvec::{
+    ProtectedStrVec, ProtectedStrVecCowIter, ProtectedStrVecIter, StrVec, StrVecBuilder,
+    StrVecCowIter, StrVecIter,
+};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
     sexptype_name, validate_list,
@@ -582,6 +602,8 @@ pub use refcount_protect::{
 
 pub mod allocator;
 pub use allocator::RAllocator;
+
+pub mod r_memory;
 
 // region: Trait ABI Support
 //

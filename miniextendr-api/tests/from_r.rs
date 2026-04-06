@@ -10,7 +10,6 @@ use miniextendr_api::ffi::{
 };
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
-use std::ffi::CString;
 
 #[derive(Default)]
 struct ProtectCount(i32);

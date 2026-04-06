@@ -1462,6 +1462,7 @@ unsafe extern "C-unwind" {
 // Console hooks (non-API; declared in Rinterface.h)
 #[cfg(feature = "nonapi")]
 unsafe extern "C-unwind" {
+    #[expect(dead_code, reason = "declared for future use")]
     pub(crate) static ptr_R_WriteConsoleEx: Option<
         unsafe extern "C-unwind" fn(
             *const ::std::os::raw::c_char,
@@ -1606,12 +1607,15 @@ unsafe extern "C-unwind" {
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.
     #[cfg(feature = "nonapi")]
+    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API TRUE singleton.
     pub(crate) static R_TrueValue: SEXP;
     #[cfg(feature = "nonapi")]
+    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API FALSE singleton.
     pub(crate) static R_FalseValue: SEXP;
     #[cfg(feature = "nonapi")]
+    #[expect(dead_code, reason = "declared for future use")]
     /// Non-API NA logical singleton.
     pub(crate) static R_LogicalNAValue: SEXP;
 

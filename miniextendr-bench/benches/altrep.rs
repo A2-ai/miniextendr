@@ -23,10 +23,8 @@ fn altrep_int_elt(size_idx: usize) {
     let len = miniextendr_bench::SIZES[size_idx];
     let data: Vec<i32> = (0..len as i32).collect();
     let sexp = BenchInt::from(data).into_sexp();
-    unsafe {
-        let val = sexp.integer_elt(0);
-        divan::black_box(val);
-    }
+    let val = sexp.integer_elt(0);
+    divan::black_box(val);
 }
 
 #[divan::bench(args = SIZE_INDICES)]
@@ -43,10 +41,8 @@ fn altrep_int_dataptr(size_idx: usize) {
 #[divan::bench(args = SIZE_INDICES)]
 fn plain_int_elt(size_idx: usize) {
     let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
-    unsafe {
-        let val = sexp.integer_elt(0);
-        divan::black_box(val);
-    }
+    let val = sexp.integer_elt(0);
+    divan::black_box(val);
 }
 
 #[divan::bench(args = SIZE_INDICES)]
@@ -63,8 +59,6 @@ fn altrep_real_elt(size_idx: usize) {
     let len = miniextendr_bench::SIZES[size_idx];
     let data: Vec<f64> = (0..len).map(|x| x as f64).collect();
     let sexp = BenchReal::from(data).into_sexp();
-    unsafe {
-        let val = sexp.real_elt(0);
-        divan::black_box(val);
-    }
+    let val = sexp.real_elt(0);
+    divan::black_box(val);
 }

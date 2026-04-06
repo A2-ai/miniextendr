@@ -125,6 +125,10 @@ impl_serialize!(Vec<bool>);
 impl_serialize!(Vec<String>);
 impl_serialize!(Vec<Option<String>>);
 impl_serialize!(Vec<Rcomplex>);
+// Cow string vectors: serialize hits R's CHARSXP cache (no string data copy),
+// unserialize borrows via charsxp_to_cow (zero-copy for UTF-8).
+impl_serialize!(Vec<std::borrow::Cow<'static, str>>);
+impl_serialize!(Vec<Option<std::borrow::Cow<'static, str>>>);
 // endregion
 
 // region: AltrepSerialize implementations for Box<[T]>
@@ -403,6 +407,38 @@ impl AltStringData for Vec<String> {
 impl_len_vec!(Option<String>);
 
 impl AltStringData for Vec<Option<String>> {
+    fn elt(&self, i: usize) -> Option<&str> {
+        self[i].as_deref()
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.iter().any(|x| x.is_none()))
+    }
+}
+
+impl AltrepLen for Vec<std::borrow::Cow<'static, str>> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+}
+
+impl AltStringData for Vec<std::borrow::Cow<'static, str>> {
+    fn elt(&self, i: usize) -> Option<&str> {
+        Some(self[i].as_ref())
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true) // Cow vectors don't have NA
+    }
+}
+
+impl AltrepLen for Vec<Option<std::borrow::Cow<'static, str>>> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+}
+
+impl AltStringData for Vec<Option<std::borrow::Cow<'static, str>>> {
     fn elt(&self, i: usize) -> Option<&str> {
         self[i].as_deref()
     }

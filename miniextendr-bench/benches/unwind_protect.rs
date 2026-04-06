@@ -1,6 +1,5 @@
 //! Unwind protection benchmarks.
 
-use miniextendr_api::ffi;
 use miniextendr_api::unwind_protect::with_r_unwind_protect;
 use miniextendr_bench::raw_ffi;
 
