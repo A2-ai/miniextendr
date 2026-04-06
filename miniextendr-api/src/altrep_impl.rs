@@ -284,8 +284,9 @@ macro_rules! __impl_altvec_string_dataptr {
                     let fresh_alloc = data2.is_null()
                         || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP;
                     if fresh_alloc {
-                        // R inits STRSXP to R_BlankString (""), NOT R_NaString.
-                        // Fill with R_NaString as "not yet cached" sentinel.
+                        // Rf_allocVector(STRSXP, n) leaves elements UNINITIALIZED
+                        // (garbage SEXP pointers). Must fill with R_NaString sentinel
+                        // so cache lookups work. This is O(n) but unavoidable.
                         data2 = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
                             $crate::ffi::SEXPTYPE::STRSXP,
                             n,
@@ -917,8 +918,8 @@ macro_rules! __impl_altstring_methods {
                         || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP
                     {
                         let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                        // Allocate STRSXP — R inits to R_BlankString (""), NOT R_NaString.
-                        // Fill with R_NaString so we can use it as "not yet cached" sentinel.
+                        // Rf_allocVector(STRSXP, n) leaves elements UNINITIALIZED
+                        // (garbage SEXP pointers). Must fill with R_NaString sentinel.
                         data2 = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
                             $crate::ffi::SEXPTYPE::STRSXP,
                             n,
