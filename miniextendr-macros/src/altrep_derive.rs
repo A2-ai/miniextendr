@@ -682,7 +682,7 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     } else {
         quote! {
             fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::SEXP {
-                unsafe { ::miniextendr_api::ffi::R_NilValue }
+                ::miniextendr_api::ffi::SEXP::nil()
             }
         }
     };
@@ -721,7 +721,7 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
                         unsafe { ::miniextendr_api::altrep_data1_as::<#name>(x) }
                             .map(|d| <#name as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                            .unwrap_or(unsafe { ::miniextendr_api::ffi::R_NilValue })
+                            .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
                     }
                 }
                 ::miniextendr_api::impl_inferbase_list!(#name);
@@ -735,7 +735,7 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
                         unsafe { ::miniextendr_api::altrep_data1_as::<#name>(x) }
                             .map(|d| <#name as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                            .unwrap_or(unsafe { ::miniextendr_api::ffi::R_NilValue })
+                            .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
                     }
                 }
                 ::miniextendr_api::impl_inferbase_list!(#name);

@@ -53,10 +53,12 @@ pub fn encoding_info() -> Option<&'static REncodingInfo> {
 /// Uses `l10n_info()[["UTF-8"]]` which is public R API.
 #[unsafe(no_mangle)]
 pub extern "C" fn miniextendr_assert_utf8_locale() {
-    debug_assert!(crate::worker::is_r_main_thread(), "must be called from R main thread");
+    debug_assert!(
+        crate::worker::is_r_main_thread(),
+        "must be called from R main thread"
+    );
     use crate::ffi::{
-        LOGICAL, R_BaseEnv, R_NamesSymbol, Rf_eval, Rf_getAttrib, Rf_install, Rf_protect,
-        Rf_unprotect, Rf_xlength, STRING_ELT, VECTOR_ELT,
+        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SexpExt,
     };
 
     unsafe {
@@ -67,15 +69,15 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         Rf_protect(info);
 
         // Find the "UTF-8" element by name
-        let names = Rf_getAttrib(info, R_NamesSymbol);
+        let names = info.get_names();
         let n = Rf_xlength(info);
         let mut is_utf8 = false;
         for i in 0..n {
-            let name_charsxp = STRING_ELT(names, i);
+            let name_charsxp = names.string_elt(i);
             let name_ptr = crate::ffi::R_CHAR(name_charsxp);
             let name = std::ffi::CStr::from_ptr(name_ptr);
             if name == c"UTF-8" {
-                let elt = VECTOR_ELT(info, i);
+                let elt = info.vector_elt(i);
                 is_utf8 = LOGICAL(elt).read() != 0;
                 break;
             }
@@ -86,8 +88,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         if !is_utf8 {
             crate::ffi::Rf_error_unchecked(
                 c"%s".as_ptr(),
-                c"miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)"
-                    .as_ptr(),
+                c"miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)".as_ptr(),
             );
         }
     }

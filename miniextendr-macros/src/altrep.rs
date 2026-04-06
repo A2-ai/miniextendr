@@ -357,15 +357,14 @@ pub(crate) fn generate_altrep_impls(
                     use ::miniextendr_api::altrep_registration::RegisterAltrep;
                     use ::miniextendr_api::externalptr::ExternalPtr;
                     use ::miniextendr_api::ffi::altrep::R_new_altrep;
-                    use ::miniextendr_api::ffi::R_NilValue;
-                    use ::miniextendr_api::ffi::{Rf_protect, Rf_unprotect};
+                    use ::miniextendr_api::ffi::{SEXP, Rf_protect, Rf_unprotect};
 
                     let ext_ptr = ExternalPtr::new(self.0);
                     let cls = Self::get_or_init_class();
                     let data1 = ext_ptr.as_sexp();
                     unsafe {
                         Rf_protect(data1);
-                        let altrep = R_new_altrep(cls, data1, R_NilValue);
+                        let altrep = R_new_altrep(cls, data1, SEXP::nil());
                         Rf_unprotect(1);
                         altrep
                     }
@@ -385,7 +384,7 @@ pub(crate) fn generate_altrep_impls(
                         let altrep = R_new_altrep_unchecked(
                             cls,
                             data1,
-                            ::miniextendr_api::ffi::SEXP::null(),
+                            ::miniextendr_api::ffi::SEXP::nil(),
                         );
                         Rf_unprotect_unchecked(1);
                         altrep
@@ -406,7 +405,7 @@ pub(crate) fn generate_altrep_impls(
                     if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
                         return Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::INTSXP,
-                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                            actual: ::miniextendr_api::ffi::SexpExt::type_of(&sexp),
                         });
                     }
 
@@ -414,7 +413,7 @@ pub(crate) fn generate_altrep_impls(
                         Some(ptr) => Ok(#ref_ident(ptr)),
                         None => Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::EXTPTRSXP,
-                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                            actual: ::miniextendr_api::ffi::SexpExt::type_of(&sexp),
                         }),
                     }
                 }
@@ -441,7 +440,7 @@ pub(crate) fn generate_altrep_impls(
                     if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
                         return Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::INTSXP,
-                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                            actual: ::miniextendr_api::ffi::SexpExt::type_of(&sexp),
                         });
                     }
 
@@ -449,7 +448,7 @@ pub(crate) fn generate_altrep_impls(
                         Some(ptr) => Ok(#mut_ident(ptr)),
                         None => Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::EXTPTRSXP,
-                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                            actual: ::miniextendr_api::ffi::SexpExt::type_of(&sexp),
                         }),
                     }
                 }

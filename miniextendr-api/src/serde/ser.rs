@@ -4,10 +4,7 @@
 //! to serialize any serde-compatible Rust type into R data structures.
 
 use super::error::RSerdeError;
-use crate::ffi::{
-    R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
-    Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, cetype_t,
-};
+use crate::ffi::{R_NaString, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use serde::ser::{self, Serialize};
@@ -126,7 +123,7 @@ impl ser::Serializer for RSerializer {
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         // None becomes R NULL
         // For NA handling, use Option<T> which maps None -> NA in specific contexts
-        Ok(unsafe { R_NilValue })
+        Ok(SEXP::nil())
     }
 
     fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<Self::Ok, Self::Error> {
@@ -134,11 +131,11 @@ impl ser::Serializer for RSerializer {
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok(unsafe { R_NilValue })
+        Ok(SEXP::nil())
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok(unsafe { R_NilValue })
+        Ok(SEXP::nil())
     }
 
     fn serialize_unit_variant(
@@ -261,7 +258,7 @@ impl ser::SerializeSeq for SeqSerializer {
 
         // Track homogeneity for smart dispatch
         let elem_len = unsafe { crate::ffi::Rf_xlength(elem) };
-        let elem_type = unsafe { crate::ffi::TYPEOF(elem) as SEXPTYPE };
+        let elem_type = elem.type_of();
 
         if elem_len != 1 {
             self.all_scalar = false;
@@ -454,12 +451,15 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
 
 /// Create an unnamed R list from SEXPs.
 fn create_r_list(elements: &[SEXP]) -> SEXP {
-    let n: isize = elements.len().try_into().expect("list length exceeds isize::MAX");
+    let n: isize = elements
+        .len()
+        .try_into()
+        .expect("list length exceeds isize::MAX");
     let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
 
     for (i, &elem) in elements.iter().enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        unsafe { SET_VECTOR_ELT(sexp.get(), idx, elem) };
+        sexp.get().set_vector_elt(idx, elem);
     }
 
     sexp.get()
@@ -468,44 +468,42 @@ fn create_r_list(elements: &[SEXP]) -> SEXP {
 /// Create a named R list from string keys and SEXP values.
 fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
     debug_assert_eq!(keys.len(), values.len());
-    let n: isize = keys.len().try_into().expect("list length exceeds isize::MAX");
+    let n: isize = keys
+        .len()
+        .try_into()
+        .expect("list length exceeds isize::MAX");
 
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for (i, (key, &value)) in keys.iter().zip(values.iter()).enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        let key_len: i32 = key.len().try_into().expect("key exceeds i32::MAX bytes");
-        unsafe {
-            SET_VECTOR_ELT(list.get(), idx, value);
-            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key_len, cetype_t::CE_UTF8);
-            SET_STRING_ELT(names.get(), idx, charsxp);
-        }
+        list.get().set_vector_elt(idx, value);
+        names.get().set_string_elt(idx, SEXP::charsxp(key));
     }
 
-    unsafe { Rf_setAttrib(list.get(), R_NamesSymbol, names.get()) };
+    list.get().set_names(names.get());
     list.get()
 }
 
 /// Create a named R list from static string keys and SEXP values.
 fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
     debug_assert_eq!(keys.len(), values.len());
-    let n: isize = keys.len().try_into().expect("list length exceeds isize::MAX");
+    let n: isize = keys
+        .len()
+        .try_into()
+        .expect("list length exceeds isize::MAX");
 
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, n)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for (i, (&key, &value)) in keys.iter().zip(values.iter()).enumerate() {
         let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-        let key_len: i32 = key.len().try_into().expect("key exceeds i32::MAX bytes");
-        unsafe {
-            SET_VECTOR_ELT(list.get(), idx, value);
-            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key_len, cetype_t::CE_UTF8);
-            SET_STRING_ELT(names.get(), idx, charsxp);
-        }
+        list.get().set_vector_elt(idx, value);
+        names.get().set_string_elt(idx, SEXP::charsxp(key));
     }
 
-    unsafe { Rf_setAttrib(list.get(), R_NamesSymbol, names.get()) };
+    list.get().set_names(names.get());
     list.get()
 }
 
@@ -514,20 +512,16 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
     let list = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, 1)) };
     let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1)) };
 
-    let tag_len: i32 = tag.len().try_into().expect("tag exceeds i32::MAX bytes");
-    unsafe {
-        SET_VECTOR_ELT(list.get(), 0, value);
-        let charsxp = Rf_mkCharLenCE(tag.as_ptr().cast(), tag_len, cetype_t::CE_UTF8);
-        SET_STRING_ELT(names.get(), 0, charsxp);
-        Rf_setAttrib(list.get(), R_NamesSymbol, names.get());
-    }
+    list.get().set_vector_elt(0, value);
+    names.get().set_string_elt(0, SEXP::charsxp(tag));
+    list.get().set_names(names.get());
 
     list.get()
 }
 
 /// Extract a string from a SEXP (must be STRSXP of length 1).
 fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
-    let sexp_type = unsafe { crate::ffi::TYPEOF(sexp) as SEXPTYPE };
+    let sexp_type = sexp.type_of();
     if sexp_type != SEXPTYPE::STRSXP {
         return Err(RSerdeError::NonStringKey);
     }
@@ -537,7 +531,7 @@ fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
         return Err(RSerdeError::NonStringKey);
     }
 
-    let charsxp = unsafe { crate::ffi::STRING_ELT(sexp, 0) };
+    let charsxp = sexp.string_elt(0);
     if charsxp == unsafe { R_NaString } {
         return Err(RSerdeError::NonStringKey);
     }

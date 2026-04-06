@@ -1,11 +1,12 @@
 //! Rayon bridge benchmarks (feature-gated).
 
-#[cfg(feature = "rayon")]
 use miniextendr_api::ffi;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::{reduce, with_r_vec};
+#[cfg(feature = "rayon")]
+use miniextendr_bench::raw_ffi;
 
 #[cfg(feature = "rayon")]
 fn main() {
@@ -39,8 +40,8 @@ fn rayon_collect_vec(len: usize) {
 fn rayon_reduce_sum(size_idx: usize) {
     let sexp = miniextendr_bench::fixtures().real_vec(size_idx);
     unsafe {
-        let ptr = ffi::REAL(sexp);
-        let len = ffi::Rf_xlength(sexp) as usize;
+        let ptr = raw_ffi::REAL(sexp);
+        let len = raw_ffi::Rf_xlength(sexp) as usize;
         let slice = std::slice::from_raw_parts(ptr, len);
         let out = reduce::sum(slice);
         divan::black_box(out);

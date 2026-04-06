@@ -10,7 +10,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP};
+use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP, SexpExt};
 use miniextendr_api::rayon_bridge::{
     new_r_array, new_r_matrix, par_map, par_map2, par_map3, with_r_array, with_r_matrix,
     with_r_vec, with_r_vec_map,
@@ -90,8 +90,7 @@ fn test_with_r_vec_i32() {
     let len = unsafe { Rf_xlength(sexp) } as usize;
     assert_eq!(len, 100);
 
-    let ptr = unsafe { miniextendr_api::ffi::INTEGER(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let slice: &[i32] = unsafe { sexp.as_slice() };
     for (i, &v) in slice.iter().enumerate() {
         assert_eq!(v, i as i32 * 2, "mismatch at index {}", i);
     }
@@ -218,10 +217,8 @@ fn test_with_r_matrix_basic() {
     assert_eq!(len, 12);
 
     // Verify the dim attribute
-    let dim =
-        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
-    let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
-    let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 2) };
+    let dim = sexp.get_dim();
+    let dim_slice: &[i32] = unsafe { dim.as_slice() };
     assert_eq!(dim_slice[0], 3); // nrow
     assert_eq!(dim_slice[1], 4); // ncol
 
@@ -279,8 +276,7 @@ fn test_with_r_array_basic() {
     assert_eq!(len, 24);
 
     // Verify the dim attribute
-    let dim =
-        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
+    let dim = sexp.get_dim();
     let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
     let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 3) };
     assert_eq!(dim_slice[0], 2);

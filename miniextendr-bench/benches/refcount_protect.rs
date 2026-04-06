@@ -16,6 +16,7 @@ use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::refcount_protect::{
     HashMapArena, RefCountedArena, ThreadLocalArena, ThreadLocalArenaOps, ThreadLocalHashArena,
 };
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -31,9 +32,9 @@ fn main() {
 #[divan::bench]
 fn raw_preserve_release_single() {
     unsafe {
-        let x = ffi::Rf_ScalarInteger(42);
-        ffi::R_PreserveObject(x);
-        ffi::R_ReleaseObject(x);
+        let x = raw_ffi::Rf_ScalarInteger(42);
+        raw_ffi::R_PreserveObject(x);
+        raw_ffi::R_ReleaseObject(x);
         divan::black_box(x);
     }
 }
@@ -42,7 +43,7 @@ fn raw_preserve_release_single() {
 #[divan::bench]
 fn raw_preserve_release_unchecked_single() {
     unsafe {
-        let x = ffi::Rf_ScalarInteger(42);
+        let x = raw_ffi::Rf_ScalarInteger(42);
         ffi::R_PreserveObject_unchecked(x);
         ffi::R_ReleaseObject_unchecked(x);
         divan::black_box(x);
@@ -56,12 +57,12 @@ fn raw_preserve_release_multiple(n: usize) {
     unsafe {
         let mut values = Vec::with_capacity(n);
         for i in 0..n {
-            let x = ffi::Rf_ScalarInteger(i as i32);
-            ffi::R_PreserveObject(x);
+            let x = raw_ffi::Rf_ScalarInteger(i as i32);
+            raw_ffi::R_PreserveObject(x);
             values.push(x);
         }
         for x in values {
-            ffi::R_ReleaseObject(x);
+            raw_ffi::R_ReleaseObject(x);
         }
     }
 }
@@ -73,7 +74,7 @@ fn raw_preserve_release_unchecked_multiple(n: usize) {
     unsafe {
         let mut values = Vec::with_capacity(n);
         for i in 0..n {
-            let x = ffi::Rf_ScalarInteger(i as i32);
+            let x = raw_ffi::Rf_ScalarInteger(i as i32);
             ffi::R_PreserveObject_unchecked(x);
             values.push(x);
         }
@@ -89,7 +90,7 @@ fn raw_preserve_release_unchecked_multiple(n: usize) {
 fn raw_preserve_only(n: usize) {
     unsafe {
         for i in 0..n {
-            let x = ffi::Rf_ScalarInteger((i % 100) as i32);
+            let x = raw_ffi::Rf_ScalarInteger((i % 100) as i32);
             ffi::R_PreserveObject_unchecked(x);
             divan::black_box(x);
         }
@@ -104,7 +105,7 @@ fn raw_preserve_release_scale(n: usize) {
     unsafe {
         let mut values = Vec::with_capacity(n);
         for i in 0..n {
-            let x = ffi::Rf_ScalarInteger((i % 100) as i32);
+            let x = raw_ffi::Rf_ScalarInteger((i % 100) as i32);
             ffi::R_PreserveObject_unchecked(x);
             values.push(x);
         }
@@ -122,7 +123,7 @@ fn raw_preserve_release_scale(n: usize) {
 fn protect_scope_single() {
     unsafe {
         let scope = ProtectScope::new();
-        let x = scope.protect(ffi::Rf_ScalarInteger(42));
+        let x = scope.protect(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(x.get());
     }
 }
@@ -132,7 +133,7 @@ fn protect_scope_single() {
 fn refcount_arena_single() {
     unsafe {
         let arena = RefCountedArena::new();
-        let x = arena.protect(ffi::Rf_ScalarInteger(42));
+        let x = arena.protect(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(x);
     }
 }
@@ -142,7 +143,7 @@ fn refcount_arena_single() {
 fn refcount_arena_guard_single() {
     unsafe {
         let arena = RefCountedArena::new();
-        let guard = arena.guard(ffi::Rf_ScalarInteger(42));
+        let guard = arena.guard(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(guard.get());
     }
 }
@@ -156,7 +157,7 @@ fn protect_scope_multiple(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
         for i in 0..n {
-            let _ = scope.protect(ffi::Rf_ScalarInteger(i as i32));
+            let _ = scope.protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(scope.count());
     }
@@ -168,7 +169,7 @@ fn refcount_arena_multiple(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger(i as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(arena.len());
     }
@@ -182,7 +183,7 @@ fn refcount_arena_multiple(n: usize) {
 fn refcount_arena_same_value(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
-        let x = ffi::Rf_ScalarInteger(42);
+        let x = raw_ffi::Rf_ScalarInteger(42);
 
         for _ in 0..n {
             arena.protect(x);
@@ -197,7 +198,7 @@ fn refcount_arena_same_value(n: usize) {
 fn protect_scope_same_value(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        let x = ffi::Rf_ScalarInteger(42);
+        let x = raw_ffi::Rf_ScalarInteger(42);
 
         for _ in 0..n {
             let _ = scope.protect(x);
@@ -219,7 +220,7 @@ fn refcount_arena_protect_unprotect(n: usize) {
 
         // Protect all
         for i in 0..n {
-            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
         }
 
         // Unprotect in reverse order
@@ -240,7 +241,7 @@ fn refcount_arena_unprotect_random_order(n: usize) {
 
         // Protect all
         for i in 0..n {
-            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
         }
 
         // Unprotect in "random" order (every 3rd, then every 2nd, then rest)
@@ -268,7 +269,7 @@ fn refcount_arena_many_values(n: usize) {
         let arena = RefCountedArena::new();
 
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
         }
 
         divan::black_box(arena.len());
@@ -283,7 +284,7 @@ fn protect_scope_many_values(n: usize) {
         let scope = ProtectScope::new();
 
         for i in 0..n {
-            let _ = scope.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+            let _ = scope.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
         }
 
         divan::black_box(scope.count());
@@ -300,7 +301,7 @@ fn refcount_arena_guards(n: usize) {
         let arena = RefCountedArena::new();
 
         for i in 0..n {
-            let _guard = arena.guard(ffi::Rf_ScalarInteger(i as i32));
+            let _guard = arena.guard(raw_ffi::Rf_ScalarInteger(i as i32));
             // guard drops at end of loop iteration
         }
 
@@ -315,7 +316,7 @@ fn refcount_arena_manual(n: usize) {
         let arena = RefCountedArena::new();
 
         for i in 0..n {
-            let x = arena.protect(ffi::Rf_ScalarInteger(i as i32));
+            let x = arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
             arena.unprotect(x);
         }
 
@@ -337,8 +338,8 @@ fn refcount_arena_realistic() {
 
         // Protect some children
         for i in 0..10 {
-            let child = arena.protect(ffi::Rf_ScalarInteger(i));
-            ffi::SET_VECTOR_ELT(list, i as isize, child);
+            let child = arena.protect(raw_ffi::Rf_ScalarInteger(i));
+            raw_ffi::SET_VECTOR_ELT(list, i as isize, child);
             // Children remain protected
         }
 
@@ -360,8 +361,8 @@ fn protect_scope_realistic() {
 
         // Protect some children
         for i in 0..10 {
-            let child = scope.protect_raw(ffi::Rf_ScalarInteger(i));
-            ffi::SET_VECTOR_ELT(list, i as isize, child);
+            let child = scope.protect_raw(raw_ffi::Rf_ScalarInteger(i));
+            raw_ffi::SET_VECTOR_ELT(list, i as isize, child);
         }
 
         divan::black_box(list);
@@ -377,7 +378,7 @@ fn protect_scope_realistic() {
 fn btreemap_single() {
     unsafe {
         let arena = RefCountedArena::new();
-        let x = arena.protect(ffi::Rf_ScalarInteger(42));
+        let x = arena.protect(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(x);
     }
 }
@@ -387,7 +388,7 @@ fn btreemap_single() {
 fn hashmap_single() {
     unsafe {
         let arena = HashMapArena::new();
-        let x = arena.protect(ffi::Rf_ScalarInteger(42));
+        let x = arena.protect(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(x);
     }
 }
@@ -398,7 +399,7 @@ fn btreemap_multiple(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger(i as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(arena.len());
     }
@@ -410,7 +411,7 @@ fn hashmap_multiple(n: usize) {
     unsafe {
         let arena = HashMapArena::new();
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger(i as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(arena.len());
     }
@@ -421,7 +422,7 @@ fn hashmap_multiple(n: usize) {
 fn btreemap_same_value(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
-        let x = ffi::Rf_ScalarInteger(42);
+        let x = raw_ffi::Rf_ScalarInteger(42);
         for _ in 0..n {
             arena.protect(x);
         }
@@ -434,7 +435,7 @@ fn btreemap_same_value(n: usize) {
 fn hashmap_same_value(n: usize) {
     unsafe {
         let arena = HashMapArena::new();
-        let x = ffi::Rf_ScalarInteger(42);
+        let x = raw_ffi::Rf_ScalarInteger(42);
         for _ in 0..n {
             arena.protect(x);
         }
@@ -450,7 +451,7 @@ fn btreemap_protect_unprotect(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
         }
 
         for x in values.into_iter().rev() {
@@ -469,7 +470,7 @@ fn hashmap_protect_unprotect(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
         }
 
         for x in values.into_iter().rev() {
@@ -486,7 +487,7 @@ fn btreemap_many(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
         }
         divan::black_box(arena.len());
     }
@@ -498,7 +499,7 @@ fn hashmap_many(n: usize) {
     unsafe {
         let arena = HashMapArena::new();
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
         }
         divan::black_box(arena.len());
     }
@@ -511,7 +512,7 @@ fn hashmap_many(n: usize) {
 #[divan::bench]
 fn thread_local_single() {
     unsafe {
-        let x = ThreadLocalArena::protect(ffi::Rf_ScalarInteger(42));
+        let x = ThreadLocalArena::protect(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(x);
         ThreadLocalArena::unprotect(x);
     }
@@ -522,7 +523,7 @@ fn thread_local_single() {
 fn thread_local_multiple(n: usize) {
     unsafe {
         for i in 0..n {
-            ThreadLocalArena::protect(ffi::Rf_ScalarInteger(i as i32));
+            ThreadLocalArena::protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(ThreadLocalArena::len());
         ThreadLocalArena::clear();
@@ -533,7 +534,7 @@ fn thread_local_multiple(n: usize) {
 #[divan::bench(args = [10, 100, 1000])]
 fn thread_local_same_value(n: usize) {
     unsafe {
-        let x = ffi::Rf_ScalarInteger(42);
+        let x = raw_ffi::Rf_ScalarInteger(42);
         for _ in 0..n {
             ThreadLocalArena::protect(x);
         }
@@ -549,7 +550,9 @@ fn thread_local_protect_unprotect(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(ThreadLocalArena::protect(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(ThreadLocalArena::protect(raw_ffi::Rf_ScalarInteger(
+                i as i32,
+            )));
         }
 
         for x in values.into_iter().rev() {
@@ -565,7 +568,7 @@ fn thread_local_protect_unprotect(n: usize) {
 fn thread_local_many(n: usize) {
     unsafe {
         for i in 0..n {
-            ThreadLocalArena::protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+            ThreadLocalArena::protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
         }
         divan::black_box(ThreadLocalArena::len());
         ThreadLocalArena::clear();
@@ -579,7 +582,7 @@ fn thread_local_many(n: usize) {
 #[divan::bench]
 fn thread_local_hash_single() {
     unsafe {
-        let x = ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(42));
+        let x = ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger(42));
         divan::black_box(x);
         ThreadLocalHashArena::unprotect(x);
     }
@@ -590,7 +593,7 @@ fn thread_local_hash_single() {
 fn thread_local_hash_multiple(n: usize) {
     unsafe {
         for i in 0..n {
-            ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(i as i32));
+            ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(ThreadLocalHashArena::len());
         ThreadLocalHashArena::clear();
@@ -601,7 +604,7 @@ fn thread_local_hash_multiple(n: usize) {
 #[divan::bench(args = [10, 100, 1000])]
 fn thread_local_hash_same_value(n: usize) {
     unsafe {
-        let x = ffi::Rf_ScalarInteger(42);
+        let x = raw_ffi::Rf_ScalarInteger(42);
         for _ in 0..n {
             ThreadLocalHashArena::protect(x);
         }
@@ -617,7 +620,7 @@ fn thread_local_hash_protect_unprotect(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(
+            values.push(ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger(
                 i as i32,
             )));
         }
@@ -635,7 +638,7 @@ fn thread_local_hash_protect_unprotect(n: usize) {
 fn thread_local_hash_many(n: usize) {
     unsafe {
         for i in 0..n {
-            ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+            ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
         }
         divan::black_box(ThreadLocalHashArena::len());
         ThreadLocalHashArena::clear();
@@ -663,7 +666,7 @@ fn aaa_ppsize_protect_scope(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
         for i in 0..n {
-            let _ = scope.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+            let _ = scope.protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
         }
         divan::black_box(scope.count());
     }
@@ -675,7 +678,7 @@ fn ppsize_refcount_arena(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
         }
         divan::black_box(arena.len());
     }
@@ -687,7 +690,7 @@ fn ppsize_hashmap_arena(n: usize) {
     unsafe {
         let arena = HashMapArena::new();
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
         }
         divan::black_box(arena.len());
     }
@@ -698,7 +701,7 @@ fn ppsize_hashmap_arena(n: usize) {
 fn ppsize_thread_local(n: usize) {
     unsafe {
         for i in 0..n {
-            ThreadLocalArena::protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+            ThreadLocalArena::protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
         }
         divan::black_box(ThreadLocalArena::len());
         ThreadLocalArena::clear();
@@ -710,7 +713,7 @@ fn ppsize_thread_local(n: usize) {
 fn ppsize_thread_local_hash(n: usize) {
     unsafe {
         for i in 0..n {
-            ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+            ThreadLocalHashArena::protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
         }
         divan::black_box(ThreadLocalHashArena::len());
         ThreadLocalHashArena::clear();
@@ -726,7 +729,7 @@ fn thread_local_protect_fast(n: usize) {
     unsafe {
         ThreadLocalArena::init();
         for i in 0..n {
-            ThreadLocalArena::protect_fast(ffi::Rf_ScalarInteger(i as i32));
+            ThreadLocalArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(ThreadLocalArena::len());
         ThreadLocalArena::clear();
@@ -739,7 +742,7 @@ fn thread_local_hash_protect_fast(n: usize) {
     unsafe {
         ThreadLocalHashArena::init();
         for i in 0..n {
-            ThreadLocalHashArena::protect_fast(ffi::Rf_ScalarInteger(i as i32));
+            ThreadLocalHashArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(ThreadLocalHashArena::len());
         ThreadLocalHashArena::clear();
@@ -754,7 +757,7 @@ fn thread_local_fast_cycle(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(ThreadLocalArena::protect_fast(ffi::Rf_ScalarInteger(
+            values.push(ThreadLocalArena::protect_fast(raw_ffi::Rf_ScalarInteger(
                 i as i32,
             )));
         }
@@ -775,9 +778,9 @@ fn thread_local_hash_fast_cycle(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(ThreadLocalHashArena::protect_fast(ffi::Rf_ScalarInteger(
-                i as i32,
-            )));
+            values.push(ThreadLocalHashArena::protect_fast(
+                raw_ffi::Rf_ScalarInteger(i as i32),
+            ));
         }
 
         for x in values.into_iter().rev() {
@@ -797,7 +800,7 @@ fn thread_local_init_with_capacity(n: usize) {
     unsafe {
         ThreadLocalHashArena::init_with_capacity(n);
         for i in 0..n {
-            ThreadLocalHashArena::protect_fast(ffi::Rf_ScalarInteger(i as i32));
+            ThreadLocalHashArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(ThreadLocalHashArena::len());
         ThreadLocalHashArena::clear();
@@ -810,7 +813,7 @@ fn hashmap_with_capacity(n: usize) {
     unsafe {
         let arena = HashMapArena::with_capacity(n);
         for i in 0..n {
-            arena.protect(ffi::Rf_ScalarInteger(i as i32));
+            arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
         }
         divan::black_box(arena.len());
     }
@@ -831,7 +834,7 @@ mod fast_hash_benches {
     fn fast_hash_single() {
         unsafe {
             let arena = FastHashMapArena::new();
-            let x = arena.protect(ffi::Rf_ScalarInteger(42));
+            let x = arena.protect(raw_ffi::Rf_ScalarInteger(42));
             divan::black_box(x);
         }
     }
@@ -842,7 +845,7 @@ mod fast_hash_benches {
         unsafe {
             let arena = FastHashMapArena::new();
             for i in 0..n {
-                arena.protect(ffi::Rf_ScalarInteger(i as i32));
+                arena.protect(raw_ffi::Rf_ScalarInteger(i as i32));
             }
             divan::black_box(arena.len());
         }
@@ -853,7 +856,7 @@ mod fast_hash_benches {
     fn fast_hash_same_value(n: usize) {
         unsafe {
             let arena = FastHashMapArena::new();
-            let x = ffi::Rf_ScalarInteger(42);
+            let x = raw_ffi::Rf_ScalarInteger(42);
             for _ in 0..n {
                 arena.protect(x);
             }
@@ -869,7 +872,7 @@ mod fast_hash_benches {
             let mut values = Vec::with_capacity(n);
 
             for i in 0..n {
-                values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+                values.push(arena.protect(raw_ffi::Rf_ScalarInteger(i as i32)));
             }
 
             for x in values.into_iter().rev() {
@@ -886,7 +889,7 @@ mod fast_hash_benches {
         unsafe {
             let arena = FastHashMapArena::new();
             for i in 0..n {
-                arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+                arena.protect(raw_ffi::Rf_ScalarInteger((i % 100) as i32));
             }
             divan::black_box(arena.len());
         }
@@ -898,7 +901,7 @@ mod fast_hash_benches {
         unsafe {
             let arena = FastHashMapArena::new();
             for i in 0..n {
-                arena.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+                arena.protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
             }
             divan::black_box(arena.len());
         }
@@ -908,7 +911,7 @@ mod fast_hash_benches {
     #[divan::bench]
     fn thread_local_fast_hash_single() {
         unsafe {
-            let x = ThreadLocalFastHashArena::protect(ffi::Rf_ScalarInteger(42));
+            let x = ThreadLocalFastHashArena::protect(raw_ffi::Rf_ScalarInteger(42));
             divan::black_box(x);
             ThreadLocalFastHashArena::unprotect(x);
         }
@@ -919,7 +922,7 @@ mod fast_hash_benches {
     fn thread_local_fast_hash_multiple(n: usize) {
         unsafe {
             for i in 0..n {
-                ThreadLocalFastHashArena::protect(ffi::Rf_ScalarInteger(i as i32));
+                ThreadLocalFastHashArena::protect(raw_ffi::Rf_ScalarInteger(i as i32));
             }
             divan::black_box(ThreadLocalFastHashArena::len());
             ThreadLocalFastHashArena::clear();
@@ -932,7 +935,7 @@ mod fast_hash_benches {
         unsafe {
             ThreadLocalFastHashArena::init();
             for i in 0..n {
-                ThreadLocalFastHashArena::protect_fast(ffi::Rf_ScalarInteger(i as i32));
+                ThreadLocalFastHashArena::protect_fast(raw_ffi::Rf_ScalarInteger(i as i32));
             }
             divan::black_box(ThreadLocalFastHashArena::len());
             ThreadLocalFastHashArena::clear();
@@ -944,7 +947,7 @@ mod fast_hash_benches {
     fn ppsize_thread_local_fast_hash(n: usize) {
         unsafe {
             for i in 0..n {
-                ThreadLocalFastHashArena::protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+                ThreadLocalFastHashArena::protect(raw_ffi::Rf_ScalarInteger((i % 1000) as i32));
             }
             divan::black_box(ThreadLocalFastHashArena::len());
             ThreadLocalFastHashArena::clear();

@@ -1,6 +1,6 @@
 //! Tests for worker thread (run_on_worker) and with_r_thread functionality.
 
-use miniextendr_api::ffi::{R_NilValue, SEXP};
+use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::worker::{panic_message_to_r_error, run_on_worker, with_r_thread};
 
@@ -30,7 +30,7 @@ pub extern "C-unwind" fn C_worker_drop_on_success() -> SEXP {
         let _b = Box::new(SimpleDropMsg("worker: heap resource"));
         42
     });
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -45,7 +45,7 @@ pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
         eprintln!("[Rust] Worker: about to panic");
         panic!("intentional panic from worker");
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 // region: Comprehensive worker/with_r_thread tests
@@ -63,7 +63,7 @@ pub extern "C-unwind" fn C_test_worker_simple() -> SEXP {
         let b = 32;
         a + b
     });
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 // endregion
 
@@ -78,12 +78,12 @@ pub extern "C-unwind" fn C_test_worker_with_r_thread() -> SEXP {
         let value = 123;
         // Call R API on main thread, return i32 (Send)
         with_r_thread(move || {
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(value) };
-            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+            let sexp = miniextendr_api::ffi::SEXP::scalar_integer(value);
+            sexp.as_integer().unwrap()
         })
     });
     // Convert to SEXP on main thread after run_on_worker returns
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -107,14 +107,13 @@ pub extern "C-unwind" fn C_test_worker_multiple_r_calls() -> SEXP {
 
     // Create the SEXP vector on main thread
     unsafe {
-        let vec = miniextendr_api::ffi::Rf_allocVector(miniextendr_api::ffi::SEXPTYPE::INTSXP, 3);
-        miniextendr_api::ffi::Rf_protect(vec);
-        let ptr = miniextendr_api::ffi::INTEGER(vec);
-        *ptr.offset(0) = values.0;
-        *ptr.offset(1) = values.1;
-        *ptr.offset(2) = values.2;
-        miniextendr_api::ffi::Rf_unprotect(1);
-        vec
+        let scope = miniextendr_api::gc_protect::ProtectScope::new();
+        let vec = scope.alloc_integer(3);
+        let slice: &mut [i32] = vec.get().as_mut_slice();
+        slice[0] = values.0;
+        slice[1] = values.1;
+        slice[2] = values.2;
+        vec.get()
     }
 }
 // endregion
@@ -129,7 +128,7 @@ pub extern "C-unwind" fn C_test_worker_panic_simple() -> SEXP {
     run_on_worker_or_error::<_, ()>(|| {
         panic!("simple panic on worker");
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 /// @noRd
@@ -142,7 +141,7 @@ pub extern "C-unwind" fn C_test_worker_panic_with_drops() -> SEXP {
         let _resource2 = Box::new(SimpleDropMsg("test_panic_drops: resource2 (boxed)"));
         panic!("panic after creating resources");
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 /// @noRd
@@ -155,7 +154,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread() -> SEXP {
             panic!("panic inside with_r_thread callback");
         });
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 /// @noRd
@@ -171,7 +170,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops() -> SEXP {
             panic!("panic in with_r_thread with resources");
         });
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 // endregion
 
@@ -187,7 +186,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_in_r_thread() -> SEXP {
             miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error in with_r_thread".as_ptr()); // mxl::allow(MXL300)
         });
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 /// @noRd
@@ -205,7 +204,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_with_drops() -> SEXP {
             }
         });
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 // endregion
 
@@ -234,7 +233,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_error() -> SEXP {
             );
         });
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 /// @noRd
@@ -252,7 +251,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 
         panic!("Rust panic after successful R call");
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 // endregion
 
@@ -340,28 +339,23 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 
     // Create ExternalPtrs on main thread
     use miniextendr_api::externalptr::ExternalPtr;
-    use miniextendr_api::ffi::{
-        Rf_allocVector, Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXPTYPE,
-    };
+    use miniextendr_api::ffi::SexpExt;
+    use miniextendr_api::gc_protect::ProtectScope;
 
     unsafe {
-        // Create a list of 2 elements
-        let list = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        Rf_protect(list);
+        let scope = ProtectScope::new();
+        let list = scope.alloc_vecsxp(2);
 
-        // Create Counter ExternalPtr
         let counter_ptr = ExternalPtr::new(Counter { value: counter_val });
-        SET_VECTOR_ELT(list, 0, counter_ptr.as_sexp());
+        list.get().set_vector_elt(0, counter_ptr.as_sexp());
 
-        // Create Point ExternalPtr
         let point_ptr = ExternalPtr::new(Point {
             x: point_x,
             y: point_y,
         });
-        SET_VECTOR_ELT(list, 1, point_ptr.as_sexp());
+        list.get().set_vector_elt(1, point_ptr.as_sexp());
 
-        Rf_unprotect(1);
-        list
+        list.get()
     }
 }
 // endregion
@@ -372,8 +366,8 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 #[miniextendr(unsafe(main_thread))]
 pub fn test_main_thread_r_api() -> i32 {
     // This runs on main thread, can call R API directly
-    let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
-    unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+    let sexp = miniextendr_api::ffi::SEXP::scalar_integer(42);
+    sexp.as_integer().unwrap()
 }
 
 /// @noRd
@@ -409,9 +403,9 @@ pub extern "C-unwind" fn C_test_wrong_thread_r_api() -> SEXP {
         // With worker-thread: routed to main thread via with_r_thread.
         // Without worker-thread: run_on_worker is a stub, runs inline on main thread.
         // Either way, this should succeed (not panic).
-        let _ = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
+        let _ = miniextendr_api::ffi::SEXP::scalar_integer(42);
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 // endregion
 
@@ -421,8 +415,8 @@ pub extern "C-unwind" fn C_test_wrong_thread_r_api() -> SEXP {
 fn helper_r_call_value(value: i32) -> i32 {
     with_r_thread(move || {
         // Create SEXP on main thread, extract value, return i32
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(value * 2) };
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        let sexp = miniextendr_api::ffi::SEXP::scalar_integer(value * 2);
+        sexp.as_integer().unwrap()
     })
 }
 
@@ -432,7 +426,7 @@ fn helper_r_call_value(value: i32) -> i32 {
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_test_nested_helper_from_worker() -> SEXP {
     let result = run_on_worker_or_error(|| helper_r_call_value(21));
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -445,7 +439,7 @@ pub extern "C-unwind" fn C_test_nested_multiple_helpers() -> SEXP {
         let v2 = helper_r_call_value(20);
         v1 + v2
     });
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -459,7 +453,7 @@ pub extern "C-unwind" fn C_test_nested_with_r_thread() -> SEXP {
             with_r_thread(|| 42i32)
         })
     });
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -470,7 +464,7 @@ pub extern "C-unwind" fn C_test_call_worker_fn_from_main() -> SEXP {
     // Call add() which uses worker strategy internally
     // This should work: we're on main thread, add() spawns worker job
     let result = add(10, 32);
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -487,7 +481,7 @@ pub extern "C-unwind" fn C_test_nested_worker_calls() -> SEXP {
         val * 2
     });
     // Convert to SEXP on main thread
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
 /// @noRd
@@ -517,7 +511,7 @@ pub extern "C-unwind" fn C_test_nested_with_error() -> SEXP {
             }
         })
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 /// @noRd
@@ -541,7 +535,7 @@ pub extern "C-unwind" fn C_test_nested_with_panic() -> SEXP {
             panic!("Panic in nested with_r_thread");
         })
     });
-    unsafe { R_NilValue }
+    SEXP::nil()
 }
 
 /// @noRd
@@ -564,6 +558,6 @@ pub extern "C-unwind" fn C_test_deep_with_r_thread_sequence() -> SEXP {
         sum
     });
 
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(sum) }
+    miniextendr_api::ffi::SEXP::scalar_integer(sum)
 }
 // endregion

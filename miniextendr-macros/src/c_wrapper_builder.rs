@@ -543,7 +543,7 @@ impl CWrapperContext {
             ReturnHandling::Unit => {
                 quote! {
                     #call_expr;
-                    unsafe { ::miniextendr_api::ffi::R_NilValue }
+                    ::miniextendr_api::ffi::SEXP::nil()
                 }
             }
             ReturnHandling::RawSexp => {
@@ -577,7 +577,7 @@ impl CWrapperContext {
                                 #error_msg, "none_err", Some(__miniextendr_call),
                             );
                         }
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::SEXP::nil()
                     }
                 } else {
                     quote! {
@@ -585,7 +585,7 @@ impl CWrapperContext {
                         if __result.is_none() {
                             ::miniextendr_api::error::r_stop(#error_msg);
                         }
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::SEXP::nil()
                     }
                 }
             }
@@ -646,7 +646,7 @@ impl CWrapperContext {
                                 &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             );
                         }
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::SEXP::nil()
                     }
                 } else {
                     quote! {
@@ -654,7 +654,7 @@ impl CWrapperContext {
                         if let Err(e) = __result {
                             ::miniextendr_api::error::r_stop(&format!("{:?}", e));
                         }
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::SEXP::nil()
                     }
                 }
             }
@@ -729,7 +729,7 @@ impl CWrapperContext {
                     #call_expr;
                 };
                 let convert = quote! {
-                    unsafe { ::miniextendr_api::ffi::R_NilValue }
+                    ::miniextendr_api::ffi::SEXP::nil()
                 };
                 (worker, convert)
             }
@@ -785,7 +785,7 @@ impl CWrapperContext {
                                 #error_msg, "none_err", Some(__miniextendr_call),
                             )
                         } else {
-                            unsafe { ::miniextendr_api::ffi::R_NilValue }
+                            ::miniextendr_api::ffi::SEXP::nil()
                         }
                     };
                     (worker, convert)
@@ -797,7 +797,7 @@ impl CWrapperContext {
                         }
                     };
                     let convert = quote! {
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::SEXP::nil()
                     };
                     (worker, convert)
                 }
@@ -872,7 +872,7 @@ impl CWrapperContext {
                     let worker = quote! { #call_expr };
                     let convert = quote! {
                         match __miniextendr_result {
-                            Ok(()) => unsafe { ::miniextendr_api::ffi::R_NilValue },
+                            Ok(()) => ::miniextendr_api::ffi::SEXP::nil(),
                             Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
                                 &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                             ),
@@ -887,7 +887,7 @@ impl CWrapperContext {
                         }
                     };
                     let convert = quote! {
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::SEXP::nil()
                     };
                     (worker, convert)
                 }

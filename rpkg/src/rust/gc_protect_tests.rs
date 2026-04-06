@@ -2,7 +2,7 @@
 //!
 //! These tests verify that the protection APIs work correctly.
 
-use miniextendr_api::ffi::{Rf_allocVector, Rf_xlength, SEXPTYPE};
+use miniextendr_api::ffi::{Rf_allocVector, SEXPTYPE, SexpExt};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::miniextendr;
@@ -145,7 +145,7 @@ pub fn test_reprotect_slot_accumulate(n: i32) -> i32 {
         }
 
         // Final vector should have length n
-        Rf_xlength(slot.get()) as i32
+        slot.get().xlength() as i32
     }
 }
 

@@ -99,25 +99,17 @@ miniextendr_api::miniextendr_init!();
 #[cfg(feature = "serde")]
 pub use miniextendr_api::serde_crate as serde;
 
+mod raw_ffi;
+
 // Test modules
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
-mod backtrace_tests;
-mod collect_tests;
-mod condition_tests;
-#[cfg(feature = "datafusion")]
-mod datafusion_tests;
-mod display_fromstr_tests;
-#[cfg(feature = "serde")]
-mod json_string_tests;
-mod lazy_tests;
-#[cfg(feature = "log")]
-mod log_tests;
+mod altrep_sexp_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
-mod altrep_sexp_tests;
 mod as_coerce_tests;
+mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
 mod bigint_adapter_tests;
 #[cfg(feature = "bitflags")]
@@ -131,6 +123,10 @@ mod box_slice_tests;
 mod bytes_adapter_tests;
 mod class_system_matrix;
 mod coerce_tests;
+mod collect_tests;
+#[cfg(feature = "serde")]
+mod columnar_flatten_tests;
+mod condition_tests;
 #[cfg(feature = "connections")]
 mod connection_tests;
 mod conversion_tests;
@@ -139,9 +135,12 @@ mod convert_pref_tests;
 mod dataframe_examples;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
+#[cfg(feature = "datafusion")]
+mod datafusion_tests;
 #[cfg(feature = "rust_decimal")]
 mod decimal_adapter_tests;
 mod default_tests;
+mod display_fromstr_tests;
 mod doc_attr_tests;
 mod dots_tests;
 #[cfg(feature = "either")]
@@ -150,53 +149,58 @@ mod encoding_tests;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_any_tests;
-mod externalslice_tests;
 mod externalptr_tests;
+mod externalslice_tests;
 mod factor_tests;
 mod ffi_guard_tests;
-#[cfg(feature = "growth-debug")]
-mod growth_debug_tests;
-mod impl_trait_tests;
-mod into_r_as_tests;
-mod into_r_error_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
+#[cfg(feature = "growth-debug")]
+mod growth_debug_tests;
 mod identical_tests;
+mod impl_trait_tests;
 #[cfg(feature = "indexmap")]
 mod indexmap_adapter_tests;
 #[cfg(feature = "indicatif")]
 mod indicatif_adapter_tests;
 mod interrupt_tests;
+mod into_r_as_tests;
+mod into_r_error_tests;
+#[cfg(feature = "serde")]
+mod json_string_tests;
+mod lazy_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
+#[cfg(feature = "log")]
+mod log_tests;
 mod macro_equivalence;
 mod match_arg_tests;
 mod misc_tests;
-mod panic_telemetry_tests;
-mod protect_pool_tests;
 mod missing_tests;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;
-#[cfg(all(feature = "nalgebra", feature = "ndarray"))]
-mod r_backed_tests;
 #[cfg(feature = "num-complex")]
 mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]
 mod num_traits_adapter_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
+mod panic_telemetry_tests;
 mod panic_tests;
+mod protect_pool_tests;
 mod r6_default_tests;
 mod r6_tests;
+#[cfg(all(feature = "nalgebra", feature = "ndarray"))]
+mod r_backed_tests;
 mod r_wrapper_attrs;
+mod rarray_tests;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
-mod rarray_tests;
 mod rdata_sidecar_tests;
-mod refcount_protect_tests;
 mod receiver_tests;
+mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rng_tests;
@@ -204,7 +208,6 @@ mod s3_tests;
 mod s4_helpers_tests;
 mod s4_tests;
 mod s7_tests;
-mod streaming_altrep_tests;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]
@@ -212,6 +215,7 @@ mod serde_r_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
 mod shared_trait_test;
+mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
 mod thread_tests;
@@ -574,22 +578,22 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
         // Store start, step, len in an integer vector
         // Note: We don't serialize the materialized buffer - it will be recomputed on demand
         unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SET_INTEGER_ELT, SEXPTYPE};
+            use miniextendr_api::ffi::{Rf_allocVector, SEXPTYPE, SexpExt};
             let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
-            SET_INTEGER_ELT(state, 0, self.start);
-            SET_INTEGER_ELT(state, 1, self.step);
-            SET_INTEGER_ELT(state, 2, self.len as i32);
+            state.set_integer_elt(0, self.start);
+            state.set_integer_elt(1, self.step);
+            state.set_integer_elt(2, self.len as i32);
             state
         }
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn unserialize(state: SEXP) -> Option<Self> {
-        unsafe {
-            use miniextendr_api::ffi::INTEGER_ELT;
-            let start = INTEGER_ELT(state, 0);
-            let step = INTEGER_ELT(state, 1);
-            let len = INTEGER_ELT(state, 2) as usize;
+        {
+            use miniextendr_api::ffi::SexpExt;
+            let start = state.integer_elt(0);
+            let step = state.integer_elt(1);
+            let len = state.integer_elt(2) as usize;
             Some(LazyIntSeqData {
                 start,
                 step,
@@ -710,17 +714,17 @@ pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
 /// @noRd
 #[miniextendr]
 pub fn altrep_from_list(x: SEXP) -> ListDataClass {
-    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SEXPTYPE, TYPEOF};
+    use miniextendr_api::ffi::{R_PreserveObject, SexpExt};
 
-    if unsafe { TYPEOF(x) } != SEXPTYPE::VECSXP {
+    if !x.is_list() {
         panic!("altrep_from_list: expected a list (VECSXP)");
     }
 
-    if x != unsafe { R_NilValue } {
+    if !x.is_nil() {
         unsafe { R_PreserveObject(x) };
     }
 
-    let len = unsafe { Rf_xlength(x) } as usize;
+    let len = x.len();
     ListDataClass(ListData { list: x, len })
 }
 // endregion
@@ -894,7 +898,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
         // NA_LOGICAL in R is the same as NA_INTEGER = i32::MIN
         const NA_LOGICAL: i32 = i32::MIN;
         unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SET_LOGICAL_ELT, SEXPTYPE};
+            use miniextendr_api::ffi::{Rf_allocVector, SEXPTYPE, SexpExt};
             let n = self.data.len();
             let state = Rf_allocVector(SEXPTYPE::LGLSXP, n as isize);
             for (i, v) in self.data.iter().enumerate() {
@@ -903,7 +907,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
                     Logical::False => 0,
                     Logical::Na => NA_LOGICAL,
                 };
-                SET_LOGICAL_ELT(state, i as isize, raw);
+                state.set_logical_elt(i as isize, raw);
             }
             state
         }
@@ -911,12 +915,12 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
 
     fn unserialize(state: SEXP) -> Option<Self> {
         const NA_LOGICAL: i32 = i32::MIN;
-        unsafe {
-            use miniextendr_api::ffi::{LOGICAL_ELT, Rf_xlength};
-            let n = Rf_xlength(state) as usize;
+        {
+            use miniextendr_api::ffi::SexpExt;
+            let n = state.len();
             let mut data = Vec::with_capacity(n);
             for i in 0..n {
-                let raw = LOGICAL_ELT(state, i as isize);
+                let raw = state.logical_elt(i as isize);
                 let v = if raw == NA_LOGICAL {
                     Logical::Na
                 } else if raw != 0 {
@@ -1240,7 +1244,7 @@ pub struct ListData {
 impl Drop for ListData {
     fn drop(&mut self) {
         unsafe {
-            if self.list != miniextendr_api::ffi::R_NilValue {
+            if self.list != miniextendr_api::ffi::SEXP::nil() {
                 miniextendr_api::ffi::R_ReleaseObject(self.list);
             }
         }
@@ -1255,7 +1259,8 @@ impl AltrepLen for ListData {
 
 impl AltListData for ListData {
     fn elt(&self, i: usize) -> SEXP {
-        unsafe { miniextendr_api::ffi::VECTOR_ELT(self.list, i as miniextendr_api::ffi::R_xlen_t) }
+        use miniextendr_api::ffi::SexpExt;
+        self.list.vector_elt(i as miniextendr_api::ffi::R_xlen_t)
     }
 }
 

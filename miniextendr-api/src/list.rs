@@ -17,7 +17,7 @@
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
 use crate::ffi::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
-use crate::ffi::{self, Rboolean, SexpExt, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -49,7 +49,7 @@ impl List {
     /// Return true if the underlying SEXP is a list (VECSXP) according to R.
     #[inline]
     pub fn is_list(self) -> bool {
-        unsafe { ffi::Rf_isList(self.0) != Rboolean::FALSE }
+        self.0.is_pair_list()
     }
 
     /// Wrap an existing `VECSXP` without additional checks.
@@ -87,7 +87,7 @@ impl List {
         if idx < 0 || idx >= self.len() {
             return None;
         }
-        Some(unsafe { ffi::VECTOR_ELT(self.0, idx) })
+        Some(self.0.vector_elt(idx))
     }
 
     /// Get element at 0-based index and convert to type `T`.
@@ -114,7 +114,7 @@ impl List {
 
         // Search for matching name
         for i in 0..n {
-            let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };
+            let name_sexp = names_sexp.string_elt(i);
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }
@@ -122,7 +122,7 @@ impl List {
             let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
             if let Ok(s) = name_cstr.to_str() {
                 if s == name {
-                    let elem = unsafe { ffi::VECTOR_ELT(self.0, i) };
+                    let elem = self.0.vector_elt(i);
                     return T::try_from_sexp(elem).ok();
                 }
             }
@@ -132,110 +132,73 @@ impl List {
 
     // region: Attribute getters (equivalent to R's GET_* macros)
 
-    /// Get an arbitrary attribute by symbol (unchecked internal helper).
-    ///
-    /// # Safety
-    ///
-    /// Caller must ensure `what` is a valid symbol SEXP.
+    /// Get an arbitrary attribute by symbol, returning `None` for `R_NilValue`.
     #[inline]
-    unsafe fn get_attr_impl_unchecked(self, what: SEXP) -> Option<SEXP> {
-        unsafe {
-            let attr = ffi::Rf_getAttrib(self.0, what);
-            if attr == ffi::R_NilValue {
-                None
-            } else {
-                Some(attr)
-            }
-        }
+    fn get_attr_opt(self, name: SEXP) -> Option<SEXP> {
+        let attr = self.0.get_attr(name);
+        if attr.is_nil() { None } else { Some(attr) }
     }
 
     /// Get the `names` attribute if present.
-    ///
-    /// Equivalent to R's `GET_NAMES(x)`.
     #[inline]
     pub fn names(self) -> Option<SEXP> {
-        // Safety: R_NamesSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_NamesSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_NamesSymbol })
     }
 
     /// Get the `class` attribute if present.
-    ///
-    /// Equivalent to R's `GET_CLASS(x)`.
     #[inline]
     pub fn get_class(self) -> Option<SEXP> {
-        // Safety: R_ClassSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_ClassSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_ClassSymbol })
     }
 
     /// Get the `dim` attribute if present.
-    ///
-    /// Equivalent to R's `GET_DIM(x)`.
     #[inline]
     pub fn get_dim(self) -> Option<SEXP> {
-        // Safety: R_DimSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_DimSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_DimSymbol })
     }
 
     /// Get the `dimnames` attribute if present.
-    ///
-    /// Equivalent to R's `GET_DIMNAMES(x)`.
     #[inline]
     pub fn get_dimnames(self) -> Option<SEXP> {
-        // Safety: R_DimNamesSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_DimNamesSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_DimNamesSymbol })
     }
 
     /// Get row names from the `dimnames` attribute.
-    ///
-    /// Equivalent to R's `GET_ROWNAMES(x)` / `Rf_GetRowNames(x)`.
     #[inline]
     pub fn get_rownames(self) -> Option<SEXP> {
-        unsafe {
-            let rownames = ffi::Rf_GetRowNames(self.0);
-            if rownames == ffi::R_NilValue {
-                None
-            } else {
-                Some(rownames)
-            }
+        let rownames = unsafe { ffi::Rf_GetRowNames(self.0) };
+        if rownames.is_nil() {
+            None
+        } else {
+            Some(rownames)
         }
     }
 
     /// Get column names from the `dimnames` attribute.
-    ///
-    /// Equivalent to R's `GET_COLNAMES(x)` / `Rf_GetColNames(x)`.
     #[inline]
     pub fn get_colnames(self) -> Option<SEXP> {
-        unsafe {
-            // Rf_GetColNames takes the dimnames, not the object itself
-            let dimnames = ffi::Rf_getAttrib(self.0, ffi::R_DimNamesSymbol);
-            if dimnames == ffi::R_NilValue {
-                return None;
-            }
-            let colnames = ffi::Rf_GetColNames(dimnames);
-            if colnames == ffi::R_NilValue {
-                None
-            } else {
-                Some(colnames)
-            }
+        let dimnames = self.0.get_dimnames();
+        if dimnames.is_nil() {
+            return None;
+        }
+        let colnames = unsafe { ffi::Rf_GetColNames(dimnames) };
+        if colnames.is_nil() {
+            None
+        } else {
+            Some(colnames)
         }
     }
 
     /// Get the `levels` attribute if present (for factors).
-    ///
-    /// Equivalent to R's `GET_LEVELS(x)`.
     #[inline]
     pub fn get_levels(self) -> Option<SEXP> {
-        // Safety: R_LevelsSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_LevelsSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_LevelsSymbol })
     }
 
     /// Get the `tsp` attribute if present (for time series).
-    ///
-    /// Equivalent to R's `GET_TSP(x)`.
     #[inline]
     pub fn get_tsp(self) -> Option<SEXP> {
-        // Safety: R_TspSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_TspSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_TspSymbol })
     }
     // endregion
 
@@ -246,7 +209,7 @@ impl List {
     /// Equivalent to R's `SET_NAMES(x, n)`.
     #[inline]
     pub fn set_names(self, names: SEXP) -> Self {
-        unsafe { ffi::Rf_namesgets(self.0, names) };
+        self.0.set_names(names);
         self
     }
 
@@ -255,7 +218,7 @@ impl List {
     /// Equivalent to R's `SET_CLASS(x, n)`.
     #[inline]
     pub fn set_class(self, class: SEXP) -> Self {
-        unsafe { ffi::Rf_setAttrib(self.0, ffi::R_ClassSymbol, class) };
+        self.0.set_class(class);
         self
     }
 
@@ -264,7 +227,7 @@ impl List {
     /// Equivalent to R's `SET_DIM(x, n)`.
     #[inline]
     pub fn set_dim(self, dim: SEXP) -> Self {
-        unsafe { ffi::Rf_dimgets(self.0, dim) };
+        self.0.set_dim(dim);
         self
     }
 
@@ -273,7 +236,7 @@ impl List {
     /// Equivalent to R's `SET_DIMNAMES(x, n)`.
     #[inline]
     pub fn set_dimnames(self, dimnames: SEXP) -> Self {
-        unsafe { ffi::Rf_setAttrib(self.0, ffi::R_DimNamesSymbol, dimnames) };
+        self.0.set_dimnames(dimnames);
         self
     }
 
@@ -282,7 +245,7 @@ impl List {
     /// Equivalent to R's `SET_LEVELS(x, l)`.
     #[inline]
     pub fn set_levels(self, levels: SEXP) -> Self {
-        unsafe { ffi::Rf_setAttrib(self.0, ffi::R_LevelsSymbol, levels) };
+        self.0.set_levels(levels);
         self
     }
     // endregion
@@ -304,17 +267,17 @@ impl List {
     pub fn set_class_str(self, classes: &[&str]) -> Self {
         use crate::ffi::SEXPTYPE::STRSXP;
 
-        let n: isize = classes.len().try_into().expect("classes length exceeds isize::MAX");
+        let n: isize = classes
+            .len()
+            .try_into()
+            .expect("classes length exceeds isize::MAX");
         unsafe {
             let class_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, class) in classes.iter().enumerate() {
-                let class_len: i32 = class.len().try_into().expect("class name exceeds i32::MAX bytes");
-                let chars =
-                    ffi::Rf_mkCharLenCE(class.as_ptr().cast(), class_len, ffi::CE_UTF8);
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_STRING_ELT(class_vec.get(), idx, chars);
+                class_vec.get().set_string_elt(idx, SEXP::charsxp(class));
             }
-            ffi::Rf_setAttrib(self.0, ffi::R_ClassSymbol, class_vec.get());
+            self.0.set_class(class_vec.get());
         }
         self
     }
@@ -334,17 +297,17 @@ impl List {
     pub fn set_names_str(self, names: &[&str]) -> Self {
         use crate::ffi::SEXPTYPE::STRSXP;
 
-        let n: isize = names.len().try_into().expect("names length exceeds isize::MAX");
+        let n: isize = names
+            .len()
+            .try_into()
+            .expect("names length exceeds isize::MAX");
         unsafe {
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in names.iter().enumerate() {
-                let name_len: i32 = name.len().try_into().expect("name exceeds i32::MAX bytes");
-                let chars =
-                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name_len, ffi::CE_UTF8);
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_STRING_ELT(names_vec.get(), idx, chars);
+                names_vec.get().set_string_elt(idx, SEXP::charsxp(name));
             }
-            ffi::Rf_namesgets(self.0, names_vec.get());
+            self.0.set_names(names_vec.get());
         }
         self
     }
@@ -376,7 +339,7 @@ impl List {
                 panic!("row count {n} exceeds i32::MAX");
             });
             rn[1] = -n_i32;
-            ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, row_names);
+            self.0.set_row_names(row_names);
         }
         self
     }
@@ -399,17 +362,17 @@ impl List {
     pub fn set_row_names_str(self, row_names: &[&str]) -> Self {
         use crate::ffi::SEXPTYPE::STRSXP;
 
-        let n: isize = row_names.len().try_into().expect("row_names length exceeds isize::MAX");
+        let n: isize = row_names
+            .len()
+            .try_into()
+            .expect("row_names length exceeds isize::MAX");
         unsafe {
             let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, name) in row_names.iter().enumerate() {
-                let name_len: i32 = name.len().try_into().expect("name exceeds i32::MAX bytes");
-                let chars =
-                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name_len, ffi::CE_UTF8);
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_STRING_ELT(names_vec.get(), idx, chars);
+                names_vec.get().set_string_elt(idx, SEXP::charsxp(name));
             }
-            ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, names_vec.get());
+            self.0.set_row_names(names_vec.get());
         }
         self
     }
@@ -452,7 +415,7 @@ impl List {
         // SAFETY: caller guarantees R main thread and valid SEXPs
         unsafe {
             let _guard = OwnedProtect::new(child);
-            ffi::SET_VECTOR_ELT(self.0, idx, child);
+            self.0.set_vector_elt(idx, child);
         }
     }
 
@@ -471,7 +434,7 @@ impl List {
     pub unsafe fn set_elt_unchecked(self, idx: isize, child: SEXP) {
         debug_assert!(idx >= 0 && idx < self.len(), "index out of bounds");
         // SAFETY: caller guarantees child is protected and valid
-        unsafe { ffi::SET_VECTOR_ELT(self.0, idx, child) };
+        self.0.set_vector_elt(idx, child);
     }
 
     /// Set an element using a callback that produces the child.
@@ -506,7 +469,7 @@ impl List {
         // SAFETY: caller guarantees R main thread
         unsafe {
             let child = OwnedProtect::new(f());
-            ffi::SET_VECTOR_ELT(self.0, idx, child.get());
+            self.0.set_vector_elt(idx, child.get());
         }
     }
     // endregion
@@ -589,7 +552,7 @@ impl<'a> ListBuilder<'a> {
         // SAFETY: caller guarantees valid and protected child
         unsafe {
             debug_assert!(idx >= 0 && idx < ffi::Rf_xlength(self.list));
-            ffi::SET_VECTOR_ELT(self.list, idx, child);
+            self.list.set_vector_elt(idx, child);
         }
     }
 
@@ -606,7 +569,7 @@ impl<'a> ListBuilder<'a> {
         unsafe {
             debug_assert!(idx >= 0 && idx < ffi::Rf_xlength(self.list));
             let _guard = OwnedProtect::new(child);
-            ffi::SET_VECTOR_ELT(self.list, idx, child);
+            self.list.set_vector_elt(idx, child);
         }
     }
 
@@ -642,7 +605,6 @@ impl<'a> ListBuilder<'a> {
 }
 // endregion
 
-
 mod accumulator;
 mod named;
 
@@ -669,12 +631,15 @@ pub trait TryFromList: Sized {
 impl<T: IntoR> IntoList for Vec<T> {
     fn into_list(self) -> List {
         let converted: Vec<SEXP> = self.into_iter().map(|v| v.into_sexp()).collect();
-        let n: isize = converted.len().try_into().expect("list length exceeds isize::MAX");
+        let n: isize = converted
+            .len()
+            .try_into()
+            .expect("list length exceeds isize::MAX");
         unsafe {
             let list = ffi::Rf_allocVector(VECSXP, n);
             for (i, val) in converted.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_VECTOR_ELT(list, idx, val);
+                list.set_vector_elt(idx, val);
             }
             List(list)
         }
@@ -688,7 +653,10 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
-        let expected: usize = list.len().try_into().expect("list length must be non-negative");
+        let expected: usize = list
+            .len()
+            .try_into()
+            .expect("list length must be non-negative");
         let mut out = Vec::with_capacity(expected);
         for i in 0..expected {
             let idx: isize = i.try_into().expect("index exceeds isize::MAX");
@@ -726,7 +694,10 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
-        let n: usize = list.len().try_into().expect("list length must be non-negative");
+        let n: usize = list
+            .len()
+            .try_into()
+            .expect("list length must be non-negative");
         let names_sexp = list.names();
         let mut map = HashMap::with_capacity(n);
 
@@ -741,7 +712,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, idx) };
+                let name_sexp = names.string_elt(idx);
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
@@ -780,7 +751,10 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
-        let n: usize = list.len().try_into().expect("list length must be non-negative");
+        let n: usize = list
+            .len()
+            .try_into()
+            .expect("list length must be non-negative");
         let names_sexp = list.names();
         let mut map = BTreeMap::new();
 
@@ -795,7 +769,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = unsafe { ffi::STRING_ELT(names, idx) };
+                let name_sexp = names.string_elt(idx);
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
@@ -895,14 +869,17 @@ impl List {
     /// The input SEXPs should already be protected or be children of protected
     /// containers. This function protects the list during construction.
     pub fn from_raw_values(values: Vec<SEXP>) -> Self {
-        let n: isize = values.len().try_into().expect("values length exceeds isize::MAX");
+        let n: isize = values
+            .len()
+            .try_into()
+            .expect("values length exceeds isize::MAX");
         unsafe {
             // Protect list during construction. SET_VECTOR_ELT doesn't allocate,
             // but we protect defensively in case this code is modified later.
             let list = OwnedProtect::new(ffi::Rf_allocVector(VECSXP, n));
             for (i, val) in values.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_VECTOR_ELT(list.get(), idx, val);
+                list.get().set_vector_elt(idx, val);
             }
             List(list.get())
         }
@@ -929,10 +906,10 @@ impl List {
             return Self::from_raw_values(Vec::new());
         }
 
-        let first_type = unsafe { ffi::TYPEOF(elements[0]) } as SEXPTYPE;
-        let all_scalar_same_type = elements.iter().all(|&e| unsafe {
-            ffi::Rf_xlength(e) == 1 && (ffi::TYPEOF(e) as SEXPTYPE) == first_type
-        });
+        let first_type = elements[0].type_of();
+        let all_scalar_same_type = elements
+            .iter()
+            .all(|&e| unsafe { ffi::Rf_xlength(e) == 1 && e.type_of() == first_type });
 
         if !all_scalar_same_type {
             return Self::from_raw_values(elements.to_vec());
@@ -959,7 +936,10 @@ impl List {
             SEXPTYPE::LGLSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<crate::ffi::RLogical>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<crate::ffi::RLogical>().first().expect("scalar has length 1");
+                    *slot = *elem
+                        .as_slice::<crate::ffi::RLogical>()
+                        .first()
+                        .expect("scalar has length 1");
                 }
                 v
             },
@@ -968,7 +948,7 @@ impl List {
                 let v = OwnedProtect::new(ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as isize));
                 for (i, &elem) in elements.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                    ffi::SET_STRING_ELT(v.get(), idx, ffi::STRING_ELT(elem, 0));
+                    v.get().set_string_elt(idx, elem.string_elt(0));
                 }
                 v.get()
             },
@@ -988,7 +968,10 @@ impl List {
     where
         N: AsRef<str>,
     {
-        let n: isize = pairs.len().try_into().expect("pairs length exceeds isize::MAX");
+        let n: isize = pairs
+            .len()
+            .try_into()
+            .expect("pairs length exceeds isize::MAX");
         unsafe {
             // CRITICAL: Both list and names must be protected because
             // Rf_mkCharLenCE can allocate and trigger GC in the loop below.
@@ -996,15 +979,13 @@ impl List {
             let names = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
             for (i, (name, val)) in pairs.into_iter().enumerate() {
                 let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-                ffi::SET_VECTOR_ELT(list.get(), idx, val);
+                list.get().set_vector_elt(idx, val);
 
                 let s = name.as_ref();
-                let s_len: i32 = s.len().try_into().expect("name exceeds i32::MAX bytes");
-                // Rf_mkCharLenCE allocates - list and names must be protected!
-                let chars = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s_len, ffi::CE_UTF8);
-                ffi::SET_STRING_ELT(names.get(), idx, chars);
+                // SEXP::charsxp allocates - list and names must be protected!
+                names.get().set_string_elt(idx, SEXP::charsxp(s));
             }
-            ffi::Rf_namesgets(list.get(), names.get());
+            list.get().set_names(names.get());
             List(list.get())
         }
     }
@@ -1083,7 +1064,7 @@ impl TryFromSexp for List {
     type Error = ListFromSexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = unsafe { ffi::TYPEOF(sexp) };
+        let actual = sexp.type_of();
 
         // Accept VECSXP (generic list) directly
         // Also accept LISTSXP (pairlist) by coercing to VECSXP
@@ -1092,7 +1073,7 @@ impl TryFromSexp for List {
             sexp
         } else if actual == LISTSXP {
             // Accept pairlists by coercing to a VECSXP list.
-            unsafe { ffi::Rf_coerceVector(sexp, VECSXP) }
+            sexp.coerce(VECSXP)
         } else {
             return Err(crate::from_r::SexpTypeError {
                 expected: VECSXP,
@@ -1102,14 +1083,14 @@ impl TryFromSexp for List {
         };
 
         // Check for duplicate non-NA names
-        let names_sexp = unsafe { ffi::Rf_getAttrib(list_sexp, ffi::R_NamesSymbol) };
-        if names_sexp != unsafe { ffi::R_NilValue } {
+        let names_sexp = list_sexp.get_names();
+        if names_sexp != SEXP::nil() {
             let n = unsafe { ffi::Rf_xlength(list_sexp) };
             let n_usize: usize = n.try_into().expect("list length must be non-negative");
             let mut seen = HashSet::with_capacity(n_usize);
 
             for i in 0..n {
-                let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };
+                let name_sexp = names_sexp.string_elt(i);
                 // Skip NA names
                 if name_sexp == unsafe { ffi::R_NaString } {
                     continue;
@@ -1138,7 +1119,7 @@ impl TryFromSexp for Option<List> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp == unsafe { ffi::R_NilValue } {
+        if sexp == SEXP::nil() {
             return Ok(None);
         }
         let list = List::try_from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))?;
@@ -1150,7 +1131,7 @@ impl TryFromSexp for Option<ListMut> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp == unsafe { ffi::R_NilValue } {
+        if sexp == SEXP::nil() {
             return Ok(None);
         }
         let list = ListMut::try_from_sexp(sexp)?;
@@ -1162,7 +1143,7 @@ impl TryFromSexp for ListMut {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = unsafe { ffi::TYPEOF(sexp) };
+        let actual = sexp.type_of();
         if actual != VECSXP {
             return Err(SexpTypeError {
                 expected: VECSXP,

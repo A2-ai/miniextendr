@@ -193,7 +193,7 @@
 //! on primitive types (`i32`, `f64`, `bool`, etc.) and standard Rust collections.
 
 use crate::IntoR;
-use crate::ffi::{RNativeType, SEXP};
+use crate::ffi::{RNativeType, SEXP, SexpExt};
 use crate::worker::with_r_thread;
 
 #[cfg(feature = "rayon")]
@@ -593,7 +593,7 @@ where
             *slot = d as i32;
         }
 
-        crate::ffi::Rf_setAttrib_unchecked(sexp, crate::ffi::R_DimSymbol, dim_sexp);
+        sexp.set_attr_unchecked(crate::ffi::R_DimSymbol, dim_sexp);
         crate::ffi::Rf_unprotect_unchecked(1); // unprotect dim_sexp, sexp stays protected
 
         let ptr = T::dataptr_mut(sexp);

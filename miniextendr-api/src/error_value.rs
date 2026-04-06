@@ -16,7 +16,7 @@
 //! - class attribute: `"rust_error_value"`
 //! - `__rust_error__` attribute: `TRUE`
 
-use crate::ffi::{self, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 
 /// Build a tagged error-value SEXP for transport across the Rust→R boundary.
 ///
@@ -41,41 +41,39 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         let msg_cstr = std::ffi::CString::new(message)
             .unwrap_or_else(|_| std::ffi::CString::new("<invalid error message>").unwrap());
         let msg_charsxp = ffi::Rf_mkCharCE(msg_cstr.as_ptr(), ffi::CE_UTF8);
-        let msg_strsxp = ffi::Rf_ScalarString(msg_charsxp);
-        ffi::SET_VECTOR_ELT(list, 0, msg_strsxp);
+        list.set_vector_elt(0, SEXP::scalar_string(msg_charsxp));
 
         // Set list element 1: kind string
         let kind_cstr = std::ffi::CString::new(kind)
             .unwrap_or_else(|_| std::ffi::CString::new("other_rust_error").unwrap());
         let kind_charsxp = ffi::Rf_mkCharCE(kind_cstr.as_ptr(), ffi::CE_UTF8);
-        let kind_strsxp = ffi::Rf_ScalarString(kind_charsxp);
-        ffi::SET_VECTOR_ELT(list, 1, kind_strsxp);
+        list.set_vector_elt(1, SEXP::scalar_string(kind_charsxp));
 
         // Set list element 2: call SEXP
-        let call_sexp = call.unwrap_or(ffi::R_NilValue);
-        ffi::SET_VECTOR_ELT(list, 2, call_sexp);
+        let call_sexp = call.unwrap_or(SEXP::nil());
+        list.set_vector_elt(2, call_sexp);
 
         // Set names: c("error", "kind", "call")
         let names = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 3);
         ffi::Rf_protect(names);
-        ffi::SET_STRING_ELT(names, 0, ffi::Rf_mkCharCE(c"error".as_ptr(), ffi::CE_UTF8));
-        ffi::SET_STRING_ELT(names, 1, ffi::Rf_mkCharCE(c"kind".as_ptr(), ffi::CE_UTF8));
-        ffi::SET_STRING_ELT(names, 2, ffi::Rf_mkCharCE(c"call".as_ptr(), ffi::CE_UTF8));
-        ffi::Rf_setAttrib(list, ffi::R_NamesSymbol, names);
+        names.set_string_elt(0, ffi::Rf_mkCharCE(c"error".as_ptr(), ffi::CE_UTF8));
+        names.set_string_elt(1, ffi::Rf_mkCharCE(c"kind".as_ptr(), ffi::CE_UTF8));
+        names.set_string_elt(2, ffi::Rf_mkCharCE(c"call".as_ptr(), ffi::CE_UTF8));
+        list.set_names(names);
 
         // Set class: "rust_error_value"
         let class = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1);
         ffi::Rf_protect(class);
-        ffi::SET_STRING_ELT(
-            class,
+
+        class.set_string_elt(
             0,
             ffi::Rf_mkCharCE(c"rust_error_value".as_ptr(), ffi::CE_UTF8),
         );
-        ffi::Rf_setAttrib(list, ffi::R_ClassSymbol, class);
+        list.set_class(class);
 
         // Set __rust_error__ attribute = TRUE (secondary marker)
         let attr_sym = ffi::Rf_install(c"__rust_error__".as_ptr());
-        ffi::Rf_setAttrib(list, attr_sym, ffi::Rf_ScalarLogical(1));
+        list.set_attr(attr_sym, SEXP::scalar_logical(true));
 
         ffi::Rf_unprotect(3);
         list

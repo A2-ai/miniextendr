@@ -19,13 +19,13 @@
 /// Panics if `s.len() > i32::MAX`.
 #[inline]
 pub unsafe fn checked_mkchar(s: &str) -> crate::ffi::SEXP {
-    let len = i32::try_from(s.len()).unwrap_or_else(|_| {
+    let _len = i32::try_from(s.len()).unwrap_or_else(|_| {
         panic!(
             "string length {} exceeds i32::MAX for Rf_mkCharLenCE",
             s.len()
         )
     });
-    unsafe { crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::cetype_t::CE_UTF8) }
+    crate::ffi::SEXP::charsxp(s)
 }
 // endregion
 
@@ -164,7 +164,7 @@ macro_rules! __impl_altrep_base {
 ///
 /// The `unserialize` implementation reconstructs the backing Rust value via
 /// [`AltrepSerialize::unserialize`] and then creates a fresh ALTREP instance via
-/// `R_new_altrep(class, data1, R_NilValue)` where `data1` is an `ExternalPtr<$ty>`.
+/// `R_new_altrep(class, data1, SEXP::nil())` where `data1` is an `ExternalPtr<$ty>`.
 ///
 /// This matches the proc-macro-generated `IntoR::into_sexp` behavior (data is stored in `data1`,
 /// and `data2` is `R_NilValue`).
@@ -193,7 +193,7 @@ macro_rules! __impl_altrep_base_with_serialize {
             fn serialized_state(x: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| <$ty as $crate::altrep_data::AltrepSerialize>::serialized_state(&*d))
-                    .unwrap_or($crate::ffi::SEXP::null())
+                    .unwrap_or($crate::ffi::SEXP::nil())
             }
 
             const HAS_UNSERIALIZE: bool = true;
@@ -214,13 +214,13 @@ macro_rules! __impl_altrep_base_with_serialize {
                 unsafe {
                     use $crate::externalptr::ExternalPtr;
                     use $crate::ffi::altrep::{R_altrep_class_t, R_new_altrep};
-                    use $crate::ffi::{R_NilValue, Rf_protect_unchecked, Rf_unprotect_unchecked};
+                    use $crate::ffi::{Rf_protect_unchecked, Rf_unprotect_unchecked, SEXP};
 
                     let ext_ptr = ExternalPtr::new_unchecked(data);
                     let data1 = ext_ptr.as_sexp();
                     // Protect across the allocation in R_new_altrep.
                     Rf_protect_unchecked(data1);
-                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, R_NilValue);
+                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, SEXP::nil());
                     Rf_unprotect_unchecked(1);
                     out
                 }
@@ -279,7 +279,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     // Check for cached materialized STRSXP in data2 slot
                     let data2 = $crate::ffi::R_altrep_data2(x);
                     if !data2.is_null()
-                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
                     {
                         // DATAPTR_RO on a standard (non-ALTREP) STRSXP gives the SEXP* array.
                         // Cast to mutable: safe because we own the materialized vector.
@@ -296,7 +296,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     // Populate using the AltString::elt method (which handles Option→NA)
                     for i in 0..n {
                         let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
-                        $crate::ffi::SET_STRING_ELT(strsxp, i, elt);
+                        $crate::ffi::SexpExt::set_string_elt(&strsxp, i, elt);
                     }
 
                     // Cache in data2 slot (R will GC-protect it as part of the ALTREP object)
@@ -313,7 +313,7 @@ macro_rules! __impl_altvec_string_dataptr {
                 unsafe {
                     let data2 = $crate::ffi::R_altrep_data2(x);
                     if !data2.is_null()
-                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
                     {
                         $crate::ffi::DATAPTR_RO(data2)
                     } else {
@@ -341,7 +341,7 @@ macro_rules! __impl_altvec_extract_subset {
             ) -> $crate::ffi::SEXP {
                 // Validate that indx is an integer vector before calling INTEGER().
                 // Return NULL to signal R to use default subsetting if not.
-                if unsafe { $crate::ffi::TYPEOF(indx) } != $crate::ffi::SEXPTYPE::INTSXP {
+                if $crate::ffi::SexpExt::type_of(&indx) != $crate::ffi::SEXPTYPE::INTSXP {
                     return core::ptr::null_mut();
                 }
 
@@ -355,7 +355,7 @@ macro_rules! __impl_altvec_extract_subset {
                             &*d, indices,
                         )
                     })
-                    .unwrap_or($crate::ffi::SEXP::null())
+                    .unwrap_or($crate::ffi::SEXP::nil())
             }
         }
     };
@@ -569,14 +569,15 @@ macro_rules! __impl_altinteger_methods {
 
             const HAS_SUM: bool = true;
 
+            // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::sum(&*d, narm))
                     .map(|s| {
                         if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
-                            unsafe { $crate::ffi::Rf_ScalarInteger(s as i32) }
+                            $crate::ffi::SEXP::scalar_integer(s as i32)
                         } else {
-                            unsafe { $crate::ffi::Rf_ScalarReal(s as f64) }
+                            $crate::ffi::SEXP::scalar_real(s as f64)
                         }
                     })
                     .unwrap_or($crate::ffi::SEXP::null())
@@ -587,7 +588,7 @@ macro_rules! __impl_altinteger_methods {
             fn min(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::min(&*d, narm))
-                    .map(|m| unsafe { $crate::ffi::Rf_ScalarInteger(m) })
+                    .map(|m| $crate::ffi::SEXP::scalar_integer(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
 
@@ -596,7 +597,7 @@ macro_rules! __impl_altinteger_methods {
             fn max(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::max(&*d, narm))
-                    .map(|m| unsafe { $crate::ffi::Rf_ScalarInteger(m) })
+                    .map(|m| $crate::ffi::SEXP::scalar_integer(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
         }
@@ -664,10 +665,11 @@ macro_rules! __impl_altreal_methods {
 
             const HAS_SUM: bool = true;
 
+            // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::sum(&*d, narm))
-                    .map(|s| unsafe { $crate::ffi::Rf_ScalarReal(s) })
+                    .map(|s| $crate::ffi::SEXP::scalar_real(s))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
 
@@ -676,7 +678,7 @@ macro_rules! __impl_altreal_methods {
             fn min(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::min(&*d, narm))
-                    .map(|m| unsafe { $crate::ffi::Rf_ScalarReal(m) })
+                    .map(|m| $crate::ffi::SEXP::scalar_real(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
 
@@ -685,7 +687,7 @@ macro_rules! __impl_altreal_methods {
             fn max(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::max(&*d, narm))
-                    .map(|m| unsafe { $crate::ffi::Rf_ScalarReal(m) })
+                    .map(|m| $crate::ffi::SEXP::scalar_real(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
         }
@@ -769,14 +771,15 @@ macro_rules! __impl_altlogical_methods {
 
             const HAS_SUM: bool = true;
 
+            // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltLogicalData>::sum(&*d, narm))
                     .map(|s| {
                         if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
-                            unsafe { $crate::ffi::Rf_ScalarInteger(s as i32) }
+                            $crate::ffi::SEXP::scalar_integer(s as i32)
                         } else {
-                            unsafe { $crate::ffi::Rf_ScalarReal(s as f64) }
+                            $crate::ffi::SEXP::scalar_real(s as f64)
                         }
                     })
                     .unwrap_or($crate::ffi::SEXP::null())
@@ -899,10 +902,10 @@ macro_rules! __impl_altstring_methods {
                             i.max(0) as usize,
                         ) {
                             Some(s) => unsafe { $crate::altrep_impl::checked_mkchar(s) },
-                            None => unsafe { $crate::ffi::R_NaString },
+                            None => $crate::ffi::SEXP::na_string(),
                         }
                     }
-                    None => unsafe { $crate::ffi::R_NaString },
+                    None => $crate::ffi::SEXP::na_string(),
                 }
             }
 
@@ -940,7 +943,7 @@ macro_rules! impl_altlist_from_data {
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| <$ty as $crate::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                    .unwrap_or(unsafe { $crate::ffi::R_NilValue })
+                    .unwrap_or(unsafe { $crate::ffi::SEXP::nil() })
             }
         }
 
@@ -1326,10 +1329,10 @@ impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
                     i.max(0) as usize,
                 ) {
                     Some(s) => unsafe { checked_mkchar(s) },
-                    None => unsafe { crate::ffi::R_NaString },
+                    None => crate::ffi::SEXP::na_string(),
                 }
             }
-            None => unsafe { crate::ffi::R_NaString },
+            None => crate::ffi::SEXP::na_string(),
         }
     }
 }
@@ -1556,7 +1559,10 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
         // Static data cannot be modified. Panic is caught by RUnwind guard.
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1612,14 +1618,15 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
 
     const HAS_SUM: bool = true;
 
+    // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::sum(&*d, narm))
             .map(|s| {
                 if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
-                    unsafe { crate::ffi::Rf_ScalarInteger(s as i32) }
+                    crate::ffi::SEXP::scalar_integer(s as i32)
                 } else {
-                    unsafe { crate::ffi::Rf_ScalarReal(s as f64) }
+                    crate::ffi::SEXP::scalar_real(s as f64)
                 }
             })
             .unwrap_or(crate::ffi::SEXP::null())
@@ -1630,7 +1637,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
     fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::min(&*d, narm))
-            .map(|m| unsafe { crate::ffi::Rf_ScalarInteger(m) })
+            .map(crate::ffi::SEXP::scalar_integer)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 
@@ -1639,7 +1646,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
     fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::max(&*d, narm))
-            .map(|m| unsafe { crate::ffi::Rf_ScalarInteger(m) })
+            .map(crate::ffi::SEXP::scalar_integer)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 }
@@ -1659,7 +1666,10 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1715,10 +1725,11 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
 
     const HAS_SUM: bool = true;
 
+    // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::sum(&*d, narm))
-            .map(|s| unsafe { crate::ffi::Rf_ScalarReal(s) })
+            .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 
@@ -1727,7 +1738,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
     fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::min(&*d, narm))
-            .map(|m| unsafe { crate::ffi::Rf_ScalarReal(m) })
+            .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 
@@ -1736,7 +1747,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
     fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::max(&*d, narm))
-            .map(|m| unsafe { crate::ffi::Rf_ScalarReal(m) })
+            .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 }
@@ -1774,14 +1785,15 @@ impl crate::altrep_traits::AltLogical for &'static [bool] {
 
     const HAS_SUM: bool = true;
 
+    // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [bool]>(x) }
             .and_then(|d| crate::altrep_data::AltLogicalData::sum(&*d, narm))
             .map(|s| {
                 if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
-                    unsafe { crate::ffi::Rf_ScalarInteger(s as i32) }
+                    crate::ffi::SEXP::scalar_integer(s as i32)
                 } else {
-                    unsafe { crate::ffi::Rf_ScalarReal(s as f64) }
+                    crate::ffi::SEXP::scalar_real(s as f64)
                 }
             })
             .unwrap_or(crate::ffi::SEXP::null())
@@ -1803,7 +1815,10 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void {
-        assert!(!writable, "cannot get writable DATAPTR for static ALTREP data");
+        assert!(
+            !writable,
+            "cannot get writable DATAPTR for static ALTREP data"
+        );
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
             .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
             .unwrap_or(std::ptr::null_mut())
@@ -1870,9 +1885,9 @@ impl crate::altrep_traits::AltString for &'static [String] {
         match unsafe { crate::altrep_data1_as::<&'static [String]>(x) } {
             Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
                 Some(s) => unsafe { checked_mkchar(s) },
-                None => unsafe { crate::ffi::R_NaString },
+                None => crate::ffi::SEXP::na_string(),
             },
-            None => unsafe { crate::ffi::R_NaString },
+            None => crate::ffi::SEXP::na_string(),
         }
     }
 
@@ -1907,9 +1922,9 @@ impl crate::altrep_traits::AltString for &'static [&'static str] {
         match unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) } {
             Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
                 Some(s) => unsafe { checked_mkchar(s) },
-                None => unsafe { crate::ffi::R_NaString },
+                None => crate::ffi::SEXP::na_string(),
             },
-            None => unsafe { crate::ffi::R_NaString },
+            None => crate::ffi::SEXP::na_string(),
         }
     }
 

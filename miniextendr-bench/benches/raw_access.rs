@@ -1,12 +1,13 @@
 //! Benchmarks for safe vs raw data pointer access patterns.
 //!
 //! Compares `SexpExt::as_slice()` (safe, handles empty vectors) vs raw
-//! `ffi::INTEGER()`/`ffi::REAL()` pointer access. Measures the overhead
+//! `raw_ffi::INTEGER()`/`raw_ffi::REAL()` pointer access. Measures the overhead
 //! of the safety wrapper that prevents SIGABRT on empty vectors (R returns
 //! misaligned 0x1 sentinel for empty vector data pointers).
 
 use miniextendr_api::IntoR;
 use miniextendr_api::ffi::{self, SEXP, SexpExt};
+use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
@@ -42,13 +43,13 @@ mod integer {
         assert_eq!(slice.len(), len);
     }
 
-    /// Raw `ffi::INTEGER()` pointer + manual iteration (baseline).
+    /// Raw `raw_ffi::INTEGER()` pointer + manual iteration (baseline).
     #[divan::bench(args = SIZE_INDICES)]
     fn raw_pointer_sum(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
         unsafe {
-            let ptr = ffi::INTEGER(sexp);
+            let ptr = raw_ffi::INTEGER(sexp);
             let mut sum: i64 = 0;
             for i in 0..len {
                 sum += *ptr.add(i) as i64;
@@ -65,12 +66,12 @@ mod integer {
         divan::black_box(slice.as_ptr());
     }
 
-    /// Raw `ffi::INTEGER()` — just the pointer, no iteration.
+    /// Raw `raw_ffi::INTEGER()` — just the pointer, no iteration.
     #[divan::bench(args = SIZE_INDICES)]
     fn raw_pointer_only(size_idx: usize) {
         let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
         unsafe {
-            divan::black_box(ffi::INTEGER(sexp));
+            divan::black_box(raw_ffi::INTEGER(sexp));
         }
     }
 }
@@ -99,13 +100,13 @@ mod real {
         divan::black_box(sum);
     }
 
-    /// Raw `ffi::REAL()` pointer sum (baseline).
+    /// Raw `raw_ffi::REAL()` pointer sum (baseline).
     #[divan::bench(args = SIZE_INDICES)]
     fn raw_pointer_sum(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().real_vec(size_idx);
         unsafe {
-            let ptr = ffi::REAL(sexp);
+            let ptr = raw_ffi::REAL(sexp);
             let mut sum: f64 = 0.0;
             for i in 0..len {
                 sum += *ptr.add(i);
@@ -130,13 +131,13 @@ mod raw_bytes {
         divan::black_box(sum);
     }
 
-    /// Raw `ffi::RAW()` pointer sum (baseline).
+    /// Raw `raw_ffi::RAW()` pointer sum (baseline).
     #[divan::bench(args = SIZE_INDICES)]
     fn raw_pointer_sum(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().raw_vec(size_idx);
         unsafe {
-            let ptr = ffi::RAW(sexp);
+            let ptr = raw_ffi::RAW(sexp);
             let mut sum: u64 = 0;
             for i in 0..len {
                 sum += *ptr.add(i) as u64;

@@ -9,7 +9,8 @@
 //! - `argument_coercion`: wrapper path with type coercion
 //! - `class_methods`: Env/R6/S3/S4/S7-style method invocation overhead
 
-use miniextendr_api::ffi;
+use miniextendr_api::ffi::{self, SexpExt};
+use miniextendr_bench::raw_ffi;
 use std::os::raw::c_char;
 
 // R_ext/Parse.h types not exposed in miniextendr-api FFI.
@@ -48,7 +49,7 @@ impl Drop for ProtectGuard {
     fn drop(&mut self) {
         if self.count > 0 {
             unsafe {
-                ffi::Rf_unprotect(self.count);
+                raw_ffi::Rf_unprotect(self.count);
             }
         }
     }
@@ -63,23 +64,28 @@ struct ParsedExpr {
 /// Parse an R string into a protected expression ready for `Rf_eval`.
 unsafe fn parse_and_protect(code: &str) -> ParsedExpr {
     unsafe {
-        let code_sexp = ffi::Rf_protect(ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1));
-        let charsxp = ffi::Rf_mkCharLenCE(
+        let code_sexp = raw_ffi::Rf_protect(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1));
+        let charsxp = raw_ffi::Rf_mkCharLenCE(
             code.as_ptr().cast::<c_char>(),
             code.len() as i32,
             ffi::CE_UTF8,
         );
-        ffi::SET_STRING_ELT(code_sexp, 0, charsxp);
+        raw_ffi::SET_STRING_ELT(code_sexp, 0, charsxp);
 
         let mut status = ParseStatus::PARSE_NULL;
-        let parsed = ffi::Rf_protect(R_ParseVector(code_sexp, 1, &mut status, ffi::R_NilValue));
+        let parsed = raw_ffi::Rf_protect(R_ParseVector(
+            code_sexp,
+            1,
+            &mut status,
+            raw_ffi::R_NilValue,
+        ));
         assert_eq!(
             status,
             ParseStatus::PARSE_OK,
             "Failed to parse R code: {code}"
         );
 
-        let expr = ffi::Rf_protect(ffi::VECTOR_ELT(parsed, 0));
+        let expr = raw_ffi::Rf_protect(raw_ffi::VECTOR_ELT(parsed, 0));
 
         ParsedExpr {
             expr,
@@ -92,7 +98,7 @@ unsafe fn parse_and_protect(code: &str) -> ParsedExpr {
 unsafe fn r_eval_string(code: &str) -> ffi::SEXP {
     unsafe {
         let parsed = parse_and_protect(code);
-        ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv)
+        raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv)
     }
 }
 
@@ -172,13 +178,13 @@ fn main() {
 fn eval_sum(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c"sum".as_ptr());
+            let sym = raw_ffi::Rf_install(c"sum".as_ptr());
             let call = ffi::Rf_lang2(sym, miniextendr_bench::fixtures().real_vec(2));
-            ffi::Rf_protect(call);
+            raw_ffi::Rf_protect(call);
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -188,13 +194,13 @@ fn eval_sum(bencher: divan::Bencher) {
 fn direct_call_noop(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_noop__".as_ptr());
-            let arg = ffi::Rf_ScalarInteger(1);
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let sym = raw_ffi::Rf_install(c".__bench_noop__".as_ptr());
+            let arg = raw_ffi::Rf_ScalarInteger(1);
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -204,13 +210,13 @@ fn direct_call_noop(bencher: divan::Bencher) {
 fn wrapper_call_noop(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_wrapper_noop__".as_ptr());
-            let arg = ffi::Rf_ScalarInteger(1);
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let sym = raw_ffi::Rf_install(c".__bench_wrapper_noop__".as_ptr());
+            let arg = raw_ffi::Rf_ScalarInteger(1);
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -220,13 +226,13 @@ fn wrapper_call_noop(bencher: divan::Bencher) {
 fn direct_call_realvec(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_noop__".as_ptr());
+            let sym = raw_ffi::Rf_install(c".__bench_noop__".as_ptr());
             let arg = miniextendr_bench::fixtures().real_vec(2);
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -236,13 +242,13 @@ fn direct_call_realvec(bencher: divan::Bencher) {
 fn wrapper_call_realvec(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_wrapper_noop__".as_ptr());
+            let sym = raw_ffi::Rf_install(c".__bench_wrapper_noop__".as_ptr());
             let arg = miniextendr_bench::fixtures().real_vec(2);
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -255,13 +261,13 @@ fn wrapper_call_realvec(bencher: divan::Bencher) {
 fn coerce_int_scalar(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_wrapper_coerce_int__".as_ptr());
-            let arg = ffi::Rf_ScalarReal(42.0);
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_int__".as_ptr());
+            let arg = raw_ffi::Rf_ScalarReal(42.0);
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -271,13 +277,13 @@ fn coerce_int_scalar(bencher: divan::Bencher) {
 fn coerce_dbl_scalar(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_wrapper_coerce_dbl__".as_ptr());
-            let arg = ffi::Rf_ScalarInteger(42);
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_dbl__".as_ptr());
+            let arg = raw_ffi::Rf_ScalarInteger(42);
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -287,13 +293,13 @@ fn coerce_dbl_scalar(bencher: divan::Bencher) {
 fn coerce_chr_scalar(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_wrapper_coerce_chr__".as_ptr());
-            let arg = ffi::Rf_ScalarInteger(42);
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_chr__".as_ptr());
+            let arg = raw_ffi::Rf_ScalarInteger(42);
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -303,13 +309,13 @@ fn coerce_chr_scalar(bencher: divan::Bencher) {
 fn coerce_int_vec256(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe {
-            let sym = ffi::Rf_install(c".__bench_wrapper_coerce_int__".as_ptr());
+            let sym = raw_ffi::Rf_install(c".__bench_wrapper_coerce_int__".as_ptr());
             let arg = miniextendr_bench::fixtures().real_vec(2); // 256 elements
-            let call = ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
+            let call = raw_ffi::Rf_protect(ffi::Rf_lang2(sym, arg));
             (call, ProtectGuard::new(1))
         })
         .bench_local_refs(|(call, _guard)| unsafe {
-            let out = ffi::Rf_eval(*call, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(*call, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -323,7 +329,7 @@ fn class_env_method(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe { parse_and_protect(".__bench_env_obj__$value()") })
         .bench_local_refs(|parsed| unsafe {
-            let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -331,16 +337,15 @@ fn class_env_method(bencher: divan::Bencher) {
 /// R6-style: obj$value() via R6 dispatch.
 #[divan::bench]
 fn class_r6_method(bencher: divan::Bencher) {
-    let available =
-        unsafe { ffi::Rf_asLogical(r_eval_string("requireNamespace('R6', quietly = TRUE)")) };
-    if available != 1 {
+    let available = unsafe { r_eval_string("requireNamespace('R6', quietly = TRUE)") };
+    if available.as_logical() != Some(true) {
         return;
     }
 
     bencher
         .with_inputs(|| unsafe { parse_and_protect(".__bench_r6_obj__$value()") })
         .bench_local_refs(|parsed| unsafe {
-            let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -351,7 +356,7 @@ fn class_s3_method(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe { parse_and_protect(".__bench_s3_value__(.__bench_s3_obj__)") })
         .bench_local_refs(|parsed| unsafe {
-            let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -362,7 +367,7 @@ fn class_s4_method(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe { parse_and_protect(".__bench_s4_value__(.__bench_s4_obj__)") })
         .bench_local_refs(|parsed| unsafe {
-            let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -370,16 +375,15 @@ fn class_s4_method(bencher: divan::Bencher) {
 /// S7-style: generic dispatch via S7.
 #[divan::bench]
 fn class_s7_method(bencher: divan::Bencher) {
-    let available =
-        unsafe { ffi::Rf_asLogical(r_eval_string("requireNamespace('S7', quietly = TRUE)")) };
-    if available != 1 {
+    let available = unsafe { r_eval_string("requireNamespace('S7', quietly = TRUE)") };
+    if available.as_logical() != Some(true) {
         return;
     }
 
     bencher
         .with_inputs(|| unsafe { parse_and_protect(".__bench_s7_value__(.__bench_s7_obj__)") })
         .bench_local_refs(|parsed| unsafe {
-            let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }
@@ -390,7 +394,7 @@ fn class_baseline_plain_fn(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| unsafe { parse_and_protect(".__bench_noop__(42L)") })
         .bench_local_refs(|parsed| unsafe {
-            let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
+            let out = raw_ffi::Rf_eval(parsed.expr, raw_ffi::R_GlobalEnv);
             divan::black_box(out);
         });
 }

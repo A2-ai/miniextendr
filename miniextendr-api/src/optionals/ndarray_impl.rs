@@ -705,7 +705,11 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
 
         // Create R matrix with RAII protection
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"));
+            let mat = crate::ffi::Rf_allocMatrix(
+                T::SEXP_TYPE,
+                i32::try_from(nrow).expect("nrow exceeds i32"),
+                i32::try_from(ncol).expect("ncol exceeds i32"),
+            );
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
@@ -747,7 +751,9 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t).into_raw();
+            let arr = scope
+                .alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t)
+                .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -758,7 +764,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
             dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
             dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         }) // scope drops here, calling UNPROTECT(2+1)
@@ -775,7 +781,9 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2, d3) = self.dim();
         let shape = vec![d0, d1, d2, d3];
-        let total_len: usize = shape.iter().try_fold(1usize, |a, &b| a.checked_mul(b))
+        let total_len: usize = shape
+            .iter()
+            .try_fold(1usize, |a, &b| a.checked_mul(b))
             .expect("array dimensions overflow");
 
         let data: Vec<T> = {
@@ -788,7 +796,9 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
 
         Ok(unsafe {
             let scope = ProtectScope::new();
-            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
+            let arr = scope
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -799,7 +809,7 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
             dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
             dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
             dim_s[3] = i32::try_from(d3).expect("dimension exceeds i32");
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -816,7 +826,9 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let (d0, d1, d2, d3, d4) = self.dim();
         let shape = vec![d0, d1, d2, d3, d4];
-        let total_len: usize = shape.iter().try_fold(1usize, |a, &b| a.checked_mul(b))
+        let total_len: usize = shape
+            .iter()
+            .try_fold(1usize, |a, &b| a.checked_mul(b))
             .expect("array dimensions overflow");
 
         let data: Vec<T> = {
@@ -829,7 +841,9 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
 
         Ok(unsafe {
             let scope = ProtectScope::new();
-            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
+            let arr = scope
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -839,7 +853,7 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4].iter()) {
                 *slot = i32::try_from(d).expect("dimension exceeds i32");
             }
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -868,7 +882,9 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
 
         Ok(unsafe {
             let scope = ProtectScope::new();
-            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
+            let arr = scope
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -878,7 +894,7 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4, d5].iter()) {
                 *slot = i32::try_from(d).expect("dimension exceeds i32");
             }
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -914,7 +930,9 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
+            let arr = scope
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -926,7 +944,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
                     *slot = i32::try_from(d).expect("dimension exceeds i32");
                 }
-                crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+                arr.set_dim(dim);
             }
 
             arr
@@ -1040,7 +1058,11 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
         }
 
         Ok(unsafe {
-            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"));
+            let mat = crate::ffi::Rf_allocMatrix(
+                T::SEXP_TYPE,
+                i32::try_from(nrow).expect("nrow exceeds i32"),
+                i32::try_from(ncol).expect("ncol exceeds i32"),
+            );
             let guard = OwnedProtect::new(mat);
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
@@ -1076,7 +1098,9 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t).into_raw();
+            let arr = scope
+                .alloc_vector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t)
+                .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -1087,7 +1111,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
             dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
             dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
-            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            arr.set_dim(dim);
 
             arr
         })
@@ -1115,7 +1139,9 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
         Ok(unsafe {
             let scope = ProtectScope::new();
 
-            let arr = scope.alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t).into_raw();
+            let arr = scope
+                .alloc_vector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t)
+                .into_raw();
 
             let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
             dst.copy_from_slice(&data);
@@ -1127,7 +1153,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
                     *slot = i32::try_from(d).expect("dimension exceeds i32");
                 }
-                crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+                arr.set_dim(dim);
             }
 
             arr
@@ -1144,7 +1170,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
 /// Returns `None` if any dimension is negative or NA (NA_INTEGER = i32::MIN).
 fn get_array_dims(sexp: SEXP) -> Option<Vec<usize>> {
     unsafe {
-        let dim = crate::ffi::Rf_getAttrib(sexp, crate::ffi::R_DimSymbol);
+        let dim = sexp.get_dim();
         if dim.type_of() != SEXPTYPE::INTSXP {
             return None;
         }
@@ -1710,7 +1736,10 @@ impl RNdArrayOps for Array1<f64> {
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array1::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        Array1::shape(self)
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1765,7 +1794,10 @@ impl RNdArrayOps for Array2<f64> {
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array2::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        Array2::shape(self)
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1820,7 +1852,10 @@ impl RNdArrayOps for ArrayD<f64> {
     }
 
     fn shape(&self) -> Vec<i32> {
-        ArrayD::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        ArrayD::shape(self)
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1877,7 +1912,10 @@ impl RNdArrayOps for Array1<i32> {
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array1::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        Array1::shape(self)
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1934,7 +1972,10 @@ impl RNdArrayOps for Array2<i32> {
     }
 
     fn shape(&self) -> Vec<i32> {
-        Array2::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        Array2::shape(self)
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn sum(&self) -> f64 {
@@ -1991,7 +2032,10 @@ impl RNdArrayOps for ArrayD<i32> {
     }
 
     fn shape(&self) -> Vec<i32> {
-        ArrayD::shape(self).iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        ArrayD::shape(self)
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn sum(&self) -> f64 {
@@ -2422,7 +2466,10 @@ impl RNdIndex for ArrayD<f64> {
     }
 
     fn shape_nd(&self) -> Vec<i32> {
-        self.shape().iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        self.shape()
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn ndim(&self) -> i32 {
@@ -2561,7 +2608,10 @@ impl RNdIndex for ArrayD<i32> {
     }
 
     fn shape_nd(&self) -> Vec<i32> {
-        self.shape().iter().map(|&d| i32::try_from(d).expect("dimension exceeds i32")).collect()
+        self.shape()
+            .iter()
+            .map(|&d| i32::try_from(d).expect("dimension exceeds i32"))
+            .collect()
     }
 
     fn ndim(&self) -> i32 {
@@ -2722,8 +2772,7 @@ impl<T: RNativeType> RndVec<T> {
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp =
-            unsafe { crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t) };
+        let sexp = unsafe { crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t) };
         unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
@@ -2785,9 +2834,8 @@ impl<T: RNativeType> RndVec<T> {
     /// The returned SEXP is protected on R's protect stack via the scope.
     /// It remains protected until the scope is dropped.
     pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
-        let sexp = unsafe { scope.protect_raw(self.sexp) };
         // Drop runs → R_ReleaseObject, but sexp is now also on the protect stack.
-        sexp
+        unsafe { scope.protect_raw(self.sexp) }
     }
 
     /// Consume, release GC protection, and return the raw SEXP.
@@ -2874,7 +2922,11 @@ impl<T: RNativeType> RndMat<T> {
     /// Must be called on R's main thread.
     pub unsafe fn new(nrow: usize, ncol: usize, init: impl FnOnce(&mut [T])) -> Self {
         let sexp = unsafe {
-            crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, i32::try_from(nrow).expect("nrow exceeds i32"), i32::try_from(ncol).expect("ncol exceeds i32"))
+            crate::ffi::Rf_allocMatrix(
+                T::SEXP_TYPE,
+                i32::try_from(nrow).expect("nrow exceeds i32"),
+                i32::try_from(ncol).expect("ncol exceeds i32"),
+            )
         };
         unsafe { crate::ffi::R_PreserveObject(sexp) };
         let ptr = unsafe { T::dataptr_mut(sexp) };
@@ -2934,8 +2986,7 @@ impl<T: RNativeType> RndMat<T> {
 
     /// Consume, transfer GC protection to the protect stack, and return the SEXP.
     pub fn into_sexp(self, scope: &crate::gc_protect::ProtectScope) -> SEXP {
-        let sexp = unsafe { scope.protect_raw(self.sexp) };
-        sexp
+        unsafe { scope.protect_raw(self.sexp) }
     }
 
     /// Consume, release GC protection, and return the raw SEXP.
@@ -3476,7 +3527,7 @@ impl RegisterAltrep for Array1<f64> {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Array1<f64> as crate::altrep_data::InferBase>::make_class(
-                    b"ndarray_Array1_f64\0".as_ptr().cast(),
+                    c"ndarray_Array1_f64".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
@@ -3493,7 +3544,7 @@ impl RegisterAltrep for Array1<i32> {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Array1<i32> as crate::altrep_data::InferBase>::make_class(
-                    b"ndarray_Array1_i32\0".as_ptr().cast(),
+                    c"ndarray_Array1_i32".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };

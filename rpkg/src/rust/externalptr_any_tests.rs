@@ -56,10 +56,7 @@ pub fn extptr_any_erased_is(x: SEXP) -> bool {
 #[miniextendr]
 pub fn extptr_any_erased_downcast(x: SEXP) -> i32 {
     let erased = unsafe { ErasedExternalPtr::from_sexp(x) };
-    erased
-        .downcast_ref::<TypeA>()
-        .map(|a| a.val)
-        .unwrap_or(-1)
+    erased.downcast_ref::<TypeA>().map(|a| a.val).unwrap_or(-1)
 }
 
 /// Test that wrong-type downcast returns None (not crash).

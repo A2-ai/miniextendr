@@ -1421,6 +1421,22 @@ pub fn miniextendr(
         }
     }
 
+    // Auto-generate @param for any function parameter that doesn't have one yet.
+    // This prevents R CMD check warnings about undocumented arguments.
+    for arg in inputs.iter() {
+        if let syn::FnArg::Typed(pt) = arg
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+        {
+            let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+            let has_param = roxygen_tags
+                .iter()
+                .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
+            if !has_param {
+                roxygen_tags.push(format!("@param {r_name} (no documentation available)"));
+            }
+        }
+    }
+
     // Ensure a @title exists when we have auto-generated tags (e.g., @param from choices)
     // but the auto-title logic in roxygen_tags_from_attrs didn't fire (because has_any_tags
     // was false at that point — choices @param tags are added after extraction).
@@ -1896,6 +1912,7 @@ pub fn r_ffi_checked(
                     let source_loc_doc_lit = syn::LitStr::new(&source_loc_doc, fn_name.span());
 
                     // Generate the unchecked FFI binding with #[link_name]
+                    // Same visibility as the checked variant
                     let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
                     let unchecked_fn: syn::ForeignItem = syn::parse_quote! {
                         #(#attrs)*

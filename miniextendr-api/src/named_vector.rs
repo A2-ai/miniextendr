@@ -219,11 +219,11 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
 
         for (i, key) in keys.iter().enumerate() {
             let s = key.as_ref();
-            let charsxp = ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8);
-            ffi::SET_STRING_ELT(names, i as ffi::R_xlen_t, charsxp);
+            let charsxp = SEXP::charsxp(s);
+            names.set_string_elt(i as ffi::R_xlen_t, charsxp);
         }
 
-        ffi::Rf_setAttrib(sexp, ffi::R_NamesSymbol, names);
+        sexp.set_names(names);
         ffi::Rf_unprotect(1);
     }
 }
@@ -232,9 +232,9 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
 ///
 /// Errors on: missing names attribute, NA names, empty names, duplicate names.
 fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
-    use ffi::{Rf_getAttrib, Rf_translateCharUTF8, STRING_ELT};
+    use ffi::Rf_translateCharUTF8;
 
-    let names = unsafe { Rf_getAttrib(sexp, ffi::R_NamesSymbol) };
+    let names = sexp.get_names();
     let len = sexp.len();
 
     if names.type_of() != SEXPTYPE::STRSXP || names.len() != len {
@@ -247,7 +247,7 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
     let mut seen = HashSet::with_capacity(len);
 
     for i in 0..len {
-        let charsxp = unsafe { STRING_ELT(names, i as ffi::R_xlen_t) };
+        let charsxp = names.string_elt(i as ffi::R_xlen_t);
 
         // Reject NA names
         if charsxp == unsafe { ffi::R_NaString } {

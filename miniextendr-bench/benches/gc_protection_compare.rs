@@ -7,12 +7,13 @@
 //!
 //! See `plans/gc-protection-benchmarks.md`.
 
-use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, Rf_ScalarInteger, SEXP};
+use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, SEXP};
 use miniextendr_api::preserve;
 use miniextendr_api::protect_pool::ProtectPool;
 use miniextendr_bench::pool_prototypes::{
     BTreeMapPool, DequePool, HashMapPool, IndexMapPool, SlotmapPool, VecPool,
 };
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -27,7 +28,7 @@ unsafe fn prealloc_sexps(n: usize) -> Vec<SEXP> {
     let mut sexps = Vec::with_capacity(n);
     for i in 0..n {
         unsafe {
-            let s = Rf_ScalarInteger((i % 1000) as i32);
+            let s = raw_ffi::Rf_ScalarInteger((i % 1000) as i32);
             R_PreserveObject(s);
             sexps.push(s);
         }
@@ -64,12 +65,12 @@ mod single_latency {
 
     #[divan::bench]
     fn protect_stack(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) }; // keep alive across iterations
 
         bencher.bench_local(|| unsafe {
-            ffi::Rf_protect(sexp);
-            ffi::Rf_unprotect(1);
+            raw_ffi::Rf_protect(sexp);
+            raw_ffi::Rf_unprotect(1);
         });
 
         unsafe { R_ReleaseObject(sexp) };
@@ -77,7 +78,7 @@ mod single_latency {
 
     #[divan::bench]
     fn precious_list(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
 
         bencher.bench_local(|| unsafe {
@@ -90,7 +91,7 @@ mod single_latency {
 
     #[divan::bench]
     fn dll_preserve(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
 
         bencher.bench_local(|| unsafe {
@@ -103,7 +104,7 @@ mod single_latency {
 
     #[divan::bench]
     fn vec_pool(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { VecPool::new(16) };
 
@@ -117,7 +118,7 @@ mod single_latency {
 
     #[divan::bench]
     fn slotmap_pool(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { SlotmapPool::new(16) };
 
@@ -131,7 +132,7 @@ mod single_latency {
 
     #[divan::bench]
     fn deque_pool(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { DequePool::new(16) };
 
@@ -158,9 +159,9 @@ mod batch_throughput {
 
         bencher.bench_local(|| unsafe {
             for &s in &sexps {
-                ffi::Rf_protect(s);
+                raw_ffi::Rf_protect(s);
             }
-            ffi::Rf_unprotect(n as i32);
+            raw_ffi::Rf_unprotect(n as i32);
         });
 
         unsafe { release_prealloc(&sexps) };
@@ -321,9 +322,9 @@ mod lifo_release {
 
         bencher.bench_local(|| unsafe {
             for &s in &sexps {
-                ffi::Rf_protect(s);
+                raw_ffi::Rf_protect(s);
             }
-            ffi::Rf_unprotect(n as i32);
+            raw_ffi::Rf_unprotect(n as i32);
         });
 
         unsafe { release_prealloc(&sexps) };
@@ -557,7 +558,7 @@ mod replace_in_loop {
             for &s in &sexps[1..] {
                 ffi::R_Reprotect(s, idx);
             }
-            ffi::Rf_unprotect(1);
+            raw_ffi::Rf_unprotect(1);
         });
 
         unsafe { release_prealloc(&sexps) };
@@ -571,7 +572,7 @@ mod replace_in_loop {
         bencher.bench_local(|| unsafe {
             let slot = pool.insert(sexps[0]);
             for &s in &sexps[1..] {
-                ffi::SET_VECTOR_ELT(pool.backing, slot as ffi::R_xlen_t, s);
+                raw_ffi::SET_VECTOR_ELT(pool.backing, slot as ffi::R_xlen_t, s);
             }
             pool.release(slot);
         });
@@ -622,7 +623,7 @@ mod freelist_strategy {
 
     #[divan::bench(args = [1_000, 10_000, 100_000])]
     fn vec_churn(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { VecPool::new(1024) };
 
@@ -638,7 +639,7 @@ mod freelist_strategy {
 
     #[divan::bench(args = [1_000, 10_000, 100_000])]
     fn deque_churn(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { DequePool::new(1024) };
 
@@ -660,14 +661,14 @@ mod freelist_strategy {
 
         bencher.bench_local(|| unsafe {
             let mut slots: Vec<usize> = Vec::with_capacity(n);
-            for i in 0..n {
-                slots.push(pool.insert(sexps[i]));
+            for sexp in &sexps[..n] {
+                slots.push(pool.insert(*sexp));
             }
             for slot in slots.drain(..n / 2) {
                 pool.release(slot);
             }
-            for i in 0..n / 2 {
-                slots.push(pool.insert(sexps[n + i]));
+            for sexp in &sexps[n..n + n / 2] {
+                slots.push(pool.insert(*sexp));
             }
             for slot in slots {
                 pool.release(slot);
@@ -684,8 +685,8 @@ mod freelist_strategy {
 
         bencher.bench_local(|| unsafe {
             let mut slots: Vec<usize> = Vec::with_capacity(n);
-            for i in 0..n {
-                slots.push(pool.insert(sexps[i]));
+            for sexp in &sexps[..n] {
+                slots.push(pool.insert(*sexp));
             }
             for slot in slots.drain(..n / 2) {
                 pool.release(slot);
@@ -715,13 +716,13 @@ mod unprotect_ptr_depth {
         let sexps = unsafe { prealloc_sexps(depth) };
 
         bencher.bench_local(|| unsafe {
-            let target = ffi::Rf_protect(sexps[0]);
+            let target = raw_ffi::Rf_protect(sexps[0]);
             for &s in &sexps[1..] {
-                ffi::Rf_protect(s);
+                raw_ffi::Rf_protect(s);
             }
             ffi::Rf_unprotect_ptr(target);
             if depth > 1 {
-                ffi::Rf_unprotect((depth - 1) as i32);
+                raw_ffi::Rf_unprotect((depth - 1) as i32);
             }
         });
 
@@ -734,9 +735,9 @@ mod unprotect_ptr_depth {
 
         bencher.bench_local(|| unsafe {
             for &s in &sexps {
-                ffi::Rf_protect(s);
+                raw_ffi::Rf_protect(s);
             }
-            ffi::Rf_unprotect(depth as i32);
+            raw_ffi::Rf_unprotect(depth as i32);
         });
 
         unsafe { release_prealloc(&sexps) };
@@ -759,7 +760,7 @@ mod precious_list_scale {
         for &s in &bg {
             unsafe { R_PreserveObject(s) };
         }
-        let test_sexp = unsafe { Rf_ScalarInteger(99) };
+        let test_sexp = unsafe { raw_ffi::Rf_ScalarInteger(99) };
         unsafe { R_PreserveObject(test_sexp) };
 
         bencher.bench_local(|| unsafe {
@@ -789,19 +790,19 @@ mod dll_stack_interaction {
     #[divan::bench(args = [0, 100, 1_000, 10_000])]
     fn dll_with_stack_depth(bencher: Bencher, stack_depth: usize) {
         let fill_sexps = unsafe { prealloc_sexps(stack_depth) };
-        let test_sexp = unsafe { Rf_ScalarInteger(99) };
+        let test_sexp = unsafe { raw_ffi::Rf_ScalarInteger(99) };
         unsafe { R_PreserveObject(test_sexp) };
 
         bencher.bench_local(|| unsafe {
             for &s in &fill_sexps {
-                ffi::Rf_protect(s);
+                raw_ffi::Rf_protect(s);
             }
             for _ in 0..100 {
                 let cell = preserve::insert_unchecked(test_sexp);
                 preserve::release_unchecked(cell);
             }
             if stack_depth > 0 {
-                ffi::Rf_unprotect(stack_depth as i32);
+                raw_ffi::Rf_unprotect(stack_depth as i32);
             }
         });
 
@@ -812,20 +813,20 @@ mod dll_stack_interaction {
     #[divan::bench(args = [0, 100, 1_000, 10_000])]
     fn pool_with_stack_depth(bencher: Bencher, stack_depth: usize) {
         let fill_sexps = unsafe { prealloc_sexps(stack_depth) };
-        let test_sexp = unsafe { Rf_ScalarInteger(99) };
+        let test_sexp = unsafe { raw_ffi::Rf_ScalarInteger(99) };
         unsafe { R_PreserveObject(test_sexp) };
         let mut pool = unsafe { VecPool::new(16) };
 
         bencher.bench_local(|| unsafe {
             for &s in &fill_sexps {
-                ffi::Rf_protect(s);
+                raw_ffi::Rf_protect(s);
             }
             for _ in 0..100 {
                 let slot = pool.insert(test_sexp);
                 pool.release(slot);
             }
             if stack_depth > 0 {
-                ffi::Rf_unprotect(stack_depth as i32);
+                raw_ffi::Rf_unprotect(stack_depth as i32);
             }
         });
 
@@ -844,7 +845,7 @@ mod keyed_pools {
 
     #[divan::bench(args = [100, 1_000, 10_000])]
     fn hashmap_churn(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { HashMapPool::new(64) };
 
@@ -862,7 +863,7 @@ mod keyed_pools {
 
     #[divan::bench(args = [100, 1_000, 10_000])]
     fn indexmap_churn(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { IndexMapPool::new(64) };
 
@@ -880,7 +881,7 @@ mod keyed_pools {
 
     #[divan::bench(args = [100, 1_000, 10_000])]
     fn btreemap_churn(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { BTreeMapPool::new(64) };
 
@@ -898,7 +899,7 @@ mod keyed_pools {
 
     #[divan::bench(args = [100, 1_000, 10_000])]
     fn slotmap_baseline(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { SlotmapPool::new(n.max(16)) };
 
@@ -924,7 +925,7 @@ mod slotmap_overhead {
 
     #[divan::bench(args = [1_000, 10_000])]
     fn slotmap_insert_release(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { SlotmapPool::new(n.max(16)) };
 
@@ -943,7 +944,7 @@ mod slotmap_overhead {
 
     #[divan::bench(args = [1_000, 10_000])]
     fn vec_insert_release(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { VecPool::new(n.max(16)) };
 
@@ -963,7 +964,7 @@ mod slotmap_overhead {
     // Hot-get loop: insert N, then get each 10 times.
     #[divan::bench(args = [1_000, 10_000])]
     fn slotmap_get_hot(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { SlotmapPool::new(n.max(16)) };
         let keys: Vec<_> = (0..n).map(|_| unsafe { pool.insert(sexp) }).collect();
@@ -984,7 +985,7 @@ mod slotmap_overhead {
 
     #[divan::bench(args = [1_000, 10_000])]
     fn vec_get_hot(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { VecPool::new(n.max(16)) };
         let slots: Vec<_> = (0..n).map(|_| unsafe { pool.insert(sexp) }).collect();
@@ -1029,7 +1030,7 @@ mod gc_and_memory {
             for (i, &s) in sexps.iter().enumerate() {
                 let cell = preserve::insert_unchecked(s);
                 // Simulate work allocation (interleaved with protection)
-                divan::black_box(ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
+                divan::black_box(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
                 preserve::release_unchecked(cell);
                 _ = i;
             }
@@ -1046,7 +1047,7 @@ mod gc_and_memory {
         bencher.bench_local(|| unsafe {
             for (i, &s) in sexps.iter().enumerate() {
                 let slot = pool.insert(s);
-                divan::black_box(ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
+                divan::black_box(raw_ffi::Rf_allocVector(ffi::SEXPTYPE::INTSXP, 10));
                 pool.release(slot);
                 _ = i;
             }
@@ -1123,7 +1124,7 @@ mod pool_growth {
 
     #[divan::bench(args = [1_000, 10_000, 100_000])]
     fn vec_amortized_from_small(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
 
         bencher.bench_local(|| unsafe {
@@ -1142,7 +1143,7 @@ mod pool_growth {
 
     #[divan::bench(args = [1_000, 10_000, 100_000])]
     fn slotmap_amortized_from_small(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
 
         bencher.bench_local(|| unsafe {
@@ -1170,7 +1171,7 @@ mod real_pool {
 
     #[divan::bench]
     fn real_protect_pool(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { ProtectPool::new(16) };
 
@@ -1184,7 +1185,7 @@ mod real_pool {
 
     #[divan::bench]
     fn prototype_vec_pool(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { VecPool::new(16) };
 
@@ -1198,7 +1199,7 @@ mod real_pool {
 
     #[divan::bench]
     fn prototype_slotmap_pool(bencher: Bencher) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { SlotmapPool::new(16) };
 
@@ -1257,7 +1258,7 @@ mod generation_check {
 
     #[divan::bench(args = [1_000, 10_000])]
     fn get_valid_keys(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { ProtectPool::new(n.max(16)) };
         let keys: Vec<_> = (0..n).map(|_| unsafe { pool.insert(sexp) }).collect();
@@ -1276,7 +1277,7 @@ mod generation_check {
 
     #[divan::bench(args = [1_000, 10_000])]
     fn get_stale_keys(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { ProtectPool::new(n.max(16)) };
         let stale_keys: Vec<_> = (0..n)
@@ -1349,7 +1350,7 @@ mod real_pool_growth {
 
     #[divan::bench(args = [1_000, 10_000, 50_000])]
     fn presized(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
         let mut pool = unsafe { ProtectPool::new(n) };
 
@@ -1369,7 +1370,7 @@ mod real_pool_growth {
     // NOTE: Pool init is INSIDE bench_local intentionally — measuring growth cost.
     #[divan::bench(args = [1_000, 10_000, 50_000])]
     fn small_initial(bencher: Bencher, n: usize) {
-        let sexp = unsafe { Rf_ScalarInteger(42) };
+        let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
 
         bencher.bench_local(|| unsafe {

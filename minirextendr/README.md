@@ -2,8 +2,8 @@
 
 minirextendr is an R helper package for scaffolding and maintaining R packages
 that use miniextendr for Rust <-> R interop. It provides templates, autoconf /
-configure wiring, vendoring helpers, and cargo command wrappers tailored to
-R package workflows.
+configure wiring, vendoring helpers, and cargo command wrappers tailored to R
+package workflows.
 
 ## Installation
 
@@ -13,8 +13,6 @@ From GitHub:
 remotes::install_github("CGMossa/miniextendr", subdir = "minirextendr")
 ```
 
-If you're using a fork, replace the owner/repo in the install command.
-
 From a local checkout:
 
 ```r
@@ -23,49 +21,65 @@ devtools::install("minirextendr")
 
 ## Requirements
 
-- Rust toolchain (>= 1.85) on PATH
-- autoconf
-- A working R build toolchain (R, headers, compiler)
+- Rust toolchain (>= 1.85) on `PATH`
+- `autoconf`
+- A working R build toolchain
 
 ## Quick start
 
-Create a new miniextendr-enabled package:
+Create a new standalone miniextendr package:
 
 ```r
 library(minirextendr)
 create_miniextendr_package("path/to/pkg")
 ```
 
-Or add miniextendr scaffolding to an existing package:
+Create a monorepo with a Rust workspace and embedded R package:
+
+```r
+library(minirextendr)
+create_miniextendr_monorepo("path/to/project")
+```
+
+Or add miniextendr scaffolding to an existing package/project:
 
 ```r
 library(minirextendr)
 use_miniextendr()
 ```
 
-Generate build files and install (R wrappers are auto-generated via cdylib during install):
+## Workflow helpers
+
+Generate build files and run the standard package workflow:
 
 ```r
 miniextendr_autoconf()
 miniextendr_configure()
-devtools::install()
-devtools::document()
-```
-
-Or run the full workflow:
-
-```r
 miniextendr_build()
 ```
 
+`miniextendr_build()` runs the normal pipeline:
+
+1. `autoconf`
+2. `./configure`
+3. package install (`devtools::install()` when available)
+4. roxygen regeneration (`devtools::document()`)
+
+The generated wrapper file is written during install/build and then committed as
+part of the R package sources.
+
 ## Templates
 
-See `inst/templates/README.md` for the standalone package and monorepo layouts
+See `inst/templates/README.md` for the standalone-package and monorepo layouts
 used by the scaffolder.
 
-Both standalone and monorepo templates use git dependencies for miniextendr crates.
-For monorepo development (where you want to use local miniextendr crates instead of
-git), add a `[patch."https://..."]` section to your Cargo.toml:
+The templates are derived from this repo's `rpkg/` example package and checked
+with `just templates-check` / `just templates-approve` at the repo root.
+
+Both standalone and monorepo templates use git dependencies for miniextendr
+crates. For monorepo development, where you want to use local miniextendr
+crates instead of git sources, add a `[patch."https://..."]` section to your
+`Cargo.toml`:
 
 ```toml
 [patch."https://github.com/CGMossa/miniextendr"]
@@ -79,6 +93,7 @@ miniextendr-lint = { path = "../path/to/miniextendr-lint" }
 
 ```r
 miniextendr_status()
+miniextendr_check_rust()
 miniextendr_check()
 ```
 
@@ -91,34 +106,37 @@ miniextendr_available_versions()
 vendor_miniextendr("main")
 ```
 
-Downloaded archives are cached to avoid repeated downloads:
+Prepare an offline/CRAN tarball of vendored dependencies:
 
 ```r
-miniextendr_cache_info()      # Show cached versions
-miniextendr_clear_cache()     # Clear all cached archives
-vendor_miniextendr("main", refresh = TRUE)  # Force re-download
+miniextendr_vendor()
 ```
 
-Vendoring external crates.io dependencies:
+Vendor external crates.io dependencies:
 
 ```r
 vendor_crates_io()
 ```
 
+Downloaded archives are cached to avoid repeated downloads:
+
+```r
+miniextendr_cache_info()
+miniextendr_clear_cache()
+vendor_miniextendr("main", refresh = TRUE)
+```
+
 ### Vendor tarball and Git LFS
 
-For CRAN submission, the vendored crates are compressed into `inst/vendor.tar.xz`.
-This file is typically 5-10MB depending on enabled features.
+For CRAN submission, vendored crates are compressed into `inst/vendor.tar.xz`.
+Typical tarballs in this repo are small enough to keep in normal git history, so
+Git LFS is optional rather than required.
 
-**Git LFS is NOT required** for this file because:
-- The file size (~7MB) is well below GitHub's 100MB limit
-- It changes infrequently (only when updating vendored crate versions)
-- Binary diffs work reasonably well for compressed archives
+If your vendored tarball grows large or changes frequently, consider:
 
-If your vendor tarball grows significantly larger (>50MB), consider:
-1. Reducing enabled features in `Cargo.toml` to minimize dependencies
-2. Using Git LFS: `git lfs track "inst/vendor.tar.xz"`
-3. Hosting the tarball externally and downloading during `R CMD build`
+1. reducing enabled Cargo features to shrink the dependency set
+2. using Git LFS for `inst/vendor.tar.xz`
+3. moving large external assets out of the package build path
 
 ## Cargo helpers
 
@@ -143,12 +161,13 @@ cargo_deps(depth = 2)
 
 ## What minirextendr generates
 
-- Autoconf scripts and configure wrappers (configure.ac, configure, configure.win)
-- Rust files (Cargo.toml, lib.rs, build.rs)
-- Build templates (src/Makevars.in, src/stub.c)
-- Package docs and ignore files (.Rbuildignore, .gitignore)
-- Vendored miniextendr crates under vendor/
+- Autoconf scripts and configure wrappers (`configure.ac`, `configure`,
+  `configure.win`)
+- Rust files (`Cargo.toml`, `lib.rs`, `build.rs`)
+- Build templates (`src/Makevars.in`, `src/stub.c`)
+- Package docs and ignore files (`.Rbuildignore`, `.gitignore`)
+- Vendored miniextendr crates under `vendor/`
 
 ## License
 
-MIT (see LICENSE).
+MIT (see `LICENSE`).

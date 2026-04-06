@@ -33,7 +33,7 @@ pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
         || {
             let _a = SimpleDropMsg("stack resource");
             let _b = Box::new(SimpleDropMsg("heap resource"));
-            unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(42) }
+            ::miniextendr_api::ffi::SEXP::scalar_integer(42)
         },
         None,
     )

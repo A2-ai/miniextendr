@@ -1,6 +1,6 @@
 //! Test fixtures for ffi_guard module.
 
-use miniextendr_api::ffi_guard::{guarded_ffi_call, guarded_ffi_call_with_fallback, GuardMode};
+use miniextendr_api::ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback};
 use miniextendr_api::panic_telemetry::PanicSource;
 use miniextendr_api::prelude::*;
 

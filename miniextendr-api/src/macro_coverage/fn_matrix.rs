@@ -11,7 +11,7 @@
 //! Every `MiniextendrFnAttrs` option has at least one atomic fixture,
 //! and common combinations are also covered.
 
-use crate::ffi;
+use crate::ffi::{self, SEXP};
 use crate::miniextendr;
 
 #[derive(Debug)]
@@ -97,7 +97,7 @@ pub(crate) fn cov_fn_named_dots(dots: ...) {
 pub(crate) fn cov_fn_unused_named_dots(_dots: ...) {}
 
 #[miniextendr]
-pub(crate) fn cov_fn_unnamed_dots(...) {}
+pub(crate) fn cov_fn_unnamed_dots(_dots: ...) {}
 
 #[miniextendr]
 pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
@@ -105,7 +105,7 @@ pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
 }
 
 #[miniextendr]
-pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, ...) {}
+pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, _dots: ...) {}
 // endregion
 
 // region: Invisible / visible return
@@ -337,14 +337,14 @@ pub fn cov_explicit_inline() -> i32 {
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub(crate) extern "C-unwind" fn C_cov_direct() -> ffi::SEXP {
-    unsafe { ffi::R_NilValue }
+    SEXP::nil()
 }
 
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub(crate) extern "C-unwind" fn C_cov_indirect() -> ffi::SEXP {
-    unsafe { ffi::R_NilValue }
+    SEXP::nil()
 }
 // endregion
 

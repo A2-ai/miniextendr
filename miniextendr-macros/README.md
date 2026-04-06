@@ -67,7 +67,7 @@ Guidelines for CRAN-facing packages:
 - Use the macros via `miniextendr-api` re-exports.
 - Avoid the `nonapi` feature unless you are prepared for CRAN checks to report
   non-API symbol usage.
-- Regenerate and commit the generated R wrappers (`R/miniextendr_wrappers.R`).
+- Regenerate and commit the generated R wrappers (`R/miniextendr-wrappers.R`).
 - Keep exported symbol names stable, and document any changes.
 
 ## Testing

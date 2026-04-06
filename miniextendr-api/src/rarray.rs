@@ -459,15 +459,9 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// - The SEXP must be valid.
     /// - `what` must be a valid symbol SEXP.
     #[inline]
-    unsafe fn get_attr_impl_unchecked(&self, what: SEXP) -> Option<SEXP> {
-        unsafe {
-            let attr = ffi::Rf_getAttrib(self.sexp, what);
-            if attr == ffi::R_NilValue {
-                None
-            } else {
-                Some(attr)
-            }
-        }
+    fn get_attr_opt(&self, name: SEXP) -> Option<SEXP> {
+        let attr = self.sexp.get_attr(name);
+        if attr.is_nil() { None } else { Some(attr) }
     }
 
     /// Get the `names` attribute if present.
@@ -480,7 +474,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_names(&self) -> Option<SEXP> {
         // Safety: R_NamesSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_NamesSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_NamesSymbol })
     }
 
     /// Get the `class` attribute if present.
@@ -493,7 +487,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_class(&self) -> Option<SEXP> {
         // Safety: R_ClassSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_ClassSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_ClassSymbol })
     }
 
     /// Get the `dimnames` attribute if present.
@@ -506,7 +500,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_dimnames(&self) -> Option<SEXP> {
         // Safety: R_DimNamesSymbol is a known symbol
-        unsafe { self.get_attr_impl_unchecked(ffi::R_DimNamesSymbol) }
+        self.get_attr_opt(unsafe { ffi::R_DimNamesSymbol })
     }
 
     /// Get row names from the `dimnames` attribute.
@@ -520,7 +514,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     pub unsafe fn get_rownames(&self) -> Option<SEXP> {
         unsafe {
             let rownames = ffi::Rf_GetRowNames(self.sexp);
-            if rownames == ffi::R_NilValue {
+            if rownames.is_nil() {
                 None
             } else {
                 Some(rownames)
@@ -538,12 +532,12 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_colnames(&self) -> Option<SEXP> {
         unsafe {
-            let dimnames = ffi::Rf_getAttrib(self.sexp, ffi::R_DimNamesSymbol);
-            if dimnames == ffi::R_NilValue {
+            let dimnames = self.sexp.get_dimnames();
+            if dimnames.is_nil() {
                 return None;
             }
             let colnames = ffi::Rf_GetColNames(dimnames);
-            if colnames == ffi::R_NilValue {
+            if colnames.is_nil() {
                 None
             } else {
                 Some(colnames)
@@ -567,7 +561,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// The SEXP must be valid and not shared.
     #[inline]
     pub unsafe fn set_names(&mut self, names: SEXP) {
-        unsafe { ffi::Rf_namesgets(self.sexp, names) };
+        self.sexp.set_names(names);
     }
 
     /// Set the `class` attribute.
@@ -579,7 +573,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// The SEXP must be valid and not shared.
     #[inline]
     pub unsafe fn set_class(&mut self, class: SEXP) {
-        unsafe { ffi::Rf_setAttrib(self.sexp, ffi::R_ClassSymbol, class) };
+        self.sexp.set_class(class);
     }
 
     /// Set the `dimnames` attribute.
@@ -591,7 +585,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// The SEXP must be valid and not shared.
     #[inline]
     pub unsafe fn set_dimnames(&mut self, dimnames: SEXP) {
-        unsafe { ffi::Rf_setAttrib(self.sexp, ffi::R_DimNamesSymbol, dimnames) };
+        self.sexp.set_dimnames(dimnames);
     }
     // endregion
 }
@@ -819,8 +813,8 @@ impl<T: RNativeType, const NDIM: usize> IntoR for RArray<T, NDIM> {
 
 /// Get number of dimensions from SEXP.
 fn get_ndim(sexp: SEXP) -> usize {
-    unsafe {
-        let dim_sexp = ffi::Rf_getAttrib(sexp, ffi::R_DimSymbol);
+    {
+        let dim_sexp = sexp.get_dim();
         if dim_sexp.type_of() != SEXPTYPE::INTSXP {
             // No dim attribute - treat as 1D
             1
@@ -839,7 +833,7 @@ unsafe fn get_dims<const NDIM: usize>(sexp: SEXP) -> [usize; NDIM] {
     let mut dims = [0usize; NDIM];
 
     unsafe {
-        let dim_sexp = ffi::Rf_getAttrib(sexp, ffi::R_DimSymbol);
+        let dim_sexp = sexp.get_dim();
 
         if dim_sexp.type_of() != SEXPTYPE::INTSXP {
             // No dim attribute - treat as 1D with length
@@ -873,7 +867,7 @@ unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
             });
         }
 
-        ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);
+        sexp.set_dim(dim_sexp);
         ffi::Rf_unprotect(1);
     }
 }

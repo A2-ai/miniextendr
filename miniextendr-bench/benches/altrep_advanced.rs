@@ -7,7 +7,9 @@
 
 use miniextendr_api::ffi;
 use miniextendr_api::ffi::Rcomplex;
+use miniextendr_api::ffi::SexpExt;
 use miniextendr_api::{IntoR, miniextendr};
+use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
@@ -91,7 +93,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -106,7 +108,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -121,7 +123,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -135,7 +137,7 @@ mod guard_modes {
         unsafe {
             let mut sum = 0i64;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -168,7 +170,7 @@ mod materialization {
         unsafe {
             let mut sum: i64 = 0;
             for i in 0..len {
-                sum += ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) as i64;
+                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
             }
             divan::black_box(sum);
         }
@@ -196,7 +198,7 @@ mod materialization {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
         unsafe {
-            let ptr = ffi::INTEGER(sexp);
+            let ptr = raw_ffi::INTEGER(sexp);
             let mut sum: i64 = 0;
             for i in 0..len {
                 sum += *ptr.add(i) as i64;
@@ -236,7 +238,7 @@ mod string_altrep {
         let data: Vec<Option<String>> = (0..len).map(|i| Some(format!("str_{i}"))).collect();
         let sexp = BenchString::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::STRING_ELT(sexp, 0));
+            divan::black_box(raw_ffi::STRING_ELT(sexp, 0));
         }
     }
 
@@ -255,7 +257,7 @@ mod string_altrep {
             .collect();
         let sexp = BenchString::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::STRING_ELT(sexp, (len - 1) as isize));
+            divan::black_box(raw_ffi::STRING_ELT(sexp, (len - 1) as isize));
         }
     }
 
@@ -277,7 +279,7 @@ mod string_altrep {
         let strings: Vec<String> = (0..len).map(|i| format!("str_{i}")).collect();
         let sexp = strings.into_sexp();
         unsafe {
-            divan::black_box(ffi::STRING_ELT(sexp, 0));
+            divan::black_box(raw_ffi::STRING_ELT(sexp, 0));
         }
     }
 }
@@ -303,7 +305,7 @@ mod complex_altrep {
             .collect();
         let sexp = BenchComplex::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::COMPLEX_ELT(sexp, 0));
+            divan::black_box(sexp.complex_elt(0));
         }
     }
 
@@ -337,7 +339,7 @@ mod complex_altrep {
         unsafe {
             let mut sum_r = 0.0f64;
             for i in 0..len {
-                sum_r += ffi::COMPLEX_ELT(sexp, i as ffi::R_xlen_t).r;
+                sum_r += sexp.complex_elt(i as ffi::R_xlen_t).r;
             }
             divan::black_box(sum_r);
         }
@@ -381,7 +383,7 @@ mod zero_alloc {
         let data = ConstantRealData { value: 1.0, len };
         let sexp = BenchConstantReal(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::REAL_ELT(sexp, 0));
+            divan::black_box(sexp.real_elt(0));
         }
     }
 
@@ -392,7 +394,7 @@ mod zero_alloc {
         let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
         let sexp = BenchRealVec::from(data).into_sexp();
         unsafe {
-            divan::black_box(ffi::REAL_ELT(sexp, 0));
+            divan::black_box(sexp.real_elt(0));
         }
     }
 
@@ -405,7 +407,7 @@ mod zero_alloc {
         unsafe {
             let mut sum = 0.0f64;
             for i in 0..len {
-                sum += ffi::REAL_ELT(sexp, i as ffi::R_xlen_t);
+                sum += sexp.real_elt(i as ffi::R_xlen_t);
             }
             divan::black_box(sum);
         }
@@ -420,7 +422,7 @@ mod zero_alloc {
         unsafe {
             let mut sum = 0.0f64;
             for i in 0..len {
-                sum += ffi::REAL_ELT(sexp, i as ffi::R_xlen_t);
+                sum += sexp.real_elt(i as ffi::R_xlen_t);
             }
             divan::black_box(sum);
         }
@@ -432,7 +434,7 @@ mod zero_alloc {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().real_vec(size_idx);
         unsafe {
-            let ptr = ffi::REAL(sexp);
+            let ptr = raw_ffi::REAL(sexp);
             let mut sum = 0.0f64;
             for i in 0..len {
                 sum += *ptr.add(i);

@@ -26,6 +26,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+use crate::ffi::SexpExt;
 use crate::gc_protect::OwnedProtect;
 
 /// Trait for converting Rust types to R SEXP values.
@@ -145,7 +146,7 @@ impl IntoR for () {
     type Error = std::convert::Infallible;
     #[inline]
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { crate::ffi::R_NilValue })
+        Ok(crate::ffi::SEXP::nil())
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
@@ -153,7 +154,7 @@ impl IntoR for () {
     }
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::R_NilValue }
+        crate::ffi::SEXP::nil()
     }
 }
 
@@ -161,7 +162,7 @@ impl IntoR for std::convert::Infallible {
     type Error = std::convert::Infallible;
     #[inline]
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { crate::ffi::R_NilValue })
+        Ok(crate::ffi::SEXP::nil())
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
@@ -169,7 +170,7 @@ impl IntoR for std::convert::Infallible {
     }
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::R_NilValue }
+        crate::ffi::SEXP::nil()
     }
 }
 
@@ -201,7 +202,11 @@ macro_rules! impl_scalar_into_r {
 impl_scalar_into_r!(i32, Rf_ScalarInteger, Rf_ScalarInteger_unchecked);
 impl_scalar_into_r!(f64, Rf_ScalarReal, Rf_ScalarReal_unchecked);
 impl_scalar_into_r!(u8, Rf_ScalarRaw, Rf_ScalarRaw_unchecked);
-impl_scalar_into_r!(crate::ffi::Rcomplex, Rf_ScalarComplex, Rf_ScalarComplex_unchecked);
+impl_scalar_into_r!(
+    crate::ffi::Rcomplex,
+    Rf_ScalarComplex,
+    Rf_ScalarComplex_unchecked
+);
 
 impl IntoR for Option<crate::ffi::Rcomplex> {
     type Error = std::convert::Infallible;
@@ -217,12 +222,10 @@ impl IntoR for Option<crate::ffi::Rcomplex> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe {
-                crate::ffi::Rf_ScalarComplex(crate::ffi::Rcomplex {
-                    r: NA_REAL,
-                    i: NA_REAL,
-                })
-            },
+            None => crate::ffi::SEXP::scalar_complex(crate::ffi::Rcomplex {
+                r: NA_REAL,
+                i: NA_REAL,
+            }),
         }
     }
     #[inline]
@@ -273,10 +276,8 @@ impl_into_r_via_coerce!(u16 => i32);
 impl_into_r_via_coerce!(f32 => f64);
 impl_into_r_via_coerce!(u32 => f64); // all u32 exactly representable in f64
 
-
 mod large_integers;
 pub(crate) use large_integers::{str_to_charsxp, str_to_charsxp_unchecked};
-
 
 // region: Vector conversions
 
@@ -384,8 +385,7 @@ pub(crate) unsafe fn alloc_r_vector_unchecked<T: crate::ffi::RNativeType>(
     n: usize,
 ) -> (crate::ffi::SEXP, &'static mut [T]) {
     unsafe {
-        let sexp =
-            crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
+        let sexp = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
         let slice = crate::from_r::r_slice_mut(T::dataptr_mut(sexp), n);
         (sexp, slice)
     }
@@ -558,14 +558,12 @@ impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
 impl_vec_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 // endregion
 
-
 mod altrep;
 mod collections;
 mod result;
 
 pub use altrep::*;
 pub use result::*;
-
 
 // region: Fixed-size array conversions
 
@@ -937,14 +935,14 @@ impl<T: crate::ffi::RNativeType> IntoR for Option<Vec<T>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -964,14 +962,14 @@ impl IntoR for Option<Vec<String>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -991,14 +989,14 @@ impl<V: IntoR> IntoR for Option<HashMap<String, V>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -1018,14 +1016,14 @@ impl<V: IntoR> IntoR for Option<BTreeMap<String, V>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -1045,14 +1043,14 @@ impl<T: crate::ffi::RNativeType + Eq + Hash> IntoR for Option<HashSet<T>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -1072,14 +1070,14 @@ impl<T: crate::ffi::RNativeType + Ord> IntoR for Option<BTreeSet<T>> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -1101,14 +1099,14 @@ macro_rules! impl_option_collection_into_r {
             fn into_sexp(self) -> crate::ffi::SEXP {
                 match self {
                     Some(v) => v.into_sexp(),
-                    None => unsafe { crate::ffi::R_NilValue },
+                    None => crate::ffi::SEXP::nil(),
                 }
             }
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
                 match self {
                     Some(v) => unsafe { v.into_sexp_unchecked() },
-                    None => unsafe { crate::ffi::R_NilValue },
+                    None => crate::ffi::SEXP::nil(),
                 }
             }
         }
@@ -1129,15 +1127,15 @@ pub(crate) fn str_iter_to_strsxp<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("string vec length exceeds isize::MAX");
-        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
-            crate::ffi::SEXPTYPE::STRSXP,
-            n,
-        ));
+        let n: crate::ffi::R_xlen_t = iter
+            .len()
+            .try_into()
+            .expect("string vec length exceeds isize::MAX");
+        let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n));
         for (i, s) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp(s);
-            crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
+            sexp.set_string_elt(idx, charsxp);
         }
         *sexp
     }
@@ -1148,7 +1146,10 @@ pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
     iter: impl ExactSizeIterator<Item = &'a str>,
 ) -> crate::ffi::SEXP {
     unsafe {
-        let n: crate::ffi::R_xlen_t = iter.len().try_into().expect("string vec length exceeds isize::MAX");
+        let n: crate::ffi::R_xlen_t = iter
+            .len()
+            .try_into()
+            .expect("string vec length exceeds isize::MAX");
         let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
             crate::ffi::SEXPTYPE::STRSXP,
             n,
@@ -1156,7 +1157,7 @@ pub(crate) unsafe fn str_iter_to_strsxp_unchecked<'a>(
         for (i, s) in iter.enumerate() {
             let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
             let charsxp = str_to_charsxp_unchecked(s);
-            crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
+            sexp.set_string_elt_unchecked(idx, charsxp);
         }
         *sexp
     }
@@ -1275,7 +1276,7 @@ where
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1294,7 +1295,7 @@ where
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                crate::ffi::SET_VECTOR_ELT_unchecked(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1321,7 +1322,7 @@ impl IntoR for Vec<Vec<String>> {
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1340,7 +1341,7 @@ impl IntoR for Vec<Vec<String>> {
 
             for (i, inner) in self.into_iter().enumerate() {
                 let inner_sexp = inner.into_sexp_unchecked();
-                crate::ffi::SET_VECTOR_ELT_unchecked(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt_unchecked(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1457,8 +1458,10 @@ macro_rules! impl_vec_option_coerce_into_r {
             }
             fn into_sexp(self) -> crate::ffi::SEXP {
                 // Delegate to the target Option type's impl (coerce inline)
-                let coerced: Vec<Option<$to>> =
-                    self.into_iter().map(|opt| opt.map(|x| <$to>::from(x))).collect();
+                let coerced: Vec<Option<$to>> = self
+                    .into_iter()
+                    .map(|opt| opt.map(|x| <$to>::from(x)))
+                    .collect();
                 coerced.into_sexp()
             }
         }
@@ -1478,8 +1481,7 @@ fn logical_iter_to_lglsxp(n: usize, iter: impl Iterator<Item = i32>) -> crate::f
     unsafe {
         let (sexp, dst) = alloc_r_vector::<crate::ffi::RLogical>(n);
         // RLogical is repr(transparent) over i32, safe to write i32 values.
-        let dst_i32: &mut [i32] =
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
+        let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
         for (slot, val) in dst_i32.iter_mut().zip(iter) {
             *slot = val;
         }
@@ -1494,8 +1496,7 @@ unsafe fn logical_iter_to_lglsxp_unchecked(
 ) -> crate::ffi::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector_unchecked::<crate::ffi::RLogical>(n);
-        let dst_i32: &mut [i32] =
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
+        let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
         for (slot, val) in dst_i32.iter_mut().zip(iter) {
             *slot = val;
         }
@@ -1625,11 +1626,12 @@ impl IntoR for Vec<Option<String>> {
     }
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {
-            let n: crate::ffi::R_xlen_t = self.len().try_into().expect("vec length exceeds isize::MAX");
-            let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector(
-                crate::ffi::SEXPTYPE::STRSXP,
-                n,
-            ));
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
+            let sexp =
+                OwnedProtect::new(crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n));
 
             for (i, opt_s) in self.iter().enumerate() {
                 let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
@@ -1637,7 +1639,7 @@ impl IntoR for Vec<Option<String>> {
                     Some(s) => str_to_charsxp(s),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
+                sexp.set_string_elt(idx, charsxp);
             }
 
             *sexp
@@ -1646,7 +1648,10 @@ impl IntoR for Vec<Option<String>> {
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         unsafe {
-            let n: crate::ffi::R_xlen_t = self.len().try_into().expect("vec length exceeds isize::MAX");
+            let n: crate::ffi::R_xlen_t = self
+                .len()
+                .try_into()
+                .expect("vec length exceeds isize::MAX");
             let sexp = OwnedProtect::new(crate::ffi::Rf_allocVector_unchecked(
                 crate::ffi::SEXPTYPE::STRSXP,
                 n,
@@ -1658,7 +1663,7 @@ impl IntoR for Vec<Option<String>> {
                     Some(s) => str_to_charsxp_unchecked(s),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
+                sexp.set_string_elt_unchecked(idx, charsxp);
             }
 
             *sexp
@@ -1691,10 +1696,8 @@ macro_rules! impl_tuple_into_r {
                     crate::ffi::Rf_protect(list);
 
                     $(
-                        crate::ffi::SET_VECTOR_ELT(
-                            list,
-                            $idx as crate::ffi::R_xlen_t,
-                            self.$idx.into_sexp()
+
+                            list.set_vector_elt($idx as crate::ffi::R_xlen_t, self.$idx.into_sexp()
                         );
                     )+
 
@@ -1712,10 +1715,8 @@ macro_rules! impl_tuple_into_r {
                     crate::ffi::Rf_protect(list);
 
                     $(
-                        crate::ffi::SET_VECTOR_ELT_unchecked(
-                            list,
-                            $idx as crate::ffi::R_xlen_t,
-                            self.$idx.into_sexp_unchecked()
+
+                            list.set_vector_elt_unchecked($idx as crate::ffi::R_xlen_t, self.$idx.into_sexp_unchecked()
                         );
                     )+
 
@@ -1736,7 +1737,6 @@ impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
 impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
 impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
 // endregion
-
 
 // region: ALTREP zero-copy extension trait
 
@@ -1834,7 +1834,6 @@ where
 }
 // endregion
 
-
 // region: Additional collection type conversions for DataFrameRow support
 
 /// Convert `Vec<Box<[T]>>` to R list of vectors (for RNativeType elements).
@@ -1860,7 +1859,7 @@ where
             for (i, boxed_slice) in self.into_iter().enumerate() {
                 let vec: Vec<T> = boxed_slice.into_vec();
                 let inner_sexp = vec.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1888,7 +1887,7 @@ impl IntoR for Vec<Box<[String]>> {
             for (i, boxed_slice) in self.into_iter().enumerate() {
                 let vec: Vec<String> = boxed_slice.into_vec();
                 let inner_sexp = vec.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1922,7 +1921,7 @@ where
             for (i, array) in self.into_iter().enumerate() {
                 let vec: Vec<T> = array.into();
                 let inner_sexp = vec.into_sexp();
-                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+                list.set_vector_elt(i as crate::ffi::R_xlen_t, inner_sexp);
             }
 
             crate::ffi::Rf_unprotect(1);
@@ -1940,7 +1939,8 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::ffi::SEXP {
             n as crate::ffi::R_xlen_t,
         ));
         for (i, item) in items.into_iter().enumerate() {
-            crate::ffi::SET_VECTOR_ELT(*list, i as crate::ffi::R_xlen_t, item.into_sexp());
+            list.get()
+                .set_vector_elt(i as crate::ffi::R_xlen_t, item.into_sexp());
         }
         *list
     }
@@ -2046,7 +2046,7 @@ fn vec_of_maps_to_list<T: IntoR>(vec: Vec<T>) -> crate::ffi::SEXP {
         crate::ffi::Rf_protect(list);
 
         for (i, map) in vec.into_iter().enumerate() {
-            crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, map.into_sexp());
+            list.set_vector_elt(i as crate::ffi::R_xlen_t, map.into_sexp());
         }
 
         crate::ffi::Rf_unprotect(1);

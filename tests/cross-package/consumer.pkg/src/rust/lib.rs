@@ -6,7 +6,7 @@
 // - Verifies trait dispatch works across package boundaries
 // - Implements its own Counter (DoubleCounter) for bidirectional testing
 
-use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, trait_abi::ccall};
+use miniextendr_api::{ExternalPtr, ffi::SEXP, ffi::SexpExt, miniextendr, trait_abi::ccall};
 
 miniextendr_api::miniextendr_init!();
 
@@ -36,8 +36,8 @@ pub fn passthrough_ptr(ptr: SEXP) -> SEXP {
 /// @export
 #[miniextendr]
 pub fn is_external_ptr(sexp: SEXP) -> bool {
-    use miniextendr_api::ffi::{SEXPTYPE, TYPEOF};
-    unsafe { TYPEOF(sexp) == SEXPTYPE::EXTPTRSXP }
+    use miniextendr_api::ffi::SexpExt;
+    sexp.is_external_ptr()
 }
 
 /// Get class of any R object (for cross-package testing)
@@ -46,7 +46,7 @@ pub fn is_external_ptr(sexp: SEXP) -> bool {
 /// @export
 #[miniextendr]
 pub fn consumer_get_class(x: SEXP) -> SEXP {
-    unsafe { miniextendr_api::ffi::Rf_getAttrib(x, miniextendr_api::ffi::R_ClassSymbol) }
+    x.get_class()
 }
 
 /// Check if an object has a specific class
@@ -56,26 +56,19 @@ pub fn consumer_get_class(x: SEXP) -> SEXP {
 /// @export
 #[miniextendr]
 pub fn has_class(x: SEXP, class_name: String) -> bool {
-    use miniextendr_api::ffi::{
-        R_CHAR, R_ClassSymbol, Rf_getAttrib, Rf_xlength, SEXPTYPE, STRING_ELT, TYPEOF,
-    };
-    unsafe {
-        let class_attr = Rf_getAttrib(x, R_ClassSymbol);
-        if TYPEOF(class_attr) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        let len = Rf_xlength(class_attr);
-        for i in 0..len {
-            let s = STRING_ELT(class_attr, i);
-            let cstr = std::ffi::CStr::from_ptr(R_CHAR(s));
-            if let Ok(name) = cstr.to_str()
-                && name == class_name
-            {
+    let class_attr = x.get_class();
+    if !class_attr.is_character() {
+        return false;
+    }
+    let len = class_attr.len();
+    for i in 0..len {
+        if let Some(name) = class_attr.string_elt_str(i as miniextendr_api::ffi::R_xlen_t) {
+            if name == class_name {
                 return true;
             }
         }
-        false
     }
+    false
 }
 // endregion
 

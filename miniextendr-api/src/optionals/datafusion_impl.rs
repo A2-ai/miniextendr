@@ -92,11 +92,7 @@ impl RSessionContext {
     }
 
     /// Register a RecordBatch as a named table.
-    pub fn register_record_batch(
-        &self,
-        name: &str,
-        batch: RecordBatch,
-    ) -> Result<(), String> {
+    pub fn register_record_batch(&self, name: &str, batch: RecordBatch) -> Result<(), String> {
         let schema = batch.schema();
         let table = datafusion::datasource::MemTable::try_new(schema, vec![vec![batch]])
             .map_err(|e| e.to_string())?;
@@ -117,7 +113,9 @@ impl RSessionContext {
         let batches: Vec<RecordBatch> = rt.block_on(df.collect()).map_err(|e| e.to_string())?;
 
         if batches.is_empty() {
-            return Ok(RecordBatch::new_empty(Arc::new(arrow_schema::Schema::empty())));
+            return Ok(RecordBatch::new_empty(Arc::new(
+                arrow_schema::Schema::empty(),
+            )));
         }
 
         if batches.len() == 1 {
@@ -255,7 +253,9 @@ impl RDataFrame {
             rt.block_on(self.df.collect()).map_err(|e| e.to_string())?;
 
         if batches.is_empty() {
-            return Ok(RecordBatch::new_empty(Arc::new(arrow_schema::Schema::empty())));
+            return Ok(RecordBatch::new_empty(Arc::new(
+                arrow_schema::Schema::empty(),
+            )));
         }
 
         if batches.len() == 1 {
@@ -289,11 +289,7 @@ impl RDataFrame {
     /// // SELECT name, SUM(y) as total FROM t GROUP BY name
     /// df.aggregate(&["name"], &[("total", "sum", "y")])?;
     /// ```
-    pub fn aggregate(
-        self,
-        group_by: &[&str],
-        aggr: &[(&str, &str, &str)],
-    ) -> Result<Self, String> {
+    pub fn aggregate(self, group_by: &[&str], aggr: &[(&str, &str, &str)]) -> Result<Self, String> {
         use datafusion::functions_aggregate::expr_fn;
         use datafusion::prelude::*;
 
@@ -330,12 +326,7 @@ impl RDataFrame {
     /// `right` — the other DataFrame to join.
     /// `on` — column names to join on (must exist in both).
     /// `join_type` — one of `"inner"`, `"left"`, `"right"`, `"full"`.
-    pub fn join(
-        self,
-        right: RDataFrame,
-        on: &[&str],
-        join_type: &str,
-    ) -> Result<Self, String> {
+    pub fn join(self, right: RDataFrame, on: &[&str], join_type: &str) -> Result<Self, String> {
         use datafusion::prelude::JoinType;
 
         let jt = match join_type {
@@ -346,7 +337,7 @@ impl RDataFrame {
             other => {
                 return Err(format!(
                     "unknown join type '{other}' (supported: inner, left, right, full)"
-                ))
+                ));
             }
         };
 
@@ -361,8 +352,7 @@ impl RDataFrame {
     /// Return the number of rows (executes the query).
     pub fn count(self) -> Result<usize, String> {
         let rt = runtime();
-        rt.block_on(self.df.count())
-            .map_err(|e| e.to_string())
+        rt.block_on(self.df.count()).map_err(|e| e.to_string())
     }
 
     /// Get the underlying DataFusion DataFrame (for advanced use).

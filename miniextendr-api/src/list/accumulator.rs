@@ -5,7 +5,7 @@
 //! `ReprotectSlot` internally to maintain O(1) protect stack usage.
 
 use crate::ffi::SEXPTYPE::{STRSXP, VECSXP};
-use crate::ffi::{self, SEXP};
+use crate::ffi::{self, SEXP, SexpExt};
 use crate::from_r::SexpError;
 use crate::gc_protect::{OwnedProtect, ProtectScope, ReprotectSlot, Root};
 use crate::into_r::IntoR;
@@ -76,7 +76,7 @@ impl<'a> ListAccumulator<'a> {
         let cap_isize: isize = cap.try_into().expect("capacity exceeds isize::MAX");
         let list_sexp = unsafe { ffi::Rf_allocVector(VECSXP, cap_isize) };
         let list = unsafe { scope.protect_with_index(list_sexp) };
-        let temp = unsafe { scope.protect_with_index(ffi::R_NilValue) };
+        let temp = unsafe { scope.protect_with_index(SEXP::nil()) };
 
         Self {
             list,
@@ -107,9 +107,7 @@ impl<'a> ListAccumulator<'a> {
 
         // Insert into list (list and temp are both protected)
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
-        unsafe {
-            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
-        }
+        self.list.get().set_vector_elt(len_isize, sexp);
 
         self.names.push(None);
         self.len += 1;
@@ -131,7 +129,7 @@ impl<'a> ListAccumulator<'a> {
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
             self.temp.set(sexp);
-            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
+            self.list.get().set_vector_elt(len_isize, sexp);
         }
 
         self.names.push(None);
@@ -152,9 +150,7 @@ impl<'a> ListAccumulator<'a> {
         let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
 
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
-        unsafe {
-            ffi::SET_VECTOR_ELT(self.list.get(), len_isize, sexp);
-        }
+        self.list.get().set_vector_elt(len_isize, sexp);
 
         self.names.push(Some(name.to_string()));
         self.len += 1;
@@ -219,8 +215,8 @@ impl<'a> ListAccumulator<'a> {
         // Copy existing elements
         for i in 0..self.len {
             let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-            let elem = unsafe { ffi::VECTOR_ELT(old_list, idx) };
-            unsafe { ffi::SET_VECTOR_ELT(new_list, idx, elem) };
+            let elem = old_list.vector_elt(idx);
+            new_list.set_vector_elt(idx, elem);
         }
 
         // Replace list slot with new list
@@ -278,15 +274,14 @@ impl<'a> ListAccumulator<'a> {
                 for (i, name) in self.names.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");
                     if let Some(n) = name {
-                        let n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
-                        let charsxp =
-                            ffi::Rf_mkCharLenCE(n.as_ptr().cast(), n_len, ffi::CE_UTF8);
-                        ffi::SET_STRING_ELT(names_sexp.get(), idx, charsxp);
+                        let _n_len: i32 = n.len().try_into().expect("name exceeds i32::MAX bytes");
+                        let charsxp = ffi::SEXP::charsxp(n);
+                        names_sexp.get().set_string_elt(idx, charsxp);
                     } else {
-                        ffi::SET_STRING_ELT(names_sexp.get(), idx, ffi::R_BlankString);
+                        names_sexp.get().set_string_elt(idx, ffi::R_BlankString);
                     }
                 }
-                ffi::Rf_setAttrib(root.get(), ffi::R_NamesSymbol, names_sexp.get());
+                root.get().set_names(names_sexp.get());
             }
         }
 
@@ -373,7 +368,7 @@ impl ListMut {
         if idx < 0 || idx >= self.len() {
             return None;
         }
-        Some(unsafe { ffi::VECTOR_ELT(self.0, idx) })
+        Some(self.0.vector_elt(idx))
     }
 
     /// Set raw SEXP element at 0-based index.
@@ -382,7 +377,7 @@ impl ListMut {
         if idx < 0 || idx >= self.len() {
             return Err(SexpError::InvalidValue("index out of bounds".into()));
         }
-        unsafe { ffi::SET_VECTOR_ELT(self.0, idx, value) };
+        self.0.set_vector_elt(idx, value);
         Ok(())
     }
 }

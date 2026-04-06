@@ -41,8 +41,8 @@
 //! detects stale keys. Single free list for VECSXP slot reuse.
 
 use crate::ffi::{
-    R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
-    Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
+    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP,
+    SEXPTYPE, SexpExt,
 };
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -157,7 +157,7 @@ impl ProtectPool {
         // slot < capacity ≤ R_xlen_t::MAX (checked in with_capacity/grow),
         // so this conversion is safe.
         let r_slot = R_xlen_t::try_from(slot).expect("slot exceeds R_xlen_t::MAX");
-        unsafe { SET_VECTOR_ELT(self.backing, r_slot, sexp) };
+        self.backing.set_vector_elt(r_slot, sexp);
         self.len += 1;
         ProtectKey {
             slot: u32::try_from(slot).expect("slot exceeds u32::MAX"),
@@ -174,10 +174,14 @@ impl ProtectPool {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn release(&mut self, key: ProtectKey) {
-        let Ok(slot) = usize::try_from(key.slot) else { return };
-        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return;
+        };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else {
+            return;
+        };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            unsafe { SET_VECTOR_ELT(self.backing, r_slot, R_NilValue) };
+            self.backing.set_vector_elt(r_slot, SEXP::nil());
             self.generations[slot] = self.generations[slot].wrapping_add(1);
             self.free_slots.push(slot);
             self.len -= 1;
@@ -187,10 +191,14 @@ impl ProtectPool {
     /// Get the SEXP for a key, or `None` if the key is stale.
     #[inline]
     pub fn get(&self, key: ProtectKey) -> Option<SEXP> {
-        let Ok(slot) = usize::try_from(key.slot) else { return None };
-        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return None };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return None;
+        };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else {
+            return None;
+        };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            Some(unsafe { VECTOR_ELT(self.backing, r_slot) })
+            Some(self.backing.vector_elt(r_slot))
         } else {
             None
         }
@@ -208,10 +216,14 @@ impl ProtectPool {
     /// Must be called from the R main thread. `sexp` must be a valid SEXP.
     #[inline]
     pub unsafe fn replace(&mut self, key: ProtectKey, sexp: SEXP) -> bool {
-        let Ok(slot) = usize::try_from(key.slot) else { return false };
-        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else { return false };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return false;
+        };
+        let Ok(r_slot) = R_xlen_t::try_from(key.slot) else {
+            return false;
+        };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            unsafe { SET_VECTOR_ELT(self.backing, r_slot, sexp) };
+            self.backing.set_vector_elt(r_slot, sexp);
             true
         } else {
             false
@@ -221,7 +233,9 @@ impl ProtectPool {
     /// Check if a key is currently valid (not stale).
     #[inline]
     pub fn contains_key(&self, key: ProtectKey) -> bool {
-        let Ok(slot) = usize::try_from(key.slot) else { return false };
+        let Ok(slot) = usize::try_from(key.slot) else {
+            return false;
+        };
         slot < self.generations.len() && self.generations[slot] == key.generation
     }
 
@@ -267,7 +281,7 @@ impl ProtectPool {
 
             for i in 0..self.capacity {
                 let r_i = R_xlen_t::try_from(i).expect("index exceeds R_xlen_t::MAX");
-                SET_VECTOR_ELT(new_backing, r_i, VECTOR_ELT(self.backing, r_i));
+                new_backing.set_vector_elt(r_i, self.backing.vector_elt(r_i));
             }
 
             R_ReleaseObject(self.backing);
@@ -301,7 +315,10 @@ mod tests {
         let mut gens: Vec<u32> = vec![0; 4];
         let mut free: Vec<usize> = Vec::new();
 
-        let k1 = ProtectKey { slot: 0, generation: gens[0] };
+        let k1 = ProtectKey {
+            slot: 0,
+            generation: gens[0],
+        };
         assert_eq!(gens[0], k1.generation);
 
         gens[0] = gens[0].wrapping_add(1);

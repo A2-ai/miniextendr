@@ -37,9 +37,16 @@ pub fn test_collect_empty() -> Collect<std::vec::IntoIter<f64>> {
 
 /// @export
 #[miniextendr]
-pub fn test_collect_strings_upper(words: Vec<String>) -> CollectStrings<std::vec::IntoIter<String>>
-{
-    CollectStrings(words.into_iter().map(|w| w.to_uppercase()).collect::<Vec<_>>().into_iter())
+pub fn test_collect_strings_upper(
+    words: Vec<String>,
+) -> CollectStrings<std::vec::IntoIter<String>> {
+    CollectStrings(
+        words
+            .into_iter()
+            .map(|w| w.to_uppercase())
+            .collect::<Vec<_>>()
+            .into_iter(),
+    )
 }
 
 /// @export

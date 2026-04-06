@@ -2,14 +2,14 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{R_NilValue, Rf_ScalarInteger, Rf_ScalarReal};
+use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::preserve;
 
 #[test]
 fn preserve_insert_release() {
     r_test_utils::with_r_thread(|| unsafe {
-        let a = Rf_ScalarInteger(1);
-        let b = Rf_ScalarReal(2.5);
+        let a = SEXP::scalar_integer(1);
+        let b = SEXP::scalar_real(2.5);
 
         let cell_a = preserve::insert(a);
         let cell_b = preserve::insert(b);
@@ -18,8 +18,8 @@ fn preserve_insert_release() {
         preserve::release(cell_b);
 
         // R_NilValue is never collected, so insert returns R_NilValue itself
-        let nil_cell = preserve::insert(R_NilValue);
-        assert!(std::ptr::addr_eq(nil_cell.0, R_NilValue.0));
+        let nil_cell = preserve::insert(SEXP::nil());
+        assert!(nil_cell.is_nil());
     });
 }
 
@@ -29,8 +29,8 @@ fn preserve_count_tracking() {
     r_test_utils::with_r_thread(|| unsafe {
         let initial = preserve::count();
 
-        let a = Rf_ScalarInteger(1);
-        let b = Rf_ScalarReal(2.5);
+        let a = SEXP::scalar_integer(1);
+        let b = SEXP::scalar_real(2.5);
 
         let cell_a = preserve::insert(a);
         let cell_b = preserve::insert(b);
@@ -43,8 +43,8 @@ fn preserve_count_tracking() {
         preserve::release(cell_b);
         assert_eq!(preserve::count(), initial);
 
-        let nil_cell = preserve::insert(R_NilValue);
-        assert!(std::ptr::addr_eq(nil_cell.0, R_NilValue.0));
+        let nil_cell = preserve::insert(SEXP::nil());
+        assert!(nil_cell.is_nil());
         assert_eq!(preserve::count(), initial);
     });
 }

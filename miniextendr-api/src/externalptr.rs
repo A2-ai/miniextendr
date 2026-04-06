@@ -107,11 +107,10 @@ use std::ptr::{self, NonNull};
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
-    R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_NilValue, R_RegisterCFinalizerEx,
+    R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
     R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
     Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
-    Rf_unprotect_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
-    VECTOR_ELT,
+    Rf_unprotect_unchecked, SEXP, SEXPTYPE, SexpExt,
 };
 
 /// A wrapper around a raw pointer that implements [`Send`].
@@ -418,7 +417,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
-        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
+        prot.set_vector_elt(PROT_TYPE_ID_INDEX, type_id_sym);
 
         let sexp = unsafe { R_MakeExternalPtr(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };
@@ -447,7 +446,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect_unchecked(prot) };
-        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
+        unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
 
         let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
@@ -742,12 +741,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
             if prot.is_null_or_nil() {
-                return R_NilValue;
+                return SEXP::nil();
             }
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return R_NilValue;
+                return SEXP::nil();
             }
-            VECTOR_ELT(prot, PROT_USER_INDEX)
+            prot.vector_elt(PROT_USER_INDEX)
         }
     }
 
@@ -761,17 +760,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// or other contexts where you're certain you're on the main thread.
     #[inline]
     pub unsafe fn protected_unchecked(&self) -> SEXP {
-        use crate::ffi::{R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked};
+        use crate::ffi::R_ExternalPtrProtected_unchecked;
 
         unsafe {
             let prot = R_ExternalPtrProtected_unchecked(self.sexp);
             if prot.is_null_or_nil() {
-                return R_NilValue;
+                return SEXP::nil();
             }
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return R_NilValue;
+                return SEXP::nil();
             }
-            VECTOR_ELT_unchecked(prot, PROT_USER_INDEX)
+            prot.vector_elt_unchecked(PROT_USER_INDEX)
         }
     }
 
@@ -802,7 +801,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 );
                 return false;
             }
-            SET_VECTOR_ELT(prot, PROT_USER_INDEX, user_prot);
+            prot.set_vector_elt(PROT_USER_INDEX, user_prot);
             true
         }
     }
@@ -838,6 +837,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - `sexp` must be a valid EXTPTRSXP created by this library
     /// - The caller must ensure no other ExternalPtr owns this SEXP
     pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "wrap_sexp: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return None;
@@ -878,6 +883,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
         use crate::ffi::R_ExternalPtrAddr_unchecked;
 
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "wrap_sexp_unchecked: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr_unchecked(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return None;
@@ -911,6 +922,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// [`TryFromSexp`]: crate::TryFromSexp
     pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "wrap_sexp_with_error: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return Err(TypeMismatchError::NullPointer);
@@ -939,7 +956,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
                         && prot.type_of() == SEXPTYPE::VECSXP
                         && prot.len() >= PROT_VEC_LEN as usize
                     {
-                        let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+                        let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
                         if stored_sym.type_of() == SEXPTYPE::SYMSXP {
                             symbol_name(stored_sym)
                         } else {
@@ -966,6 +983,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - The caller must ensure exclusive ownership
     #[inline]
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
+        debug_assert_eq!(
+            sexp.type_of(),
+            crate::ffi::SEXPTYPE::EXTPTRSXP,
+            "from_sexp_unchecked: expected EXTPTRSXP, got {:?}",
+            sexp.type_of()
+        );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
 
@@ -1006,7 +1029,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return None;
             }
-            let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+            let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
             if stored_sym.type_of() != SEXPTYPE::SYMSXP {
                 return None;
             }
@@ -1364,7 +1387,7 @@ extern "C-unwind" fn release_any(sexp: SEXP) {
     if sexp.is_null() {
         return;
     }
-    if std::ptr::addr_eq(sexp.0, unsafe { R_NilValue.0 }) {
+    if sexp.is_nil() {
         return;
     }
 
@@ -1465,7 +1488,5 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 }
 // endregion
 
-
 mod altrep_helpers;
 pub use altrep_helpers::*;
-

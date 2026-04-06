@@ -30,9 +30,7 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, INTEGER_ELT, PRINTNAME, R_ClassSymbol, R_LevelsSymbol, Rboolean, Rf_allocVector,
-    Rf_getAttrib, Rf_install, Rf_isFactor, Rf_setAttrib, Rf_xlength, SET_STRING_ELT, SEXP,
-    SEXPTYPE, STRING_ELT, SexpExt,
+    INTEGER, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
@@ -47,7 +45,7 @@ fn factor_class_sexp() -> SEXP {
         crate::ffi::R_PreserveObject(class_sexp);
         // Use symbol PRINTNAME for permanent CHARSXP
         let sym = Rf_install(c"factor".as_ptr());
-        SET_STRING_ELT(class_sexp, 0, PRINTNAME(sym));
+        class_sexp.set_string_elt(0, PRINTNAME(sym));
         class_sexp
     })
 }
@@ -80,7 +78,7 @@ pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
             // Install as symbol - symbols and their PRINTNAMEs are never GC'd
             let c_str = CString::new(*level).expect("level name contains null byte");
             let sym = Rf_install(c_str.as_ptr());
-            SET_STRING_ELT(sexp, i as isize, PRINTNAME(sym));
+            sexp.set_string_elt(i as isize, PRINTNAME(sym));
         }
         sexp
     }
@@ -100,8 +98,8 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
     unsafe {
         let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(indices.len());
         dst.copy_from_slice(indices);
-        Rf_setAttrib(sexp, R_LevelsSymbol, levels);
-        Rf_setAttrib(sexp, R_ClassSymbol, factor_class_sexp());
+        sexp.set_levels(levels);
+        sexp.set_class(factor_class_sexp());
         sexp
     }
 }
@@ -138,14 +136,14 @@ impl<'a> Factor<'a> {
     ///
     /// Returns an error if the SEXP is not a factor.
     pub fn try_new(sexp: SEXP) -> Result<Self, SexpError> {
-        if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+        if !sexp.is_factor() {
             return Err(SexpError::InvalidValue("expected a factor".into()));
         }
 
         let len = unsafe { Rf_xlength(sexp) } as usize;
         let ptr = unsafe { INTEGER(sexp) };
         let indices = unsafe { crate::from_r::r_slice(ptr, len) };
-        let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+        let levels_sexp = sexp.get_levels();
 
         Ok(Self {
             indices,
@@ -181,8 +179,12 @@ impl<'a> Factor<'a> {
     /// Get level string at 0-based index.
     #[inline]
     pub fn level(&self, idx: usize) -> &'a str {
-        assert!(idx < self.n_levels(), "level index {idx} out of bounds (n_levels = {})", self.n_levels());
-        let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
+        assert!(
+            idx < self.n_levels(),
+            "level index {idx} out of bounds (n_levels = {})",
+            self.n_levels()
+        );
+        let charsxp = self.levels_sexp.string_elt(idx as isize);
         unsafe { charsxp_to_str(charsxp) }
     }
 }
@@ -232,14 +234,14 @@ impl<'a> FactorMut<'a> {
     ///
     /// Returns an error if the SEXP is not a factor.
     pub fn try_new(sexp: SEXP) -> Result<Self, SexpError> {
-        if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+        if !sexp.is_factor() {
             return Err(SexpError::InvalidValue("expected a factor".into()));
         }
 
         let len = unsafe { Rf_xlength(sexp) } as usize;
         let ptr = unsafe { INTEGER(sexp) };
         let indices = unsafe { crate::from_r::r_slice_mut(ptr, len) };
-        let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+        let levels_sexp = sexp.get_levels();
 
         Ok(Self {
             indices,
@@ -275,8 +277,12 @@ impl<'a> FactorMut<'a> {
     /// Get level string at 0-based index.
     #[inline]
     pub fn level(&self, idx: usize) -> &'a str {
-        assert!(idx < self.n_levels(), "level index {idx} out of bounds (n_levels = {})", self.n_levels());
-        let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
+        assert!(
+            idx < self.n_levels(),
+            "level index {idx} out of bounds (n_levels = {})",
+            self.n_levels()
+        );
+        let charsxp = self.levels_sexp.string_elt(idx as isize);
         unsafe { charsxp_to_str(charsxp) }
     }
 }
@@ -302,11 +308,11 @@ impl std::ops::DerefMut for FactorMut<'_> {
 
 /// Validate that a factor has the expected levels.
 pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<(), SexpError> {
-    if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+    if !sexp.is_factor() {
         return Err(SexpError::InvalidValue("expected a factor".into()));
     }
 
-    let levels = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+    let levels = sexp.get_levels();
     if levels.type_of() != SEXPTYPE::STRSXP {
         return Err(SexpError::InvalidValue("levels is not STRSXP".into()));
     }
@@ -321,7 +327,7 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
     }
 
     for (i, exp) in expected.iter().enumerate() {
-        let charsxp = unsafe { STRING_ELT(levels, i as isize) };
+        let charsxp = levels.string_elt(i as isize);
         let actual = unsafe { charsxp_to_str(charsxp) };
         if actual != *exp {
             return Err(SexpError::InvalidValue(format!(
@@ -352,7 +358,7 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
         )));
     }
 
-    let idx = unsafe { INTEGER_ELT(sexp, 0) };
+    let idx = sexp.integer_elt(0);
     if idx == NA_INTEGER {
         return Err(SexpError::InvalidValue("unexpected NA".into()));
     }
@@ -369,7 +375,7 @@ pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, Sex
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let idx = unsafe { INTEGER_ELT(sexp, i as isize) };
+        let idx = sexp.integer_elt(i as isize);
         if idx == NA_INTEGER {
             return Err(SexpError::InvalidValue(format!("NA at index {}", i)));
         }
@@ -393,7 +399,7 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
     let mut result = Vec::with_capacity(len);
 
     for i in 0..len {
-        let idx = unsafe { INTEGER_ELT(sexp, i as isize) };
+        let idx = sexp.integer_elt(i as isize);
         if idx == NA_INTEGER {
             result.push(None);
         } else {

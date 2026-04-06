@@ -1,6 +1,6 @@
 //! Test fixtures for protect_pool (generational GC pool).
 
-use miniextendr_api::ffi::Rf_ScalarInteger;
+use miniextendr_api::ffi::SEXP;
 use miniextendr_api::prelude::*;
 use miniextendr_api::protect_pool::ProtectPool;
 
@@ -9,7 +9,7 @@ use miniextendr_api::protect_pool::ProtectPool;
 pub fn protect_pool_roundtrip() -> bool {
     unsafe {
         let mut pool = ProtectPool::new(4);
-        let sexp = Rf_ScalarInteger(42);
+        let sexp = SEXP::scalar_integer(42);
         let key = pool.insert(sexp);
 
         // Should retrieve the value
@@ -31,9 +31,9 @@ pub fn protect_pool_roundtrip() -> bool {
 pub fn protect_pool_multi() -> i32 {
     unsafe {
         let mut pool = ProtectPool::new(8);
-        let s1 = Rf_ScalarInteger(1);
-        let s2 = Rf_ScalarInteger(2);
-        let s3 = Rf_ScalarInteger(3);
+        let s1 = SEXP::scalar_integer(1);
+        let s2 = SEXP::scalar_integer(2);
+        let s3 = SEXP::scalar_integer(3);
 
         let k1 = pool.insert(s1);
         let k2 = pool.insert(s2);

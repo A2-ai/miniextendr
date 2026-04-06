@@ -4,8 +4,9 @@
 //! protection overhead. Compares checked vs unchecked variants.
 
 use divan::Bencher;
-use miniextendr_api::ffi::{self, R_PreserveObject, R_ReleaseObject, Rf_ScalarInteger};
+use miniextendr_api::ffi::{R_PreserveObject, R_ReleaseObject};
 use miniextendr_api::preserve;
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -16,7 +17,7 @@ fn main() {
 
 #[divan::bench]
 fn preserve_insert_release(bencher: Bencher) {
-    let sexp = unsafe { Rf_ScalarInteger(1) };
+    let sexp = unsafe { raw_ffi::Rf_ScalarInteger(1) };
     unsafe { R_PreserveObject(sexp) };
 
     bencher.bench_local(|| unsafe {
@@ -29,7 +30,7 @@ fn preserve_insert_release(bencher: Bencher) {
 
 #[divan::bench]
 fn preserve_insert_release_unchecked(bencher: Bencher) {
-    let sexp = unsafe { Rf_ScalarInteger(1) };
+    let sexp = unsafe { raw_ffi::Rf_ScalarInteger(1) };
     unsafe { R_PreserveObject(sexp) };
 
     bencher.bench_local(|| unsafe {
@@ -42,12 +43,12 @@ fn preserve_insert_release_unchecked(bencher: Bencher) {
 
 #[divan::bench]
 fn protect_unprotect(bencher: Bencher) {
-    let sexp = unsafe { Rf_ScalarInteger(1) };
+    let sexp = unsafe { raw_ffi::Rf_ScalarInteger(1) };
     unsafe { R_PreserveObject(sexp) };
 
     bencher.bench_local(|| unsafe {
-        ffi::Rf_protect(sexp);
-        ffi::Rf_unprotect(1);
+        raw_ffi::Rf_protect(sexp);
+        raw_ffi::Rf_unprotect(1);
     });
 
     unsafe { R_ReleaseObject(sexp) };

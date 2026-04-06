@@ -1,6 +1,7 @@
 use std::ffi::CStr;
 
 use miniextendr_api::ffi::{self, SEXP};
+use miniextendr_bench::raw_ffi;
 
 fn main() {
     miniextendr_bench::init();
@@ -16,7 +17,7 @@ fn fixtures() -> miniextendr_bench::Fixtures {
 
 #[inline(always)]
 unsafe fn charsxp_to_string_r_char_utf8_only(charsxp: SEXP) -> String {
-    let ptr = unsafe { ffi::R_CHAR(charsxp) };
+    let ptr = unsafe { raw_ffi::R_CHAR(charsxp) };
     if ptr.is_null() {
         return String::new();
     }
@@ -49,7 +50,7 @@ unsafe fn sexp_to_string_translate_utf8(sexp: SEXP) -> String {
 #[divan::bench]
 fn charsxp_r_char_ptr_utf8() {
     unsafe {
-        let ptr = ffi::R_CHAR(fixtures().utf8_charsxp());
+        let ptr = raw_ffi::R_CHAR(fixtures().utf8_charsxp());
         divan::black_box(ptr);
     }
 }

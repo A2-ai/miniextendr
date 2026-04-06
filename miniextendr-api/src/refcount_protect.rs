@@ -51,8 +51,8 @@
 //! but suitable for local, non-hostile environments.
 
 use crate::ffi::{
-    R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
-    Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
+    R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP,
+    SEXPTYPE, SexpExt,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -393,24 +393,22 @@ impl<M: MapStorage> ArenaState<M> {
     /// Must be called from the R main thread. The SEXP must be valid.
     #[inline]
     pub unsafe fn protect(&mut self, x: SEXP) -> SEXP {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return x;
-            }
-
-            let key = x.0 as usize;
-
-            if let Some(entry) = self.map_mut().get_mut(&key) {
-                entry.count += 1;
-            } else {
-                let index = self.allocate_slot();
-                SET_VECTOR_ELT(self.backing, index as R_xlen_t, x);
-                self.map_mut().insert(key, Entry { count: 1, index });
-                self.len += 1;
-            }
-
-            x
+        if x.is_nil() {
+            return x;
         }
+
+        let key = x.0 as usize;
+
+        if let Some(entry) = self.map_mut().get_mut(&key) {
+            entry.count += 1;
+        } else {
+            let index = self.allocate_slot();
+            self.backing.set_vector_elt(index as R_xlen_t, x);
+            self.map_mut().insert(key, Entry { count: 1, index });
+            self.len += 1;
+        }
+
+        x
     }
 
     /// Unprotect a SEXP, allowing garbage collection when refcount reaches zero.
@@ -421,27 +419,25 @@ impl<M: MapStorage> ArenaState<M> {
     /// previously protected by this arena.
     #[inline]
     pub unsafe fn unprotect(&mut self, x: SEXP) {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return;
+        if x.is_nil() {
+            return;
+        }
+
+        let key = x.0 as usize;
+
+        // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
+        match self.map_mut().decrement_and_maybe_remove(&key) {
+            Some((true, index)) => {
+                // Entry was removed (count reached 0)
+                self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());
+                self.free_list.push(index);
+                self.len -= 1;
             }
-
-            let key = x.0 as usize;
-
-            // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
-            match self.map_mut().decrement_and_maybe_remove(&key) {
-                Some((true, index)) => {
-                    // Entry was removed (count reached 0)
-                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
-                    self.free_list.push(index);
-                    self.len -= 1;
-                }
-                Some((false, _)) => {
-                    // Entry still exists (count > 0)
-                }
-                None => {
-                    panic!("unprotect called on SEXP not protected by this arena");
-                }
+            Some((false, _)) => {
+                // Entry still exists (count > 0)
+            }
+            None => {
+                panic!("unprotect called on SEXP not protected by this arena");
             }
         }
     }
@@ -453,35 +449,33 @@ impl<M: MapStorage> ArenaState<M> {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn try_unprotect(&mut self, x: SEXP) -> bool {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return false;
-            }
+        if x.is_nil() {
+            return false;
+        }
 
-            let key = x.0 as usize;
+        let key = x.0 as usize;
 
-            // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
-            match self.map_mut().decrement_and_maybe_remove(&key) {
-                Some((true, index)) => {
-                    // Entry was removed (count reached 0)
-                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
-                    self.free_list.push(index);
-                    self.len -= 1;
-                    true
-                }
-                Some((false, _)) => {
-                    // Entry still exists (count > 0)
-                    true
-                }
-                None => false,
+        // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
+        match self.map_mut().decrement_and_maybe_remove(&key) {
+            Some((true, index)) => {
+                // Entry was removed (count reached 0)
+                self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());
+                self.free_list.push(index);
+                self.len -= 1;
+                true
             }
+            Some((false, _)) => {
+                // Entry still exists (count > 0)
+                true
+            }
+            None => false,
         }
     }
 
     #[inline]
     /// Returns true if this arena currently protects `x`.
     pub fn is_protected(&self, x: SEXP) -> bool {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+        if x.is_nil() {
             return false;
         }
         let key = x.0 as usize;
@@ -491,9 +485,9 @@ impl<M: MapStorage> ArenaState<M> {
     #[inline]
     /// Returns the current reference count for `x` in this arena.
     ///
-    /// Returns 0 if `x` is not protected or is `R_NilValue`.
+    /// Returns 0 if `x` is not protected or is `SEXP::nil()`.
     pub fn ref_count(&self, x: SEXP) -> usize {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+        if x.is_nil() {
             return 0;
         }
         let key = x.0 as usize;
@@ -532,8 +526,8 @@ impl<M: MapStorage> ArenaState<M> {
 
             for i in 0..old_capacity {
                 let r_i = Self::capacity_as_r_xlen(i);
-                let elt = VECTOR_ELT(old_backing, r_i);
-                SET_VECTOR_ELT(new_backing, r_i, elt);
+                let elt = old_backing.vector_elt(r_i);
+                new_backing.set_vector_elt(r_i, elt);
             }
 
             R_ReleaseObject(old_backing);
@@ -550,11 +544,10 @@ impl<M: MapStorage> ArenaState<M> {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn clear(&mut self) {
-        unsafe {
-            self.map().for_each_entry(|entry| {
-                SET_VECTOR_ELT(self.backing, entry.index as R_xlen_t, R_NilValue);
-            });
-        }
+        self.map().for_each_entry(|entry| {
+            self.backing
+                .set_vector_elt(entry.index as R_xlen_t, SEXP::nil());
+        });
         self.map_mut().clear();
         self.free_list.clear();
         self.len = 0;

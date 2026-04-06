@@ -5,8 +5,8 @@ mod r_test_utils;
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use miniextendr_api::coerce::Coerced;
 use miniextendr_api::ffi::{
-    INTEGER, LOGICAL, R_NaString, R_xlen_t, RAW, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal,
-    Rf_allocVector, Rf_mkChar, Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
+    INTEGER, LOGICAL, R_xlen_t, RAW, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
+    SexpExt,
 };
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
@@ -42,8 +42,7 @@ unsafe fn make_int_vec(values: &[i32], guard: &mut ProtectCount) -> SEXP {
 unsafe fn make_real_vec(values: &[f64], guard: &mut ProtectCount) -> SEXP {
     let len = values.len() as R_xlen_t;
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::REALSXP, len)) };
-    let slice =
-        unsafe { std::slice::from_raw_parts_mut(miniextendr_api::ffi::REAL(sexp), values.len()) };
+    let slice: &mut [f64] = unsafe { sexp.as_mut_slice() };
     slice.copy_from_slice(values);
     sexp
 }
@@ -69,13 +68,10 @@ unsafe fn make_str_vec(values: &[Option<&str>], guard: &mut ProtectCount) -> SEX
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::STRSXP, len)) };
     for (i, value) in values.iter().enumerate() {
         let charsxp = match value {
-            Some(s) => {
-                let c_str = CString::new(*s).expect("CString::new failed");
-                unsafe { Rf_mkChar(c_str.as_ptr()) }
-            }
-            None => unsafe { R_NaString },
+            Some(s) => SEXP::charsxp(s),
+            None => SEXP::na_string(),
         };
-        unsafe { SET_STRING_ELT(sexp, i as R_xlen_t, charsxp) };
+        sexp.set_string_elt(i as R_xlen_t, charsxp);
     }
     sexp
 }
@@ -96,9 +92,9 @@ fn from_r_suite() {
 fn test_scalar_conversions() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let int_sexp = guard.protect(Rf_ScalarInteger(42));
-        let real_sexp = guard.protect(Rf_ScalarReal(3.5));
-        let log_sexp = guard.protect(Rf_ScalarLogical(1));
+        let int_sexp = guard.protect(SEXP::scalar_integer(42));
+        let real_sexp = guard.protect(SEXP::scalar_real(3.5));
+        let log_sexp = guard.protect(SEXP::scalar_logical(true));
 
         let int_val: i32 = TryFromSexp::try_from_sexp(int_sexp).unwrap();
         let real_val: f64 = TryFromSexp::try_from_sexp(real_sexp).unwrap();
@@ -113,9 +109,9 @@ fn test_scalar_conversions() {
 fn test_option_scalars() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let na_int = guard.protect(Rf_ScalarInteger(NA_INTEGER));
-        let na_real = guard.protect(Rf_ScalarReal(NA_REAL));
-        let na_log = guard.protect(Rf_ScalarLogical(NA_LOGICAL));
+        let na_int = guard.protect(SEXP::scalar_integer(NA_INTEGER));
+        let na_real = guard.protect(SEXP::scalar_real(NA_REAL));
+        let na_log = guard.protect(SEXP::scalar_logical_raw(NA_LOGICAL));
 
         let opt_i32: Option<i32> = TryFromSexp::try_from_sexp(na_int).unwrap();
         let opt_f64: Option<f64> = TryFromSexp::try_from_sexp(na_real).unwrap();
@@ -186,9 +182,7 @@ fn test_string_conversions() {
         );
 
         let str_scalar = guard.protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-        let c_str = CString::new("hello").unwrap();
-        let charsxp = Rf_mkChar(c_str.as_ptr());
-        SET_STRING_ELT(str_scalar, 0, charsxp);
+        str_scalar.set_string_elt(0, SEXP::charsxp("hello"));
 
         let as_str: &'static str = TryFromSexp::try_from_sexp(str_scalar).unwrap();
         let as_string: String = TryFromSexp::try_from_sexp(str_scalar).unwrap();
@@ -196,7 +190,7 @@ fn test_string_conversions() {
         assert_eq!(as_string, "hello".to_string());
 
         let na_scalar = guard.protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-        SET_STRING_ELT(na_scalar, 0, R_NaString);
+        na_scalar.set_string_elt(0, SEXP::na_string());
         let na_str: &'static str = TryFromSexp::try_from_sexp(na_scalar).unwrap();
         let na_string: String = TryFromSexp::try_from_sexp(na_scalar).unwrap();
         let opt_string: Option<String> = TryFromSexp::try_from_sexp(na_scalar).unwrap();
@@ -215,7 +209,7 @@ fn test_string_conversions() {
 fn test_coerced_conversions() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let int_scalar = guard.protect(Rf_ScalarInteger(7));
+        let int_scalar = guard.protect(SEXP::scalar_integer(7));
         let coerced: Coerced<i64, i32> = TryFromSexp::try_from_sexp(int_scalar).unwrap();
         assert_eq!(coerced.into_inner(), 7i64);
     }
@@ -224,8 +218,8 @@ fn test_coerced_conversions() {
 fn test_error_cases() {
     let mut guard = ProtectCount::default();
     unsafe {
-        let int_scalar = guard.protect(Rf_ScalarInteger(1));
-        let real_scalar = guard.protect(Rf_ScalarReal(1.0));
+        let int_scalar = guard.protect(SEXP::scalar_integer(1));
+        let real_scalar = guard.protect(SEXP::scalar_real(1.0));
         let int_vec = make_int_vec(&[1, 2], &mut guard);
 
         let err = <i32 as TryFromSexp>::try_from_sexp(real_scalar).unwrap_err();
@@ -234,7 +228,7 @@ fn test_error_cases() {
         let err = <i32 as TryFromSexp>::try_from_sexp(int_vec).unwrap_err();
         assert!(matches!(err, miniextendr_api::from_r::SexpError::Length(_)));
 
-        let na_log = guard.protect(Rf_ScalarLogical(NA_LOGICAL));
+        let na_log = guard.protect(SEXP::scalar_logical_raw(NA_LOGICAL));
         let err = <bool as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
         assert!(matches!(err, miniextendr_api::from_r::SexpError::Na(_)));
 
@@ -242,7 +236,7 @@ fn test_error_cases() {
             TryFromSexp::try_from_sexp(int_scalar);
         assert!(coerced_err.is_ok());
 
-        let big_int = guard.protect(Rf_ScalarInteger(1000));
+        let big_int = guard.protect(SEXP::scalar_integer(1000));
         let coerced_err: Result<Coerced<u8, i32>, SexpError> = TryFromSexp::try_from_sexp(big_int);
         assert!(matches!(coerced_err, Err(SexpError::InvalidValue(_))));
     }
@@ -253,11 +247,11 @@ fn test_error_cases() {
 /// Helper to create a VECSXP (R list) from SEXPs
 #[cfg(any(feature = "serde", feature = "aho-corasick"))]
 unsafe fn make_list(elements: &[SEXP], guard: &mut ProtectCount) -> SEXP {
-    use miniextendr_api::ffi::SET_VECTOR_ELT;
+    use miniextendr_api::ffi::SexpExt;
     let len = elements.len() as R_xlen_t;
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::VECSXP, len)) };
     for (i, &elem) in elements.iter().enumerate() {
-        unsafe { SET_VECTOR_ELT(sexp, i as R_xlen_t, elem) };
+        sexp.set_vector_elt(i as R_xlen_t, elem);
     }
     sexp
 }
@@ -271,7 +265,7 @@ fn aho_corasick_option_from_nil() {
     use miniextendr_api::aho_corasick_impl::AhoCorasick;
 
     r_test_utils::with_r_thread(|| {
-        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let nil = miniextendr_api::ffi::SEXP::nil();
         let opt: Option<AhoCorasick> = TryFromSexp::try_from_sexp(nil).unwrap();
         assert!(opt.is_none());
     });
@@ -323,7 +317,7 @@ fn aho_corasick_vec_option_from_list() {
         let mut guard = ProtectCount::default();
         unsafe {
             let patterns1 = make_str_vec(&[Some("hello")], &mut guard);
-            let nil = miniextendr_api::ffi::R_NilValue;
+            let nil = miniextendr_api::ffi::SEXP::nil();
             let patterns2 = make_str_vec(&[Some("world")], &mut guard);
             let list = make_list(&[patterns1, nil, patterns2], &mut guard);
 
@@ -345,7 +339,7 @@ fn json_value_option_from_nil() {
     use miniextendr_api::serde_impl::JsonValue;
 
     r_test_utils::with_r_thread(|| {
-        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let nil = miniextendr_api::ffi::SEXP::nil();
         let opt: Option<JsonValue> = TryFromSexp::try_from_sexp(nil).unwrap();
         assert!(opt.is_none());
     });
@@ -360,7 +354,7 @@ fn json_value_option_from_sexp() {
         let mut guard = ProtectCount::default();
         unsafe {
             // Test with an integer scalar - converts to JSON number
-            let int_sexp = guard.protect(Rf_ScalarInteger(42));
+            let int_sexp = guard.protect(SEXP::scalar_integer(42));
             let opt: Option<JsonValue> = TryFromSexp::try_from_sexp(int_sexp).unwrap();
             assert!(opt.is_some());
             let val = opt.unwrap();
@@ -379,7 +373,7 @@ fn json_value_vec_from_list() {
         let mut guard = ProtectCount::default();
         unsafe {
             // Create R objects that convert to different JSON types
-            let int_sexp = guard.protect(Rf_ScalarInteger(42)); // -> JSON number
+            let int_sexp = guard.protect(SEXP::scalar_integer(42)); // -> JSON number
             let str_vec = make_str_vec(&[Some("hello"), Some("world")], &mut guard); // -> JSON array
             let list = make_list(&[int_sexp, str_vec], &mut guard);
 
@@ -400,9 +394,9 @@ fn json_value_vec_option_from_list() {
         let mut guard = ProtectCount::default();
         unsafe {
             // Create R objects: logical -> JSON bool, NULL -> None, integer -> JSON number
-            let bool_sexp = guard.protect(Rf_ScalarLogical(1)); // -> JSON true
-            let nil = miniextendr_api::ffi::R_NilValue;
-            let int_sexp = guard.protect(Rf_ScalarInteger(42)); // -> JSON 42
+            let bool_sexp = guard.protect(SEXP::scalar_logical(true)); // -> JSON true
+            let nil = miniextendr_api::ffi::SEXP::nil();
+            let int_sexp = guard.protect(SEXP::scalar_integer(42)); // -> JSON 42
             let list = make_list(&[bool_sexp, nil, int_sexp], &mut guard);
 
             let vec: Vec<Option<JsonValue>> = TryFromSexp::try_from_sexp(list).unwrap();
@@ -423,7 +417,7 @@ fn toml_value_option_from_nil() {
     use miniextendr_api::toml_impl::TomlValue;
 
     r_test_utils::with_r_thread(|| {
-        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let nil = miniextendr_api::ffi::SEXP::nil();
         let opt: Option<TomlValue> = TryFromSexp::try_from_sexp(nil).unwrap();
         assert!(opt.is_none());
     });
@@ -457,7 +451,7 @@ fn bitvec_option_from_nil() {
     use miniextendr_api::bitvec_impl::RBitVec;
 
     r_test_utils::with_r_thread(|| {
-        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let nil = miniextendr_api::ffi::SEXP::nil();
         let opt: Option<RBitVec> = TryFromSexp::try_from_sexp(nil).unwrap();
         assert!(opt.is_none());
     });
@@ -491,7 +485,7 @@ fn bitvec_msb0_option_from_nil() {
     use miniextendr_api::bitvec_impl::{BitVec, Msb0};
 
     r_test_utils::with_r_thread(|| {
-        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let nil = miniextendr_api::ffi::SEXP::nil();
         let opt: Option<BitVec<u8, Msb0>> = TryFromSexp::try_from_sexp(nil).unwrap();
         assert!(opt.is_none());
     });
@@ -534,7 +528,7 @@ fn aho_corasick_unchecked_option() {
             assert!(opt.is_some());
 
             // Test with nil
-            let nil = miniextendr_api::ffi::R_NilValue;
+            let nil = miniextendr_api::ffi::SEXP::nil();
             let opt_nil: Option<AhoCorasick> = TryFromSexp::try_from_sexp_unchecked(nil).unwrap();
             assert!(opt_nil.is_none());
         }
@@ -567,8 +561,8 @@ fn json_value_unchecked_vec_option() {
     r_test_utils::with_r_thread(|| {
         let mut guard = ProtectCount::default();
         unsafe {
-            let int_sexp = guard.protect(Rf_ScalarInteger(100));
-            let nil = miniextendr_api::ffi::R_NilValue;
+            let int_sexp = guard.protect(SEXP::scalar_integer(100));
+            let nil = miniextendr_api::ffi::SEXP::nil();
             let list = make_list(&[int_sexp, nil], &mut guard);
 
             let vec: Vec<Option<JsonValue>> = TryFromSexp::try_from_sexp_unchecked(list).unwrap();
@@ -592,7 +586,7 @@ fn bitvec_unchecked_option() {
             assert!(opt.is_some());
             assert_eq!(opt.unwrap().len(), 2);
 
-            let nil = miniextendr_api::ffi::R_NilValue;
+            let nil = miniextendr_api::ffi::SEXP::nil();
             let opt_nil: Option<RBitVec> = TryFromSexp::try_from_sexp_unchecked(nil).unwrap();
             assert!(opt_nil.is_none());
         }
@@ -666,7 +660,7 @@ fn option_slice_arbitrary_lifetime() {
             assert_eq!(slice.len(), 2);
 
             // Test None case
-            let nil = miniextendr_api::ffi::R_NilValue;
+            let nil = miniextendr_api::ffi::SEXP::nil();
             let opt_nil: Option<&[i32]> = TryFromSexp::try_from_sexp(nil).unwrap();
             assert!(opt_nil.is_none());
         }
@@ -687,7 +681,7 @@ fn option_slice_mut_arbitrary_lifetime() {
             assert_eq!(slice[1], 10);
 
             // Test None case
-            let nil = miniextendr_api::ffi::R_NilValue;
+            let nil = miniextendr_api::ffi::SEXP::nil();
             let opt_nil: Option<&mut [i32]> = TryFromSexp::try_from_sexp(nil).unwrap();
             assert!(opt_nil.is_none());
         }

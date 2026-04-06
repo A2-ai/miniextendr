@@ -2,7 +2,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, SEXPTYPE};
+use miniextendr_api::ffi::{Rf_allocVector, SEXP, SEXPTYPE};
 use miniextendr_api::refcount_protect::RefCountedArena;
 
 // region: Basic protection tests
@@ -12,7 +12,7 @@ fn protect_single_value() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = Rf_ScalarInteger(42);
+        let x = SEXP::scalar_integer(42);
         let protected = arena.protect(x);
 
         assert!(std::ptr::eq(x.0, protected.0));
@@ -27,9 +27,9 @@ fn protect_multiple_values() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let a = arena.protect(Rf_ScalarInteger(1));
-        let b = arena.protect(Rf_ScalarReal(2.0));
-        let c = arena.protect(Rf_ScalarInteger(3));
+        let a = arena.protect(SEXP::scalar_integer(1));
+        let b = arena.protect(SEXP::scalar_real(2.0));
+        let c = arena.protect(SEXP::scalar_integer(3));
 
         assert!(arena.is_protected(a));
         assert!(arena.is_protected(b));
@@ -43,7 +43,7 @@ fn unprotect_removes_value() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = arena.protect(Rf_ScalarInteger(42));
+        let x = arena.protect(SEXP::scalar_integer(42));
         assert!(arena.is_protected(x));
         assert_eq!(arena.len(), 1);
 
@@ -61,7 +61,7 @@ fn protect_same_value_increments_count() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = Rf_ScalarInteger(42);
+        let x = SEXP::scalar_integer(42);
         arena.protect(x);
         assert_eq!(arena.ref_count(x), 1);
 
@@ -81,7 +81,7 @@ fn unprotect_decrements_count() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = Rf_ScalarInteger(42);
+        let x = SEXP::scalar_integer(42);
         arena.protect(x);
         arena.protect(x);
         arena.protect(x);
@@ -109,9 +109,9 @@ fn release_in_any_order() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let a = arena.protect(Rf_ScalarInteger(1));
-        let b = arena.protect(Rf_ScalarInteger(2));
-        let c = arena.protect(Rf_ScalarInteger(3));
+        let a = arena.protect(SEXP::scalar_integer(1));
+        let b = arena.protect(SEXP::scalar_integer(2));
+        let c = arena.protect(SEXP::scalar_integer(3));
 
         // Release in different order than protection
         arena.unprotect(b); // middle first
@@ -138,7 +138,7 @@ fn try_unprotect_returns_true_for_protected() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = arena.protect(Rf_ScalarInteger(42));
+        let x = arena.protect(SEXP::scalar_integer(42));
         assert!(arena.try_unprotect(x));
         assert!(!arena.is_protected(x));
     });
@@ -149,7 +149,7 @@ fn try_unprotect_returns_false_for_unprotected() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = Rf_ScalarInteger(42);
+        let x = SEXP::scalar_integer(42);
         assert!(!arena.try_unprotect(x));
     });
 }
@@ -162,7 +162,7 @@ fn guard_protects_and_unprotects() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = Rf_ScalarInteger(42);
+        let x = SEXP::scalar_integer(42);
 
         {
             let _guard = arena.guard(x);
@@ -180,7 +180,7 @@ fn multiple_guards_for_same_value() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let x = Rf_ScalarInteger(42);
+        let x = SEXP::scalar_integer(42);
 
         let g1 = arena.guard(x);
         assert_eq!(arena.ref_count(x), 1);
@@ -210,7 +210,7 @@ fn arena_grows_when_full() {
 
         // Fill beyond capacity
         for i in 0..10 {
-            arena.protect(Rf_ScalarInteger(i));
+            arena.protect(SEXP::scalar_integer(i));
         }
 
         assert_eq!(arena.len(), 10);
@@ -223,10 +223,10 @@ fn free_slots_are_reused() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::with_capacity(4);
 
-        let a = arena.protect(Rf_ScalarInteger(1));
-        let b = arena.protect(Rf_ScalarInteger(2));
-        let c = arena.protect(Rf_ScalarInteger(3));
-        let d = arena.protect(Rf_ScalarInteger(4));
+        let a = arena.protect(SEXP::scalar_integer(1));
+        let b = arena.protect(SEXP::scalar_integer(2));
+        let c = arena.protect(SEXP::scalar_integer(3));
+        let d = arena.protect(SEXP::scalar_integer(4));
         assert_eq!(arena.len(), 4);
         assert_eq!(arena.capacity(), 4);
 
@@ -236,8 +236,8 @@ fn free_slots_are_reused() {
         assert_eq!(arena.len(), 2);
 
         // Add new values - should reuse free slots, not grow
-        arena.protect(Rf_ScalarInteger(5));
-        arena.protect(Rf_ScalarInteger(6));
+        arena.protect(SEXP::scalar_integer(5));
+        arena.protect(SEXP::scalar_integer(6));
         assert_eq!(arena.len(), 4);
         assert_eq!(arena.capacity(), 4); // didn't grow
 
@@ -255,9 +255,9 @@ fn clear_removes_all_protections() {
     r_test_utils::with_r_thread(|| unsafe {
         let arena = RefCountedArena::new();
 
-        let a = arena.protect(Rf_ScalarInteger(1));
-        let b = arena.protect(Rf_ScalarInteger(2));
-        let c = arena.protect(Rf_ScalarInteger(3));
+        let a = arena.protect(SEXP::scalar_integer(1));
+        let b = arena.protect(SEXP::scalar_integer(2));
+        let c = arena.protect(SEXP::scalar_integer(3));
 
         assert_eq!(arena.len(), 3);
 
@@ -280,7 +280,7 @@ fn many_protections() {
 
         // Protect 1000 values
         let values: Vec<_> = (0..1000)
-            .map(|i| arena.protect(Rf_ScalarInteger(i)))
+            .map(|i| arena.protect(SEXP::scalar_integer(i)))
             .collect();
 
         assert_eq!(arena.len(), 1000);

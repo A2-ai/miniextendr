@@ -12,10 +12,8 @@
 //! The vctrs documentation example uses "double wins" (`percent + double = double`).
 //! Both are valid design choices - we chose to preserve the specialized type.
 
-use miniextendr_api::ffi::{
-    R_ClassSymbol, R_NilValue, Rf_allocVector, Rf_duplicate, Rf_getAttrib, Rf_setAttrib, SEXP,
-    SEXPTYPE, SexpExt,
-};
+use crate::raw_ffi::Rf_duplicate;
+use miniextendr_api::ffi::{Rf_allocVector, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::gc_protect::OwnedProtect;
 use miniextendr_api::miniextendr;
 use miniextendr_api::vctrs::new_vctr;
@@ -83,11 +81,11 @@ pub fn format_percent(x: SEXP, _dots: ...) -> Result<Vec<String>, String> {
 #[miniextendr(s3(generic = "vec_proxy", class = "percent"))]
 pub fn vec_proxy_percent(x: SEXP, _dots: ...) -> SEXP {
     // Return x without class attribute (strip vctrs class for operations)
-    let class = unsafe { Rf_getAttrib(x, R_ClassSymbol) };
-    if class != unsafe { R_NilValue } {
+    let class = x.get_class();
+    if !class.is_nil() {
         // Duplicate to avoid modifying original, with GC protection
         let out = unsafe { OwnedProtect::new(Rf_duplicate(x)) };
-        unsafe { Rf_setAttrib(out.get(), R_ClassSymbol, R_NilValue) };
+        out.get().set_class(SEXP::nil());
         // OwnedProtect drops here, calling UNPROTECT(1). This is safe because
         // R captures the return value before any GC can run.
         out.get()
@@ -149,7 +147,7 @@ pub fn vec_ptype2_double_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP,
 pub fn vec_cast_double_percent(x: SEXP, _to: SEXP, _dots: ...) -> SEXP {
     // Strip the class to get raw numeric, with GC protection
     let out = unsafe { OwnedProtect::new(Rf_duplicate(x)) };
-    unsafe { Rf_setAttrib(out.get(), R_ClassSymbol, R_NilValue) };
+    out.get().set_class(SEXP::nil());
     // OwnedProtect drops here, unprotecting. Safe because R captures return value.
     out.get()
 }

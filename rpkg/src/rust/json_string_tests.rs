@@ -74,10 +74,7 @@ pub fn test_fromjson_bad(json: FromJson<Config>) -> i32 {
 /// @export
 #[miniextendr]
 pub fn test_json_vec_points() -> AsJsonVec<Point> {
-    AsJsonVec(vec![
-        Point { x: 1.0, y: 2.0 },
-        Point { x: 3.0, y: 4.0 },
-    ])
+    AsJsonVec(vec![Point { x: 1.0, y: 2.0 }, Point { x: 3.0, y: 4.0 }])
 }
 
 // endregion

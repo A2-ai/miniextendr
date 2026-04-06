@@ -1,6 +1,6 @@
 //! Tests for R interrupt checking.
 
-use miniextendr_api::ffi::{R_NilValue, SEXP};
+use miniextendr_api::ffi::SEXP;
 use miniextendr_api::miniextendr;
 use miniextendr_api::unwind_protect::with_r_unwind_protect;
 
@@ -15,7 +15,7 @@ pub extern "C-unwind" fn C_check_interupt_after() -> SEXP {
 
     unsafe {
         R_CheckUserInterrupt();
-        R_NilValue
+        SEXP::nil()
     }
 }
 
@@ -32,10 +32,10 @@ pub extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
         with_r_unwind_protect(
             || {
                 R_CheckUserInterrupt();
-                R_NilValue
+                SEXP::nil()
             },
             None,
         );
-        R_NilValue
+        SEXP::nil()
     }
 }

@@ -116,9 +116,9 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
             let charsxp = if s.is_empty() {
                 ffi::R_BlankString
             } else {
-                ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, ffi::CE_UTF8)
+                SEXP::charsxp(s)
             };
-            ffi::SET_STRING_ELT(vec, i as ffi::R_xlen_t, charsxp);
+            vec.set_string_elt(i as ffi::R_xlen_t, charsxp);
         }
         ffi::Rf_unprotect(1);
         vec
@@ -139,7 +139,7 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
             if len != 1 {
                 return Err(MatchArgError::InvalidLength(len));
             }
-            let charsxp = unsafe { ffi::STRING_ELT(sexp, 0) };
+            let charsxp = sexp.string_elt(0);
             if charsxp == unsafe { ffi::R_NaString } {
                 return Err(MatchArgError::IsNa);
             }
@@ -150,8 +150,8 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
         // Accept factors: extract the level label
         SEXPTYPE::INTSXP => {
             // Check if it's a factor (has "levels" attribute)
-            let levels = unsafe { ffi::Rf_getAttrib(sexp, ffi::R_LevelsSymbol) };
-            if levels == unsafe { ffi::R_NilValue } || levels.type_of() != SEXPTYPE::STRSXP {
+            let levels = sexp.get_levels();
+            if levels.is_nil() || levels.type_of() != SEXPTYPE::STRSXP {
                 return Err(MatchArgError::InvalidType(actual_type));
             }
             let len = sexp.len();
@@ -171,7 +171,7 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
                     choices: <T as MatchArg>::CHOICES,
                 });
             }
-            let charsxp = unsafe { ffi::STRING_ELT(levels, level_idx) };
+            let charsxp = levels.string_elt(level_idx);
             let c_str = unsafe { ffi::Rf_translateCharUTF8(charsxp) };
             let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
             rust_str.to_str().unwrap_or("").to_string()

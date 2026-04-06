@@ -7,7 +7,9 @@
 
 use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp, coerce_value, is_na_real, r_slice};
+use crate::from_r::{
+    SexpError, SexpNaError, SexpTypeError, TryFromSexp, coerce_value, is_na_real, r_slice,
+};
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {
@@ -256,7 +258,7 @@ impl TryFromSexp for Vec<Option<String>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+        use crate::ffi::Rf_translateCharUTF8;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -271,7 +273,7 @@ impl TryFromSexp for Vec<Option<String>> {
         let mut result = Vec::with_capacity(len);
 
         for i in 0..len {
-            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
 
             if charsxp == unsafe { crate::ffi::R_NaString } {
                 result.push(None);

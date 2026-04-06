@@ -70,7 +70,7 @@ pub unsafe fn rf_error(msg: &str) -> ! {
 /// R's `NULL` value (`R_NilValue`)
 #[inline]
 pub unsafe fn nil() -> SEXP {
-    unsafe { crate::ffi::R_NilValue }
+    crate::ffi::SEXP::nil()
 }
 
 /// Convert an R SEXP to a Rust type, aborting via `Rf_error` on failure.

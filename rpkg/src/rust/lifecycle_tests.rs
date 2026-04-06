@@ -6,7 +6,7 @@ use miniextendr_api::miniextendr;
 
 // region: Tests using #[deprecated] attribute
 
-/// A deprecated function using Rust's built-in deprecated attribute.
+/// A function marked with Rust's `#[deprecated]` attribute.
 /// This should generate lifecycle::deprecate_warn in the R wrapper.
 /// @noRd
 #[deprecated(since = "0.5.0", note = "Use new_api() instead")]
@@ -106,7 +106,7 @@ impl LifecycleDemo {
         self.value * 2
     }
 
-    /// A method deprecated via Rust's #[deprecated] attribute.
+    /// A method marked with Rust's `#[deprecated]` attribute.
     #[deprecated(since = "0.2.0", note = "Use get_value() instead")]
     pub fn legacy_value(&self) -> i32 {
         self.value

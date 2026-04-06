@@ -210,7 +210,7 @@ where
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(tv) => tv.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         })
     }
 
@@ -218,7 +218,7 @@ where
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(tv) => unsafe { tv.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         })
     }
 }
@@ -259,7 +259,7 @@ where
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(av) => av.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         })
     }
 
@@ -267,7 +267,7 @@ where
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(av) => unsafe { av.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
+            None => crate::ffi::SEXP::nil(),
         })
     }
 }

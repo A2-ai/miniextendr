@@ -5,10 +5,7 @@
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::ffi::{
-    R_NaString, R_NamesSymbol, R_NilValue, Rf_getAttrib, Rf_xlength, SEXP, SEXPTYPE, STRING_ELT,
-    TYPEOF, VECTOR_ELT,
-};
+use crate::ffi::{R_NaString, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
@@ -56,7 +53,7 @@ impl RDeserializer {
     }
 
     fn sexp_type(&self) -> SEXPTYPE {
-        unsafe { TYPEOF(self.sexp) as SEXPTYPE }
+        self.sexp.type_of()
     }
 
     fn len(&self) -> usize {
@@ -64,12 +61,12 @@ impl RDeserializer {
     }
 
     fn is_null(&self) -> bool {
-        self.sexp == unsafe { R_NilValue }
+        self.sexp == SEXP::nil()
     }
 
     fn has_names(&self) -> bool {
-        let names = unsafe { Rf_getAttrib(self.sexp, R_NamesSymbol) };
-        names != unsafe { R_NilValue }
+        let names = self.sexp.get_names();
+        names != SEXP::nil()
     }
 
     fn type_name(&self) -> String {
@@ -106,7 +103,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::LGLSXP if len == 1 => {
-                let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, 0) };
+                let val = self.sexp.logical_elt(0);
                 if val == NA_LOGICAL {
                     visitor.visit_none()
                 } else {
@@ -114,7 +111,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
             }
             SEXPTYPE::INTSXP if len == 1 => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = self.sexp.integer_elt(0);
                 if val == NA_INTEGER {
                     visitor.visit_none()
                 } else {
@@ -122,7 +119,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
             }
             SEXPTYPE::REALSXP if len == 1 => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = self.sexp.real_elt(0);
                 if val.to_bits() == NA_REAL.to_bits() {
                     visitor.visit_none()
                 } else {
@@ -130,7 +127,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
             }
             SEXPTYPE::STRSXP if len == 1 => {
-                let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+                let charsxp = self.sexp.string_elt(0);
                 if charsxp == unsafe { R_NaString } {
                     visitor.visit_none()
                 } else {
@@ -165,7 +162,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             });
         }
 
-        let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, 0) };
+        let val = self.sexp.logical_elt(0);
         if val == NA_LOGICAL {
             return Err(RSerdeError::UnexpectedNa);
         }
@@ -211,14 +208,14 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = self.sexp.integer_elt(0);
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 visitor.visit_i64(val as i64)
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = self.sexp.real_elt(0);
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -252,7 +249,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
     fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
         // First try raw vector
         if self.sexp_type() == SEXPTYPE::RAWSXP && self.len() == 1 {
-            let val = unsafe { crate::ffi::RAW_ELT(self.sexp, 0) };
+            let val = self.sexp.raw_elt(0);
             return visitor.visit_u8(val);
         }
         // Fall back to integer
@@ -289,7 +286,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = self.sexp.integer_elt(0);
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -302,7 +299,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 visitor.visit_u32(val as u32)
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = self.sexp.real_elt(0);
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -338,7 +335,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         match sexp_type {
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = self.sexp.integer_elt(0);
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -351,7 +348,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 visitor.visit_u64(val as u64)
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = self.sexp.real_elt(0);
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -447,25 +444,25 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         if self.len() == 1 {
             match sexp_type {
                 SEXPTYPE::LGLSXP => {
-                    let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, 0) };
+                    let val = self.sexp.logical_elt(0);
                     if val == NA_LOGICAL {
                         return visitor.visit_none();
                     }
                 }
                 SEXPTYPE::INTSXP => {
-                    let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                    let val = self.sexp.integer_elt(0);
                     if val == NA_INTEGER {
                         return visitor.visit_none();
                     }
                 }
                 SEXPTYPE::REALSXP => {
-                    let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                    let val = self.sexp.real_elt(0);
                     if val.to_bits() == NA_REAL.to_bits() {
                         return visitor.visit_none();
                     }
                 }
                 SEXPTYPE::STRSXP => {
-                    let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+                    let charsxp = self.sexp.string_elt(0);
                     if charsxp == unsafe { R_NaString } {
                         return visitor.visit_none();
                     }
@@ -580,7 +577,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         match sexp_type {
             // String -> unit variant
             SEXPTYPE::STRSXP if self.len() == 1 => {
-                let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+                let charsxp = self.sexp.string_elt(0);
                 if charsxp == unsafe { R_NaString } {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -591,10 +588,10 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             }
             // Named list with single element -> data variant
             SEXPTYPE::VECSXP if self.has_names() && self.len() == 1 => {
-                let names = unsafe { Rf_getAttrib(self.sexp, R_NamesSymbol) };
-                let name_charsxp = unsafe { STRING_ELT(names, 0) };
+                let names = self.sexp.get_names();
+                let name_charsxp = names.string_elt(0);
                 let variant = unsafe { charsxp_to_str(name_charsxp) };
-                let value = unsafe { VECTOR_ELT(self.sexp, 0) };
+                let value = self.sexp.vector_elt(0);
 
                 visitor.visit_enum(DataVariantAccess {
                     variant: variant.to_string(),
@@ -627,7 +624,7 @@ impl RDeserializer {
             });
         }
 
-        let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+        let val = self.sexp.integer_elt(0);
         if val == NA_INTEGER {
             return Err(RSerdeError::UnexpectedNa);
         }
@@ -645,14 +642,14 @@ impl RDeserializer {
 
         match sexp_type {
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, 0) };
+                let val = self.sexp.real_elt(0);
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 Ok(val)
             }
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, 0) };
+                let val = self.sexp.integer_elt(0);
                 if val == NA_INTEGER {
                     return Err(RSerdeError::UnexpectedNa);
                 }
@@ -674,7 +671,7 @@ impl RDeserializer {
             });
         }
 
-        let charsxp = unsafe { STRING_ELT(self.sexp, 0) };
+        let charsxp = self.sexp.string_elt(0);
         if charsxp == unsafe { R_NaString } {
             return Err(RSerdeError::UnexpectedNa);
         }
@@ -710,7 +707,7 @@ impl VectorSeqAccess {
     fn new(sexp: SEXP) -> Self {
         VectorSeqAccess {
             sexp,
-            sexp_type: unsafe { TYPEOF(sexp) as SEXPTYPE },
+            sexp_type: sexp.type_of(),
             index: 0,
             len: unsafe { Rf_xlength(sexp) as usize },
         }
@@ -753,7 +750,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
         match self.sexp_type {
             SEXPTYPE::LGLSXP => {
-                let val = unsafe { crate::ffi::LOGICAL_ELT(self.sexp, self.index as isize) };
+                let val = self.sexp.logical_elt(self.index as isize);
                 if val == NA_LOGICAL {
                     visitor.visit_none()
                 } else {
@@ -761,7 +758,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::INTSXP => {
-                let val = unsafe { crate::ffi::INTEGER_ELT(self.sexp, self.index as isize) };
+                let val = self.sexp.integer_elt(self.index as isize);
                 if val == NA_INTEGER {
                     visitor.visit_none()
                 } else {
@@ -769,7 +766,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::REALSXP => {
-                let val = unsafe { crate::ffi::REAL_ELT(self.sexp, self.index as isize) };
+                let val = self.sexp.real_elt(self.index as isize);
                 if val.to_bits() == NA_REAL.to_bits() {
                     visitor.visit_none()
                 } else {
@@ -777,7 +774,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::STRSXP => {
-                let charsxp = unsafe { STRING_ELT(self.sexp, self.index as isize) };
+                let charsxp = self.sexp.string_elt(self.index as isize);
                 if charsxp == unsafe { R_NaString } {
                     visitor.visit_none()
                 } else {
@@ -786,7 +783,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 }
             }
             SEXPTYPE::RAWSXP => {
-                let val = unsafe { crate::ffi::RAW_ELT(self.sexp, self.index as isize) };
+                let val = self.sexp.raw_elt(self.index as isize);
                 visitor.visit_u8(val)
             }
             _ => Err(RSerdeError::UnsupportedType {
@@ -830,7 +827,7 @@ impl<'de> SeqAccess<'de> for ListSeqAccess {
             return Ok(None);
         }
 
-        let elem = unsafe { VECTOR_ELT(self.sexp, self.index as isize) };
+        let elem = self.sexp.vector_elt(self.index as isize);
         self.index += 1;
         seed.deserialize(RDeserializer::from_sexp(elem)).map(Some)
     }
@@ -849,14 +846,14 @@ struct NamedListMapAccess {
 
 impl NamedListMapAccess {
     fn new(sexp: SEXP) -> Result<Self, RSerdeError> {
-        let names = unsafe { Rf_getAttrib(sexp, R_NamesSymbol) };
-        if names == unsafe { R_NilValue } {
+        let names = sexp.get_names();
+        if names == SEXP::nil() {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",
                 actual: "list (no names attribute)".into(),
             });
         }
-        if unsafe { TYPEOF(names) } as SEXPTYPE != SEXPTYPE::STRSXP {
+        if names.type_of() != SEXPTYPE::STRSXP {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",
                 actual: "list (names attribute is not character)".into(),
@@ -890,7 +887,7 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
             return Ok(None);
         }
 
-        let name_charsxp = unsafe { STRING_ELT(self.names, self.index as isize) };
+        let name_charsxp = self.names.string_elt(self.index as isize);
         let name = unsafe { charsxp_to_str(name_charsxp) };
 
         // Create a string deserializer for the key
@@ -901,7 +898,7 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
         &mut self,
         seed: V,
     ) -> Result<V::Value, Self::Error> {
-        let elem = unsafe { VECTOR_ELT(self.sexp, self.index as isize) };
+        let elem = self.sexp.vector_elt(self.index as isize);
         self.index += 1;
         seed.deserialize(RDeserializer::from_sexp(elem))
     }

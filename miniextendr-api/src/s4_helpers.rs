@@ -29,10 +29,7 @@
 /// }
 /// ```
 use crate::expression::{RCall, REnv};
-use crate::ffi::{
-    self, R_ClassSymbol, Rboolean, Rf_getAttrib, Rf_isS4, Rf_protect, Rf_unprotect, SEXP,
-    STRING_ELT, SexpExt,
-};
+use crate::ffi::{self, Rf_protect, Rf_unprotect, SEXP, SexpExt};
 use std::ffi::CStr;
 
 /// Get the `methods` package namespace for evaluating S4 functions.
@@ -56,7 +53,7 @@ unsafe fn methods_namespace() -> Result<SEXP, String> {
 /// - Must be called from the R main thread.
 #[inline]
 pub unsafe fn s4_is(obj: SEXP) -> bool {
-    unsafe { Rf_isS4(obj) == Rboolean::TRUE }
+    obj.is_s4()
 }
 
 /// Check if an S4 object has a named slot.
@@ -136,12 +133,12 @@ pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(),
 /// - Must be called from the R main thread.
 pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
     unsafe {
-        let class_attr = Rf_getAttrib(obj, R_ClassSymbol);
+        let class_attr = obj.get_class();
         if class_attr.is_null_or_nil() || ffi::Rf_xlength(class_attr) == 0 {
             return None;
         }
 
-        let first = STRING_ELT(class_attr, 0);
+        let first = class_attr.string_elt(0);
         if first.is_null_or_nil() {
             return None;
         }
@@ -166,7 +163,7 @@ unsafe fn scalar_string(s: &str) -> SEXP {
         let c_str = CString::new(s).expect("slot name must not contain null bytes");
         let charsxp = ffi::Rf_mkChar(c_str.as_ptr());
         Rf_protect(charsxp);
-        let strsxp = ffi::Rf_ScalarString(charsxp);
+        let strsxp = SEXP::scalar_string(charsxp);
         Rf_unprotect(1);
         strsxp
     }
