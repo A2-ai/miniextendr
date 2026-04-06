@@ -292,7 +292,7 @@ impl<T: Pod> RawSliceTagged<T> {
 /// Validate the `mx_raw_type` attribute matches the expected type `T`.
 fn validate_raw_type_tag<T>(sexp: SEXP) -> Result<(), SexpError> {
     let expected = std::any::type_name::<T>();
-    let attr_sym = unsafe { crate::cached_class::mx_raw_type_symbol() };
+    let attr_sym = crate::cached_class::mx_raw_type_symbol();
     let attr = sexp.get_attr(attr_sym);
 
     if attr.type_of() == SEXPTYPE::NILSXP {

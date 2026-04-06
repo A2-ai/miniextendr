@@ -196,12 +196,10 @@ cached_symbol!(
 ///
 /// `sexp` must be a valid REALSXP. Must be called on R's main thread.
 #[cfg(feature = "time")]
-pub(crate) unsafe fn set_posixct_utc(sexp: crate::ffi::SEXP) {
+pub(crate) fn set_posixct_utc(sexp: crate::ffi::SEXP) {
     use crate::ffi::SexpExt as _;
-    unsafe {
-        sexp.set_class(posixct_class_sexp());
-        sexp.set_attr(tzone_symbol(), utc_tzone_sexp());
-    }
+    sexp.set_class(posixct_class_sexp());
+    sexp.set_attr(tzone_symbol(), utc_tzone_sexp());
 }
 
 // endregion
