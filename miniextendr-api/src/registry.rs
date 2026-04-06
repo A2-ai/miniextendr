@@ -67,9 +67,13 @@ pub struct RWrapperEntry {
     pub priority: RWrapperPriority,
     /// R source code fragment.
     pub content: &'static str,
+    /// Source file path (from `file!()`). Used to derive a default `@rdname`
+    /// for standalone functions that don't have an explicit one, so that all
+    /// functions from the same source file share a single .Rd page.
+    pub source_file: &'static str,
 }
 
-// SAFETY: Both fields are immutable and valid for 'static lifetime.
+// SAFETY: All fields are immutable and valid for 'static lifetime.
 unsafe impl Sync for RWrapperEntry {}
 
 /// Trait dispatch entry mapping (concrete_tag, trait_tag) → vtable.
@@ -187,16 +191,28 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
 ///
 /// Within each priority group, S7 class definitions are topologically sorted
 /// so parents are defined before children (S7 `parent = X` requires X to exist).
-pub fn collect_r_wrappers() -> Vec<&'static str> {
+pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
     let mut entries: Vec<&RWrapperEntry> = MX_R_WRAPPERS.iter().collect();
     entries.sort_by_key(|e| e.priority);
 
     let mut seen = std::collections::HashSet::<&str>::new();
-    let mut result = Vec::with_capacity(entries.len());
+    let mut result: Vec<std::borrow::Cow<'static, str>> = Vec::with_capacity(entries.len());
     for entry in entries {
         let trimmed = entry.content.trim();
         if !trimmed.is_empty() && seen.insert(trimmed) {
-            result.push(trimmed);
+            // For standalone functions without explicit @rdname, inject one
+            // derived from the source file stem so same-file functions share
+            // a single .Rd page.
+            if entry.priority == RWrapperPriority::Function
+                && !has_rdname_tag(trimmed)
+                && !has_no_rd_tag(trimmed)
+            {
+                if let Some(rdname) = rdname_from_source_file(entry.source_file) {
+                    result.push(std::borrow::Cow::Owned(inject_rdname(trimmed, &rdname)));
+                    continue;
+                }
+            }
+            result.push(std::borrow::Cow::Borrowed(trimmed));
         }
     }
 
@@ -206,15 +222,79 @@ pub fn collect_r_wrappers() -> Vec<&'static str> {
     result
 }
 
+/// Check if an R wrapper fragment already has an `@rdname` tag.
+fn has_rdname_tag(content: &str) -> bool {
+    content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("#' @rdname ")
+    })
+}
+
+/// Check if an R wrapper fragment has `@noRd`.
+fn has_no_rd_tag(content: &str) -> bool {
+    content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed == "#' @noRd"
+    })
+}
+
+/// Derive an `@rdname` value from a source file path.
+///
+/// `"src/rust/zero_copy_tests.rs"` → `"zero_copy_tests"`
+/// `"lib.rs"` → `"lib"`
+fn rdname_from_source_file(path: &str) -> Option<String> {
+    let file_name = path.rsplit(['/', '\\']).next()?;
+    let stem = file_name.strip_suffix(".rs").unwrap_or(file_name);
+    if stem.is_empty() || stem == "lib" || stem == "mod" {
+        return None;
+    }
+    Some(stem.to_string())
+}
+
+/// Inject `#' @rdname <value>` into an R wrapper fragment, right before
+/// the first `@export` or `@keywords` line (or at the end of roxygen block).
+fn inject_rdname(content: &str, rdname: &str) -> String {
+    let rdname_line = format!("#' @rdname {rdname}");
+    let lines: Vec<&str> = content.lines().collect();
+    let mut result = Vec::with_capacity(lines.len() + 1);
+    let mut inserted = false;
+
+    for line in &lines {
+        let trimmed = line.trim();
+        // Insert before @export, @keywords, or @source lines
+        if !inserted
+            && (trimmed.starts_with("#' @export")
+                || trimmed.starts_with("#' @keywords")
+                || trimmed.starts_with("#' @source"))
+        {
+            result.push(rdname_line.as_str());
+            inserted = true;
+        }
+        result.push(line);
+    }
+
+    // If we never found a good insertion point, insert before the function def
+    if !inserted {
+        // Find last roxygen line
+        let last_roxy = lines
+            .iter()
+            .rposition(|l| l.trim().starts_with("#'"))
+            .unwrap_or(0);
+        result.insert(last_roxy + 1, rdname_line.as_str());
+    }
+
+    result.join("\n")
+}
+
 /// Sort S7 class definitions so parents come before children.
 ///
 /// Detects `S7::new_class()` calls, extracts `parent = ClassName` relationships,
 /// and performs topological sort. Non-S7 entries keep their relative order.
-fn sort_s7_classes(entries: &mut [&'static str]) {
+fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
     use std::collections::HashMap;
 
     // Parse S7 class definitions: find (index, name, parent)
-    let mut s7_info: Vec<(usize, &str, Option<&str>)> = Vec::new();
+    let mut s7_info: Vec<(usize, String, Option<String>)> = Vec::new();
 
     for (i, entry) in entries.iter().enumerate() {
         if let Some(nc_pos) = entry.find("S7::new_class(") {
@@ -234,10 +314,14 @@ fn sort_s7_classes(entries: &mut [&'static str]) {
                 let rest = &after[p + "parent = ".len()..];
                 let end = rest.find([',', ')', '\n']).unwrap_or(rest.len());
                 let p = rest[..end].trim();
-                if p.is_empty() { None } else { Some(p) }
+                if p.is_empty() {
+                    None
+                } else {
+                    Some(p.to_string())
+                }
             });
 
-            s7_info.push((i, name, parent));
+            s7_info.push((i, name.to_string(), parent));
         }
     }
 
@@ -249,7 +333,7 @@ fn sort_s7_classes(entries: &mut [&'static str]) {
     let name_to_pos: HashMap<&str, usize> = s7_info
         .iter()
         .enumerate()
-        .map(|(pos, &(_, name, _))| (name, pos))
+        .map(|(pos, (_, name, _))| (name.as_str(), pos))
         .collect();
 
     // Topological sort: repeatedly emit classes whose parent is already placed
@@ -258,13 +342,13 @@ fn sort_s7_classes(entries: &mut [&'static str]) {
     let mut placed = vec![false; n];
 
     for _ in 0..n {
-        for (pos, &(_, _, parent)) in s7_info.iter().enumerate() {
+        for (pos, (_, _, parent)) in s7_info.iter().enumerate() {
             if placed[pos] {
                 continue;
             }
             let ready = match parent {
                 None => true,
-                Some(pname) => match name_to_pos.get(pname) {
+                Some(pname) => match name_to_pos.get(pname.as_str()) {
                     None => true, // external parent
                     Some(&pp) => placed[pp],
                 },
@@ -284,11 +368,12 @@ fn sort_s7_classes(entries: &mut [&'static str]) {
     }
 
     // Apply: place sorted S7 entries back at their original indices
-    let s7_indices: Vec<usize> = s7_info.iter().map(|&(i, _, _)| i).collect();
-    let original: Vec<&'static str> = s7_indices.iter().map(|&i| entries[i]).collect();
+    let s7_indices: Vec<usize> = s7_info.iter().map(|(i, _, _)| *i).collect();
+    let original: Vec<std::borrow::Cow<'static, str>> =
+        s7_indices.iter().map(|&i| entries[i].clone()).collect();
 
     for (slot, &src) in order.iter().enumerate() {
-        entries[s7_indices[slot]] = original[src];
+        entries[s7_indices[slot]] = original[src].clone();
     }
 }
 // endregion
@@ -321,7 +406,8 @@ pub fn write_r_wrappers_to_file(path: &str) {
     .expect("write header");
 
     for fragment in collect_r_wrappers() {
-        f.write_all(fragment.as_bytes()).expect("write fragment");
+        f.write_all(fragment.as_ref().as_bytes())
+            .expect("write fragment");
         f.write_all(b"\n\n").expect("write newline");
     }
 
