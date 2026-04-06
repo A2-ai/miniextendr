@@ -292,7 +292,11 @@ macro_rules! __impl_altvec_string_dataptr {
                             n,
                         ));
                         for j in 0..n {
-                            $crate::ffi::SET_STRING_ELT(data2, j, $crate::ffi::R_NaString);
+                            $crate::ffi::SexpExt::set_string_elt(
+                                &data2,
+                                j,
+                                $crate::ffi::SEXP::na_string(),
+                            );
                         }
                         $crate::ffi::R_set_altrep_data2(x, data2);
                         $crate::ffi::Rf_unprotect(1);
@@ -303,7 +307,7 @@ macro_rules! __impl_altvec_string_dataptr {
                     // from Rust (O(1)) to handle mixed cached/uncached NA slots.
                     for i in 0..n {
                         let cached = $crate::ffi::SexpExt::string_elt(&data2, i);
-                        if cached != $crate::ffi::R_NaString {
+                        if cached != $crate::ffi::SEXP::na_string() {
                             continue; // already cached by a prior Elt call
                         }
                         // Compute from Rust and store
@@ -928,7 +932,7 @@ macro_rules! __impl_altstring_methods {
                             $crate::ffi::SexpExt::set_string_elt(
                                 &data2,
                                 j,
-                                $crate::ffi::R_NaString,
+                                $crate::ffi::SEXP::na_string(),
                             );
                         }
                         $crate::ffi::R_set_altrep_data2(x, data2);
@@ -937,7 +941,7 @@ macro_rules! __impl_altstring_methods {
 
                     // Check cache: non-NA means already materialized
                     let cached = $crate::ffi::SexpExt::string_elt(&data2, i);
-                    if cached != $crate::ffi::R_NaString {
+                    if cached != $crate::ffi::SEXP::na_string() {
                         return cached;
                     }
 
@@ -950,10 +954,10 @@ macro_rules! __impl_altstring_methods {
                                     $crate::ffi::SexpExt::set_string_elt(&data2, i, charsxp);
                                     charsxp
                                 }
-                                None => $crate::ffi::R_NaString,
+                                None => $crate::ffi::SEXP::na_string(),
                             }
                         }
-                        None => $crate::ffi::R_NaString,
+                        None => $crate::ffi::SEXP::na_string(),
                     }
                 }
             }

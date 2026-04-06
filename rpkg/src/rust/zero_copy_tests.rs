@@ -196,7 +196,7 @@ mod arrow {
     /// @export
     #[miniextendr]
     pub fn zero_copy_arrow_f64_sliced(x: miniextendr_api::ffi::SEXP) -> bool {
-        use miniextendr_api::arrow_impl::{Array, Float64Array};
+        use miniextendr_api::arrow_impl::Float64Array;
         use miniextendr_api::from_r::TryFromSexp;
         use miniextendr_api::into_r::IntoR;
 
