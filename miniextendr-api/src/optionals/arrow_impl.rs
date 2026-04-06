@@ -35,6 +35,7 @@
 //! miniextendr-api = { version = "0.1", features = ["arrow"] }
 //! ```
 
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub use arrow_array::{
@@ -45,9 +46,229 @@ pub use arrow_array::{
 pub use arrow_buffer;
 pub use arrow_schema::{self, DataType, Field, Schema};
 
+use arrow_array::types::ArrowPrimitiveType;
+
 use crate::ffi::{self, R_NaString, R_xlen_t, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+
+// region: RSourced trait — R buffer provenance for Arrow types
+
+/// Trait for Arrow types that may be backed by R memory.
+///
+/// Types implementing this trait carry optional provenance information:
+/// the original R SEXP whose data buffer backs the Arrow array. When
+/// converting back to R, this enables zero-copy return of the original
+/// vector instead of allocating and copying.
+pub trait RSourced {
+    /// The original R SEXP if this value is zero-copy from R.
+    fn r_source(&self) -> Option<SEXP>;
+
+    /// Whether nulls came from R sentinel values (NA_integer_, NA_real_).
+    ///
+    /// When true, the R vector's data buffer already contains the correct
+    /// sentinel values and can be returned as-is. When false, Arrow
+    /// operations may have added/changed nulls — the null bitmap must
+    /// be materialized back as R sentinels before returning.
+    fn nulls_from_sentinels(&self) -> bool;
+}
+
+// endregion
+
+// region: RPrimitive<T> — R-backed primitive Arrow array
+
+/// A primitive Arrow array that may be backed by R memory.
+///
+/// `RPrimitive<T>` wraps a [`PrimitiveArray<T>`] and optionally carries the
+/// source R SEXP. When the array came from R (via `TryFromSexp`), converting
+/// back to R is zero-copy — the original SEXP is returned directly.
+///
+/// All Arrow APIs work transparently via `Deref<Target = PrimitiveArray<T>>`.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::optionals::arrow_impl::{RPrimitive, Float64Type};
+///
+/// #[miniextendr]
+/// pub fn passthrough(x: RPrimitive<Float64Type>) -> RPrimitive<Float64Type> {
+///     x  // zero-copy round-trip: R REALSXP → Arrow → same REALSXP
+/// }
+///
+/// #[miniextendr]
+/// pub fn doubled(x: RPrimitive<Float64Type>) -> RPrimitive<Float64Type> {
+///     let result: Float64Array = x.iter().map(|v| v.map(|f| f * 2.0)).collect();
+///     RPrimitive::from_arrow(result)  // no R source → copies on IntoR
+/// }
+/// ```
+pub struct RPrimitive<T: ArrowPrimitiveType> {
+    array: arrow_array::PrimitiveArray<T>,
+    source: Option<SEXP>,
+    sentinel_nulls: bool,
+}
+
+impl<T: ArrowPrimitiveType> RPrimitive<T> {
+    /// Wrap a computed Arrow array (no R source). IntoR will copy.
+    pub fn from_arrow(array: arrow_array::PrimitiveArray<T>) -> Self {
+        Self {
+            array,
+            source: None,
+            sentinel_nulls: false,
+        }
+    }
+
+    /// Wrap an Arrow array with a known R source SEXP.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `sexp` is a valid R vector whose data buffer
+    /// backs `array` (i.e., the array was created via `sexp_to_arrow_buffer`).
+    pub unsafe fn from_r(array: arrow_array::PrimitiveArray<T>, sexp: SEXP) -> Self {
+        Self {
+            array,
+            source: Some(sexp),
+            sentinel_nulls: true,
+        }
+    }
+
+    /// Get the inner Arrow array, discarding provenance.
+    pub fn into_inner(self) -> arrow_array::PrimitiveArray<T> {
+        self.array
+    }
+}
+
+impl<T: ArrowPrimitiveType> RSourced for RPrimitive<T> {
+    fn r_source(&self) -> Option<SEXP> {
+        self.source
+    }
+    fn nulls_from_sentinels(&self) -> bool {
+        self.sentinel_nulls
+    }
+}
+
+impl<T: ArrowPrimitiveType> Deref for RPrimitive<T> {
+    type Target = arrow_array::PrimitiveArray<T>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.array
+    }
+}
+
+impl<T: ArrowPrimitiveType> AsRef<arrow_array::PrimitiveArray<T>> for RPrimitive<T> {
+    #[inline]
+    fn as_ref(&self) -> &arrow_array::PrimitiveArray<T> {
+        &self.array
+    }
+}
+
+impl<T: ArrowPrimitiveType> AsRef<dyn Array + 'static> for RPrimitive<T> {
+    #[inline]
+    fn as_ref(&self) -> &(dyn Array + 'static) {
+        &self.array
+    }
+}
+
+impl<T: ArrowPrimitiveType> std::fmt::Debug for RPrimitive<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RPrimitive")
+            .field("array", &self.array)
+            .field("r_backed", &self.source.is_some())
+            .finish()
+    }
+}
+
+// endregion
+
+// region: RStringArray — R-backed string Arrow array
+
+/// A string Arrow array that may be backed by an R STRSXP.
+///
+/// R's STRSXP and Arrow's StringArray have incompatible memory layouts,
+/// so R→Arrow always copies string data. However, for unmodified round-trips,
+/// the original STRSXP is returned on IntoR without rebuilding it.
+pub struct RStringArray {
+    array: StringArray,
+    source: Option<SEXP>,
+}
+
+impl RStringArray {
+    /// Wrap a computed StringArray (no R source).
+    pub fn from_arrow(array: StringArray) -> Self {
+        Self {
+            array,
+            source: None,
+        }
+    }
+
+    /// Wrap a StringArray with a known R source STRSXP.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `sexp` is a valid STRSXP that was the source
+    /// for the StringArray's data (i.e., the array was built from this STRSXP).
+    pub unsafe fn from_r(array: StringArray, sexp: SEXP) -> Self {
+        Self {
+            array,
+            source: Some(sexp),
+        }
+    }
+
+    /// Get the inner StringArray, discarding provenance.
+    pub fn into_inner(self) -> StringArray {
+        self.array
+    }
+}
+
+impl RSourced for RStringArray {
+    fn r_source(&self) -> Option<SEXP> {
+        self.source
+    }
+    fn nulls_from_sentinels(&self) -> bool {
+        // String arrays are always copies from R, so this flag is about
+        // whether the *source STRSXP* can be returned as-is.
+        self.source.is_some()
+    }
+}
+
+impl Deref for RStringArray {
+    type Target = StringArray;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.array
+    }
+}
+
+impl AsRef<StringArray> for RStringArray {
+    #[inline]
+    fn as_ref(&self) -> &StringArray {
+        &self.array
+    }
+}
+
+impl AsRef<dyn Array + 'static> for RStringArray {
+    #[inline]
+    fn as_ref(&self) -> &(dyn Array + 'static) {
+        &self.array
+    }
+}
+
+impl std::fmt::Debug for RStringArray {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RStringArray")
+            .field("array", &self.array)
+            .field("r_backed", &self.source.is_some())
+            .finish()
+    }
+}
+
+// endregion
+
+// Note: RRecordBatch removed — automatic SEXP pointer recovery in individual
+// array IntoR impls makes per-column provenance tracking unnecessary.
+// RecordBatch.into_sexp() → arrow_array_to_sexp() → Float64Array.into_sexp()
+// (which does try_recover_r_sexp automatically).
+
+// endregion
 
 // region: RPreservedSexp — GC guard for Arrow Allocation trait
 
@@ -77,6 +298,8 @@ impl Drop for RPreservedSexp {
 
 // endregion
 
+// SEXP recovery uses crate::r_memory::try_recover_r_sexp (initialized at package init)
+
 // region: Zero-copy buffer helpers
 
 /// Create an Arrow Buffer backed by R vector memory (zero-copy).
@@ -99,17 +322,53 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> arrow_buffer::Buff
     unsafe { ffi::R_PreserveObject(sexp) };
     let guard = Arc::new(RPreservedSexp(sexp));
 
-    let ptr = unsafe { ffi::DATAPTR_RO(sexp) } as *const u8;
+    let ptr = unsafe { ffi::DATAPTR_RO(sexp) }.cast::<u8>().cast_mut();
     let byte_len = len * std::mem::size_of::<T>();
 
     // SAFETY: R vectors have contiguous memory. The guard keeps the SEXP alive.
     unsafe {
         arrow_buffer::Buffer::from_custom_allocation(
-            std::ptr::NonNull::new_unchecked(ptr as *mut u8),
+            std::ptr::NonNull::new_unchecked(ptr),
             byte_len,
             guard,
         )
     }
+}
+
+/// Allocate an Arrow Buffer backed by a new R vector.
+///
+/// The returned buffer points into a freshly allocated R vector (REALSXP,
+/// INTSXP, or RAWSXP depending on `T`). When this buffer is later used in
+/// an Arrow array and that array is converted back to R via `IntoR`, the
+/// SEXP pointer recovery will find the original R vector — zero-copy
+/// round-trip for the Rust→Arrow→R direction.
+///
+/// Returns `(buffer, sexp)` so callers can also work with the SEXP directly.
+///
+/// # Safety
+///
+/// Must be called on R's main thread.
+///
+/// # Example
+///
+/// ```ignore
+/// let (buffer, _sexp) = unsafe { alloc_r_backed_buffer::<f64>(1000) };
+/// let values = arrow_buffer::ScalarBuffer::<f64>::from(buffer);
+/// // Fill values via unsafe mutable access, then:
+/// let array = Float64Array::new(values, None);
+/// // array.into_sexp() → returns the original REALSXP (zero-copy)
+/// ```
+pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer::Buffer, SEXP) {
+    if len == 0 {
+        return (
+            arrow_buffer::Buffer::from(Vec::<u8>::new()),
+            SEXP(std::ptr::null_mut()),
+        );
+    }
+    let len_isize: isize = len.try_into().expect("vector length exceeds isize::MAX");
+    let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len_isize) };
+    let buffer = unsafe { sexp_to_arrow_buffer::<T>(sexp) };
+    (buffer, sexp)
 }
 
 // endregion
@@ -516,7 +775,7 @@ impl IntoR for StringDictionaryArray {
             }
 
             // Create levels character vector
-            let n_levels = values.len();
+            let n_levels = arrow_array::Array::len(&values);
             let levels = scope.alloc_character(n_levels).into_raw();
             for i in 0..n_levels {
                 let s = values.value(i);
@@ -790,6 +1049,19 @@ impl IntoR for Float64Array {
     }
 
     fn into_sexp(self) -> SEXP {
+        // Try zero-copy: recover the source R SEXP from the buffer pointer.
+        // This succeeds when the array was created from R via sexp_to_arrow_buffer.
+        if let Some(sexp) = unsafe {
+            crate::r_memory::try_recover_r_sexp(
+                self.values().as_ptr().cast(),
+                SEXPTYPE::REALSXP,
+                self.len(),
+            )
+        } {
+            return sexp;
+        }
+
+        // Fallback: allocate and copy
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             if self.null_count() == 0 {
@@ -816,6 +1088,16 @@ impl IntoR for Int32Array {
     }
 
     fn into_sexp(self) -> SEXP {
+        if let Some(sexp) = unsafe {
+            crate::r_memory::try_recover_r_sexp(
+                self.values().as_ptr().cast(),
+                SEXPTYPE::INTSXP,
+                self.len(),
+            )
+        } {
+            return sexp;
+        }
+
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(self.len());
             if self.null_count() == 0 {
@@ -842,6 +1124,16 @@ impl IntoR for UInt8Array {
     }
 
     fn into_sexp(self) -> SEXP {
+        if let Some(sexp) = unsafe {
+            crate::r_memory::try_recover_r_sexp(
+                self.values().as_ptr(),
+                SEXPTYPE::RAWSXP,
+                self.len(),
+            )
+        } {
+            return sexp;
+        }
+
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<u8>(self.len());
             if self.null_count() == 0 {
@@ -866,15 +1158,13 @@ impl IntoR for BooleanArray {
     fn into_sexp(self) -> SEXP {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::ffi::RLogical>(self.len());
-            let dst_i32: &mut [i32] =
-                std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), self.len());
-            for (i, slot) in dst_i32.iter_mut().enumerate() {
+            for (i, slot) in dst.iter_mut().enumerate() {
                 *slot = if self.is_null(i) {
-                    crate::altrep_traits::NA_LOGICAL
+                    crate::ffi::RLogical::NA
                 } else if self.value(i) {
-                    1
+                    crate::ffi::RLogical::TRUE
                 } else {
-                    0
+                    crate::ffi::RLogical::FALSE
                 };
             }
             sexp
@@ -906,6 +1196,112 @@ impl IntoR for StringArray {
         }
     }
 }
+
+// endregion
+
+// region: TryFromSexp + IntoR — R-backed types (RPrimitive, RStringArray, RRecordBatch)
+
+// RPrimitive<Float64Type>
+
+impl TryFromSexp for RPrimitive<Float64Type> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let array = Float64Array::try_from_sexp(sexp)?;
+        Ok(unsafe { RPrimitive::from_r(array, sexp) })
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+// RPrimitive IntoR: use stored R source directly when available,
+// otherwise fall back to inner array's IntoR (which does pointer recovery).
+macro_rules! impl_rprimitive_into_r {
+    ($prim_type:ty) => {
+        impl IntoR for RPrimitive<$prim_type> {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            fn into_sexp(self) -> SEXP {
+                if let Some(sexp) = self.source {
+                    return sexp;
+                }
+                self.array.into_sexp()
+            }
+        }
+    };
+}
+
+impl_rprimitive_into_r!(Float64Type);
+impl_rprimitive_into_r!(Int32Type);
+impl_rprimitive_into_r!(UInt8Type);
+
+// RPrimitive TryFromSexp
+
+impl TryFromSexp for RPrimitive<Int32Type> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let array = Int32Array::try_from_sexp(sexp)?;
+        Ok(unsafe { RPrimitive::from_r(array, sexp) })
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+impl TryFromSexp for RPrimitive<UInt8Type> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let array = UInt8Array::try_from_sexp(sexp)?;
+        Ok(unsafe { RPrimitive::from_r(array, sexp) })
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+// RStringArray
+
+impl TryFromSexp for RStringArray {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let array = StringArray::try_from_sexp(sexp)?;
+        Ok(unsafe { RStringArray::from_r(array, sexp) })
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+impl IntoR for RStringArray {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    fn into_sexp(self) -> SEXP {
+        if let Some(sexp) = self.source {
+            return sexp;
+        }
+        self.array.into_sexp()
+    }
+}
+
+// Note: RRecordBatch removed — RecordBatch.into_sexp() already calls
+// arrow_array_to_sexp() per column, which delegates to the individual array
+// IntoR impls that do automatic SEXP pointer recovery. No wrapper needed.
 
 // endregion
 
@@ -1024,7 +1420,7 @@ impl IntoR for RecordBatch {
             let (rownames, rn) = crate::into_r::alloc_r_vector::<i32>(2);
             scope.protect_raw(rownames);
             rn[0] = NA_INTEGER;
-            rn[1] = -(nrow as i32);
+            rn[1] = -i32::try_from(nrow).expect("data frame nrow exceeds i32::MAX");
             list.set_row_names(rownames);
 
             list
@@ -1212,7 +1608,7 @@ impl AltrepDataptr<f64> for Float64Array {
         // Arrow buffers are immutable — can't provide writable pointer.
         // Return read-only pointer cast to mut (R handles const-correctness).
         if self.null_count() == 0 {
-            Some(self.values().as_ptr() as *mut f64)
+            Some(self.values().as_ptr().cast_mut())
         } else {
             None
         }
@@ -1230,7 +1626,7 @@ impl AltrepDataptr<f64> for Float64Array {
 impl AltrepDataptr<i32> for Int32Array {
     fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
         if self.null_count() == 0 {
-            Some(self.values().as_ptr() as *mut i32)
+            Some(self.values().as_ptr().cast_mut())
         } else {
             None
         }
@@ -1248,7 +1644,7 @@ impl AltrepDataptr<i32> for Int32Array {
 impl AltrepDataptr<u8> for UInt8Array {
     fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
         if self.null_count() == 0 {
-            Some(self.values().as_ptr() as *mut u8)
+            Some(self.values().as_ptr().cast_mut())
         } else {
             None
         }
@@ -1270,10 +1666,58 @@ impl AltrepDataptr<u8> for UInt8Array {
 // impl_alt*_from_data! generates the bridge traits (Altrep, AltVec, AltReal/etc.)
 // AND calls impl_inferbase_*! to register the class creation.
 
-crate::impl_altreal_from_data!(Float64Array, dataptr);
-crate::impl_altinteger_from_data!(Int32Array, dataptr);
-crate::impl_altraw_from_data!(UInt8Array, dataptr);
-crate::impl_altlogical_from_data!(BooleanArray);
+// Serialize support: materialize Arrow array into native R vector for saveRDS.
+// On readRDS, the native vector is loaded directly (no Rust/Arrow needed).
+
+impl crate::altrep_data::AltrepSerialize for Float64Array {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for Int32Array {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for UInt8Array {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for BooleanArray {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+impl crate::altrep_data::AltrepSerialize for StringArray {
+    fn serialized_state(&self) -> SEXP {
+        self.clone().into_sexp()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        TryFromSexp::try_from_sexp(state).ok()
+    }
+}
+
+crate::impl_altreal_from_data!(Float64Array, dataptr, serialize);
+crate::impl_altinteger_from_data!(Int32Array, dataptr, serialize);
+crate::impl_altraw_from_data!(UInt8Array, dataptr, serialize);
+crate::impl_altlogical_from_data!(BooleanArray, serialize);
 
 use crate::altrep::RegisterAltrep;
 
@@ -1375,7 +1819,7 @@ impl crate::altrep_data::AltStringData for StringArray {
     }
 }
 
-crate::impl_altstring_from_data!(StringArray);
+crate::impl_altstring_from_data!(StringArray, serialize);
 
 impl RegisterAltrep for StringArray {
     fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {

@@ -90,13 +90,11 @@ mod guard_modes {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = GuardDefaultData { value: 42, len };
         let sexp = BenchGuardDefault(data).into_sexp();
-        unsafe {
-            let mut sum = 0i64;
-            for i in 0..len {
-                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
-            }
-            divan::black_box(sum);
+        let mut sum = 0i64;
+        for i in 0..len {
+            sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
         }
+        divan::black_box(sum);
     }
 
     /// Unsafe guard (no protection, fastest path) — full scan via INTEGER_ELT.
@@ -105,13 +103,11 @@ mod guard_modes {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = GuardUnsafeData { value: 42, len };
         let sexp = BenchGuardUnsafe(data).into_sexp();
-        unsafe {
-            let mut sum = 0i64;
-            for i in 0..len {
-                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
-            }
-            divan::black_box(sum);
+        let mut sum = 0i64;
+        for i in 0..len {
+            sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
         }
+        divan::black_box(sum);
     }
 
     /// R-unwind guard (with_r_unwind_protect, catches R longjmps) — full scan.
@@ -120,13 +116,11 @@ mod guard_modes {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = GuardRUnwindData { value: 42, len };
         let sexp = BenchGuardRUnwind(data).into_sexp();
-        unsafe {
-            let mut sum = 0i64;
-            for i in 0..len {
-                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
-            }
-            divan::black_box(sum);
+        let mut sum = 0i64;
+        for i in 0..len {
+            sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
         }
+        divan::black_box(sum);
     }
 
     /// Plain INTSXP full scan via INTEGER_ELT (baseline, no ALTREP dispatch).
@@ -134,13 +128,11 @@ mod guard_modes {
     fn plain_intsxp(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let sexp = miniextendr_bench::fixtures().int_vec(size_idx);
-        unsafe {
-            let mut sum = 0i64;
-            for i in 0..len {
-                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
-            }
-            divan::black_box(sum);
+        let mut sum = 0i64;
+        for i in 0..len {
+            sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
         }
+        divan::black_box(sum);
     }
 }
 // endregion
@@ -167,13 +159,11 @@ mod materialization {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<i32> = (0..len as i32).collect();
         let sexp = BenchIntVec::from(data).into_sexp();
-        unsafe {
-            let mut sum: i64 = 0;
-            for i in 0..len {
-                sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
-            }
-            divan::black_box(sum);
+        let mut sum: i64 = 0;
+        for i in 0..len {
+            sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
         }
+        divan::black_box(sum);
     }
 
     /// Full scan via DATAPTR (pointer extraction + pointer scan).
@@ -304,9 +294,7 @@ mod complex_altrep {
             })
             .collect();
         let sexp = BenchComplex::from(data).into_sexp();
-        unsafe {
-            divan::black_box(sexp.complex_elt(0));
-        }
+        divan::black_box(sexp.complex_elt(0));
     }
 
     /// Complex ALTREP DATAPTR_RO (pointer extraction, no copy).
@@ -336,13 +324,11 @@ mod complex_altrep {
             })
             .collect();
         let sexp = BenchComplex::from(data).into_sexp();
-        unsafe {
-            let mut sum_r = 0.0f64;
-            for i in 0..len {
-                sum_r += sexp.complex_elt(i as ffi::R_xlen_t).r;
-            }
-            divan::black_box(sum_r);
+        let mut sum_r = 0.0f64;
+        for i in 0..len {
+            sum_r += sexp.complex_elt(i as ffi::R_xlen_t).r;
         }
+        divan::black_box(sum_r);
     }
 }
 // endregion
@@ -382,9 +368,7 @@ mod zero_alloc {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = ConstantRealData { value: 1.0, len };
         let sexp = BenchConstantReal(data).into_sexp();
-        unsafe {
-            divan::black_box(sexp.real_elt(0));
-        }
+        divan::black_box(sexp.real_elt(0));
     }
 
     /// Vec-backed ALTREP elt access.
@@ -393,9 +377,7 @@ mod zero_alloc {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
         let sexp = BenchRealVec::from(data).into_sexp();
-        unsafe {
-            divan::black_box(sexp.real_elt(0));
-        }
+        divan::black_box(sexp.real_elt(0));
     }
 
     /// Constant ALTREP full scan (no backing allocation, returns stored field).
@@ -404,13 +386,11 @@ mod zero_alloc {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = ConstantRealData { value: 1.0, len };
         let sexp = BenchConstantReal(data).into_sexp();
-        unsafe {
-            let mut sum = 0.0f64;
-            for i in 0..len {
-                sum += sexp.real_elt(i as ffi::R_xlen_t);
-            }
-            divan::black_box(sum);
+        let mut sum = 0.0f64;
+        for i in 0..len {
+            sum += sexp.real_elt(i as ffi::R_xlen_t);
         }
+        divan::black_box(sum);
     }
 
     /// Vec-backed ALTREP full scan.
@@ -419,13 +399,11 @@ mod zero_alloc {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
         let sexp = BenchRealVec::from(data).into_sexp();
-        unsafe {
-            let mut sum = 0.0f64;
-            for i in 0..len {
-                sum += sexp.real_elt(i as ffi::R_xlen_t);
-            }
-            divan::black_box(sum);
+        let mut sum = 0.0f64;
+        for i in 0..len {
+            sum += sexp.real_elt(i as ffi::R_xlen_t);
         }
+        divan::black_box(sum);
     }
 
     /// Plain REALSXP full scan via pointer (baseline).

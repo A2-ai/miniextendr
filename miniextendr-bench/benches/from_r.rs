@@ -3,7 +3,6 @@
 //! Measures the cost of converting R SEXP values to Rust types.
 
 use miniextendr_api::TryFromSexp;
-use miniextendr_api::ffi;
 use miniextendr_api::ffi::SexpExt;
 use miniextendr_bench::raw_ffi;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

@@ -264,8 +264,9 @@ macro_rules! __impl_altvec_dataptr {
 /// Internal macro: impl AltVec with dataptr support for string ALTREP.
 ///
 /// String vectors (STRSXP) store CHARSXP pointers, not contiguous data. This macro
-/// materializes the Rust strings into a native R STRSXP cached in the ALTREP data2 slot.
-/// Subsequent calls return the cached STRSXP's data pointer directly.
+/// materializes remaining uncached elements into the data2 STRSXP cache (which may
+/// already have some elements from prior `Elt` calls). Returns the cached STRSXP's
+/// data pointer.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_string_dataptr {
@@ -276,50 +277,59 @@ macro_rules! __impl_altvec_string_dataptr {
 
             fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
                 unsafe {
-                    // Check for cached materialized STRSXP in data2 slot
-                    let data2 = $crate::ffi::R_altrep_data2(x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
-                    {
-                        // DATAPTR_RO on a standard (non-ALTREP) STRSXP gives the SEXP* array.
-                        // Cast to mutable: safe because we own the materialized vector.
-                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
-                    }
-
-                    // Materialize: create a native STRSXP from the Rust strings
                     let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let strsxp = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
-                        $crate::ffi::SEXPTYPE::STRSXP,
-                        n,
-                    ));
 
-                    // Populate using the AltString::elt method (which handles Option→NA)
-                    for i in 0..n {
-                        let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
-                        $crate::ffi::SexpExt::set_string_elt(&strsxp, i, elt);
+                    // Get or allocate the data2 cache STRSXP
+                    let mut data2 = $crate::ffi::R_altrep_data2(x);
+                    let fresh_alloc = data2.is_null()
+                        || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP;
+                    if fresh_alloc {
+                        // Rf_allocVector(STRSXP, n) leaves elements UNINITIALIZED
+                        // (garbage SEXP pointers). Must fill with R_NaString sentinel
+                        // so cache lookups work. This is O(n) but unavoidable.
+                        data2 = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                            $crate::ffi::SEXPTYPE::STRSXP,
+                            n,
+                        ));
+                        for j in 0..n {
+                            $crate::ffi::SexpExt::set_string_elt(
+                                &data2,
+                                j,
+                                $crate::ffi::SEXP::na_string(),
+                            );
+                        }
+                        $crate::ffi::R_set_altrep_data2(x, data2);
+                        $crate::ffi::Rf_unprotect(1);
                     }
 
-                    // Cache in data2 slot (R will GC-protect it as part of the ALTREP object)
-                    $crate::ffi::R_set_altrep_data2(x, strsxp);
-                    $crate::ffi::Rf_unprotect(1);
+                    // Fill uncached elements only — elements already cached by Elt
+                    // are non-NA CHARSXPs and are skipped. NA elements are re-probed
+                    // from Rust (O(1)) to handle mixed cached/uncached NA slots.
+                    for i in 0..n {
+                        let cached = $crate::ffi::SexpExt::string_elt(&data2, i);
+                        if cached != $crate::ffi::SEXP::na_string() {
+                            continue; // already cached by a prior Elt call
+                        }
+                        // Compute from Rust and store
+                        let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
+                        $crate::ffi::SexpExt::set_string_elt(&data2, i, elt);
+                    }
 
-                    $crate::ffi::DATAPTR_RO(strsxp).cast_mut()
+                    $crate::ffi::DATAPTR_RO(data2).cast_mut()
                 }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
 
             fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::ffi::R_altrep_data2(x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
-                    {
-                        $crate::ffi::DATAPTR_RO(data2)
-                    } else {
-                        core::ptr::null()
-                    }
-                }
+                // Always return null. The data2 STRSXP may be partially cached
+                // (Elt filled some slots, others are R_NaString sentinels).
+                // Returning a pointer to a partial cache would expose sentinel
+                // R_NaString as actual NAs. Returning null tells R to use
+                // Elt-based access, which correctly handles the per-element cache.
+                // Dataptr (not dataptr_or_null) is the full-materialization path.
+                let _ = x;
+                core::ptr::null()
             }
         }
     };
@@ -893,19 +903,62 @@ macro_rules! __impl_altstring_methods {
     ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltString for $ty {
-            // String elt is special: Option<&str> → CHARSXP or R_NaString
+            // String elt with lazy per-element caching in data2 STRSXP.
+            //
+            // On first access, allocates a STRSXP in data2 (initialized to R_NaString).
+            // Each element is computed from Rust on first access and cached. Subsequent
+            // accesses return the cached CHARSXP directly.
+            //
+            // For NA elements (Rust elt returns None), data2[i] stays R_NaString — we
+            // re-probe Rust each time (O(1) index, returns None immediately). This is
+            // simpler than a separate materialization bitmap and the cost is negligible.
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
-                match unsafe { $crate::altrep_data1_as::<$ty>(x) } {
-                    Some(d) => {
-                        match <$ty as $crate::altrep_data::AltStringData>::elt(
-                            &*d,
-                            i.max(0) as usize,
-                        ) {
-                            Some(s) => unsafe { $crate::altrep_impl::checked_mkchar(s) },
-                            None => $crate::ffi::SEXP::na_string(),
+                unsafe {
+                    let idx = i.max(0) as usize;
+
+                    // Get or allocate the data2 cache STRSXP
+                    let mut data2 = $crate::ffi::R_altrep_data2(x);
+                    if data2.is_null()
+                        || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP
+                    {
+                        let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
+                        // Rf_allocVector(STRSXP, n) leaves elements UNINITIALIZED
+                        // (garbage SEXP pointers). Must fill with R_NaString sentinel.
+                        data2 = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                            $crate::ffi::SEXPTYPE::STRSXP,
+                            n,
+                        ));
+                        for j in 0..n {
+                            $crate::ffi::SexpExt::set_string_elt(
+                                &data2,
+                                j,
+                                $crate::ffi::SEXP::na_string(),
+                            );
                         }
+                        $crate::ffi::R_set_altrep_data2(x, data2);
+                        $crate::ffi::Rf_unprotect(1);
                     }
-                    None => $crate::ffi::SEXP::na_string(),
+
+                    // Check cache: non-NA means already materialized
+                    let cached = $crate::ffi::SexpExt::string_elt(&data2, i);
+                    if cached != $crate::ffi::SEXP::na_string() {
+                        return cached;
+                    }
+
+                    // Cache miss (or genuine NA) — probe Rust source
+                    match $crate::altrep_data1_as::<$ty>(x) {
+                        Some(d) => {
+                            match <$ty as $crate::altrep_data::AltStringData>::elt(&*d, idx) {
+                                Some(s) => {
+                                    let charsxp = $crate::altrep_impl::checked_mkchar(s);
+                                    $crate::ffi::SexpExt::set_string_elt(&data2, i, charsxp);
+                                    charsxp
+                                }
+                                None => $crate::ffi::SEXP::na_string(),
+                            }
+                        }
+                        None => $crate::ffi::SEXP::na_string(),
+                    }
                 }
             }
 
@@ -1064,6 +1117,15 @@ impl_altraw_from_data!(Vec<u8>, serialize);
 impl_altstring_from_data!(Vec<String>, dataptr, serialize);
 // Vec<Option<String>> preserves NA_character_ through serialization roundtrips
 impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
+// Cow string vectors — zero-copy from R, ALTREP output without copying back.
+// Serialize: Rf_mkCharLenCE hits R's CHARSXP cache (no string data copy for borrowed).
+// Unserialize: TryFromSexp uses charsxp_to_cow (zero-copy borrow for UTF-8).
+impl_altstring_from_data!(Vec<std::borrow::Cow<'static, str>>, dataptr, serialize);
+impl_altstring_from_data!(
+    Vec<Option<std::borrow::Cow<'static, str>>>,
+    dataptr,
+    serialize
+);
 
 // Complex types - Vec<Rcomplex> supports dataptr
 impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
@@ -1080,6 +1142,58 @@ impl_altlogical_from_data!(Box<[bool]>, serialize);
 impl_altraw_from_data!(Box<[u8]>, serialize);
 impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
 impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
+
+/// Eagerly register all built-in ALTREP classes.
+///
+/// Must be called during `R_init` so that R can find these classes when
+/// unserializing (readRDS) in a fresh session. Without this, the lazy
+/// `OnceLock` registration means classes don't exist until first use —
+/// too late for readRDS.
+pub(crate) fn register_builtin_altrep_classes() {
+    use crate::altrep::RegisterAltrep;
+
+    // Vec<T>
+    Vec::<i32>::get_or_init_class();
+    Vec::<f64>::get_or_init_class();
+    Vec::<bool>::get_or_init_class();
+    Vec::<u8>::get_or_init_class();
+    Vec::<String>::get_or_init_class();
+    Vec::<Option<String>>::get_or_init_class();
+    Vec::<crate::ffi::Rcomplex>::get_or_init_class();
+
+    // Note: Vec<Cow<str>> ALTREP classes don't have RegisterAltrep
+    // (they use impl_altstring_from_data! without a hand-written RegisterAltrep).
+    // They'll be registered lazily on first use. Cross-session readRDS won't
+    // work for Cow ALTREP — but Cow vectors are primarily used for zero-copy
+    // input, not ALTREP output.
+
+    // Box<[T]>
+    Box::<[i32]>::get_or_init_class();
+    Box::<[f64]>::get_or_init_class();
+    Box::<[bool]>::get_or_init_class();
+    Box::<[u8]>::get_or_init_class();
+    Box::<[String]>::get_or_init_class();
+    Box::<[crate::ffi::Rcomplex]>::get_or_init_class();
+
+    // Range types
+    std::ops::Range::<i32>::get_or_init_class();
+    std::ops::Range::<i64>::get_or_init_class();
+    std::ops::Range::<f64>::get_or_init_class();
+}
+
+/// Register Arrow ALTREP classes (behind feature gate).
+#[cfg(feature = "arrow")]
+pub(crate) fn register_arrow_altrep_classes() {
+    use crate::altrep::RegisterAltrep;
+    use crate::optionals::arrow_impl::*;
+
+    Float64Array::get_or_init_class();
+    Int32Array::get_or_init_class();
+    UInt8Array::get_or_init_class();
+    BooleanArray::get_or_init_class();
+    StringArray::get_or_init_class();
+}
+
 // endregion
 
 // region: Array implementations (const generics - can't use macros)
@@ -1416,7 +1530,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [i32; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
+            crate::ffi::altrep::R_make_altinteger_class(
+                class_name,
+                pkg_name,
+                crate::altrep_dll_info(),
+            )
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)
@@ -1437,7 +1555,7 @@ impl<const N: usize> crate::altrep_data::InferBase for [f64; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
+            crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, crate::altrep_dll_info())
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)
@@ -1458,7 +1576,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         let cls = unsafe {
-            crate::ffi::altrep::R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut())
+            crate::ffi::altrep::R_make_altlogical_class(
+                class_name,
+                pkg_name,
+                crate::altrep_dll_info(),
+            )
         };
         let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
         crate::altrep::validate_altrep_class(cls, name, Self::BASE)

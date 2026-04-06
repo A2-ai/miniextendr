@@ -2800,7 +2800,7 @@ ReceiverCounter$default_counter <- function() {
 #' @noRd
 `[[.ReceiverCounter` <- `$.ReceiverCounter`
 
-# Generated from Rust impl `AsCoerceTestData` (as_coerce_tests.rs:35:6)
+# Generated from Rust impl `AsCoerceTestData` (as_coerce_tests.rs:34:6)
 #' @rdname AsCoerceTestData
 #' @title as.<class>() Coercion Test Type
 #' @name AsCoerceTestData
@@ -3286,7 +3286,7 @@ LifecycleDemo <- R6::R6Class("LifecycleDemo",
       }
       .val
     },
-    #' @description `r lifecycle::badge("deprecated")` A method marked with Rust's `#[deprecated]` attribute.
+    #' @description `r lifecycle::badge("deprecated")` A method deprecated via Rust's #[deprecated] attribute.
     #' @importFrom lifecycle badge deprecate_warn
     legacy_value = function() {
       lifecycle::deprecate_warn("0.2.0", "LifecycleDemo$legacy_value()", "get_value()", details = "Use get_value() instead")
@@ -4557,8 +4557,6 @@ SharedData <- R6::R6Class("SharedData",
 #' @export
 CounterTraitR6 <- R6::R6Class("CounterTraitR6",
   public = list(
-    #' @description Create a new counter with initial value
-    #' @param v Initial counter value.
     initialize = function(v, .ptr = NULL) {
       if (is.null(.ptr)) {
         stopifnot(
@@ -4579,7 +4577,6 @@ CounterTraitR6 <- R6::R6Class("CounterTraitR6",
         private$.ptr <- .val
       }
     },
-    #' @description Get the current counter value.
     get_value = function() {
       .val <- .Call(C_CounterTraitR6__get_value, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -7590,7 +7587,7 @@ RngSampler$static_sample <- function(n) {
 #' @export
 `[[.RngSampler` <- `$.RngSampler`
 
-# Generated from Rust fn `validate_class_args` (dots_tests.rs:86:8)
+# Generated from Rust fn `validate_class_args` (dots_tests.rs:87:8)
 #' @title validate class args
 #' @noRd
 #' @param ... Named arguments: `data` (data.frame).
@@ -7607,7 +7604,7 @@ validate_class_args <- function(...) {
   .val
 }
 
-# Generated from Rust fn `validate_strict_args` (dots_tests.rs:72:8)
+# Generated from Rust fn `validate_strict_args` (dots_tests.rs:73:8)
 #' @title validate strict args
 #' @noRd
 #' @param ... Named arguments: `x` (numeric), `y` (numeric). No extra fields allowed.
@@ -7624,7 +7621,7 @@ validate_strict_args <- function(...) {
   .val
 }
 
-# Generated from Rust fn `validate_numeric_args` (dots_tests.rs:55:8)
+# Generated from Rust fn `validate_numeric_args` (dots_tests.rs:54:8)
 #' @title validate numeric args
 #' @noRd
 #' @param ... Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
@@ -7641,7 +7638,7 @@ validate_numeric_args <- function(...) {
   .val
 }
 
-# Generated from Rust fn `validate_attr_optional` (dots_tests.rs:114:8)
+# Generated from Rust fn `validate_attr_optional` (dots_tests.rs:117:8)
 #' @title validate attr optional
 #' @noRd
 #' @param ... Named arguments: `name` (character), `greeting` (optional character).
@@ -7658,7 +7655,7 @@ validate_attr_optional <- function(...) {
   .val
 }
 
-# Generated from Rust fn `validate_with_attribute` (dots_tests.rs:104:8)
+# Generated from Rust fn `validate_with_attribute` (dots_tests.rs:107:8)
 #' @title validate with attribute
 #' @noRd
 #' @param ... Named arguments: `x` (numeric), `y` (numeric).
@@ -7675,7 +7672,7 @@ validate_with_attribute <- function(...) {
   .val
 }
 
-# Generated from Rust fn `greetings_with_named_dots` (dots_tests.rs:20:8)
+# Generated from Rust fn `greetings_with_named_dots` (dots_tests.rs:19:8)
 #' @title Dots Handling Tests
 #' @name rpkg_dots
 #' @description Dots (`...`) handling tests
@@ -7701,7 +7698,7 @@ greetings_with_named_dots <- function(...) {
   invisible(.val)
 }
 
-# Generated from Rust fn `greetings_last_as_named_dots` (dots_tests.rs:42:8)
+# Generated from Rust fn `greetings_last_as_named_dots` (dots_tests.rs:41:8)
 #' @title greetings last as named dots
 #' @noRd
 #' @param exclamations (no documentation available)
@@ -7722,7 +7719,7 @@ greetings_last_as_named_dots <- function(exclamations, ...) {
   invisible(.val)
 }
 
-# Generated from Rust fn `greetings_with_nameless_dots` (dots_tests.rs:30:8)
+# Generated from Rust fn `greetings_with_nameless_dots` (dots_tests.rs:29:8)
 #' @title greetings with nameless dots
 #' @noRd
 #' @param dots (no documentation available)
@@ -7738,7 +7735,7 @@ greetings_with_nameless_dots <- function(...) {
   invisible(.val)
 }
 
-# Generated from Rust fn `greetings_last_as_nameless_dots` (dots_tests.rs:48:8)
+# Generated from Rust fn `greetings_last_as_nameless_dots` (dots_tests.rs:47:8)
 #' @title greetings last as nameless dots
 #' @noRd
 #' @param exclamations (no documentation available)
@@ -7759,7 +7756,7 @@ greetings_last_as_nameless_dots <- function(exclamations, ...) {
   invisible(.val)
 }
 
-# Generated from Rust fn `greetings_with_named_and_unused_dots` (dots_tests.rs:26:8)
+# Generated from Rust fn `greetings_with_named_and_unused_dots` (dots_tests.rs:25:8)
 #' @title greetings with named and unused dots
 #' @noRd
 #' @param dots (no documentation available)
@@ -7775,7 +7772,7 @@ greetings_with_named_and_unused_dots <- function(...) {
   invisible(.val)
 }
 
-# Generated from Rust fn `greetings_last_as_named_and_unused_dots` (dots_tests.rs:38:8)
+# Generated from Rust fn `greetings_last_as_named_and_unused_dots` (dots_tests.rs:37:8)
 #' @title greetings last as named and unused dots
 #' @noRd
 #' @param exclamations (no documentation available)
@@ -7971,7 +7968,7 @@ test_lazy_nalgebra_f64 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `test_lazy_nalgebra_i32` (lazy_tests.rs:117:8)
+# Generated from Rust fn `test_lazy_nalgebra_i32` (lazy_tests.rs:114:8)
 #' @title test lazy nalgebra i32
 #' @export
 #' @param n (no documentation available)
@@ -13056,7 +13053,7 @@ unsafe_C_worker_drop_on_panic <- function() {
   .val
 }
 
-# Generated from Rust fn `test_main_thread_r_api` (worker_tests.rs:367:8)
+# Generated from Rust fn `test_main_thread_r_api` (worker_tests.rs:373:8)
 #' @title test main thread r api
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_main_thread_r_api`
@@ -13071,7 +13068,7 @@ test_main_thread_r_api <- function() {
   .val
 }
 
-# Generated from Rust fn `test_worker_return_f64` (worker_tests.rs:302:8)
+# Generated from Rust fn `test_worker_return_f64` (worker_tests.rs:303:8)
 #' @title test worker return f64
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_worker_return_f64`
@@ -13086,7 +13083,7 @@ test_worker_return_f64 <- function() {
   .val
 }
 
-# Generated from Rust fn `test_worker_return_i32` (worker_tests.rs:287:8)
+# Generated from Rust fn `test_worker_return_i32` (worker_tests.rs:288:8)
 #' @title test worker return i32
 #' @noRd
 #' @name rpkg_worker_tests
@@ -13112,7 +13109,7 @@ test_worker_return_i32 <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_nested_with_error` (worker_tests.rs:491:26)
+# Generated from Rust fn `C_test_nested_with_error` (worker_tests.rs:497:26)
 #' @title C test nested with error
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_with_error`
@@ -13127,7 +13124,7 @@ unsafe_C_test_nested_with_error <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_nested_with_panic` (worker_tests.rs:521:26)
+# Generated from Rust fn `C_test_nested_with_panic` (worker_tests.rs:527:26)
 #' @title C test nested with panic
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_with_panic`
@@ -13157,7 +13154,7 @@ unsafe_C_worker_drop_on_success <- function() {
   .val
 }
 
-# Generated from Rust fn `test_main_thread_r_error` (worker_tests.rs:375:8)
+# Generated from Rust fn `test_main_thread_r_error` (worker_tests.rs:381:8)
 #' @title test main thread r error
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_main_thread_r_error`
@@ -13172,7 +13169,7 @@ test_main_thread_r_error <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_extptr_from_worker` (worker_tests.rs:313:26)
+# Generated from Rust fn `C_test_extptr_from_worker` (worker_tests.rs:314:26)
 #' @title C test extptr from worker
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_extptr_from_worker`
@@ -13187,7 +13184,7 @@ unsafe_C_test_extptr_from_worker <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_wrong_thread_r_api` (worker_tests.rs:401:26)
+# Generated from Rust fn `C_test_wrong_thread_r_api` (worker_tests.rs:407:26)
 #' @title C test wrong thread r api
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_wrong_thread_r_api`
@@ -13202,7 +13199,7 @@ unsafe_C_test_wrong_thread_r_api <- function() {
   .val
 }
 
-# Generated from Rust fn `test_worker_return_string` (worker_tests.rs:295:8)
+# Generated from Rust fn `test_worker_return_string` (worker_tests.rs:296:8)
 #' @title test worker return string
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_worker_return_string`
@@ -13217,7 +13214,7 @@ test_worker_return_string <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_nested_worker_calls` (worker_tests.rs:474:26)
+# Generated from Rust fn `C_test_nested_worker_calls` (worker_tests.rs:480:26)
 #' @title C test nested worker calls
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_worker_calls`
@@ -13232,7 +13229,7 @@ unsafe_C_test_nested_worker_calls <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_simple` (worker_tests.rs:127:26)
+# Generated from Rust fn `C_test_worker_panic_simple` (worker_tests.rs:128:26)
 #' @title C test worker panic simple
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_simple`
@@ -13247,7 +13244,7 @@ unsafe_C_test_worker_panic_simple <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_nested_with_r_thread` (worker_tests.rs:449:26)
+# Generated from Rust fn `C_test_nested_with_r_thread` (worker_tests.rs:455:26)
 #' @title C test nested with r thread
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_with_r_thread`
@@ -13277,7 +13274,7 @@ unsafe_C_test_worker_with_r_thread <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_nested_multiple_helpers` (worker_tests.rs:436:26)
+# Generated from Rust fn `C_test_nested_multiple_helpers` (worker_tests.rs:442:26)
 #' @title C test nested multiple helpers
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_multiple_helpers`
@@ -13307,7 +13304,7 @@ unsafe_C_test_worker_multiple_r_calls <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_with_drops` (worker_tests.rs:138:26)
+# Generated from Rust fn `C_test_worker_panic_with_drops` (worker_tests.rs:139:26)
 #' @title C test worker panic with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_with_drops`
@@ -13322,7 +13319,7 @@ unsafe_C_test_worker_panic_with_drops <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_call_worker_fn_from_main` (worker_tests.rs:463:26)
+# Generated from Rust fn `C_test_call_worker_fn_from_main` (worker_tests.rs:469:26)
 #' @title C test call worker fn from main
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_call_worker_fn_from_main`
@@ -13337,7 +13334,7 @@ unsafe_C_test_call_worker_fn_from_main <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_in_r_thread` (worker_tests.rs:151:26)
+# Generated from Rust fn `C_test_worker_panic_in_r_thread` (worker_tests.rs:152:26)
 #' @title C test worker panic in r thread
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_in_r_thread`
@@ -13352,7 +13349,7 @@ unsafe_C_test_worker_panic_in_r_thread <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_nested_helper_from_worker` (worker_tests.rs:427:26)
+# Generated from Rust fn `C_test_nested_helper_from_worker` (worker_tests.rs:433:26)
 #' @title C test nested helper from worker
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_nested_helper_from_worker`
@@ -13367,7 +13364,7 @@ unsafe_C_test_nested_helper_from_worker <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_calls_then_error` (worker_tests.rs:217:26)
+# Generated from Rust fn `C_test_worker_r_calls_then_error` (worker_tests.rs:218:26)
 #' @title C test worker r calls then error
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_calls_then_error`
@@ -13382,7 +13379,7 @@ unsafe_C_test_worker_r_calls_then_error <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_calls_then_panic` (worker_tests.rs:243:26)
+# Generated from Rust fn `C_test_worker_r_calls_then_panic` (worker_tests.rs:244:26)
 #' @title C test worker r calls then panic
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_calls_then_panic`
@@ -13397,7 +13394,7 @@ unsafe_C_test_worker_r_calls_then_panic <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_error_with_drops` (worker_tests.rs:196:26)
+# Generated from Rust fn `C_test_worker_r_error_with_drops` (worker_tests.rs:197:26)
 #' @title C test worker r error with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_error_with_drops`
@@ -13412,7 +13409,7 @@ unsafe_C_test_worker_r_error_with_drops <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_r_error_in_r_thread` (worker_tests.rs:183:26)
+# Generated from Rust fn `C_test_worker_r_error_in_r_thread` (worker_tests.rs:184:26)
 #' @title C test worker r error in r thread
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_r_error_in_r_thread`
@@ -13427,7 +13424,7 @@ unsafe_C_test_worker_r_error_in_r_thread <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_deep_with_r_thread_sequence` (worker_tests.rs:545:26)
+# Generated from Rust fn `C_test_deep_with_r_thread_sequence` (worker_tests.rs:551:26)
 #' @title C test deep with r thread sequence
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_deep_with_r_thread_sequence`
@@ -13442,7 +13439,7 @@ unsafe_C_test_deep_with_r_thread_sequence <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_multiple_extptrs_from_worker` (worker_tests.rs:331:26)
+# Generated from Rust fn `C_test_multiple_extptrs_from_worker` (worker_tests.rs:332:26)
 #' @title C test multiple extptrs from worker
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_multiple_extptrs_from_worker`
@@ -13457,7 +13454,7 @@ unsafe_C_test_multiple_extptrs_from_worker <- function() {
   .val
 }
 
-# Generated from Rust fn `test_main_thread_r_error_with_drops` (worker_tests.rs:383:8)
+# Generated from Rust fn `test_main_thread_r_error_with_drops` (worker_tests.rs:389:8)
 #' @title test main thread r error with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `test_main_thread_r_error_with_drops`
@@ -13472,7 +13469,7 @@ test_main_thread_r_error_with_drops <- function() {
   .val
 }
 
-# Generated from Rust fn `C_test_worker_panic_in_r_thread_with_drops` (worker_tests.rs:164:26)
+# Generated from Rust fn `C_test_worker_panic_in_r_thread_with_drops` (worker_tests.rs:165:26)
 #' @title C test worker panic in r thread with drops
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `C_test_worker_panic_in_r_thread_with_drops`
@@ -13537,7 +13534,7 @@ test_collect_sines <- function(n) {
   .val
 }
 
-# Generated from Rust fn `test_collect_na_f64` (collect_tests.rs:67:8)
+# Generated from Rust fn `test_collect_na_f64` (collect_tests.rs:60:8)
 #' @title test collect na f64
 #' @export
 #' @param n (no documentation available)
@@ -13557,7 +13554,7 @@ test_collect_na_f64 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `test_collect_na_i32` (collect_tests.rs:76:8)
+# Generated from Rust fn `test_collect_na_i32` (collect_tests.rs:69:8)
 #' @title test collect na i32
 #' @export
 #' @param n (no documentation available)
@@ -13614,7 +13611,7 @@ test_collect_strings_upper <- function(words) {
   .val
 }
 
-# Generated from Rust fn `test_collect_strings_numbered` (collect_tests.rs:54:8)
+# Generated from Rust fn `test_collect_strings_numbered` (collect_tests.rs:47:8)
 #' @title test collect strings numbered
 #' @export
 #' @param n (no documentation available)
@@ -14847,7 +14844,7 @@ backtrace_install_hook <- function() {
 }
 
 # Generated from Rust fn `box_slice_double` (box_slice_tests.rs:38:8)
-#' @title Transform: double each element using `Box<[f64]>`
+#' @title Transform: double each element using Box<[f64]>
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_double`
 #' @export
@@ -14863,7 +14860,7 @@ box_slice_double <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_f64_roundtrip` (box_slice_tests.rs:7:8)
-#' @title `Box<[f64]>` roundtrip: R numeric → Rust → R numeric
+#' @title Box<[f64]> roundtrip: R numeric → Rust → R numeric
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_f64_roundtrip`
 #' @export
@@ -14879,7 +14876,7 @@ box_slice_f64_roundtrip <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_i32_roundtrip` (box_slice_tests.rs:13:8)
-#' @title `Box<[i32]>` roundtrip: R integer → Rust → R integer
+#' @title Box<[i32]> roundtrip: R integer → Rust → R integer
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_i32_roundtrip`
 #' @export
@@ -14895,7 +14892,7 @@ box_slice_i32_roundtrip <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_raw_roundtrip` (box_slice_tests.rs:31:8)
-#' @title `Box<[u8]>` roundtrip: R raw → Rust → R raw
+#' @title Box<[u8]> roundtrip: R raw → Rust → R raw
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_raw_roundtrip`
 #' @export
@@ -14911,7 +14908,7 @@ box_slice_raw_roundtrip <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_bool_roundtrip` (box_slice_tests.rs:25:8)
-#' @title `Box<[bool]>` roundtrip: R logical → Rust → R logical
+#' @title Box<[bool]> roundtrip: R logical → Rust → R logical
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_bool_roundtrip`
 #' @export
@@ -14927,7 +14924,7 @@ box_slice_bool_roundtrip <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_string_roundtrip` (box_slice_tests.rs:19:8)
-#' @title `Box<[String]>` roundtrip: R character → Rust → R character
+#' @title Box<[String]> roundtrip: R character → Rust → R character
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_string_roundtrip`
 #' @export
@@ -14943,7 +14940,7 @@ box_slice_string_roundtrip <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_option_f64_roundtrip` (box_slice_tests.rs:44:8)
-#' @title `Box<[Option<f64>]>` with NA support
+#' @title Box<[Option<f64>]> with NA support
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_option_f64_roundtrip`
 #' @export
@@ -14959,7 +14956,7 @@ box_slice_option_f64_roundtrip <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_option_i32_roundtrip` (box_slice_tests.rs:51:8)
-#' @title `Box<[Option<i32>]>` with NA support
+#' @title Box<[Option<i32>]> with NA support
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_option_i32_roundtrip`
 #' @export
@@ -14975,7 +14972,7 @@ box_slice_option_i32_roundtrip <- function(x) {
 }
 
 # Generated from Rust fn `box_slice_option_string_roundtrip` (box_slice_tests.rs:57:8)
-#' @title `Box<[Option<String>]>` with NA support
+#' @title Box<[Option<String>]> with NA support
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `box_slice_option_string_roundtrip`
 #' @export
@@ -15240,7 +15237,7 @@ fully_deprecated <- function(x) {
 
 # Generated from Rust fn `old_deprecated_fn` (lifecycle_tests.rs:14:8)
 #' @description `r lifecycle::badge("deprecated")`
-#' @title A function marked with Rust's `#[deprecated]` attribute
+#' @title A deprecated function using Rust's built-in deprecated attribute
 #' @noRd
 #' @importFrom lifecycle badge deprecate_warn
 #' @param x (no documentation available)
@@ -15677,6 +15674,301 @@ r_post_checks_demo <- function(x) {
   )
   message("validated")
   .val <- .Call(C_r_post_checks_demo, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_cow_f64_identity` (zero_copy_tests.rs:15:8)
+#' @title Returns TRUE if Cow<[f64]> round-trip returns the same R object
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_cow_f64_identity`
+zero_copy_cow_f64_identity <- function(x) {
+  .val <- .Call(C_zero_copy_cow_f64_identity, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_cow_i32_identity` (zero_copy_tests.rs:27:8)
+#' @title Returns TRUE if Cow<[i32]> round-trip returns the same R object
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_cow_i32_identity`
+zero_copy_cow_i32_identity <- function(x) {
+  .val <- .Call(C_zero_copy_cow_i32_identity, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_cow_f64_roundtrip` (zero_copy_tests.rs:218:8)
+#' @title Round-trip Cow<[f64]> and return the result
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_cow_f64_roundtrip`
+zero_copy_cow_f64_roundtrip <- function(x) {
+  .val <- .Call(C_zero_copy_cow_f64_roundtrip, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_cow_str_is_borrowed` (zero_copy_tests.rs:43:8)
+#' @title Returns TRUE if Cow<str> from R is Cow::Borrowed (zero-copy)
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_cow_str_is_borrowed`
+zero_copy_cow_str_is_borrowed <- function(x) {
+  .val <- .Call(C_zero_copy_cow_str_is_borrowed, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_protected_strvec_unique` (zero_copy_tests.rs:229:8)
+#' @title Count unique non-NA strings via ProtectedStrVec
+#' @export
+#' @param strings (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_protected_strvec_unique`
+zero_copy_protected_strvec_unique <- function(strings) {
+  .val <- .Call(C_zero_copy_protected_strvec_unique, .call = match.call(), strings)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_vec_cow_str_all_borrowed` (zero_copy_tests.rs:54:8)
+#' @title Returns TRUE if all elements of Vec<Cow<str>> are Cow::Borrowed
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_vec_cow_str_all_borrowed`
+zero_copy_vec_cow_str_all_borrowed <- function(x) {
+  .val <- .Call(C_zero_copy_vec_cow_str_all_borrowed, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_alloc_r_backed` (zero_copy_tests.rs:178:12)
+#' @title Allocate an R-backed Arrow buffer, fill it, return as Float64Array
+#' @export
+#' @param n (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_alloc_r_backed`
+zero_copy_alloc_r_backed <- function(n) {
+  stopifnot(
+    "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
+    "'n' must have length 1" = length(n) == 1L
+  )
+  .val <- .Call(C_zero_copy_alloc_r_backed, .call = match.call(), n)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_sexprec_offset` (zero_copy_tests.rs:124:12)
+#' @title Verifies r_memory::sexprec_data_offset is nonzero (init ran)
+#' @export
+#' @source Generated by miniextendr from Rust fn `zero_copy_sexprec_offset`
+zero_copy_sexprec_offset <- function() {
+  .val <- .Call(C_zero_copy_sexprec_offset, .call = match.call())
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_vec_f64_altrep` (zero_copy_tests.rs:168:12)
+#' @title Create a Vec<f64> ALTREP (not Arrow, just plain Rust vec)
+#' @export
+#' @param n (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_vec_f64_altrep`
+zero_copy_vec_f64_altrep <- function(n) {
+  stopifnot(
+    "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
+    "'n' must have length 1" = length(n) == 1L
+  )
+  .val <- .Call(C_zero_copy_vec_f64_altrep, .call = match.call(), n)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_f64_altrep` (zero_copy_tests.rs:147:12)
+#' @title Create a Rust-allocated Float64Array (NOT R-backed) and return as ALTREP
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_f64_altrep`
+zero_copy_arrow_f64_altrep <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_f64_altrep, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_f64_sliced` (zero_copy_tests.rs:198:12)
+#' @title Slice a Float64Array and return it — recovery should fail (different pointer)
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_f64_sliced`
+zero_copy_arrow_f64_sliced <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_f64_sliced, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_i32_altrep` (zero_copy_tests.rs:158:12)
+#' @title Create a Rust-allocated Int32Array and return as ALTREP
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_i32_altrep`
+zero_copy_arrow_i32_altrep <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_i32_altrep, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_u8_identity` (zero_copy_tests.rs:96:12)
+#' @title Returns TRUE if UInt8Array round-trip returns the same R object
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_u8_identity`
+zero_copy_arrow_u8_identity <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_u8_identity, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_f64_identity` (zero_copy_tests.rs:70:12)
+#' @title Returns TRUE if Float64Array round-trip returns the same R object
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_f64_identity`
+zero_copy_arrow_f64_identity <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_f64_identity, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_i32_identity` (zero_copy_tests.rs:83:12)
+#' @title Returns TRUE if Int32Array round-trip returns the same R object
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_i32_identity`
+zero_copy_arrow_i32_identity <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_i32_identity, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_f64_roundtrip` (zero_copy_tests.rs:132:12)
+#' @title Round-trip Float64Array through Arrow and return the result
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_f64_roundtrip`
+zero_copy_arrow_f64_roundtrip <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_f64_roundtrip, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_i32_roundtrip` (zero_copy_tests.rs:139:12)
+#' @title Round-trip Int32Array through Arrow and return the result
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_i32_roundtrip`
+zero_copy_arrow_i32_roundtrip <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_i32_roundtrip, .call = match.call(), x)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `zero_copy_arrow_f64_computed_is_different` (zero_copy_tests.rs:109:12)
+#' @title Returns FALSE — computed Arrow array has different backing memory
+#' @export
+#' @param x (no documentation available)
+#' @source Generated by miniextendr from Rust fn `zero_copy_arrow_f64_computed_is_different`
+zero_copy_arrow_f64_computed_is_different <- function(x) {
+  .val <- .Call(C_zero_copy_arrow_f64_computed_is_different, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
@@ -18550,7 +18842,7 @@ uuid_roundtrip_vec <- function(uuids) {
   .val
 }
 
-# Generated from Rust fn `arith_seq` (lib.rs:386:4)
+# Generated from Rust fn `arith_seq` (lib.rs:385:4)
 #' @title arith seq
 #' @param from (no documentation available)
 #' @param step (no documentation available)
@@ -18575,7 +18867,7 @@ arith_seq <- function(from, step, length_out) {
   .val
 }
 
-# Generated from Rust fn `boxed_raw` (lib.rs:1388:8)
+# Generated from Rust fn `boxed_raw` (lib.rs:1386:8)
 #' @title boxed raw
 #' @noRd
 #' @param n (no documentation available)
@@ -19648,7 +19940,7 @@ regex_replace_first <- function(pattern, text, replacement) {
   .val
 }
 
-# Generated from Rust fn `new_percent` (vctrs_class_example.rs:29:8)
+# Generated from Rust fn `new_percent` (vctrs_class_example.rs:31:8)
 #' @title Create a new percent vector
 #' @param x Numeric values (as proportions, e.g., 0.5 for 50%).
 #' @param ... Additional arguments (ignored, for vctrs compatibility).
@@ -19667,7 +19959,7 @@ new_percent <- function(x, ...) {
   .val
 }
 
-# Generated from Rust fn `format_percent` (vctrs_class_example.rs:54:8)
+# Generated from Rust fn `format_percent` (vctrs_class_example.rs:56:8)
 #' @title Print method for percent vectors
 #' @param x (no documentation available)
 #' @param dots (no documentation available)
@@ -19685,7 +19977,7 @@ format.percent <- function(x, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_proxy_percent` (vctrs_class_example.rs:82:8)
+# Generated from Rust fn `vec_proxy_percent` (vctrs_class_example.rs:84:8)
 #' @title Get the proxy for subsetting operations
 #' @param x (no documentation available)
 #' @param dots (no documentation available)
@@ -19704,7 +19996,7 @@ vec_proxy.percent <- function(x, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_restore_percent` (vctrs_class_example.rs:101:8)
+# Generated from Rust fn `vec_restore_percent` (vctrs_class_example.rs:103:8)
 #' @title Restore from proxy after subsetting
 #' @param x (no documentation available)
 #' @param to (no documentation available)
@@ -19724,7 +20016,7 @@ vec_restore.percent <- function(x, to, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_ptype_abbr_percent` (vctrs_class_example.rs:46:8)
+# Generated from Rust fn `vec_ptype_abbr_percent` (vctrs_class_example.rs:48:8)
 #' @title Print abbreviation for percent vectors
 #' @param x (no documentation available)
 #' @param dots (no documentation available)
@@ -19743,7 +20035,7 @@ vec_ptype_abbr.percent <- function(x, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_cast_double_percent` (vctrs_class_example.rs:147:8)
+# Generated from Rust fn `vec_cast_double_percent` (vctrs_class_example.rs:149:8)
 #' @title Cast from percent to double
 #' @param x (no documentation available)
 #' @param to (no documentation available)
@@ -19763,7 +20055,7 @@ vec_cast.double.percent <- function(x, to, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_cast_percent_double` (vctrs_class_example.rs:124:8)
+# Generated from Rust fn `vec_cast_percent_double` (vctrs_class_example.rs:126:8)
 #' @title Cast from double to percent
 #' @param x (no documentation available)
 #' @param to (no documentation available)
@@ -19783,7 +20075,7 @@ vec_cast.percent.double <- function(x, to, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_cast_percent_percent` (vctrs_class_example.rs:118:8)
+# Generated from Rust fn `vec_cast_percent_percent` (vctrs_class_example.rs:120:8)
 #' @title Self-cast (percent -> percent is identity)
 #' @param x (no documentation available)
 #' @param to (no documentation available)
@@ -19803,7 +20095,7 @@ vec_cast.percent.percent <- function(x, to, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_ptype2_double_percent` (vctrs_class_example.rs:140:8)
+# Generated from Rust fn `vec_ptype2_double_percent` (vctrs_class_example.rs:142:8)
 #' @title Coercion: double + percent = percent (symmetric)
 #' @param x (no documentation available)
 #' @param y (no documentation available)
@@ -19823,7 +20115,7 @@ vec_ptype2.double.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_ptype2_percent_double` (vctrs_class_example.rs:133:8)
+# Generated from Rust fn `vec_ptype2_percent_double` (vctrs_class_example.rs:135:8)
 #' @title Coercion: double + percent = percent
 #' @param x (no documentation available)
 #' @param y (no documentation available)
@@ -19843,7 +20135,7 @@ vec_ptype2.percent.double <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `vec_ptype2_percent_percent` (vctrs_class_example.rs:110:8)
+# Generated from Rust fn `vec_ptype2_percent_percent` (vctrs_class_example.rs:112:8)
 #' @title Self-coercion prototype (percent + percent = percent)
 #' @param x (no documentation available)
 #' @param y (no documentation available)
@@ -19863,7 +20155,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `boxed_ints` (lib.rs:1183:8)
+# Generated from Rust fn `boxed_ints` (lib.rs:1182:8)
 #' @title boxed ints
 #' @noRd
 #' @param n (no documentation available)
@@ -20616,7 +20908,7 @@ derived_rational_class_info <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_reals` (lib.rs:1366:8)
+# Generated from Rust fn `boxed_reals` (lib.rs:1364:8)
 #' @title boxed reals
 #' @noRd
 #' @param n (no documentation available)
@@ -20636,7 +20928,7 @@ boxed_reals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `lazy_string` (lib.rs:976:4)
+# Generated from Rust fn `lazy_string` (lib.rs:975:4)
 #' @title lazy string
 #' @param prefix (no documentation available)
 #' @param n (no documentation available)
@@ -20658,7 +20950,7 @@ lazy_string <- function(prefix, n) {
   .val
 }
 
-# Generated from Rust fn `leaked_ints` (lib.rs:1208:8)
+# Generated from Rust fn `leaked_ints` (lib.rs:1207:8)
 #' @title leaked ints
 #' @noRd
 #' @param n (no documentation available)
@@ -20678,7 +20970,7 @@ leaked_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `static_ints` (lib.rs:1202:8)
+# Generated from Rust fn `static_ints` (lib.rs:1201:8)
 #' @title static ints
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `static_ints`
@@ -20693,7 +20985,7 @@ static_ints <- function() {
   .val
 }
 
-# Generated from Rust fn `unit_circle` (lib.rs:1070:8)
+# Generated from Rust fn `unit_circle` (lib.rs:1069:8)
 #' @title unit circle
 #' @noRd
 #' @param n (no documentation available)
@@ -21073,7 +21365,7 @@ extptr_any_into_inner <- function(val) {
   .val
 }
 
-# Generated from Rust fn `extptr_any_wrong_type_is` (externalptr_any_tests.rs:64:8)
+# Generated from Rust fn `extptr_any_wrong_type_is` (externalptr_any_tests.rs:67:8)
 #' @title Test that wrong-type downcast returns None (not crash)
 #' @param x (no documentation available)
 #' @source Generated by miniextendr from Rust fn `extptr_any_wrong_type_is`
@@ -21287,7 +21579,7 @@ arrayvec_roundtrip_int <- function(v) {
   .val
 }
 
-# Generated from Rust fn `constant_int` (lib.rs:297:8)
+# Generated from Rust fn `constant_int` (lib.rs:296:8)
 #' @title constant int
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `constant_int`
@@ -21302,7 +21594,7 @@ constant_int <- function() {
   .val
 }
 
-# Generated from Rust fn `lazy_int_seq` (lib.rs:616:8)
+# Generated from Rust fn `lazy_int_seq` (lib.rs:615:8)
 #' @title lazy int seq
 #' @noRd
 #' @param from (no documentation available)
@@ -21328,7 +21620,7 @@ lazy_int_seq <- function(from, to, by) {
   .val
 }
 
-# Generated from Rust fn `lazy_squares` (lib.rs:757:8)
+# Generated from Rust fn `lazy_squares` (lib.rs:756:8)
 #' @title Example: Lazy computation - compute on demand
 #' @param n Length of the sequence.
 #' @export
@@ -22026,8 +22318,8 @@ refcount_arena_roundtrip <- function() {
   .val
 }
 
-# Generated from Rust fn `streaming_int_range` (streaming_altrep_tests.rs:39:8)
-#' @title Create a streaming integer ALTREP `1..=n`
+# Generated from Rust fn `streaming_int_range` (streaming_altrep_tests.rs:37:8)
+#' @title Create a streaming integer ALTREP [1..=n]
 #' @param n (no documentation available)
 #' @source Generated by miniextendr from Rust fn `streaming_int_range`
 #' @export
@@ -22046,8 +22338,8 @@ streaming_int_range <- function(n) {
   .val
 }
 
-# Generated from Rust fn `streaming_real_squares` (streaming_altrep_tests.rs:87:8)
-#' @title Create a streaming real ALTREP `1^2, 2^2, ..., n^2`
+# Generated from Rust fn `streaming_real_squares` (streaming_altrep_tests.rs:81:8)
+#' @title Create a streaming real ALTREP [1^2, 2^2, ..., n^2]
 #' @param n (no documentation available)
 #' @source Generated by miniextendr from Rust fn `streaming_real_squares`
 #' @export
@@ -22066,7 +22358,7 @@ streaming_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_complex` (lib.rs:1410:8)
+# Generated from Rust fn `boxed_complex` (lib.rs:1408:8)
 #' @title boxed complex
 #' @noRd
 #' @param n (no documentation available)
@@ -22086,7 +22378,7 @@ boxed_complex <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_strings` (lib.rs:1399:8)
+# Generated from Rust fn `boxed_strings` (lib.rs:1397:8)
 #' @title boxed strings
 #' @noRd
 #' @param n (no documentation available)
@@ -22106,7 +22398,7 @@ boxed_strings <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_real` (lib.rs:348:8)
+# Generated from Rust fn `constant_real` (lib.rs:347:8)
 #' @title constant real
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `constant_real`
@@ -22121,7 +22413,7 @@ constant_real <- function() {
   .val
 }
 
-# Generated from Rust fn `repeating_raw` (lib.rs:1015:4)
+# Generated from Rust fn `repeating_raw` (lib.rs:1014:4)
 #' @title repeating raw
 #' @param pattern (no documentation available)
 #' @param n (no documentation available)
@@ -22142,7 +22434,7 @@ repeating_raw <- function(pattern, n) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_copy` (lib.rs:790:8)
+# Generated from Rust fn `bench_vec_copy` (lib.rs:789:8)
 #' @title Create a vector of given size using regular copy (IntoR)
 #' @param n Length of the vector.
 #' @export
@@ -22162,7 +22454,7 @@ bench_vec_copy <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_logicals` (lib.rs:1377:8)
+# Generated from Rust fn `boxed_logicals` (lib.rs:1375:8)
 #' @title boxed logicals
 #' @noRd
 #' @param n (no documentation available)
@@ -22182,7 +22474,7 @@ boxed_logicals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_range` (lib.rs:1287:8)
+# Generated from Rust fn `iter_int_range` (lib.rs:1285:8)
 #' @title iter int range
 #' @noRd
 #' @param from (no documentation available)
@@ -22205,7 +22497,7 @@ iter_int_range <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `iter_raw_bytes` (lib.rs:1307:8)
+# Generated from Rust fn `iter_raw_bytes` (lib.rs:1305:8)
 #' @title iter raw bytes
 #' @noRd
 #' @param n (no documentation available)
@@ -22225,7 +22517,7 @@ iter_raw_bytes <- function(n) {
   .val
 }
 
-# Generated from Rust fn `small_vec_copy` (lib.rs:738:8)
+# Generated from Rust fn `small_vec_copy` (lib.rs:737:8)
 #' @title Example: Small data - regular copy is fine
 #' @export
 #' @source Generated by miniextendr from Rust fn `small_vec_copy`
@@ -22240,7 +22532,7 @@ small_vec_copy <- function() {
   .val
 }
 
-# Generated from Rust fn `static_strings` (lib.rs:1230:8)
+# Generated from Rust fn `static_strings` (lib.rs:1229:8)
 #' @title static strings
 #' @noRd
 #' @source Generated by miniextendr from Rust fn `static_strings`
@@ -22255,7 +22547,7 @@ static_strings <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_int_altrep` (lib.rs:1338:8)
+# Generated from Rust fn `vec_int_altrep` (lib.rs:1336:8)
 #' @title vec int altrep
 #' @noRd
 #' @param n (no documentation available)
@@ -22621,7 +22913,7 @@ json_serialize_point <- function(x, y) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_raw` (lib.rs:704:8)
+# Generated from Rust fn `altrep_from_raw` (lib.rs:703:8)
 #' @title altrep from raw
 #' @noRd
 #' @param x (no documentation available)
@@ -22638,7 +22930,7 @@ altrep_from_raw <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int` (lib.rs:1497:8)
+# Generated from Rust fn `sparse_iter_int` (lib.rs:1495:8)
 #' @title Create a sparse integer iterator ALTREP that skips elements
 #' @description Elements are computed on-demand using Iterator::nth(). Once an element is skipped (a higher index is accessed first), it cannot be retrieved and will return NA.
 #' @param from Start value (inclusive)
@@ -22662,7 +22954,7 @@ sparse_iter_int <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_raw` (lib.rs:1647:8)
+# Generated from Rust fn `sparse_iter_raw` (lib.rs:1645:8)
 #' @title Create a sparse raw iterator ALTREP
 #' @noRd
 #' @param n (no documentation available)
@@ -22682,7 +22974,7 @@ sparse_iter_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_real_altrep` (lib.rs:1345:8)
+# Generated from Rust fn `vec_real_altrep` (lib.rs:1343:8)
 #' @title vec real altrep
 #' @noRd
 #' @param n (no documentation available)
@@ -22854,7 +23146,7 @@ complex_roundtrip_vec <- function(v) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_list` (lib.rs:716:8)
+# Generated from Rust fn `altrep_from_list` (lib.rs:715:8)
 #' @title altrep from list
 #' @noRd
 #' @param x (no documentation available)
@@ -22870,7 +23162,7 @@ altrep_from_list <- function(x) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_altrep` (lib.rs:802:8)
+# Generated from Rust fn `bench_vec_altrep` (lib.rs:801:8)
 #' @title Create a vector of given size using ALTREP zero-copy
 #' @param n Length of the vector.
 #' @export
@@ -22890,7 +23182,7 @@ bench_vec_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_logical` (lib.rs:840:4)
+# Generated from Rust fn `constant_logical` (lib.rs:839:4)
 #' @title constant logical
 #' @param value (no documentation available)
 #' @param n (no documentation available)
@@ -22912,7 +23204,7 @@ constant_logical <- function(value, n) {
   .val
 }
 
-# Generated from Rust fn `large_vec_altrep` (lib.rs:746:8)
+# Generated from Rust fn `large_vec_altrep` (lib.rs:745:8)
 #' @title Example: Large data - ALTREP avoids copy
 #' @export
 #' @source Generated by miniextendr from Rust fn `large_vec_altrep`
@@ -22927,7 +23219,7 @@ large_vec_altrep <- function() {
   .val
 }
 
-# Generated from Rust fn `range_i64_altrep` (lib.rs:1430:8)
+# Generated from Rust fn `range_i64_altrep` (lib.rs:1428:8)
 #' @title range i64 altrep
 #' @noRd
 #' @param from (no documentation available)
@@ -22950,7 +23242,7 @@ range_i64_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `range_int_altrep` (lib.rs:1424:8)
+# Generated from Rust fn `range_int_altrep` (lib.rs:1422:8)
 #' @title range int altrep
 #' @noRd
 #' @param from (no documentation available)
@@ -22973,7 +23265,7 @@ range_int_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_real` (lib.rs:1557:8)
+# Generated from Rust fn `sparse_iter_real` (lib.rs:1555:8)
 #' @title Create a sparse real iterator ALTREP
 #' @noRd
 #' @param from (no documentation available)
@@ -23176,7 +23468,7 @@ aho_test_replace_empty <- function(patterns, haystack) {
   .val
 }
 
-# Generated from Rust fn `boxed_data_altrep` (lib.rs:773:8)
+# Generated from Rust fn `boxed_data_altrep` (lib.rs:772:8)
 #' @title Example: Using into_altrep() to store wrapper
 #' @param n Length of the vector.
 #' @export
@@ -23196,7 +23488,7 @@ boxed_data_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_from_u16` (lib.rs:1324:8)
+# Generated from Rust fn `iter_int_from_u16` (lib.rs:1322:8)
 #' @title iter int from u16
 #' @noRd
 #' @param n (no documentation available)
@@ -23216,7 +23508,7 @@ iter_int_from_u16 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_real_squares` (lib.rs:1293:8)
+# Generated from Rust fn `iter_real_squares` (lib.rs:1291:8)
 #' @title iter real squares
 #' @noRd
 #' @param n (no documentation available)
@@ -23236,7 +23528,7 @@ iter_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_string_items` (lib.rs:1314:8)
+# Generated from Rust fn `iter_string_items` (lib.rs:1312:8)
 #' @title iter string items
 #' @noRd
 #' @param n (no documentation available)
@@ -23256,7 +23548,7 @@ iter_string_items <- function(n) {
   .val
 }
 
-# Generated from Rust fn `range_real_altrep` (lib.rs:1436:8)
+# Generated from Rust fn `range_real_altrep` (lib.rs:1434:8)
 #' @title range real altrep
 #' @noRd
 #' @param from (no documentation available)
@@ -23430,7 +23722,7 @@ ordered_float_roundtrip_vec <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_compact_int` (lib.rs:671:4)
+# Generated from Rust fn `altrep_compact_int` (lib.rs:670:4)
 #' @title ALTREP Helpers
 #' @name rpkg_altrep_helpers
 #' @noRd
@@ -23466,7 +23758,7 @@ altrep_compact_int <- function(n, start, step) {
   .val
 }
 
-# Generated from Rust fn `iter_real_from_f32` (lib.rs:1331:8)
+# Generated from Rust fn `iter_real_from_f32` (lib.rs:1329:8)
 #' @title iter real from f32
 #' @noRd
 #' @param n (no documentation available)
@@ -23486,7 +23778,7 @@ iter_real_from_f32 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_complex_altrep` (lib.rs:1352:8)
+# Generated from Rust fn `vec_complex_altrep` (lib.rs:1350:8)
 #' @title vec complex altrep
 #' @noRd
 #' @param n (no documentation available)
@@ -23506,7 +23798,7 @@ vec_complex_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_doubles` (lib.rs:686:8)
+# Generated from Rust fn `altrep_from_doubles` (lib.rs:685:8)
 #' @title altrep from doubles
 #' @noRd
 #' @param x (no documentation available)
@@ -23523,7 +23815,7 @@ altrep_from_doubles <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_strings` (lib.rs:692:8)
+# Generated from Rust fn `altrep_from_strings` (lib.rs:691:8)
 #' @title altrep from strings
 #' @noRd
 #' @param x (no documentation available)
@@ -23540,7 +23832,7 @@ altrep_from_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_logical` (lib.rs:1600:8)
+# Generated from Rust fn `sparse_iter_logical` (lib.rs:1598:8)
 #' @title Create a sparse logical iterator ALTREP (alternating TRUE/FALSE)
 #' @noRd
 #' @param n (no documentation available)
@@ -23560,7 +23852,7 @@ sparse_iter_logical <- function(n) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_integers` (lib.rs:710:8)
+# Generated from Rust fn `altrep_from_integers` (lib.rs:709:8)
 #' @title altrep from integers
 #' @noRd
 #' @param x (no documentation available)
@@ -23577,7 +23869,7 @@ altrep_from_integers <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_logicals` (lib.rs:698:8)
+# Generated from Rust fn `altrep_from_logicals` (lib.rs:697:8)
 #' @title altrep from logicals
 #' @noRd
 #' @param x (no documentation available)
@@ -23593,7 +23885,7 @@ altrep_from_logicals <- function(x) {
   .val
 }
 
-# Generated from Rust fn `integer_sequence_list` (lib.rs:1121:8)
+# Generated from Rust fn `integer_sequence_list` (lib.rs:1120:8)
 #' @title Create a list ALTREP where each element is an integer sequence
 #' @param n Number of elements in the list.
 #' @return A list where element i contains the vector 1:i.
@@ -23619,7 +23911,7 @@ integer_sequence_list <- function(n) {
   .val
 }
 
-# Generated from Rust fn `rpkg_enabled_features` (lib.rs:1688:8)
+# Generated from Rust fn `rpkg_enabled_features` (lib.rs:1686:8)
 #' @title Returns a vector of enabled feature names for this build
 #' @description This function is useful for R tests to skip tests when features are not enabled.
 #' @name rpkg_enabled_features
@@ -23639,7 +23931,7 @@ rpkg_enabled_features <- function() {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1510:8)
+# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1508:8)
 #' @title Create a sparse integer iterator that generates squares
 #' @noRd
 #' @param n (no documentation available)
@@ -23659,7 +23951,7 @@ sparse_iter_int_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_logical_alternating` (lib.rs:1300:8)
+# Generated from Rust fn `iter_logical_alternating` (lib.rs:1298:8)
 #' @title iter logical alternating
 #' @noRd
 #' @param n (no documentation available)
@@ -23679,7 +23971,7 @@ iter_logical_alternating <- function(n) {
   .val
 }
 
-# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:639:26)
+# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:638:26)
 #' @title Check if a lazy int seq ALTREP has been materialized
 #' @description Takes raw SEXP (extern "C-unwind") because auto-materialization in TryFromSexp for SEXP would trigger materialization before we can inspect it.
 #' @noRd
@@ -24337,7 +24629,7 @@ SharedSimpleCounter$SharedCounter$reset <- function(x) {
 }
 attr(SharedSimpleCounter$SharedCounter$reset, ".__mx_instance__") <- TRUE
 
-# Generated from Rust impl `StaticXParam` for `CounterTraitEnv` (class_system_matrix.rs:205:23)
+# Generated from Rust impl `StaticXParam` for `CounterTraitEnv` (class_system_matrix.rs:202:23)
 # Trait methods and consts for CounterTraitEnv implementing StaticXParam
 # Generated by #[miniextendr] impl StaticXParam for CounterTraitEnv
 
@@ -24349,7 +24641,7 @@ CounterTraitEnv$StaticXParam$from_value <- function(x) {
   .Call(C_CounterTraitEnv__StaticXParam__from_value, .call = match.call(), x)
 }
 
-# Generated from Rust impl `MatrixCounter` for `CounterTraitR6` (class_system_matrix.rs:181:24)
+# Generated from Rust impl `MatrixCounter` for `CounterTraitR6` (class_system_matrix.rs:178:24)
 # R6 trait methods for CounterTraitR6 implementing MatrixCounter
 # Generated by #[miniextendr(r6)] impl MatrixCounter for CounterTraitR6
 # Note: R6 trait methods are standalone functions
