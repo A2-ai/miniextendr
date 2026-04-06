@@ -52,7 +52,6 @@ impl TryFromSexp for Url {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -103,7 +102,6 @@ impl TryFromSexp for Option<Url> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT;
 
         let actual = sexp.type_of();
         // NULL -> None
@@ -160,7 +158,6 @@ impl TryFromSexp for Vec<Url> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -220,7 +217,6 @@ impl TryFromSexp for Vec<Option<Url>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::STRING_ELT;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {

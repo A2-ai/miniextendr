@@ -273,7 +273,7 @@ impl TryFromSexp for BooleanArray {
         let mut builder = arrow_array::builder::BooleanBuilder::with_capacity(len);
 
         for i in 0..len {
-            let val = unsafe { sexp.logical_elt(i as R_xlen_t) };
+            let val = sexp.logical_elt(i as R_xlen_t);
             if val == crate::altrep_traits::NA_LOGICAL {
                 builder.append_null();
             } else {

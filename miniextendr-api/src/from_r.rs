@@ -1237,7 +1237,7 @@ macro_rules! impl_vec_try_from_sexp_list {
             type Error = $crate::from_r::SexpError;
 
             fn try_from_sexp(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
-                use $crate::ffi::{SEXPTYPE, SexpExt, VECTOR_ELT};
+                use $crate::ffi::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
 
                 let actual = sexp.type_of();
@@ -1261,7 +1261,7 @@ macro_rules! impl_vec_try_from_sexp_list {
             unsafe fn try_from_sexp_unchecked(
                 sexp: $crate::ffi::SEXP,
             ) -> Result<Self, Self::Error> {
-                use $crate::ffi::{SEXPTYPE, SexpExt, VECTOR_ELT_unchecked};
+                use $crate::ffi::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
 
                 let actual = sexp.type_of();
@@ -1297,7 +1297,7 @@ macro_rules! impl_vec_option_try_from_sexp_list {
             type Error = $crate::from_r::SexpError;
 
             fn try_from_sexp(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
-                use $crate::ffi::{SEXPTYPE, SexpExt, VECTOR_ELT};
+                use $crate::ffi::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
 
                 let actual = sexp.type_of();
@@ -1327,7 +1327,7 @@ macro_rules! impl_vec_option_try_from_sexp_list {
             unsafe fn try_from_sexp_unchecked(
                 sexp: $crate::ffi::SEXP,
             ) -> Result<Self, Self::Error> {
-                use $crate::ffi::{SEXPTYPE, SexpExt, VECTOR_ELT_unchecked};
+                use $crate::ffi::{SEXPTYPE, SexpExt};
                 use $crate::from_r::SexpTypeError;
 
                 let actual = sexp.type_of();

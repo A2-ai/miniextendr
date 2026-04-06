@@ -131,7 +131,6 @@ impl IntoR for Complex<f64> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::Rf_ScalarComplex;
         SEXP::scalar_complex(to_rcomplex(self))
     }
 }
@@ -183,7 +182,6 @@ impl IntoR for Option<Complex<f64>> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::Rf_ScalarComplex;
         match self {
             Some(c) => SEXP::scalar_complex(to_rcomplex(c)),
             None => SEXP::scalar_complex(na_rcomplex()),
@@ -235,7 +233,7 @@ impl IntoR for Vec<Complex<f64>> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector, SET_COMPLEX_ELT};
+        use crate::ffi::{Rf_allocVector};
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
@@ -290,7 +288,7 @@ impl IntoR for Vec<Option<Complex<f64>>> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        use crate::ffi::{Rf_allocVector, SET_COMPLEX_ELT};
+        use crate::ffi::{Rf_allocVector};
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };

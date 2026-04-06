@@ -78,7 +78,7 @@ impl TryFromSexp for RBitVec {
         let mut bits = RBitVec::with_capacity(len);
 
         for i in 0..len {
-            let val = unsafe { sexp.logical_elt(i as crate::ffi::R_xlen_t) };
+            let val = sexp.logical_elt(i as crate::ffi::R_xlen_t);
             if val == NA_LOGICAL {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for RBitVec",
@@ -113,7 +113,7 @@ impl IntoR for RBitVec {
 
         for (i, bit) in self.iter().enumerate() {
             let val = if *bit { 1 } else { 0 };
-            unsafe { sexp.set_logical_elt(i as crate::ffi::R_xlen_t, val) };
+            sexp.set_logical_elt(i as crate::ffi::R_xlen_t, val);
         }
 
         sexp
@@ -158,7 +158,7 @@ impl TryFromSexp for BitVec<u8, Msb0> {
         let mut bits = BitVec::<u8, Msb0>::with_capacity(len);
 
         for i in 0..len {
-            let val = unsafe { sexp.logical_elt(i as crate::ffi::R_xlen_t) };
+            let val = sexp.logical_elt(i as crate::ffi::R_xlen_t);
             if val == NA_LOGICAL {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for BitVec",
@@ -190,7 +190,7 @@ impl IntoR for BitVec<u8, Msb0> {
 
         for (i, bit) in self.iter().enumerate() {
             let val = if *bit { 1 } else { 0 };
-            unsafe { sexp.set_logical_elt(i as crate::ffi::R_xlen_t, val) };
+            sexp.set_logical_elt(i as crate::ffi::R_xlen_t, val);
         }
 
         sexp

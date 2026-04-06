@@ -40,7 +40,7 @@
 
 pub use aho_corasick::{AhoCorasick, MatchKind};
 
-use crate::ffi::{Rf_xlength, SEXP, SEXPTYPE, STRING_ELT, SexpExt};
+use crate::ffi::{Rf_xlength, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::{
