@@ -60,6 +60,16 @@ default-r6 = ["miniextendr-api/default-r6"]
 default-s7 = ["miniextendr-api/default-s7"]
 worker-thread = ["miniextendr-api/worker-thread"]
 default-worker = ["miniextendr-api/default-worker"]
+## All additive features (excludes mutually exclusive default-r6/default-s7 and nonapi/connections).
+full = [
+    "serde", "serde_json", "num-complex", "uuid", "url", "aho-corasick",
+    "bitflags", "bitvec", "arrow", "datafusion", "toml", "time", "ndarray",
+    "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions", "vctrs",
+    "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
+    "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
+    "either", "log", "worker-thread", "macro-coverage",
+    "debug-preserve", "growth-debug",
+]
 
 [dependencies]
 miniextendr-api = { version = "*", path = "../../vendor/miniextendr-api" }
