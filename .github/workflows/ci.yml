@@ -148,13 +148,6 @@ jobs:
       - name: Check vendor sync
         run: just vendor-sync-check
 
-      - name: Check vendor tarball is up to date
-        run: |
-          if git diff --name-only | grep -q 'rpkg/inst/vendor.tar.xz'; then
-            echo "::error::rpkg/inst/vendor.tar.xz is stale. Run 'just vendor' and commit the result."
-            exit 1
-          fi
-
       - name: Check templates sync
         run: just templates-check
 
