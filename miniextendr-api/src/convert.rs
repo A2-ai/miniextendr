@@ -473,7 +473,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         if self.rows.is_empty() {
             // Empty data frame
             return List::from_raw_pairs(Vec::<(&str, crate::ffi::SEXP)>::new())
-                .set_class_str(&["data.frame"])
+                .set_data_frame_class()
                 .set_row_names_int(0);
         }
 
@@ -549,7 +549,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         }
 
         let result = List::from_raw_pairs(df_pairs)
-            .set_class_str(&["data.frame"])
+            .set_data_frame_class()
             .set_row_names_int(n_rows as usize);
         unsafe { crate::ffi::Rf_unprotect(n_protect) };
         result
