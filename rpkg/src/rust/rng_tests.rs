@@ -55,14 +55,14 @@ pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
 
 /// @noRd
 #[miniextendr]
-fn rng_guard_test(n: i32) -> Vec<f64> {
+pub fn rng_guard_test(n: i32) -> Vec<f64> {
     let _guard = RngGuard::new();
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
 /// @noRd
 #[miniextendr]
-fn rng_with_rng_test(n: i32) -> Vec<f64> {
+pub fn rng_with_rng_test(n: i32) -> Vec<f64> {
     with_rng(|| (0..n).map(|_| unsafe { unif_rand() }).collect())
 }
 // endregion

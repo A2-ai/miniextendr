@@ -384,7 +384,7 @@ miniextendr_api::impl_altreal_from_data!(ArithSeqData);
 pub struct ArithSeqClass(pub ArithSeqData);
 
 #[miniextendr]
-fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
+pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
     let len = length_out as usize;
     let data = ArithSeqData {
         start: from,
@@ -669,7 +669,7 @@ pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
 
 /// @noRd
 #[miniextendr]
-fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
+pub fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
     if n < 0 {
         panic!("altrep_compact_int: n must be >= 0");
     }
@@ -838,7 +838,7 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for ConstantLogicalData {
 pub struct ConstantLogicalClass(pub ConstantLogicalData);
 
 #[miniextendr]
-fn constant_logical(value: i32, n: i32) -> SEXP {
+pub fn constant_logical(value: i32, n: i32) -> SEXP {
     let logical_value = match value {
         0 => Logical::False,
         i if i == i32::MIN => Logical::Na,
@@ -974,7 +974,7 @@ miniextendr_api::impl_altstring_from_data!(LazyStringData);
 pub struct LazyStringClass(pub LazyStringData);
 
 #[miniextendr]
-fn lazy_string(prefix: &str, n: i32) -> SEXP {
+pub fn lazy_string(prefix: &str, n: i32) -> SEXP {
     let data = LazyStringData {
         prefix: prefix.to_string(),
         len: n as usize,
@@ -1013,7 +1013,7 @@ miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
 pub struct RepeatingRawClass(pub RepeatingRawData);
 
 #[miniextendr]
-fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
+pub fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
     let data = RepeatingRawData {
         pattern: pattern.to_vec(),
         total_len: n as usize,

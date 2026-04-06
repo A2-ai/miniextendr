@@ -10,7 +10,7 @@ pub fn greet(#[miniextendr(default = "\"World\"")] name: String) -> String {
 
 /// @noRd
 #[miniextendr]
-fn greet_hidden(#[miniextendr(default = "\"World\"")] name: String) -> String {
+pub fn greet_hidden(#[miniextendr(default = "\"World\"")] name: String) -> String {
     format!("Hello, {}!", name)
 }
 

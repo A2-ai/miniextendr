@@ -251,12 +251,21 @@ fn rdname_from_source_file(path: &str) -> Option<String> {
     Some(stem.to_string())
 }
 
-/// Inject `#' @rdname <value>` into an R wrapper fragment, right before
-/// the first `@export` or `@keywords` line (or at the end of roxygen block).
+/// Inject `#' @rdname <value>` (and `@title` if missing) into an R wrapper
+/// fragment. Inserts before the first `@export`/`@keywords`/`@source` line,
+/// or after the last roxygen line.
 fn inject_rdname(content: &str, rdname: &str) -> String {
     let rdname_line = format!("#' @rdname {rdname}");
+    let has_title = content.lines().any(|l| l.trim().starts_with("#' @title "));
+    // Functions with no doc comments need a title so the @rdname page has an anchor
+    let title_line = if has_title {
+        None
+    } else {
+        Some(format!("#' @title {}", rdname.replace('_', " ")))
+    };
+
     let lines: Vec<&str> = content.lines().collect();
-    let mut result = Vec::with_capacity(lines.len() + 1);
+    let mut result = Vec::with_capacity(lines.len() + 2);
     let mut inserted = false;
 
     for line in &lines {
@@ -267,6 +276,9 @@ fn inject_rdname(content: &str, rdname: &str) -> String {
                 || trimmed.starts_with("#' @keywords")
                 || trimmed.starts_with("#' @source"))
         {
+            if let Some(ref t) = title_line {
+                result.push(t.as_str());
+            }
             result.push(rdname_line.as_str());
             inserted = true;
         }
@@ -275,12 +287,17 @@ fn inject_rdname(content: &str, rdname: &str) -> String {
 
     // If we never found a good insertion point, insert before the function def
     if !inserted {
-        // Find last roxygen line
         let last_roxy = lines
             .iter()
             .rposition(|l| l.trim().starts_with("#'"))
             .unwrap_or(0);
-        result.insert(last_roxy + 1, rdname_line.as_str());
+        let insert_at = last_roxy + 1;
+        if let Some(ref t) = title_line {
+            result.insert(insert_at, t.as_str());
+            result.insert(insert_at + 1, rdname_line.as_str());
+        } else {
+            result.insert(insert_at, rdname_line.as_str());
+        }
     }
 
     result.join("\n")

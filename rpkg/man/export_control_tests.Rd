@@ -21,5 +21,9 @@ export_control_noexport()
 }
 \description{
 A normal exported function for comparison
+
+export control tests
+
+export control tests
 }
 \keyword{internal}
