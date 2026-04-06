@@ -1158,15 +1158,13 @@ impl IntoR for BooleanArray {
     fn into_sexp(self) -> SEXP {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::ffi::RLogical>(self.len());
-            let dst_i32: &mut [i32] =
-                std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), self.len());
-            for (i, slot) in dst_i32.iter_mut().enumerate() {
+            for (i, slot) in dst.iter_mut().enumerate() {
                 *slot = if self.is_null(i) {
-                    crate::altrep_traits::NA_LOGICAL
+                    crate::ffi::RLogical::NA
                 } else if self.value(i) {
-                    1
+                    crate::ffi::RLogical::TRUE
                 } else {
-                    0
+                    crate::ffi::RLogical::FALSE
                 };
             }
             sexp
@@ -1422,7 +1420,7 @@ impl IntoR for RecordBatch {
             let (rownames, rn) = crate::into_r::alloc_r_vector::<i32>(2);
             scope.protect_raw(rownames);
             rn[0] = NA_INTEGER;
-            rn[1] = -(nrow as i32);
+            rn[1] = -i32::try_from(nrow).expect("data frame nrow exceeds i32::MAX");
             list.set_row_names(rownames);
 
             list
