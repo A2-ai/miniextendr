@@ -18,6 +18,10 @@ use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, chars
 /// Returns `Cow::Borrowed` — the slice points directly into R's SEXP data with
 /// no copy. The `'static` lifetime is valid for the duration of the `.Call`
 /// invocation (R protects the SEXP from GC while Rust code is running).
+///
+/// **Important:** Do not send the borrowed `Cow` to another thread or store it
+/// past the `.Call` return — the underlying R memory is only valid while
+/// R's protection stack guards this SEXP.
 impl<T> TryFromSexp for Cow<'static, [T]>
 where
     T: crate::ffi::RNativeType + Copy + Clone,

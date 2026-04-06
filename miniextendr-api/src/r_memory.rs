@@ -126,6 +126,9 @@ pub unsafe fn try_recover_r_sexp(
     // Reject pointers that would wraparound or are in invalid ranges.
     // R's sentinel for empty vectors is 0x1; wrapping_byte_sub on small
     // addresses produces huge values (top of address space) → segfault.
+    // The 4096 threshold also guards against speculative reads near page
+    // boundaries — for non-R pointers (e.g. Rust-allocated Arrow buffers),
+    // subtracting the offset could land before the start of mapped memory.
     if data_addr < offset.saturating_add(4096) {
         return None;
     }

@@ -1218,7 +1218,8 @@ impl TryFromSexp for RPrimitive<Float64Type> {
     }
 }
 
-// RPrimitive IntoR delegates to inner array (which does pointer recovery)
+// RPrimitive IntoR: use stored R source directly when available,
+// otherwise fall back to inner array's IntoR (which does pointer recovery).
 macro_rules! impl_rprimitive_into_r {
     ($prim_type:ty) => {
         impl IntoR for RPrimitive<$prim_type> {
@@ -1229,7 +1230,9 @@ macro_rules! impl_rprimitive_into_r {
             }
 
             fn into_sexp(self) -> SEXP {
-                // Inner array's IntoR does SEXP recovery automatically
+                if let Some(sexp) = self.source {
+                    return sexp;
+                }
                 self.array.into_sexp()
             }
         }

@@ -241,14 +241,12 @@ impl Iterator for StrVecIter {
         if self.idx >= self.len {
             return None;
         }
-        let charsxp = unsafe { ffi::STRING_ELT(self.vec.0, self.idx) };
+        let charsxp = self.vec.0.string_elt(self.idx);
         self.idx += 1;
-        unsafe {
-            if charsxp == ffi::R_NaString {
-                Some(None)
-            } else {
-                Some(Some(charsxp_to_str(charsxp)))
-            }
+        if charsxp == unsafe { ffi::R_NaString } {
+            Some(None)
+        } else {
+            Some(Some(unsafe { charsxp_to_str(charsxp) }))
         }
     }
 
@@ -278,14 +276,12 @@ impl Iterator for StrVecCowIter {
         if self.idx >= self.len {
             return None;
         }
-        let charsxp = unsafe { ffi::STRING_ELT(self.vec.0, self.idx) };
+        let charsxp = self.vec.0.string_elt(self.idx);
         self.idx += 1;
-        unsafe {
-            if charsxp == ffi::R_NaString {
-                Some(None)
-            } else {
-                Some(Some(charsxp_to_cow(charsxp)))
-            }
+        if charsxp == unsafe { ffi::R_NaString } {
+            Some(None)
+        } else {
+            Some(Some(unsafe { charsxp_to_cow(charsxp) }))
         }
     }
 
