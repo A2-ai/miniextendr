@@ -141,7 +141,6 @@ fn from_box() {
 
 #[divan::bench]
 fn set_protected(bencher: divan::Bencher) {
-    use miniextendr_api::ffi;
     use miniextendr_bench::raw_ffi;
     bencher
         .with_inputs(|| {

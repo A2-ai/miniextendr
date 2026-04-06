@@ -162,27 +162,21 @@ fn xlength(size_idx: usize) {
 #[divan::bench(args = [0, 2, 4])]
 fn integer_elt(size_idx: usize) {
     let fixtures = miniextendr_bench::fixtures();
-    unsafe {
-        let val = fixtures.int_vec(size_idx).integer_elt(0);
-        divan::black_box(val);
-    }
+    let val = fixtures.int_vec(size_idx).integer_elt(0);
+    divan::black_box(val);
 }
 
 #[divan::bench(args = [0, 2, 4])]
 fn real_elt(size_idx: usize) {
     let fixtures = miniextendr_bench::fixtures();
-    unsafe {
-        let val = fixtures.real_vec(size_idx).real_elt(0);
-        divan::black_box(val);
-    }
+    let val = fixtures.real_vec(size_idx).real_elt(0);
+    divan::black_box(val);
 }
 
 #[divan::bench(args = [0, 2, 4])]
 fn logical_elt(size_idx: usize) {
     let fixtures = miniextendr_bench::fixtures();
-    unsafe {
-        let val = fixtures.lgl_vec(size_idx).logical_elt(0);
-        divan::black_box(val);
-    }
+    let val = fixtures.lgl_vec(size_idx).logical_elt(0);
+    divan::black_box(val);
 }
 // endregion

@@ -1,6 +1,5 @@
 //! Rayon bridge benchmarks (feature-gated).
 
-use miniextendr_api::ffi;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]

@@ -8,6 +8,7 @@
 use miniextendr_api::connection::{
     RConnectionIo, Rconn, get_connection, read_connection, write_connection,
 };
+#[cfg(feature = "connections")]
 use miniextendr_api::ffi;
 #[cfg(feature = "connections")]
 use miniextendr_bench::raw_ffi;
