@@ -3,6 +3,7 @@
     unused_variables,
     clippy::unused_unit,
     unused_mut,
+    varargs_without_pattern,
     varargs_without_pattern
 )]
 
@@ -97,8 +98,7 @@ pub(crate) fn cov_fn_named_dots(dots: ...) {
 pub(crate) fn cov_fn_unused_named_dots(_dots: ...) {}
 
 #[miniextendr]
-#[allow(varargs_without_pattern)]
-pub(crate) fn cov_fn_unnamed_dots(...) {}
+pub(crate) fn cov_fn_unnamed_dots(_dots: ...) {}
 
 #[miniextendr]
 pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
@@ -106,8 +106,7 @@ pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
 }
 
 #[miniextendr]
-#[allow(varargs_without_pattern)]
-pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, ...) {}
+pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, _dots: ...) {}
 // endregion
 
 // region: Invisible / visible return
