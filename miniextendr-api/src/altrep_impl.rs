@@ -281,13 +281,18 @@ macro_rules! __impl_altvec_string_dataptr {
 
                     // Get or allocate the data2 cache STRSXP
                     let mut data2 = $crate::ffi::R_altrep_data2(x);
-                    if data2.is_null()
-                        || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP
-                    {
+                    let fresh_alloc = data2.is_null()
+                        || $crate::ffi::SexpExt::type_of(&data2) != $crate::ffi::SEXPTYPE::STRSXP;
+                    if fresh_alloc {
+                        // R inits STRSXP to R_BlankString (""), NOT R_NaString.
+                        // Fill with R_NaString as "not yet cached" sentinel.
                         data2 = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
                             $crate::ffi::SEXPTYPE::STRSXP,
                             n,
                         ));
+                        for j in 0..n {
+                            $crate::ffi::SET_STRING_ELT(data2, j, $crate::ffi::R_NaString);
+                        }
                         $crate::ffi::R_set_altrep_data2(x, data2);
                         $crate::ffi::Rf_unprotect(1);
                     }
@@ -312,19 +317,14 @@ macro_rules! __impl_altvec_string_dataptr {
             const HAS_DATAPTR_OR_NULL: bool = true;
 
             fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::ffi::R_altrep_data2(x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::STRSXP
-                    {
-                        // Return pointer even if partially cached — R expects
-                        // DATAPTR_OR_NULL to return non-null when data exists.
-                        // Uncached slots are R_NaString which is valid.
-                        $crate::ffi::DATAPTR_RO(data2)
-                    } else {
-                        core::ptr::null()
-                    }
-                }
+                // Always return null. The data2 STRSXP may be partially cached
+                // (Elt filled some slots, others are R_NaString sentinels).
+                // Returning a pointer to a partial cache would expose sentinel
+                // R_NaString as actual NAs. Returning null tells R to use
+                // Elt-based access, which correctly handles the per-element cache.
+                // Dataptr (not dataptr_or_null) is the full-materialization path.
+                let _ = x;
+                core::ptr::null()
             }
         }
     };
