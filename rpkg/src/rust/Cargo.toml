@@ -62,20 +62,11 @@ worker-thread = ["miniextendr-api/worker-thread"]
 default-worker = ["miniextendr-api/default-worker"]
 
 [dependencies]
-miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
+miniextendr-api = { version = "*", path = "../../vendor/miniextendr-api" }
 log = { version = "0.4", optional = true }
 
 [build-dependencies]
-miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
-
-# Development: use local monorepo paths instead of git
-# These patches are active when building from the monorepo
-# Note: miniextendr-macros is a dependency of miniextendr-api, so we patch it too
-[patch."https://github.com/CGMossa/miniextendr"]
-miniextendr-api = { path = "../../../miniextendr-api" }
-miniextendr-macros = { path = "../../../miniextendr-macros" }
-miniextendr-macros-core = { path = "../../../miniextendr-macros-core" }
-miniextendr-lint = { path = "../../../miniextendr-lint" }
+miniextendr-lint = { version = "*", path = "../../vendor/miniextendr-lint" }
 
 # codegen-units = 1 ensures the entire user crate compiles into a single .o file
 # inside the staticlib archive. This is required for linkme's distributed_slice:
@@ -87,3 +78,11 @@ codegen-units = 1
 
 [profile.release]
 codegen-units = 1
+
+[patch]
+
+[patch.crates-io]
+miniextendr-api = { path = "../../vendor/miniextendr-api" }
+miniextendr-lint = { path = "../../vendor/miniextendr-lint" }
+miniextendr-macros = { path = "../../vendor/miniextendr-macros" }
+miniextendr-macros-core = { path = "../../vendor/miniextendr-macros-core" }

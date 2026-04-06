@@ -93,8 +93,7 @@ impl TryFromSexp for Complex<f64> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::COMPLEX_ELT;
-
+        
         let actual = sexp.type_of();
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
@@ -144,8 +143,7 @@ impl TryFromSexp for Option<Complex<f64>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::COMPLEX_ELT;
-
+        
         let actual = sexp.type_of();
         // NULL -> None
         if actual == SEXPTYPE::NILSXP {
@@ -200,8 +198,7 @@ impl TryFromSexp for Vec<Complex<f64>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::COMPLEX_ELT;
-
+        
         let actual = sexp.type_of();
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
@@ -258,8 +255,7 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::COMPLEX_ELT;
-
+        
         let actual = sexp.type_of();
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
