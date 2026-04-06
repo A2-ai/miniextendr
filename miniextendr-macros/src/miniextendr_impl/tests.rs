@@ -1367,10 +1367,10 @@ fn s7_generic_fallback() {
         "Expected fallback to class_any, got:\n{}",
         wrapper
     );
-    // Fallback should use safe self extraction (tryCatch), not raw x@.ptr
+    // Fallback should use safe self extraction (inherits check), not raw x@.ptr
     assert!(
-        wrapper.contains("tryCatch(x@.ptr"),
-        "Expected safe self extraction with tryCatch, got:\n{}",
+        wrapper.contains("inherits(x, \"S7_object\")"),
+        "Expected safe self extraction with inherits check, got:\n{}",
         wrapper
     );
     assert!(
@@ -1399,7 +1399,7 @@ fn s7_generic_override_fallback() {
     );
     // Should also use safe self extraction
     assert!(
-        wrapper.contains("tryCatch(x@.ptr"),
+        wrapper.contains("inherits(x, \"S7_object\")"),
         "Expected safe self extraction in generic-override fallback, got:\n{}",
         wrapper
     );

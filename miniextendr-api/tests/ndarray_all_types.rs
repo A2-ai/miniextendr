@@ -75,22 +75,20 @@ fn array0_scalar_all_types() {
         use miniextendr_api::ffi::RLogical;
         use miniextendr_api::ffi::SEXP;
 
-        unsafe {
-            // i32 scalar
-            let sexp_int = SEXP::scalar_integer(42);
-            let arr: Array0<i32> = TryFromSexp::try_from_sexp(sexp_int).unwrap();
-            assert_eq!(arr[()], 42);
+        // i32 scalar
+        let sexp_int = SEXP::scalar_integer(42);
+        let arr: Array0<i32> = TryFromSexp::try_from_sexp(sexp_int).unwrap();
+        assert_eq!(arr[()], 42);
 
-            // f64 scalar
-            let sexp_real = SEXP::scalar_real(3.125);
-            let arr: Array0<f64> = TryFromSexp::try_from_sexp(sexp_real).unwrap();
-            assert_eq!(arr[()], 3.125);
+        // f64 scalar
+        let sexp_real = SEXP::scalar_real(3.125);
+        let arr: Array0<f64> = TryFromSexp::try_from_sexp(sexp_real).unwrap();
+        assert_eq!(arr[()], 3.125);
 
-            // RLogical scalar
-            let sexp_lgl = SEXP::scalar_logical(true);
-            let arr: Array0<RLogical> = TryFromSexp::try_from_sexp(sexp_lgl).unwrap();
-            assert_eq!(arr[()], RLogical::from(true));
-        }
+        // RLogical scalar
+        let sexp_lgl = SEXP::scalar_logical(true);
+        let arr: Array0<RLogical> = TryFromSexp::try_from_sexp(sexp_lgl).unwrap();
+        assert_eq!(arr[()], RLogical::from(true));
     });
 }
 

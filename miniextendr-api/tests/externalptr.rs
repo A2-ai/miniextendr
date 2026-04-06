@@ -36,7 +36,7 @@ fn test_tag_and_protected() {
     };
     assert!(std::ptr::eq(tag.0, expected.0));
 
-    let protected = unsafe { SEXP::scalar_integer(123) };
+    let protected = SEXP::scalar_integer(123);
     let ok = unsafe { ext.set_protected(protected) };
     assert!(ok);
     let stored = ext.protected();

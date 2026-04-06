@@ -322,13 +322,13 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> arrow_buffer::Buff
     unsafe { ffi::R_PreserveObject(sexp) };
     let guard = Arc::new(RPreservedSexp(sexp));
 
-    let ptr = unsafe { ffi::DATAPTR_RO(sexp) } as *const u8;
+    let ptr = unsafe { ffi::DATAPTR_RO(sexp) }.cast::<u8>().cast_mut();
     let byte_len = len * std::mem::size_of::<T>();
 
     // SAFETY: R vectors have contiguous memory. The guard keeps the SEXP alive.
     unsafe {
         arrow_buffer::Buffer::from_custom_allocation(
-            std::ptr::NonNull::new_unchecked(ptr as *mut u8),
+            std::ptr::NonNull::new_unchecked(ptr),
             byte_len,
             guard,
         )
@@ -1053,7 +1053,7 @@ impl IntoR for Float64Array {
         // This succeeds when the array was created from R via sexp_to_arrow_buffer.
         if let Some(sexp) = unsafe {
             crate::r_memory::try_recover_r_sexp(
-                self.values().as_ptr() as *const u8,
+                self.values().as_ptr().cast(),
                 SEXPTYPE::REALSXP,
                 self.len(),
             )
@@ -1090,7 +1090,7 @@ impl IntoR for Int32Array {
     fn into_sexp(self) -> SEXP {
         if let Some(sexp) = unsafe {
             crate::r_memory::try_recover_r_sexp(
-                self.values().as_ptr() as *const u8,
+                self.values().as_ptr().cast(),
                 SEXPTYPE::INTSXP,
                 self.len(),
             )
@@ -1607,7 +1607,7 @@ impl AltrepDataptr<f64> for Float64Array {
         // Arrow buffers are immutable — can't provide writable pointer.
         // Return read-only pointer cast to mut (R handles const-correctness).
         if self.null_count() == 0 {
-            Some(self.values().as_ptr() as *mut f64)
+            Some(self.values().as_ptr().cast_mut())
         } else {
             None
         }
@@ -1625,7 +1625,7 @@ impl AltrepDataptr<f64> for Float64Array {
 impl AltrepDataptr<i32> for Int32Array {
     fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
         if self.null_count() == 0 {
-            Some(self.values().as_ptr() as *mut i32)
+            Some(self.values().as_ptr().cast_mut())
         } else {
             None
         }
@@ -1643,7 +1643,7 @@ impl AltrepDataptr<i32> for Int32Array {
 impl AltrepDataptr<u8> for UInt8Array {
     fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
         if self.null_count() == 0 {
-            Some(self.values().as_ptr() as *mut u8)
+            Some(self.values().as_ptr().cast_mut())
         } else {
             None
         }

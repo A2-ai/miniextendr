@@ -3,11 +3,8 @@
 mod r_test_utils;
 
 use miniextendr_api::altrep_traits::NA_LOGICAL;
-use miniextendr_api::ffi::{
-    LOGICAL, R_xlen_t, RLogical, Rboolean, Rf_translateCharUTF8, SEXP, SEXPTYPE, SexpExt,
-};
+use miniextendr_api::ffi::{LOGICAL, R_xlen_t, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::into_r::IntoR;
-use std::ffi::CStr;
 
 unsafe fn scalar_logical(sexp: SEXP) -> i32 {
     unsafe { *LOGICAL(sexp) }
@@ -97,7 +94,7 @@ fn test_as_named_list_vec() {
     assert_eq!(sexp.type_of(), SEXPTYPE::VECSXP);
     assert_eq!(sexp.xlength(), 3);
 
-    let names = unsafe { extract_names(sexp) };
+    let names = extract_names(sexp);
     assert_eq!(names, vec!["a", "b", "c"]);
 
     // Values are length-1 integer vectors
@@ -112,7 +109,7 @@ fn test_as_named_list_array() {
     assert_eq!(sexp.type_of(), SEXPTYPE::VECSXP);
     assert_eq!(sexp.xlength(), 2);
 
-    let names = unsafe { extract_names(sexp) };
+    let names = extract_names(sexp);
     assert_eq!(names, vec!["x", "y"]);
 }
 
@@ -122,7 +119,7 @@ fn test_as_named_vector_vec() {
     assert_eq!(sexp.type_of(), SEXPTYPE::INTSXP);
     assert_eq!(sexp.xlength(), 2);
 
-    let names = unsafe { extract_names(sexp) };
+    let names = extract_names(sexp);
     assert_eq!(names, vec!["alice", "bob"]);
     let data = unsafe { std::slice::from_raw_parts(INTEGER(sexp), 2) };
     assert_eq!(data, &[95, 87]);
@@ -134,7 +131,7 @@ fn test_as_named_vector_array() {
     assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
     assert_eq!(sexp.xlength(), 3);
 
-    let names = unsafe { extract_names(sexp) };
+    let names = extract_names(sexp);
     assert_eq!(names, vec!["x", "y", "z"]);
 
     let data = unsafe { std::slice::from_raw_parts(REAL(sexp), 3) };
@@ -147,7 +144,7 @@ fn test_as_named_vector_option() {
     assert_eq!(sexp.type_of(), SEXPTYPE::INTSXP);
     assert_eq!(sexp.xlength(), 3);
 
-    let names = unsafe { extract_names(sexp) };
+    let names = extract_names(sexp);
     assert_eq!(names, vec!["a", "b", "c"]);
 
     let data = unsafe { std::slice::from_raw_parts(INTEGER(sexp), 3) };
@@ -162,7 +159,7 @@ fn test_as_named_list_slice() {
     assert_eq!(sexp.type_of(), SEXPTYPE::VECSXP);
     assert_eq!(sexp.xlength(), 2);
 
-    let names = unsafe { extract_names(sexp) };
+    let names = extract_names(sexp);
     assert_eq!(names, vec!["a", "b"]);
 }
 
@@ -172,7 +169,7 @@ fn test_as_named_vector_slice() {
     assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
     assert_eq!(sexp.xlength(), 2);
 
-    let names = unsafe { extract_names(sexp) };
+    let names = extract_names(sexp);
     assert_eq!(names, vec!["x", "y"]);
 
     let data = unsafe { std::slice::from_raw_parts(REAL(sexp), 2) };
