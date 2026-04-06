@@ -775,7 +775,7 @@ impl IntoR for StringDictionaryArray {
             }
 
             // Create levels character vector
-            let n_levels = values.len();
+            let n_levels = arrow_array::Array::len(&values);
             let levels = scope.alloc_character(n_levels).into_raw();
             for i in 0..n_levels {
                 let s = values.value(i);
@@ -1126,7 +1126,7 @@ impl IntoR for UInt8Array {
     fn into_sexp(self) -> SEXP {
         if let Some(sexp) = unsafe {
             crate::r_memory::try_recover_r_sexp(
-                self.values().as_ptr() as *const u8,
+                self.values().as_ptr(),
                 SEXPTYPE::RAWSXP,
                 self.len(),
             )

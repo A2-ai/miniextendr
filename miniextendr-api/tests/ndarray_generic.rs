@@ -93,25 +93,23 @@ fn array2_i32_blanket_impl() {
 fn array3_i32_blanket_impl() {
     // Verify blanket impl works for 3D arrays
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{
-            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect, SEXPTYPE,
-        };
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 2x3x2 = 12 element 3D array
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 12));
-            let ptr = INTEGER(sexp);
-            for i in 0..12 {
-                *ptr.add(i) = i as i32 + 1;
+            let data: &mut [i32] = sexp.as_mut_slice();
+            for (i, slot) in data.iter_mut().enumerate() {
+                *slot = i as i32 + 1;
             }
 
             // Set dimensions
             let dims = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
-            let dims_ptr = INTEGER(dims);
-            *dims_ptr.add(0) = 2;
-            *dims_ptr.add(1) = 3;
-            *dims_ptr.add(2) = 2;
-            Rf_setAttrib(sexp, R_DimSymbol, dims);
+            let dims_data: &mut [i32] = dims.as_mut_slice();
+            dims_data[0] = 2;
+            dims_data[1] = 3;
+            dims_data[2] = 2;
+            sexp.set_dim(dims);
 
             let arr: Array3<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(arr.shape(), &[2, 3, 2]);
@@ -132,11 +130,9 @@ fn array0_scalar_blanket_impl() {
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::SEXP;
 
-        unsafe {
-            let sexp = SEXP::scalar_integer(42);
-            let arr: Array0<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
-            assert_eq!(arr[()], 42);
-        }
+        let sexp = SEXP::scalar_integer(42);
+        let arr: Array0<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+        assert_eq!(arr[()], 42);
     });
 }
 
@@ -162,26 +158,24 @@ fn array1_f64_roundtrip() {
 fn arrayd_dynamic_dims() {
     // Test ArrayD with dynamic number of dimensions
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{
-            INTEGER, R_DimSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect, SEXPTYPE,
-        };
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 3D array: 2x3x2
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 12));
-            let ptr = INTEGER(sexp);
-            for i in 0..12 {
-                *ptr.add(i) = i as i32;
+            let data: &mut [i32] = sexp.as_mut_slice();
+            for (i, slot) in data.iter_mut().enumerate() {
+                *slot = i as i32;
             }
 
             // Set dimensions
             let dims = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
-            let dims_ptr = INTEGER(dims);
-            *dims_ptr.add(0) = 2; // dim[0]
-            *dims_ptr.add(1) = 3; // dim[1]
-            *dims_ptr.add(2) = 2; // dim[2]
+            let dims_data: &mut [i32] = dims.as_mut_slice();
+            dims_data[0] = 2; // dim[0]
+            dims_data[1] = 3; // dim[1]
+            dims_data[2] = 2; // dim[2]
 
-            Rf_setAttrib(sexp, R_DimSymbol, dims);
+            sexp.set_dim(dims);
 
             let arr: ArrayD<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(arr.ndim(), 3);

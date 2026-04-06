@@ -653,6 +653,7 @@ use std::borrow::Cow;
 
 /// Try SEXP pointer recovery for a borrowed Cow slice.
 #[inline]
+#[allow(clippy::ptr_arg)] // Need &Cow to inspect Borrowed vs Owned variant
 fn try_recover_cow_slice<T: crate::ffi::RNativeType>(
     cow: &Cow<'_, [T]>,
 ) -> Option<crate::ffi::SEXP> {
