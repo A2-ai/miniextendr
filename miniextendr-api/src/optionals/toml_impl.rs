@@ -425,10 +425,7 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Integer(n) = v {
                         #[allow(clippy::cast_precision_loss)]
-                        sexp.set_real_elt(
-                            isize::try_from(i).expect("index overflow"),
-                            *n as f64,
-                        )
+                        sexp.set_real_elt(isize::try_from(i).expect("index overflow"), *n as f64)
                     }
                 }
                 return sexp;

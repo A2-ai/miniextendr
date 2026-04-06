@@ -537,8 +537,7 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
         match opts.factor {
             FactorHandling::Label => {
                 // Factor indices are 1-based
-                let charsxp =
-                    levels.string_elt(isize::try_from(idx - 1).expect("index overflow"));
+                let charsxp = levels.string_elt(isize::try_from(idx - 1).expect("index overflow"));
                 let s = unsafe { charsxp_to_str(charsxp) };
                 JsonValue::String(s.to_string())
             }
