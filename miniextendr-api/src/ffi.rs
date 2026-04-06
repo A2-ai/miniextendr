@@ -143,9 +143,17 @@ unsafe impl Sync for SEXP {}
 impl SEXP {
     /// Create a C null pointer SEXP (0x0).
     ///
-    /// This is NOT R's `NULL` value — use [`SEXP::nil()`] for that.
-    /// Only use this for low-level pointer initialization or comparison against
+    /// This is **not** R's `NULL` value (`R_NilValue`). R's `NULL` is a real
+    /// heap-allocated singleton; a C null pointer is just address zero. Passing
+    /// `SEXP::null()` where R expects `R_NilValue` will corrupt R's GC state
+    /// and likely segfault.
+    ///
+    /// Use [`SEXP::nil()`] for R's `NULL`. Only use `null()` for low-level
+    /// pointer initialization, ALTREP Sum/Min/Max "can't compute" returns
+    /// (R checks `!= NULL`, not `!= R_NilValue`), or comparison against
     /// uninitialized pointers.
+    ///
+    /// See also: [`SEXP::nil()`], [`SEXP::is_null()`], [`SexpExt::is_nil()`]
     #[inline]
     pub const fn null() -> Self {
         Self(std::ptr::null_mut())
@@ -153,9 +161,11 @@ impl SEXP {
 
     /// Return R's `NULL` singleton (`R_NilValue`).
     ///
-    /// This is the correct value to return from `.Call()` functions, pass as
-    /// SEXP arguments to R API functions, and store in R data structures.
-    /// It is NOT a C null pointer — it points to R's actual nil object.
+    /// This is **not** a C null pointer — it points to R's actual nil object
+    /// on the heap. Use this for `.Call()` return values, SEXP arguments to
+    /// R API functions, and any slot in R data structures.
+    ///
+    /// See also: [`SEXP::null()`], [`SexpExt::is_nil()`], [`SEXP::is_null()`]
     #[inline]
     pub fn nil() -> Self {
         unsafe { R_NilValue }
@@ -165,6 +175,8 @@ impl SEXP {
     ///
     /// To check if an SEXP is R's `NULL` (`R_NilValue`), use
     /// [`SexpExt::is_nil()`] instead.
+    ///
+    /// See also: [`SexpExt::is_nil()`], [`SexpExt::is_null_or_nil()`]
     #[inline]
     pub const fn is_null(self) -> bool {
         self.0.is_null()

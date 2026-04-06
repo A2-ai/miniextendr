@@ -3,7 +3,6 @@
     unused_variables,
     clippy::unused_unit,
     unused_mut,
-    varargs_without_pattern,
     varargs_without_pattern
 )]
 

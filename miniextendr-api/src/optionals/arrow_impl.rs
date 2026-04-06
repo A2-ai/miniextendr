@@ -516,7 +516,7 @@ impl IntoR for StringDictionaryArray {
             }
 
             // Create levels character vector
-            let n_levels = Array::len(&*values);
+            let n_levels = values.len();
             let levels = scope.alloc_character(n_levels).into_raw();
             for i in 0..n_levels {
                 let s = values.value(i);
@@ -1284,7 +1284,7 @@ impl RegisterAltrep for Float64Array {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Float64Array as crate::altrep_data::InferBase>::make_class(
-                    b"arrow_Float64Array\0".as_ptr().cast(),
+                    c"arrow_Float64Array".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
@@ -1303,7 +1303,7 @@ impl RegisterAltrep for Int32Array {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <Int32Array as crate::altrep_data::InferBase>::make_class(
-                    b"arrow_Int32Array\0".as_ptr().cast(),
+                    c"arrow_Int32Array".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
@@ -1322,7 +1322,7 @@ impl RegisterAltrep for UInt8Array {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <UInt8Array as crate::altrep_data::InferBase>::make_class(
-                    b"arrow_UInt8Array\0".as_ptr().cast(),
+                    c"arrow_UInt8Array".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
@@ -1341,7 +1341,7 @@ impl RegisterAltrep for BooleanArray {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <BooleanArray as crate::altrep_data::InferBase>::make_class(
-                    b"arrow_BooleanArray\0".as_ptr().cast(),
+                    c"arrow_BooleanArray".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
@@ -1384,7 +1384,7 @@ impl RegisterAltrep for StringArray {
         *CLASS.get_or_init(|| {
             let cls = unsafe {
                 <StringArray as crate::altrep_data::InferBase>::make_class(
-                    b"arrow_StringArray\0".as_ptr().cast(),
+                    c"arrow_StringArray".as_ptr(),
                     crate::AltrepPkgName::as_ptr(),
                 )
             };
