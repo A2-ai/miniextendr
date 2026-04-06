@@ -5,9 +5,9 @@
 \alias{CounterTraitS4}
 \alias{new}
 \alias{s4_get_value}
-\alias{s4_trait_MatrixCounter_custom_get}
+\alias{s4_trait_MatrixCounter_custom_get_CounterTraitS4}
 \alias{s4_trait_MatrixCounter_custom_get,CounterTraitS4-method}
-\alias{s4_trait_MatrixCounter_custom_add}
+\alias{s4_trait_MatrixCounter_custom_add_CounterTraitS4}
 \alias{s4_trait_MatrixCounter_custom_add,CounterTraitS4-method}
 \alias{CounterTraitS4_MatrixCounter_default_value}
 \title{CounterTraitS4 S4 Class}

@@ -3,8 +3,8 @@
 \name{CounterTraitS7}
 \alias{CounterTraitS7}
 \alias{get_value}
-\alias{s7_trait_MatrixCounter_custom_get}
-\alias{s7_trait_MatrixCounter_custom_add}
+\alias{s7_trait_MatrixCounter_custom_get_CounterTraitS7}
+\alias{s7_trait_MatrixCounter_custom_add_CounterTraitS7}
 \alias{CounterTraitS7$MatrixCounter$default_value}
 \title{CounterTraitS7 S7 Class}
 \source{

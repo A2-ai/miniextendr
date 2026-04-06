@@ -183,7 +183,6 @@ impl Counter for S3TraitCounter {
     }
 }
 
-/// @noRd
 #[miniextendr(s3)]
 impl S3TraitCounter {
     /// Create a new S3 trait counter.
