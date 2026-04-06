@@ -63,7 +63,7 @@ pub fn rdata_sidecar_env_new(
         score,
         flag,
         name,
-        raw_slot: SEXP::null(),
+        raw_slot: SEXP::nil(),
     })
 }
 // endregion
@@ -301,12 +301,12 @@ pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
 
     ExternalPtr::new(SidecarRawSexp {
         _r: RSidecar,
-        int_vec: SEXP::null(),
-        real_vec: SEXP::null(),
-        char_vec: SEXP::null(),
-        list_val: SEXP::null(),
-        func_val: SEXP::null(),
-        env_val: SEXP::null(),
+        int_vec: SEXP::nil(),
+        real_vec: SEXP::nil(),
+        char_vec: SEXP::nil(),
+        list_val: SEXP::nil(),
+        func_val: SEXP::nil(),
+        env_val: SEXP::nil(),
     })
 }
 // endregion

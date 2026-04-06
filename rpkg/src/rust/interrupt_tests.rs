@@ -15,7 +15,7 @@ pub extern "C-unwind" fn C_check_interupt_after() -> SEXP {
 
     unsafe {
         R_CheckUserInterrupt();
-        SEXP::null()
+        SEXP::nil()
     }
 }
 
@@ -32,10 +32,10 @@ pub extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
         with_r_unwind_protect(
             || {
                 R_CheckUserInterrupt();
-                SEXP::null()
+                SEXP::nil()
             },
             None,
         );
-        SEXP::null()
+        SEXP::nil()
     }
 }

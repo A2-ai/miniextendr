@@ -76,7 +76,7 @@ impl<'a> ListAccumulator<'a> {
         let cap_isize: isize = cap.try_into().expect("capacity exceeds isize::MAX");
         let list_sexp = unsafe { ffi::Rf_allocVector(VECSXP, cap_isize) };
         let list = unsafe { scope.protect_with_index(list_sexp) };
-        let temp = unsafe { scope.protect_with_index(SEXP::null()) };
+        let temp = unsafe { scope.protect_with_index(SEXP::nil()) };
 
         Self {
             list,

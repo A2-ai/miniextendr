@@ -61,12 +61,12 @@ impl RDeserializer {
     }
 
     fn is_null(&self) -> bool {
-        self.sexp == SEXP::null()
+        self.sexp == SEXP::nil()
     }
 
     fn has_names(&self) -> bool {
         let names = self.sexp.get_names();
-        names != SEXP::null()
+        names != SEXP::nil()
     }
 
     fn type_name(&self) -> String {
@@ -847,7 +847,7 @@ struct NamedListMapAccess {
 impl NamedListMapAccess {
     fn new(sexp: SEXP) -> Result<Self, RSerdeError> {
         let names = sexp.get_names();
-        if names == SEXP::null() {
+        if names == SEXP::nil() {
             return Err(RSerdeError::TypeMismatch {
                 expected: "named list",
                 actual: "list (no names attribute)".into(),

@@ -164,7 +164,7 @@ macro_rules! __impl_altrep_base {
 ///
 /// The `unserialize` implementation reconstructs the backing Rust value via
 /// [`AltrepSerialize::unserialize`] and then creates a fresh ALTREP instance via
-/// `R_new_altrep(class, data1, SEXP::null())` where `data1` is an `ExternalPtr<$ty>`.
+/// `R_new_altrep(class, data1, SEXP::nil())` where `data1` is an `ExternalPtr<$ty>`.
 ///
 /// This matches the proc-macro-generated `IntoR::into_sexp` behavior (data is stored in `data1`,
 /// and `data2` is `R_NilValue`).
@@ -193,7 +193,7 @@ macro_rules! __impl_altrep_base_with_serialize {
             fn serialized_state(x: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| <$ty as $crate::altrep_data::AltrepSerialize>::serialized_state(&*d))
-                    .unwrap_or($crate::ffi::SEXP::null())
+                    .unwrap_or($crate::ffi::SEXP::nil())
             }
 
             const HAS_UNSERIALIZE: bool = true;
@@ -220,7 +220,7 @@ macro_rules! __impl_altrep_base_with_serialize {
                     let data1 = ext_ptr.as_sexp();
                     // Protect across the allocation in R_new_altrep.
                     Rf_protect_unchecked(data1);
-                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, SEXP::null());
+                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, SEXP::nil());
                     Rf_unprotect_unchecked(1);
                     out
                 }
@@ -355,7 +355,7 @@ macro_rules! __impl_altvec_extract_subset {
                             &*d, indices,
                         )
                     })
-                    .unwrap_or($crate::ffi::SEXP::null())
+                    .unwrap_or($crate::ffi::SEXP::nil())
             }
         }
     };
@@ -569,6 +569,7 @@ macro_rules! __impl_altinteger_methods {
 
             const HAS_SUM: bool = true;
 
+            // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::sum(&*d, narm))
@@ -664,6 +665,7 @@ macro_rules! __impl_altreal_methods {
 
             const HAS_SUM: bool = true;
 
+            // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::sum(&*d, narm))
@@ -769,6 +771,7 @@ macro_rules! __impl_altlogical_methods {
 
             const HAS_SUM: bool = true;
 
+            // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltLogicalData>::sum(&*d, narm))
@@ -940,7 +943,7 @@ macro_rules! impl_altlist_from_data {
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| <$ty as $crate::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                    .unwrap_or(unsafe { $crate::ffi::SEXP::null() })
+                    .unwrap_or(unsafe { $crate::ffi::SEXP::nil() })
             }
         }
 
@@ -1615,6 +1618,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
 
     const HAS_SUM: bool = true;
 
+    // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::sum(&*d, narm))
@@ -1633,7 +1637,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
     fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::min(&*d, narm))
-            .map(|m| crate::ffi::SEXP::scalar_integer(m))
+            .map(crate::ffi::SEXP::scalar_integer)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 
@@ -1642,7 +1646,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
     fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::max(&*d, narm))
-            .map(|m| crate::ffi::SEXP::scalar_integer(m))
+            .map(crate::ffi::SEXP::scalar_integer)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 }
@@ -1721,10 +1725,11 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
 
     const HAS_SUM: bool = true;
 
+    // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::sum(&*d, narm))
-            .map(|s| crate::ffi::SEXP::scalar_real(s))
+            .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 
@@ -1733,7 +1738,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
     fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::min(&*d, narm))
-            .map(|m| crate::ffi::SEXP::scalar_real(m))
+            .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 
@@ -1742,7 +1747,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
     fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::max(&*d, narm))
-            .map(|m| crate::ffi::SEXP::scalar_real(m))
+            .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
 }
@@ -1780,6 +1785,7 @@ impl crate::altrep_traits::AltLogical for &'static [bool] {
 
     const HAS_SUM: bool = true;
 
+    // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<&'static [bool]>(x) }
             .and_then(|d| crate::altrep_data::AltLogicalData::sum(&*d, narm))

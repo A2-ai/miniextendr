@@ -429,7 +429,7 @@ impl<M: MapStorage> ArenaState<M> {
         match self.map_mut().decrement_and_maybe_remove(&key) {
             Some((true, index)) => {
                 // Entry was removed (count reached 0)
-                self.backing.set_vector_elt(index as R_xlen_t, SEXP::null());
+                self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());
                 self.free_list.push(index);
                 self.len -= 1;
             }
@@ -459,7 +459,7 @@ impl<M: MapStorage> ArenaState<M> {
         match self.map_mut().decrement_and_maybe_remove(&key) {
             Some((true, index)) => {
                 // Entry was removed (count reached 0)
-                self.backing.set_vector_elt(index as R_xlen_t, SEXP::null());
+                self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());
                 self.free_list.push(index);
                 self.len -= 1;
                 true
@@ -485,7 +485,7 @@ impl<M: MapStorage> ArenaState<M> {
     #[inline]
     /// Returns the current reference count for `x` in this arena.
     ///
-    /// Returns 0 if `x` is not protected or is `SEXP::null()`.
+    /// Returns 0 if `x` is not protected or is `SEXP::nil()`.
     pub fn ref_count(&self, x: SEXP) -> usize {
         if x.is_nil() {
             return 0;
@@ -546,7 +546,7 @@ impl<M: MapStorage> ArenaState<M> {
     pub unsafe fn clear(&mut self) {
         self.map().for_each_entry(|entry| {
             self.backing
-                .set_vector_elt(entry.index as R_xlen_t, SEXP::null());
+                .set_vector_elt(entry.index as R_xlen_t, SEXP::nil());
         });
         self.map_mut().clear();
         self.free_list.clear();

@@ -364,7 +364,7 @@ pub(crate) fn generate_altrep_impls(
                     let data1 = ext_ptr.as_sexp();
                     unsafe {
                         Rf_protect(data1);
-                        let altrep = R_new_altrep(cls, data1, SEXP::null());
+                        let altrep = R_new_altrep(cls, data1, SEXP::nil());
                         Rf_unprotect(1);
                         altrep
                     }
@@ -384,7 +384,7 @@ pub(crate) fn generate_altrep_impls(
                         let altrep = R_new_altrep_unchecked(
                             cls,
                             data1,
-                            ::miniextendr_api::ffi::SEXP::null(),
+                            ::miniextendr_api::ffi::SEXP::nil(),
                         );
                         Rf_unprotect_unchecked(1);
                         altrep

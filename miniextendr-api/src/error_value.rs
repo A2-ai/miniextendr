@@ -50,7 +50,7 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         list.set_vector_elt(1, SEXP::scalar_string(kind_charsxp));
 
         // Set list element 2: call SEXP
-        let call_sexp = call.unwrap_or(SEXP::null());
+        let call_sexp = call.unwrap_or(SEXP::nil());
         list.set_vector_elt(2, call_sexp);
 
         // Set names: c("error", "kind", "call")

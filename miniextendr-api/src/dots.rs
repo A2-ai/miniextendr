@@ -67,9 +67,7 @@ impl Dots {
     /// ```
     pub fn empty() -> Self {
         // SAFETY: R_NilValue is always valid and represents empty dots
-        Dots {
-            inner: SEXP::null(),
-        }
+        Dots { inner: SEXP::nil() }
     }
 
     /// Convert to a [`List`] without additional validation.
@@ -184,6 +182,6 @@ mod tests {
     #[test]
     fn dots_empty_creates_nil() {
         let dots = Dots::empty();
-        assert_eq!(dots.inner, SEXP::null());
+        assert_eq!(dots.inner, SEXP::nil());
     }
 }

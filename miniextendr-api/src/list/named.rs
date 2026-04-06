@@ -174,7 +174,7 @@ impl TryFromSexp for Option<NamedList> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp == SEXP::null() {
+        if sexp == SEXP::nil() {
             return Ok(None);
         }
         let named = NamedList::try_from_sexp(sexp)?;

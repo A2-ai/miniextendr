@@ -351,7 +351,7 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
 
         write_r_wrappers_to_file(path);
 
-        SEXP::null()
+        SEXP::nil()
     }
 }
 // endregion

@@ -18,7 +18,7 @@ fn preserve_insert_release() {
         preserve::release(cell_b);
 
         // R_NilValue is never collected, so insert returns R_NilValue itself
-        let nil_cell = preserve::insert(SEXP::null());
+        let nil_cell = preserve::insert(SEXP::nil());
         assert!(nil_cell.is_nil());
     });
 }
@@ -43,7 +43,7 @@ fn preserve_count_tracking() {
         preserve::release(cell_b);
         assert_eq!(preserve::count(), initial);
 
-        let nil_cell = preserve::insert(SEXP::null());
+        let nil_cell = preserve::insert(SEXP::nil());
         assert!(nil_cell.is_nil());
         assert_eq!(preserve::count(), initial);
     });

@@ -339,7 +339,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<S
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(m) => m.into_sexp(),
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         })
     }
 
@@ -347,7 +347,7 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<S
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         Ok(match self {
             Some(m) => unsafe { m.into_sexp_unchecked() },
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         })
     }
 }

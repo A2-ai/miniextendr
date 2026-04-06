@@ -361,12 +361,12 @@ fn generate_getter_body(
         use ::miniextendr_api::ffi::{R_ExternalPtrAddr, SEXP};
         let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
         if any_raw.is_null() {
-            return SEXP::null();
+            return SEXP::nil();
         }
         let any_box: &Box<dyn ::std::any::Any> = &*any_raw;
         let data: &#struct_name = match any_box.downcast_ref::<#struct_name>() {
             Some(v) => v,
-            None => return SEXP::null(),
+            None => return SEXP::nil(),
         };
     };
 

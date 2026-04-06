@@ -181,7 +181,7 @@ impl ProtectPool {
             return;
         };
         if slot < self.generations.len() && self.generations[slot] == key.generation {
-            self.backing.set_vector_elt(r_slot, SEXP::null());
+            self.backing.set_vector_elt(r_slot, SEXP::nil());
             self.generations[slot] = self.generations[slot].wrapping_add(1);
             self.free_slots.push(slot);
             self.len -= 1;

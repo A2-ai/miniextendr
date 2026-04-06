@@ -76,7 +76,7 @@ thread_local! {
 #[inline]
 unsafe fn init() -> SEXP {
     unsafe {
-        let out = Rf_cons(SEXP::null(), Rf_cons(SEXP::null(), SEXP::null()));
+        let out = Rf_cons(SEXP::nil(), Rf_cons(SEXP::nil(), SEXP::nil()));
         R_PreserveObject(out);
         out
     }
@@ -95,7 +95,7 @@ unsafe fn init_unchecked() -> SEXP {
     use crate::ffi::{R_PreserveObject_unchecked, Rf_cons_unchecked};
 
     unsafe {
-        let out = Rf_cons_unchecked(SEXP::null(), Rf_cons_unchecked(SEXP::null(), SEXP::null()));
+        let out = Rf_cons_unchecked(SEXP::nil(), Rf_cons_unchecked(SEXP::nil(), SEXP::nil()));
         R_PreserveObject_unchecked(out);
         out
     }
@@ -183,7 +183,7 @@ pub unsafe fn count_unchecked() -> crate::ffi::R_xlen_t {
 pub unsafe fn insert(x: SEXP) -> SEXP {
     unsafe {
         if x.is_nil() {
-            return SEXP::null();
+            return SEXP::nil();
         }
 
         Rf_protect(x);
@@ -227,7 +227,7 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
 
     unsafe {
         if x.is_nil() {
-            return SEXP::null();
+            return SEXP::nil();
         }
 
         Rf_protect_unchecked(x);

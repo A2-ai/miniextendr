@@ -1084,7 +1084,7 @@ impl TryFromSexp for List {
 
         // Check for duplicate non-NA names
         let names_sexp = list_sexp.get_names();
-        if names_sexp != SEXP::null() {
+        if names_sexp != SEXP::nil() {
             let n = unsafe { ffi::Rf_xlength(list_sexp) };
             let n_usize: usize = n.try_into().expect("list length must be non-negative");
             let mut seen = HashSet::with_capacity(n_usize);
@@ -1119,7 +1119,7 @@ impl TryFromSexp for Option<List> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp == SEXP::null() {
+        if sexp == SEXP::nil() {
             return Ok(None);
         }
         let list = List::try_from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))?;
@@ -1131,7 +1131,7 @@ impl TryFromSexp for Option<ListMut> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp == SEXP::null() {
+        if sexp == SEXP::nil() {
             return Ok(None);
         }
         let list = ListMut::try_from_sexp(sexp)?;

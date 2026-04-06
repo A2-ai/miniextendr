@@ -113,11 +113,11 @@ where
         match catch_unwind(AssertUnwindSafe(f)) {
             Ok(result) => {
                 data.result = Some(result);
-                crate::ffi::SEXP::null()
+                crate::ffi::SEXP::nil()
             }
             Err(payload) => {
                 data.panic_payload = Some(payload);
-                crate::ffi::SEXP::null()
+                crate::ffi::SEXP::nil()
             }
         }
     }

@@ -270,7 +270,7 @@ impl RCall {
             // We protect intermediate results as we go.
             let mut n_protect: i32 = 0;
 
-            let mut tail = SEXP::null();
+            let mut tail = SEXP::nil();
             for (name, value) in self.args.iter().rev() {
                 tail = ffi::Rf_cons(*value, tail);
                 Rf_protect(tail);

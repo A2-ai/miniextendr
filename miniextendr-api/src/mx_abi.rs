@@ -61,7 +61,7 @@ unsafe extern "C-unwind" fn mx_externalptr_finalizer(ptr: SEXP) {
 pub unsafe extern "C-unwind" fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
     unsafe {
         let tag = get_tag();
-        let sexp = Rf_protect(R_MakeExternalPtr(ptr.cast(), tag, SEXP::null()));
+        let sexp = Rf_protect(R_MakeExternalPtr(ptr.cast(), tag, SEXP::nil()));
         R_RegisterCFinalizerEx(sexp, Some(mx_externalptr_finalizer), Rboolean::TRUE);
         Rf_unprotect(1);
         sexp

@@ -154,7 +154,7 @@ where
         // Protect data1 across R_new_altrep — it may allocate and trigger GC.
         unsafe {
             crate::ffi::Rf_protect_unchecked(data1);
-            let out = crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null());
+            let out = crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::nil());
             crate::ffi::Rf_unprotect_unchecked(1);
             out
         }
@@ -166,7 +166,7 @@ where
         unsafe {
             crate::ffi::Rf_protect_unchecked(data1);
             let out =
-                crate::ffi::altrep::R_new_altrep_unchecked(cls, data1, crate::ffi::SEXP::null());
+                crate::ffi::altrep::R_new_altrep_unchecked(cls, data1, crate::ffi::SEXP::nil());
             crate::ffi::Rf_unprotect_unchecked(1);
             out
         }

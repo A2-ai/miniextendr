@@ -45,7 +45,7 @@ pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
         eprintln!("[Rust] Worker: about to panic");
         panic!("intentional panic from worker");
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 // region: Comprehensive worker/with_r_thread tests
@@ -128,7 +128,7 @@ pub extern "C-unwind" fn C_test_worker_panic_simple() -> SEXP {
     run_on_worker_or_error::<_, ()>(|| {
         panic!("simple panic on worker");
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 /// @noRd
@@ -141,7 +141,7 @@ pub extern "C-unwind" fn C_test_worker_panic_with_drops() -> SEXP {
         let _resource2 = Box::new(SimpleDropMsg("test_panic_drops: resource2 (boxed)"));
         panic!("panic after creating resources");
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 /// @noRd
@@ -154,7 +154,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread() -> SEXP {
             panic!("panic inside with_r_thread callback");
         });
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 /// @noRd
@@ -170,7 +170,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops() -> SEXP {
             panic!("panic in with_r_thread with resources");
         });
     });
-    SEXP::null()
+    SEXP::nil()
 }
 // endregion
 
@@ -186,7 +186,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_in_r_thread() -> SEXP {
             miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error in with_r_thread".as_ptr()); // mxl::allow(MXL300)
         });
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 /// @noRd
@@ -204,7 +204,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_with_drops() -> SEXP {
             }
         });
     });
-    SEXP::null()
+    SEXP::nil()
 }
 // endregion
 
@@ -233,7 +233,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_error() -> SEXP {
             );
         });
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 /// @noRd
@@ -251,7 +251,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 
         panic!("Rust panic after successful R call");
     });
-    SEXP::null()
+    SEXP::nil()
 }
 // endregion
 
@@ -405,7 +405,7 @@ pub extern "C-unwind" fn C_test_wrong_thread_r_api() -> SEXP {
         // Either way, this should succeed (not panic).
         let _ = miniextendr_api::ffi::SEXP::scalar_integer(42);
     });
-    SEXP::null()
+    SEXP::nil()
 }
 // endregion
 
@@ -511,7 +511,7 @@ pub extern "C-unwind" fn C_test_nested_with_error() -> SEXP {
             }
         })
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 /// @noRd
@@ -535,7 +535,7 @@ pub extern "C-unwind" fn C_test_nested_with_panic() -> SEXP {
             panic!("Panic in nested with_r_thread");
         })
     });
-    SEXP::null()
+    SEXP::nil()
 }
 
 /// @noRd

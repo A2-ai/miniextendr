@@ -1142,7 +1142,7 @@ impl<'a> ReprotectSlot<'a> {
     #[inline]
     pub unsafe fn take(&self) -> SEXP {
         let old = self.cur.get();
-        let nil = SEXP::null();
+        let nil = SEXP::nil();
         unsafe { R_Reprotect(nil, self.idx) };
         self.cur.set(nil);
         old
@@ -1186,7 +1186,7 @@ impl<'a> ReprotectSlot<'a> {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn clear(&self) {
-        let nil = SEXP::null();
+        let nil = SEXP::nil();
         unsafe { R_Reprotect(nil, self.idx) };
         self.cur.set(nil);
     }
@@ -1198,7 +1198,7 @@ impl<'a> ReprotectSlot<'a> {
     /// Must be called from the R main thread (accesses R's `R_NilValue`).
     #[inline]
     pub unsafe fn is_nil(&self) -> bool {
-        self.cur.get() == SEXP::null()
+        self.cur.get() == SEXP::nil()
     }
 }
 

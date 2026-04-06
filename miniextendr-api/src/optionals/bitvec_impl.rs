@@ -129,7 +129,7 @@ impl IntoR for Option<RBitVec> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(bits) => bits.into_sexp(),
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -204,7 +204,7 @@ impl IntoR for Option<BitVec<u8, Msb0>> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(bits) => bits.into_sexp(),
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }

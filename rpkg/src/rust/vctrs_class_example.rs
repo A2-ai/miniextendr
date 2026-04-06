@@ -85,7 +85,7 @@ pub fn vec_proxy_percent(x: SEXP, _dots: ...) -> SEXP {
     if !class.is_nil() {
         // Duplicate to avoid modifying original, with GC protection
         let out = unsafe { OwnedProtect::new(Rf_duplicate(x)) };
-        out.get().set_class(SEXP::null());
+        out.get().set_class(SEXP::nil());
         // OwnedProtect drops here, calling UNPROTECT(1). This is safe because
         // R captures the return value before any GC can run.
         out.get()
@@ -147,7 +147,7 @@ pub fn vec_ptype2_double_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP,
 pub fn vec_cast_double_percent(x: SEXP, _to: SEXP, _dots: ...) -> SEXP {
     // Strip the class to get raw numeric, with GC protection
     let out = unsafe { OwnedProtect::new(Rf_duplicate(x)) };
-    out.get().set_class(SEXP::null());
+    out.get().set_class(SEXP::nil());
     // OwnedProtect drops here, unprotecting. Safe because R captures return value.
     out.get()
 }

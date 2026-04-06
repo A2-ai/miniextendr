@@ -338,14 +338,14 @@ pub fn cov_explicit_inline() -> i32 {
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub(crate) extern "C-unwind" fn C_cov_direct() -> ffi::SEXP {
-    SEXP::null()
+    SEXP::nil()
 }
 
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub(crate) extern "C-unwind" fn C_cov_indirect() -> ffi::SEXP {
-    SEXP::null()
+    SEXP::nil()
 }
 // endregion
 

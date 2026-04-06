@@ -477,14 +477,14 @@ impl IntoR for Option<Bytes> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(b) => b.into_sexp(),
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(b) => unsafe { b.into_sexp_unchecked() },
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -501,14 +501,14 @@ impl IntoR for Option<BytesMut> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(b) => b.into_sexp(),
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(b) => unsafe { b.into_sexp_unchecked() },
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }

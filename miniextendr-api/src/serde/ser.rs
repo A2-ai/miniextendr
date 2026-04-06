@@ -123,7 +123,7 @@ impl ser::Serializer for RSerializer {
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         // None becomes R NULL
         // For NA handling, use Option<T> which maps None -> NA in specific contexts
-        Ok(SEXP::null())
+        Ok(SEXP::nil())
     }
 
     fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<Self::Ok, Self::Error> {
@@ -131,11 +131,11 @@ impl ser::Serializer for RSerializer {
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok(SEXP::null())
+        Ok(SEXP::nil())
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok(SEXP::null())
+        Ok(SEXP::nil())
     }
 
     fn serialize_unit_variant(

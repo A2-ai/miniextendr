@@ -174,7 +174,7 @@ impl ColumnarDataFrame {
     pub fn rename(self, from: &str, to: &str) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::null() {
+            if names_sexp == SEXP::nil() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);
@@ -193,7 +193,7 @@ impl ColumnarDataFrame {
     pub fn strip_prefix(self, prefix: &str) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::null() {
+            if names_sexp == SEXP::nil() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);
@@ -211,7 +211,7 @@ impl ColumnarDataFrame {
     pub fn drop(self, col: &str) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::null() {
+            if names_sexp == SEXP::nil() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);
@@ -249,7 +249,7 @@ impl ColumnarDataFrame {
     pub fn select(self, cols: &[&str]) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
-            if names_sexp == SEXP::null() {
+            if names_sexp == SEXP::nil() {
                 return self;
             }
             let ncol = crate::ffi::Rf_xlength(names_sexp);
@@ -1380,7 +1380,7 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                     if let Some(elem) = val {
                         sexp.set_vector_elt(idx, *elem);
                     } else {
-                        sexp.set_vector_elt(idx, SEXP::null());
+                        sexp.set_vector_elt(idx, SEXP::nil());
                     }
                 }
                 sexp

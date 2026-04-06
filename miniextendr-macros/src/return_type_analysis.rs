@@ -93,14 +93,14 @@ pub(crate) fn analyze_return_type(
         // No return type (no arrow)
         syn::ReturnType::Default => {
             is_invisible = true;
-            quote::quote! { ::miniextendr_api::ffi::SEXP::null() }
+            quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
         }
 
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible = true;
-                quote::quote! { ::miniextendr_api::ffi::SEXP::null() }
+                quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
             }
 
             // -> SEXP
@@ -222,7 +222,7 @@ fn analyze_option_type(
             // error_in_r: return tagged error value on None (no post_call unwrap)
             quote::quote! {
                 match #rust_result_ident {
-                    Some(()) => ::miniextendr_api::ffi::SEXP::null(),
+                    Some(()) => ::miniextendr_api::ffi::SEXP::nil(),
                     None => ::miniextendr_api::error_value::make_rust_error_value(
                         #option_none_error_msg, "none_err", Some(__miniextendr_call),
                     ),
@@ -234,7 +234,7 @@ fn analyze_option_type(
                     ::miniextendr_api::error::r_stop(#option_none_error_msg);
                 }
             });
-            quote::quote! { ::miniextendr_api::ffi::SEXP::null() }
+            quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
         }
     } else if is_sexp_inner {
         // Option<SEXP> - return SEXP or R_NilValue for None
@@ -243,7 +243,7 @@ fn analyze_option_type(
         quote::quote! {
             match #rust_result_ident {
                 Some(v) => v,
-                None => ::miniextendr_api::ffi::SEXP::null(),
+                None => ::miniextendr_api::ffi::SEXP::nil(),
             }
         }
     } else {
@@ -290,7 +290,7 @@ fn analyze_result_type(
         if ok_is_unit {
             // Result<(), ()> - invisible, always returns NULL
             *ctx.is_invisible = true;
-            quote::quote! { ::miniextendr_api::ffi::SEXP::null() }
+            quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
         } else {
             // Result<T, ()> - convert to Result<T, NullOnErr> and use IntoR
             // IntoR for Result<T, NullOnErr> returns NULL on Err
@@ -312,7 +312,7 @@ fn analyze_result_type(
             *ctx.is_invisible = true;
             quote::quote! {
                 match #rust_result_ident {
-                    Ok(()) => ::miniextendr_api::ffi::SEXP::null(),
+                    Ok(()) => ::miniextendr_api::ffi::SEXP::nil(),
                     Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
                         &format!("{:?}", e), "result_err", Some(__miniextendr_call),
                     ),
@@ -361,7 +361,7 @@ fn analyze_result_type(
                 ::miniextendr_api::error::r_stop(&format!("{:?}", e));
             }
         });
-        quote::quote! { ::miniextendr_api::ffi::SEXP::null() }
+        quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
     } else {
         // Result<T, E> - unwrap then convert
         // Uses Debug format so it works with any E: Debug

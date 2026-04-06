@@ -230,7 +230,7 @@ impl IntoR for Option<TomlValue> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(value) => toml_value_to_sexp(&value),
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -281,7 +281,7 @@ impl IntoR for Vec<Option<TomlValue>> {
         for (i, value) in self.iter().enumerate() {
             let elem = match value {
                 Some(v) => toml_value_to_sexp(v),
-                None => crate::ffi::SEXP::null(),
+                None => crate::ffi::SEXP::nil(),
             };
             sexp.get()
                 .set_vector_elt(isize::try_from(i).expect("index overflow"), elem)

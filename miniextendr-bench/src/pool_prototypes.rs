@@ -61,7 +61,7 @@ impl VecPool {
     #[inline]
     pub unsafe fn release(&mut self, slot: usize) {
         self.backing
-            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::null());
+            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
         self.free_list.push(slot);
     }
 
@@ -147,7 +147,7 @@ impl DequePool {
     #[inline]
     pub unsafe fn release(&mut self, slot: usize) {
         self.backing
-            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::null());
+            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
         self.free_list.push_back(slot);
     }
 
@@ -237,7 +237,7 @@ impl SlotmapPool {
     pub unsafe fn release(&mut self, key: ProtectKey) {
         if let Some(slot) = self.slots.remove(key) {
             self.backing
-                .set_vector_elt(slot as ffi::R_xlen_t, SEXP::null());
+                .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
             self.free_slots.push(slot);
         }
     }
@@ -332,7 +332,7 @@ impl KeyedBacking {
     #[inline]
     unsafe fn clear_slot(&mut self, slot: usize) {
         self.backing
-            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::null());
+            .set_vector_elt(slot as ffi::R_xlen_t, SEXP::nil());
         self.free_slots.push(slot);
     }
 

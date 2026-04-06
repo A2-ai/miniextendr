@@ -75,7 +75,7 @@ pub fn is_r_main_thread() -> bool {
 /// // From worker thread, safely call R APIs:
 /// let sexp = with_r_thread(|| {
 ///     // This runs on R's main thread
-///     SEXP::null()
+///     SEXP::nil()
 /// });
 /// ```
 pub fn with_r_thread<F, R>(f: F) -> R
@@ -412,11 +412,11 @@ mod worker_channel {
                         match catch_unwind(AssertUnwindSafe(work)) {
                             Ok(result) => {
                                 data.result = Some(result);
-                                SEXP::null()
+                                SEXP::nil()
                             }
                             Err(payload) => {
                                 data.panic_payload = Some(payload);
-                                SEXP::null()
+                                SEXP::nil()
                             }
                         }
                     }

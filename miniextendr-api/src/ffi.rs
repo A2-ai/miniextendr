@@ -141,13 +141,30 @@ unsafe impl Send for SEXP {}
 unsafe impl Sync for SEXP {}
 
 impl SEXP {
-    /// Create a null SEXP.
+    /// Create a C null pointer SEXP (0x0).
+    ///
+    /// This is NOT R's `NULL` value — use [`SEXP::nil()`] for that.
+    /// Only use this for low-level pointer initialization or comparison against
+    /// uninitialized pointers.
     #[inline]
     pub const fn null() -> Self {
         Self(std::ptr::null_mut())
     }
 
-    /// Check if this SEXP is null.
+    /// Return R's `NULL` singleton (`R_NilValue`).
+    ///
+    /// This is the correct value to return from `.Call()` functions, pass as
+    /// SEXP arguments to R API functions, and store in R data structures.
+    /// It is NOT a C null pointer — it points to R's actual nil object.
+    #[inline]
+    pub fn nil() -> Self {
+        unsafe { R_NilValue }
+    }
+
+    /// Check if this SEXP is a C null pointer (0x0).
+    ///
+    /// To check if an SEXP is R's `NULL` (`R_NilValue`), use
+    /// [`SexpExt::is_nil()`] instead.
     #[inline]
     pub const fn is_null(self) -> bool {
         self.0.is_null()
@@ -603,16 +620,34 @@ pub trait SexpExt {
     // region: Unchecked variants (bypass thread-check, for perf-critical paths)
 
     /// Get the i-th CHARSXP from a STRSXP. No thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread.
     unsafe fn string_elt_unchecked(&self, i: isize) -> SEXP;
     /// Set the i-th CHARSXP of a STRSXP. No thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread.
     unsafe fn set_string_elt_unchecked(&self, i: isize, charsxp: SEXP);
     /// Get the i-th element of a VECSXP. No thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread.
     unsafe fn vector_elt_unchecked(&self, i: isize) -> SEXP;
     /// Set the i-th element of a VECSXP. No thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread.
     unsafe fn set_vector_elt_unchecked(&self, i: isize, val: SEXP);
     /// Get an attribute by symbol. No thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread.
     unsafe fn get_attr_unchecked(&self, name: SEXP) -> SEXP;
     /// Set an attribute by symbol. No thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread.
     unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP);
 
     // endregion

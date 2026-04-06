@@ -612,7 +612,7 @@ impl IntoR for Option<JsonValue> {
     fn into_sexp(self) -> SEXP {
         match self {
             Some(value) => json_value_to_sexp(&value),
-            None => crate::ffi::SEXP::null(),
+            None => crate::ffi::SEXP::nil(),
         }
     }
 }
@@ -663,7 +663,7 @@ impl IntoR for Vec<Option<JsonValue>> {
         for (i, value) in self.iter().enumerate() {
             let elem = match value {
                 Some(v) => json_value_to_sexp(v),
-                None => crate::ffi::SEXP::null(),
+                None => crate::ffi::SEXP::nil(),
             };
             sexp.get()
                 .set_vector_elt(isize::try_from(i).expect("index overflow"), elem)
@@ -702,7 +702,7 @@ fn json_discriminant(v: &JsonValue) -> u8 {
 
 fn json_value_to_sexp(value: &JsonValue) -> SEXP {
     match value {
-        JsonValue::Null => crate::ffi::SEXP::null(),
+        JsonValue::Null => crate::ffi::SEXP::nil(),
         JsonValue::Bool(b) => {
             let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, 1) };
             sexp.set_logical_elt(0, if *b { 1 } else { 0 });

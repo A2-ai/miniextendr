@@ -335,7 +335,7 @@ fn nrow_from_first_column(sexp: SEXP) -> Result<usize, DataFrameError> {
         return Ok(0);
     }
     let first_col = sexp.vector_elt(0);
-    if first_col == SEXP::null() {
+    if first_col == SEXP::nil() {
         return Ok(0);
     }
     let len = unsafe { ffi::Rf_xlength(first_col) };
