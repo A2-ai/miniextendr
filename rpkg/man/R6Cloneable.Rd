@@ -32,7 +32,7 @@ Creates a new instance.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{Integer value to store.}
+\item{\code{value}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -61,7 +61,7 @@ Sets the value.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{Integer value to store.}
+\item{\code{value}}{(no documentation available)}
 }
 \if{html}{\out{</div>}}
 }

@@ -23,6 +23,7 @@ StrictCounter R6 Class
 \if{html}{\out{<a id="method-StrictCounter-new"></a>}}
 \if{latex}{\out{\hypertarget{method-StrictCounter-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new \code{StrictCounter}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{StrictCounter$new(value, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -30,7 +31,7 @@ StrictCounter R6 Class
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{Integer or numeric scalar for the initial counter value.}
+\item{\code{value}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -41,6 +42,7 @@ StrictCounter R6 Class
 \if{html}{\out{<a id="method-StrictCounter-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-StrictCounter-get_value}{}}}
 \subsection{Method \code{get_value()}}{
+Method \code{get_value}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{StrictCounter$get_value()}\if{html}{\out{</div>}}
 }
@@ -50,9 +52,17 @@ StrictCounter R6 Class
 \if{html}{\out{<a id="method-StrictCounter-add"></a>}}
 \if{latex}{\out{\hypertarget{method-StrictCounter-add}{}}}
 \subsection{Method \code{add()}}{
+Method \code{add}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{StrictCounter$add(x)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{x}}{(no documentation available)}
+}
+\if{html}{\out{</div>}}
+}
 }
 }

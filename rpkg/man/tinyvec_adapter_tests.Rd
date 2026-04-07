@@ -63,11 +63,11 @@ tinyvec adapter tests
 
 tinyvec adapter tests
 
-Test TinyVec<\link{f64; 8}> roundtrip through R
+Test \verb{TinyVec<[f64; 8]>} roundtrip through R
 
-Test TinyVec<\link{i32; 8}> roundtrip through R
+Test \verb{TinyVec<[i32; 8]>} roundtrip through R
 
-Test ArrayVec<\link{f64; 4}> roundtrip through R
+Test \verb{ArrayVec<[f64; 4]>} roundtrip through R
 
-Test ArrayVec<\link{i32; 8}> roundtrip through R
+Test \verb{ArrayVec<[i32; 8]>} roundtrip through R
 }

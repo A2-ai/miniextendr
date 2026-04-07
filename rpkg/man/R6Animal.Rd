@@ -23,6 +23,7 @@ R6 base animal class for inheritance testing
 \if{html}{\out{<a id="method-R6Animal-new"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Animal-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new \code{R6Animal}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Animal$new(name, sound, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -30,9 +31,9 @@ R6 base animal class for inheritance testing
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{name}}{Character name of the animal.}
+\item{\code{name}}{(no documentation available)}
 
-\item{\code{sound}}{Character sound the animal makes.}
+\item{\code{sound}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -43,6 +44,7 @@ R6 base animal class for inheritance testing
 \if{html}{\out{<a id="method-R6Animal-name"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Animal-name}{}}}
 \subsection{Method \code{name()}}{
+Method \code{name}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Animal$name()}\if{html}{\out{</div>}}
 }
@@ -52,6 +54,7 @@ R6 base animal class for inheritance testing
 \if{html}{\out{<a id="method-R6Animal-speak"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Animal-speak}{}}}
 \subsection{Method \code{speak()}}{
+Method \code{speak}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Animal$speak()}\if{html}{\out{</div>}}
 }

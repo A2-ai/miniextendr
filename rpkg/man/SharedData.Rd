@@ -24,6 +24,7 @@ SharedData R6 Class
 \if{html}{\out{<a id="method-SharedData-new"></a>}}
 \if{latex}{\out{\hypertarget{method-SharedData-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new \code{SharedData}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{SharedData$new(x, y, label, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -31,11 +32,11 @@ SharedData R6 Class
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{x}}{Numeric x-coordinate.}
+\item{\code{x}}{(no documentation available)}
 
-\item{\code{y}}{Numeric y-coordinate.}
+\item{\code{y}}{(no documentation available)}
 
-\item{\code{label}}{Character label.}
+\item{\code{label}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -46,6 +47,7 @@ SharedData R6 Class
 \if{html}{\out{<a id="method-SharedData-get_x"></a>}}
 \if{latex}{\out{\hypertarget{method-SharedData-get_x}{}}}
 \subsection{Method \code{get_x()}}{
+Method \code{get_x}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{SharedData$get_x()}\if{html}{\out{</div>}}
 }
@@ -55,6 +57,7 @@ SharedData R6 Class
 \if{html}{\out{<a id="method-SharedData-get_y"></a>}}
 \if{latex}{\out{\hypertarget{method-SharedData-get_y}{}}}
 \subsection{Method \code{get_y()}}{
+Method \code{get_y}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{SharedData$get_y()}\if{html}{\out{</div>}}
 }
@@ -64,6 +67,7 @@ SharedData R6 Class
 \if{html}{\out{<a id="method-SharedData-get_label"></a>}}
 \if{latex}{\out{\hypertarget{method-SharedData-get_label}{}}}
 \subsection{Method \code{get_label()}}{
+Method \code{get_label}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{SharedData$get_label()}\if{html}{\out{</div>}}
 }

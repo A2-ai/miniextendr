@@ -12,7 +12,7 @@ R6 dog class inheriting from R6Animal
 R6 dog class inheriting from R6Animal
 }
 \section{Super class}{
-\code{miniextendr::R6Animal} -> \code{R6Dog}
+\code{\link[miniextendr:R6Animal]{miniextendr::R6Animal}} -> \code{R6Dog}
 }
 \section{Methods}{
 \subsection{Public methods}{
@@ -34,6 +34,7 @@ R6 dog class inheriting from R6Animal
 \if{html}{\out{<a id="method-R6Dog-new"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Dog-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new \code{R6Dog}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Dog$new(breed, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -41,7 +42,7 @@ R6 dog class inheriting from R6Animal
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{breed}}{Character breed of the dog.}
+\item{\code{breed}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -52,6 +53,7 @@ R6 dog class inheriting from R6Animal
 \if{html}{\out{<a id="method-R6Dog-breed"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Dog-breed}{}}}
 \subsection{Method \code{breed()}}{
+Method \code{breed}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Dog$breed()}\if{html}{\out{</div>}}
 }
@@ -61,6 +63,7 @@ R6 dog class inheriting from R6Animal
 \if{html}{\out{<a id="method-R6Dog-fetch"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Dog-fetch}{}}}
 \subsection{Method \code{fetch()}}{
+Method \code{fetch}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Dog$fetch()}\if{html}{\out{</div>}}
 }

@@ -92,6 +92,8 @@ pub struct SidecarR6 {
 /// R6 class registration for SidecarR6 with active binding sidecar accessors.
 /// @param value Integer sidecar field.
 /// @param label Character sidecar field.
+/// @field value Integer sidecar field (active binding).
+/// @field label Character sidecar field (active binding).
 #[miniextendr(r6(r_data_accessors))]
 impl SidecarR6 {
     /// Create a new SidecarR6 with initial values.

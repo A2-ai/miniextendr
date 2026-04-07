@@ -22,6 +22,7 @@ R6 non-portable class for testing portable = FALSE flag
 \if{html}{\out{<a id="method-R6NonPortable-new"></a>}}
 \if{latex}{\out{\hypertarget{method-R6NonPortable-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new \code{R6NonPortable}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6NonPortable$new(value, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -29,7 +30,7 @@ R6 non-portable class for testing portable = FALSE flag
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{Integer value to store.}
+\item{\code{value}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -40,6 +41,7 @@ R6 non-portable class for testing portable = FALSE flag
 \if{html}{\out{<a id="method-R6NonPortable-get_value"></a>}}
 \if{latex}{\out{\hypertarget{method-R6NonPortable-get_value}{}}}
 \subsection{Method \code{get_value()}}{
+Method \code{get_value}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6NonPortable$get_value()}\if{html}{\out{</div>}}
 }

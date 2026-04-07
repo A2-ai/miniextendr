@@ -40,7 +40,7 @@ Creates a new temperature in Celsius.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{celsius}}{Numeric temperature in Celsius.}
+\item{\code{celsius}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -56,6 +56,13 @@ Set the temperature in Celsius (active binding setter).
 \if{html}{\out{<div class="r">}}\preformatted{R6Temperature$set_celsius(value)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{value}}{(no documentation available)}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6Temperature-set_fahrenheit"></a>}}
@@ -66,5 +73,12 @@ Set the temperature via Fahrenheit (active binding setter).
 \if{html}{\out{<div class="r">}}\preformatted{R6Temperature$set_fahrenheit(value)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{value}}{(no documentation available)}
+}
+\if{html}{\out{</div>}}
+}
 }
 }

@@ -12,7 +12,7 @@ R6 golden retriever class for 3-level inheritance chain testing
 R6 golden retriever class for 3-level inheritance chain testing
 }
 \section{Super classes}{
-\code{miniextendr::R6Animal} -> \code{miniextendr::R6Dog} -> \code{R6GoldenRetriever}
+\code{\link[miniextendr:R6Animal]{miniextendr::R6Animal}} -> \code{\link[miniextendr:R6Dog]{miniextendr::R6Dog}} -> \code{R6GoldenRetriever}
 }
 \section{Methods}{
 \subsection{Public methods}{
@@ -35,6 +35,7 @@ R6 golden retriever class for 3-level inheritance chain testing
 \if{html}{\out{<a id="method-R6GoldenRetriever-new"></a>}}
 \if{latex}{\out{\hypertarget{method-R6GoldenRetriever-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new \code{R6GoldenRetriever}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6GoldenRetriever$new(owner, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -42,7 +43,7 @@ R6 golden retriever class for 3-level inheritance chain testing
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{owner}}{Character name of the owner.}
+\item{\code{owner}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -53,6 +54,7 @@ R6 golden retriever class for 3-level inheritance chain testing
 \if{html}{\out{<a id="method-R6GoldenRetriever-owner"></a>}}
 \if{latex}{\out{\hypertarget{method-R6GoldenRetriever-owner}{}}}
 \subsection{Method \code{owner()}}{
+Method \code{owner}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6GoldenRetriever$owner()}\if{html}{\out{</div>}}
 }

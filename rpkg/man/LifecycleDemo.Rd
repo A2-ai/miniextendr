@@ -34,7 +34,7 @@ Creates a new LifecycleDemo.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{Integer initial value.}
+\item{\code{value}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }

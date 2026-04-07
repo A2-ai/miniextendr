@@ -49,6 +49,7 @@ Create a new R6 trait counter.
 \if{html}{\out{<a id="method-R6TraitCounter-new"></a>}}
 \if{latex}{\out{\hypertarget{method-R6TraitCounter-new}{}}}
 \subsection{Method \code{new()}}{
+Create a new \code{R6TraitCounter}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6TraitCounter$new(.ptr = NULL)}\if{html}{\out{</div>}}
 }

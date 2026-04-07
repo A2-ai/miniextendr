@@ -33,7 +33,7 @@ Creates a new counter with the given initial value.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{initial}}{Integer initial counter value.}
+\item{\code{initial}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -69,5 +69,12 @@ Adds the given amount to the counter and returns the new value.
 \if{html}{\out{<div class="r">}}\preformatted{R6Counter$add(amount)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{amount}}{(no documentation available)}
+}
+\if{html}{\out{</div>}}
+}
 }
 }

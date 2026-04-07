@@ -40,9 +40,9 @@ Creates a new rectangle with given dimensions.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{width}}{Numeric width of the rectangle.}
+\item{\code{width}}{(no documentation available)}
 
-\item{\code{height}}{Numeric height of the rectangle.}
+\item{\code{height}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }

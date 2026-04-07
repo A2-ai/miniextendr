@@ -38,6 +38,15 @@ The SidecarR6 pointer (invisibly)
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarR6}.
 }
+\section{Active bindings}{
+\if{html}{\out{<div class="r6-active-bindings">}}
+\describe{
+\item{\code{value}}{Integer sidecar field (active binding).}
+
+\item{\code{label}}{Character sidecar field (active binding).}
+}
+\if{html}{\out{</div>}}
+}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
@@ -56,9 +65,9 @@ Create a new SidecarR6 with initial values.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{Integer sidecar field.}
+\item{\code{value}}{(no documentation available)}
 
-\item{\code{label}}{Character sidecar field.}
+\item{\code{label}}{(no documentation available)}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
