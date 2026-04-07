@@ -34,10 +34,6 @@ new_derivedcurrency(symbol, amounts)
 \method{format}{DerivedCurrency}(x, ...)
 }
 \arguments{
-\item{symbol}{Character currency symbol.}
-
-\item{amounts}{Numeric vector of currency amounts.}
-
 \item{x}{An object}
 
 \item{...}{Additional arguments passed to methods}

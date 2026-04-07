@@ -38,8 +38,6 @@ ReceiverCounter
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{initial}{Integer initial counter value.}
 }
 \description{
 Creates a new counter with the given initial value.

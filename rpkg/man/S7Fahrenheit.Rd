@@ -27,8 +27,6 @@ S7Fahrenheit(value, .ptr = NULL)
 S7Fahrenheit_from_celsius(c)
 }
 \arguments{
-\item{value}{Numeric temperature in Fahrenheit.}
-
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{

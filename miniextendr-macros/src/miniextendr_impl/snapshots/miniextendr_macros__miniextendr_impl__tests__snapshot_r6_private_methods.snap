@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1835
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Secure R6 Class
@@ -11,6 +12,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @export
 Secure <- R6::R6Class("Secure",
   public = list(
+    #' @description Create a new `Secure`.
     initialize = function(.ptr = NULL) {
       if (!is.null(.ptr)) {
         private$.ptr <- .ptr
@@ -25,6 +27,7 @@ Secure <- R6::R6Class("Secure",
         private$.ptr <- .val
       }
     },
+    #' @description Method `public_api`.
     public_api = function() {
       .val <- .Call(C_Secure__public_api, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
