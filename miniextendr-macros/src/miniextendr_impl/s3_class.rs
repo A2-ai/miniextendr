@@ -115,7 +115,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("#' @export".to_string());
         } else {
             let method_doc =
-                MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
+                MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
+                    .with_r_params(&ctx.params);
             lines.extend(method_doc.build());
             lines.push(format!("#' @method {} {}", generic_name, class_name));
             // roxygen2 can't parse generic blocks wrapped in if (!exists(...)),
@@ -182,6 +183,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_params(&ctx.params)
                 .with_r_name(fn_name.clone())
                 .with_class_no_rd(class_has_no_rd);
         lines.extend(method_doc.build());

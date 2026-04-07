@@ -50,6 +50,8 @@ S3TraitCounter
 
 \item{...}{Additional arguments passed to methods}
 
+\item{initial}{(undocumented)}
+
 \item{n}{Amount to add.}
 }
 \description{

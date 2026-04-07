@@ -28,6 +28,8 @@ S7Fahrenheit_from_celsius(c)
 }
 \arguments{
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
+
+\item{c}{(undocumented)}
 }
 \description{
 Get the temperature value.

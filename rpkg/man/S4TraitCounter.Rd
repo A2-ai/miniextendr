@@ -44,6 +44,8 @@ S4TraitCounter_Counter_default_initial()
 S4TraitCounter_Counter_MAX_VALUE()
 }
 \arguments{
+\item{initial}{(undocumented)}
+
 \item{x}{A \code{S4TraitCounter} object}
 
 \item{...}{Additional arguments passed to methods}

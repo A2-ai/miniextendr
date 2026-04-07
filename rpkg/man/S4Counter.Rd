@@ -35,6 +35,8 @@ S4Counter_default_counter()
 \item{initial}{Initial value for the counter.}
 
 \item{amount}{Integer amount to add.}
+
+\item{x}{(undocumented)}
 }
 \description{
 Returns the current value.

@@ -25,6 +25,8 @@ S7Counter_default_counter()
 }
 \arguments{
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
+
+\item{amount}{(undocumented)}
 }
 \description{
 Returns the current value (S7-specific method name to avoid conflicts).

@@ -332,6 +332,9 @@ pub struct MethodDocBuilder<'a> {
     /// `\arguments` entries with no matching `\usage`, causing R CMD check
     /// warnings ("Documented arguments not in \\usage").
     params_as_details: bool,
+    /// Optional comma-separated R parameter string for auto-generating `@param` tags.
+    /// When set, any parameter not already documented gets `@param name (undocumented)`.
+    r_params: Option<&'a str>,
 }
 
 impl<'a> MethodDocBuilder<'a> {
@@ -356,6 +359,7 @@ impl<'a> MethodDocBuilder<'a> {
             always_export: false,
             class_has_no_rd: false,
             params_as_details: false,
+            r_params: None,
         }
     }
 
@@ -389,6 +393,16 @@ impl<'a> MethodDocBuilder<'a> {
     /// causing R CMD check warnings ("Documented arguments not in \\usage").
     pub fn with_params_as_details(mut self) -> Self {
         self.params_as_details = true;
+        self
+    }
+
+    /// Set the method's formal parameter names (comma-separated R params string).
+    ///
+    /// When set, auto-generates `@param name (undocumented)` for any parameter
+    /// not already covered by a user `@param` tag. Skips `self`, `.ptr`, and
+    /// `...` parameters.
+    pub fn with_r_params(mut self, params: &'a str) -> Self {
+        self.r_params = Some(params);
         self
     }
 
@@ -430,6 +444,23 @@ impl<'a> MethodDocBuilder<'a> {
                 }
             } else {
                 crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
+            }
+        }
+
+        // Auto-generate @param for undocumented method parameters
+        if let Some(params) = self.r_params {
+            for param in params.split(", ").filter(|p| !p.is_empty()) {
+                let param_name = param.split('=').next().unwrap_or(param).trim();
+                if param_name == ".ptr" || param_name == "..." || param_name == "self" {
+                    continue;
+                }
+                let already_documented = self
+                    .doc_tags
+                    .iter()
+                    .any(|t| t.starts_with(&format!("@param {}", param_name)));
+                if !already_documented {
+                    lines.push(format!("#' @param {} (undocumented)", param_name));
+                }
             }
         }
 

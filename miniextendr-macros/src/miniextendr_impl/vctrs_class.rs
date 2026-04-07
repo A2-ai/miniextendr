@@ -236,7 +236,8 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Then create the S3 method
         let method_doc =
-            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
+            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
+                .with_r_params(&ctx.params);
         lines.extend(method_doc.build());
         lines.push(format!(
             "#' @method {} {}",
@@ -297,6 +298,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_params(&ctx.params)
                 .with_r_name(fn_name.clone());
         lines.extend(method_doc.build());
 

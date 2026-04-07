@@ -33,6 +33,8 @@ S7TraitCounter_new_s7trait(initial)
 }
 \arguments{
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
+
+\item{initial}{(undocumented)}
 }
 \description{
 Get value via inherent method.
