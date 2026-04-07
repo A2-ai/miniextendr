@@ -35,7 +35,8 @@ pub enum Priority {
 
 // region: Test functions demonstrating direct RFactor parameter/return usage
 
-/// @noRd
+/// Test describing a Color factor variant as a human-readable string.
+/// @param color A Color factor value.
 #[miniextendr_api::miniextendr]
 pub fn factor_describe_color(color: Color) -> &'static str {
     match color {
@@ -45,7 +46,8 @@ pub fn factor_describe_color(color: Color) -> &'static str {
     }
 }
 
-/// @noRd
+/// Test constructing a Color factor from a string name.
+/// @param name Character name of the color ("red", "green", or "blue").
 #[miniextendr_api::miniextendr]
 pub fn factor_get_color(name: &str) -> Color {
     match name {
@@ -56,13 +58,14 @@ pub fn factor_get_color(name: &str) -> Color {
     }
 }
 
-/// @noRd
+/// Test returning all Color variants as a FactorVec.
 #[miniextendr_api::miniextendr]
 pub fn factor_get_all_colors() -> miniextendr_api::FactorVec<Color> {
     miniextendr_api::FactorVec(vec![Color::Red, Color::Green, Color::Blue])
 }
 
-/// @noRd
+/// Test describing a Status factor with snake_case rename_all.
+/// @param status A Status factor value.
 #[miniextendr_api::miniextendr]
 pub fn factor_describe_status(status: Status) -> &'static str {
     match status {
@@ -72,7 +75,8 @@ pub fn factor_describe_status(status: Status) -> &'static str {
     }
 }
 
-/// @noRd
+/// Test describing a Priority factor with individually renamed variants.
+/// @param priority A Priority factor value.
 #[miniextendr_api::miniextendr]
 pub fn factor_describe_priority(priority: Priority) -> &'static str {
     match priority {
@@ -82,25 +86,26 @@ pub fn factor_describe_priority(priority: Priority) -> &'static str {
     }
 }
 
-/// @noRd
+/// Test retrieving the Color factor level names via CHOICES.
 #[miniextendr_api::miniextendr]
 pub fn factor_color_levels() -> Vec<&'static str> {
     Color::CHOICES.to_vec()
 }
 
-/// @noRd
+/// Test retrieving the Status factor level names via CHOICES.
 #[miniextendr_api::miniextendr]
 pub fn factor_status_levels() -> Vec<&'static str> {
     Status::CHOICES.to_vec()
 }
 
-/// @noRd
+/// Test retrieving the Priority factor level names via CHOICES.
 #[miniextendr_api::miniextendr]
 pub fn factor_priority_levels() -> Vec<&'static str> {
     Priority::CHOICES.to_vec()
 }
 
-/// @noRd
+/// Test counting occurrences of each Color in a FactorVec.
+/// @param colors A factor vector of Color values.
 #[miniextendr_api::miniextendr]
 pub fn factor_count_colors(colors: miniextendr_api::FactorVec<Color>) -> Vec<i32> {
     let mut counts = [0i32; 3];
@@ -114,7 +119,8 @@ pub fn factor_count_colors(colors: miniextendr_api::FactorVec<Color>) -> Vec<i32
     counts.to_vec()
 }
 
-/// @noRd
+/// Test handling NA values in a FactorOptionVec of Colors.
+/// @param colors A factor vector of Color values that may contain NA.
 #[miniextendr_api::miniextendr]
 pub fn factor_colors_with_na(colors: miniextendr_api::FactorOptionVec<Color>) -> Vec<&'static str> {
     colors

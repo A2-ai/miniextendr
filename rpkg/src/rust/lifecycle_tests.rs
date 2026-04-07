@@ -8,7 +8,7 @@ use miniextendr_api::miniextendr;
 
 /// A function marked with Rust's `#[deprecated]` attribute.
 /// This should generate lifecycle::deprecate_warn in the R wrapper.
-/// @noRd
+/// @param x Integer input value.
 #[deprecated(since = "0.5.0", note = "Use new_api() instead")]
 #[miniextendr]
 pub fn old_deprecated_fn(x: i32) -> i32 {
@@ -16,7 +16,6 @@ pub fn old_deprecated_fn(x: i32) -> i32 {
 }
 
 /// A deprecated function without replacement info.
-/// @noRd
 #[deprecated]
 #[miniextendr]
 pub fn also_deprecated() -> String {
@@ -27,21 +26,21 @@ pub fn also_deprecated() -> String {
 // region: Tests using #[miniextendr(lifecycle = "...")]
 
 /// An experimental function that may change.
-/// @noRd
+/// @param x Numeric input value.
 #[miniextendr(lifecycle = "experimental")]
 pub fn experimental_feature(x: f64) -> f64 {
     x.powf(2.0)
 }
 
 /// A superseded function with a better alternative.
-/// @noRd
+/// @param x Integer input value.
 #[miniextendr(lifecycle = "superseded")]
 pub fn superseded_fn(x: i32) -> i32 {
     x + 1
 }
 
 /// A soft-deprecated function (warning on first use only).
-/// @noRd
+/// @param x Integer input value.
 #[miniextendr(lifecycle = "soft-deprecated")]
 pub fn soft_deprecated_fn(x: i32) -> i32 {
     x - 1
@@ -51,14 +50,14 @@ pub fn soft_deprecated_fn(x: i32) -> i32 {
 // region: Tests using full lifecycle(...) syntax
 
 /// A deprecated function with full lifecycle spec.
-/// @noRd
+/// @param x Integer input value.
 #[miniextendr(lifecycle(stage = "deprecated", when = "1.0.0", with = "better_fn()"))]
 pub fn fully_deprecated(x: i32) -> i32 {
     x
 }
 
 /// A defunct function that should error.
-/// @noRd
+/// @param _x Integer input value (unused, function is defunct).
 #[miniextendr(lifecycle(
     stage = "defunct",
     when = "2.0.0",
@@ -77,7 +76,8 @@ pub struct LifecycleDemo {
     value: i32,
 }
 
-/// @noRd
+/// R6 class demonstrating lifecycle attributes on methods.
+/// @param value Integer initial value.
 #[miniextendr(r6)]
 impl LifecycleDemo {
     /// Creates a new LifecycleDemo.

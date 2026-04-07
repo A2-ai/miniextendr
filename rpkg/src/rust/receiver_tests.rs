@@ -9,7 +9,8 @@ pub struct ReceiverCounter {
     value: i32,
 }
 
-/// @noRd
+/// Env-style counter class with constructor, accessor, and mutation methods.
+/// @param initial Integer initial counter value.
 #[miniextendr(env)]
 impl ReceiverCounter {
     /// Creates a new counter with the given initial value.

@@ -2,65 +2,70 @@
 use miniextendr_api::miniextendr;
 use miniextendr_api::url_impl::{RUrlOps, Url};
 
-/// @noRd
+/// Test URL roundtrip through R.
+/// @param url Parsed URL from R string.
 #[miniextendr]
 pub fn url_roundtrip(url: Url) -> Url {
     url
 }
 
-/// @noRd
+/// Test extracting the scheme from a URL.
+/// @param url Parsed URL from R string.
 #[miniextendr]
 pub fn url_scheme(url: Url) -> String {
     url.scheme().to_string()
 }
 
-/// @noRd
+/// Test extracting the host from a URL.
+/// @param url Parsed URL from R string.
 #[miniextendr]
 pub fn url_host(url: Url) -> Option<String> {
     RUrlOps::host(&url)
 }
 
-/// @noRd
+/// Test extracting the path from a URL.
+/// @param url Parsed URL from R string.
 #[miniextendr]
 pub fn url_path(url: Url) -> String {
     RUrlOps::path(&url)
 }
 
-/// @noRd
+/// Test Vec<Url> roundtrip through R character vector.
+/// @param urls Character vector of URLs from R.
 #[miniextendr]
 pub fn url_roundtrip_vec(urls: Vec<Url>) -> Vec<Url> {
     urls
 }
 
-/// @noRd
+/// Test validating whether a string is a valid URL.
+/// @param s String to validate as URL.
 #[miniextendr]
 pub fn url_is_valid(s: String) -> bool {
     miniextendr_api::url_impl::url_helpers::is_valid(&s)
 }
 
-/// Extract query string from URL
-/// @noRd
+/// Test extracting the query string from a URL.
+/// @param url Parsed URL from R string.
 #[miniextendr]
 pub fn url_query(url: Url) -> Option<String> {
     RUrlOps::query(&url)
 }
 
-/// Extract fragment from URL
-/// @noRd
+/// Test extracting the fragment from a URL.
+/// @param url Parsed URL from R string.
 #[miniextendr]
 pub fn url_fragment(url: Url) -> Option<String> {
     RUrlOps::fragment(&url)
 }
 
-/// Get port or known default
-/// @noRd
+/// Test extracting the port or known default port from a URL.
+/// @param url Parsed URL from R string.
 #[miniextendr]
 pub fn url_port_or_default(url: Url) -> Option<i32> {
     RUrlOps::port_or_known_default(&url).map(|p| p as i32)
 }
 
-/// URL with all components
-/// @noRd
+/// Test extracting all URL components (scheme, host, path, query, fragment).
 #[miniextendr]
 pub fn url_full_components() -> Vec<String> {
     let url = Url::parse("https://user:pass@example.com:8080/path?q=1#frag").unwrap();

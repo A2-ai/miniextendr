@@ -9,9 +9,9 @@ pub struct S3Counter {
     value: i32,
 }
 
+/// S3 counter class with constructor, accessor, and mutation methods.
 /// @param x An object.
 /// @param ... Additional arguments.
-/// @noRd
 #[miniextendr(s3)]
 impl S3Counter {
     /// Creates a new counter with the given initial value.

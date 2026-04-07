@@ -14,12 +14,11 @@ impl Drop for SimpleDropMsg {
     }
 }
 
-/// @noRd
+/// Test with_r_unwind_protect normal execution with RAII resource cleanup.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 /// @name rpkg_unwind_protect
-/// @noRd
 /// @examples
 /// \dontrun{
 /// unsafe_C_unwind_protect_normal()
@@ -39,7 +38,7 @@ pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
     )
 }
 
-/// @noRd
+/// Test with_r_unwind_protect cleanup when an R error is triggered.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -70,7 +69,7 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
     )
 }
 
-/// @noRd
+/// Test low-level with_r_unwind_protect that triggers an R error directly.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]

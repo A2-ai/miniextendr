@@ -7,6 +7,8 @@
 \alias{FallibleImpl$inherent_value}
 \alias{$.FallibleImpl}
 \alias{[[.FallibleImpl}
+\alias{FallibleImpl$Fallible$get_value}
+\alias{FallibleImpl$Fallible$will_panic}
 \title{FallibleImpl  Class}
 \format{
 An object of class \code{environment} of length 3.

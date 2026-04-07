@@ -2,8 +2,8 @@
 use miniextendr_api::either_impl::Either;
 use miniextendr_api::miniextendr;
 
-/// Accepts either an integer or a string. Returns "int:N" or "str:S".
-/// @noRd
+/// Test dispatching an Either<i32, String> and returning a tagged string.
+/// @param value Either an integer or a string from R.
 #[miniextendr]
 pub fn either_int_or_str(value: Either<i32, String>) -> String {
     match value {
@@ -12,8 +12,8 @@ pub fn either_int_or_str(value: Either<i32, String>) -> String {
     }
 }
 
-/// Accepts either a double or a vector of integers.
-/// @noRd
+/// Test dispatching an Either<f64, Vec<i32>> and returning a tagged string.
+/// @param value Either a double or an integer vector from R.
 #[miniextendr]
 pub fn either_dbl_or_vec(value: Either<f64, Vec<i32>>) -> String {
     match value {
@@ -22,36 +22,36 @@ pub fn either_dbl_or_vec(value: Either<f64, Vec<i32>>) -> String {
     }
 }
 
-/// Returns Left(i32) by creating one
-/// @noRd
+/// Test creating a Left(i32) variant of Either.
+/// @param n Integer value for the Left variant.
 #[miniextendr]
 pub fn either_make_left(n: i32) -> Either<i32, String> {
     Either::Left(n)
 }
 
-/// Returns Right(String) by creating one
-/// @noRd
+/// Test creating a Right(String) variant of Either.
+/// @param s String value for the Right variant.
 #[miniextendr]
 pub fn either_make_right(s: String) -> Either<i32, String> {
     Either::Right(s)
 }
 
-/// Check if the value was parsed as Left (integer)
-/// @noRd
+/// Test whether an Either value was parsed as Left (integer).
+/// @param value Either an integer or a string from R.
 #[miniextendr]
 pub fn either_is_left(value: Either<i32, String>) -> bool {
     value.is_left()
 }
 
-/// Check if the value was parsed as Right (string)
-/// @noRd
+/// Test whether an Either value was parsed as Right (string).
+/// @param value Either an integer or a string from R.
 #[miniextendr]
 pub fn either_is_right(value: Either<i32, String>) -> bool {
     value.is_right()
 }
 
-/// Nested either: Either<bool, Either<i32, String>>
-/// @noRd
+/// Test nested Either dispatch: Either<bool, Either<i32, String>>.
+/// @param value Nested Either value from R.
 #[miniextendr]
 pub fn either_nested(value: Either<bool, Either<i32, String>>) -> String {
     match value {
@@ -63,8 +63,7 @@ pub fn either_nested(value: Either<bool, Either<i32, String>>) -> String {
     }
 }
 
-/// Either with zero value (edge case for i32)
-/// @noRd
+/// Test that zero is correctly represented as Left(0) in Either.
 #[miniextendr]
 pub fn either_zero() -> Either<i32, String> {
     Either::Left(0)

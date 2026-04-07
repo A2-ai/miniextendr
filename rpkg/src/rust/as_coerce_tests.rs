@@ -143,7 +143,6 @@ impl AsCoerceTestData {
 
 /// @title as.<class>() Error Test Type
 /// @name AsCoerceErrorTest
-/// @noRd
 #[miniextendr(s3)]
 impl AsCoerceErrorTest {
     /// Create a new error test object.
