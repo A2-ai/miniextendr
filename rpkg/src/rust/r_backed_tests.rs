@@ -6,37 +6,45 @@ use miniextendr_api::ndarray_impl::{RndMat, RndVec};
 
 // region: nalgebra RDVector tests
 
-/// @noRd
+/// Test nalgebra RDVector<f64> identity roundtrip through R.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rdvector_roundtrip(v: RDVector<f64>) -> RDVector<f64> {
     v
 }
 
-/// @noRd
+/// Test computing the Euclidean norm of an RDVector<f64>.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rdvector_norm(v: RDVector<f64>) -> f64 {
     v.norm()
 }
 
-/// @noRd
+/// Test summing all elements of an RDVector<f64>.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rdvector_sum(v: RDVector<f64>) -> f64 {
     v.iter().sum()
 }
 
-/// @noRd
+/// Test getting the length of an RDVector<f64>.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rdvector_len(v: RDVector<f64>) -> i32 {
     v.len() as i32
 }
 
-/// @noRd
+/// Test computing the dot product of two RDVector<f64>.
+/// @param a Numeric vector input.
+/// @param b Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rdvector_dot(a: RDVector<f64>, b: RDVector<f64>) -> f64 {
     a.dot(&b)
 }
 
-/// @noRd
+/// Test scaling an RDVector<f64> by a scalar factor.
+/// @param v Numeric vector input.
+/// @param factor Numeric scaling factor.
 #[miniextendr]
 pub fn r_backed_rdvector_scale(v: RDVector<f64>, factor: f64) -> RDVector<f64> {
     let mut v = v;
@@ -44,13 +52,15 @@ pub fn r_backed_rdvector_scale(v: RDVector<f64>, factor: f64) -> RDVector<f64> {
     v
 }
 
-/// @noRd
+/// Test nalgebra RDVector<i32> identity roundtrip through R.
+/// @param v Integer vector input.
 #[miniextendr]
 pub fn r_backed_rdvector_int_roundtrip(v: RDVector<i32>) -> RDVector<i32> {
     v
 }
 
-/// @noRd
+/// Test summing all elements of an RDVector<i32>.
+/// @param v Integer vector input.
 #[miniextendr]
 pub fn r_backed_rdvector_int_sum(v: RDVector<i32>) -> i32 {
     v.iter().sum()
@@ -60,37 +70,44 @@ pub fn r_backed_rdvector_int_sum(v: RDVector<i32>) -> i32 {
 
 // region: nalgebra RDMatrix tests
 
-/// @noRd
+/// Test nalgebra RDMatrix<f64> identity roundtrip through R.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rdmatrix_roundtrip(m: RDMatrix<f64>) -> RDMatrix<f64> {
     m
 }
 
-/// @noRd
+/// Test getting the number of rows of an RDMatrix<f64>.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rdmatrix_nrow(m: RDMatrix<f64>) -> i32 {
     m.nrows() as i32
 }
 
-/// @noRd
+/// Test getting the number of columns of an RDMatrix<f64>.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rdmatrix_ncol(m: RDMatrix<f64>) -> i32 {
     m.ncols() as i32
 }
 
-/// @noRd
+/// Test summing all elements of an RDMatrix<f64>.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rdmatrix_sum(m: RDMatrix<f64>) -> f64 {
     m.iter().sum()
 }
 
-/// @noRd
+/// Test computing the trace (sum of diagonal) of an RDMatrix<f64>.
+/// @param m Numeric square matrix input.
 #[miniextendr]
 pub fn r_backed_rdmatrix_trace(m: RDMatrix<f64>) -> f64 {
     m.trace()
 }
 
-/// @noRd
+/// Test scaling all elements of an RDMatrix<f64> by a scalar factor.
+/// @param m Numeric matrix input.
+/// @param factor Numeric scaling factor.
 #[miniextendr]
 pub fn r_backed_rdmatrix_scale(m: RDMatrix<f64>, factor: f64) -> RDMatrix<f64> {
     let mut m = m;
@@ -102,25 +119,29 @@ pub fn r_backed_rdmatrix_scale(m: RDMatrix<f64>, factor: f64) -> RDMatrix<f64> {
 
 // region: ndarray RndVec tests
 
-/// @noRd
+/// Test ndarray RndVec<f64> identity roundtrip through R.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rndvec_roundtrip(v: RndVec<f64>) -> RndVec<f64> {
     v
 }
 
-/// @noRd
+/// Test summing all elements of an RndVec<f64>.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rndvec_sum(v: RndVec<f64>) -> f64 {
     v.view().sum()
 }
 
-/// @noRd
+/// Test getting the length of an RndVec<f64>.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rndvec_len(v: RndVec<f64>) -> i32 {
     v.len() as i32
 }
 
-/// @noRd
+/// Test doubling each element of an RndVec<f64> via ndarray operations.
+/// @param v Numeric vector input.
 #[miniextendr]
 pub fn r_backed_rndvec_double(v: RndVec<f64>) -> RndVec<f64> {
     let input = v.view();
@@ -129,7 +150,8 @@ pub fn r_backed_rndvec_double(v: RndVec<f64>) -> RndVec<f64> {
     result
 }
 
-/// @noRd
+/// Test ndarray RndVec<i32> identity roundtrip through R.
+/// @param v Integer vector input.
 #[miniextendr]
 pub fn r_backed_rndvec_int_roundtrip(v: RndVec<i32>) -> RndVec<i32> {
     v
@@ -139,37 +161,44 @@ pub fn r_backed_rndvec_int_roundtrip(v: RndVec<i32>) -> RndVec<i32> {
 
 // region: ndarray RndMat tests
 
-/// @noRd
+/// Test ndarray RndMat<f64> identity roundtrip through R.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rndmat_roundtrip(m: RndMat<f64>) -> RndMat<f64> {
     m
 }
 
-/// @noRd
+/// Test summing all elements of an RndMat<f64>.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rndmat_sum(m: RndMat<f64>) -> f64 {
     m.view().sum()
 }
 
-/// @noRd
+/// Test getting the number of rows of an RndMat<f64>.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rndmat_nrow(m: RndMat<f64>) -> i32 {
     m.nrow() as i32
 }
 
-/// @noRd
+/// Test getting the number of columns of an RndMat<f64>.
+/// @param m Numeric matrix input.
 #[miniextendr]
 pub fn r_backed_rndmat_ncol(m: RndMat<f64>) -> i32 {
     m.ncol() as i32
 }
 
-/// @noRd
+/// Test computing the trace (sum of diagonal) of an RndMat<f64>.
+/// @param m Numeric square matrix input.
 #[miniextendr]
 pub fn r_backed_rndmat_trace(m: RndMat<f64>) -> f64 {
     m.view().diag().sum()
 }
 
-/// @noRd
+/// Test filling all elements of an RndMat<f64> with a constant value.
+/// @param m Numeric matrix input.
+/// @param value Numeric fill value.
 #[miniextendr]
 pub fn r_backed_rndmat_fill(m: RndMat<f64>, value: f64) -> RndMat<f64> {
     let mut m = m;
@@ -181,13 +210,15 @@ pub fn r_backed_rndmat_fill(m: RndMat<f64>, value: f64) -> RndMat<f64> {
 
 // region: empty vector edge cases
 
-/// @noRd
+/// Test RDVector<f64> roundtrip with an empty (length-0) vector.
+/// @param v Numeric vector input (expected empty).
 #[miniextendr]
 pub fn r_backed_rdvector_empty_roundtrip(v: RDVector<f64>) -> RDVector<f64> {
     v
 }
 
-/// @noRd
+/// Test summing an empty RndVec<f64> (should return 0.0).
+/// @param v Numeric vector input (expected empty).
 #[miniextendr]
 pub fn r_backed_rndvec_empty_sum(v: RndVec<f64>) -> f64 {
     v.view().sum()

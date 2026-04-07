@@ -167,7 +167,9 @@ pub struct ErrorInRS7Gauge {
     level: f64,
 }
 
-/// @noRd
+/// S7 class for testing error_in_r with S7 class system.
+/// @param x An object.
+/// @param ... Additional arguments.
 #[miniextendr(s7)]
 impl ErrorInRS7Gauge {
     /// Create a new gauge.
@@ -204,7 +206,6 @@ impl ErrorInRS7Gauge {
 // region: Trait with error_in_r methods
 
 /// Trait for testing error_in_r on trait impls.
-/// @noRd
 #[miniextendr]
 pub trait Fallible {
     /// Get a value -- should succeed.
@@ -233,7 +234,7 @@ impl FallibleImpl {
     }
 }
 
-/// @noRd
+/// Fallible trait implementation for FallibleImpl with error_in_r on each method.
 #[miniextendr]
 impl Fallible for FallibleImpl {
     #[miniextendr(error_in_r)]

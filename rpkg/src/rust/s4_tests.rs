@@ -9,7 +9,8 @@ pub struct S4Counter {
     value: i32,
 }
 
-/// @noRd
+/// S4 counter class with setMethod dispatches for constructor, accessor, and mutation.
+/// @param initial Integer initial counter value.
 #[miniextendr(s4)]
 impl S4Counter {
     /// Creates a new counter with the given initial value.

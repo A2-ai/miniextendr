@@ -10,38 +10,45 @@ struct Point {
     y: f64,
 }
 
-/// @noRd
+/// Test JSON value roundtrip through R.
+/// @param value JSON value from R (list, vector, or scalar).
 #[miniextendr]
 pub fn json_roundtrip(value: JsonValue) -> JsonValue {
     value
 }
 
-/// @noRd
+/// Test getting the JSON type name of a value.
+/// @param value JSON value from R.
 #[miniextendr]
 pub fn json_type_name(value: JsonValue) -> String {
     value.type_name()
 }
 
-/// @noRd
+/// Test whether a JSON value is an object.
+/// @param value JSON value from R.
 #[miniextendr]
 pub fn json_is_object(value: JsonValue) -> bool {
     value.is_object()
 }
 
-/// @noRd
+/// Test extracting keys from a JSON object.
+/// @param value JSON object from R.
 #[miniextendr]
 pub fn json_object_keys(value: JsonValue) -> Vec<String> {
     value.object_keys()
 }
 
-/// @noRd
+/// Test serializing a Point struct to JSON string.
+/// @param x X coordinate.
+/// @param y Y coordinate.
 #[miniextendr]
 pub fn json_serialize_point(x: f64, y: f64) -> String {
     let p = Point { x, y };
     p.to_json().unwrap()
 }
 
-/// @noRd
+/// Test pretty-printing a JSON value.
+/// @param value JSON value from R.
 #[miniextendr]
 pub fn json_to_pretty(value: JsonValue) -> String {
     value.to_json_string_pretty()

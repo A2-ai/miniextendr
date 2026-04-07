@@ -15,7 +15,8 @@ use miniextendr_api::{ExternalPtr, miniextendr};
 #[derive(ExternalPtr)]
 pub struct NdVec(Array1<f64>);
 
-/// @noRd
+/// NdVec methods: 1D numeric array operations, slicing, and conversion.
+/// @param data Numeric vector of array elements.
 #[miniextendr]
 impl NdVec {
     fn new(data: Vec<f64>) -> Self {
@@ -121,7 +122,10 @@ impl NdVec {
 #[derive(ExternalPtr)]
 pub struct NdMatrix(Array2<f64>);
 
-/// @noRd
+/// NdMatrix methods: 2D numeric matrix operations, row/col access, and conversion.
+/// @param nrow Integer number of rows.
+/// @param ncol Integer number of columns.
+/// @param data Numeric vector of matrix elements (in row-major order).
 #[miniextendr]
 impl NdMatrix {
     fn new(data: Array2<f64>) -> Self {
@@ -231,7 +235,9 @@ impl NdMatrix {
 #[derive(ExternalPtr)]
 pub struct NdArrayDyn(ArrayD<f64>);
 
-/// @noRd
+/// NdArrayDyn methods: N-dimensional array operations, indexing, and reshaping.
+/// @param shape Integer vector specifying array dimensions.
+/// @param data Numeric vector of array elements.
 #[miniextendr]
 impl NdArrayDyn {
     fn new(shape: Vec<i32>, data: Vec<f64>) -> Self {
@@ -342,7 +348,8 @@ impl NdArrayDyn {
 #[derive(ExternalPtr)]
 pub struct NdIntVec(Array1<i32>);
 
-/// @noRd
+/// NdIntVec methods: 1D integer array operations, slicing, and conversion.
+/// @param data Integer vector of array elements.
 #[miniextendr]
 impl NdIntVec {
     fn new(data: Vec<i32>) -> Self {
@@ -420,31 +427,36 @@ impl NdIntVec {
 
 // region: Helper functions for testing conversions
 
-/// @noRd
+/// Test roundtripping a 1D numeric array through R and back.
+/// @param data A numeric vector to roundtrip.
 #[miniextendr]
 pub fn ndarray_roundtrip_vec(data: Array1<f64>) -> Array1<f64> {
     data
 }
 
-/// @noRd
+/// Test roundtripping a 2D numeric matrix through R and back.
+/// @param data A numeric matrix to roundtrip.
 #[miniextendr]
 pub fn ndarray_roundtrip_matrix(data: Array2<f64>) -> Array2<f64> {
     data
 }
 
-/// @noRd
+/// Test roundtripping an N-dimensional numeric array through R and back.
+/// @param data An N-dimensional numeric array to roundtrip.
 #[miniextendr]
 pub fn ndarray_roundtrip_array(data: ArrayD<f64>) -> ArrayD<f64> {
     data
 }
 
-/// @noRd
+/// Test roundtripping a 1D integer array through R and back.
+/// @param data An integer vector to roundtrip.
 #[miniextendr]
 pub fn ndarray_roundtrip_int_vec(data: Array1<i32>) -> Array1<i32> {
     data
 }
 
-/// @noRd
+/// Test roundtripping a 2D integer matrix through R and back.
+/// @param data An integer matrix to roundtrip.
 #[miniextendr]
 pub fn ndarray_roundtrip_int_matrix(data: Array2<i32>) -> Array2<i32> {
     data

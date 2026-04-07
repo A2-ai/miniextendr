@@ -92,6 +92,17 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(ctx) = parsed_impl.constructor_context() {
         // Add inline roxygen documentation for initialize method
         // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
+        let has_description = ctx
+            .method
+            .doc_tags
+            .iter()
+            .any(|t| t.starts_with("@description ") || t.starts_with("@title "));
+        if !has_description {
+            lines.push(format!(
+                "    #' @description Create a new `{}`.",
+                class_name
+            ));
+        }
         for tag in &ctx.method.doc_tags {
             for line in tag.lines() {
                 let line = if line.starts_with("@title ") {
@@ -100,6 +111,24 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     line.to_string()
                 };
                 lines.push(format!("    #' {}", line));
+            }
+        }
+        // Document constructor params that aren't already documented
+        for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
+            let param_name = param.split('=').next().unwrap_or(param).trim();
+            if param_name == ".ptr" {
+                continue;
+            }
+            let already_documented = ctx
+                .method
+                .doc_tags
+                .iter()
+                .any(|t| t.starts_with(&format!("@param {}", param_name)));
+            if !already_documented {
+                lines.push(format!(
+                    "    #' @param {} (no documentation available)",
+                    param_name
+                ));
             }
         }
 
@@ -171,6 +200,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // No explicit new() constructor, but factory methods need $new(.ptr = val).
         // Generate a minimal initialize that only accepts .ptr.
         let comma = if has_public_methods { "," } else { "" };
+        lines.push(format!(
+            "    #' @description Create a new `{}`.",
+            class_name
+        ));
         lines.push("    initialize = function(.ptr = NULL) {".to_string());
         lines.push("      if (!is.null(.ptr)) {".to_string());
         lines.push("        private$.ptr <- .ptr".to_string());
@@ -188,6 +221,15 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Add inline roxygen documentation for this method
         // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
+        let r_name = ctx.method.r_method_name();
+        let has_description = ctx
+            .method
+            .doc_tags
+            .iter()
+            .any(|t| t.starts_with("@description ") || t.starts_with("@title "));
+        if !has_description {
+            lines.push(format!("    #' @description Method `{}`.", r_name));
+        }
         for tag in &ctx.method.doc_tags {
             for line in tag.lines() {
                 let line = if line.starts_with("@title ") {
@@ -198,8 +240,21 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push(format!("    #' {}", line));
             }
         }
-
-        let r_name = ctx.method.r_method_name();
+        // Document method params that aren't already documented
+        for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
+            let param_name = param.split('=').next().unwrap_or(param).trim();
+            let already_documented = ctx
+                .method
+                .doc_tags
+                .iter()
+                .any(|t| t.starts_with(&format!("@param {}", param_name)));
+            if !already_documented {
+                lines.push(format!(
+                    "    #' @param {} (no documentation available)",
+                    param_name
+                ));
+            }
+        }
         lines.push(format!("    {} = function({}) {{", r_name, ctx.params));
 
         // Inject r_entry (user code before all checks)
@@ -331,6 +386,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Add inline @field documentation for active bindings
             // roxygen2 requires @field tags (not @description) for active bindings
             let method_name = ctx.method.r_method_name();
+            if ctx.method.doc_tags.is_empty() {
+                lines.push(format!("    #' @field {} Active binding.", method_name));
+            }
             for tag in &ctx.method.doc_tags {
                 for (line_idx, line) in tag.lines().enumerate() {
                     // Convert @description/@title to @field on first line only

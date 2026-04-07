@@ -29,7 +29,6 @@ pub struct NativeList(pub i32);
 /// @name convert_pref_tests
 /// @rdname convert_pref_tests
 /// @description Wraps a type implementing ExternalPtr, IntoList, and RNativeType with `AsList` to force VECSXP.
-/// @noRd
 /// @examples
 /// hybrid_as_list(1L)
 pub fn hybrid_as_list(x: i32) -> AsList<Hybrid> {
@@ -40,7 +39,6 @@ pub fn hybrid_as_list(x: i32) -> AsList<Hybrid> {
 /// @title Prefer external pointer conversion when multiple IntoR paths exist
 /// @rdname convert_pref_tests
 /// @description Uses `AsExternalPtr` to force EXTPTRSXP even though list/native are available.
-/// @noRd
 /// @examples
 /// hybrid_as_ptr(1L)
 pub fn hybrid_as_ptr(x: i32) -> AsExternalPtr<Hybrid> {
@@ -51,7 +49,6 @@ pub fn hybrid_as_ptr(x: i32) -> AsExternalPtr<Hybrid> {
 /// @title Prefer native scalar conversion when multiple IntoR paths exist
 /// @rdname convert_pref_tests
 /// @description Uses `AsRNative` to force a length-1 integer vector.
-/// @noRd
 /// @examples
 /// hybrid_as_native(1L)
 pub fn hybrid_as_native(x: i32) -> AsRNative<Hybrid> {
@@ -63,7 +60,6 @@ pub fn hybrid_as_native(x: i32) -> AsRNative<Hybrid> {
 /// @title Prefer list when both ExternalPtr and IntoList exist
 /// @rdname convert_pref_tests
 /// @description `AsList` wins over the automatic ExternalPtr `IntoR` impl.
-/// @noRd
 /// @examples
 /// ptr_list_as_list(2L)
 pub fn ptr_list_as_list(x: i32) -> AsList<PtrList> {
@@ -74,7 +70,6 @@ pub fn ptr_list_as_list(x: i32) -> AsList<PtrList> {
 /// @title Prefer external pointer when both ExternalPtr and IntoList exist
 /// @rdname convert_pref_tests
 /// @description `AsExternalPtr` wins over list conversion.
-/// @noRd
 /// @examples
 /// ptr_list_as_ptr(2L)
 pub fn ptr_list_as_ptr(x: i32) -> AsExternalPtr<PtrList> {
@@ -86,7 +81,6 @@ pub fn ptr_list_as_ptr(x: i32) -> AsExternalPtr<PtrList> {
 /// @title Prefer list when both RNativeType and IntoList exist
 /// @rdname convert_pref_tests
 /// @description Forces VECSXP even though a native vector would be possible.
-/// @noRd
 /// @examples
 /// native_list_as_list(3L)
 pub fn native_list_as_list(x: i32) -> AsList<NativeList> {
@@ -97,7 +91,6 @@ pub fn native_list_as_list(x: i32) -> AsList<NativeList> {
 /// @title Prefer native vector when both RNativeType and IntoList exist
 /// @rdname convert_pref_tests
 /// @description Forces an integer vector via `AsRNative`.
-/// @noRd
 /// @examples
 /// native_list_as_native(3L)
 pub fn native_list_as_native(x: i32) -> AsRNative<NativeList> {

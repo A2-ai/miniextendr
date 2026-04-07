@@ -6,9 +6,7 @@
 \alias{new_countertraits3}
 \alias{get_value}
 \alias{get_value.CounterTraitS3}
-\alias{custom_get}
 \alias{custom_get.CounterTraitS3}
-\alias{custom_add}
 \alias{custom_add.CounterTraitS3}
 \alias{CounterTraitS3$MatrixCounter$default_value}
 \title{CounterTraitS3 S3 Class}

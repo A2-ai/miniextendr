@@ -4,16 +4,14 @@ use miniextendr_api::indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle}
 use miniextendr_api::miniextendr;
 use miniextendr_api::progress::{RStream, RTerm, term_like_stderr, term_like_stdout};
 
-/// Verify RTerm construction and Debug output.
-/// @noRd
+/// Test RTerm construction and Debug output formatting.
 #[miniextendr]
 pub fn indicatif_rterm_debug() -> String {
     let term = RTerm::new(RStream::Stderr, 80);
     format!("{:?}", term)
 }
 
-/// Verify convenience factory functions return draw targets without panic.
-/// @noRd
+/// Test that convenience factory functions produce draw targets without panicking.
 #[miniextendr]
 pub fn indicatif_factories_compile() -> bool {
     let _stdout = term_like_stdout(80);
@@ -21,9 +19,7 @@ pub fn indicatif_factories_compile() -> bool {
     true
 }
 
-/// Run a hidden progress bar (0 length) to exercise the full codepath.
-/// The bar writes to R stderr via RTerm but finishes immediately.
-/// @noRd
+/// Test running a hidden progress bar (zero length) to exercise the full codepath.
 #[miniextendr]
 pub fn indicatif_hidden_bar() -> bool {
     let term = RTerm::new(RStream::Stderr, 80);
@@ -33,9 +29,7 @@ pub fn indicatif_hidden_bar() -> bool {
     true
 }
 
-/// Run a short progress bar that renders a few ticks to R stderr.
-/// Returns the captured message after finish.
-/// @noRd
+/// Test running a short progress bar that renders a few ticks to R stderr.
 #[miniextendr]
 pub fn indicatif_short_bar() -> String {
     let target = term_like_stderr(60);

@@ -2,45 +2,48 @@
 use miniextendr_api::indexmap_impl::IndexMap;
 use miniextendr_api::miniextendr;
 
-/// @noRd
+/// Test IndexMap<String, i32> roundtrip through R named list.
+/// @param map Named integer list from R.
 #[miniextendr]
 pub fn indexmap_roundtrip_int(map: IndexMap<String, i32>) -> IndexMap<String, i32> {
     map
 }
 
-/// @noRd
+/// Test IndexMap<String, String> roundtrip through R named list.
+/// @param map Named character list from R.
 #[miniextendr]
 pub fn indexmap_roundtrip_str(map: IndexMap<String, String>) -> IndexMap<String, String> {
     map
 }
 
-/// @noRd
+/// Test IndexMap<String, f64> roundtrip through R named list.
+/// @param map Named double list from R.
 #[miniextendr]
 pub fn indexmap_roundtrip_dbl(map: IndexMap<String, f64>) -> IndexMap<String, f64> {
     map
 }
 
-/// @noRd
+/// Test extracting keys from an IndexMap in insertion order.
+/// @param map Named integer list from R.
 #[miniextendr]
 pub fn indexmap_keys(map: IndexMap<String, i32>) -> Vec<String> {
     map.keys().cloned().collect()
 }
 
-/// @noRd
+/// Test getting the number of entries in an IndexMap.
+/// @param map Named integer list from R.
 #[miniextendr]
 pub fn indexmap_len(map: IndexMap<String, i32>) -> i32 {
     map.len() as i32
 }
 
-/// Empty map roundtrip
-/// @noRd
+/// Test roundtripping an empty IndexMap.
 #[miniextendr]
 pub fn indexmap_empty() -> IndexMap<String, i32> {
     IndexMap::new()
 }
 
-/// Duplicate key insert: later value wins in IndexMap
-/// @noRd
+/// Test that duplicate key insertion keeps the last value.
 #[miniextendr]
 pub fn indexmap_duplicate_key() -> IndexMap<String, i32> {
     let mut map = IndexMap::new();
@@ -49,8 +52,7 @@ pub fn indexmap_duplicate_key() -> IndexMap<String, i32> {
     map
 }
 
-/// Ordering preservation with many entries
-/// @noRd
+/// Test that insertion order is preserved in IndexMap keys.
 #[miniextendr]
 pub fn indexmap_order_preserved() -> Vec<String> {
     let mut map = IndexMap::new();
@@ -61,8 +63,7 @@ pub fn indexmap_order_preserved() -> Vec<String> {
     map.keys().cloned().collect()
 }
 
-/// Single entry map
-/// @noRd
+/// Test roundtripping a single-entry IndexMap.
 #[miniextendr]
 pub fn indexmap_single() -> IndexMap<String, String> {
     let mut map = IndexMap::new();

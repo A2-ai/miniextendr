@@ -13,67 +13,73 @@ miniextendr_api::bitflags::bitflags! {
     }
 }
 
-/// @noRd
+/// Test RFlags roundtrip through R.
+/// @param flags Permission flags as RFlags wrapper.
 #[miniextendr]
 pub fn bitflags_roundtrip(flags: RFlags<Perms>) -> RFlags<Perms> {
     flags
 }
 
-/// @noRd
+/// Test strict conversion from integer to flags, rejecting unknown bits.
+/// @param value Integer bitmask to convert.
 #[miniextendr]
 pub fn bitflags_from_strict(value: i32) -> Option<i32> {
     let f: Option<Perms> = flags_from_i32_strict(value);
     f.and_then(flags_to_i32)
 }
 
-/// @noRd
+/// Test truncating conversion from integer to flags, ignoring unknown bits.
+/// @param value Integer bitmask to convert.
 #[miniextendr]
 pub fn bitflags_from_truncate(value: i32) -> i32 {
     let f: Perms = flags_from_i32_truncate(value);
     flags_to_i32(f).unwrap()
 }
 
-/// @noRd
+/// Test checking the READ flag on a permission set.
+/// @param flags Permission flags as RFlags wrapper.
 #[miniextendr]
 pub fn bitflags_has_read(flags: RFlags<Perms>) -> bool {
     flags.contains(Perms::READ)
 }
 
-/// @noRd
+/// Test checking the WRITE flag on a permission set.
+/// @param flags Permission flags as RFlags wrapper.
 #[miniextendr]
 pub fn bitflags_has_write(flags: RFlags<Perms>) -> bool {
     flags.contains(Perms::WRITE)
 }
 
-/// @noRd
+/// Test computing the union (bitwise OR) of two flag sets.
+/// @param a First permission flags.
+/// @param b Second permission flags.
 #[miniextendr]
 pub fn bitflags_union(a: RFlags<Perms>, b: RFlags<Perms>) -> RFlags<Perms> {
     RFlags::from(*a | *b)
 }
 
-/// Intersect two flags (bitwise AND)
-/// @noRd
+/// Test computing the intersection (bitwise AND) of two flag sets.
+/// @param a First permission flags.
+/// @param b Second permission flags.
 #[miniextendr]
 pub fn bitflags_intersect(a: RFlags<Perms>, b: RFlags<Perms>) -> RFlags<Perms> {
     RFlags::from(*a & *b)
 }
 
-/// Empty flags (no bits set)
-/// @noRd
+/// Test that empty flags (no bits set) convert to zero.
 #[miniextendr]
 pub fn bitflags_empty() -> i32 {
     flags_to_i32(Perms::empty()).unwrap()
 }
 
-/// All flags combined
-/// @noRd
+/// Test that all flags combined produce the expected bitmask.
 #[miniextendr]
 pub fn bitflags_all() -> i32 {
     flags_to_i32(Perms::all()).unwrap()
 }
 
-/// Check EXECUTE flag
-/// @noRd
+/// Test checking the EXECUTE flag on a permission set.
+/// @param flags Permission flags as RFlags wrapper.
 #[miniextendr]
 pub fn bitflags_has_execute(flags: RFlags<Perms>) -> bool {
     flags.contains(Perms::EXECUTE)

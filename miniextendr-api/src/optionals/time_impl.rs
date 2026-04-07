@@ -50,10 +50,8 @@
 
 pub use time::{Date, OffsetDateTime};
 
-use crate::ffi::{
-    REAL, Rf_allocVector, Rf_install, Rf_mkString, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
-    SexpExt,
-};
+use crate::cached_class::set_posixct_utc;
+use crate::ffi::{REAL, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -127,22 +125,9 @@ impl IntoR for OffsetDateTime {
                 + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
             *REAL(vec) = secs;
 
-            // Set class = c("POSIXct", "POSIXt")
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-            Rf_protect(class_vec);
-            let posixct = SEXP::charsxp("POSIXct");
-            let posixt = SEXP::charsxp("POSIXt");
-            class_vec.set_string_elt(0, posixct);
-            class_vec.set_string_elt(1, posixt);
-            let class_sym = Rf_install(c"class".as_ptr());
-            vec.set_attr(class_sym, class_vec);
+            set_posixct_utc(vec);
 
-            // Set tzone = "UTC" (we always output as UTC)
-            let tzone = Rf_mkString(c"UTC".as_ptr());
-            let tzone_sym = Rf_install(c"tzone".as_ptr());
-            vec.set_attr(tzone_sym, tzone);
-
-            Rf_unprotect(2);
+            Rf_unprotect(1);
             vec
         }
     }
@@ -208,22 +193,8 @@ impl IntoR for Option<OffsetDateTime> {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
                 *REAL(vec) = f64::NAN;
-
-                // Set class = c("POSIXct", "POSIXt")
-                let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-                Rf_protect(class_vec);
-                let posixct = SEXP::charsxp("POSIXct");
-                let posixt = SEXP::charsxp("POSIXt");
-                class_vec.set_string_elt(0, posixct);
-                class_vec.set_string_elt(1, posixt);
-                let class_sym = Rf_install(c"class".as_ptr());
-                vec.set_attr(class_sym, class_vec);
-
-                let tzone = Rf_mkString(c"UTC".as_ptr());
-                let tzone_sym = Rf_install(c"tzone".as_ptr());
-                vec.set_attr(tzone_sym, tzone);
-
-                Rf_unprotect(2);
+                set_posixct_utc(vec);
+                Rf_unprotect(1);
                 vec
             },
         }
@@ -292,21 +263,9 @@ impl IntoR for Vec<OffsetDateTime> {
                     + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
             }
 
-            // Set class = c("POSIXct", "POSIXt")
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-            Rf_protect(class_vec);
-            let posixct = SEXP::charsxp("POSIXct");
-            let posixt = SEXP::charsxp("POSIXt");
-            class_vec.set_string_elt(0, posixct);
-            class_vec.set_string_elt(1, posixt);
-            let class_sym = Rf_install(c"class".as_ptr());
-            vec.set_attr(class_sym, class_vec);
+            set_posixct_utc(vec);
 
-            let tzone = Rf_mkString(c"UTC".as_ptr());
-            let tzone_sym = Rf_install(c"tzone".as_ptr());
-            vec.set_attr(tzone_sym, tzone);
-
-            Rf_unprotect(2);
+            Rf_unprotect(1);
             vec
         }
     }
@@ -376,21 +335,9 @@ impl IntoR for Vec<Option<OffsetDateTime>> {
                 };
             }
 
-            // Set class = c("POSIXct", "POSIXt")
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-            Rf_protect(class_vec);
-            let posixct = SEXP::charsxp("POSIXct");
-            let posixt = SEXP::charsxp("POSIXt");
-            class_vec.set_string_elt(0, posixct);
-            class_vec.set_string_elt(1, posixt);
-            let class_sym = Rf_install(c"class".as_ptr());
-            vec.set_attr(class_sym, class_vec);
+            set_posixct_utc(vec);
 
-            let tzone = Rf_mkString(c"UTC".as_ptr());
-            let tzone_sym = Rf_install(c"tzone".as_ptr());
-            vec.set_attr(tzone_sym, tzone);
-
-            Rf_unprotect(2);
+            Rf_unprotect(1);
             vec
         }
     }
@@ -453,9 +400,7 @@ impl IntoR for Date {
             *REAL(vec) = days;
 
             // Set class = "Date"
-            let class_sym = Rf_install(c"class".as_ptr());
-            let date_class = Rf_mkString(c"Date".as_ptr());
-            vec.set_attr(class_sym, date_class);
+            vec.set_class(crate::cached_class::date_class_sexp());
 
             Rf_unprotect(1);
             vec
@@ -521,9 +466,7 @@ impl IntoR for Option<Date> {
                 Rf_protect(vec);
                 *REAL(vec) = f64::NAN;
 
-                let class_sym = Rf_install(c"class".as_ptr());
-                let date_class = Rf_mkString(c"Date".as_ptr());
-                vec.set_attr(class_sym, date_class);
+                vec.set_class(crate::cached_class::date_class_sexp());
 
                 Rf_unprotect(1);
                 vec
@@ -589,9 +532,7 @@ impl IntoR for Vec<Date> {
                 *slot = (d - UNIX_EPOCH_DATE).whole_days() as f64;
             }
 
-            let class_sym = Rf_install(c"class".as_ptr());
-            let date_class = Rf_mkString(c"Date".as_ptr());
-            vec.set_attr(class_sym, date_class);
+            vec.set_class(crate::cached_class::date_class_sexp());
 
             Rf_unprotect(1);
             vec
@@ -656,9 +597,7 @@ impl IntoR for Vec<Option<Date>> {
                 };
             }
 
-            let class_sym = Rf_install(c"class".as_ptr());
-            let date_class = Rf_mkString(c"Date".as_ptr());
-            vec.set_attr(class_sym, date_class);
+            vec.set_class(crate::cached_class::date_class_sexp());
 
             Rf_unprotect(1);
             vec

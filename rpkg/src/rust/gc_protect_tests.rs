@@ -10,7 +10,8 @@ use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 
 // region: ListBuilder tests
 
-/// @noRd
+/// Test that ListBuilder reports the correct length.
+/// @param n Number of list elements to allocate.
 #[miniextendr]
 pub fn test_list_builder_length(n: i32) -> i32 {
     unsafe {
@@ -20,7 +21,7 @@ pub fn test_list_builder_length(n: i32) -> i32 {
     }
 }
 
-/// @noRd
+/// Test setting heterogeneous child vectors in a ListBuilder.
 #[miniextendr]
 pub fn test_list_builder_set() -> List {
     unsafe {
@@ -40,7 +41,7 @@ pub fn test_list_builder_set() -> List {
     }
 }
 
-/// @noRd
+/// Test List::set_elt with unprotected child vectors (set_elt handles protection).
 #[miniextendr]
 pub fn test_list_set_elt() -> List {
     unsafe {
@@ -58,7 +59,7 @@ pub fn test_list_set_elt() -> List {
     }
 }
 
-/// @noRd
+/// Test List::set_elt_with using closure-based lazy allocation of child vectors.
 #[miniextendr]
 pub fn test_list_set_elt_with() -> List {
     unsafe {
@@ -75,7 +76,8 @@ pub fn test_list_set_elt_with() -> List {
 
 // region: StrVecBuilder tests
 
-/// @noRd
+/// Test that StrVecBuilder reports the correct length.
+/// @param n Number of string elements to allocate.
 #[miniextendr]
 pub fn test_strvec_builder_length(n: i32) -> i32 {
     unsafe {
@@ -85,7 +87,7 @@ pub fn test_strvec_builder_length(n: i32) -> i32 {
     }
 }
 
-/// @noRd
+/// Test StrVecBuilder set_str, set_na, and set_opt_str methods.
 #[miniextendr]
 pub fn test_strvec_builder_set() -> Vec<Option<String>> {
     unsafe {
@@ -107,7 +109,7 @@ pub fn test_strvec_builder_set() -> Vec<Option<String>> {
     }
 }
 
-/// @noRd
+/// Test StrVec set_str and set_na on a raw STRSXP allocation.
 #[miniextendr]
 pub fn test_strvec_set_str() -> Vec<Option<String>> {
     unsafe {
@@ -129,7 +131,8 @@ pub fn test_strvec_set_str() -> Vec<Option<String>> {
 
 // region: ReprotectSlot tests
 
-/// @noRd
+/// Test ReprotectSlot by repeatedly replacing with larger vectors up to length n.
+/// @param n Final expected vector length.
 #[miniextendr]
 pub fn test_reprotect_slot_accumulate(n: i32) -> i32 {
     unsafe {
@@ -149,7 +152,7 @@ pub fn test_reprotect_slot_accumulate(n: i32) -> i32 {
     }
 }
 
-/// @noRd
+/// Test that ProtectScope counts protected objects correctly (slot + regular).
 #[miniextendr]
 pub fn test_reprotect_slot_count() -> i32 {
     unsafe {
@@ -176,7 +179,8 @@ pub fn test_reprotect_slot_count() -> i32 {
     }
 }
 
-/// @noRd
+/// Test that ReprotectSlot::set does not grow the protect stack over many iterations.
+/// @param iterations Number of set() calls to perform.
 #[miniextendr]
 pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
     unsafe {

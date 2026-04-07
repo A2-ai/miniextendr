@@ -2,7 +2,10 @@
 use miniextendr_api::miniextendr;
 use miniextendr_api::tabled_impl::table_from_vecs;
 
-/// @noRd
+/// Test creating a table from header and column vectors.
+/// @param headers Character vector of column headers.
+/// @param col1 Character vector for the first column.
+/// @param col2 Character vector for the second column.
 #[miniextendr]
 pub fn tabled_from_vecs(headers: Vec<String>, col1: Vec<String>, col2: Vec<String>) -> String {
     let rows: Vec<Vec<&str>> = col1
@@ -14,21 +17,20 @@ pub fn tabled_from_vecs(headers: Vec<String>, col1: Vec<String>, col2: Vec<Strin
     table_from_vecs(&hdrs, &rows)
 }
 
-/// @noRd
+/// Test creating a simple two-column table with known data.
 #[miniextendr]
 pub fn tabled_simple() -> String {
     table_from_vecs(&["Name", "Value"], &[vec!["pi", "3.14"], vec!["e", "2.72"]])
 }
 
-/// Empty input: no rows, just headers
-/// @noRd
+/// Test creating a table with no rows, only headers.
 #[miniextendr]
 pub fn tabled_empty_rows() -> String {
     table_from_vecs(&["Name", "Value"], &[])
 }
 
-/// Many columns table
-/// @noRd
+/// Test creating a table with many columns.
+/// @param headers Character vector of column headers.
 #[miniextendr]
 pub fn tabled_many_columns(headers: Vec<String>) -> String {
     let hdrs: Vec<&str> = headers.iter().map(|s| s.as_str()).collect();
@@ -37,8 +39,7 @@ pub fn tabled_many_columns(headers: Vec<String>) -> String {
     table_from_vecs(&hdrs, &[row])
 }
 
-/// Special characters in cells (pipes, newlines, unicode)
-/// @noRd
+/// Test creating a table with special characters in cells (pipes, unicode).
 #[miniextendr]
 pub fn tabled_special_chars() -> String {
     table_from_vecs(
@@ -50,8 +51,7 @@ pub fn tabled_special_chars() -> String {
     )
 }
 
-/// Single cell table
-/// @noRd
+/// Test creating a table with a single cell.
 #[miniextendr]
 pub fn tabled_single_cell() -> String {
     table_from_vecs(&["Only"], &[vec!["cell"]])

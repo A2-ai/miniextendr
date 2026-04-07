@@ -30,7 +30,7 @@ impl AltIntegerData for StreamingIntRangeData {
 
 miniextendr_api::impl_altinteger_from_data!(StreamingIntRangeData);
 
-/// @noRd
+/// ALTREP class for streaming integer range 1..=n.
 #[miniextendr(class = "StreamingIntRange")]
 pub struct StreamingIntRange(pub StreamingIntRangeData);
 
@@ -78,7 +78,7 @@ impl AltRealData for StreamingRealSquaresData {
 
 miniextendr_api::impl_altreal_from_data!(StreamingRealSquaresData);
 
-/// @noRd
+/// ALTREP class for streaming real squares 1^2, 2^2, ..., n^2.
 #[miniextendr(class = "StreamingRealSquares")]
 pub struct StreamingRealSquares(pub StreamingRealSquaresData);
 

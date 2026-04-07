@@ -14,7 +14,9 @@ pub struct SharedData {
     label: String,
 }
 
-/// @noRd
+/// @param x Numeric x-coordinate.
+/// @param y Numeric y-coordinate.
+/// @param label Character label.
 #[miniextendr(r6)]
 impl SharedData {
     pub fn new(x: f64, y: f64, label: String) -> Self {
@@ -34,10 +36,9 @@ impl SharedData {
     }
 }
 
-/// Convert an R vector to an ALTREP-backed vector by materializing then
-/// re-wrapping. Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
-///
-/// @noRd
+/// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
+/// Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
+/// @param x An integer, numeric, or character vector to convert.
 #[miniextendr]
 pub fn into_sexp_altrep(x: SEXP) -> SEXP {
     let sxp_type = x.type_of();

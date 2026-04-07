@@ -1267,10 +1267,7 @@ fn empty_dataframe() -> SEXP {
         Rf_protect(list);
 
         // Set class = "data.frame"
-        let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        Rf_protect(class_sexp);
-        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
-        list.set_class(class_sexp);
+        list.set_class(crate::cached_class::data_frame_class_sexp());
 
         // Set compact row.names: c(NA_integer_, 0)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
@@ -1279,7 +1276,7 @@ fn empty_dataframe() -> SEXP {
         rn[1] = 0;
         list.set_row_names(row_names);
 
-        Rf_unprotect(3);
+        Rf_unprotect(2);
         list
     }
 }
@@ -1316,10 +1313,7 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
         list.set_names(names_sexp);
 
         // Set class = "data.frame"
-        let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        Rf_protect(class_sexp);
-        class_sexp.set_string_elt(0, SEXP::charsxp("data.frame"));
-        list.set_class(class_sexp);
+        list.set_class(crate::cached_class::data_frame_class_sexp());
 
         // Set compact row.names: c(NA_integer_, -nrow)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
@@ -1328,7 +1322,7 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
         rn[1] = -i32::try_from(nrow).expect("data.frame row count exceeds i32::MAX");
         list.set_row_names(row_names);
 
-        Rf_unprotect(4); // list, names, class, row_names
+        Rf_unprotect(3); // list, names, row_names
         list
     }
 }

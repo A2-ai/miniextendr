@@ -7,7 +7,6 @@ use miniextendr_api::miniextendr;
 #[miniextendr]
 /// @title Miscellaneous Tests
 /// @name rpkg_misc
-/// @noRd
 /// @description Miscellaneous test helpers
 /// @examples
 /// underscore_it_all(1L, 2)
@@ -16,7 +15,7 @@ use miniextendr_api::miniextendr;
 pub fn underscore_it_all(_: i32, _: f64) {}
 
 // Simple SEXP return
-/// @noRd
+/// Test returning a scalar integer SEXP directly.
 #[miniextendr]
 pub fn do_nothing() -> SEXP {
     miniextendr_api::ffi::SEXP::scalar_integer(42)

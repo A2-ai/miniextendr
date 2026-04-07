@@ -118,7 +118,7 @@ impl RConnectionImpl for MemoryBuffer {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
-/// @noRd
+/// Test creating an empty in-memory read-write connection.
 #[miniextendr]
 pub fn memory_connection() -> SEXP {
     RCustomConnection::new()
@@ -143,7 +143,8 @@ pub fn memory_connection() -> SEXP {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
-/// @noRd
+/// Test creating a read-only connection pre-filled with a string.
+/// @param content Character string for initial buffer content.
 #[miniextendr]
 pub fn string_input_connection(content: &str) -> SEXP {
     RCustomConnection::new()
@@ -219,7 +220,9 @@ impl RConnectionImpl for CounterConnection {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
-/// @noRd
+/// Test creating a connection that generates sequential integers.
+/// @param start Integer first value to generate.
+/// @param end Integer last value to generate (inclusive).
 #[miniextendr]
 pub fn counter_connection(start: i32, end: i32) -> SEXP {
     RCustomConnection::new()
@@ -253,7 +256,8 @@ pub fn counter_connection(start: i32, end: i32) -> SEXP {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
-/// @noRd
+/// Test creating a read-write-seekable Cursor-backed connection.
+/// @param data Raw vector of initial data for the cursor.
 #[miniextendr]
 pub fn cursor_connection(data: Vec<u8>) -> SEXP {
     let cursor = Cursor::new(data);
@@ -276,7 +280,7 @@ pub fn cursor_connection(data: Vec<u8>) -> SEXP {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
-/// @noRd
+/// Test creating an empty write-seekable Cursor-backed connection.
 #[miniextendr]
 pub fn empty_cursor_connection() -> SEXP {
     let cursor: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -337,7 +341,8 @@ impl<F: Fn(u8) -> u8 + 'static> RConnectionImpl for TransformConnection<F> {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
-/// @noRd
+/// Test creating a connection that transforms text to uppercase on read.
+/// @param text Character string of input text to transform.
 #[miniextendr]
 pub fn uppercase_connection(text: &str) -> SEXP {
     let data = text.as_bytes().to_vec();
@@ -373,7 +378,8 @@ pub fn uppercase_connection(text: &str) -> SEXP {
 /// readLines(conn2)  # "hello"
 /// }
 #[cfg(feature = "connections")]
-/// @noRd
+/// Test creating a connection that ROT13-encodes text on read.
+/// @param text Character string of input text to encode.
 #[miniextendr]
 pub fn rot13_connection(text: &str) -> SEXP {
     let data = text.as_bytes().to_vec();

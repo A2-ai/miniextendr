@@ -282,6 +282,16 @@ impl List {
         self
     }
 
+    /// Set class = `"data.frame"` using a cached class STRSXP.
+    ///
+    /// Equivalent to `set_class_str(&["data.frame"])` but avoids allocation.
+    #[inline]
+    pub fn set_data_frame_class(self) -> Self {
+        self.0
+            .set_class(crate::cached_class::data_frame_class_sexp());
+        self
+    }
+
     /// Set the `names` attribute from a slice of strings.
     ///
     /// This is a convenience wrapper that creates a character vector from the

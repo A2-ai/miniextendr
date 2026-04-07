@@ -412,7 +412,7 @@ impl NamedList {
         let nrow = validate_equal_lengths(self)?;
 
         // Set class attribute to "data.frame"
-        self.as_list().set_class_str(&["data.frame"]);
+        self.as_list().set_data_frame_class();
 
         // Set compact row.names: c(NA_integer_, -nrow)
         self.as_list().set_row_names_int(nrow);

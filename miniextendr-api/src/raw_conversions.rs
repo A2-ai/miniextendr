@@ -58,7 +58,7 @@ pub use bytemuck::{Pod, Zeroable};
 use std::fmt;
 use std::mem;
 
-use crate::ffi::{RAW, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{RAW, Rf_allocVector, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -292,7 +292,7 @@ impl<T: Pod> RawSliceTagged<T> {
 /// Validate the `mx_raw_type` attribute matches the expected type `T`.
 fn validate_raw_type_tag<T>(sexp: SEXP) -> Result<(), SexpError> {
     let expected = std::any::type_name::<T>();
-    let attr_sym = unsafe { Rf_install(c"mx_raw_type".as_ptr()) };
+    let attr_sym = crate::cached_class::mx_raw_type_symbol();
     let attr = sexp.get_attr(attr_sym);
 
     if attr.type_of() == SEXPTYPE::NILSXP {
@@ -447,7 +447,7 @@ impl<T: Pod> IntoR for RawTagged<T> {
 
             // Set type attribute
             let type_name = std::any::type_name::<T>();
-            let attr_sym = Rf_install(c"mx_raw_type".as_ptr());
+            let attr_sym = crate::cached_class::mx_raw_type_symbol();
             sexp.set_attr(attr_sym, SEXP::scalar_string(SEXP::charsxp(type_name)));
 
             Ok(sexp)
@@ -475,7 +475,7 @@ impl<T: Pod> IntoR for RawSliceTagged<T> {
 
             // Set type attribute
             let type_name = std::any::type_name::<T>();
-            let attr_sym = Rf_install(c"mx_raw_type".as_ptr());
+            let attr_sym = crate::cached_class::mx_raw_type_symbol();
             sexp.set_attr(attr_sym, SEXP::scalar_string(SEXP::charsxp(type_name)));
 
             Ok(sexp)

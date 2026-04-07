@@ -8,7 +8,6 @@ use miniextendr_api::miniextendr;
 #[miniextendr]
 /// @title Conversion Tests
 /// @name rpkg_conversion_tests
-/// @noRd
 /// @description Scalar and slice conversion tests
 /// @examples
 /// test_i32_add_one(1L)
@@ -26,58 +25,70 @@ pub fn test_i32_identity(x: i32) -> i32 {
     x
 }
 
-/// @noRd
+/// Test i32 scalar increment by one.
+/// @param x Integer scalar input.
 #[miniextendr]
 pub fn test_i32_add_one(x: i32) -> i32 {
     x + 1
 }
 
-/// @noRd
+/// Test i32 three-argument addition.
+/// @param a Integer scalar.
+/// @param b Integer scalar.
+/// @param c Integer scalar.
 #[miniextendr]
 pub fn test_i32_sum(a: i32, b: i32, c: i32) -> i32 {
     a + b + c
 }
 
 // f64 tests
-/// @noRd
+/// Test f64 scalar identity roundtrip.
+/// @param x Numeric scalar input.
 #[miniextendr]
 pub fn test_f64_identity(x: f64) -> f64 {
     x
 }
 
-/// @noRd
+/// Test f64 scalar increment by one.
+/// @param x Numeric scalar input.
 #[miniextendr]
 pub fn test_f64_add_one(x: f64) -> f64 {
     x + 1.0
 }
 
-/// @noRd
+/// Test f64 scalar multiplication.
+/// @param a Numeric scalar.
+/// @param b Numeric scalar.
 #[miniextendr]
 pub fn test_f64_multiply(a: f64, b: f64) -> f64 {
     a * b
 }
 
 // u8 (raw) tests
-/// @noRd
+/// Test u8 (raw byte) scalar identity roundtrip.
+/// @param x Raw scalar input.
 #[miniextendr]
 pub fn test_u8_identity(x: u8) -> u8 {
     x
 }
 
-/// @noRd
+/// Test u8 scalar wrapping increment by one.
+/// @param x Raw scalar input.
 #[miniextendr]
 pub fn test_u8_add_one(x: u8) -> u8 {
     x.wrapping_add(1)
 }
 
 // Rboolean tests
-/// @noRd
+/// Test logical scalar identity roundtrip.
+/// @param x Logical scalar input.
 #[miniextendr]
 pub fn test_logical_identity(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
     x
 }
 
-/// @noRd
+/// Test logical negation (TRUE becomes FALSE and vice versa).
+/// @param x Logical scalar input.
 #[miniextendr]
 pub fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
@@ -87,7 +98,9 @@ pub fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::f
     }
 }
 
-/// @noRd
+/// Test logical AND of two Rboolean scalars.
+/// @param a Logical scalar.
+/// @param b Logical scalar.
 #[miniextendr]
 pub fn test_logical_and(
     a: miniextendr_api::ffi::Rboolean,
@@ -101,13 +114,15 @@ pub fn test_logical_and(
 }
 
 // Mixed type tests
-/// @noRd
+/// Test widening conversion from i32 to f64.
+/// @param x Integer scalar input.
 #[miniextendr]
 pub fn test_i32_to_f64(x: i32) -> f64 {
     x as f64
 }
 
-/// @noRd
+/// Test truncating conversion from f64 to i32.
+/// @param x Numeric scalar input.
 #[miniextendr]
 pub fn test_f64_to_i32(x: f64) -> i32 {
     x as i32
@@ -118,44 +133,51 @@ pub fn test_f64_to_i32(x: f64) -> i32 {
 // region: slice tests
 
 // Slice tests - i32
-/// @noRd
+/// Test getting the length of an i32 slice from R.
+/// @param x Integer vector input.
 #[miniextendr]
 pub fn test_i32_slice_len(x: &'static [i32]) -> i32 {
     x.len() as i32
 }
 
-/// @noRd
+/// Test summing elements of an i32 slice.
+/// @param x Integer vector input.
 #[miniextendr]
 pub fn test_i32_slice_sum(x: &'static [i32]) -> i32 {
     x.iter().sum()
 }
 
-/// @noRd
+/// Test extracting the first element of an i32 slice (0 if empty).
+/// @param x Integer vector input.
 #[miniextendr]
 pub fn test_i32_slice_first(x: &'static [i32]) -> i32 {
     x.first().copied().unwrap_or(0)
 }
 
-/// @noRd
+/// Test extracting the last element of an i32 slice (0 if empty).
+/// @param x Integer vector input.
 #[miniextendr]
 pub fn test_i32_slice_last(x: &'static [i32]) -> i32 {
     x.last().copied().unwrap_or(0)
 }
 
 // Slice tests - f64
-/// @noRd
+/// Test getting the length of an f64 slice from R.
+/// @param x Numeric vector input.
 #[miniextendr]
 pub fn test_f64_slice_len(x: &'static [f64]) -> i32 {
     x.len() as i32
 }
 
-/// @noRd
+/// Test summing elements of an f64 slice.
+/// @param x Numeric vector input.
 #[miniextendr]
 pub fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
     x.iter().sum()
 }
 
-/// @noRd
+/// Test computing the arithmetic mean of an f64 slice (0.0 if empty).
+/// @param x Numeric vector input.
 #[miniextendr]
 pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
     if x.is_empty() {
@@ -166,26 +188,30 @@ pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
 }
 
 // Slice tests - u8 (raw)
-/// @noRd
+/// Test getting the length of a raw byte slice.
+/// @param x Raw vector input.
 #[miniextendr]
 pub fn test_u8_slice_len(x: &'static [u8]) -> i32 {
     x.len() as i32
 }
 
-/// @noRd
+/// Test summing elements of a raw byte slice as i32.
+/// @param x Raw vector input.
 #[miniextendr]
 pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
     x.iter().map(|&b| b as i32).sum()
 }
 
 // Slice tests - logical
-/// @noRd
+/// Test getting the length of an RLogical slice.
+/// @param x Logical vector input.
 #[miniextendr]
 pub fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::RLogical]) -> i32 {
     x.len() as i32
 }
 
-/// @noRd
+/// Test whether any element of a logical slice is TRUE.
+/// @param x Logical vector input.
 #[miniextendr]
 pub fn test_logical_slice_any_true(
     x: &'static [miniextendr_api::ffi::RLogical],
@@ -198,7 +224,8 @@ pub fn test_logical_slice_any_true(
     }
 }
 
-/// @noRd
+/// Test whether all elements of a logical slice are TRUE.
+/// @param x Logical vector input.
 #[miniextendr]
 pub fn test_logical_slice_all_true(
     x: &'static [miniextendr_api::ffi::RLogical],
@@ -215,19 +242,22 @@ pub fn test_logical_slice_all_true(
 
 // region: strict conversion tests
 
-/// @noRd
+/// Test strict-mode i64 scalar identity roundtrip.
+/// @param x Integer or numeric scalar (must be INTSXP or REALSXP in strict mode).
 #[miniextendr(strict)]
 pub fn strict_echo_i64(x: i64) -> i64 {
     x
 }
 
-/// @noRd
+/// Test strict-mode Vec<i64> identity roundtrip.
+/// @param x Integer or numeric vector (must be INTSXP or REALSXP in strict mode).
 #[miniextendr(strict)]
 pub fn strict_echo_vec_i64(x: Vec<i64>) -> Vec<i64> {
     x
 }
 
-/// @noRd
+/// Test strict-mode Vec<Option<i64>> roundtrip with NA preservation.
+/// @param x Integer or numeric vector with possible NA values.
 #[miniextendr(strict)]
 pub fn strict_echo_vec_option_i64(x: Vec<Option<i64>>) -> Vec<Option<i64>> {
     x
@@ -239,7 +269,7 @@ pub struct StrictCounter {
     value: i64,
 }
 
-/// @noRd
+/// @param value Integer or numeric scalar for the initial counter value.
 #[miniextendr(r6, strict)]
 impl StrictCounter {
     pub fn new(value: i64) -> Self {

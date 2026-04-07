@@ -458,6 +458,9 @@ pub use dataframe::{DataFrameError, DataFrameView};
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
 
+// Cached R class attribute SEXPs (POSIXct, Date, data.frame, etc.)
+pub mod cached_class;
+
 // Error value transport for #[miniextendr(error_in_r)]
 pub mod error_value;
 
