@@ -121,13 +121,7 @@ take_and_return_nothing()
 
 \item{right}{Integer input.}
 
-\item{dummy}{(no documentation available)}
-
-\item{_dummy}{Ignored unit parameter for testing.}
-
-\item{_left}{Ignored integer input.}
-
-\item{_right}{Ignored integer input.}
+\item{dummy}{Ignored unit parameter for testing.}
 }
 \value{
 A scalar integer result.

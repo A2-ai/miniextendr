@@ -66,7 +66,7 @@ pub fn add(left: i32, right: i32) -> i32 {
 /// Test addition with a unit-typed dummy parameter.
 /// @param left Integer input.
 /// @param right Integer input.
-/// @param _dummy Ignored unit parameter for testing.
+/// @param dummy Ignored unit parameter for testing.
 #[miniextendr]
 pub fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
     left + right
@@ -84,7 +84,7 @@ impl From<()> for RustError {
 /// Test checked addition returning Result, with a unit-typed dummy parameter.
 /// @param left Integer input.
 /// @param right Integer input.
-/// @param _dummy Ignored unit parameter for testing.
+/// @param dummy Ignored unit parameter for testing.
 #[miniextendr]
 pub fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, RustError> {
     left.checked_add(right).ok_or(().into())
@@ -137,8 +137,8 @@ pub fn add_panic(_left: i32, _right: i32) -> i32 {
 }
 
 /// Test that Rf_error triggers an R error with a stack-allocated MsgOnDrop.
-/// @param _left Ignored integer input.
-/// @param _right Ignored integer input.
+/// @param left Ignored integer input.
+/// @param right Ignored integer input.
 #[miniextendr]
 pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
@@ -149,8 +149,8 @@ pub fn add_r_error(_left: i32, _right: i32) -> i32 {
 }
 
 /// Test that a panic drops a heap-allocated (Box) MsgOnDrop.
-/// @param _left Ignored integer input.
-/// @param _right Ignored integer input.
+/// @param left Ignored integer input.
+/// @param right Ignored integer input.
 #[miniextendr]
 pub fn add_panic_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
@@ -158,8 +158,8 @@ pub fn add_panic_heap(_left: i32, _right: i32) -> i32 {
 }
 
 /// Test that Rf_error triggers an R error with a heap-allocated (Box) MsgOnDrop.
-/// @param _left Ignored integer input.
-/// @param _right Ignored integer input.
+/// @param left Ignored integer input.
+/// @param right Ignored integer input.
 #[miniextendr]
 pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);

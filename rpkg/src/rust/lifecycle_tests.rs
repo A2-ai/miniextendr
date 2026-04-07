@@ -57,7 +57,7 @@ pub fn fully_deprecated(x: i32) -> i32 {
 }
 
 /// A defunct function that should error.
-/// @param _x Integer input value (unused, function is defunct).
+/// @param x Integer input value (unused, function is defunct).
 #[miniextendr(lifecycle(
     stage = "defunct",
     when = "2.0.0",

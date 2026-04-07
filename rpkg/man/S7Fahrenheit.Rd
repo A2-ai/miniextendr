@@ -27,6 +27,8 @@ S7Fahrenheit(value, .ptr = NULL)
 S7Fahrenheit_from_celsius(c)
 }
 \arguments{
+\item{value}{(undocumented)}
+
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{c}{(undocumented)}

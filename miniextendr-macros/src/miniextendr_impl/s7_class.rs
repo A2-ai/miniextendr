@@ -280,14 +280,32 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.insert(insert_pos, format!("#' {}", lc_import));
     }
 
-    // Document .ptr param - S7::new_class always creates a constructor that accepts
-    // all properties as parameters, so .ptr is always a valid parameter
+    // Document constructor params — auto-generate @param for undocumented ones
     // Skip if class has @noRd
-    if !class_has_no_rd && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
-        lines.push(
-            "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
-                .to_string(),
-        );
+    if !class_has_no_rd {
+        if let Some(ctx) = parsed_impl.constructor_context() {
+            for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
+                let param_name = param.split('=').next().unwrap_or(param).trim();
+                if param_name == ".ptr" || param_name == "..." {
+                    continue;
+                }
+                let already_documented = ctx
+                    .method
+                    .doc_tags
+                    .iter()
+                    .any(|t| t.starts_with(&format!("@param {}", param_name)));
+                if !already_documented {
+                    lines.push(format!("#' @param {} (undocumented)", param_name));
+                }
+            }
+        }
+        // .ptr is always a constructor param
+        if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
+            lines.push(
+                "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
+                    .to_string(),
+            );
+        }
     }
 
     // S7::new_class — optionally include parent and abstract

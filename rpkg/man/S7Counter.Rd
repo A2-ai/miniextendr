@@ -24,6 +24,8 @@ S7Counter(initial, .ptr = NULL)
 S7Counter_default_counter()
 }
 \arguments{
+\item{initial}{(undocumented)}
+
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{amount}{(undocumented)}

@@ -1,1 +1,10 @@
 # No LFS tracking — all files stored as regular git blobs
+
+# Force LF line endings for shell scripts and autoconf files.
+# Windows git autocrlf converts to CRLF which causes R CMD check warnings:
+# "Found the following shell script(s) with CR or CRLF line endings"
+configure    eol=lf
+configure.ac eol=lf
+cleanup      eol=lf
+cleanup.ucrt eol=lf
+*.sh         eol=lf
