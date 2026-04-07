@@ -122,15 +122,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Documentation for the generic - skip if class has @noRd
-        // Note: don't use with_r_params() here — S4 methods are defined via setMethod()
-        // which roxygen2 doesn't parse for \usage entries, so auto-generated @param tags
-        // would create "Documented arguments not in \usage" warnings.
+        // Use bare generic @name so the generic gets an \alias in the Rd file.
+        // Without this, R CMD check warns "Undocumented code objects: s4_xxx".
         if !class_has_no_rd {
-            // Use S4-style qualified name to avoid duplicate alias across S4 classes
-            let qualified_name = format!("{},{}-method", method_name, class_name);
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags)
-                    .with_r_name(qualified_name)
                     .with_suppress_params();
             lines.extend(method_doc.build());
         }

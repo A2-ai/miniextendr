@@ -539,18 +539,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Documentation - skip if class has @noRd.
-        // Use bare @name for the generic (needed by roxygen2 to identify the block
-        // and for @export to work correctly). Add @aliases with class-qualified name
-        // for searchability. The bare @name may create duplicate \alias{generic}
-        // across Rd files when multiple classes share the same generic, but this is
-        // acceptable — the alternative (no @name) causes roxygen2 "Block must have
-        // a @name" errors, and qualified @name causes invalid NAMESPACE exports.
+        // Use bare @name for the generic (needed by roxygen2 for @export to work).
+        // This creates duplicate \alias{generic} when multiple types share the same
+        // S7 generic, but the alternative (@name Class$method) causes invalid NAMESPACE
+        // exports. The duplicate alias is a WARNING, not an ERROR.
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
                     .with_suppress_params();
             let mut doc_lines = method_doc.build();
-            // Add class-qualified alias for discoverability
             doc_lines.push(format!("#' @aliases {}${}", class_name, generic_name));
             lines.extend(doc_lines);
         }

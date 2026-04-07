@@ -3,7 +3,7 @@
 \docType{class}
 \name{S4TraitCounter}
 \alias{S4TraitCounter}
-\alias{s4_get_value,S4TraitCounter-method}
+\alias{s4_get_value}
 \alias{S4TraitCounter_new_s4trait}
 \alias{s4_trait_Counter_value}
 \alias{s4_trait_Counter_value,S4TraitCounter-method}
