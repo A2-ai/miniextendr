@@ -216,7 +216,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push(format!("#' @title S3 generic for `{}`", generic_name));
             lines.push(format!("#' S3 generic for `{}`", generic_name));
             lines.push(format!("#' @rdname {}", class_name));
-            lines.push(format!("#' @name {}", generic_name));
+            // Use class-qualified name to avoid duplicate alias when multiple
+            // classes define the same S3 generic.
+            lines.push(format!("#' @name {}.{}", generic_name, class_name));
             lines.push("#' @param x An object".to_string());
             lines.push("#' @param ... Additional arguments passed to methods".to_string());
             lines.push(format!(
@@ -235,9 +237,11 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         // Then create the S3 method
+        let qualified_name = format!("{}.{}", generic_name, method_class_suffix);
         let method_doc =
             MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
-                .with_r_params(&ctx.params);
+                .with_r_params(&ctx.params)
+                .with_r_name(qualified_name);
         lines.extend(method_doc.build());
         lines.push(format!(
             "#' @method {} {}",

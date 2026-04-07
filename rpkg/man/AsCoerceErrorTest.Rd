@@ -4,11 +4,8 @@
 \name{AsCoerceErrorTest}
 \alias{AsCoerceErrorTest}
 \alias{new_ascoerceerrortest}
-\alias{as_data_frame}
 \alias{as_data_frame.AsCoerceErrorTest}
-\alias{as_list}
 \alias{as_list.AsCoerceErrorTest}
-\alias{as_character}
 \alias{as_character.AsCoerceErrorTest}
 \alias{as.data.frame.AsCoerceErrorTest}
 \alias{as.list.AsCoerceErrorTest}

@@ -7,10 +7,6 @@
 \alias{s4_get_value,S4Counter-method}
 \alias{s4_inc,S4Counter-method}
 \alias{s4_value,S4Counter-method}
-\alias{new}
-\alias{s4_value}
-\alias{s4_inc}
-\alias{s4_add}
 \alias{S4Counter_default_counter}
 \title{S4 counter class with setMethod dispatches for constructor, accessor, and mutation}
 \source{
@@ -33,10 +29,6 @@ S4Counter_default_counter()
 }
 \arguments{
 \item{initial}{Initial value for the counter.}
-
-\item{amount}{Integer amount to add.}
-
-\item{x}{(undocumented)}
 }
 \description{
 Returns the current value.

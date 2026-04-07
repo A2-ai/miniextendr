@@ -4,11 +4,8 @@
 \name{S3Counter}
 \alias{S3Counter}
 \alias{new_s3counter}
-\alias{s3_value}
 \alias{s3_value.S3Counter}
-\alias{s3_inc}
 \alias{s3_inc.S3Counter}
-\alias{s3_add}
 \alias{s3_add.S3Counter}
 \alias{s3counter_default_counter}
 \title{S3 counter class with constructor, accessor, and mutation methods}

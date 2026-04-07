@@ -3,8 +3,7 @@
 \docType{class}
 \name{CounterTraitS4}
 \alias{CounterTraitS4}
-\alias{new}
-\alias{s4_get_value}
+\alias{s4_get_value,CounterTraitS4-method}
 \alias{s4_trait_MatrixCounter_custom_get}
 \alias{s4_trait_MatrixCounter_custom_get,CounterTraitS4-method}
 \alias{s4_trait_MatrixCounter_custom_add}

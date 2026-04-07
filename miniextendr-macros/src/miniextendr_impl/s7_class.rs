@@ -280,7 +280,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.insert(insert_pos, format!("#' {}", lc_import));
     }
 
-    // Document constructor params — auto-generate @param for undocumented ones
+    // Document constructor params — include constructor @param tags and auto-generate
+    // for undocumented ones. Class-level @param tags are already emitted by ClassDocBuilder;
+    // constructor-level @param tags must be explicitly pushed here since S7 inlines the
+    // constructor inside new_class().
     // Skip if class has @noRd
     if !class_has_no_rd {
         if let Some(ctx) = parsed_impl.constructor_context() {
@@ -289,12 +292,22 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 if param_name == ".ptr" || param_name == "..." {
                     continue;
                 }
-                let already_documented = ctx
+                // Check if already documented at the class level (impl block doc_tags)
+                let in_class_docs = class_doc_tags
+                    .iter()
+                    .any(|t| t.starts_with(&format!("@param {}", param_name)));
+                if in_class_docs {
+                    continue; // Already emitted by ClassDocBuilder
+                }
+                // Check if documented in the constructor method's doc_tags
+                let ctor_tag = ctx
                     .method
                     .doc_tags
                     .iter()
-                    .any(|t| t.starts_with(&format!("@param {}", param_name)));
-                if !already_documented {
+                    .find(|t| t.starts_with(&format!("@param {}", param_name)));
+                if let Some(tag) = ctor_tag {
+                    lines.push(format!("#' {}", tag));
+                } else {
                     lines.push(format!("#' @param {} (undocumented)", param_name));
                 }
             }
@@ -525,12 +538,21 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name.clone()
         };
 
-        // Documentation - skip if class has @noRd
+        // Documentation - skip if class has @noRd.
+        // Use bare @name for the generic (needed by roxygen2 to identify the block
+        // and for @export to work correctly). Add @aliases with class-qualified name
+        // for searchability. The bare @name may create duplicate \alias{generic}
+        // across Rd files when multiple classes share the same generic, but this is
+        // acceptable — the alternative (no @name) causes roxygen2 "Block must have
+        // a @name" errors, and qualified @name causes invalid NAMESPACE exports.
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
-                    .with_r_params(&ctx.params);
-            lines.extend(method_doc.build());
+                    .with_suppress_params();
+            let mut doc_lines = method_doc.build();
+            // Add class-qualified alias for discoverability
+            doc_lines.push(format!("#' @aliases {}${}", class_name, generic_name));
+            lines.extend(doc_lines);
         }
 
         if ctx.has_generic_override() {

@@ -34,11 +34,11 @@ SidecarS7(prop_int, prop_flag, prop_name, .ptr = NULL)
 
 \item{value}{The new value to set}
 
-\item{prop_int}{(undocumented)}
+\item{prop_int}{Integer sidecar field.}
 
-\item{prop_flag}{(undocumented)}
+\item{prop_flag}{Logical sidecar field.}
 
-\item{prop_name}{(undocumented)}
+\item{prop_name}{Character sidecar field.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }

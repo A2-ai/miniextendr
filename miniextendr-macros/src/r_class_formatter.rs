@@ -335,6 +335,12 @@ pub struct MethodDocBuilder<'a> {
     /// Optional comma-separated R parameter string for auto-generating `@param` tags.
     /// When set, any parameter not already documented gets `@param name (undocumented)`.
     r_params: Option<&'a str>,
+    /// When `true`, filter out `@param` tags from the doc_tags before pushing.
+    ///
+    /// Used for S4/S7 instance methods where the method is defined via `setMethod()`
+    /// or `S7::method()` assignment, which roxygen2 doesn't parse for `\usage` entries.
+    /// Including `@param` tags would create "Documented arguments not in \\usage" warnings.
+    suppress_params: bool,
 }
 
 impl<'a> MethodDocBuilder<'a> {
@@ -360,6 +366,7 @@ impl<'a> MethodDocBuilder<'a> {
             class_has_no_rd: false,
             params_as_details: false,
             r_params: None,
+            suppress_params: false,
         }
     }
 
@@ -406,6 +413,15 @@ impl<'a> MethodDocBuilder<'a> {
         self
     }
 
+    /// Suppress `@param` tags from user doc comments.
+    ///
+    /// Used for S4/S7 instance methods where the method is defined via `setMethod()`
+    /// or `S7::method()` assignment, which roxygen2 doesn't parse for `\usage` entries.
+    pub fn with_suppress_params(mut self) -> Self {
+        self.suppress_params = true;
+        self
+    }
+
     /// Build the roxygen `#' @tag` lines for the method.
     ///
     /// Returns a vector of strings, each a complete roxygen comment line. If the parent
@@ -442,6 +458,20 @@ impl<'a> MethodDocBuilder<'a> {
                     }
                     lines.push("#' }".to_string());
                 }
+            } else if self.suppress_params {
+                // Filter out @param tags — they would create "Documented arguments
+                // not in \usage" warnings for S4/S7 methods.
+                let filtered: Vec<&str> = self
+                    .doc_tags
+                    .iter()
+                    .filter(|t| {
+                        !t.trim_start()
+                            .strip_prefix('@')
+                            .is_some_and(|rest| rest.starts_with("param"))
+                    })
+                    .map(|s| s.as_str())
+                    .collect();
+                crate::roxygen::push_roxygen_tags_str(&mut lines, &filtered);
             } else {
                 crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
             }

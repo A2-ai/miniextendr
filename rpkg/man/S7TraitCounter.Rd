@@ -3,6 +3,7 @@
 \name{S7TraitCounter}
 \alias{S7TraitCounter}
 \alias{get_value}
+\alias{S7TraitCounter$get_value}
 \alias{S7TraitCounter_new_s7trait}
 \alias{s7_trait_Counter_value}
 \alias{s7_trait_Counter_increment}

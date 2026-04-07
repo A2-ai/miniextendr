@@ -10,7 +10,7 @@
 \alias{ReceiverCounter$default_counter}
 \alias{$.ReceiverCounter}
 \alias{[[.ReceiverCounter}
-\title{Env-style counter class with constructor, accessor, and mutation methods}
+\title{ReceiverCounter  Class}
 \format{
 An object of class \code{environment} of length 5.
 }
@@ -40,8 +40,6 @@ ReceiverCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-Creates a new counter with the given initial value.
-
 Returns the current value.
 
 Increments the counter by 1 and returns the new value.

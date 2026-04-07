@@ -69,9 +69,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(ctx) = parsed_impl.constructor_context() {
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
+            // Use class name as @name to avoid duplicate "new" alias across S4 classes
             let method_doc =
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
-                    .with_r_params(&ctx.params);
+                    .with_r_params(&ctx.params)
+                    .with_r_name(class_name.clone());
             lines.extend(method_doc.build());
         }
         // Export the constructor function so users can create instances (if class should be exported)
@@ -120,10 +122,16 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Documentation for the generic - skip if class has @noRd
+        // Note: don't use with_r_params() here — S4 methods are defined via setMethod()
+        // which roxygen2 doesn't parse for \usage entries, so auto-generated @param tags
+        // would create "Documented arguments not in \usage" warnings.
         if !class_has_no_rd {
+            // Use S4-style qualified name to avoid duplicate alias across S4 classes
+            let qualified_name = format!("{},{}-method", method_name, class_name);
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags)
-                    .with_r_params(&full_params);
+                    .with_r_name(qualified_name)
+                    .with_suppress_params();
             lines.extend(method_doc.build());
         }
 
