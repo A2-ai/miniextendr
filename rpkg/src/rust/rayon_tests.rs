@@ -11,47 +11,41 @@ use miniextendr_api::rayon_bridge::{
     par_map, par_map2, par_map3, with_r_matrix, with_r_vec, with_r_vec_map,
 };
 
-/// @noRd
-/// Test parallel sum using rayon.
-/// Takes a numeric vector and returns the parallel sum.
+/// Test parallel sum of a numeric vector using rayon.
+/// @param x Numeric vector to sum.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_parallel_sum(x: &[f64]) -> f64 {
     x.par_iter().sum()
 }
 
-/// @noRd
-/// Test parallel map: compute sqrt of each element.
+/// Test parallel map computing the square root of each element.
+/// @param x Numeric vector input.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_parallel_sqrt(x: &[f64]) -> Vec<f64> {
     x.par_iter().map(|v| v.sqrt()).collect()
 }
 
-/// @noRd
-/// Test parallel filter: keep only positive values.
+/// Test parallel filter keeping only positive values.
+/// @param x Numeric vector input.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_parallel_filter_positive(x: &[f64]) -> Vec<f64> {
     x.par_iter().filter(|&&v| v > 0.0).copied().collect()
 }
 
-/// @noRd
-/// Test Vec collection from parallel iterator.
+/// Test collecting square roots from a parallel range iterator into a Vec.
+/// @param n Number of elements to generate.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_vec_collect(n: i32) -> Vec<f64> {
     (0..n).into_par_iter().map(|i| (i as f64).sqrt()).collect()
 }
 
-/// @noRd
-/// Test with_r_vec for chunk-based parallel fill.
+/// Test with_r_vec for chunk-based parallel fill of an R numeric vector.
+/// @param n Length of the output vector.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_with_r_vec(n: i32) -> SEXP {
     with_r_vec(n as usize, |chunk: &mut [f64], offset: usize| {
@@ -61,46 +55,45 @@ pub fn rayon_with_r_vec(n: i32) -> SEXP {
     })
 }
 
-/// @noRd
-/// Test with_r_vec_map for element-wise parallel fill.
+/// Test with_r_vec_map for element-wise parallel fill of an R numeric vector.
+/// @param n Length of the output vector.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_with_r_vec_map(n: i32) -> SEXP {
     with_r_vec_map(n as usize, |i: usize| (i as f64).sqrt())
 }
 
-/// @noRd
-/// Test par_map: transform input slice -> R vector.
+/// Test par_map: parallel transform of an input slice into an R numeric vector.
+/// @param x Numeric vector input.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_par_map(x: &[f64]) -> SEXP {
     par_map(x, |&v| v.sqrt())
 }
 
-/// @noRd
-/// Test par_map2: two-input element-wise parallel map.
+/// Test par_map2: element-wise parallel addition of two numeric vectors.
+/// @param a Numeric vector input.
+/// @param b Numeric vector input.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_par_map2(a: &[f64], b: &[f64]) -> SEXP {
     par_map2(a, b, |&x, &y| x + y)
 }
 
-/// @noRd
-/// Test par_map3: three-input element-wise parallel map (fused multiply-add).
+/// Test par_map3: three-input element-wise parallel fused multiply-add (a*b + c).
+/// @param a Numeric vector input.
+/// @param b Numeric vector input.
+/// @param c Numeric vector input.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_par_map3(a: &[f64], b: &[f64], c: &[f64]) -> SEXP {
     par_map3(a, b, c, |&x, &y, &z| x * y + z)
 }
 
-/// @noRd
-/// Test with_r_matrix for parallel column-wise fill.
+/// Test with_r_matrix for parallel column-wise fill of an R matrix.
+/// @param nrow Number of rows.
+/// @param ncol Number of columns.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_with_r_matrix(nrow: i32, ncol: i32) -> SEXP {
     with_r_matrix(nrow as usize, ncol as usize, |col, col_idx| {
@@ -110,10 +103,9 @@ pub fn rayon_with_r_matrix(nrow: i32, ncol: i32) -> SEXP {
     })
 }
 
-/// @noRd
-/// Test parallel reduce operations.
+/// Test parallel reduce computing sum, min, max, and mean of a numeric vector.
+/// @param x Numeric vector input.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_parallel_stats(x: &[f64]) -> Vec<f64> {
     let sum: f64 = x.par_iter().sum();
@@ -133,28 +125,23 @@ pub fn rayon_parallel_stats(x: &[f64]) -> Vec<f64> {
     vec![sum, min, max, mean]
 }
 
-/// @noRd
-/// Test parallel integer operations.
+/// Test parallel sum of an integer vector using rayon.
+/// @param x Integer vector to sum.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_parallel_sum_int(x: &[i32]) -> i32 {
     x.par_iter().sum()
 }
 
-/// @noRd
-/// Get number of rayon threads.
+/// Get the number of rayon worker threads in the global thread pool.
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_num_threads() -> i32 {
     miniextendr_api::rayon_bridge::perf::num_threads() as i32
 }
 
-/// @noRd
-/// Check if currently in a rayon thread (should be false when called from R).
+/// Check if the current thread is a rayon worker (should be FALSE when called from R).
 #[cfg(feature = "rayon")]
-/// @noRd
 #[miniextendr]
 pub fn rayon_in_thread() -> bool {
     miniextendr_api::rayon_bridge::perf::in_rayon_thread()

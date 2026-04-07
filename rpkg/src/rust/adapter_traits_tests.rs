@@ -53,7 +53,9 @@ impl FromStr for Point {
     }
 }
 
-/// @noRd
+/// Point inherent methods: constructor and field accessors.
+/// @param x Integer x-coordinate.
+/// @param y Integer y-coordinate.
 #[miniextendr]
 impl Point {
     fn new(x: i32, y: i32) -> Self {
@@ -72,35 +74,35 @@ impl Point {
 // Trait ABI: adapter traits registered via empty impl + TPIE (Trait-Provided Impl Expansion).
 // The trait definition exports method metadata; empty impls auto-expand C/R wrappers.
 
-/// @noRd
+/// RDebug trait ABI registration for Point.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RDebug for Point {}
 
-/// @noRd
+/// RDisplay trait ABI registration for Point.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RDisplay for Point {}
 
-/// @noRd
+/// RHash trait ABI registration for Point.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RHash for Point {}
 
-/// @noRd
+/// RClone trait ABI registration for Point.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RClone for Point {}
 
-/// @noRd
+/// RDefault trait ABI registration for Point.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RDefault for Point {}
 
-/// @noRd
+/// RFromStr trait ABI registration for Point.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RFromStr for Point {}
 
-/// @noRd
+/// RCopy trait ABI registration for Point.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RCopy for Point {}
 
-/// @noRd
+/// ROrd trait ABI registration for Point (blanket-impl, total ordering).
 #[miniextendr]
 impl miniextendr_api::adapter_traits::ROrd for Point {}
 // endregion
@@ -110,7 +112,8 @@ impl miniextendr_api::adapter_traits::ROrd for Point {}
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, ExternalPtr)]
 pub struct MyFloat(f64);
 
-/// @noRd
+/// MyFloat inherent methods: constructor and accessor.
+/// @param value Numeric value for the float wrapper.
 #[miniextendr]
 impl MyFloat {
     fn new(value: f64) -> Self {
@@ -126,7 +129,7 @@ impl MyFloat {
     }
 }
 
-/// @noRd
+/// RPartialOrd trait ABI registration for MyFloat (partial ordering with NaN).
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RPartialOrd for MyFloat {}
 // endregion
@@ -185,7 +188,9 @@ impl std::error::Error for ChainedError {
     }
 }
 
-/// @noRd
+/// ChainedError inherent methods: constructors with and without source errors.
+/// @param outer_msg Character string for the outer error message.
+/// @param inner_msg Character string for the inner (source) error message.
 #[miniextendr]
 impl ChainedError {
     fn new(outer_msg: &str, inner_msg: &str) -> Self {
@@ -205,7 +210,7 @@ impl ChainedError {
     }
 }
 
-/// @noRd
+/// RError trait ABI registration for ChainedError (error chain walking).
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RError for ChainedError {}
 // endregion
@@ -215,7 +220,7 @@ impl miniextendr_api::adapter_traits::RError for ChainedError {}
 #[derive(ExternalPtr)]
 pub struct IntVecIter(RefCell<std::vec::IntoIter<i32>>);
 
-/// @noRd
+/// RIterator trait implementation for IntVecIter (sequential integer iteration).
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
     type Item = i32;
@@ -272,7 +277,8 @@ impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
     }
 }
 
-/// @noRd
+/// IntVecIter inherent methods: constructor from integer vector.
+/// @param data Integer vector of elements to iterate over.
 #[miniextendr]
 impl IntVecIter {
     fn new(data: Vec<i32>) -> Self {
@@ -286,7 +292,8 @@ impl IntVecIter {
 #[derive(ExternalPtr)]
 pub struct GrowableVec(RefCell<Vec<i32>>);
 
-/// @noRd
+/// RExtend trait implementation for GrowableVec (append integers to a growable buffer).
+/// @param items Integer vector of items to append.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec {
     fn extend_from_vec(&self, items: Vec<i32>) {
@@ -302,7 +309,8 @@ impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec {
     }
 }
 
-/// @noRd
+/// GrowableVec inherent methods: constructors, conversion, and clearing.
+/// @param data Integer vector of initial elements.
 #[miniextendr]
 impl GrowableVec {
     fn new() -> Self {
@@ -331,7 +339,8 @@ use std::collections::HashSet;
 pub struct IntSet(HashSet<i32>);
 
 // RFromIter: static factory method (IntSet doesn't impl FromIterator directly)
-/// @noRd
+/// RFromIter trait implementation for IntSet (construct a set from integer vector).
+/// @param items Integer vector of elements to insert.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet {
     fn from_vec(items: Vec<i32>) -> Self {
@@ -340,7 +349,7 @@ impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet {
 }
 
 // RToVec: sorted output for deterministic tests
-/// @noRd
+/// RToVec trait implementation for IntSet (extract sorted integer vector).
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
     fn to_vec(&self) -> Vec<i32> {
@@ -358,7 +367,8 @@ impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
     }
 }
 
-/// @noRd
+/// IntSet inherent methods: membership test.
+/// @param value Integer value to check for membership.
 #[miniextendr]
 impl IntSet {
     fn contains(&self, value: i32) -> bool {
@@ -388,7 +398,7 @@ impl RIterator for IterableVecIter {
     }
 }
 
-/// @noRd
+/// RMakeIter trait implementation for IterableVec (create an iterator over the vector).
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RMakeIter<i32, IterableVecIter> for IterableVec {
     fn make_iter(&self) -> IterableVecIter {
@@ -396,7 +406,8 @@ impl miniextendr_api::adapter_traits::RMakeIter<i32, IterableVecIter> for Iterab
     }
 }
 
-/// @noRd
+/// IterableVec inherent methods: constructor, length, and conversion.
+/// @param data Integer vector of elements.
 #[miniextendr]
 impl IterableVec {
     fn new(data: Vec<i32>) -> Self {
@@ -412,7 +423,7 @@ impl IterableVec {
     }
 }
 
-/// @noRd
+/// RIterator blanket trait ABI registration for IterableVecIter.
 #[miniextendr(blanket)]
 impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
     type Item = i32;
@@ -444,7 +455,7 @@ impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
     }
 }
 
-/// @noRd
+/// IterableVecIter blanket impl: collect all remaining items.
 #[miniextendr(blanket)]
 impl IterableVecIter {
     fn collect_all(&self) -> Vec<i32> {

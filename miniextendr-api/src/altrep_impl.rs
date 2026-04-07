@@ -1143,6 +1143,17 @@ impl_altraw_from_data!(Box<[u8]>, serialize);
 impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
 impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
 
+// Cow<'static, [T]> — zero-copy borrow from R with copy-on-write dataptr.
+// Borrowed variants expose R's data directly; Owned behaves like Vec.
+impl_altinteger_from_data!(std::borrow::Cow<'static, [i32]>, dataptr, serialize);
+impl_altreal_from_data!(std::borrow::Cow<'static, [f64]>, dataptr, serialize);
+impl_altraw_from_data!(std::borrow::Cow<'static, [u8]>, dataptr, serialize);
+impl_altcomplex_from_data!(
+    std::borrow::Cow<'static, [crate::ffi::Rcomplex]>,
+    dataptr,
+    serialize
+);
+
 /// Eagerly register all built-in ALTREP classes.
 ///
 /// Must be called during `R_init` so that R can find these classes when
@@ -1174,6 +1185,12 @@ pub(crate) fn register_builtin_altrep_classes() {
     Box::<[u8]>::get_or_init_class();
     Box::<[String]>::get_or_init_class();
     Box::<[crate::ffi::Rcomplex]>::get_or_init_class();
+
+    // Cow<'static, [T]>
+    std::borrow::Cow::<'static, [i32]>::get_or_init_class();
+    std::borrow::Cow::<'static, [f64]>::get_or_init_class();
+    std::borrow::Cow::<'static, [u8]>::get_or_init_class();
+    std::borrow::Cow::<'static, [crate::ffi::Rcomplex]>::get_or_init_class();
 
     // Range types
     std::ops::Range::<i32>::get_or_init_class();
@@ -2126,4 +2143,13 @@ impl_register_altrep_builtin!(Box<[bool]>, "Box_bool");
 impl_register_altrep_builtin!(Box<[u8]>, "Box_u8");
 impl_register_altrep_builtin!(Box<[String]>, "Box_String");
 impl_register_altrep_builtin!(Box<[crate::ffi::Rcomplex]>, "Box_Rcomplex");
+
+// Cow types - RegisterAltrep for zero-copy borrow from R
+impl_register_altrep_builtin!(std::borrow::Cow<'static, [i32]>, "Cow_i32");
+impl_register_altrep_builtin!(std::borrow::Cow<'static, [f64]>, "Cow_f64");
+impl_register_altrep_builtin!(std::borrow::Cow<'static, [u8]>, "Cow_u8");
+impl_register_altrep_builtin!(
+    std::borrow::Cow<'static, [crate::ffi::Rcomplex]>,
+    "Cow_Rcomplex"
+);
 // endregion

@@ -11,25 +11,30 @@ use miniextendr_api::rng::{RngGuard, with_rng};
 
 // region: Standalone function tests
 
-/// @noRd
+/// Test generating n uniform random numbers using R's RNG.
+/// @param n Integer number of values to generate.
 #[miniextendr(rng)]
 pub fn rng_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
-/// @noRd
+/// Test generating n standard normal random numbers using R's RNG.
+/// @param n Integer number of values to generate.
 #[miniextendr(rng)]
 pub fn rng_normal(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { norm_rand() }).collect()
 }
 
-/// @noRd
+/// Test generating n exponential random numbers using R's RNG.
+/// @param n Integer number of values to generate.
 #[miniextendr(rng)]
 pub fn rng_exponential(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { exp_rand() }).collect()
 }
 
-/// @noRd
+/// Test generating n random integers in [0, max) using R's RNG.
+/// @param n Integer number of values to generate.
+/// @param max Numeric upper bound (exclusive) for the random integers.
 #[miniextendr(rng)]
 pub fn rng_int(n: i32, max: f64) -> Vec<i32> {
     (0..n)
@@ -37,13 +42,15 @@ pub fn rng_int(n: i32, max: f64) -> Vec<i32> {
         .collect()
 }
 
-/// @noRd
+/// Test RNG with interrupt checking enabled.
+/// @param n Integer number of uniform values to generate.
 #[miniextendr(rng, check_interrupt)]
 pub fn rng_with_interrupt(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
-/// @noRd
+/// Test RNG on worker thread (requires worker-thread feature).
+/// @param n Integer number of uniform values to generate.
 #[cfg(feature = "worker-thread")]
 #[miniextendr(rng, worker)]
 pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
@@ -53,16 +60,18 @@ pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
 
 // region: Manual RNG management tests
 
-/// @noRd
+/// Test manual RNG management using RngGuard RAII pattern.
+/// @param n Integer number of uniform values to generate.
 #[miniextendr]
-fn rng_guard_test(n: i32) -> Vec<f64> {
+pub fn rng_guard_test(n: i32) -> Vec<f64> {
     let _guard = RngGuard::new();
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
-/// @noRd
+/// Test manual RNG management using the with_rng closure API.
+/// @param n Integer number of uniform values to generate.
 #[miniextendr]
-fn rng_with_rng_test(n: i32) -> Vec<f64> {
+pub fn rng_with_rng_test(n: i32) -> Vec<f64> {
     with_rng(|| (0..n).map(|_| unsafe { unif_rand() }).collect())
 }
 // endregion

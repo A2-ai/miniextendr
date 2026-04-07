@@ -21,11 +21,13 @@ pub fn greetings_with_named_dots(dots: ...) {
     let _ = dots;
 }
 
-/// @noRd
+/// Test dots handling with named but unused dots parameter.
+/// @param ... Additional arguments (captured but unused).
 #[miniextendr]
 pub fn greetings_with_named_and_unused_dots(_dots: ...) {}
 
-/// @noRd
+/// Test dots handling with nameless (underscore-prefixed) dots.
+/// @param ... Additional arguments (captured but unused).
 #[miniextendr]
 pub fn greetings_with_nameless_dots(_dots: ...) {}
 
@@ -33,23 +35,29 @@ pub fn greetings_with_nameless_dots(_dots: ...) {}
 // #[miniextendr]
 // fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
 
-/// @noRd
+/// Test dots as the last parameter with a named but unused dots argument.
+/// @param _exclamations Integer count of exclamation marks.
+/// @param ... Additional arguments (captured but unused).
 #[miniextendr]
 pub fn greetings_last_as_named_and_unused_dots(_exclamations: i32, _dots: ...) {}
 
-/// @noRd
+/// Test dots as the last parameter with a named dots argument.
+/// @param _exclamations Integer count of exclamation marks.
+/// @param ... Additional arguments (captured as dots).
 #[miniextendr]
 pub fn greetings_last_as_named_dots(_exclamations: i32, dots: ...) {
     let _ = dots;
 }
 
-/// @noRd
+/// Test dots as the last parameter with nameless dots.
+/// @param _exclamations Integer count of exclamation marks.
+/// @param ... Additional arguments (captured but unused).
 #[miniextendr]
 pub fn greetings_last_as_nameless_dots(_exclamations: i32, _dots: ...) {}
 
 // region: typed_list! macro examples
 
-/// @noRd
+/// Test typed_list! validation with numeric, list, and optional character fields.
 #[miniextendr]
 /// @param ... Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
 pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
@@ -66,7 +74,7 @@ pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
     Ok(alpha.xlength() as i32)
 }
 
-/// @noRd
+/// Test typed_list! with exact mode (no extra fields allowed).
 #[miniextendr]
 /// @param ... Named arguments: `x` (numeric), `y` (numeric). No extra fields allowed.
 pub fn validate_strict_args(dots: ...) -> Result<String, String> {
@@ -80,7 +88,7 @@ pub fn validate_strict_args(dots: ...) -> Result<String, String> {
     Ok(format!("x={}, y={}", x, y))
 }
 
-/// @noRd
+/// Test typed_list! validation with a class-typed field (data.frame).
 #[miniextendr]
 /// @param ... Named arguments: `data` (data.frame).
 pub fn validate_class_args(dots: ...) -> Result<i32, String> {
@@ -98,7 +106,7 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
 
 // region: Attribute sugar for typed_list validation
 
-/// @noRd
+/// Test dots attribute sugar for typed_list validation (x and y numeric).
 #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
 /// @param ... Named arguments: `x` (numeric), `y` (numeric).
 pub fn validate_with_attribute(_dots: ...) -> String {
@@ -108,7 +116,7 @@ pub fn validate_with_attribute(_dots: ...) -> String {
     format!("x={}, y={}", x, y)
 }
 
-/// @noRd
+/// Test dots attribute sugar with an optional field (greeting).
 #[miniextendr(dots = typed_list!(name => character(), greeting? => character()))]
 /// @param ... Named arguments: `name` (character), `greeting` (optional character).
 pub fn validate_attr_optional(_dots: ...) -> String {

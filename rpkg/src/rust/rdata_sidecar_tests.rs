@@ -42,11 +42,15 @@ pub struct SidecarEnv {
     pub raw_slot: SEXP,
 }
 
-/// @noRd
+/// Env class registration for SidecarEnv (enables R sidecar accessors).
 #[miniextendr(env)]
 impl SidecarEnv {}
 
-/// @noRd
+/// Test creating a SidecarEnv with all sidecar field types.
+/// @param count Integer sidecar field.
+/// @param score Numeric sidecar field.
+/// @param flag Logical sidecar field.
+/// @param name Character sidecar field.
 #[miniextendr]
 pub fn rdata_sidecar_env_new(
     count: i32,
@@ -85,7 +89,11 @@ pub struct SidecarR6 {
     pub label: String,
 }
 
-/// @noRd
+/// R6 class registration for SidecarR6 with active binding sidecar accessors.
+/// @param value Integer sidecar field.
+/// @param label Character sidecar field.
+/// @field value Integer sidecar field (active binding).
+/// @field label Character sidecar field (active binding).
 #[miniextendr(r6(r_data_accessors))]
 impl SidecarR6 {
     /// Create a new SidecarR6 with initial values.
@@ -98,7 +106,9 @@ impl SidecarR6 {
     }
 }
 
-/// @noRd
+/// Test creating a SidecarR6 with R6 active binding accessors.
+/// @param value Integer sidecar field.
+/// @param label Character sidecar field.
 #[miniextendr]
 pub fn rdata_sidecar_r6_new(value: i32, label: String) -> ExternalPtr<SidecarR6> {
     ExternalPtr::new(SidecarR6 {
@@ -123,11 +133,14 @@ pub struct SidecarS3 {
     pub data: f64,
 }
 
-/// @noRd
+/// S3 class registration for SidecarS3 (enables $ method dispatch for sidecar fields).
+/// @param x An object.
+/// @param ... Additional arguments.
 #[miniextendr(s3)]
 impl SidecarS3 {}
 
-/// @noRd
+/// Test creating a SidecarS3 with S3 $ method dispatch for sidecar fields.
+/// @param data Numeric sidecar field.
 #[miniextendr]
 pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
     ExternalPtr::new(SidecarS3 { _r: RSidecar, data })
@@ -154,11 +167,14 @@ pub struct SidecarS4 {
     pub slot_str: String,
 }
 
-/// @noRd
+/// S4 class registration for SidecarS4 (enables setMethod slot accessors).
 #[miniextendr(s4)]
 impl SidecarS4 {}
 
-/// @noRd
+/// Test creating a SidecarS4 with S4 slot accessors.
+/// @param slot_int Integer sidecar field.
+/// @param slot_real Numeric sidecar field.
+/// @param slot_str Character sidecar field.
 #[miniextendr]
 pub fn rdata_sidecar_s4_new(
     slot_int: i32,
@@ -194,7 +210,10 @@ pub struct SidecarS7 {
     pub prop_name: String,
 }
 
-/// @noRd
+/// S7 class registration for SidecarS7 with property-based sidecar accessors.
+/// @param prop_int Integer sidecar field.
+/// @param prop_flag Logical sidecar field.
+/// @param prop_name Character sidecar field.
 #[miniextendr(s7(r_data_accessors))]
 impl SidecarS7 {
     /// Create a new SidecarS7 with initial values.
@@ -208,7 +227,10 @@ impl SidecarS7 {
     }
 }
 
-/// @noRd
+/// Test creating a SidecarS7 with S7 property-based sidecar accessors.
+/// @param prop_int Integer sidecar field.
+/// @param prop_flag Logical sidecar field.
+/// @param prop_name Character sidecar field.
 #[miniextendr]
 pub fn rdata_sidecar_s7_new(
     prop_int: i32,
@@ -241,11 +263,13 @@ pub struct SidecarVctrs {
     pub vec_label: String,
 }
 
-/// @noRd
+/// Vctrs class registration for SidecarVctrs (S3-style $ dispatch for vctrs compat).
 #[miniextendr(vctrs)]
 impl SidecarVctrs {}
 
-/// @noRd
+/// Test creating a SidecarVctrs with vctrs-compatible sidecar fields.
+/// @param vec_data Numeric vector sidecar field.
+/// @param vec_label Character sidecar field.
 #[miniextendr]
 pub fn rdata_sidecar_vctrs_new(vec_data: Vec<f64>, vec_label: String) -> ExternalPtr<SidecarVctrs> {
     ExternalPtr::new(SidecarVctrs {
@@ -290,11 +314,11 @@ pub struct SidecarRawSexp {
     pub env_val: SEXP,
 }
 
-/// @noRd
+/// Env class registration for SidecarRawSexp (raw SEXP slot testing).
 #[miniextendr(env)]
 impl SidecarRawSexp {}
 
-/// @noRd
+/// Test creating a SidecarRawSexp with all SEXP slots initialized to NULL.
 #[miniextendr]
 pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
     use miniextendr_api::ffi::SEXP;
@@ -324,11 +348,12 @@ pub struct SidecarRaw {
     pub byte_val: u8,
 }
 
-/// @noRd
+/// Env class registration for SidecarRaw (u8 scalar sidecar testing).
 #[miniextendr(env)]
 impl SidecarRaw {}
 
-/// @noRd
+/// Test creating a SidecarRaw with a u8 scalar sidecar field.
+/// @param byte_val Raw byte value for the sidecar field.
 #[miniextendr]
 pub fn rdata_sidecar_raw_new(byte_val: u8) -> ExternalPtr<SidecarRaw> {
     ExternalPtr::new(SidecarRaw {

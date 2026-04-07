@@ -336,10 +336,11 @@ fn generate_trait_s3_r_wrapper(
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // S3 generic roxygen (only create if doesn't exist)
+        // Use type-qualified @name to avoid duplicate aliases across types
         let generic_roxygen = RoxygenBuilder::new()
             .title(format!("S3 generic for `{}`", generic_name))
             .custom(format!("S3 generic for `{}`", generic_name))
-            .name(&generic_name)
+            .name(format!("{}.{}", generic_name, type_str))
             .rdname(&type_str)
             .custom("@param x An object")
             .custom("@param ... Additional arguments passed to methods")
@@ -542,6 +543,8 @@ fn generate_trait_s4_r_wrapper(
         };
 
         // S4 generic roxygen (include @param tags from method doc comments)
+        // S4 generic names are already type-qualified (s4_trait_TypeName_method)
+        // so @name won't create duplicate aliases across types.
         let mut generic_roxygen = RoxygenBuilder::new()
             .custom(format!(
                 "S4 generic for trait method `{}::{}`",
@@ -721,6 +724,7 @@ fn generate_trait_s7_r_wrapper(
         // S7 generic roxygen
         // Note: Don't include method-specific @param tags here since S7 methods
         // are assignments and won't appear in \usage, which would cause warnings
+        // S7 generic names are already type-qualified so @name won't duplicate.
         let generic_roxygen = RoxygenBuilder::new()
             .custom(format!(
                 "S7 generic for trait method `{}::{}`",

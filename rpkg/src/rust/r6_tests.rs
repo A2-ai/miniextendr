@@ -6,10 +6,9 @@
 
 use miniextendr_api::miniextendr;
 
-/// @noRd
+/// Test standalone function mixed with R6 impl blocks.
 #[miniextendr]
 /// @name rpkg_r6_standalone
-/// @noRd
 /// @examples
 /// r6_standalone_add(1L, 2L)
 /// @aliases r6_standalone_add
@@ -24,7 +23,8 @@ pub struct R6Counter {
     value: i32,
 }
 
-/// @noRd
+/// R6 counter class with constructor, accessor, and mutation methods.
+/// @param initial Integer initial counter value.
 #[miniextendr(r6)]
 impl R6Counter {
     /// Creates a new counter with the given initial value.
@@ -62,7 +62,7 @@ pub struct R6Accumulator {
     count: usize,
 }
 
-/// @noRd
+/// R6 accumulator class for summing numeric values.
 #[miniextendr(r6)]
 impl R6Accumulator {
     /// Creates a new accumulator starting at zero.
@@ -107,7 +107,9 @@ pub struct R6Rectangle {
     height: f64,
 }
 
-/// @noRd
+/// R6 rectangle class demonstrating active bindings for computed properties.
+/// @param width Numeric width of the rectangle.
+/// @param height Numeric height of the rectangle.
 #[miniextendr(r6)]
 impl R6Rectangle {
     /// Creates a new rectangle with given dimensions.
@@ -144,7 +146,8 @@ pub struct R6Temperature {
     celsius: f64,
 }
 
-/// @noRd
+/// R6 temperature class with getter/setter active bindings for Celsius and Fahrenheit.
+/// @param celsius Numeric temperature in Celsius.
 #[miniextendr(r6)]
 impl R6Temperature {
     /// Creates a new temperature in Celsius.
@@ -183,7 +186,8 @@ pub struct R6Cloneable {
     value: i32,
 }
 
-/// @noRd
+/// R6 cloneable class with locked class definition.
+/// @param value Integer value to store.
 #[miniextendr(r6(cloneable, lock_class))]
 impl R6Cloneable {
     /// Creates a new instance.
@@ -211,7 +215,9 @@ pub struct R6Animal {
     sound: String,
 }
 
-/// @noRd
+/// R6 base animal class for inheritance testing.
+/// @param name Character name of the animal.
+/// @param sound Character sound the animal makes.
 #[miniextendr(r6)]
 impl R6Animal {
     pub fn new(name: String, sound: String) -> Self {
@@ -231,7 +237,8 @@ pub struct R6Dog {
     breed: String,
 }
 
-/// @noRd
+/// R6 dog class inheriting from R6Animal.
+/// @param breed Character breed of the dog.
 #[miniextendr(r6(inherit = "R6Animal"))]
 impl R6Dog {
     pub fn new(breed: String) -> Self {
@@ -251,7 +258,8 @@ pub struct R6GoldenRetriever {
     owner: String,
 }
 
-/// @noRd
+/// R6 golden retriever class for 3-level inheritance chain testing.
+/// @param owner Character name of the owner.
 #[miniextendr(r6(inherit = "R6Dog"))]
 impl R6GoldenRetriever {
     pub fn new(owner: String) -> Self {
@@ -270,7 +278,8 @@ pub struct R6NonPortable {
     value: i32,
 }
 
-/// @noRd
+/// R6 non-portable class for testing portable = FALSE flag.
+/// @param value Integer value to store.
 #[miniextendr(r6(portable = false))]
 impl R6NonPortable {
     pub fn new(value: i32) -> Self {

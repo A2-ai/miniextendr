@@ -10,8 +10,8 @@ use crate::ffi::SEXP;
 // region: Construction helpers (Phase A)
 
 use crate::ffi::{
-    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_install, Rf_type2char, Rf_xlength,
-    SEXPTYPE, SexpExt,
+    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_type2char, Rf_xlength, SEXPTYPE,
+    SexpExt,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
@@ -490,15 +490,13 @@ pub fn new_list_of(
 
     // Set ptype attribute if provided
     if let Some(p) = ptype {
-        let ptype_sym = unsafe { Rf_install(c"ptype".as_ptr()) };
-        data.set_attr(ptype_sym, p);
+        data.set_attr(crate::cached_class::ptype_symbol(), p);
     }
 
     // Set size attribute if provided
     if let Some(s) = size {
-        let size_sym = unsafe { Rf_install(c"size".as_ptr()) };
         let size_sexp = crate::ffi::SEXP::scalar_integer(s);
-        data.set_attr(size_sym, size_sexp);
+        data.set_attr(crate::cached_class::size_symbol(), size_sexp);
     }
 
     // Set additional attributes

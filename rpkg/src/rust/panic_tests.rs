@@ -18,21 +18,21 @@ impl Drop for MsgOnDrop {
     }
 }
 
-/// @noRd
+/// Test that MsgOnDrop prints its message on normal function return.
 #[miniextendr]
 pub fn drop_message_on_success() -> i32 {
     let _a = MsgOnDrop;
     42
 }
 
-/// @noRd
+/// Test that MsgOnDrop runs its destructor when a panic occurs.
 #[miniextendr]
 pub fn drop_on_panic() {
     let _a = MsgOnDrop;
     panic!()
 }
 
-/// @noRd
+/// Test that MsgOnDrop runs its destructor when an Rf_error (R longjmp) occurs.
 #[miniextendr]
 pub fn drop_on_panic_with_move() {
     let _a = MsgOnDrop;
@@ -45,7 +45,7 @@ pub fn drop_on_panic_with_move() {
 
 // region: panics, (), and Result
 
-/// @noRd
+/// Test that a function returning unit () works correctly (invisible NULL in R).
 #[miniextendr]
 #[allow(clippy::unused_unit)]
 pub fn take_and_return_nothing() -> () {}
@@ -63,7 +63,10 @@ pub fn add(left: i32, right: i32) -> i32 {
     left + right
 }
 
-/// @noRd
+/// Test addition with a unit-typed dummy parameter.
+/// @param left Integer input.
+/// @param right Integer input.
+/// @param _dummy Ignored unit parameter for testing.
 #[miniextendr]
 pub fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
     left + right
@@ -78,13 +81,18 @@ impl From<()> for RustError {
     }
 }
 
-/// @noRd
+/// Test checked addition returning Result, with a unit-typed dummy parameter.
+/// @param left Integer input.
+/// @param right Integer input.
+/// @param _dummy Ignored unit parameter for testing.
 #[miniextendr]
 pub fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, RustError> {
     left.checked_add(right).ok_or(().into())
 }
 
-/// @noRd
+/// Test checked division returning Result with a string error on divide-by-zero.
+/// @param left Integer dividend.
+/// @param right Integer divisor (zero triggers error).
 #[miniextendr]
 pub fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
     left.checked_div(right).ok_or("don't divide by zero dude")
@@ -100,7 +108,7 @@ fn middle_function() {
     inner_panicking_function();
 }
 
-/// @noRd
+/// Test that a panic in a deeply nested call chain is caught and propagated.
 #[miniextendr]
 pub fn nested_panic() {
     middle_function();
@@ -109,7 +117,6 @@ pub fn nested_panic() {
 #[miniextendr]
 /// @title Panic and Error Handling Tests
 /// @name rpkg_panic_tests
-/// @noRd
 /// @description Panic and error handling tests (unsafe)
 /// @examples
 /// try(add_panic(1L, 2L))
@@ -129,7 +136,9 @@ pub fn add_panic(_left: i32, _right: i32) -> i32 {
     panic!("we cannot add right now! ")
 }
 
-/// @noRd
+/// Test that Rf_error triggers an R error with a stack-allocated MsgOnDrop.
+/// @param _left Ignored integer input.
+/// @param _right Ignored integer input.
 #[miniextendr]
 pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
@@ -139,14 +148,18 @@ pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     }
 }
 
-/// @noRd
+/// Test that a panic drops a heap-allocated (Box) MsgOnDrop.
+/// @param _left Ignored integer input.
+/// @param _right Ignored integer input.
 #[miniextendr]
 pub fn add_panic_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
     panic!("we cannot add right now! ")
 }
 
-/// @noRd
+/// Test that Rf_error triggers an R error with a heap-allocated (Box) MsgOnDrop.
+/// @param _left Ignored integer input.
+/// @param _right Ignored integer input.
 #[miniextendr]
 pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
@@ -162,20 +175,26 @@ pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
 
 /// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
 #[allow(unused_mut)]
-/// @noRd
+/// Test macro handling of a mutable left parameter.
+/// @param left Integer input (declared mut in Rust).
+/// @param right Integer input.
 #[miniextendr]
 pub fn add_left_mut(mut left: i32, right: i32) -> i32 {
     let left = &mut left;
     *left + right
 }
 
-/// @noRd
+/// Test macro handling of a mutable right parameter.
+/// @param left Integer input.
+/// @param right Integer input.
 #[miniextendr]
 pub fn add_right_mut(left: i32, right: i32) -> i32 {
     left + right
 }
 
-/// @noRd
+/// Test macro handling when both parameters are mutable.
+/// @param left Integer input.
+/// @param right Integer input.
 #[miniextendr]
 pub fn add_left_right_mut(left: i32, right: i32) -> i32 {
     left + right
@@ -185,14 +204,14 @@ pub fn add_left_right_mut(left: i32, right: i32) -> i32 {
 
 // region: panic printing
 
-/// @noRd
+/// Test a bare panic without any catch_unwind wrapper.
 #[unsafe(no_mangle)]
 #[miniextendr]
 pub extern "C-unwind" fn C_just_panic() -> SEXP {
     panic!("just panic, no capture");
 }
 
-/// @noRd
+/// Test that catch_unwind captures a panic and returns an Err.
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -202,7 +221,7 @@ pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
     ::miniextendr_api::ffi::SEXP::nil()
 }
 
-/// @noRd
+/// Test a direct Rf_error call via raw FFI.
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -211,7 +230,7 @@ pub extern "C-unwind" fn C_r_error() -> SEXP {
     unsafe { crate::raw_ffi::Rf_error(c"arg1".as_ptr()) }
 }
 
-/// @noRd
+/// Test that Rf_error inside catch_unwind is NOT caught (R longjmp bypasses it).
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
@@ -238,7 +257,7 @@ fn extract_panic_message(e: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-/// @noRd
+/// Test that checked Rf_error on a non-R thread panics with a clear thread-check message.
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
@@ -255,7 +274,7 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
     panic!("{}", extract_panic_message(e));
 }
 
-/// @noRd
+/// Test that checked Rprintf on a non-R thread panics with a clear thread-check message.
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]

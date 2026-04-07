@@ -1393,6 +1393,253 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
 }
 // endregion
 
+// region: Built-in implementations for Cow<'static, [T]>
+//
+// Cow<'static, [T]> enables zero-copy borrows from R vectors while retaining
+// ownership semantics. Borrowed variants expose the underlying R data directly
+// via dataptr; Owned variants behave like Vec<T>. Copy-on-write happens
+// automatically when R requests a writable dataptr on a Borrowed variant.
+
+use std::borrow::Cow;
+
+macro_rules! impl_len_cow {
+    ($elem:ty) => {
+        impl AltrepLen for Cow<'static, [$elem]> {
+            fn len(&self) -> usize {
+                <[$elem]>::len(self)
+            }
+        }
+    };
+}
+
+macro_rules! impl_dataptr_cow {
+    ($elem:ty) => {
+        impl AltrepDataptr<$elem> for Cow<'static, [$elem]> {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
+                // to_mut() triggers copy-on-write for Borrowed variants
+                Some(self.to_mut().as_mut_ptr())
+            }
+
+            fn dataptr_or_null(&self) -> Option<*const $elem> {
+                Some(self.as_ptr())
+            }
+        }
+    };
+}
+
+macro_rules! impl_serialize_cow {
+    ($elem:ty) => {
+        impl AltrepSerialize for Cow<'static, [$elem]> {
+            fn serialized_state(&self) -> SEXP {
+                use crate::into_r::IntoR;
+                self.clone().into_sexp()
+            }
+
+            fn unserialize(state: SEXP) -> Option<Self> {
+                use crate::from_r::TryFromSexp;
+                Cow::<'static, [$elem]>::try_from_sexp(state).ok()
+            }
+        }
+    };
+}
+
+impl_len_cow!(i32);
+
+impl AltIntegerData for Cow<'static, [i32]> {
+    fn elt(&self, i: usize) -> i32 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(self.as_ref())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        let end = (start + len).min(<[i32]>::len(self));
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.contains(&i32::MIN))
+    }
+
+    fn sum(&self, na_rm: bool) -> Option<i64> {
+        let mut sum: i64 = 0;
+        for &x in self.iter() {
+            if x == i32::MIN {
+                if !na_rm {
+                    return None;
+                }
+            } else {
+                sum += x as i64;
+            }
+        }
+        Some(sum)
+    }
+
+    fn min(&self, na_rm: bool) -> Option<i32> {
+        let mut min = i32::MAX;
+        let mut found = false;
+        for &x in self.iter() {
+            if x == i32::MIN {
+                if !na_rm {
+                    return None;
+                }
+            } else {
+                found = true;
+                min = min.min(x);
+            }
+        }
+        if found { Some(min) } else { None }
+    }
+
+    fn max(&self, na_rm: bool) -> Option<i32> {
+        let mut max = i32::MIN + 1;
+        let mut found = false;
+        for &x in self.iter() {
+            if x == i32::MIN {
+                if !na_rm {
+                    return None;
+                }
+            } else {
+                found = true;
+                max = max.max(x);
+            }
+        }
+        if found { Some(max) } else { None }
+    }
+}
+
+impl_dataptr_cow!(i32);
+impl_serialize_cow!(i32);
+
+impl_len_cow!(f64);
+
+impl AltRealData for Cow<'static, [f64]> {
+    fn elt(&self, i: usize) -> f64 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        Some(self.as_ref())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        let end = (start + len).min(<[f64]>::len(self));
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.iter().any(|x| x.is_nan()))
+    }
+
+    fn sum(&self, na_rm: bool) -> Option<f64> {
+        let mut sum = 0.0;
+        for &x in self.iter() {
+            if x.is_nan() {
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
+            } else {
+                sum += x;
+            }
+        }
+        Some(sum)
+    }
+
+    fn min(&self, na_rm: bool) -> Option<f64> {
+        let mut min = f64::INFINITY;
+        let mut found = false;
+        for &x in self.iter() {
+            if x.is_nan() {
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
+            } else {
+                found = true;
+                min = min.min(x);
+            }
+        }
+        if found { Some(min) } else { None }
+    }
+
+    fn max(&self, na_rm: bool) -> Option<f64> {
+        let mut max = f64::NEG_INFINITY;
+        let mut found = false;
+        for &x in self.iter() {
+            if x.is_nan() {
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
+            } else {
+                found = true;
+                max = max.max(x);
+            }
+        }
+        if found { Some(max) } else { None }
+    }
+}
+
+impl_dataptr_cow!(f64);
+impl_serialize_cow!(f64);
+
+impl_len_cow!(u8);
+
+impl AltRawData for Cow<'static, [u8]> {
+    fn elt(&self, i: usize) -> u8 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[u8]> {
+        Some(self.as_ref())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
+        let end = (start + len).min(<[u8]>::len(self));
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+}
+
+impl_dataptr_cow!(u8);
+impl_serialize_cow!(u8);
+
+impl_len_cow!(Rcomplex);
+
+impl AltComplexData for Cow<'static, [Rcomplex]> {
+    fn elt(&self, i: usize) -> Rcomplex {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[Rcomplex]> {
+        Some(self.as_ref())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
+        let end = (start + len).min(<[Rcomplex]>::len(self));
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+}
+
+impl_dataptr_cow!(Rcomplex);
+impl_serialize_cow!(Rcomplex);
+// endregion
+
 // region: Low-level ALTREP trait implementations
 //
 // The low-level trait impls (Altrep, AltVec, Alt*, InferBase) for builtin types
@@ -1402,5 +1649,6 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
 // See altrep_impl.rs for:
 // - Vec<i32>, Vec<f64>, Vec<bool>, Vec<u8>, Vec<String>, Vec<Rcomplex>
 // - Box<[i32]>, Box<[f64]>, Box<[bool]>, Box<[u8]>, Box<[String]>, Box<[Rcomplex]>
+// - Cow<'static, [i32]>, Cow<'static, [f64]>, Cow<'static, [u8]>, Cow<'static, [Rcomplex]>
 // - Range<i32>, Range<i64>, Range<f64>
 // endregion

@@ -16,6 +16,7 @@
 //! - class attribute: `"rust_error_value"`
 //! - `__rust_error__` attribute: `TRUE`
 
+use crate::cached_class::{error_names_sexp, rust_error_attr_symbol, rust_error_class_sexp};
 use crate::ffi::{self, SEXP, SexpExt};
 
 /// Build a tagged error-value SEXP for transport across the Rust→R boundary.
@@ -53,29 +54,12 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         let call_sexp = call.unwrap_or(SEXP::nil());
         list.set_vector_elt(2, call_sexp);
 
-        // Set names: c("error", "kind", "call")
-        let names = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 3);
-        ffi::Rf_protect(names);
-        names.set_string_elt(0, ffi::Rf_mkCharCE(c"error".as_ptr(), ffi::CE_UTF8));
-        names.set_string_elt(1, ffi::Rf_mkCharCE(c"kind".as_ptr(), ffi::CE_UTF8));
-        names.set_string_elt(2, ffi::Rf_mkCharCE(c"call".as_ptr(), ffi::CE_UTF8));
-        list.set_names(names);
+        // Names, class, and attribute symbol are all cached — zero allocation
+        list.set_names(error_names_sexp());
+        list.set_class(rust_error_class_sexp());
+        list.set_attr(rust_error_attr_symbol(), SEXP::scalar_logical(true));
 
-        // Set class: "rust_error_value"
-        let class = ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1);
-        ffi::Rf_protect(class);
-
-        class.set_string_elt(
-            0,
-            ffi::Rf_mkCharCE(c"rust_error_value".as_ptr(), ffi::CE_UTF8),
-        );
-        list.set_class(class);
-
-        // Set __rust_error__ attribute = TRUE (secondary marker)
-        let attr_sym = ffi::Rf_install(c"__rust_error__".as_ptr());
-        list.set_attr(attr_sym, SEXP::scalar_logical(true));
-
-        ffi::Rf_unprotect(3);
+        ffi::Rf_unprotect(1);
         list
     }
 }

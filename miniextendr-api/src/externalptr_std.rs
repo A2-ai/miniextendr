@@ -97,6 +97,13 @@ impl<T: 'static> TypedExternal for Box<[T]> {
     const TYPE_ID_CSTR: &'static [u8] = b"std::BoxSlice\0";
 }
 
+// Cow<'a, [T]> is a fat pointer like Box<[T]> — needs explicit impl.
+impl<T: Clone + 'static> TypedExternal for std::borrow::Cow<'static, [T]> {
+    const TYPE_NAME: &'static str = "CowSlice";
+    const TYPE_NAME_CSTR: &'static [u8] = b"CowSlice\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"std::CowSlice\0";
+}
+
 impl_te_generic!(<T> std::rc::Rc<T>, "Rc");
 impl_te_generic!(<T> std::sync::Arc<T>, "Arc");
 impl_te_generic!(<T> std::cell::Cell<T>, "Cell");

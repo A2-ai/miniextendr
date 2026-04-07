@@ -712,7 +712,7 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
     let slice: &[f64] = unsafe { sexp.as_slice() };
 
     // Extract timezone if present
-    let tzone_sexp = sexp.get_attr(unsafe { ffi::Rf_install(c"tzone".as_ptr()) });
+    let tzone_sexp = sexp.get_attr(crate::cached_class::tzone_symbol());
     let tz: Option<Arc<str>> = if tzone_sexp.type_of() == SEXPTYPE::STRSXP && tzone_sexp.len() > 0 {
         let charsxp = tzone_sexp.string_elt(0);
         let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
@@ -785,10 +785,7 @@ impl IntoR for StringDictionaryArray {
 
             // Set levels and class attributes
             codes.set_levels(levels);
-            let class_str = scope.alloc_character(1).into_raw();
-
-            class_str.set_string_elt(0, SEXP::charsxp("factor"));
-            codes.set_class(class_str);
+            codes.set_class(crate::factor::factor_class_sexp());
 
             codes
         }
@@ -819,10 +816,7 @@ impl IntoR for Date32Array {
             }
 
             // Set class = "Date"
-            let class_str = scope.alloc_character(1).into_raw();
-
-            class_str.set_string_elt(0, SEXP::charsxp("Date"));
-            sexp.set_class(class_str);
+            sexp.set_class(crate::cached_class::date_class_sexp());
 
             sexp
         }
@@ -858,18 +852,13 @@ impl IntoR for TimestampSecondArray {
             }
 
             // Set class = c("POSIXct", "POSIXt")
-            let class_str = scope.alloc_character(2).into_raw();
-
-            class_str.set_string_elt(0, SEXP::charsxp("POSIXct"));
-
-            class_str.set_string_elt(1, SEXP::charsxp("POSIXt"));
-            sexp.set_class(class_str);
+            sexp.set_class(crate::cached_class::posixct_class_sexp());
 
             // Set tzone attribute if present
             if let Some(tz) = tz {
                 let tz_str = scope.alloc_character(1).into_raw();
                 tz_str.set_string_elt(0, SEXP::charsxp(&tz));
-                sexp.set_attr(ffi::Rf_install(c"tzone".as_ptr()), tz_str);
+                sexp.set_attr(crate::cached_class::tzone_symbol(), tz_str);
             }
 
             sexp
@@ -1411,10 +1400,7 @@ impl IntoR for RecordBatch {
             list.set_names(names);
 
             // Set class = "data.frame"
-            let class_str = scope.alloc_character(1).into_raw();
-
-            class_str.set_string_elt(0, SEXP::charsxp("data.frame"));
-            list.set_class(class_str);
+            list.set_class(crate::cached_class::data_frame_class_sexp());
 
             // Set compact row.names: c(NA_integer_, -nrow)
             let (rownames, rn) = crate::into_r::alloc_r_vector::<i32>(2);

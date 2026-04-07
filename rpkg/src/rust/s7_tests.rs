@@ -9,7 +9,8 @@ pub struct S7Counter {
     value: i32,
 }
 
-/// @noRd
+/// S7 counter class with new_generic method dispatch.
+/// @param initial Integer initial counter value.
 #[miniextendr(s7)]
 impl S7Counter {
     /// Creates a new counter with the given initial value.
@@ -50,7 +51,9 @@ pub struct S7Range {
     end: f64,
 }
 
-/// @noRd
+/// S7 range class demonstrating computed and dynamic properties.
+/// @param start Numeric start of the range.
+/// @param end Numeric end of the range.
 #[miniextendr(s7)]
 impl S7Range {
     /// Creates a new range with the given start and end values.
@@ -108,7 +111,10 @@ pub struct S7Config {
     version: i32,
 }
 
-/// @noRd
+/// S7 config class demonstrating default, required, and deprecated properties.
+/// @param name Character name (required property).
+/// @param score Numeric score (property with default).
+/// @param version Integer version number.
 #[miniextendr(s7)]
 impl S7Config {
     /// Creates a new config.
@@ -156,7 +162,8 @@ pub struct S7Strict {
     value: i32,
 }
 
-/// @noRd
+/// S7 class demonstrating strict generic dispatch (no_dots) and fallback.
+/// @param value Integer value to store.
 #[miniextendr(s7)]
 impl S7Strict {
     pub fn new(value: i32) -> Self {
@@ -186,7 +193,8 @@ pub struct S7Celsius {
     value: f64,
 }
 
-/// @noRd
+/// S7 Celsius temperature class (convert_to target for Fahrenheit).
+/// @param value Numeric temperature in Celsius.
 #[miniextendr(s7)]
 impl S7Celsius {
     pub fn new(value: f64) -> Self {
@@ -206,7 +214,8 @@ pub struct S7Fahrenheit {
     value: f64,
 }
 
-/// @noRd
+/// S7 Fahrenheit temperature class with convert_from and convert_to methods.
+/// @param value Numeric temperature in Fahrenheit.
 #[miniextendr(s7)]
 impl S7Fahrenheit {
     pub fn new(value: f64) -> Self {
@@ -243,7 +252,8 @@ pub struct S7Shape {
     name: String,
 }
 
-/// @noRd
+/// S7 abstract base shape class for inheritance testing.
+/// @param name Character name of the shape.
 #[miniextendr(s7(abstract))]
 impl S7Shape {
     /// Creates a new shape.
@@ -263,7 +273,8 @@ pub struct S7Circle {
     radius: f64,
 }
 
-/// @noRd
+/// S7 concrete circle class inheriting from S7Shape.
+/// @param radius Numeric radius of the circle.
 #[miniextendr(s7(parent = "S7Shape"))]
 impl S7Circle {
     /// Creates a new circle.
@@ -287,7 +298,9 @@ pub struct S7Animal {
     legs: i32,
 }
 
-/// @noRd
+/// S7 abstract animal base class for multi-level inheritance testing.
+/// @param kind Character kind of animal.
+/// @param legs Integer number of legs.
 #[miniextendr(s7(abstract))]
 impl S7Animal {
     pub fn new(kind: String, legs: i32) -> Self {
@@ -312,7 +325,8 @@ pub struct S7Dog {
     breed: String,
 }
 
-/// @noRd
+/// S7 dog class inheriting from S7Animal (mid-level in chain).
+/// @param breed Character breed of the dog.
 #[miniextendr(s7(parent = "S7Animal"))]
 impl S7Dog {
     pub fn new(breed: String) -> Self {
@@ -336,7 +350,8 @@ pub struct S7GoldenRetriever {
     name: String,
 }
 
-/// @noRd
+/// S7 golden retriever class (leaf-level in 3-level inheritance chain).
+/// @param name Character name of the dog.
 #[miniextendr(s7(parent = "S7Dog"))]
 impl S7GoldenRetriever {
     pub fn new(name: String) -> Self {

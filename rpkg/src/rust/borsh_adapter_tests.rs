@@ -4,16 +4,16 @@ use miniextendr_api::borsh_impl::{borsh_from_raw, borsh_to_raw};
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::{Borsh, IntoR, RBorshOps, TryFromSexp, miniextendr};
 
-/// Roundtrip a Vec<f64> through borsh serialization -> R raw -> borsh deserialization.
-/// @noRd
+/// Test roundtripping a double vector through Borsh serialization and deserialization.
+/// @param values Numeric vector to serialize.
 #[miniextendr]
 pub fn borsh_roundtrip_doubles(values: Vec<f64>) -> Vec<f64> {
     let raw: SEXP = borsh_to_raw(&values);
     borsh_from_raw::<Vec<f64>>(raw).unwrap()
 }
 
-/// Roundtrip a string through Borsh<T> wrapper (SEXP conversion path).
-/// @noRd
+/// Test roundtripping a string through the Borsh SEXP wrapper conversion path.
+/// @param input String to serialize.
 #[miniextendr]
 pub fn borsh_roundtrip_string(input: String) -> String {
     let sexp = Borsh(input.clone()).into_sexp();
@@ -21,17 +21,14 @@ pub fn borsh_roundtrip_string(input: String) -> String {
     recovered
 }
 
-/// Serialize a tuple (i32, String, bool) and return the raw byte length.
-/// @noRd
+/// Test Borsh serialized byte length of a tuple (i32, String, bool).
 #[miniextendr]
 pub fn borsh_tuple_size() -> i32 {
     let value: (i32, String, bool) = (42, "hello".to_string(), true);
     value.borsh_size() as i32
 }
 
-/// Serialize then deserialize a nested structure.
-/// Returns TRUE if roundtrip preserves the data.
-/// @noRd
+/// Test roundtripping a nested structure through Borsh serialization.
 #[miniextendr]
 pub fn borsh_nested_roundtrip() -> bool {
     let original: Vec<(String, Vec<u8>)> = vec![
@@ -43,8 +40,7 @@ pub fn borsh_nested_roundtrip() -> bool {
     original == recovered
 }
 
-/// Attempt to deserialize invalid bytes -- should return an error string.
-/// @noRd
+/// Test that deserializing invalid bytes returns an error message.
 #[miniextendr]
 pub fn borsh_invalid_data() -> String {
     let bad: &[u8] = &[0xff, 0xff];
@@ -54,9 +50,7 @@ pub fn borsh_invalid_data() -> String {
     }
 }
 
-/// Roundtrip Option<i32> values (Some + None).
-/// Returns TRUE if both roundtrip correctly.
-/// @noRd
+/// Test roundtripping Option<i32> values (Some and None) through Borsh.
 #[miniextendr]
 pub fn borsh_option_roundtrip() -> bool {
     let some_val: Option<i32> = Some(99);

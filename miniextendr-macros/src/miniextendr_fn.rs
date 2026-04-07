@@ -737,6 +737,20 @@ impl MiniextendrFunctionParsed {
         self.named_dots.as_ref()
     }
 
+    /// Check if a parameter is the dots (`...`) param.
+    /// After parsing, dots are rewritten to `&Dots` — this checks the original name.
+    pub(crate) fn is_dots_param(&self, ident: &syn::Ident) -> bool {
+        if !self.has_dots {
+            return false;
+        }
+        // Named dots: check if ident matches the original name (e.g., `dots`, `my_dots`)
+        if let Some(ref named) = self.named_dots {
+            return ident == named;
+        }
+        // Unnamed dots: the variadic was replaced with `_dots` as the param name
+        ident == "_dots"
+    }
+
     /// Check if a parameter name had `#[miniextendr(coerce)]` attribute.
     pub(crate) fn has_coerce_attr(&self, param_name: &str) -> bool {
         self.per_param_coerce.contains(param_name)

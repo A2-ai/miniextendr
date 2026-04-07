@@ -39,7 +39,7 @@ use crate::into_r::IntoR;
 
 static FACTOR_CLASS: OnceLock<SEXP> = OnceLock::new();
 
-fn factor_class_sexp() -> SEXP {
+pub(crate) fn factor_class_sexp() -> SEXP {
     *FACTOR_CLASS.get_or_init(|| unsafe {
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         crate::ffi::R_PreserveObject(class_sexp);
