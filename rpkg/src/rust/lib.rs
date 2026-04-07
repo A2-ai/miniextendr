@@ -655,9 +655,9 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
     use miniextendr_api::altrep_data1_as;
-    use miniextendr_api::ffi::ALTREP;
+    use miniextendr_api::ffi::SexpExt;
 
-    let result = if unsafe { ALTREP(x) } == 0 {
+    let result = if !x.is_altrep() {
         false
     } else {
         match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {

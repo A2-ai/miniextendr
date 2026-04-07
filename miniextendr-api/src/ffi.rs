@@ -2111,7 +2111,9 @@ unsafe extern "C-unwind" {
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
 
     /// Check if a SEXP is an ALTREP object (returns non-zero if true).
-    pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
+    ///
+    /// Use `SexpExt::is_altrep()` instead of calling this directly.
+    fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // endregion
 

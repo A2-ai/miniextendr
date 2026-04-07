@@ -402,7 +402,7 @@ pub(crate) fn generate_altrep_impls(
                 fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
                     use ::miniextendr_api::ffi::SEXPTYPE;
 
-                    if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
+                    if !::miniextendr_api::ffi::SexpExt::is_altrep(&sexp) {
                         return Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::INTSXP,
                             actual: ::miniextendr_api::ffi::SexpExt::type_of(&sexp),
@@ -437,7 +437,7 @@ pub(crate) fn generate_altrep_impls(
                 fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
                     use ::miniextendr_api::ffi::SEXPTYPE;
 
-                    if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
+                    if !::miniextendr_api::ffi::SexpExt::is_altrep(&sexp) {
                         return Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::INTSXP,
                             actual: ::miniextendr_api::ffi::SexpExt::type_of(&sexp),
