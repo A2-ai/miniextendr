@@ -143,9 +143,11 @@ impl AsCoerceTestData {
 
 /// @title as.<class>() Error Test Type
 /// @name AsCoerceErrorTest
+/// @param is_empty Logical; if TRUE, triggers error on as.data.frame.
 #[miniextendr(s3)]
 impl AsCoerceErrorTest {
     /// Create a new error test object.
+    /// @param is_empty Logical; if TRUE, triggers error on as.data.frame.
     pub fn new(is_empty: bool) -> Self {
         Self { is_empty }
     }

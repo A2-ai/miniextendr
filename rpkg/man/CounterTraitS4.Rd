@@ -34,6 +34,8 @@ CounterTraitS4(v)
 CounterTraitS4_MatrixCounter_default_value()
 }
 \arguments{
+\item{v}{Initial counter value.}
+
 \item{x}{A \code{CounterTraitS4} object}
 
 \item{...}{Additional arguments passed to methods}

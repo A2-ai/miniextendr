@@ -189,10 +189,10 @@ impl std::error::Error for ChainedError {
 }
 
 /// ChainedError inherent methods: constructors with and without source errors.
-/// @param outer_msg Character string for the outer error message.
-/// @param inner_msg Character string for the inner (source) error message.
 #[miniextendr]
 impl ChainedError {
+    /// @param outer_msg Character string for the outer error message.
+    /// @param inner_msg Character string for the inner (source) error message.
     fn new(outer_msg: &str, inner_msg: &str) -> Self {
         ChainedError(OuterError {
             msg: outer_msg.to_string(),
@@ -278,9 +278,9 @@ impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
 }
 
 /// IntVecIter inherent methods: constructor from integer vector.
-/// @param data Integer vector of elements to iterate over.
 #[miniextendr]
 impl IntVecIter {
+    /// @param data Integer vector of elements to iterate over.
     fn new(data: Vec<i32>) -> Self {
         IntVecIter(RefCell::new(data.into_iter()))
     }
@@ -310,13 +310,13 @@ impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec {
 }
 
 /// GrowableVec inherent methods: constructors, conversion, and clearing.
-/// @param data Integer vector of initial elements.
 #[miniextendr]
 impl GrowableVec {
     fn new() -> Self {
         GrowableVec(RefCell::new(Vec::new()))
     }
 
+    /// @param data Integer vector of initial elements.
     fn from_vec(data: Vec<i32>) -> Self {
         GrowableVec(RefCell::new(data))
     }
@@ -368,9 +368,9 @@ impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
 }
 
 /// IntSet inherent methods: membership test.
-/// @param value Integer value to check for membership.
 #[miniextendr]
 impl IntSet {
+    /// @param value Integer value to check for membership.
     fn contains(&self, value: i32) -> bool {
         self.0.contains(&value)
     }

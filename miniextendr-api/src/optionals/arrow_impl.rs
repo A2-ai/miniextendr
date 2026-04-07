@@ -1655,9 +1655,30 @@ impl AltrepDataptr<u8> for UInt8Array {
 // Serialize support: materialize Arrow array into native R vector for saveRDS.
 // On readRDS, the native vector is loaded directly (no Rust/Arrow needed).
 
+// Arrow serialized_state impls allocate and copy directly instead of calling
+// self.clone().into_sexp(). The IntoR path for Float64Array/Int32Array/UInt8Array
+// includes try_recover_r_sexp which speculatively probes whether the Arrow buffer
+// is R-backed. In serialized_state, the data is always Rust-owned (no R SEXP to
+// recover), so the speculative probe would read garbage memory for no benefit.
+// Bypassing it avoids false positives that can cause segfaults on some platforms.
+
 impl crate::altrep_data::AltrepSerialize for Float64Array {
     fn serialized_state(&self) -> SEXP {
-        self.clone().into_sexp()
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
+            if self.null_count() == 0 {
+                dst.copy_from_slice(self.values().as_ref());
+            } else {
+                for (i, slot) in dst.iter_mut().enumerate() {
+                    *slot = if self.is_null(i) {
+                        NA_REAL
+                    } else {
+                        self.value(i)
+                    };
+                }
+            }
+            sexp
+        }
     }
     fn unserialize(state: SEXP) -> Option<Self> {
         TryFromSexp::try_from_sexp(state).ok()
@@ -1666,7 +1687,21 @@ impl crate::altrep_data::AltrepSerialize for Float64Array {
 
 impl crate::altrep_data::AltrepSerialize for Int32Array {
     fn serialized_state(&self) -> SEXP {
-        self.clone().into_sexp()
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(self.len());
+            if self.null_count() == 0 {
+                dst.copy_from_slice(self.values().as_ref());
+            } else {
+                for (i, slot) in dst.iter_mut().enumerate() {
+                    *slot = if self.is_null(i) {
+                        NA_INTEGER
+                    } else {
+                        self.value(i)
+                    };
+                }
+            }
+            sexp
+        }
     }
     fn unserialize(state: SEXP) -> Option<Self> {
         TryFromSexp::try_from_sexp(state).ok()
@@ -1675,7 +1710,17 @@ impl crate::altrep_data::AltrepSerialize for Int32Array {
 
 impl crate::altrep_data::AltrepSerialize for UInt8Array {
     fn serialized_state(&self) -> SEXP {
-        self.clone().into_sexp()
+        unsafe {
+            let (sexp, dst) = crate::into_r::alloc_r_vector::<u8>(self.len());
+            if self.null_count() == 0 {
+                dst.copy_from_slice(self.values().as_ref());
+            } else {
+                for (i, slot) in dst.iter_mut().enumerate() {
+                    *slot = if self.is_null(i) { 0 } else { self.value(i) };
+                }
+            }
+            sexp
+        }
     }
     fn unserialize(state: SEXP) -> Option<Self> {
         TryFromSexp::try_from_sexp(state).ok()

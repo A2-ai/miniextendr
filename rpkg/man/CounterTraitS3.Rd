@@ -38,6 +38,8 @@ CounterTraitS3
 \method{custom_add}{CounterTraitS3}(x, n, ...)
 }
 \arguments{
+\item{v}{Initial counter value.}
+
 \item{x}{An object}
 
 \item{...}{Additional arguments passed to methods}

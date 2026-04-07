@@ -56,13 +56,13 @@ AsCoerceErrorTest
 \method{as.character}{AsCoerceErrorTest}(x, ...)
 }
 \arguments{
+\item{is_empty}{Logical; if TRUE, triggers error on as.data.frame.}
+
 \item{x}{An object.}
 
 \item{...}{Additional arguments.}
 }
 \description{
-Create a new error test object.
-
 Convert to data.frame - fails when empty.
 
 Convert to list - always returns "not supported" error.
