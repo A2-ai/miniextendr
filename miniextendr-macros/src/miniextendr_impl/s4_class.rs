@@ -128,7 +128,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags)
                     .with_suppress_params();
-            lines.extend(method_doc.build());
+            let mut doc_lines = method_doc.build();
+            // Add S4 method-specific alias so R CMD check finds the documented method
+            doc_lines.push(format!("#' @aliases {},{}-method", method_name, class_name));
+            lines.extend(doc_lines);
         }
 
         // Define generic only if it doesn't already exist. Unconditional setGeneric()
