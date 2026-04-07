@@ -748,6 +748,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
+                source_file: file!(),
                 content: concat!(
                     "# Generated from Rust impl `",
                     stringify!(#trait_name),

@@ -248,7 +248,9 @@ pub struct DerivedCurrency {
     amounts: Vec<f64>,
 }
 
-/// @noRd
+/// Vctrs currency class demonstrating Rust-backed protocol method overrides.
+/// @param symbol Character currency symbol.
+/// @param amounts Numeric vector of currency amounts.
 #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "$"))]
 impl DerivedCurrency {
     /// Creates a new currency value.

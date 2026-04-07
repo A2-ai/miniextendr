@@ -7,7 +7,7 @@ use miniextendr_api::miniextendr;
 
 // region: Define a trait with #[miniextendr]
 
-/// @noRd
+/// Counter trait for testing cross-type trait ABI dispatch.
 #[miniextendr]
 pub trait Counter {
     /// Associated constant: Maximum value for this counter type.
@@ -41,7 +41,7 @@ impl SimpleCounter {
     }
 }
 
-/// @noRd
+/// Counter trait implementation for SimpleCounter (default dispatch).
 #[miniextendr]
 impl Counter for SimpleCounter {
     const MAX_VALUE: i32 = i32::MAX;
@@ -160,7 +160,7 @@ impl S3TraitCounter {
     }
 }
 
-/// @noRd
+/// Counter trait implementation for S3TraitCounter (S3 dispatch).
 #[miniextendr(s3)]
 impl Counter for S3TraitCounter {
     const MAX_VALUE: i32 = 500;
@@ -211,7 +211,7 @@ impl S4TraitCounter {
     }
 }
 
-/// @noRd
+/// Counter trait implementation for S4TraitCounter (S4 dispatch).
 #[miniextendr(s4)]
 impl Counter for S4TraitCounter {
     const MAX_VALUE: i32 = 400;
@@ -234,7 +234,7 @@ impl Counter for S4TraitCounter {
     }
 }
 
-/// @noRd
+/// S4TraitCounter inherent methods (constructor and getters).
 #[miniextendr(s4)]
 impl S4TraitCounter {
     /// Create a new S4 trait counter.
@@ -263,7 +263,7 @@ impl S7TraitCounter {
     }
 }
 
-/// @noRd
+/// Counter trait implementation for S7TraitCounter (S7 dispatch).
 #[miniextendr(s7)]
 impl Counter for S7TraitCounter {
     const MAX_VALUE: i32 = 300;
@@ -286,7 +286,7 @@ impl Counter for S7TraitCounter {
     }
 }
 
-/// @noRd
+/// S7TraitCounter inherent methods (constructor and getters).
 #[miniextendr(s7)]
 impl S7TraitCounter {
     /// Create a new S7 trait counter.
@@ -315,7 +315,7 @@ impl R6TraitCounter {
     }
 }
 
-/// @noRd
+/// Counter trait implementation for R6TraitCounter (R6 dispatch).
 #[miniextendr(r6)]
 impl Counter for R6TraitCounter {
     const MAX_VALUE: i32 = 200;
@@ -338,7 +338,7 @@ impl Counter for R6TraitCounter {
     }
 }
 
-/// @noRd
+/// R6TraitCounter inherent methods (constructor and getters).
 #[miniextendr(r6)]
 impl R6TraitCounter {
     /// Create a new R6 trait counter.

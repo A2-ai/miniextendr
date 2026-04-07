@@ -4,12 +4,11 @@ use miniextendr_api::ffi::{SEXP, SexpExt};
 use miniextendr_api::miniextendr;
 use miniextendr_api::thread::RThreadBuilder;
 
-/// @noRd
+/// Test RThreadBuilder spawn with explicit stack size and thread name.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 /// @name rpkg_thread_builder
-/// @noRd
 /// @examples
 /// \dontrun{
 /// unsafe_C_test_r_thread_builder()
@@ -34,7 +33,7 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
     miniextendr_api::ffi::SEXP::scalar_integer(result)
 }
 
-/// @noRd
+/// Test RThreadBuilder spawn_join convenience method.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]

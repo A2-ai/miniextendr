@@ -368,65 +368,74 @@ impl WithOptionals {
 
 // region: Standalone test functions
 
-/// @noRd
+/// Test serializing a scalar i32 to an R value via serde_r.
+/// @param x Integer scalar to serialize.
 #[miniextendr]
 pub fn serde_r_serialize_i32(x: i32) -> SEXP {
     to_r(&x).expect("serialize i32")
 }
 
-/// @noRd
+/// Test serializing a scalar f64 to an R value via serde_r.
+/// @param x Numeric scalar to serialize.
 #[miniextendr]
 pub fn serde_r_serialize_f64(x: f64) -> SEXP {
     to_r(&x).expect("serialize f64")
 }
 
-/// @noRd
+/// Test serializing a bool to an R logical via serde_r.
+/// @param x Logical scalar to serialize.
 #[miniextendr]
 pub fn serde_r_serialize_bool(x: bool) -> SEXP {
     to_r(&x).expect("serialize bool")
 }
 
-/// @noRd
+/// Test serializing a String to an R character via serde_r.
+/// @param x Character scalar to serialize.
 #[miniextendr]
 pub fn serde_r_serialize_string(x: String) -> SEXP {
     to_r(&x).expect("serialize string")
 }
 
-/// @noRd
+/// Test serializing an Option<i32> to an R integer (NA for None).
+/// @param x Integer scalar or NA.
 #[miniextendr]
 pub fn serde_r_serialize_option_i32(x: Option<i32>) -> SEXP {
     to_r(&x).expect("serialize option i32")
 }
 
-/// @noRd
+/// Test roundtrip of Vec<i32> through serde_r (deserialize then serialize).
+/// @param x Integer vector input.
 #[miniextendr]
 pub fn serde_r_serialize_vec_i32(x: SEXP) -> SEXP {
     let v: Vec<i32> = from_r(x).expect("deserialize vec i32");
     to_r(&v).expect("serialize vec i32")
 }
 
-/// @noRd
+/// Test roundtrip of Vec<f64> through serde_r (deserialize then serialize).
+/// @param x Numeric vector input.
 #[miniextendr]
 pub fn serde_r_serialize_vec_f64(x: SEXP) -> SEXP {
     let v: Vec<f64> = from_r(x).expect("deserialize vec f64");
     to_r(&v).expect("serialize vec f64")
 }
 
-/// @noRd
+/// Test roundtrip of Vec<String> through serde_r (deserialize then serialize).
+/// @param x Character vector input.
 #[miniextendr]
 pub fn serde_r_serialize_vec_string(x: SEXP) -> SEXP {
     let v: Vec<String> = from_r(x).expect("deserialize vec string");
     to_r(&v).expect("serialize vec string")
 }
 
-/// @noRd
+/// Test roundtrip of Vec<bool> through serde_r (deserialize then serialize).
+/// @param x Logical vector input.
 #[miniextendr]
 pub fn serde_r_serialize_vec_bool(x: SEXP) -> SEXP {
     let v: Vec<bool> = from_r(x).expect("deserialize vec bool");
     to_r(&v).expect("serialize vec bool")
 }
 
-/// @noRd
+/// Test serializing a HashMap<String, i32> to an R named list via serde_r.
 #[miniextendr]
 pub fn serde_r_serialize_hashmap() -> SEXP {
     let mut map = HashMap::new();
@@ -436,39 +445,46 @@ pub fn serde_r_serialize_hashmap() -> SEXP {
     to_r(&map).expect("serialize hashmap")
 }
 
-/// @noRd
+/// Test deserializing an R integer to i32 via serde_r.
+/// @param sexp R object to deserialize.
 #[miniextendr]
 pub fn serde_r_deserialize_i32(sexp: SEXP) -> i32 {
     from_r(sexp).expect("deserialize i32")
 }
 
-/// @noRd
+/// Test deserializing an R numeric to f64 via serde_r.
+/// @param sexp R object to deserialize.
 #[miniextendr]
 pub fn serde_r_deserialize_f64(sexp: SEXP) -> f64 {
     from_r(sexp).expect("deserialize f64")
 }
 
-/// @noRd
+/// Test deserializing an R character to String via serde_r.
+/// @param sexp R object to deserialize.
 #[miniextendr]
 pub fn serde_r_deserialize_string(sexp: SEXP) -> String {
     from_r(sexp).expect("deserialize string")
 }
 
-/// @noRd
+/// Test deserializing an R integer vector to Vec<i32> then re-serializing.
+/// @param sexp R integer vector to roundtrip.
 #[miniextendr]
 pub fn serde_r_deserialize_vec_i32(sexp: SEXP) -> SEXP {
     let v: Vec<i32> = from_r(sexp).expect("deserialize vec i32");
     to_r(&v).expect("serialize result")
 }
 
-/// @noRd
+/// Test deserializing an R numeric vector to Vec<f64> then re-serializing.
+/// @param sexp R numeric vector to roundtrip.
 #[miniextendr]
 pub fn serde_r_deserialize_vec_f64(sexp: SEXP) -> SEXP {
     let v: Vec<f64> = from_r(sexp).expect("deserialize vec f64");
     to_r(&v).expect("serialize result")
 }
 
-/// @noRd
+/// Test serialize-then-deserialize roundtrip of a SerdeRPoint struct.
+/// @param x Numeric x-coordinate.
+/// @param y Numeric y-coordinate.
 #[miniextendr]
 pub fn serde_r_roundtrip_point(x: f64, y: f64) -> bool {
     let original = SerdeRPoint { x, y };
@@ -477,7 +493,11 @@ pub fn serde_r_roundtrip_point(x: f64, y: f64) -> bool {
     original == restored
 }
 
-/// @noRd
+/// Test serialize-then-deserialize roundtrip of a Rectangle struct.
+/// @param x1 Numeric top-left x.
+/// @param y1 Numeric top-left y.
+/// @param x2 Numeric bottom-right x.
+/// @param y2 Numeric bottom-right y.
 #[miniextendr]
 pub fn serde_r_roundtrip_rectangle(x1: f64, y1: f64, x2: f64, y2: f64) -> bool {
     let original = Rectangle::new(x1, y1, x2, y2);
@@ -486,7 +506,7 @@ pub fn serde_r_roundtrip_rectangle(x1: f64, y1: f64, x2: f64, y2: f64) -> bool {
     original == restored
 }
 
-/// @noRd
+/// Test serialize-then-deserialize roundtrip of a deeply nested struct.
 #[miniextendr]
 pub fn serde_r_roundtrip_deep_nest() -> bool {
     let original = DeepNest::new();
@@ -495,7 +515,7 @@ pub fn serde_r_roundtrip_deep_nest() -> bool {
     original == restored
 }
 
-/// @noRd
+/// Test serialize-then-deserialize roundtrip of a struct with multiple collection types.
 #[miniextendr]
 pub fn serde_r_roundtrip_collections() -> bool {
     let original = Collections::new();
@@ -504,7 +524,7 @@ pub fn serde_r_roundtrip_collections() -> bool {
     original == restored
 }
 
-/// @noRd
+/// Test roundtrip of a struct where all optional fields are present (Some).
 #[miniextendr]
 pub fn serde_r_roundtrip_optionals_present() -> bool {
     let original = WithOptionals::all_present();
@@ -513,7 +533,7 @@ pub fn serde_r_roundtrip_optionals_present() -> bool {
     original == restored
 }
 
-/// @noRd
+/// Test roundtrip of a struct where all optional fields are None (NA).
 #[miniextendr]
 pub fn serde_r_roundtrip_optionals_none() -> bool {
     let original = WithOptionals::all_none();
@@ -522,13 +542,15 @@ pub fn serde_r_roundtrip_optionals_none() -> bool {
     original == restored
 }
 
-/// @noRd
+/// Test that deserializing with a type mismatch returns an error.
+/// @param sexp R object of the wrong type (e.g. character for i32).
 #[miniextendr]
 pub fn serde_r_deserialize_wrong_type(sexp: SEXP) -> Result<i32, String> {
     from_r::<i32>(sexp).map_err(|e: RSerdeError| e.to_string())
 }
 
-/// @noRd
+/// Test that deserializing a struct with a missing required field returns an error.
+/// @param sexp R list that is missing a field required by SerdeRPoint.
 #[miniextendr]
 pub fn serde_r_deserialize_missing_field(sexp: SEXP) -> Result<SerdeRPoint, String> {
     from_r::<SerdeRPoint>(sexp).map_err(|e: RSerdeError| e.to_string())
@@ -537,7 +559,7 @@ pub fn serde_r_deserialize_missing_field(sexp: SEXP) -> Result<SerdeRPoint, Stri
 
 // region: Tuple and tuple struct tests
 
-/// @noRd
+/// Test serializing a Rust tuple (i32, f64, String) to an R list.
 #[miniextendr]
 pub fn serde_r_serialize_tuple() -> SEXP {
     let tuple = (42i32, std::f64::consts::PI, "hello".to_string());
@@ -549,7 +571,7 @@ pub fn serde_r_serialize_tuple() -> SEXP {
 #[serde(crate = "crate::serde")]
 pub struct Pair(pub i32, pub String);
 
-/// @noRd
+/// Test serializing a Rust tuple struct (Pair) to an R list.
 #[miniextendr]
 pub fn serde_r_serialize_tuple_struct() -> SEXP {
     let pair = Pair(42, "answer".to_string());
@@ -559,7 +581,7 @@ pub fn serde_r_serialize_tuple_struct() -> SEXP {
 
 // region: Complex integration tests
 
-/// @noRd
+/// Test serializing a complex nested struct with points, rectangles, maps, and flags.
 #[miniextendr]
 pub fn serde_r_complex_nested() -> SEXP {
     #[derive(Serialize)]
@@ -594,7 +616,8 @@ pub fn serde_r_complex_nested() -> SEXP {
     to_r(&complex).expect("serialize complex")
 }
 
-/// @noRd
+/// Test deserializing a complex nested R list and returning a summary string.
+/// @param sexp R list matching the Complex struct layout.
 #[miniextendr]
 pub fn serde_r_deserialize_complex(sexp: SEXP) -> String {
     #[derive(Deserialize, Debug)]

@@ -7,7 +7,8 @@ pub struct Calculator {
     value: f64,
 }
 
-/// @noRd
+/// R6 calculator class testing default parameter values on methods.
+/// @param initial Numeric starting value (defaults to 0.0).
 #[miniextendr(r6)]
 impl Calculator {
     /// Creates a new calculator.

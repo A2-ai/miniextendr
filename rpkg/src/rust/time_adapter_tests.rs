@@ -3,59 +3,61 @@ use miniextendr_api::miniextendr;
 use miniextendr_api::time;
 use miniextendr_api::time_impl::{Date, OffsetDateTime};
 
-/// @noRd
+/// Test OffsetDateTime roundtrip through R POSIXct.
+/// @param dt POSIXct datetime from R.
 #[miniextendr]
 pub fn time_roundtrip_posixct(dt: OffsetDateTime) -> OffsetDateTime {
     dt
 }
 
-/// @noRd
+/// Test Date roundtrip through R Date.
+/// @param date Date from R.
 #[miniextendr]
 pub fn time_roundtrip_date(date: Date) -> Date {
     date
 }
 
-/// @noRd
+/// Test extracting the year from a Date.
+/// @param date Date from R.
 #[miniextendr]
 pub fn time_get_year(date: Date) -> i32 {
     date.year()
 }
 
-/// @noRd
+/// Test extracting the month from a Date.
+/// @param date Date from R.
 #[miniextendr]
 pub fn time_get_month(date: Date) -> i32 {
     date.month() as i32
 }
 
-/// @noRd
+/// Test extracting the day from a Date.
+/// @param date Date from R.
 #[miniextendr]
 pub fn time_get_day(date: Date) -> i32 {
     date.day() as i32
 }
 
-/// Unix epoch time (1970-01-01) roundtrip
-/// @noRd
+/// Test creating and roundtripping the Unix epoch date (1970-01-01).
 #[miniextendr]
 pub fn time_epoch_date() -> Date {
     Date::from_calendar_date(1970, time::Month::January, 1).unwrap()
 }
 
-/// Epoch datetime (1970-01-01 00:00:00 UTC) roundtrip
-/// @noRd
+/// Test creating and roundtripping the epoch datetime (1970-01-01 00:00:00 UTC).
 #[miniextendr]
 pub fn time_epoch_posixct() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(0).unwrap()
 }
 
-/// Date in distant past (1900-01-01)
-/// @noRd
+/// Test creating a date in the distant past (1900-01-01).
 #[miniextendr]
 pub fn time_distant_past() -> Date {
     Date::from_calendar_date(1900, time::Month::January, 1).unwrap()
 }
 
-/// Format a date as YYYY-MM-DD
-/// @noRd
+/// Test formatting a Date as a YYYY-MM-DD string.
+/// @param date Date from R.
 #[miniextendr]
 pub fn time_format_date(date: Date) -> String {
     let fmt = time::format_description::parse("[year]-[month]-[day]").expect("valid format");

@@ -3,7 +3,8 @@ use miniextendr_api::miniextendr;
 use miniextendr_api::num_bigint_impl::BigInt;
 use std::str::FromStr;
 
-/// @noRd
+/// Test BigInt string roundtrip via parsing and formatting.
+/// @param s String representation of a big integer.
 #[miniextendr]
 pub fn bigint_roundtrip(s: &str) -> String {
     BigInt::from_str(s)
@@ -11,7 +12,9 @@ pub fn bigint_roundtrip(s: &str) -> String {
         .unwrap_or_else(|_| "PARSE_ERROR".into())
 }
 
-/// @noRd
+/// Test BigInt addition of two string-encoded integers.
+/// @param a First big integer as string.
+/// @param b Second big integer as string.
 #[miniextendr]
 pub fn bigint_add(a: &str, b: &str) -> String {
     let a = BigInt::from_str(a).unwrap_or_default();
@@ -19,7 +22,9 @@ pub fn bigint_add(a: &str, b: &str) -> String {
     (a + b).to_string()
 }
 
-/// @noRd
+/// Test BigInt multiplication of two string-encoded integers.
+/// @param a First big integer as string.
+/// @param b Second big integer as string.
 #[miniextendr]
 pub fn bigint_mul(a: &str, b: &str) -> String {
     let a = BigInt::from_str(a).unwrap_or_default();
@@ -27,7 +32,8 @@ pub fn bigint_mul(a: &str, b: &str) -> String {
     (a * b).to_string()
 }
 
-/// @noRd
+/// Test BigInt factorial computation.
+/// @param n Non-negative integer to compute factorial of.
 #[miniextendr]
 pub fn bigint_factorial(n: i32) -> String {
     let mut result = BigInt::from(1);
@@ -37,7 +43,8 @@ pub fn bigint_factorial(n: i32) -> String {
     result.to_string()
 }
 
-/// @noRd
+/// Test whether a BigInt parsed from string is positive.
+/// @param s String representation of a big integer.
 #[miniextendr]
 pub fn bigint_is_positive(s: &str) -> bool {
     BigInt::from_str(s)

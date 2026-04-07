@@ -1048,6 +1048,7 @@ NULL
         static #const_name_wrappers: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Sidecar,
+                source_file: file!(),
                 content: #r_wrappers,
             };
     })

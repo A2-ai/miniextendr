@@ -7,25 +7,29 @@ use miniextendr_api::miniextendr;
 
 // region: Float64Array (zero-copy)
 
-/// @noRd
+/// Test Float64Array roundtrip through Arrow.
+/// @param v Arrow Float64Array from R.
 #[miniextendr]
 pub fn arrow_f64_roundtrip(v: Float64Array) -> Float64Array {
     v
 }
 
-/// @noRd
+/// Test summing elements of a Float64Array.
+/// @param v Arrow Float64Array from R.
 #[miniextendr]
 pub fn arrow_f64_sum(v: Float64Array) -> f64 {
     v.iter().flatten().sum()
 }
 
-/// @noRd
+/// Test getting the length of a Float64Array.
+/// @param v Arrow Float64Array from R.
 #[miniextendr]
 pub fn arrow_f64_len(v: Float64Array) -> i32 {
     v.len() as i32
 }
 
-/// @noRd
+/// Test counting null values in a Float64Array.
+/// @param v Arrow Float64Array from R.
 #[miniextendr]
 pub fn arrow_f64_null_count(v: Float64Array) -> i32 {
     v.logical_null_count() as i32
@@ -35,19 +39,22 @@ pub fn arrow_f64_null_count(v: Float64Array) -> i32 {
 
 // region: Int32Array (zero-copy)
 
-/// @noRd
+/// Test Int32Array roundtrip through Arrow.
+/// @param v Arrow Int32Array from R.
 #[miniextendr]
 pub fn arrow_i32_roundtrip(v: Int32Array) -> Int32Array {
     v
 }
 
-/// @noRd
+/// Test summing elements of an Int32Array.
+/// @param v Arrow Int32Array from R.
 #[miniextendr]
 pub fn arrow_i32_sum(v: Int32Array) -> i32 {
     v.iter().flatten().sum()
 }
 
-/// @noRd
+/// Test counting null values in an Int32Array.
+/// @param v Arrow Int32Array from R.
 #[miniextendr]
 pub fn arrow_i32_null_count(v: Int32Array) -> i32 {
     v.logical_null_count() as i32
@@ -57,13 +64,15 @@ pub fn arrow_i32_null_count(v: Int32Array) -> i32 {
 
 // region: UInt8Array (zero-copy)
 
-/// @noRd
+/// Test UInt8Array roundtrip through Arrow.
+/// @param v Arrow UInt8Array from R.
 #[miniextendr]
 pub fn arrow_u8_roundtrip(v: UInt8Array) -> UInt8Array {
     v
 }
 
-/// @noRd
+/// Test getting the length of a UInt8Array.
+/// @param v Arrow UInt8Array from R.
 #[miniextendr]
 pub fn arrow_u8_len(v: UInt8Array) -> i32 {
     v.len() as i32
@@ -73,13 +82,15 @@ pub fn arrow_u8_len(v: UInt8Array) -> i32 {
 
 // region: BooleanArray (copy)
 
-/// @noRd
+/// Test BooleanArray roundtrip through Arrow.
+/// @param v Arrow BooleanArray from R.
 #[miniextendr]
 pub fn arrow_bool_roundtrip(v: BooleanArray) -> BooleanArray {
     v
 }
 
-/// @noRd
+/// Test counting null values in a BooleanArray.
+/// @param v Arrow BooleanArray from R.
 #[miniextendr]
 pub fn arrow_bool_null_count(v: BooleanArray) -> i32 {
     v.logical_null_count() as i32
@@ -89,13 +100,15 @@ pub fn arrow_bool_null_count(v: BooleanArray) -> i32 {
 
 // region: StringArray (copy)
 
-/// @noRd
+/// Test StringArray roundtrip through Arrow.
+/// @param v Arrow StringArray from R.
 #[miniextendr]
 pub fn arrow_string_roundtrip(v: StringArray) -> StringArray {
     v
 }
 
-/// @noRd
+/// Test counting null values in a StringArray.
+/// @param v Arrow StringArray from R.
 #[miniextendr]
 pub fn arrow_string_null_count(v: StringArray) -> i32 {
     v.logical_null_count() as i32
@@ -105,25 +118,29 @@ pub fn arrow_string_null_count(v: StringArray) -> i32 {
 
 // region: RecordBatch (data.frame)
 
-/// @noRd
+/// Test RecordBatch roundtrip through Arrow.
+/// @param rb Arrow RecordBatch from R.
 #[miniextendr]
 pub fn arrow_recordbatch_roundtrip(rb: RecordBatch) -> RecordBatch {
     rb
 }
 
-/// @noRd
+/// Test getting the number of rows in a RecordBatch.
+/// @param rb Arrow RecordBatch from R.
 #[miniextendr]
 pub fn arrow_recordbatch_nrow(rb: RecordBatch) -> i32 {
     rb.num_rows() as i32
 }
 
-/// @noRd
+/// Test getting the number of columns in a RecordBatch.
+/// @param rb Arrow RecordBatch from R.
 #[miniextendr]
 pub fn arrow_recordbatch_ncol(rb: RecordBatch) -> i32 {
     rb.num_columns() as i32
 }
 
-/// @noRd
+/// Test extracting column names from a RecordBatch.
+/// @param rb Arrow RecordBatch from R.
 #[miniextendr]
 pub fn arrow_recordbatch_column_names(rb: RecordBatch) -> Vec<String> {
     rb.schema()
@@ -137,13 +154,15 @@ pub fn arrow_recordbatch_column_names(rb: RecordBatch) -> Vec<String> {
 
 // region: ArrayRef (dynamic dispatch)
 
-/// @noRd
+/// Test ArrayRef roundtrip through Arrow dynamic dispatch.
+/// @param v Arrow ArrayRef from R.
 #[miniextendr]
 pub fn arrow_arrayref_roundtrip(v: ArrayRef) -> ArrayRef {
     v
 }
 
-/// @noRd
+/// Test getting the length of a dynamically-typed ArrayRef.
+/// @param v Arrow ArrayRef from R.
 #[miniextendr]
 pub fn arrow_arrayref_len(v: ArrayRef) -> i32 {
     v.len() as i32
@@ -153,13 +172,15 @@ pub fn arrow_arrayref_len(v: ArrayRef) -> i32 {
 
 // region: Empty vectors
 
-/// @noRd
+/// Test empty Float64Array roundtrip through Arrow.
+/// @param v Empty Arrow Float64Array from R.
 #[miniextendr]
 pub fn arrow_f64_empty_roundtrip(v: Float64Array) -> Float64Array {
     v
 }
 
-/// @noRd
+/// Test empty Int32Array roundtrip through Arrow.
+/// @param v Empty Arrow Int32Array from R.
 #[miniextendr]
 pub fn arrow_i32_empty_roundtrip(v: Int32Array) -> Int32Array {
     v
@@ -169,7 +190,8 @@ pub fn arrow_i32_empty_roundtrip(v: Int32Array) -> Int32Array {
 
 // region: Factor (DictionaryArray)
 
-/// @noRd
+/// Test factor roundtrip through Arrow StringDictionaryArray.
+/// @param v Arrow StringDictionaryArray from R factor.
 #[miniextendr]
 pub fn arrow_factor_roundtrip(
     v: miniextendr_api::arrow_impl::StringDictionaryArray,
@@ -177,7 +199,8 @@ pub fn arrow_factor_roundtrip(
     v
 }
 
-/// @noRd
+/// Test getting the length of a StringDictionaryArray from an R factor.
+/// @param v Arrow StringDictionaryArray from R factor.
 #[miniextendr]
 pub fn arrow_factor_len(v: miniextendr_api::arrow_impl::StringDictionaryArray) -> i32 {
     v.len() as i32
@@ -187,7 +210,8 @@ pub fn arrow_factor_len(v: miniextendr_api::arrow_impl::StringDictionaryArray) -
 
 // region: Date (Date32Array)
 
-/// @noRd
+/// Test Date roundtrip through Arrow Date32Array.
+/// @param v Arrow Date32Array from R Date.
 #[miniextendr]
 pub fn arrow_date_roundtrip(
     v: miniextendr_api::arrow_impl::Date32Array,
@@ -195,7 +219,8 @@ pub fn arrow_date_roundtrip(
     v
 }
 
-/// @noRd
+/// Test getting the length of a Date32Array.
+/// @param v Arrow Date32Array from R Date.
 #[miniextendr]
 pub fn arrow_date_len(v: miniextendr_api::arrow_impl::Date32Array) -> i32 {
     v.len() as i32
@@ -205,7 +230,8 @@ pub fn arrow_date_len(v: miniextendr_api::arrow_impl::Date32Array) -> i32 {
 
 // region: POSIXct (TimestampSecondArray via helper)
 
-/// @noRd
+/// Test POSIXct roundtrip through Arrow TimestampSecondArray.
+/// @param v R POSIXct SEXP to convert to Arrow timestamp.
 #[miniextendr]
 pub fn arrow_posixct_roundtrip(v: miniextendr_api::ffi::SEXP) -> miniextendr_api::ffi::SEXP {
     use miniextendr_api::arrow_impl::posixct_to_timestamp;
@@ -214,7 +240,8 @@ pub fn arrow_posixct_roundtrip(v: miniextendr_api::ffi::SEXP) -> miniextendr_api
     arr.into_sexp()
 }
 
-/// @noRd
+/// Test getting the length of a POSIXct converted to Arrow timestamp.
+/// @param v R POSIXct SEXP to convert to Arrow timestamp.
 #[miniextendr]
 pub fn arrow_posixct_len(v: miniextendr_api::ffi::SEXP) -> i32 {
     use miniextendr_api::arrow_impl::posixct_to_timestamp;
@@ -226,7 +253,8 @@ pub fn arrow_posixct_len(v: miniextendr_api::ffi::SEXP) -> i32 {
 
 // region: RecordBatch with typed columns
 
-/// @noRd
+/// Test RecordBatch roundtrip with typed columns.
+/// @param rb Arrow RecordBatch with typed columns from R.
 #[miniextendr]
 pub fn arrow_recordbatch_typed_roundtrip(rb: RecordBatch) -> RecordBatch {
     rb
