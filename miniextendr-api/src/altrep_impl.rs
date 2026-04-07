@@ -130,6 +130,13 @@ macro_rules! impl_altinteger_from_data {
     ($ty:ty, serialize, subset) => {
         $crate::impl_altinteger_from_data!($ty, subset, serialize);
     };
+    // Materializing dataptr + serialize (for computed types like Range<i32>)
+    ($ty:ty, materializing_dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_integer_dataptr!($ty);
+        $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
+    };
 }
 
 /// Internal macro: impl Altrep with just length
@@ -330,6 +337,178 @@ macro_rules! __impl_altvec_string_dataptr {
                 // Dataptr (not dataptr_or_null) is the full-materialization path.
                 let _ = x;
                 core::ptr::null()
+            }
+        }
+    };
+}
+
+/// Internal macro: impl AltVec with materializing dataptr for logical ALTREP.
+///
+/// Rust `bool` vectors can't expose DATAPTR directly (bool is 1 byte, R logical
+/// is `int`/4 bytes). This materializes into an LGLSXP cached in data2, matching
+/// R's own compact-sequence pattern (`compact_intseq_Dataptr` in altclasses.c).
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altvec_logical_dataptr {
+    ($ty:ty) => {
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        impl $crate::altrep_traits::AltVec for $ty {
+            const HAS_DATAPTR: bool = true;
+
+            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
+                unsafe {
+                    // Check if already materialized in data2
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::LGLSXP
+                    {
+                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
+                    }
+
+                    // Materialize: allocate LGLSXP and convert bool→i32
+                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
+                    let lgl = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                        $crate::ffi::SEXPTYPE::LGLSXP,
+                        n,
+                    ));
+                    let dst = $crate::ffi::LOGICAL(lgl);
+
+                    // Fill via the ALTREP Elt method (bool→i32 conversion)
+                    for i in 0..n {
+                        *dst.add(i as usize) =
+                            <$ty as $crate::altrep_traits::AltLogical>::elt(x, i);
+                    }
+
+                    $crate::ffi::R_set_altrep_data2(x, lgl);
+                    $crate::ffi::Rf_unprotect(1);
+                    $crate::ffi::DATAPTR_RO(lgl).cast_mut()
+                }
+            }
+
+            const HAS_DATAPTR_OR_NULL: bool = true;
+
+            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
+                // Return null if not yet materialized — tells R to use Elt access.
+                unsafe {
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::LGLSXP
+                    {
+                        $crate::ffi::DATAPTR_RO(data2)
+                    } else {
+                        core::ptr::null()
+                    }
+                }
+            }
+        }
+    };
+}
+
+/// Internal macro: impl AltVec with materializing dataptr for integer ALTREP.
+///
+/// For types that compute elements on demand (e.g., `Range<i32>`, `Range<i64>`),
+/// this materializes into an INTSXP cached in data2 on first DATAPTR call,
+/// matching R's own `compact_intseq_Dataptr` pattern in altclasses.c.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altvec_integer_dataptr {
+    ($ty:ty) => {
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        impl $crate::altrep_traits::AltVec for $ty {
+            const HAS_DATAPTR: bool = true;
+
+            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
+                unsafe {
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::INTSXP
+                    {
+                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
+                    }
+
+                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
+                    let vec = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                        $crate::ffi::SEXPTYPE::INTSXP,
+                        n,
+                    ));
+                    let dst = $crate::ffi::INTEGER(vec);
+                    for i in 0..n {
+                        *dst.add(i as usize) =
+                            <$ty as $crate::altrep_traits::AltInteger>::elt(x, i);
+                    }
+                    $crate::ffi::R_set_altrep_data2(x, vec);
+                    $crate::ffi::Rf_unprotect(1);
+                    $crate::ffi::DATAPTR_RO(vec).cast_mut()
+                }
+            }
+
+            const HAS_DATAPTR_OR_NULL: bool = true;
+
+            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
+                unsafe {
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::INTSXP
+                    {
+                        $crate::ffi::DATAPTR_RO(data2)
+                    } else {
+                        core::ptr::null()
+                    }
+                }
+            }
+        }
+    };
+}
+
+/// Internal macro: impl AltVec with materializing dataptr for real ALTREP.
+///
+/// For types that compute elements on demand (e.g., `Range<f64>`), this
+/// materializes into a REALSXP cached in data2.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altvec_real_dataptr {
+    ($ty:ty) => {
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        impl $crate::altrep_traits::AltVec for $ty {
+            const HAS_DATAPTR: bool = true;
+
+            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
+                unsafe {
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::REALSXP
+                    {
+                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
+                    }
+
+                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
+                    let vec = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                        $crate::ffi::SEXPTYPE::REALSXP,
+                        n,
+                    ));
+                    let dst = $crate::ffi::REAL(vec);
+                    for i in 0..n {
+                        *dst.add(i as usize) = <$ty as $crate::altrep_traits::AltReal>::elt(x, i);
+                    }
+                    $crate::ffi::R_set_altrep_data2(x, vec);
+                    $crate::ffi::Rf_unprotect(1);
+                    $crate::ffi::DATAPTR_RO(vec).cast_mut()
+                }
+            }
+
+            const HAS_DATAPTR_OR_NULL: bool = true;
+
+            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
+                unsafe {
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::REALSXP
+                    {
+                        $crate::ffi::DATAPTR_RO(data2)
+                    } else {
+                        core::ptr::null()
+                    }
+                }
             }
         }
     };
@@ -659,6 +838,13 @@ macro_rules! impl_altreal_from_data {
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altreal_from_data!($ty, dataptr, serialize);
     };
+    // Materializing dataptr + serialize (for computed types like Range<f64>)
+    ($ty:ty, materializing_dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_real_dataptr!($ty);
+        $crate::__impl_altreal_methods!($ty);
+        $crate::impl_inferbase_real!($ty);
+    };
 }
 
 /// Internal macro for AltReal method implementations.
@@ -753,6 +939,13 @@ macro_rules! impl_altlogical_from_data {
     };
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
+    };
+    // Materializing dataptr + serialize (for bool types that need bool→i32 conversion)
+    ($ty:ty, materializing_dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_logical_dataptr!($ty);
+        $crate::__impl_altlogical_methods!($ty);
+        $crate::impl_inferbase_logical!($ty);
     };
 }
 
@@ -1098,20 +1291,20 @@ macro_rules! impl_altcomplex_from_data {
 // All types that implement AltrepSerialize get the `serialize` option enabled,
 // which allows proper saveRDS/readRDS round-trips.
 
-// Integer types - Vec<i32> supports dataptr, ranges don't (computed on demand)
+// Integer types - Vec<i32> supports direct dataptr, ranges materialize on demand
 impl_altinteger_from_data!(Vec<i32>, dataptr, serialize);
-impl_altinteger_from_data!(std::ops::Range<i32>, serialize);
-impl_altinteger_from_data!(std::ops::Range<i64>, serialize);
+impl_altinteger_from_data!(std::ops::Range<i32>, materializing_dataptr, serialize);
+impl_altinteger_from_data!(std::ops::Range<i64>, materializing_dataptr, serialize);
 
-// Real types - Vec<f64> supports dataptr, ranges don't
+// Real types - Vec<f64> supports direct dataptr, ranges materialize on demand
 impl_altreal_from_data!(Vec<f64>, dataptr, serialize);
-impl_altreal_from_data!(std::ops::Range<f64>, serialize);
+impl_altreal_from_data!(std::ops::Range<f64>, materializing_dataptr, serialize);
 
-// Logical types
-impl_altlogical_from_data!(Vec<bool>, serialize);
+// Logical types — materializing dataptr converts bool→i32 into cached LGLSXP
+impl_altlogical_from_data!(Vec<bool>, materializing_dataptr, serialize);
 
-// Raw types
-impl_altraw_from_data!(Vec<u8>, serialize);
+// Raw types - u8 == Rbyte, supports direct dataptr
+impl_altraw_from_data!(Vec<u8>, dataptr, serialize);
 
 // String types - Vec<String> supports dataptr via materialization into STRSXP
 impl_altstring_from_data!(Vec<String>, dataptr, serialize);
@@ -1138,8 +1331,8 @@ impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
 
 impl_altinteger_from_data!(Box<[i32]>, dataptr, serialize);
 impl_altreal_from_data!(Box<[f64]>, dataptr, serialize);
-impl_altlogical_from_data!(Box<[bool]>, serialize);
-impl_altraw_from_data!(Box<[u8]>, serialize);
+impl_altlogical_from_data!(Box<[bool]>, materializing_dataptr, serialize);
+impl_altraw_from_data!(Box<[u8]>, dataptr, serialize);
 impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
 impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
 
