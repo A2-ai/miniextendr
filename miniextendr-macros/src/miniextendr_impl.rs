@@ -77,6 +77,9 @@
 //! |----------|------------------|--------------|
 //! | `&self` | `Ref` | Instance method (immutable) |
 //! | `&mut self` | `RefMut` | Instance method (mutable, chainable) |
+//! | `self: &ExternalPtr<Self>` | `ExternalPtrRef` | Instance method (immutable, full ExternalPtr access) |
+//! | `self: &mut ExternalPtr<Self>` | `ExternalPtrRefMut` | Instance method (mutable, full ExternalPtr access) |
+//! | `self: ExternalPtr<Self>` | `ExternalPtrValue` | Instance method (owned ExternalPtr, full access) |
 //! | `self` | `Value` | Consuming method (not supported in v1) |
 //! | (none) | `None` | Static method or constructor |
 //!
@@ -110,7 +113,109 @@
 //! - Registration entries for R's `.Call()` interface
 
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{ToTokens, format_ident, quote};
+
+/// Check if a type is `ExternalPtr<...>` (possibly fully qualified).
+fn is_external_ptr_type(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(type_path) = ty {
+        type_path
+            .path
+            .segments
+            .last()
+            .map(|seg| seg.ident == "ExternalPtr")
+            .unwrap_or(false)
+    } else {
+        false
+    }
+}
+
+/// Replace every occurrence of the `self` keyword/ident in a TokenStream
+/// with a replacement identifier. Does NOT touch `Self` (capital S).
+fn replace_self_in_tokens(
+    tokens: proc_macro2::TokenStream,
+    replacement: &str,
+) -> proc_macro2::TokenStream {
+    let replacement_ident = proc_macro2::Ident::new(replacement, proc_macro2::Span::call_site());
+    tokens
+        .into_iter()
+        .map(|tt| match tt {
+            proc_macro2::TokenTree::Ident(ref ident) if ident == "self" => {
+                proc_macro2::TokenTree::Ident(replacement_ident.clone())
+            }
+            proc_macro2::TokenTree::Group(group) => {
+                let new_stream = replace_self_in_tokens(group.stream(), replacement);
+                let mut new_group = proc_macro2::Group::new(group.delimiter(), new_stream);
+                new_group.set_span(group.span());
+                proc_macro2::TokenTree::Group(new_group)
+            }
+            other => other,
+        })
+        .collect()
+}
+
+/// Rewrite methods with ExternalPtr-based receivers so they compile on stable Rust
+/// (which lacks `arbitrary_self_types`).
+///
+/// Handles:
+/// - `self: &ExternalPtr<Self>` → `__miniextendr_self: &ExternalPtr<Self>`
+/// - `self: &mut ExternalPtr<Self>` → `__miniextendr_self: &mut ExternalPtr<Self>`
+/// - `self: ExternalPtr<Self>` → `__miniextendr_self: ExternalPtr<Self>`
+///
+/// Also replaces all `self` references in the method body with `__miniextendr_self`.
+fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
+    for item in &mut item_impl.items {
+        let syn::ImplItem::Fn(method) = item else {
+            continue;
+        };
+        let Some(syn::FnArg::Receiver(receiver)) = method.sig.inputs.first() else {
+            continue;
+        };
+        if receiver.colon_token.is_none() {
+            continue;
+        }
+
+        // Determine if this is an ExternalPtr receiver and build the replacement param.
+        let new_param: Option<syn::FnArg> =
+            if let syn::Type::Reference(type_ref) = receiver.ty.as_ref() {
+                // self: &ExternalPtr<Self> or self: &mut ExternalPtr<Self>
+                if is_external_ptr_type(&type_ref.elem) {
+                    let mutability = type_ref.mutability;
+                    let inner_ty = &type_ref.elem;
+                    Some(syn::parse_quote! {
+                        __miniextendr_self: &#mutability #inner_ty
+                    })
+                } else {
+                    None
+                }
+            } else if is_external_ptr_type(receiver.ty.as_ref()) {
+                // self: ExternalPtr<Self> (by value)
+                let inner_ty = &receiver.ty;
+                Some(syn::parse_quote! {
+                    __miniextendr_self: #inner_ty
+                })
+            } else {
+                None
+            };
+
+        let Some(new_param) = new_param else {
+            continue;
+        };
+
+        // Replace first parameter
+        let inputs: Vec<syn::FnArg> = method.sig.inputs.iter().cloned().collect();
+        let mut new_inputs: Vec<syn::FnArg> = Vec::with_capacity(inputs.len());
+        new_inputs.push(new_param);
+        new_inputs.extend(inputs.into_iter().skip(1));
+        method.sig.inputs = new_inputs.into_iter().collect();
+
+        // Replace `self` in method body
+        let old_body = method.block.clone();
+        let new_tokens = replace_self_in_tokens(old_body.into_token_stream(), "__miniextendr_self");
+        method.block =
+            syn::parse2(new_tokens).expect("failed to reparse method body after self replacement");
+    }
+    item_impl
+}
 
 /// Strip `#[miniextendr(...)]` attributes and roxygen doc tags from an impl block and
 /// all of its items (functions, constants, types, macros).
@@ -275,12 +380,30 @@ pub enum ReceiverKind {
     RefMut,
     /// `self` - consuming (not supported in v1)
     Value,
+    /// `self: &ExternalPtr<Self>` — immutable borrow of the wrapping ExternalPtr
+    ExternalPtrRef,
+    /// `self: &mut ExternalPtr<Self>` — mutable borrow of the wrapping ExternalPtr
+    ExternalPtrRefMut,
+    /// `self: ExternalPtr<Self>` — owned ExternalPtr (not consuming the inner T)
+    ExternalPtrValue,
 }
 
 impl ReceiverKind {
     /// Returns true if this is an instance method (has self).
     pub fn is_instance(&self) -> bool {
-        matches!(self, ReceiverKind::Ref | ReceiverKind::RefMut)
+        matches!(
+            self,
+            ReceiverKind::Ref
+                | ReceiverKind::RefMut
+                | ReceiverKind::ExternalPtrRef
+                | ReceiverKind::ExternalPtrRefMut
+                | ReceiverKind::ExternalPtrValue
+        )
+    }
+
+    /// Returns true if this is a mutable instance receiver.
+    pub fn is_mut(&self) -> bool {
+        matches!(self, ReceiverKind::RefMut | ReceiverKind::ExternalPtrRefMut)
     }
 }
 
@@ -1604,9 +1727,10 @@ impl ParsedMethod {
     /// Detect the [`ReceiverKind`] from a method's function signature.
     ///
     /// Inspects the first parameter to determine whether this is a static function
-    /// (`None`), immutable borrow (`Ref`), mutable borrow (`RefMut`), or consuming
-    /// method (`Value`). Handles both standard receivers (`&self`, `&mut self`) and
-    /// typed receivers (`self: &Self`, `self: &mut Self`, `self: Box<Self>`).
+    /// (`None`), immutable borrow (`Ref`), mutable borrow (`RefMut`), consuming
+    /// method (`Value`), or ExternalPtr receiver (`ExternalPtrRef`, `ExternalPtrRefMut`,
+    /// `ExternalPtrValue`). Handles both standard receivers (`&self`, `&mut self`) and
+    /// typed receivers (`self: &Self`, `self: ExternalPtr<Self>`, etc.).
     fn detect_env(sig: &syn::Signature) -> ReceiverKind {
         match sig.inputs.first() {
             Some(syn::FnArg::Receiver(r)) => {
@@ -1618,13 +1742,23 @@ impl ParsedMethod {
                         ReceiverKind::Ref
                     }
                 } else if r.colon_token.is_some() {
-                    // Check for typed receiver (self: &Self, self: &mut Self)
+                    // Check for typed receiver (self: &Self, self: &mut Self,
+                    // self: &ExternalPtr<Self>, self: &mut ExternalPtr<Self>)
                     if let syn::Type::Reference(type_ref) = r.ty.as_ref() {
-                        if type_ref.mutability.is_some() {
+                        if is_external_ptr_type(&type_ref.elem) {
+                            if type_ref.mutability.is_some() {
+                                ReceiverKind::ExternalPtrRefMut
+                            } else {
+                                ReceiverKind::ExternalPtrRef
+                            }
+                        } else if type_ref.mutability.is_some() {
                             ReceiverKind::RefMut
                         } else {
                             ReceiverKind::Ref
                         }
+                    } else if is_external_ptr_type(r.ty.as_ref()) {
+                        // self: ExternalPtr<Self> — owned ExternalPtr
+                        ReceiverKind::ExternalPtrValue
                     } else {
                         // self: Box<Self>, self: Rc<Self>, etc. - treat as by value
                         ReceiverKind::Value
@@ -1990,8 +2124,11 @@ impl ParsedImpl {
             label: attrs.label,
             doc_tags,
             methods,
-            // Strip miniextendr attributes (and roxygen tags) before re-emitting.
-            original_impl: strip_miniextendr_attrs_from_impl(item_impl),
+            // Strip miniextendr attributes (and roxygen tags) before re-emitting,
+            // then rewrite ExternalPtr receivers for stable Rust compatibility.
+            original_impl: rewrite_external_ptr_receivers(strip_miniextendr_attrs_from_impl(
+                item_impl,
+            )),
             cfg_attrs,
             vctrs_attrs: attrs.vctrs_attrs,
             r6_inherit: attrs.r6_inherit,
@@ -2203,22 +2340,50 @@ pub fn generate_method_c_wrapper(
     // Generate self extraction for instance methods
     // SEXP is now Send+Sync, so this works for both main and worker threads
     let pre_call = if method.env.is_instance() {
-        let self_extraction = if method.env == ReceiverKind::RefMut {
-            quote! {
-                let mut self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
-                };
-                let self_ref = self_ptr.downcast_mut::<#type_ident>()
-                    .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+        let self_extraction = match method.env {
+            ReceiverKind::RefMut => {
+                quote! {
+                    let mut self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                    };
+                    let self_ref = self_ptr.downcast_mut::<#type_ident>()
+                        .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+                }
             }
-        } else {
-            quote! {
-                let self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
-                };
-                let self_ref = self_ptr.downcast_ref::<#type_ident>()
-                    .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+            ReceiverKind::Ref => {
+                quote! {
+                    let self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                    };
+                    let self_ref = self_ptr.downcast_ref::<#type_ident>()
+                        .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+                }
             }
+            ReceiverKind::ExternalPtrRef => {
+                quote! {
+                    let __self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(self_sexp)
+                            .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
+                    };
+                }
+            }
+            ReceiverKind::ExternalPtrRefMut => {
+                quote! {
+                    let mut __self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(self_sexp)
+                            .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
+                    };
+                }
+            }
+            ReceiverKind::ExternalPtrValue => {
+                quote! {
+                    let __self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(self_sexp)
+                            .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
+                    };
+                }
+            }
+            _ => unreachable!(),
         };
         vec![self_extraction]
     } else {
@@ -2226,10 +2391,22 @@ pub fn generate_method_c_wrapper(
     };
 
     // Generate call expression
-    let call_expr = if method.env.is_instance() {
-        quote! { self_ref.#method_ident(#(#rust_args),*) }
-    } else {
-        quote! { #type_ident::#method_ident(#(#rust_args),*) }
+    let call_expr = match method.env {
+        ReceiverKind::Ref | ReceiverKind::RefMut => {
+            quote! { self_ref.#method_ident(#(#rust_args),*) }
+        }
+        ReceiverKind::ExternalPtrRef => {
+            quote! { #type_ident::#method_ident(&__self_ptr, #(#rust_args),*) }
+        }
+        ReceiverKind::ExternalPtrRefMut => {
+            quote! { #type_ident::#method_ident(&mut __self_ptr, #(#rust_args),*) }
+        }
+        ReceiverKind::ExternalPtrValue => {
+            quote! { #type_ident::#method_ident(__self_ptr, #(#rust_args),*) }
+        }
+        ReceiverKind::None | ReceiverKind::Value => {
+            quote! { #type_ident::#method_ident(#(#rust_args),*) }
+        }
     };
 
     // Determine return handling strategy
