@@ -29,7 +29,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build rustdoc
-        run: cargo doc --no-deps --workspace
+        run: cargo doc --no-deps -p miniextendr-api -p miniextendr-macros -p miniextendr-macros-core -p miniextendr-lint
 
       - name: Install Zola
         run: |
