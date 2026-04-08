@@ -150,6 +150,11 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
         crate::altrep_impl::register_builtin_altrep_classes();
         #[cfg(feature = "arrow")]
         crate::altrep_impl::register_arrow_altrep_classes();
+
+        // Verify no two ALTREP types registered the same class name.
+        // Duplicates cause silent overwrites in R — the wrong type gets
+        // reconstructed on readRDS, leading to memory corruption.
+        crate::altrep::assert_altrep_class_uniqueness();
     }
 
     // 2. Build call method defs with null sentinel
