@@ -3,7 +3,11 @@
 {% block title %}{{ page.title }} &mdash; miniextendr{% endblock %}
 
 {% block content %}
-{% set section = get_section(path="_index.md") %}
+{% if page.ancestors | length > 1 %}
+  {% set section = get_section(path="manual/_index.md") %}
+{% else %}
+  {% set section = get_section(path="_index.md") %}
+{% endif %}
 <div class="docs-layout">
     <aside class="sidebar">
         <ul>
