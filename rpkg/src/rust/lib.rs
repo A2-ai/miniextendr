@@ -150,6 +150,7 @@ mod encoding_tests;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_any_tests;
+mod externalptr_self_tests;
 mod externalptr_tests;
 mod externalslice_tests;
 mod factor_tests;
