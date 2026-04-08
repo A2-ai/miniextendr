@@ -2,11 +2,11 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Counter}
 \alias{S7Counter}
-\alias{s7_value}
+\alias{S7Counter-s7_value}
 \alias{S7Counter$s7_value}
-\alias{s7_inc}
+\alias{S7Counter-s7_inc}
 \alias{S7Counter$s7_inc}
-\alias{s7_add}
+\alias{S7Counter-s7_add}
 \alias{S7Counter$s7_add}
 \alias{S7Counter_default_counter}
 \title{S7Counter S7 Class}

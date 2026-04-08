@@ -2,7 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{CounterTraitS7}
 \alias{CounterTraitS7}
-\alias{get_value}
+\alias{CounterTraitS7-get_value}
 \alias{CounterTraitS7$get_value}
 \alias{s7_trait_MatrixCounter_custom_get}
 \alias{s7_trait_MatrixCounter_custom_add}

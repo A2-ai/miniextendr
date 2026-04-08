@@ -2,7 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Config}
 \alias{S7Config}
-\alias{get_version}
+\alias{S7Config-get_version}
 \alias{S7Config$get_version}
 \title{S7Config S7 Class}
 \source{

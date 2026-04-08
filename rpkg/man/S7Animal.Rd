@@ -2,7 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Animal}
 \alias{S7Animal}
-\alias{animal_kind}
+\alias{S7Animal-animal_kind}
 \alias{S7Animal$animal_kind}
 \title{S7Animal S7 Class}
 \source{

@@ -539,14 +539,16 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Documentation - skip if class has @noRd.
-        // Use bare @name for the generic (needed by roxygen2 for @export to work).
-        // This creates duplicate \alias{generic} when multiple types share the same
-        // S7 generic, but the alternative (@name Class$method) causes invalid NAMESPACE
-        // exports. The duplicate alias is a WARNING, not an ERROR.
+        // Use class-qualified @name to avoid duplicate \alias{generic} warnings
+        // when multiple S7 classes share the same generic (e.g., get_value on both
+        // S7TraitCounter and CounterTraitS7). The @export is replaced with
+        // @rawNamespace to explicitly export the bare generic name.
         if !class_has_no_rd {
+            let qualified_name = format!("{}-{}", class_name, generic_name);
             let method_doc =
                 MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
-                    .with_suppress_params();
+                    .with_suppress_params()
+                    .with_r_name(qualified_name);
             let mut doc_lines = method_doc.build();
             doc_lines.push(format!("#' @aliases {}${}", class_name, generic_name));
             lines.extend(doc_lines);
@@ -627,9 +629,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
         } else {
             // Create new S7 generic if it doesn't exist
-            // Add @export so roxygen generates export() in NAMESPACE (if class should be exported)
+            // Use @rawNamespace to explicitly export the bare generic name.
+            // Plain @export would export the qualified @name (e.g., "ClassName-method")
+            // instead of the bare generic.
             if should_export {
-                lines.push("#' @export".to_string());
+                lines.push(format!("#' @rawNamespace export({})", generic_name));
             }
 
             // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")

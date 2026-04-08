@@ -2,9 +2,9 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Strict}
 \alias{S7Strict}
-\alias{strict_length}
+\alias{S7Strict-strict_length}
 \alias{S7Strict$strict_length}
-\alias{describe_any}
+\alias{S7Strict-describe_any}
 \alias{S7Strict$describe_any}
 \title{S7Strict S7 Class}
 \source{

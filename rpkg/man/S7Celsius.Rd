@@ -2,7 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Celsius}
 \alias{S7Celsius}
-\alias{value}
+\alias{S7Celsius-value}
 \alias{S7Celsius$value}
 \title{S7Celsius S7 Class}
 \source{
