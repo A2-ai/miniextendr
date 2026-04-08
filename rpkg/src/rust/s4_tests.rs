@@ -11,7 +11,7 @@ pub struct S4Counter {
 
 /// S4 counter class with setMethod dispatches for constructor, accessor, and mutation.
 /// @aliases s4_add,S4Counter-method s4_get_value,S4Counter-method s4_inc,S4Counter-method s4_value,S4Counter-method
-#[miniextendr(s4)]
+#[miniextendr(s4, internal)]
 impl S4Counter {
     /// Creates a new counter with the given initial value.
     /// @param initial Initial value for the counter.

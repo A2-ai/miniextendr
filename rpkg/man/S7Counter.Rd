@@ -40,3 +40,4 @@ Adds the given amount to the counter and returns the new value.
 
 A static method that returns a default counter (value = 0).
 }
+\keyword{internal}

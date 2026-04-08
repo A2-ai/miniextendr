@@ -23,3 +23,4 @@ S7Animal(kind, legs, .ptr = NULL)
 \description{
 Returns the animal kind - should be callable on all descendants.
 }
+\keyword{internal}

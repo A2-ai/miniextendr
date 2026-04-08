@@ -27,3 +27,4 @@ Returns the dog breed.
 
 All dogs bark.
 }
+\keyword{internal}

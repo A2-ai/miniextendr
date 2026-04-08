@@ -21,3 +21,4 @@ S7Circle(radius, .ptr = NULL)
 \description{
 Returns the area.
 }
+\keyword{internal}
