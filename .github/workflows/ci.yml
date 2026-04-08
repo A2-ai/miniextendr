@@ -577,6 +577,9 @@ jobs:
           $config = "[target.x86_64-pc-windows-gnu]`nlinker = `"x86_64-w64-mingw32.static.posix-gcc.exe`"`n`n[env]`nLIBRARY_PATH = `"$pwd_slash/libgcc_mock`""
           [System.IO.File]::WriteAllText("$PWD\.cargo\config.toml", $config)
 
+      - name: Install just
+        uses: taiki-e/install-action@just
+
       - name: Install cargo-revendor
         run: cargo install --path cargo-revendor
 
@@ -587,16 +590,8 @@ jobs:
           if [ -n "${CARGO_HOME:-}" ]; then
             export PATH="$(cygpath -u "$CARGO_HOME")/bin:$PATH"
           fi
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")/rpkg"
-          CARGO_BUILD_TARGET=x86_64-pc-windows-gnu bash ./configure
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
-          cargo revendor \
-            --manifest-path rpkg/src/rust/Cargo.toml \
-            --output rpkg/vendor \
-            --strip-all \
-            --freeze \
-            --compress rpkg/inst/vendor.tar.xz \
-            --source-marker -v
+          CARGO_BUILD_TARGET=x86_64-pc-windows-gnu just configure
+          just vendor
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
