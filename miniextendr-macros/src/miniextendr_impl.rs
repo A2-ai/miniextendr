@@ -689,6 +689,9 @@ pub struct ParsedImpl {
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
     pub noexport: bool,
+    /// Deprecation warnings for `@param` tags found on the impl block.
+    /// Appended to the final TokenStream output.
+    pub param_warnings: proc_macro2::TokenStream,
 }
 
 /// Attributes parsed from `#[miniextendr(...)]` on an impl block.
@@ -1973,7 +1976,12 @@ impl ParsedImpl {
             .filter(|attr| attr.path().is_ident("cfg"))
             .cloned()
             .collect();
-        let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs);
+        let raw_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs);
+        let (doc_tags, param_warnings) = crate::roxygen::strip_param_tags(
+            &raw_doc_tags,
+            &type_ident.to_string(),
+            item_impl.impl_token.span,
+        );
 
         Ok(ParsedImpl {
             type_ident,
@@ -1997,6 +2005,7 @@ impl ParsedImpl {
             strict: attrs.strict,
             internal: attrs.internal,
             noexport: attrs.noexport,
+            param_warnings,
         })
     }
 
@@ -2593,12 +2602,17 @@ pub fn expand_impl(
     let source_col_lit =
         syn::LitInt::new(&(source_start.column + 1).to_string(), type_ident.span());
 
+    let param_warnings = &parsed.param_warnings;
+
     let expanded = quote! {
         // Original impl block with doc link to R wrapper
         #[doc = #r_wrapper_doc]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #original_impl
+
+        // Warnings for @param tags on impl blocks
+        #param_warnings
 
         // C wrappers and call method defs
         #(#c_wrappers)*

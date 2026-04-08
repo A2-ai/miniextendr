@@ -33,8 +33,6 @@ IterableVec
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{data}{Integer vector of elements.}
 }
 \description{
 IterableVec inherent methods: constructor, length, and conversion

@@ -57,7 +57,7 @@ Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarR6}.
 \if{html}{\out{<a id="method-SidecarR6-new"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarR6-new}{}}}
 \subsection{Method \code{new()}}{
-Create a new SidecarR6 with initial values.
+Create a new SidecarR6 with initial values
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{SidecarR6$new(value, label, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -65,9 +65,9 @@ Create a new SidecarR6 with initial values.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{value}}{(no documentation available)}
+\item{\code{value}}{Integer sidecar field.}
 
-\item{\code{label}}{(no documentation available)}
+\item{\code{label}}{Character sidecar field.}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }

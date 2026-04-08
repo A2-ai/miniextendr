@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1806
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Counter R6 Class

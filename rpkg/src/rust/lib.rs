@@ -286,8 +286,25 @@ impl AltIntegerData for ConstantIntData {
     }
 }
 
+// Serialization support: save as [value, len], reconstruct on load
+impl miniextendr_api::altrep_data::AltrepSerialize for ConstantIntData {
+    fn serialized_state(&self) -> miniextendr_api::ffi::SEXP {
+        vec![self.value, self.len as i32].into_sexp()
+    }
+    fn unserialize(state: miniextendr_api::ffi::SEXP) -> Option<Self> {
+        let v: Vec<i32> = miniextendr_api::TryFromSexp::try_from_sexp(state).ok()?;
+        if v.len() != 2 {
+            return None;
+        }
+        Some(ConstantIntData {
+            value: v[0],
+            len: v[1] as usize,
+        })
+    }
+}
+
 // Generate low-level traits from data traits (also enables base type inference)
-miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
+miniextendr_api::impl_altinteger_from_data!(ConstantIntData, materializing_dataptr, serialize);
 
 /// ALTREP class wrapper for constant integer data.
 #[miniextendr(class = "ConstantInt")]
@@ -342,7 +359,7 @@ impl AltRealData for ConstantRealData {
     }
 }
 
-miniextendr_api::impl_altreal_from_data!(ConstantRealData);
+miniextendr_api::impl_altreal_from_data!(ConstantRealData, materializing_dataptr);
 
 #[miniextendr(class = "ConstantReal")]
 pub struct ConstantRealClass(pub ConstantRealData);
@@ -655,9 +672,9 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
     use miniextendr_api::altrep_data1_as;
-    use miniextendr_api::ffi::ALTREP;
+    use miniextendr_api::ffi::SexpExt;
 
-    let result = if unsafe { ALTREP(x) } == 0 {
+    let result = if !x.is_altrep() {
         false
     } else {
         match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {

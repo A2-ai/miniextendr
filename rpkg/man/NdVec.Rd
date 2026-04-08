@@ -86,8 +86,6 @@ NdVec
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{data}{Numeric vector of array elements.}
 }
 \description{
 NdVec methods: 1D numeric array operations, slicing, and conversion

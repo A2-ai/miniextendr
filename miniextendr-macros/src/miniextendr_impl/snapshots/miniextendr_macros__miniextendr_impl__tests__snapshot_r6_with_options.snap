@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1822
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Child R6 Class
@@ -11,6 +12,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @export
 Child <- R6::R6Class("Child", inherit = ParentClass,
   public = list(
+    #' @description Create a new `Child`.
     initialize = function(.ptr = NULL) {
       if (!is.null(.ptr)) {
         private$.ptr <- .ptr
@@ -25,6 +27,7 @@ Child <- R6::R6Class("Child", inherit = ParentClass,
         private$.ptr <- .val
       }
     },
+    #' @description Method `greet`.
     greet = function() {
       .val <- .Call(C_Child__greet, .call = match.call(), private$.ptr)
       if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {

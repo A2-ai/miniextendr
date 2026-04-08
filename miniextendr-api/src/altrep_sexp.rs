@@ -114,7 +114,7 @@ impl AltrepSexp {
     /// Caller must ensure `ALTREP(sexp)` is true (non-zero).
     #[inline]
     pub unsafe fn from_raw(sexp: SEXP) -> Self {
-        debug_assert!(unsafe { ffi::ALTREP(sexp) } != 0);
+        debug_assert!(sexp.is_altrep());
         Self {
             sexp,
             _not_send: PhantomData,
@@ -124,7 +124,7 @@ impl AltrepSexp {
     /// Check a SEXP and wrap if ALTREP. Returns `None` if not ALTREP.
     #[inline]
     pub fn try_wrap(sexp: SEXP) -> Option<Self> {
-        if unsafe { ffi::ALTREP(sexp) } != 0 {
+        if sexp.is_altrep() {
             Some(Self {
                 sexp,
                 _not_send: PhantomData,
@@ -330,7 +330,7 @@ impl std::fmt::Debug for AltrepSexp {
 /// Must be called on the R main thread (materialization invokes R internals).
 #[inline]
 pub unsafe fn ensure_materialized(sexp: SEXP) -> SEXP {
-    if unsafe { ffi::ALTREP(sexp) } != 0 {
+    if sexp.is_altrep() {
         unsafe { AltrepSexp::from_raw(sexp).materialize() }
     } else {
         sexp

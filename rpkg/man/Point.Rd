@@ -42,10 +42,6 @@ Point
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{x}{Integer x-coordinate.}
-
-\item{y}{Integer y-coordinate.}
 }
 \description{
 Point inherent methods: constructor and field accessors

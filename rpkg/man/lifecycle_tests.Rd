@@ -41,8 +41,6 @@ experimental_feature(x)
 }
 \arguments{
 \item{x}{Numeric input value.}
-
-\item{_x}{Integer input value (unused, function is defunct).}
 }
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}

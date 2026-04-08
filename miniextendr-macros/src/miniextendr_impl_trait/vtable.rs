@@ -139,8 +139,13 @@ pub(super) fn generate_vtable_static(
         .chain(const_c_wrappers)
         .collect();
 
-    // Check if impl block has @noRd doc comment
-    let impl_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+    // Check if impl block has @noRd doc comment (strip @param from class-level tags)
+    let raw_impl_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+    let (impl_doc_tags, param_warnings) = crate::roxygen::strip_param_tags(
+        &raw_impl_tags,
+        &type_ident.to_string(),
+        impl_item.impl_token.span,
+    );
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(&impl_doc_tags, "noRd");
 
     // Generate R wrapper code string based on class system (only non-skipped methods)
@@ -254,6 +259,9 @@ pub(super) fn generate_vtable_static(
         // Pass through the original impl block (with method attrs stripped)
         // — omitted when the body is empty (blanket impl covers it)
         #clean_impl_tokens
+
+        // Warnings for @param tags on trait impl blocks
+        #param_warnings
 
         #[doc = concat!(
             "Vtable for `",

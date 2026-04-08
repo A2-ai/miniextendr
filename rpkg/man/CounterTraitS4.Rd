@@ -3,8 +3,8 @@
 \docType{class}
 \name{CounterTraitS4}
 \alias{CounterTraitS4}
-\alias{new}
 \alias{s4_get_value}
+\alias{s4_get_value,CounterTraitS4-method}
 \alias{s4_trait_MatrixCounter_custom_get}
 \alias{s4_trait_MatrixCounter_custom_get,CounterTraitS4-method}
 \alias{s4_trait_MatrixCounter_custom_add}
@@ -34,6 +34,8 @@ CounterTraitS4(v)
 CounterTraitS4_MatrixCounter_default_value()
 }
 \arguments{
+\item{v}{Initial counter value.}
+
 \item{x}{A \code{CounterTraitS4} object}
 
 \item{...}{Additional arguments passed to methods}
