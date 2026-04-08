@@ -2126,19 +2126,19 @@ unsafe extern "C-unwind" {
     ///
     /// For ALTREP vectors, this may force materialization.
     /// Prefer `SexpExt::set_logical_elt()` / `SexpExt::logical_elt()`.
-    pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub(crate) fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
 
     /// Get mutable pointer to integer vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
     /// Prefer `SexpExt::set_integer_elt()` / `SexpExt::integer_elt()`.
-    pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub(crate) fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
 
     /// Get mutable pointer to real vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
     /// Prefer `SexpExt::set_real_elt()` / `SexpExt::real_elt()`.
-    pub fn REAL(x: SEXP) -> *mut f64;
+    pub(crate) fn REAL(x: SEXP) -> *mut f64;
 
     /// Get mutable pointer to complex vector data.
     ///
@@ -2150,7 +2150,7 @@ unsafe extern "C-unwind" {
     ///
     /// For ALTREP vectors, this may force materialization.
     /// Prefer `SexpExt::set_raw_elt()` / `SexpExt::raw_elt()`.
-    pub fn RAW(x: SEXP) -> *mut Rbyte;
+    pub(crate) fn RAW(x: SEXP) -> *mut Rbyte;
 
     // endregion
 

@@ -5,8 +5,7 @@ mod r_test_utils;
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use miniextendr_api::coerce::Coerced;
 use miniextendr_api::ffi::{
-    INTEGER, LOGICAL, R_xlen_t, RAW, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
-    SexpExt,
+    R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
@@ -33,7 +32,7 @@ impl Drop for ProtectCount {
 unsafe fn make_int_vec(values: &[i32], guard: &mut ProtectCount) -> SEXP {
     let len = values.len() as R_xlen_t;
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::INTSXP, len)) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(INTEGER(sexp), values.len()) };
+    let slice: &mut [i32] = unsafe { sexp.as_mut_slice() };
     slice.copy_from_slice(values);
     sexp
 }
@@ -49,15 +48,16 @@ unsafe fn make_real_vec(values: &[f64], guard: &mut ProtectCount) -> SEXP {
 unsafe fn make_logical_vec(values: &[i32], guard: &mut ProtectCount) -> SEXP {
     let len = values.len() as R_xlen_t;
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::LGLSXP, len)) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(LOGICAL(sexp), values.len()) };
-    slice.copy_from_slice(values);
+    for (i, &v) in values.iter().enumerate() {
+        sexp.set_logical_elt(i as isize, v);
+    }
     sexp
 }
 
 unsafe fn make_raw_vec(values: &[u8], guard: &mut ProtectCount) -> SEXP {
     let len = values.len() as R_xlen_t;
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::RAWSXP, len)) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(RAW(sexp), values.len()) };
+    let slice: &mut [u8] = unsafe { sexp.as_mut_slice() };
     slice.copy_from_slice(values);
     sexp
 }

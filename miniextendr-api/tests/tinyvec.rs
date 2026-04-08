@@ -122,14 +122,14 @@ fn arrayvec_capacity_ok() {
 #[test]
 fn arrayvec_capacity_error() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         // Create R vector with 10 elements
         let sexp = unsafe {
             let s = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 10));
-            let ptr = INTEGER(s);
-            for i in 0..10 {
-                *ptr.add(i) = i as i32;
+            let slice: &mut [i32] = s.as_mut_slice();
+            for (i, slot) in slice.iter_mut().enumerate() {
+                *slot = i as i32;
             }
             Rf_unprotect(1);
             s
