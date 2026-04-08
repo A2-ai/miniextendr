@@ -1,7 +1,7 @@
-//! Test fixtures for ExternalPtr Box<dyn Any> storage.
+//! Test fixtures for `ExternalPtr` `Box<dyn Any>` storage.
 //!
 //! Verifies the Any-based type checking, non-generic finalizer,
-//! and downcast paths introduced by the Box<Box<dyn Any>> refactor.
+//! and downcast paths introduced by the `Box<Box<dyn Any>>` refactor.
 
 use miniextendr_api::externalptr::{ErasedExternalPtr, ExternalPtr};
 use miniextendr_api::ffi::SEXP;
