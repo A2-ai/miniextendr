@@ -1,6 +1,7 @@
 +++
 title = "Custom R Connections"
 weight = 24
+description = "R connections are the standard abstraction for I/O in R -- readLines(), writeLines(), readBin(), writeBin(), scan(), and many other functions all operate on connections. miniextendr lets you create custom R connections backed by Rust types, enabling you to expose any Rust I/O source or sink to R's connection infrastructure."
 +++
 
 R connections are the standard abstraction for I/O in R -- `readLines()`, `writeLines()`, `readBin()`, `writeBin()`, `scan()`, and many other functions all operate on connections. miniextendr lets you create custom R connections backed by Rust types, enabling you to expose any Rust I/O source or sink to R's connection infrastructure.

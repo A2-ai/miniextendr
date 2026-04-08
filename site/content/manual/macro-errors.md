@@ -1,6 +1,7 @@
 +++
 title = "Proc-Macro and Lint Error Guide"
 weight = 55
+description = "This guide covers common error messages from #[miniextendr] proc macros and the miniextendr-lint static analysis tool."
 +++
 
 This guide covers common error messages from `#[miniextendr]` proc macros and the `miniextendr-lint` static analysis tool.

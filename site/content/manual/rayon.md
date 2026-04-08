@@ -1,6 +1,7 @@
 +++
 title = "Rayon Integration Guide"
 weight = 16
+description = "Miniextendr provides seamless integration with Rayon for parallel computation in R packages. This enables writing high-performance parallel code while maintaining R's safety guarantees."
 +++
 
 Miniextendr provides seamless integration with [Rayon](https://docs.rs/rayon) for parallel computation in R packages. This enables writing high-performance parallel code while maintaining R's safety guarantees.

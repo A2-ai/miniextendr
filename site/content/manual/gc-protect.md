@@ -1,6 +1,7 @@
 +++
 title = "GC Protection Toolkit"
 weight = 18
+description = "This document covers miniextendr's RAII-based GC protection facilities."
 +++
 
 This document covers miniextendr's RAII-based GC protection facilities.

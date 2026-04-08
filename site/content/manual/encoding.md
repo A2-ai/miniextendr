@@ -1,6 +1,7 @@
 +++
 title = "Encoding and Locale"
 weight = 39
+description = "This document covers miniextendr's UTF-8 locale requirement and encoding probing utilities."
 +++
 
 This document covers miniextendr's UTF-8 locale requirement and encoding

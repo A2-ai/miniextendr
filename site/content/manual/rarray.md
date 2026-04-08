@@ -1,6 +1,7 @@
 +++
 title = "RArray: N-Dimensional R Arrays"
 weight = 34
+description = "Compile-time dimensioned wrappers for R arrays, matrices, and vectors."
 +++
 
 Compile-time dimensioned wrappers for R arrays, matrices, and vectors.

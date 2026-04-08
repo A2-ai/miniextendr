@@ -1,6 +1,7 @@
 +++
 title = "vctrs Integration with `#[derive(Vctrs)]`"
 weight = 37
+description = "miniextendr provides the #[derive(Vctrs)] macro to create vctrs-compatible S3 vector classes from Rust structs. These types integrate seamlessly with the tidyverse ecosystem."
 +++
 
 miniextendr provides the `#[derive(Vctrs)]` macro to create vctrs-compatible S3 vector classes from Rust structs. These types integrate seamlessly with the tidyverse ecosystem.

@@ -1,6 +1,7 @@
 +++
 title = "Architecture Overview"
 weight = 2
+description = "This document provides a high-level overview of miniextendr for evaluators, contributors, and users comparing approaches for Rust-R interop."
 +++
 
 This document provides a high-level overview of miniextendr for evaluators, contributors, and users comparing approaches for Rust-R interop.
@@ -26,7 +27,7 @@ miniextendr-api           miniextendr-macros-core
 (runtime library)         (shared parser types)
       │                         │
       ▼                    used by macros + lint
-rpkg / user packages
+example package / user packages
 (R package with Rust backend)
 ```
 

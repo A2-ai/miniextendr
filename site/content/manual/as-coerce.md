@@ -1,6 +1,7 @@
 +++
 title = "`as.<class>()` Coercion Methods"
 weight = 21
+description = "This document describes how to implement R's as.<class>() coercion generics for Rust types using the #[miniextendr(as = \"...\")] attribute."
 +++
 
 This document describes how to implement R's `as.<class>()` coercion generics for Rust types using the `#[miniextendr(as = "...")]` attribute.

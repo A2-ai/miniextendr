@@ -1,6 +1,7 @@
 +++
 title = "Safety Documentation"
 weight = 17
+description = "This document explains the thread safety invariants and FFI safety requirements for miniextendr. Read this before contributing unsafe code or modifying the worker, thread, or unwind_protect modules."
 +++
 
 This document explains the thread safety invariants and FFI safety requirements

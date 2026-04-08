@@ -1,6 +1,7 @@
 +++
 title = "Receiving ALTREP Vectors from R"
 weight = 32
+description = "How miniextendr handles ALTREP vectors when R passes them to Rust functions."
 +++
 
 How miniextendr handles ALTREP vectors when R passes them to Rust functions.

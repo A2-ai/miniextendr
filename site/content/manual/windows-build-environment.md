@@ -1,6 +1,7 @@
 +++
 title = "How R's Build System Invokes Rtools (and How to Replicate It)"
 weight = 50
+description = "Open the MSYS2 UCRT64 shell that ships with Rtools45. On a default install this is:"
 +++
 
 ## Quick Start: Mimicking the R Build Terminal

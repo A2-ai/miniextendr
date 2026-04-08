@@ -1,6 +1,7 @@
 +++
 title = "serde_r: Direct Rust-R Serialization"
 weight = 36
+description = "The serde_r feature provides direct serialization between Rust types and native R objects without going through an intermediate format like JSON. This enables efficient, type-preserving conversions that respect R's native data structures."
 +++
 
 The `serde_r` feature provides direct serialization between Rust types and native R objects without going through an intermediate format like JSON. This enables efficient, type-preserving conversions that respect R's native data structures.

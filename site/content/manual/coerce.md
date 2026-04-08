@@ -1,6 +1,7 @@
 +++
 title = "Type Coercion in miniextendr"
 weight = 20
+description = "This document describes the Coerce<R> trait system for converting Rust types to R's native scalar types."
 +++
 
 This document describes the `Coerce<R>` trait system for converting Rust types to R's native scalar types.

@@ -1,6 +1,7 @@
 +++
 title = "Thread Safety in miniextendr"
 weight = 8
+description = "This document explains how to safely call R APIs from threads other than the main R thread."
 +++
 
 This document explains how to safely call R APIs from threads other than the main R thread.

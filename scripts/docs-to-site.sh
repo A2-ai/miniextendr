@@ -7,12 +7,68 @@ set -euo pipefail
 DOCS_DIR="${1:-docs}"
 CONTENT_DIR="${2:-site/content/manual}"
 
+escape_toml_string() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+extract_description() {
+  local doc="$1"
+  local raw
+
+  raw=$(
+    tail -n +2 "$doc" | awk '
+      BEGIN { capture = 0 }
+      /^[[:space:]]*$/ {
+        if (capture) exit
+        next
+      }
+      /^#/ {
+        if (capture) exit
+        next
+      }
+      /^```/ {
+        if (capture) exit
+        next
+      }
+      /^[-*] / {
+        if (capture) exit
+        next
+      }
+      /^[0-9]+\. / {
+        if (capture) exit
+        next
+      }
+      {
+        capture = 1
+        print
+      }
+    '
+  )
+
+  if [ -z "$raw" ]; then
+    return 0
+  fi
+
+  printf '%s' "$raw" \
+    | tr '\n' ' ' \
+    | sed -E \
+      -e 's/[[:space:]]+/ /g' \
+      -e 's/^ //; s/ $//' \
+      -e 's/\[([^]]+)\]\([^)]+\)/\1/g' \
+      -e 's/`//g' \
+      -e 's/\*\*([^*]+)\*\*/\1/g' \
+      -e 's/\*([^*]+)\*/\1/g' \
+      -e 's/_([^_]+)_/\1/g'
+}
+
 # Weight mapping for sidebar ordering — important pages first.
 # Anything not listed gets weight 50 (alphabetical within that tier).
 declare -A WEIGHTS=(
   [GETTING_STARTED]=1
   [ARCHITECTURE]=2
   [TYPE_CONVERSIONS]=3
+  [PACKAGES]=4
+  [DESCRIPTION_FIELDS]=5
   [CLASS_SYSTEMS]=4
   [ALTREP]=5
   [EXTERNALPTR]=6
@@ -89,6 +145,7 @@ for doc in "$DOCS_DIR"/*.md; do
 
   # Extract title from first # heading
   title=$(head -1 "$doc" | sed 's/^# *//')
+  description=$(extract_description "$doc")
 
   # Convert UPPER_CASE filename to kebab-case slug
   slug=$(echo "$basename" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
@@ -98,8 +155,11 @@ for doc in "$DOCS_DIR"/*.md; do
   # Write frontmatter + content (skip the # Title line since Zola renders the title)
   {
     echo "+++"
-    echo "title = \"${title}\""
+    echo "title = \"$(escape_toml_string "$title")\""
     echo "weight = ${weight}"
+    if [ -n "$description" ]; then
+      echo "description = \"$(escape_toml_string "$description")\""
+    fi
     echo "+++"
     echo ""
     # Skip the first line (# Title) and any blank line immediately after

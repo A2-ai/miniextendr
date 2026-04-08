@@ -1,6 +1,7 @@
 +++
 title = "Expression Evaluation Helpers"
 weight = 25
+description = "Safe wrappers for building and evaluating R function calls from Rust."
 +++
 
 Safe wrappers for building and evaluating R function calls from Rust.

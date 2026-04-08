@@ -1,6 +1,7 @@
 +++
 title = "Getting Started with miniextendr"
 weight = 1
+description = "This guide walks you through creating your first R package with a Rust backend using miniextendr."
 +++
 
 This guide walks you through creating your first R package with a Rust backend using miniextendr.

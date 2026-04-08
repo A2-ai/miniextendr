@@ -1,6 +1,7 @@
 +++
 title = "Orphan Rule Challenges: Feature Crate Extraction"
 weight = 64
+description = "We explored extracting miniextendr-api's optional features (ndarray, nalgebra, serde, rayon, etc.) into separate miniextendr-<name> crates. The goal was to reduce miniextendr-api's surface area and let users depend only on what they need."
 +++
 
 ## Context

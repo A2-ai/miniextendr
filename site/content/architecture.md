@@ -25,7 +25,7 @@ miniextendr-api           miniextendr-macros-core
 (runtime library)         (shared parser types)
       |                         |
       v                    used by macros + lint
-rpkg / user packages
+example package / user packages
 (R package with Rust backend)
 ```
 

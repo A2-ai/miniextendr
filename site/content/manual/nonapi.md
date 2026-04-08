@@ -1,6 +1,7 @@
 +++
 title = "Non-API R Functions Tracking"
 weight = 43
+description = "This document tracks usage of non-API R functions in miniextendr. Non-API functions are detected by R CMD check via tools:::.checksosymbols."
 +++
 
 This document tracks usage of non-API R functions in miniextendr.
@@ -36,7 +37,7 @@ that directly accesses `R_CStackLimit`. This code is **never part of the R packa
 
 1. It's in the `tests/` directory of `miniextendr-api`, which is only compiled for `cargo test`
 2. It uses `miniextendr-engine` to embed R for Rust unit tests
-3. The R package (`rpkg`) only vendors `miniextendr-api/src/` and `miniextendr-macros/src/`
+3. The example R package (`rpkg/`) only vendors `miniextendr-api/src/` and `miniextendr-macros/src/`
 4. Test directories are excluded from vendoring
 
 This test utility exists because `cargo test` embeds R in a non-standard way (not via `R CMD`),

@@ -1,35 +1,17 @@
 +++
 title = "miniextendr"
 sort_by = "weight"
+description = "Ship R packages with Rust backends using generated wrappers, ALTREP support, and CRAN-minded packaging."
 +++
 
-miniextendr is a Rust-R interoperability framework for building R packages with Rust backends. It provides proc-macro-driven code generation, automatic type conversions, and first-class ALTREP support.
+## Why teams pick miniextendr
 
-## Highlights
+miniextendr is a Rust-R interoperability framework built for packages that need to survive real tooling, real release processes, and real data sizes.
 
-- **`#[miniextendr]` attribute** -- annotate functions and impl blocks, get R wrappers automatically
-- **5 class systems** -- Env, R6, S3, S4, and S7 with a single attribute change
-- **Zero-copy vectors** -- ALTREP support via derive macros for lazy/compact representations
-- **CRAN-ready** -- vendored dependencies for offline builds, autoconf-based configure
-- **Type-safe FFI** -- `ExternalPtr<T>` with GC-integrated finalizers and cross-package dispatch
+- **Macro-first exports**: mark functions and impl blocks with `#[miniextendr]` and keep R wrappers generated from Rust docs.
+- **Runtime built for R's constraints**: unwind protection, GC-aware pointer types, and optional worker-thread execution when you need it.
+- **Packaging that respects CRAN**: vendoring, configure-based builds, and template-driven scaffolding via `minirextendr`.
 
-## Quick Start
+## What the documentation covers
 
-```rust
-use miniextendr_api::miniextendr;
-
-/// Add two integers.
-/// @param a First number
-/// @param b Second number
-/// @return The sum
-#[miniextendr]
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
-```
-
-```r
-library(mypackage)
-add(1L, 2L)
-# [1] 3
-```
+The guide pages below start broad and then narrow into specific subsystems. Use the manual when you want exhaustive behavior, feature switches, packaging details, or edge-case references.

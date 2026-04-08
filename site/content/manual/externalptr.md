@@ -1,6 +1,7 @@
 +++
 title = "ExternalPtr"
 weight = 6
+description = "ExternalPtr<T> is a Box-like owned pointer that wraps R's EXTPTRSXP. It lets you hand ownership of Rust-allocated data to R and let R's garbage collector decide when to drop it."
 +++
 
 `ExternalPtr<T>` is a Box-like owned pointer that wraps R's `EXTPTRSXP`. It lets you hand ownership of Rust-allocated data to R and let R's garbage collector decide when to drop it.

@@ -1,6 +1,7 @@
 +++
 title = "Cached SEXPs"
 weight = 52
+description = "R strings (CHARSXPs), symbols, and class vectors are immutable once created. When the same value is needed repeatedly — especially on hot paths like vectorized conversions — cache it once and reuse the pointer."
 +++
 
 R strings (CHARSXPs), symbols, and class vectors are immutable once created.

@@ -1,6 +1,7 @@
 +++
 title = "minirextendr — Scaffolding & Workflow Helper"
 weight = 63
+description = "minirextendr is a pure-R companion package that scaffolds, builds, and maintains R packages using the miniextendr Rust-R framework. Think of it as usethis for miniextendr projects."
 +++
 
 `minirextendr` is a pure-R companion package that scaffolds, builds, and maintains
@@ -66,7 +67,7 @@ myproject/
 ├── mypkg-rs/            # Main Rust crate
 │   ├── Cargo.toml
 │   └── src/lib.rs
-├── mypkg/               # R package (rpkg)
+├── mypkg/               # Generated R package
 │   ├── src/rust/        # R-facing Rust bindings
 │   └── vendor/
 ├── tools/               # Version management scripts

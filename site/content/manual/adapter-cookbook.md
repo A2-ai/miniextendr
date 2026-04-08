@@ -1,6 +1,7 @@
 +++
 title = "Adapter Trait Cookbook"
 weight = 14
+description = "Practical recipes for exposing external Rust traits to R using the adapter pattern."
 +++
 
 Practical recipes for exposing external Rust traits to R using the adapter pattern.

@@ -1,6 +1,7 @@
 +++
 title = "RNG (Random Number Generation)"
 weight = 38
+description = "Safe access to R's random number generators from Rust."
 +++
 
 Safe access to R's random number generators from Rust.

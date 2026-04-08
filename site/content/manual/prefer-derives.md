@@ -1,6 +1,7 @@
 +++
 title = "Prefer* Derives Guide"
 weight = 53
+description = "How to control which R representation a Rust type uses when returned from #[miniextendr] functions."
 +++
 
 How to control which R representation a Rust type uses when returned from
