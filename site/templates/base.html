@@ -11,34 +11,60 @@
     {% else %}
     <meta name="description" content="{{ config.description }}">
     {% endif %}
+    <meta name="theme-color" content="#f4ead3">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ get_url(path='css/style.css') }}">
 </head>
-<body>
-    <nav>
-        <div class="nav-inner">
-            <a href="{{ config.base_url }}" class="logo">miniextendr</a>
-            <div class="nav-links">
-                <a href="{{ get_url(path='@/getting-started.md') }}">Get Started</a>
-                <a href="{{ get_url(path='@/architecture.md') }}">Architecture</a>
-                <a href="{{ config.base_url }}/manual/">User Manual</a>
-                <a href="{{ config.base_url }}/rustdoc/miniextendr_api/">API Docs</a>
-                <a href="{{ config.base_url }}/rustdoc/miniextendr/">rpkg Docs</a>
-                <a href="{{ config.extra.repo_url }}">GitHub</a>
-                <div class="search-container">
-                    <input id="search" type="search" placeholder="Search docs...">
-                    <div class="search-results">
-                        <div class="search-results__items"></div>
+<body class="{% block body_class %}site-shell{% endblock body_class %}">
+    <div class="site-chrome">
+        <div class="site-noise"></div>
+        <header class="site-header">
+            <nav class="nav-shell">
+                <div class="brand-lockup">
+                    <a href="{{ get_url(path='@/_index.md') }}" class="logo">miniextendr</a>
+                    <p class="brand-tag">Rust-powered R packages with ALTREP, class systems, and CRAN-ready build plumbing.</p>
+                </div>
+                <div class="nav-cluster">
+                    <div class="nav-links">
+                        <a href="{{ get_url(path='@/getting-started.md') }}">Get Started</a>
+                        <a href="{{ get_url(path='@/architecture.md') }}">Architecture</a>
+                        <a href="{{ get_url(path='@/manual/_index.md') }}">Manual</a>
+                        <a href="{{ config.base_url }}/rustdoc/miniextendr_api/">API Docs</a>
+                        <a href="{{ config.base_url }}/rustdoc/miniextendr/">rpkg Docs</a>
+                        <a href="{{ config.extra.repo_url }}" rel="noopener">GitHub</a>
+                    </div>
+                    <div class="search-container">
+                        <label class="sr-only" for="search">Search documentation</label>
+                        <input id="search" type="search" placeholder="Search docs">
+                        <div class="search-results" aria-live="polite">
+                            <div class="search-results__items"></div>
+                        </div>
                     </div>
                 </div>
+            </nav>
+        </header>
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+        <footer>
+            <div class="footer-inner">
+                <div>
+                    <p class="footer-mark">miniextendr</p>
+                    <p class="footer-copy">Rust-to-R interoperability for packages that need more than a demo wrapper.</p>
+                </div>
+                <div class="footer-links">
+                    <a href="{{ get_url(path='@/manual/_index.md') }}">User Manual</a>
+                    <a href="{{ get_url(path='@/getting-started.md') }}">Guides</a>
+                    <a href="{{ config.extra.repo_url }}" rel="noopener">GitHub</a>
+                </div>
             </div>
-        </div>
-    </nav>
-    <main>
-        {% block content %}{% endblock %}
-    </main>
-    <footer>
-        <p>miniextendr &mdash; <a href="{{ config.extra.repo_url }}">GitHub</a></p>
-    </footer>
+        </footer>
+    </div>
+    <script>
+        window.MINIEXTENDR_SEARCH_INDEX_URL = "{{ get_url(path='search_index.en.json') }}";
+    </script>
     <script src="{{ get_url(path='elasticlunr.min.js') }}"></script>
     <script src="{{ get_url(path='js/search.js') }}"></script>
 </body>

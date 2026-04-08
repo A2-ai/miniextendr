@@ -1,6 +1,7 @@
 +++
 title = "Strict Mode"
 weight = 41
+description = "Strict mode rejects lossy type conversions that would silently widen or truncate values. When enabled, out-of-range values panic instead of being coerced."
 +++
 
 Strict mode rejects lossy type conversions that would silently widen or truncate

@@ -1,6 +1,7 @@
 +++
 title = "miniextendr: Known Gaps and Limitations"
 weight = 65
+description = "This document catalogs known gaps, limitations, and undocumented behaviors in miniextendr. It serves as both user documentation and a roadmap for future improvements."
 +++
 
 This document catalogs known gaps, limitations, and undocumented behaviors in miniextendr. It serves as both user documentation and a roadmap for future improvements.

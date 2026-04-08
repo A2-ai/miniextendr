@@ -1,6 +1,7 @@
 +++
 title = "Environment Variables"
 weight = 57
+description = "All environment variables that affect miniextendr's build, configure, test, and lint processes."
 +++
 
 All environment variables that affect miniextendr's build, configure, test, and lint processes.

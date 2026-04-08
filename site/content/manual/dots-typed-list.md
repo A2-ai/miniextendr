@@ -1,6 +1,7 @@
 +++
 title = "Dots and typed_list! Validation"
 weight = 27
+description = "This document describes miniextendr's support for R's ... (dots) arguments and the typed_list! macro for structured validation."
 +++
 
 This document describes miniextendr's support for R's `...` (dots) arguments and the `typed_list!` macro for structured validation.

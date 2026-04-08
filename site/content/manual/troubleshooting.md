@@ -1,6 +1,7 @@
 +++
 title = "Troubleshooting"
 weight = 61
+description = "Common issues and solutions when developing with miniextendr."
 +++
 
 Common issues and solutions when developing with miniextendr.

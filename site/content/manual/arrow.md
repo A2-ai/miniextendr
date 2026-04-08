@@ -1,6 +1,7 @@
 +++
 title = "Arrow Integration"
 weight = 15
+description = "Zero-copy conversions between R vectors and Apache Arrow arrays."
 +++
 
 Zero-copy conversions between R vectors and Apache Arrow arrays.

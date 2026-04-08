@@ -1,6 +1,7 @@
 +++
 title = "Non-API R Functions Tracking"
 weight = 43
+description = "This document tracks usage of non-API R functions in miniextendr. Non-API functions are detected by R CMD check via tools:::.checksosymbols."
 +++
 
 This document tracks usage of non-API R functions in miniextendr.

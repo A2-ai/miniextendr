@@ -1,6 +1,7 @@
 +++
 title = "Performance Benchmarks"
 weight = 60
+description = "Baseline measurements for miniextendr's runtime overhead on Apple M3 Max (macOS, Rust 1.93, R 4.5). Run date: 2026-02-18."
 +++
 
 Baseline measurements for miniextendr's runtime overhead on Apple M3 Max (macOS, Rust 1.93, R 4.5).

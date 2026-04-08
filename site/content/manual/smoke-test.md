@@ -1,6 +1,7 @@
 +++
 title = "Smoke Test Process"
 weight = 62
+description = "This document describes the smoke test process for the miniextendr project. It covers the full \"demanding\" smoke lane -- the most thorough validation pass, intended for release gates and nightly CI runs."
 +++
 
 This document describes the smoke test process for the miniextendr project. It

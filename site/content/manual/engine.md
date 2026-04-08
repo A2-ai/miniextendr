@@ -1,6 +1,7 @@
 +++
 title = "miniextendr-engine: why it exists (and why it changed)"
 weight = 50
+description = "This file documents the rationale for the recent refactor that moved R linking and embedded-R initialization into miniextendr-engine, and made the benchmark crate (miniextendr-bench) depend on it."
 +++
 
 This file documents the rationale for the recent refactor that moved R linking

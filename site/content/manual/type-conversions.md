@@ -1,6 +1,7 @@
 +++
 title = "Type Conversions in miniextendr"
 weight = 3
+description = "This guide documents how miniextendr converts between R and Rust types, including NA handling, coercion rules, and edge cases."
 +++
 
 This guide documents how miniextendr converts between R and Rust types, including NA handling, coercion rules, and edge cases.

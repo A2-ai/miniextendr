@@ -1,6 +1,7 @@
 +++
 title = "Developer Workflow"
 weight = 58
+description = "Quick reference for common development tasks. See CLAUDE.md for complete build system documentation."
 +++
 
 Quick reference for common development tasks. See [CLAUDE.md](../CLAUDE.md) for complete build system documentation.

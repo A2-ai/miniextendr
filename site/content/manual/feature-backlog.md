@@ -1,6 +1,7 @@
 +++
 title = "Feature Backlog"
 weight = 66
+description = "This document lists practical feature candidates for upcoming maintenance cycles. Items are scoped to be incremental and compatible with the current architecture."
 +++
 
 This document lists practical feature candidates for upcoming maintenance cycles.

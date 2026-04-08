@@ -1,6 +1,7 @@
 +++
 title = "miniextendr Trait-Based ABI Implementation Plan"
 weight = 46
+description = "This document describes the trait ABI system for cross-package trait dispatch."
 +++
 
 This document describes the trait ABI system for cross-package trait dispatch.

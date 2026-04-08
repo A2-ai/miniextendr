@@ -1,6 +1,7 @@
 +++
 title = "Linking Strategy"
 weight = 47
+description = "This document explains how miniextendr links against R's shared library (libR) for both R packages and standalone Rust binaries."
 +++
 
 This document explains how miniextendr links against R's shared library (`libR`)

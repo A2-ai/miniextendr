@@ -1,6 +1,7 @@
 +++
 title = "Vendoring and CRAN Release Prep"
 weight = 9
+description = "How miniextendr packages its dependencies for CRAN offline builds."
 +++
 
 How miniextendr packages its dependencies for CRAN offline builds.

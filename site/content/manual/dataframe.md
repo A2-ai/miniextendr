@@ -1,6 +1,7 @@
 +++
 title = "Data Frame Conversion in miniextendr"
 weight = 23
+description = "miniextendr provides comprehensive support for converting between Rust types and R data frames, with three complementary approaches offering different trade-offs between ergonomics and flexibility."
 +++
 
 miniextendr provides comprehensive support for converting between Rust types and R data frames, with three complementary approaches offering different trade-offs between ergonomics and flexibility.

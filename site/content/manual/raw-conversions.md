@@ -1,6 +1,7 @@
 +++
 title = "Raw Conversions"
 weight = 35
+description = "Convert Rust POD (Plain Old Data) types to and from R raw vectors using bytemuck."
 +++
 
 Convert Rust POD (Plain Old Data) types to and from R raw vectors using `bytemuck`.

@@ -1,6 +1,7 @@
 +++
 title = "S3 Methods Guide"
 weight = 28
+description = "How to implement S3 generics (print, format, etc.) with #[miniextendr(s3)]."
 +++
 
 How to implement S3 generics (`print`, `format`, etc.) with `#[miniextendr(s3)]`.

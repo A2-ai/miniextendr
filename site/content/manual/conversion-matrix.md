@@ -1,6 +1,7 @@
 +++
 title = "Conversion Behavior Matrix"
 weight = 22
+description = "This document describes how miniextendr converts between R types and Rust types. Conversions are governed by three modes (normal, coerce, strict) and apply to both directions: R-to-Rust (TryFromSexp) and Rust-to-R (IntoR)."
 +++
 
 This document describes how miniextendr converts between R types and Rust types. Conversions are governed by three modes (**normal**, **coerce**, **strict**) and apply to both directions: R-to-Rust (`TryFromSexp`) and Rust-to-R (`IntoR`).

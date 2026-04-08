@@ -1,6 +1,7 @@
 +++
 title = "ALTREP Quick Reference"
 weight = 30
+description = "One-page reference for miniextendr's ALTREP system."
 +++
 
 One-page reference for miniextendr's ALTREP system.

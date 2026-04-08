@@ -1,6 +1,7 @@
 +++
 title = "Architecture Overview"
 weight = 2
+description = "This document provides a high-level overview of miniextendr for evaluators, contributors, and users comparing approaches for Rust-R interop."
 +++
 
 This document provides a high-level overview of miniextendr for evaluators, contributors, and users comparing approaches for Rust-R interop.

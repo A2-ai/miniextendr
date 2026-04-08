@@ -1,30 +1,160 @@
 {% extends "base.html" %}
 
-{% block title %}miniextendr &mdash; Rust-R interoperability framework{% endblock %}
+{% block title %}miniextendr | Rust-powered R package tooling{% endblock %}
+{% block body_class %}site-shell home-page{% endblock body_class %}
 
 {% block content %}
-<div class="hero">
-    <h1>miniextendr</h1>
-    <p class="tagline">Build R packages with Rust backends</p>
-    <div class="stats">
-        <div class="stat"><span class="num">5</span><span class="label">class systems</span></div>
-        <div class="stat"><span class="num">ALTREP</span><span class="label">zero-copy vectors</span></div>
-        <div class="stat"><span class="num">CRAN</span><span class="label">ready</span></div>
+<section class="hero-section">
+    <div class="hero-copy">
+        <p class="eyebrow">Rust for serious R packages</p>
+        <h1 class="hero-title">Ship Rust-backed R packages without inventing your own glue layer.</h1>
+        <p class="hero-lead">
+            miniextendr combines proc-macro exports, ALTREP-aware runtime pieces, multiple R class systems,
+            and CRAN-minded packaging so your package architecture stays deliberate from day one.
+        </p>
+        <div class="hero-actions">
+            <a class="button button-primary" href="{{ get_url(path='@/getting-started.md') }}">Build a package</a>
+            <a class="button button-secondary" href="{{ get_url(path='@/manual/_index.md') }}">Browse the manual</a>
+        </div>
+        <ul class="hero-points">
+            <li><code>#[miniextendr]</code> generates exports and wrappers directly from Rust code.</li>
+            <li>ALTREP, ExternalPtr, and class-system support are first-class, not bolted on later.</li>
+            <li>Configure scripts and vendoring keep the path to CRAN realistic.</li>
+        </ul>
     </div>
-</div>
-<div class="content">
-    {{ section.content | safe }}
-</div>
+    <div class="hero-panel">
+        <div class="terminal-card">
+            <div class="terminal-bar">
+                <div class="terminal-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span class="terminal-label">first package flow</span>
+            </div>
+            <p class="terminal-kicker">Minimal export surface, generated wrappers, familiar R install flow.</p>
+            <pre class="terminal-body"><code>use miniextendr_api::miniextendr;
+
+#[miniextendr]
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+# R
+devtools::document("mypackage")
+add(1L, 2L)
+# [1] 3</code></pre>
+            <div class="terminal-output">
+                <span>Wrappers generated from Rust docs</span>
+                <span>Type conversions handled at the boundary</span>
+                <span>Ready for <code>R CMD INSTALL</code></span>
+            </div>
+        </div>
+        <div class="hero-metrics">
+            <div class="metric-card">
+                <span class="metric-value">5</span>
+                <span class="metric-label">R class systems supported</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value">ALTREP</span>
+                <span class="metric-label">lazy and compact vectors built in</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value">CRAN</span>
+                <span class="metric-label">offline-friendly packaging and vendoring</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="story-grid">
+    <article class="content-card">
+        <p class="section-kicker">Why miniextendr</p>
+        <div class="section-copy">
+            {{ section.content | safe }}
+        </div>
+    </article>
+    <aside class="content-card content-card-accent">
+        <p class="section-kicker">Launch paths</p>
+        <div class="launch-list">
+            <a class="launch-card" href="{{ get_url(path='@/getting-started.md') }}">
+                <span class="launch-index">01</span>
+                <div>
+                    <strong>Start a package</strong>
+                    <p>Scaffold a project, export your first function, and install it from R.</p>
+                </div>
+            </a>
+            <a class="launch-card" href="{{ get_url(path='@/architecture.md') }}">
+                <span class="launch-index">02</span>
+                <div>
+                    <strong>Understand the stack</strong>
+                    <p>See how macros, runtime crates, wrapper generation, and the build system fit together.</p>
+                </div>
+            </a>
+            <a class="launch-card" href="{{ get_url(path='@/manual/_index.md') }}">
+                <span class="launch-index">03</span>
+                <div>
+                    <strong>Go deep in the manual</strong>
+                    <p>Use the long-form reference when you need exact conversion rules, ALTREP details, or packaging behavior.</p>
+                </div>
+            </a>
+        </div>
+    </aside>
+</section>
+
 <section class="docs-section">
-    <p class="eyebrow">Documentation</p>
-    <p class="docs-lead">
-        Start with Getting Started if you're new.
-        Architecture explains how everything fits together.
-        The remaining pages cover specific subsystems.
-    </p>
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">What The Site Covers</p>
+            <h2>Move from overview to subsystem detail quickly.</h2>
+        </div>
+        <p class="section-summary">
+            The guide pages on the homepage are for orientation and adoption.
+            The manual is for exact behavior, sharp edges, and implementation details.
+        </p>
+    </div>
+    <div class="capability-grid">
+        <article class="capability-card">
+            <p class="section-kicker">Build system</p>
+            <h3>Package like an R package, not like a sidecar experiment.</h3>
+            <p>Configure scripts, vendoring, and template support are designed around the constraints of R package distribution.</p>
+        </article>
+        <article class="capability-card">
+            <p class="section-kicker">Runtime</p>
+            <h3>Use Rust safely at the R boundary.</h3>
+            <p>Unwind protection, GC-aware pointer wrappers, and explicit conversion rules keep boundary behavior visible.</p>
+        </article>
+        <article class="capability-card">
+            <p class="section-kicker">Ergonomics</p>
+            <h3>Keep the authoring model close to ordinary Rust.</h3>
+            <p>Proc macros drive exports, method wrappers, and several higher-level abstractions without requiring a custom DSL.</p>
+        </article>
+    </div>
+</section>
+
+<section class="docs-section">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">Documentation</p>
+            <h2>Start with the core guides, then branch into the full reference.</h2>
+        </div>
+        <a class="button button-ghost" href="{{ get_url(path='@/manual/_index.md') }}">Open the full manual</a>
+    </div>
     <div class="docs-grid">
+        <a class="doc-card" href="{{ get_url(path='@/manual/_index.md') }}">
+            <div class="doc-card-topline">
+                <span class="doc-kind">Reference</span>
+                <span class="doc-state">60+ pages</span>
+            </div>
+            <h2>User Manual</h2>
+            <p>Comprehensive subsystem documentation generated from the repo docs, ordered for exploration and deep reference.</p>
+        </a>
         {% for page in section.pages %}
         <a class="doc-card" href="{{ page.permalink }}">
+            <div class="doc-card-topline">
+                <span class="doc-kind">Guide</span>
+                <span class="doc-state">Top level</span>
+            </div>
             <h2>{{ page.title }}</h2>
             {% if page.description %}
             <p>{{ page.description }}</p>

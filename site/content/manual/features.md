@@ -1,6 +1,7 @@
 +++
 title = "Feature Flags Reference"
 weight = 10
+description = "miniextendr-api uses Cargo feature flags to enable optional integrations. Only default features are enabled automatically."
 +++
 
 miniextendr-api uses Cargo feature flags to enable optional integrations.

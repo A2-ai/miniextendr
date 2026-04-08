@@ -1,6 +1,7 @@
 +++
 title = "FFI Guard and Panic Telemetry"
 weight = 19
+description = "How miniextendr catches panics at Rust-R boundaries and provides structured diagnostics."
 +++
 
 How miniextendr catches panics at Rust-R boundaries and provides structured diagnostics.

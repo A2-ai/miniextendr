@@ -1,6 +1,7 @@
 +++
 title = "Enums and Factors Guide"
 weight = 26
+description = "How to map Rust enums to R factors and character strings."
 +++
 
 How to map Rust enums to R factors and character strings.

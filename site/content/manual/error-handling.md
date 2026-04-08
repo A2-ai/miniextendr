@@ -1,6 +1,7 @@
 +++
 title = "Error Handling in miniextendr"
 weight = 7
+description = "This guide covers error handling patterns, panic safety, and best practices for robust R-Rust interop."
 +++
 
 This guide covers error handling patterns, panic safety, and best practices for robust R-Rust interop.

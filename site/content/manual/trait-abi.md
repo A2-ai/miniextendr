@@ -1,6 +1,7 @@
 +++
 title = "Trait ABI"
 weight = 45
+description = "The trait ABI lets R (and other packages) call Rust trait methods without knowing the concrete Rust type at compile time. It does this by storing a tiny \"header + vtable\" next to the object and using R external pointers to carry it around."
 +++
 
 The trait ABI lets R (and other packages) call Rust trait methods without knowing the concrete Rust type at compile time. It does this by storing a tiny "header + vtable" next to the object and using R external pointers to carry it around.

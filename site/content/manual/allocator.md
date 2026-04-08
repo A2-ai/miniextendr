@@ -1,6 +1,7 @@
 +++
 title = "R-Backed Global Allocator"
 weight = 51
+description = "This document covers RAllocator, a Rust GlobalAlloc implementation backed by R's memory manager."
 +++
 
 This document covers `RAllocator`, a Rust `GlobalAlloc` implementation backed

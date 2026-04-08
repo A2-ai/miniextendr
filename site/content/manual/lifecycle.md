@@ -1,6 +1,7 @@
 +++
 title = "Lifecycle Integration"
 weight = 40
+description = "miniextendr integrates with the lifecycle R package to mark functions as experimental, deprecated, or defunct. The proc macro generates lifecycle badges, runtime warnings, and roxygen tags automatically."
 +++
 
 miniextendr integrates with the [lifecycle](https://lifecycle.r-lib.org/) R package to mark functions as experimental, deprecated, or defunct. The proc macro generates lifecycle badges, runtime warnings, and roxygen tags automatically.

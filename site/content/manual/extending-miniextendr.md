@@ -1,6 +1,7 @@
 +++
 title = "Extending miniextendr"
 weight = 44
+description = "This guide explains how to extend miniextendr with custom types, enabling them to be passed between Rust and R."
 +++
 
 This guide explains how to extend miniextendr with custom types, enabling them to be passed between Rust and R.

@@ -1,6 +1,7 @@
 +++
 title = "Template System"
 weight = 49
+description = "The minirextendr package provides scaffolding templates for creating new R packages with Rust backends. This document explains how the template system works and how to keep templates in sync with the reference implementation."
 +++
 
 The minirextendr package provides scaffolding templates for creating new R packages with Rust backends. This document explains how the template system works and how to keep templates in sync with the reference implementation.
