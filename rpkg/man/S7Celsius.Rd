@@ -21,3 +21,4 @@ S7Celsius(value, .ptr = NULL)
 \description{
 Get the temperature value.
 }
+\keyword{internal}

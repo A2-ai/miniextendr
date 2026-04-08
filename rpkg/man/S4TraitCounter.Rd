@@ -64,3 +64,4 @@ Create a new S4 trait counter.
 \item{\code{ptr}}{External pointer to Rust \code{S4TraitCounter} struct}
 }}
 
+\keyword{internal}

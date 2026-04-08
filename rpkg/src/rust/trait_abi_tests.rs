@@ -212,7 +212,7 @@ impl S4TraitCounter {
 }
 
 /// Counter trait implementation for S4TraitCounter (S4 dispatch).
-#[miniextendr(s4)]
+#[miniextendr(s4, internal)]
 impl Counter for S4TraitCounter {
     const MAX_VALUE: i32 = 400;
 
@@ -235,7 +235,7 @@ impl Counter for S4TraitCounter {
 }
 
 /// S4TraitCounter inherent methods (constructor and getters).
-#[miniextendr(s4)]
+#[miniextendr(s4, internal)]
 impl S4TraitCounter {
     /// Create a new S4 trait counter.
     fn new_s4trait(initial: i32) -> Self {
@@ -264,7 +264,7 @@ impl S7TraitCounter {
 }
 
 /// Counter trait implementation for S7TraitCounter (S7 dispatch).
-#[miniextendr(s7)]
+#[miniextendr(s7, internal)]
 impl Counter for S7TraitCounter {
     const MAX_VALUE: i32 = 300;
 
@@ -287,7 +287,7 @@ impl Counter for S7TraitCounter {
 }
 
 /// S7TraitCounter inherent methods (constructor and getters).
-#[miniextendr(s7)]
+#[miniextendr(s7, internal)]
 impl S7TraitCounter {
     /// Create a new S7 trait counter.
     fn new_s7trait(initial: i32) -> Self {

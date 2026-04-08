@@ -42,3 +42,4 @@ Convert Fahrenheit to Celsius. Uses S7::convert() for type coercion: S7::convert
 
 Convert Fahrenheit from Celsius. Uses S7::convert() for type coercion: S7::convert(celsius_obj, S7Fahrenheit)
 }
+\keyword{internal}

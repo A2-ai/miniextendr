@@ -98,7 +98,7 @@ pub struct CounterTraitS4 {
     value: i32,
 }
 
-#[miniextendr(s4)]
+#[miniextendr(s4, internal)]
 impl CounterTraitS4 {
     /// @param v Initial counter value.
     pub fn new(v: i32) -> Self {
@@ -112,7 +112,7 @@ impl CounterTraitS4 {
 /// @rdname CounterTraitS4
 /// @aliases s4_trait_MatrixCounter_custom_get,CounterTraitS4-method s4_trait_MatrixCounter_custom_add,CounterTraitS4-method
 /// @param x A CounterTraitS4 object.
-#[miniextendr(s4)]
+#[miniextendr(s4, internal)]
 impl MatrixCounter for CounterTraitS4 {
     fn custom_get(&self) -> i32 {
         self.value
@@ -134,7 +134,7 @@ pub struct CounterTraitS7 {
     value: i32,
 }
 
-#[miniextendr(s7)]
+#[miniextendr(s7, internal)]
 impl CounterTraitS7 {
     /// @param v Initial counter value.
     pub fn new(v: i32) -> Self {
@@ -145,7 +145,7 @@ impl CounterTraitS7 {
     }
 }
 
-#[miniextendr(s7)]
+#[miniextendr(s7, internal)]
 impl MatrixCounter for CounterTraitS7 {
     fn custom_get(&self) -> i32 {
         self.value

@@ -21,3 +21,4 @@ S7Shape(name, .ptr = NULL)
 \description{
 Returns the shape name.
 }
+\keyword{internal}

@@ -27,3 +27,4 @@ Returns the dog's name.
 
 Returns the coat color.
 }
+\keyword{internal}

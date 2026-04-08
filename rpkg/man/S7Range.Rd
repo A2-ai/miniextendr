@@ -29,3 +29,4 @@ Regular method: returns the start value.
 
 Regular method: returns the end value.
 }
+\keyword{internal}

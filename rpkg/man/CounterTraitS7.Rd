@@ -32,3 +32,4 @@ CounterTraitS7 S7 Class
 
 Static trait method MatrixCounter::default_value()
 }
+\keyword{internal}
