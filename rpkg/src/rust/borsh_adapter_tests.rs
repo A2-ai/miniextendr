@@ -61,3 +61,29 @@ pub fn borsh_option_roundtrip() -> bool {
     let r_none: Option<i32> = RBorshOps::borsh_deserialize(&none_bytes).unwrap();
     r_some == some_val && r_none == none_val
 }
+
+// region: Upstream example-derived fixtures
+
+/// Test roundtripping a HashMap<String, i32> through Borsh.
+#[miniextendr]
+pub fn borsh_hashmap_roundtrip() -> bool {
+    use std::collections::HashMap;
+    let mut original = HashMap::new();
+    original.insert("alpha".to_string(), 1i32);
+    original.insert("beta".to_string(), 2);
+    original.insert("gamma".to_string(), 3);
+    let bytes = original.borsh_serialize();
+    let recovered: HashMap<String, i32> = RBorshOps::borsh_deserialize(&bytes).unwrap();
+    original == recovered
+}
+
+/// Test roundtripping a Vec<bool> through Borsh.
+#[miniextendr]
+pub fn borsh_vec_bool_roundtrip() -> bool {
+    let original = vec![true, false, true, true, false];
+    let bytes = original.borsh_serialize();
+    let recovered: Vec<bool> = RBorshOps::borsh_deserialize(&bytes).unwrap();
+    original == recovered
+}
+
+// endregion

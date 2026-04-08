@@ -261,3 +261,34 @@ pub fn arrow_recordbatch_typed_roundtrip(rb: RecordBatch) -> RecordBatch {
 }
 
 // endregion
+
+// region: Upstream example-derived fixtures
+
+/// Filter a Float64Array to keep only non-null values.
+/// @param v Arrow Float64Array from R.
+#[miniextendr]
+pub fn arrow_f64_filter_non_null(v: Float64Array) -> Float64Array {
+    let values: Vec<f64> = v.iter().flatten().collect();
+    Float64Array::from(values)
+}
+
+/// Compute the mean of a Float64Array (ignoring nulls).
+/// @param v Arrow Float64Array from R.
+#[miniextendr]
+pub fn arrow_f64_mean(v: Float64Array) -> Option<f64> {
+    let values: Vec<f64> = v.iter().flatten().collect();
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
+}
+
+/// Get the data type name of an ArrayRef.
+/// @param v Arrow ArrayRef from R.
+#[miniextendr]
+pub fn arrow_arrayref_type_name(v: ArrayRef) -> String {
+    format!("{}", v.data_type())
+}
+
+// endregion

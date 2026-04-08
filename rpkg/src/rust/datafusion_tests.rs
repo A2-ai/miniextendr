@@ -110,3 +110,42 @@ pub fn test_df_count(df: RecordBatch) -> i32 {
 }
 
 // endregion
+
+// region: Upstream example-derived fixtures
+
+/// JOIN two record batches via SQL.
+/// @param left Left RecordBatch.
+/// @param right Right RecordBatch.
+/// @param sql SQL query with tables "left_t" and "right_t".
+/// @export
+#[miniextendr]
+pub fn test_df_join(left: RecordBatch, right: RecordBatch, sql: &str) -> RecordBatch {
+    let ctx = RSessionContext::new();
+    ctx.register_record_batch("left_t", left).unwrap();
+    ctx.register_record_batch("right_t", right).unwrap();
+    ctx.sql_to_record_batch(sql).unwrap()
+}
+
+/// SQL window function query.
+/// @param df RecordBatch to query.
+/// @param sql SQL query using window functions.
+/// @export
+#[miniextendr]
+pub fn test_df_window(df: RecordBatch, sql: &str) -> RecordBatch {
+    let ctx = RSessionContext::new();
+    ctx.register_record_batch("t", df).unwrap();
+    ctx.sql_to_record_batch(sql).unwrap()
+}
+
+/// SQL subquery.
+/// @param df RecordBatch to query.
+/// @param sql SQL query containing a subquery.
+/// @export
+#[miniextendr]
+pub fn test_df_subquery(df: RecordBatch, sql: &str) -> RecordBatch {
+    let ctx = RSessionContext::new();
+    ctx.register_record_batch("t", df).unwrap();
+    ctx.sql_to_record_batch(sql).unwrap()
+}
+
+// endregion

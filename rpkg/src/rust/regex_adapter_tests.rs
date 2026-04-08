@@ -64,3 +64,35 @@ pub fn regex_split(pattern: &str, text: &str) -> Vec<String> {
         .map(|re| re.split(text).map(|s| s.to_string()).collect())
         .unwrap_or_else(|_| vec![text.to_string()])
 }
+
+// region: Upstream example-derived fixtures
+
+/// Extract all capture group matches from a regex.
+/// Returns all captured groups (including the full match at index 0) for the first match.
+/// @param pattern Regular expression pattern with capture groups.
+/// @param text String to search within.
+#[miniextendr]
+pub fn regex_captures(pattern: &str, text: &str) -> Vec<String> {
+    Regex::new(pattern)
+        .ok()
+        .and_then(|re| {
+            re.captures(text).map(|caps| {
+                caps.iter()
+                    .map(|m| m.map(|m| m.as_str().to_string()).unwrap_or_default())
+                    .collect()
+            })
+        })
+        .unwrap_or_default()
+}
+
+/// Count the number of non-overlapping matches.
+/// @param pattern Regular expression pattern.
+/// @param text String to search within.
+#[miniextendr]
+pub fn regex_count(pattern: &str, text: &str) -> i32 {
+    Regex::new(pattern)
+        .map(|re| re.find_iter(text).count() as i32)
+        .unwrap_or(0)
+}
+
+// endregion

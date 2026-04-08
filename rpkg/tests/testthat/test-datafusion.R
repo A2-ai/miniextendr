@@ -93,3 +93,35 @@ test_that("RDataFrame count works", {
 })
 
 # endregion
+
+# region: Upstream example-derived fixtures
+
+test_that("test_df_join performs SQL JOIN", {
+
+  left <- data.frame(id = 1:3, name = c("a", "b", "c"), stringsAsFactors = FALSE)
+  right <- data.frame(id = c(2L, 3L, 4L), val = c(20.0, 30.0, 40.0))
+  result <- test_df_join(left, right,
+    "SELECT left_t.id, left_t.name, right_t.val FROM left_t INNER JOIN right_t ON left_t.id = right_t.id ORDER BY left_t.id")
+  expect_equal(nrow(result), 2L)
+  expect_equal(result$id, c(2L, 3L))
+  expect_equal(result$val, c(20.0, 30.0))
+})
+
+test_that("test_df_window runs window functions", {
+
+  df <- data.frame(x = c(3L, 1L, 2L), y = c(30.0, 10.0, 20.0))
+  result <- test_df_window(df,
+    "SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as rn FROM t")
+  expect_equal(nrow(result), 3L)
+  expect_true("rn" %in% names(result))
+})
+
+test_that("test_df_subquery runs subquery", {
+
+  df <- data.frame(x = 1:5, y = c(10.0, 20.0, 30.0, 40.0, 50.0))
+  result <- test_df_subquery(df,
+    "SELECT * FROM t WHERE x IN (SELECT x FROM t WHERE y > 25) ORDER BY x")
+  expect_equal(result$x, c(3L, 4L, 5L))
+})
+
+# endregion
