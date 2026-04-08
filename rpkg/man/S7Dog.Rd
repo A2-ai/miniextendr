@@ -2,9 +2,9 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Dog}
 \alias{S7Dog}
-\alias{dog_breed}
+\alias{S7Dog-dog_breed}
 \alias{S7Dog$dog_breed}
-\alias{bark}
+\alias{S7Dog-bark}
 \alias{S7Dog$bark}
 \title{S7Dog S7 Class}
 \source{

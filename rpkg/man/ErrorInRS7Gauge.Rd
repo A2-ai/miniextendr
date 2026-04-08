@@ -2,13 +2,13 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{ErrorInRS7Gauge}
 \alias{ErrorInRS7Gauge}
-\alias{read_level}
+\alias{ErrorInRS7Gauge-read_level}
 \alias{ErrorInRS7Gauge$read_level}
-\alias{set_level}
+\alias{ErrorInRS7Gauge-set_level}
 \alias{ErrorInRS7Gauge$set_level}
-\alias{panic_method}
+\alias{ErrorInRS7Gauge-panic_method}
 \alias{ErrorInRS7Gauge$panic_method}
-\alias{failing_result}
+\alias{ErrorInRS7Gauge-failing_result}
 \alias{ErrorInRS7Gauge$failing_result}
 \title{S7 class for testing error_in_r with S7 class system}
 \source{

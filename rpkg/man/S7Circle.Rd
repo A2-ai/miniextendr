@@ -2,7 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Circle}
 \alias{S7Circle}
-\alias{circle_area}
+\alias{S7Circle-circle_area}
 \alias{S7Circle$circle_area}
 \title{S7Circle S7 Class}
 \source{
