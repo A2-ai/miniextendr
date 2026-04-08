@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1939
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 #' @title Rational vctrs S3 Class
@@ -48,7 +49,7 @@ vec_ptype2.Rational.Rational <- function(x, y, ...) x[0]
 vec_cast.Rational.Rational <- function(x, to, ...) x
 
 #' @title S3 generic for `numerator`
-#' S3 generic for `numerator`
+#' @description S3 generic for `numerator`
 #' @rdname Rational
 #' @name numerator
 #' @param x An object

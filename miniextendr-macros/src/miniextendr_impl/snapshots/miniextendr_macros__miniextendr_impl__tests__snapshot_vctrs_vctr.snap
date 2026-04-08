@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1918
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 #' @title Percent vctrs S3 Class
@@ -46,7 +47,7 @@ vec_ptype2.Percent.Percent <- function(x, y, ...) vctrs::new_vctr(double(), clas
 vec_cast.Percent.Percent <- function(x, to, ...) x
 
 #' @title S3 generic for `value`
-#' S3 generic for `value`
+#' @description S3 generic for `value`
 #' @rdname Percent
 #' @name value
 #' @param x An object
@@ -73,7 +74,7 @@ value.Percent <- function(x, ...) {
 }
 
 #' @title S3 generic for `scale`
-#' S3 generic for `scale`
+#' @description S3 generic for `scale`
 #' @rdname Percent
 #' @name scale
 #' @param x An object

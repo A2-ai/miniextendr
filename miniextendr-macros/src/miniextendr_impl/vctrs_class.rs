@@ -214,7 +214,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // vctrs protocol methods use existing generics from the vctrs package
         if !is_protocol && !ctx.has_generic_override() && !ctx.has_class_override() {
             lines.push(format!("#' @title S3 generic for `{}`", generic_name));
-            lines.push(format!("#' S3 generic for `{}`", generic_name));
+            lines.push(format!("#' @description S3 generic for `{}`", generic_name));
             lines.push(format!("#' @rdname {}", class_name));
             lines.push(format!("#' @name {}", generic_name));
             lines.push("#' @param x An object".to_string());

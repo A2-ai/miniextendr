@@ -269,7 +269,9 @@ pub fn expand_miniextendr_impl_trait(
 
     // TPIE: empty impl body → expand via macro_rules! helper from the trait definition
     if impl_item.items.is_empty() && !impl_attrs.blanket {
-        let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+        let doc_tags = crate::roxygen::strip_method_tags(crate::roxygen::roxygen_tags_from_attrs(
+            &impl_item.attrs,
+        ));
         let no_rd = crate::roxygen::has_roxygen_tag(&doc_tags, "noRd");
         return generate_tpie_invocation(
             &trait_path,

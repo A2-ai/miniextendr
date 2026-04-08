@@ -140,7 +140,9 @@ pub(super) fn generate_vtable_static(
         .collect();
 
     // Check if impl block has @noRd doc comment
-    let impl_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+    let impl_doc_tags = crate::roxygen::strip_method_tags(crate::roxygen::roxygen_tags_from_attrs(
+        &impl_item.attrs,
+    ));
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(&impl_doc_tags, "noRd");
 
     // Generate R wrapper code string based on class system (only non-skipped methods)

@@ -1973,7 +1973,9 @@ impl ParsedImpl {
             .filter(|attr| attr.path().is_ident("cfg"))
             .cloned()
             .collect();
-        let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs);
+        let doc_tags = crate::roxygen::strip_method_tags(crate::roxygen::roxygen_tags_from_attrs(
+            &item_impl.attrs,
+        ));
 
         Ok(ParsedImpl {
             type_ident,

@@ -231,7 +231,7 @@ fn generate_explicit_make_class(base_name: &str, ident: &syn::Ident) -> proc_mac
         let __cls = ::miniextendr_api::ffi::altrep::#make_fn(
             <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
             ::miniextendr_api::AltrepPkgName::as_ptr(),
-            core::ptr::null_mut(),
+            ::miniextendr_api::altrep_dll_info(),
         );
         ::miniextendr_api::altrep::validate_altrep_class(
             __cls,

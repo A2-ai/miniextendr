@@ -484,6 +484,25 @@ pub(crate) fn doc_conflict_warnings(
     proc_macro2::TokenStream::new()
 }
 
+/// Strip method-specific roxygen tags from impl-block-level doc tags.
+///
+/// Impl blocks can carry doc comments, but tags like `@param`, `@return`, `@returns`,
+/// and `@examples` are method-specific and meaningless at the impl-block level.
+/// This function removes those tags so they don't leak into class-level documentation.
+pub(crate) fn strip_method_tags(tags: Vec<String>) -> Vec<String> {
+    tags.into_iter()
+        .filter(|tag| {
+            let trimmed = tag.trim_start();
+            if let Some(rest) = trimmed.strip_prefix('@') {
+                let tag_name = rest.split_whitespace().next().unwrap_or("");
+                !matches!(tag_name, "param" | "return" | "returns" | "examples")
+            } else {
+                true
+            }
+        })
+        .collect()
+}
+
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.
 ///
 /// Returns a new vector of attributes with roxygen lines removed from doc comments.
