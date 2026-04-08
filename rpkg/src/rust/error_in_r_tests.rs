@@ -168,11 +168,11 @@ pub struct ErrorInRS7Gauge {
 }
 
 /// S7 class for testing error_in_r with S7 class system.
-/// @param x An object.
-/// @param ... Additional arguments.
+/// @param level Numeric gauge level.
 #[miniextendr(s7)]
 impl ErrorInRS7Gauge {
     /// Create a new gauge.
+    /// @param level Numeric gauge level.
     pub fn new(level: f64) -> Self {
         Self { level }
     }

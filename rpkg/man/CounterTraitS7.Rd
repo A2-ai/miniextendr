@@ -3,6 +3,7 @@
 \name{CounterTraitS7}
 \alias{CounterTraitS7}
 \alias{get_value}
+\alias{CounterTraitS7$get_value}
 \alias{s7_trait_MatrixCounter_custom_get}
 \alias{s7_trait_MatrixCounter_custom_add}
 \alias{CounterTraitS7$MatrixCounter$default_value}
@@ -22,6 +23,8 @@ S7 generic for trait method \code{MatrixCounter::custom_add}
 CounterTraitS7(v, .ptr = NULL)
 }
 \arguments{
+\item{v}{Initial counter value.}
+
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{

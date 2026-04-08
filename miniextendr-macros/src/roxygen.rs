@@ -484,6 +484,56 @@ pub(crate) fn doc_conflict_warnings(
     proc_macro2::TokenStream::new()
 }
 
+/// Filter out `@param` tags from impl-block roxygen tags and emit compile warnings.
+///
+/// `@param` on an impl block is meaningless — parameters belong on individual methods.
+/// When users put `@param` on impl blocks, the tags end up in the class-level Rd file
+/// where R CMD check warns about "documented arguments not in \\usage".
+///
+/// Returns the filtered tags and a TokenStream of deprecation warnings for each
+/// stripped `@param` tag. The caller should append the warnings to its output.
+pub(crate) fn strip_param_tags(
+    tags: &[String],
+    type_name: &str,
+    span: proc_macro2::Span,
+) -> (Vec<String>, proc_macro2::TokenStream) {
+    use quote::quote_spanned;
+
+    let mut filtered = Vec::new();
+    let mut warnings = proc_macro2::TokenStream::new();
+    let mut warning_id: usize = 0;
+
+    for tag in tags {
+        if tag
+            .trim_start()
+            .strip_prefix('@')
+            .is_some_and(|rest| rest.starts_with("param"))
+        {
+            let msg = format!(
+                "miniextendr: @param on impl block `{}` has no effect — move it to the method. Tag: {}",
+                type_name,
+                tag.trim()
+            );
+            let ident = quote::format_ident!(
+                "_MINIEXTENDR_IMPL_PARAM_WARN_{}_{}",
+                type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
+                warning_id
+            );
+            warning_id += 1;
+            warnings.extend(quote_spanned! { span =>
+                #[deprecated(note = #msg)]
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                const #ident: () = ();
+            });
+        } else {
+            filtered.push(tag.clone());
+        }
+    }
+
+    (filtered, warnings)
+}
+
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.
 ///
 /// Returns a new vector of attributes with roxygen lines removed from doc comments.

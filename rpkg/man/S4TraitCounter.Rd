@@ -4,6 +4,7 @@
 \name{S4TraitCounter}
 \alias{S4TraitCounter}
 \alias{s4_get_value}
+\alias{s4_get_value,S4TraitCounter-method}
 \alias{S4TraitCounter_new_s4trait}
 \alias{s4_trait_Counter_value}
 \alias{s4_trait_Counter_value,S4TraitCounter-method}
@@ -44,6 +45,8 @@ S4TraitCounter_Counter_default_initial()
 S4TraitCounter_Counter_MAX_VALUE()
 }
 \arguments{
+\item{initial}{(undocumented)}
+
 \item{x}{A \code{S4TraitCounter} object}
 
 \item{...}{Additional arguments passed to methods}

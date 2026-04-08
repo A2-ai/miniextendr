@@ -10,7 +10,7 @@ pub struct S4Counter {
 }
 
 /// S4 counter class with setMethod dispatches for constructor, accessor, and mutation.
-/// @param initial Integer initial counter value.
+/// @aliases s4_add,S4Counter-method s4_get_value,S4Counter-method s4_inc,S4Counter-method s4_value,S4Counter-method
 #[miniextendr(s4)]
 impl S4Counter {
     /// Creates a new counter with the given initial value.
@@ -31,6 +31,7 @@ impl S4Counter {
     }
 
     /// Adds the given amount to the counter and returns the new value.
+    /// @param amount Integer amount to add.
     pub fn add(&mut self, amount: i32) -> i32 {
         self.value += amount;
         self.value

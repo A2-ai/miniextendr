@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1787
 expression: generate_env_r_wrapper(&parsed)
 ---
 #' @title Widget  Class

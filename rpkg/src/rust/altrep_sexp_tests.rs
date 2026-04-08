@@ -1,6 +1,6 @@
 use miniextendr_api::IntoR;
 use miniextendr_api::altrep_sexp::{AltrepSexp, ensure_materialized};
-use miniextendr_api::ffi::{self, SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::ffi::{SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::miniextendr;
 
 /// Check if a SEXP is ALTREP and return info about it.
@@ -14,7 +14,7 @@ use miniextendr_api::miniextendr;
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "C-unwind" fn C_altrep_sexp_check(x: SEXP) -> SEXP {
-    let is_altrep = unsafe { ffi::ALTREP(x) } != 0;
+    let is_altrep = x.is_altrep();
     let sexptype = x.type_of();
     let len = (x.xlength()) as usize;
 

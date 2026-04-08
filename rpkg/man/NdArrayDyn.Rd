@@ -92,10 +92,6 @@ NdArrayDyn
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{shape}{Integer vector specifying array dimensions.}
-
-\item{data}{Numeric vector of array elements.}
 }
 \description{
 NdArrayDyn methods: N-dimensional array operations, indexing, and reshaping

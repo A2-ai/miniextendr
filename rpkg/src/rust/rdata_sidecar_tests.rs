@@ -90,13 +90,13 @@ pub struct SidecarR6 {
 }
 
 /// R6 class registration for SidecarR6 with active binding sidecar accessors.
-/// @param value Integer sidecar field.
-/// @param label Character sidecar field.
 /// @field value Integer sidecar field (active binding).
 /// @field label Character sidecar field (active binding).
 #[miniextendr(r6(r_data_accessors))]
 impl SidecarR6 {
     /// Create a new SidecarR6 with initial values.
+    /// @param value Integer sidecar field.
+    /// @param label Character sidecar field.
     pub fn new(value: i32, label: String) -> Self {
         SidecarR6 {
             _r: RSidecar,
@@ -211,12 +211,12 @@ pub struct SidecarS7 {
 }
 
 /// S7 class registration for SidecarS7 with property-based sidecar accessors.
-/// @param prop_int Integer sidecar field.
-/// @param prop_flag Logical sidecar field.
-/// @param prop_name Character sidecar field.
 #[miniextendr(s7(r_data_accessors))]
 impl SidecarS7 {
     /// Create a new SidecarS7 with initial values.
+    /// @param prop_int Integer sidecar field.
+    /// @param prop_flag Logical sidecar field.
+    /// @param prop_name Character sidecar field.
     pub fn new(prop_int: i32, prop_flag: bool, prop_name: String) -> Self {
         SidecarS7 {
             _r: RSidecar,

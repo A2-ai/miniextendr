@@ -10,10 +10,10 @@ pub struct ReceiverCounter {
 }
 
 /// Env-style counter class with constructor, accessor, and mutation methods.
-/// @param initial Integer initial counter value.
 #[miniextendr(env)]
 impl ReceiverCounter {
     /// Creates a new counter with the given initial value.
+    /// @param initial Integer initial counter value.
     pub fn new(initial: i32) -> Self {
         ReceiverCounter { value: initial }
     }

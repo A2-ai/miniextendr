@@ -66,6 +66,7 @@ pub struct CounterTraitS3 {
 
 #[miniextendr(s3)]
 impl CounterTraitS3 {
+    /// @param v Initial counter value.
     pub fn new(v: i32) -> Self {
         Self { value: v }
     }
@@ -99,6 +100,7 @@ pub struct CounterTraitS4 {
 
 #[miniextendr(s4)]
 impl CounterTraitS4 {
+    /// @param v Initial counter value.
     pub fn new(v: i32) -> Self {
         Self { value: v }
     }
@@ -134,6 +136,7 @@ pub struct CounterTraitS7 {
 
 #[miniextendr(s7)]
 impl CounterTraitS7 {
+    /// @param v Initial counter value.
     pub fn new(v: i32) -> Self {
         Self { value: v }
     }

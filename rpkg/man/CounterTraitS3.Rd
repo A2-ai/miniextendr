@@ -4,7 +4,6 @@
 \name{CounterTraitS3}
 \alias{CounterTraitS3}
 \alias{new_countertraits3}
-\alias{get_value}
 \alias{get_value.CounterTraitS3}
 \alias{custom_get.CounterTraitS3}
 \alias{custom_add.CounterTraitS3}
@@ -38,6 +37,8 @@ CounterTraitS3
 \method{custom_add}{CounterTraitS3}(x, n, ...)
 }
 \arguments{
+\item{v}{Initial counter value.}
+
 \item{x}{An object}
 
 \item{...}{Additional arguments passed to methods}

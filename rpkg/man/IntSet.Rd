@@ -10,7 +10,7 @@
 \alias{IntSet$RToVec$len}
 \alias{IntSet$RToVec$is_empty}
 \alias{IntSet$RFromIter$from_vec}
-\title{IntSet inherent methods: membership test}
+\title{IntSet  Class}
 \format{
 An object of class \code{environment} of length 3.
 }
@@ -30,10 +30,12 @@ IntSet
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{value}{Integer value to check for membership.}
 }
 \description{
-IntSet inherent methods: membership test
+IntSet  Class
+
+\describe{
+\item{\code{value}}{Integer value to check for membership.}
+}
 }
 \keyword{datasets}
