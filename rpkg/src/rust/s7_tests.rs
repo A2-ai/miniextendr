@@ -10,10 +10,10 @@ pub struct S7Counter {
 }
 
 /// S7 counter class with new_generic method dispatch.
-/// @param initial Integer initial counter value.
 #[miniextendr(s7)]
 impl S7Counter {
     /// Creates a new counter with the given initial value.
+    /// @param initial Integer initial counter value.
     pub fn new(initial: i32) -> Self {
         S7Counter { value: initial }
     }
@@ -52,11 +52,11 @@ pub struct S7Range {
 }
 
 /// S7 range class demonstrating computed and dynamic properties.
-/// @param start Numeric start of the range.
-/// @param end Numeric end of the range.
 #[miniextendr(s7)]
 impl S7Range {
     /// Creates a new range with the given start and end values.
+    /// @param start Numeric start of the range.
+    /// @param end Numeric end of the range.
     pub fn new(start: f64, end: f64) -> Self {
         S7Range { start, end }
     }
@@ -112,12 +112,12 @@ pub struct S7Config {
 }
 
 /// S7 config class demonstrating default, required, and deprecated properties.
-/// @param name Character name (required property).
-/// @param score Numeric score (property with default).
-/// @param version Integer version number.
 #[miniextendr(s7)]
 impl S7Config {
     /// Creates a new config.
+    /// @param name Character name (required property).
+    /// @param score Numeric score (property with default).
+    /// @param version Integer version number.
     pub fn new(name: String, score: f64, version: i32) -> Self {
         S7Config {
             name,
@@ -163,9 +163,9 @@ pub struct S7Strict {
 }
 
 /// S7 class demonstrating strict generic dispatch (no_dots) and fallback.
-/// @param value Integer value to store.
 #[miniextendr(s7)]
 impl S7Strict {
+    /// @param value Integer value to store.
     pub fn new(value: i32) -> Self {
         S7Strict { value }
     }
@@ -194,9 +194,9 @@ pub struct S7Celsius {
 }
 
 /// S7 Celsius temperature class (convert_to target for Fahrenheit).
-/// @param value Numeric temperature in Celsius.
 #[miniextendr(s7)]
 impl S7Celsius {
+    /// @param value Numeric temperature in Celsius.
     pub fn new(value: f64) -> Self {
         S7Celsius { value }
     }
@@ -215,9 +215,9 @@ pub struct S7Fahrenheit {
 }
 
 /// S7 Fahrenheit temperature class with convert_from and convert_to methods.
-/// @param value Numeric temperature in Fahrenheit.
 #[miniextendr(s7)]
 impl S7Fahrenheit {
+    /// @param value Numeric temperature in Fahrenheit.
     pub fn new(value: f64) -> Self {
         S7Fahrenheit { value }
     }
@@ -253,10 +253,10 @@ pub struct S7Shape {
 }
 
 /// S7 abstract base shape class for inheritance testing.
-/// @param name Character name of the shape.
 #[miniextendr(s7(abstract))]
 impl S7Shape {
     /// Creates a new shape.
+    /// @param name Character name of the shape.
     pub fn new(name: String) -> Self {
         S7Shape { name }
     }
@@ -274,10 +274,10 @@ pub struct S7Circle {
 }
 
 /// S7 concrete circle class inheriting from S7Shape.
-/// @param radius Numeric radius of the circle.
 #[miniextendr(s7(parent = "S7Shape"))]
 impl S7Circle {
     /// Creates a new circle.
+    /// @param radius Numeric radius of the circle.
     pub fn new(radius: f64) -> Self {
         S7Circle { radius }
     }
@@ -299,10 +299,10 @@ pub struct S7Animal {
 }
 
 /// S7 abstract animal base class for multi-level inheritance testing.
-/// @param kind Character kind of animal.
-/// @param legs Integer number of legs.
 #[miniextendr(s7(abstract))]
 impl S7Animal {
+    /// @param kind Character kind of animal.
+    /// @param legs Integer number of legs.
     pub fn new(kind: String, legs: i32) -> Self {
         S7Animal { kind, legs }
     }
@@ -326,9 +326,9 @@ pub struct S7Dog {
 }
 
 /// S7 dog class inheriting from S7Animal (mid-level in chain).
-/// @param breed Character breed of the dog.
 #[miniextendr(s7(parent = "S7Animal"))]
 impl S7Dog {
+    /// @param breed Character breed of the dog.
     pub fn new(breed: String) -> Self {
         S7Dog { breed }
     }
@@ -351,9 +351,9 @@ pub struct S7GoldenRetriever {
 }
 
 /// S7 golden retriever class (leaf-level in 3-level inheritance chain).
-/// @param name Character name of the dog.
 #[miniextendr(s7(parent = "S7Dog"))]
 impl S7GoldenRetriever {
+    /// @param name Character name of the dog.
     pub fn new(name: String) -> Self {
         S7GoldenRetriever { name }
     }

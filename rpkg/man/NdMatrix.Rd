@@ -89,12 +89,6 @@ NdMatrix
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{nrow}{Integer number of rows.}
-
-\item{ncol}{Integer number of columns.}
-
-\item{data}{Numeric vector of matrix elements (in row-major order).}
 }
 \description{
 NdMatrix methods: 2D numeric matrix operations, row/col access, and conversion

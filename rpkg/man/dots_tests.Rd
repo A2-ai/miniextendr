@@ -63,9 +63,7 @@ greetings_last_as_named_and_unused_dots(exclamations, ...)
 \arguments{
 \item{...}{Additional arguments (captured but unused).}
 
-\item{exclamations}{(no documentation available)}
-
-\item{_exclamations}{Integer count of exclamation marks.}
+\item{exclamations}{Integer count of exclamation marks.}
 }
 \description{
 Dots (\code{...}) handling tests

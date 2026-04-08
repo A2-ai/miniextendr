@@ -4,17 +4,11 @@
 \name{AsCoerceTestData}
 \alias{AsCoerceTestData}
 \alias{new_ascoercetestdata}
-\alias{len}
 \alias{len.AsCoerceTestData}
-\alias{as_data_frame}
 \alias{as_data_frame.AsCoerceTestData}
-\alias{as_list}
 \alias{as_list.AsCoerceTestData}
-\alias{as_character}
 \alias{as_character.AsCoerceTestData}
-\alias{as_numeric}
 \alias{as_numeric.AsCoerceTestData}
-\alias{as_integer}
 \alias{as_integer.AsCoerceTestData}
 \alias{as.data.frame.AsCoerceTestData}
 \alias{as.list.AsCoerceTestData}

@@ -3785,7 +3785,7 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
   if test ! -f "$_tarball"; then
     if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
       mkdir -p "$abs_rpkg_dir/inst"
-      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
+                        tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
       echo "configure: created inst/vendor.tar.xz"
     fi
   fi

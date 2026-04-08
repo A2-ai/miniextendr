@@ -10,7 +10,7 @@
 \alias{ChainedError$RError$error_message}
 \alias{ChainedError$RError$error_chain}
 \alias{ChainedError$RError$error_chain_length}
-\title{ChainedError inherent methods: constructors with and without source errors}
+\title{ChainedError  Class}
 \format{
 An object of class \code{environment} of length 3.
 }
@@ -32,12 +32,13 @@ ChainedError
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{outer_msg}{Character string for the outer error message.}
-
-\item{inner_msg}{Character string for the inner (source) error message.}
 }
 \description{
-ChainedError inherent methods: constructors with and without source errors
+ChainedError  Class
+
+\describe{
+\item{\code{outer_msg}}{Character string for the outer error message.}
+\item{\code{inner_msg}}{Character string for the inner (source) error message.}
+}
 }
 \keyword{datasets}

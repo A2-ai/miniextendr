@@ -74,8 +74,6 @@ NdIntVec
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{data}{Integer vector of array elements.}
 }
 \description{
 NdIntVec methods: 1D integer array operations, slicing, and conversion

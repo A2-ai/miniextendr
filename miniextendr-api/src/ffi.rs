@@ -2111,7 +2111,9 @@ unsafe extern "C-unwind" {
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
 
     /// Check if a SEXP is an ALTREP object (returns non-zero if true).
-    pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
+    ///
+    /// Use `SexpExt::is_altrep()` instead of calling this directly.
+    fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // endregion
 
@@ -2120,26 +2122,34 @@ unsafe extern "C-unwind" {
     /// Get mutable pointer to logical vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
+    /// Get mutable pointer to logical vector data.
+    ///
+    /// For ALTREP vectors, this may force materialization.
+    /// Prefer `SexpExt::set_logical_elt()` / `SexpExt::logical_elt()`.
     pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
 
     /// Get mutable pointer to integer vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
+    /// Prefer `SexpExt::set_integer_elt()` / `SexpExt::integer_elt()`.
     pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
 
     /// Get mutable pointer to real vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
+    /// Prefer `SexpExt::set_real_elt()` / `SexpExt::real_elt()`.
     pub fn REAL(x: SEXP) -> *mut f64;
 
     /// Get mutable pointer to complex vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
+    /// Prefer `SexpExt::set_complex_elt()` / `SexpExt::complex_elt()`.
     pub(crate) fn COMPLEX(x: SEXP) -> *mut Rcomplex;
 
     /// Get mutable pointer to raw vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
+    /// Prefer `SexpExt::set_raw_elt()` / `SexpExt::raw_elt()`.
     pub fn RAW(x: SEXP) -> *mut Rbyte;
 
     // endregion

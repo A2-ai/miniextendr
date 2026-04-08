@@ -5,7 +5,7 @@
 ^vendor$
 
 # Vendored Makefiles with GNU extensions (not used by R package build)
-^vendor/r-efi/Makefile$
+^vendor/r-efi.*/Makefile$
 
 # Build artifacts and generated files
 ^src/rust/target$

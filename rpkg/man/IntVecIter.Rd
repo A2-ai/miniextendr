@@ -11,7 +11,7 @@
 \alias{IntVecIter$RIterator$collect_n}
 \alias{IntVecIter$RIterator$skip}
 \alias{IntVecIter$RIterator$nth}
-\title{IntVecIter inherent methods: constructor from integer vector}
+\title{IntVecIter  Class}
 \format{
 An object of class \code{environment} of length 2.
 }
@@ -31,10 +31,12 @@ IntVecIter
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{data}{Integer vector of elements to iterate over.}
 }
 \description{
-IntVecIter inherent methods: constructor from integer vector
+IntVecIter  Class
+
+\describe{
+\item{\code{data}}{Integer vector of elements to iterate over.}
+}
 }
 \keyword{datasets}

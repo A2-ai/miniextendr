@@ -33,8 +33,6 @@ MyFloat
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{value}{Numeric value for the float wrapper.}
 }
 \description{
 MyFloat inherent methods: constructor and accessor

@@ -105,7 +105,7 @@
 //! `main_thread` is explicitly requested.
 
 use proc_macro2::TokenStream;
-use quote::format_ident;
+use quote::{ToTokens, format_ident};
 use syn::ItemImpl;
 
 use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
@@ -269,17 +269,23 @@ pub fn expand_miniextendr_impl_trait(
 
     // TPIE: empty impl body → expand via macro_rules! helper from the trait definition
     if impl_item.items.is_empty() && !impl_attrs.blanket {
-        let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+        let raw_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+        let (doc_tags, param_warnings) = crate::roxygen::strip_param_tags(
+            &raw_tags,
+            &concrete_type.to_token_stream().to_string(),
+            impl_item.impl_token.span,
+        );
         let no_rd = crate::roxygen::has_roxygen_tag(&doc_tags, "noRd");
-        return generate_tpie_invocation(
+        let mut output = generate_tpie_invocation(
             &trait_path,
             &concrete_type,
             impl_attrs.class_system,
             no_rd,
             impl_attrs.internal,
             impl_attrs.noexport,
-        )
-        .into();
+        );
+        output.extend(param_warnings);
+        return output.into();
     }
 
     // Generate the vtable static and R wrappers

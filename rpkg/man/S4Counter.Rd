@@ -3,7 +3,10 @@
 \docType{class}
 \name{S4Counter}
 \alias{S4Counter}
-\alias{new}
+\alias{s4_add,S4Counter-method}
+\alias{s4_get_value,S4Counter-method}
+\alias{s4_inc,S4Counter-method}
+\alias{s4_value,S4Counter-method}
 \alias{s4_value}
 \alias{s4_inc}
 \alias{s4_add}
@@ -34,8 +37,6 @@ S4Counter_default_counter()
 Returns the current value.
 
 Increments the counter by 1 and returns the new value.
-
-Adds the given amount to the counter and returns the new value.
 
 A static method that returns a default counter (value = 0).
 }

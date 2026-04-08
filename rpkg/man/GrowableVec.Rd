@@ -12,7 +12,7 @@
 \alias{GrowableVec$RExtend$extend_from_vec}
 \alias{GrowableVec$RExtend$len}
 \alias{GrowableVec$RExtend$is_empty}
-\title{GrowableVec inherent methods: constructors, conversion, and clearing}
+\title{GrowableVec  Class}
 \format{
 An object of class \code{environment} of length 5.
 }
@@ -38,10 +38,12 @@ GrowableVec
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
-
-\item{data}{Integer vector of initial elements.}
 }
 \description{
-GrowableVec inherent methods: constructors, conversion, and clearing
+GrowableVec  Class
+
+\describe{
+\item{\code{data}}{Integer vector of initial elements.}
+}
 }
 \keyword{datasets}

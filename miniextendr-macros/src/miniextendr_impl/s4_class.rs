@@ -69,8 +69,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(ctx) = parsed_impl.constructor_context() {
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
+            // Use class name as @name to avoid duplicate "new" alias across S4 classes
             let method_doc =
-                MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags);
+                MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
+                    .with_r_params(&ctx.params)
+                    .with_r_name(class_name.clone());
             lines.extend(method_doc.build());
         }
         // Export the constructor function so users can create instances (if class should be exported)
@@ -119,10 +122,16 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Documentation for the generic - skip if class has @noRd
+        // Use bare generic @name so the generic gets an \alias in the Rd file.
+        // Without this, R CMD check warns "Undocumented code objects: s4_xxx".
         if !class_has_no_rd {
             let method_doc =
-                MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags);
-            lines.extend(method_doc.build());
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags)
+                    .with_suppress_params();
+            let mut doc_lines = method_doc.build();
+            // Add S4 method-specific alias so R CMD check finds the documented method
+            doc_lines.push(format!("#' @aliases {},{}-method", method_name, class_name));
+            lines.extend(doc_lines);
         }
 
         // Define generic only if it doesn't already exist. Unconditional setGeneric()
@@ -214,6 +223,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !class_has_no_rd {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_r_params(&ctx.params)
                     .with_r_name(fn_name.clone());
             lines.extend(method_doc.build());
         }

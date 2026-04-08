@@ -36,13 +36,13 @@ pub fn greetings_with_nameless_dots(_dots: ...) {}
 // fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
 
 /// Test dots as the last parameter with a named but unused dots argument.
-/// @param _exclamations Integer count of exclamation marks.
+/// @param exclamations Integer count of exclamation marks.
 /// @param ... Additional arguments (captured but unused).
 #[miniextendr]
 pub fn greetings_last_as_named_and_unused_dots(_exclamations: i32, _dots: ...) {}
 
 /// Test dots as the last parameter with a named dots argument.
-/// @param _exclamations Integer count of exclamation marks.
+/// @param exclamations Integer count of exclamation marks.
 /// @param ... Additional arguments (captured as dots).
 #[miniextendr]
 pub fn greetings_last_as_named_dots(_exclamations: i32, dots: ...) {
@@ -50,7 +50,7 @@ pub fn greetings_last_as_named_dots(_exclamations: i32, dots: ...) {
 }
 
 /// Test dots as the last parameter with nameless dots.
-/// @param _exclamations Integer count of exclamation marks.
+/// @param exclamations Integer count of exclamation marks.
 /// @param ... Additional arguments (captured but unused).
 #[miniextendr]
 pub fn greetings_last_as_nameless_dots(_exclamations: i32, _dots: ...) {}
