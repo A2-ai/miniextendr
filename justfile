@@ -47,6 +47,10 @@
 #     just bench-lint         - Lint scan performance
 #     just bench-check        - Check benchmark crate compiles
 #
+#   Documentation site:
+#     just site-build          - Build Zola site
+#     just site-serve          - Local preview server
+#
 #   Vendor sync:
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
@@ -838,3 +842,13 @@ revendor-test:
 # Run cargo-revendor tests (including network tests)
 revendor-test-all:
     cargo test --manifest-path cargo-revendor/Cargo.toml -- --include-ignored --test-threads=1
+
+# ── Documentation site ──────────────────────────────────────────────────────
+
+# Build Zola site (output in site/public/)
+site-build:
+    cd site && zola build
+
+# Local preview server (http://127.0.0.1:1111)
+site-serve:
+    cd site && zola serve

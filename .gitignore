@@ -26,3 +26,6 @@ background/
 # devtools::check output directory
 rpkg-check-output/
 dvs_reviews/
+
+# Zola site build output
+site/public/

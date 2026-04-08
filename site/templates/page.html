@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} &mdash; miniextendr{% endblock %}
+
+{% block content %}
+{% set section = get_section(path="_index.md") %}
+<div class="docs-layout">
+    <aside class="sidebar">
+        <ul>
+        {% for p in section.pages %}
+            <li class="{% if current_path == p.path %}active{% endif %}">
+                <a href="{{ p.permalink }}">{{ p.title }}</a>
+            </li>
+        {% endfor %}
+        </ul>
+    </aside>
+    <article class="doc-content">
+        <header class="page-header">
+            <h1>{{ page.title }}</h1>
+            {% if page.description %}
+            <p class="page-description">{{ page.description }}</p>
+            {% endif %}
+        </header>
+        <div class="page-body">
+            {{ page.content | safe }}
+        </div>
+    </article>
+</div>
+{% endblock %}

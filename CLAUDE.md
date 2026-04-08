@@ -92,6 +92,7 @@ miniextendr/
 ├── tests/cross-package/  # Cross-package trait ABI tests
 │   ├── producer.pkg/     # Exports types with TypedExternal
 │   └── consumer.pkg/     # Imports and uses those types
+├── site/                 # Zola documentation website (deployed to GitHub Pages)
 └── background/           # Reference docs (gitignored, R Internals, etc.)
 ```
 
@@ -113,6 +114,10 @@ just vendor             # Vendor deps for CRAN release prep (creates inst/vendor
 just rcmdinstall        # Build and install `library(miniextendr)` package in `rpkg` directory
 just devtools-test      # Run R tests
 just devtools-document  # Run roxygen2 (NAMESPACE + man pages)
+
+# Documentation site
+just site-build         # Build Zola site (output in site/public/)
+just site-serve         # Local preview at http://127.0.0.1:1111
 
 # Full R CMD check workflow
 just configure          # 1. Configure (generates Makevars, etc.)
@@ -409,6 +414,61 @@ Key paths in R source:
 | `vectorwindow-main/` | Vector windowing/views via ALTREP |
 
 **Always check `background/` for R API details before guessing.**
+
+## Documentation Site
+
+The `site/` directory contains a [Zola](https://www.getzola.org/) static site deployed to GitHub Pages at `https://cgmossa.github.io/miniextendr/`.
+
+### Structure
+
+```
+site/
+├── config.toml          # Zola config (base_url, title, search, anchor links)
+├── templates/           # Tera templates (base, index, page with sidebar, section)
+├── static/css/style.css # Tokyonight dark theme
+├── static/js/search.js  # Elasticlunr search integration
+└── content/             # Markdown pages with TOML frontmatter (+++ ... +++)
+```
+
+### Adding/editing content
+
+Content pages use Zola's TOML frontmatter:
+
+```markdown
++++
+title = "Page Title"
+weight = 5
+description = "One-line summary for cards and meta tags"
++++
+
+Markdown body here.
+```
+
+`weight` controls sort order on the homepage card grid and sidebar. Lower weights appear first.
+
+### Local preview
+
+```bash
+just site-serve   # http://127.0.0.1:1111 with live reload
+just site-build   # One-shot build to site/public/
+```
+
+### Deployment
+
+GitHub Actions (`.github/workflows/pages.yml`) auto-deploys on push to `main` when `site/**` or `*/src/**` changes. The workflow:
+
+1. Builds **rustdoc** (`cargo doc --no-deps --workspace`)
+2. Builds the **Zola site**
+3. Copies rustdoc into `site/public/rustdoc/`
+4. Deploys the combined output to GitHub Pages
+
+Rustdoc API reference is at `https://cgmossa.github.io/miniextendr/rustdoc/miniextendr_api/`.
+
+Manual deploy via `workflow_dispatch` is also available.
+
+### Content vs docs/
+
+`site/content/` pages are user-facing documentation derived from `docs/`. They are curated summaries -- not 1:1 copies. When updating `docs/`, check if the corresponding `site/content/` page needs updating too.
 
 ## Sync Checks
 
