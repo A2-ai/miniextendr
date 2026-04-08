@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ config.title }}{% endblock %}</title>
+    {% if page is defined and page.description %}
+    <meta name="description" content="{{ page.description }}">
+    {% elif section is defined and section.description %}
+    <meta name="description" content="{{ section.description }}">
+    {% else %}
+    <meta name="description" content="{{ config.description }}">
+    {% endif %}
+    <link rel="stylesheet" href="{{ get_url(path='css/style.css') }}">
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="{{ config.base_url }}" class="logo">miniextendr</a>
+            <div class="nav-links">
+                <a href="{{ get_url(path='@/getting-started.md') }}">Get Started</a>
+                <a href="{{ get_url(path='@/architecture.md') }}">Architecture</a>
+                <a href="{{ config.base_url }}/rustdoc/miniextendr_api/">API Docs</a>
+                <a href="{{ config.extra.repo_url }}">GitHub</a>
+                <div class="search-container">
+                    <input id="search" type="search" placeholder="Search docs...">
+                    <div class="search-results">
+                        <div class="search-results__items"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>miniextendr &mdash; <a href="{{ config.extra.repo_url }}">GitHub</a></p>
+    </footer>
+    <script src="{{ get_url(path='elasticlunr.min.js') }}"></script>
+    <script src="{{ get_url(path='js/search.js') }}"></script>
+</body>
+</html>

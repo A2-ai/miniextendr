@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title | default(value="miniextendr") }}{% endblock %}
+
+{% block content %}
+<div class="content">
+    {{ section.content | safe }}
+    {% for page in section.pages %}
+    <div class="page-link">
+        <h2><a href="{{ page.permalink }}">{{ page.title }}</a></h2>
+        {% if page.description %}
+        <p>{{ page.description }}</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

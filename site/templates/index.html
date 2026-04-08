@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}miniextendr &mdash; Rust-R interoperability framework{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>miniextendr</h1>
+    <p class="tagline">Build R packages with Rust backends</p>
+    <div class="stats">
+        <div class="stat"><span class="num">5</span><span class="label">class systems</span></div>
+        <div class="stat"><span class="num">ALTREP</span><span class="label">zero-copy vectors</span></div>
+        <div class="stat"><span class="num">CRAN</span><span class="label">ready</span></div>
+    </div>
+</div>
+<div class="content">
+    {{ section.content | safe }}
+</div>
+<section class="docs-section">
+    <p class="eyebrow">Documentation</p>
+    <p class="docs-lead">
+        Start with Getting Started if you're new.
+        Architecture explains how everything fits together.
+        The remaining pages cover specific subsystems.
+    </p>
+    <div class="docs-grid">
+        {% for page in section.pages %}
+        <a class="doc-card" href="{{ page.permalink }}">
+            <h2>{{ page.title }}</h2>
+            {% if page.description %}
+            <p>{{ page.description }}</p>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
