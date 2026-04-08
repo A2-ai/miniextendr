@@ -7,7 +7,7 @@
 //!
 //! Since R's C API for S4 slot access (`R_has_slot`, `R_do_slot`,
 //! `R_do_slot_assign`) is not exposed in miniextendr's FFI bindings,
-//! these helpers use R expression evaluation via [`RCall`](crate::expression::RCall)
+//! these helpers use R expression evaluation via [`RCall`]
 //! as a fallback.
 //!
 //! All functions require being called from the R main thread and operate

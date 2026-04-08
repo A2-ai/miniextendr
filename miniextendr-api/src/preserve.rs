@@ -1,5 +1,5 @@
 //! **Deprecated**: Use [`ProtectPool`](crate::protect_pool::ProtectPool) or
-//! [`R_PreserveObject`](crate::ffi::R_PreserveObject) instead. This module
+//! [`R_PreserveObject`] instead. This module
 //! remains for benchmark comparisons only. See `analysis/gc-protection-benchmarks-results.md`.
 //!
 //! R object preservation using a circular doubly-linked list.

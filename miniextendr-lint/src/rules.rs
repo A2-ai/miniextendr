@@ -1,8 +1,8 @@
 //! Lint rule implementations.
 //!
 //! Each submodule contains one or more related lint checks. All rules operate
-//! on the shared [`CrateIndex`](crate::crate_index::CrateIndex) and produce
-//! [`Diagnostic`](crate::diagnostic::Diagnostic) values.
+//! on the shared [`CrateIndex`] and produce
+//! [`Diagnostic`] values.
 
 pub mod export_attrs;
 pub mod ffi_unchecked;

@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! Thin wrapper around R list (`VECSXP`).
 //!
 //! Provides safe construction from Rust values and typed extraction.

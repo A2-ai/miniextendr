@@ -20,7 +20,7 @@
 //! instead (7.4 ns/op, zero allocation, LIFO bulk cleanup).
 //!
 //! For a few long-lived objects that are never released in a loop (like ExternalPtr),
-//! use [`R_PreserveObject`](crate::ffi::R_PreserveObject) directly (13 ns/op, zero
+//! use [`R_PreserveObject`] directly (13 ns/op, zero
 //! Rust-side bookkeeping).
 //!
 //! # Architecture

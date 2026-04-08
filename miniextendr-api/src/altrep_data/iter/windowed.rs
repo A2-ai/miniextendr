@@ -10,7 +10,7 @@ use crate::altrep_data::{AltIntegerData, AltRealData, AltrepLen, InferBase, fill
 
 /// Core state for windowed iterator-backed ALTREP vectors.
 ///
-/// Like [`IterState`], but only keeps a sliding window of elements in memory.
+/// Like [`super::IterState`], but only keeps a sliding window of elements in memory.
 /// Sequential access within the window is O(1). Access outside the window
 /// materializes the entire vector (falling back to full caching).
 ///
@@ -224,7 +224,7 @@ where
 
 /// Windowed iterator-backed integer vector data.
 ///
-/// Like [`IterIntData`], but only keeps a sliding window of elements in memory.
+/// Like [`super::IterIntData`], but only keeps a sliding window of elements in memory.
 /// Sequential forward access within the window is O(1). Access outside the
 /// window triggers full materialization.
 pub struct WindowedIterIntData<I: Iterator<Item = i32>> {
@@ -339,7 +339,7 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger
 
 /// Windowed iterator-backed real (f64) vector data.
 ///
-/// Like [`IterRealData`], but only keeps a sliding window of elements in memory.
+/// Like [`super::IterRealData`], but only keeps a sliding window of elements in memory.
 /// Sequential forward access within the window is O(1). Access outside the
 /// window triggers full materialization.
 pub struct WindowedIterRealData<I: Iterator<Item = f64>> {

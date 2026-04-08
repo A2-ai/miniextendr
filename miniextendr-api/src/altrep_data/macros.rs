@@ -5,7 +5,7 @@
 //! parameters (`RBase` variant, `R_make_alt*_class` function, `install_*` function).
 //!
 //! These macros are used by the `#[derive(Altrep)]` proc macro and by the
-//! built-in type implementations in [`super::builtins`].
+//! built-in type implementations in `super::builtins`.
 
 /// Parametric implementation of `InferBase` for any ALTREP family.
 ///

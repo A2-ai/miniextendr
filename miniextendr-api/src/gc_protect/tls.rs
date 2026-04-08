@@ -190,14 +190,14 @@ pub fn scope_depth() -> usize {
 
 /// A rooted SEXP from TLS protection.
 ///
-/// This is similar to [`Root`] but without a compile-time lifetime tie to
+/// This is similar to [`super::Root`] but without a compile-time lifetime tie to
 /// the scope. The protection is valid as long as the enclosing
 /// [`with_protect_scope`] block hasn't exited.
 ///
 /// # Warning
 ///
 /// Using a `TlsRoot` after its scope has exited is undefined behavior.
-/// The compile-time lifetime checking of [`Root`] is safer; use TLS
+/// The compile-time lifetime checking of [`super::Root`] is safer; use TLS
 /// convenience only when necessary.
 #[derive(Clone, Copy)]
 pub struct TlsRoot {

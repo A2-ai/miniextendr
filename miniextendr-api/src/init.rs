@@ -1,6 +1,6 @@
 //! Package initialization for miniextendr R packages.
 //!
-//! [`package_init`] consolidates all initialization steps that were previously
+//! [`package_init`](crate::init::package_init) consolidates all initialization steps that were previously
 //! scattered across `entrypoint.c.in`. The `miniextendr_init!` proc macro
 //! generates the `R_init_*` entry point that calls this function.
 //!
@@ -13,7 +13,7 @@
 //! ```
 //!
 //! This expands to an `extern "C-unwind" fn R_init_mypkg(dll)` that calls
-//! [`package_init`] with the appropriate package name.
+//! [`package_init`](crate::init::package_init) with the appropriate package name.
 
 use crate::ffi::{DllInfo, R_forceSymbols, R_useDynamicSymbols, Rboolean};
 use std::ffi::CStr;

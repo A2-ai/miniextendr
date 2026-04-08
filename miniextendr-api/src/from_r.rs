@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! Conversions from R SEXP to Rust types.
 //!
 //! This module provides [`TryFromSexp`] implementations for converting R values to Rust types:
