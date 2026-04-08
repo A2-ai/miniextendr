@@ -87,11 +87,12 @@ impl AltrepAttrs {
     /// Parses all `#[altrep(...)]` attributes from a derive input struct.
     ///
     /// Multiple `#[altrep(...)]` attributes are supported and their contents are merged.
-    /// Unknown keys are silently ignored.
+    /// Unknown keys produce a compile error.
     ///
     /// # Errors
     ///
-    /// Returns `Err` if an `#[altrep(...)]` attribute has malformed syntax.
+    /// Returns `Err` if an `#[altrep(...)]` attribute has malformed syntax or contains
+    /// an unknown key.
     fn parse(input: &syn::DeriveInput) -> syn::Result<Self> {
         let mut len_field = None;
         let mut elt_field = None;
@@ -132,6 +133,12 @@ impl AltrepAttrs {
                     guard = Some(syn::Ident::new("RustUnwind", meta.path.span()));
                 } else if meta.path.is_ident("r_unwind") {
                     guard = Some(syn::Ident::new("RUnwind", meta.path.span()));
+                } else {
+                    return Err(meta.error(
+                        "unknown #[altrep(...)] attribute; expected one of: \
+                         `len`, `elt`, `elt_delegate`, `no_lowlevel`, `dataptr`, \
+                         `serialize`, `subset`, `unsafe`, `rust_unwind`, `r_unwind`",
+                    ));
                 }
                 Ok(())
             })?;
