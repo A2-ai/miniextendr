@@ -81,7 +81,7 @@ NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
 
 ### "package not found" when running tests
 
-The rpkg package needs to be installed first:
+The example package (`rpkg/`) needs to be installed first:
 
 ```bash
 just rcmdinstall

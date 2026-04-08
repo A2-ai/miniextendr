@@ -1,6 +1,7 @@
 +++
 title = "ALTREP Practical Examples"
 weight = 29
+description = "Real-world examples of ALTREP usage patterns in miniextendr."
 +++
 
 Real-world examples of ALTREP usage patterns in miniextendr.

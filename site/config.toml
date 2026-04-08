@@ -14,5 +14,8 @@ internal_level = "warn"
 [markdown]
 insert_anchor_links = "left"
 
+[markdown.highlighting]
+theme = "github-dark"
+
 [extra]
 repo_url = "https://github.com/CGMossa/miniextendr"

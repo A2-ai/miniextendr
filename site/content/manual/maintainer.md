@@ -1,6 +1,7 @@
 +++
 title = "Maintainer Guide"
 weight = 59
+description = "This document covers maintenance tasks for the miniextendr project."
 +++
 
 This document covers maintenance tasks for the miniextendr project.

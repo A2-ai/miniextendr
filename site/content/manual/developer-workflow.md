@@ -1,6 +1,7 @@
 +++
 title = "Developer Workflow"
 weight = 58
+description = "Quick reference for common development tasks. See CLAUDE.md for complete build system documentation."
 +++
 
 Quick reference for common development tasks. See [CLAUDE.md](../CLAUDE.md) for complete build system documentation.
@@ -18,7 +19,7 @@ Quick reference for common development tasks. See [CLAUDE.md](../CLAUDE.md) for 
 
 ```bash
 just configure          # Generate build config (REQUIRED first step)
-just rcmdinstall        # Build and install the rpkg R package
+just rcmdinstall        # Build and install the example R package (`rpkg/`)
 just devtools-test      # Run R tests
 ```
 

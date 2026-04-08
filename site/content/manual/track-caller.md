@@ -1,6 +1,7 @@
 +++
 title = "`#[track_caller]` in miniextendr"
 weight = 54
+description = "The #[miniextendr] macro automatically adds #[track_caller] to Rust functions for better panic location reporting."
 +++
 
 The `#[miniextendr]` macro automatically adds `#[track_caller]` to Rust functions for better panic location reporting.

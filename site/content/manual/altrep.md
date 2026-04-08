@@ -1,6 +1,7 @@
 +++
 title = "ALTREP in miniextendr"
 weight = 5
+description = "ALTREP (Alternative Representations) is R's system for creating custom vector implementations. miniextendr provides a powerful, safe abstraction for creating ALTREP vectors from Rust."
 +++
 
 ALTREP (Alternative Representations) is R's system for creating custom vector implementations. miniextendr provides a powerful, safe abstraction for creating ALTREP vectors from Rust.

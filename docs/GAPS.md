@@ -117,7 +117,7 @@ Create a stub for the disabled case:
 // Empty when feature disabled
 ```
 
-This pattern is used throughout the rpkg example package (e.g., `rayon_tests.rs` / `rayon_tests_disabled.rs`) and is documented in CLAUDE.md.
+This pattern is used throughout the example package (`rpkg/`) (e.g., `rayon_tests.rs` / `rayon_tests_disabled.rs`) and is documented in CLAUDE.md.
 
 See [FEATURES.md](FEATURES.md) for the full feature flags reference.
 

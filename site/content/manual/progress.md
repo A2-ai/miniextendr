@@ -1,6 +1,7 @@
 +++
 title = "Progress Bars in R via indicatif"
 weight = 56
+description = "miniextendr provides an adapter that routes indicatif progress bar output through R's console, so progress bars render correctly in R terminals, RStudio, and other R frontends."
 +++
 
 miniextendr provides an adapter that routes [indicatif](https://docs.rs/indicatif) progress bar output through R's console, so progress bars render correctly in R terminals, RStudio, and other R frontends.

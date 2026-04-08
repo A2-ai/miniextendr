@@ -1,6 +1,7 @@
 +++
 title = "Class Systems in miniextendr"
 weight = 4
+description = "miniextendr supports five R class systems. This guide helps you choose the right one for your use case."
 +++
 
 miniextendr supports five R class systems. This guide helps you choose the right one for your use case.

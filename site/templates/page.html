@@ -1,17 +1,32 @@
 {% extends "base.html" %}
 
-{% block title %}{{ page.title }} &mdash; miniextendr{% endblock %}
+{% block title %}{{ page.title }} | miniextendr{% endblock %}
+{% block body_class %}site-shell doc-page{% endblock body_class %}
 
 {% block content %}
 {% if page.ancestors | length > 1 %}
-  {% set section = get_section(path="manual/_index.md") %}
+  {% set doc_section = get_section(path="manual/_index.md") %}
+  {% set section_name = "Manual" %}
+  {% set section_url = get_url(path='@/manual/_index.md') %}
+  {% set section_summary = "Ordered reference pages generated from the repo docs, focused on detailed behavior and edge cases." %}
+  {% set source_url = config.extra.repo_url ~ "/tree/main/docs" %}
 {% else %}
-  {% set section = get_section(path="_index.md") %}
+  {% set doc_section = get_section(path="_index.md") %}
+  {% set section_name = "Guides" %}
+  {% set section_url = get_url(path='@/_index.md') %}
+  {% set section_summary = "Overview guides for adoption, architecture, and the main subsystems exposed on the site." %}
+  {% set source_url = config.extra.repo_url ~ "/tree/main/site/content" %}
 {% endif %}
-<div class="docs-layout">
+<div class="docs-shell">
     <aside class="sidebar">
-        <ul>
-        {% for p in section.pages %}
+        <div class="sidebar-panel">
+            <p class="eyebrow">Browse {{ section_name }}</p>
+            <h2>{{ doc_section.title }}</h2>
+            <p>{{ section_summary }}</p>
+            <a class="sidebar-cta" href="{{ section_url }}">Open section overview</a>
+        </div>
+        <ul class="sidebar-list">
+        {% for p in doc_section.pages %}
             <li class="{% if current_path == p.path %}active{% endif %}">
                 <a href="{{ p.permalink }}">{{ p.title }}</a>
             </li>
@@ -20,14 +35,52 @@
     </aside>
     <article class="doc-content">
         <header class="page-header">
+            <div class="breadcrumb">
+                <a href="{{ get_url(path='@/_index.md') }}">Home</a>
+                <span class="breadcrumb-divider">/</span>
+                <a href="{{ section_url }}">{{ section_name }}</a>
+                <span class="breadcrumb-divider">/</span>
+                <span>{{ page.title }}</span>
+            </div>
+            <p class="eyebrow">{% if page.ancestors | length > 1 %}Reference page{% else %}Guide{% endif %}</p>
             <h1>{{ page.title }}</h1>
             {% if page.description %}
             <p class="page-description">{{ page.description }}</p>
             {% endif %}
+            <div class="page-meta">
+                <span class="meta-item">{{ page.reading_time }} min read</span>
+                <span class="meta-item">{{ page.word_count }} words</span>
+                <span class="meta-item">{{ doc_section.pages | length }} pages in this section</span>
+            </div>
         </header>
         <div class="page-body">
             {{ page.content | safe }}
         </div>
+        <div class="doc-footer">
+            <a class="button button-secondary" href="{{ section_url }}">Back to {{ doc_section.title }}</a>
+            <a class="button button-ghost" href="{{ source_url }}" rel="noopener">Browse source docs</a>
+        </div>
     </article>
+    {% if page.toc | length > 0 %}
+    <aside class="toc-panel">
+        <div class="toc-shell">
+            <p class="eyebrow">On this page</p>
+            <ul>
+                {% for h1 in page.toc %}
+                <li>
+                    <a href="{{ h1.permalink | safe }}">{{ h1.title }}</a>
+                    {% if h1.children | length > 0 %}
+                    <ul>
+                        {% for h2 in h1.children %}
+                        <li><a href="{{ h2.permalink | safe }}">{{ h2.title }}</a></li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </aside>
+    {% endif %}
 </div>
 {% endblock %}

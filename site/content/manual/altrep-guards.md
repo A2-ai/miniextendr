@@ -1,6 +1,7 @@
 +++
 title = "ALTREP Guard Modes"
 weight = 31
+description = "Controls how panics and R errors are caught in ALTREP callback trampolines."
 +++
 
 Controls how panics and R errors are caught in ALTREP callback trampolines.

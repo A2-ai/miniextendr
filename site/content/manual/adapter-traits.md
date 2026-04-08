@@ -1,6 +1,7 @@
 +++
 title = "Adapter Traits: Exporting External Traits to R"
 weight = 13
+description = "This guide explains how to expose Rust traits you don't own (from external crates) to R via miniextendr's trait ABI."
 +++
 
 This guide explains how to expose Rust traits you don't own (from external

@@ -1,6 +1,7 @@
 +++
 title = "Automatic Registration & Package Initialization"
 weight = 12
+description = "This document explains how miniextendr automatically registers R-callable functions and initializes the runtime when an R package loads."
 +++
 
 This document explains how miniextendr automatically registers R-callable

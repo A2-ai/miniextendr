@@ -1,6 +1,7 @@
 +++
 title = "R's Package Build System for Shared Libraries"
 weight = 48
+description = "How R builds packages with compiled code, and how miniextendr integrates with it."
 +++
 
 How R builds packages with compiled code, and how miniextendr integrates with it.

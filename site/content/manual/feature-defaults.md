@@ -1,6 +1,7 @@
 +++
 title = "Feature-Controlled Defaults"
 weight = 42
+description = "Project-wide defaults for #[miniextendr] options, controlled via Cargo features."
 +++
 
 Project-wide defaults for `#[miniextendr]` options, controlled via Cargo features.

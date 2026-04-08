@@ -1,6 +1,7 @@
 +++
 title = "`#[miniextendr]` Attribute Reference"
 weight = 11
+description = "Complete reference for #[miniextendr] on every Rust item type."
 +++
 
 Complete reference for `#[miniextendr]` on every Rust item type.
