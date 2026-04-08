@@ -2,9 +2,9 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7GoldenRetriever}
 \alias{S7GoldenRetriever}
-\alias{retriever_name}
+\alias{S7GoldenRetriever-retriever_name}
 \alias{S7GoldenRetriever$retriever_name}
-\alias{color}
+\alias{S7GoldenRetriever-color}
 \alias{S7GoldenRetriever$color}
 \title{S7GoldenRetriever S7 Class}
 \source{

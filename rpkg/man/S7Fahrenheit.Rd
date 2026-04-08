@@ -2,9 +2,9 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Fahrenheit}
 \alias{S7Fahrenheit}
-\alias{value}
+\alias{S7Fahrenheit-value}
 \alias{S7Fahrenheit$value}
-\alias{to_celsius}
+\alias{S7Fahrenheit-to_celsius}
 \alias{S7Fahrenheit$to_celsius}
 \alias{S7Fahrenheit_from_celsius}
 \alias{convert-S7Celsius-to-S7Fahrenheit}

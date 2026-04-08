@@ -122,12 +122,16 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Documentation for the generic - skip if class has @noRd
-        // Use bare generic @name so the generic gets an \alias in the Rd file.
-        // Without this, R CMD check warns "Undocumented code objects: s4_xxx".
+        // Use class-qualified @name to avoid duplicate \alias{generic} warnings
+        // when multiple S4 classes share the same generic (e.g., s4_get_value on
+        // both S4TraitCounter and CounterTraitS4). The @exportMethod directive
+        // (added separately) correctly exports the bare generic name.
         if !class_has_no_rd {
+            let qualified_name = format!("{}-{}", class_name, method_name);
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags)
-                    .with_suppress_params();
+                    .with_suppress_params()
+                    .with_r_name(qualified_name);
             let mut doc_lines = method_doc.build();
             // Add S4 method-specific alias so R CMD check finds the documented method
             doc_lines.push(format!("#' @aliases {},{}-method", method_name, class_name));

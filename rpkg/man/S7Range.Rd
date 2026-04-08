@@ -2,9 +2,9 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Range}
 \alias{S7Range}
-\alias{s7_start}
+\alias{S7Range-s7_start}
 \alias{S7Range$s7_start}
-\alias{s7_end}
+\alias{S7Range-s7_end}
 \alias{S7Range$s7_end}
 \title{S7Range S7 Class}
 \source{

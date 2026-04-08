@@ -2,7 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{S7Shape}
 \alias{S7Shape}
-\alias{shape_name}
+\alias{S7Shape-shape_name}
 \alias{S7Shape$shape_name}
 \title{S7Shape S7 Class}
 \source{
