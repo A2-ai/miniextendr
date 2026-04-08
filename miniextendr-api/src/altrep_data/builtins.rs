@@ -1415,9 +1415,16 @@ macro_rules! impl_len_cow {
 macro_rules! impl_dataptr_cow {
     ($elem:ty) => {
         impl AltrepDataptr<$elem> for Cow<'static, [$elem]> {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
-                // to_mut() triggers copy-on-write for Borrowed variants
-                Some(self.to_mut().as_mut_ptr())
+            fn dataptr(&mut self, writable: bool) -> Option<*mut $elem> {
+                if writable {
+                    // to_mut() triggers copy-on-write for Borrowed variants.
+                    // Only do this when R intends to write through the pointer.
+                    Some(self.to_mut().as_mut_ptr())
+                } else {
+                    // Read-only access: return the existing pointer without
+                    // forcing a copy for Borrowed variants.
+                    Some(self.as_ptr().cast_mut())
+                }
             }
 
             fn dataptr_or_null(&self) -> Option<*const $elem> {
