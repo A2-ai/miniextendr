@@ -1,0 +1,15 @@
+base_url = "https://cgmossa.github.io/miniextendr"
+title = "miniextendr"
+description = "A Rust-R interoperability framework for building R packages with Rust backends"
+compile_sass = false
+build_search_index = true
+generate_feeds = false
+
+[search]
+index_format = "elasticlunr_json"
+
+[markdown]
+insert_anchor_links = "left"
+
+[extra]
+repo_url = "https://github.com/CGMossa/miniextendr"
