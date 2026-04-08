@@ -13,7 +13,7 @@ use crate::altrep_data::{
 
 /// Core state for sparse iterator-backed ALTREP vectors.
 ///
-/// Unlike [`IterState`], this variant uses `Iterator::nth()` to skip elements
+/// Unlike [`super::IterState`], this variant uses `Iterator::nth()` to skip elements
 /// efficiently, only caching the elements that are actually accessed.
 ///
 /// # Type Parameters

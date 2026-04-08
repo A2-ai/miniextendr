@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! `ExternalPtr<T>` — a Box-like owned pointer that wraps R's EXTPTRSXP.
 //!
 //! This provides ownership semantics similar to `Box<T>`, with the key difference

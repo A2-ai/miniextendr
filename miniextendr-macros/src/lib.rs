@@ -2762,7 +2762,7 @@ pub fn impl_typed_external(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// miniextendr_api::miniextendr_init!(mypkg);
 /// ```
 ///
-/// The generated function calls [`miniextendr_api::init::package_init`] which
+/// The generated function calls `miniextendr_api::init::package_init` which
 /// handles panic hooks, runtime init, locale assertion, ALTREP setup, trait ABI
 /// registration, routine registration, and symbol locking.
 #[proc_macro]

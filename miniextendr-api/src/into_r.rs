@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! Conversions from Rust types to R SEXP.
 //!
 //! This module provides the [`IntoR`] trait for converting Rust values to R SEXPs.

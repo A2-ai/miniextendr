@@ -14,7 +14,7 @@ use super::ListMut;
 
 /// Accumulator for building lists when the length is unknown upfront.
 ///
-/// Unlike [`ListBuilder`] which requires knowing the size at construction,
+/// Unlike [`super::ListBuilder`] which requires knowing the size at construction,
 /// `ListAccumulator` supports dynamic growth via [`push`](Self::push). It uses
 /// [`ReprotectSlot`] internally to maintain **O(1) protect stack usage** regardless
 /// of how many elements are pushed.
@@ -23,7 +23,7 @@ use super::ListMut;
 ///
 /// | Scenario | Recommended Type |
 /// |----------|-----------------|
-/// | Known size | [`ListBuilder`] - more efficient, no reallocation |
+/// | Known size | [`super::ListBuilder`] - more efficient, no reallocation |
 /// | Unknown size | `ListAccumulator` - bounded stack, dynamic growth |
 /// | Streaming/iterators | `ListAccumulator` or [`collect_list`] |
 ///

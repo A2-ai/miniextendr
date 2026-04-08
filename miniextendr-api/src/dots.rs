@@ -1,6 +1,6 @@
 //! R's `...` (variadic arguments) support.
 //!
-//! Provides [`Dots`], the Rust representation of R's `...` parameter. The generated
+//! Provides [`Dots`](crate::dots::Dots), the Rust representation of R's `...` parameter. The generated
 //! R wrapper captures `...` as `list(...)` and passes it to Rust.
 //!
 //! # Usage
@@ -17,7 +17,7 @@
 //! ```
 //!
 //! Use `name @ ...` syntax for a custom parameter name, or combine with
-//! [`typed_list!`](crate::typed_list) for structure validation:
+//! [`typed_list!`](crate::typed_list!) for structure validation:
 //!
 //! ```ignore
 //! #[miniextendr(dots = typed_list!(x: i32, y: f64))]
