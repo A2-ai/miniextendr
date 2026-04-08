@@ -714,6 +714,37 @@ impl<T: TypedExternal> ExternalPtr<T> {
         self.sexp
     }
 
+    /// Create a lightweight alias of this ExternalPtr sharing the same R object.
+    ///
+    /// The returned `ExternalPtr` points to the **same** underlying EXTPTRSXP.
+    /// No data is copied and no new R object is allocated -- both the original
+    /// and the alias refer to the same R-level external pointer.
+    ///
+    /// This is the correct way to return "self" from a method that takes
+    /// `self: &ExternalPtr<Self>`, preserving R object identity:
+    ///
+    /// ```ignore
+    /// #[miniextendr(env)]
+    /// impl MyType {
+    ///     pub fn identity(self: &ExternalPtr<Self>) -> ExternalPtr<Self> {
+    ///         self.reborrow()
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Safety note
+    ///
+    /// The caller must not use the original and the alias to create overlapping
+    /// mutable references (`as_mut`). In typical use (returning from a method),
+    /// the borrow of the original ends when the method returns, so this is safe.
+    #[inline]
+    pub fn reborrow(&self) -> Self {
+        // SAFETY: self.sexp is a valid live EXTPTRSXP that we already hold.
+        // wrap_sexp re-extracts the data pointer from the same SEXP.
+        unsafe { Self::wrap_sexp(self.sexp) }
+            .expect("reborrow of live ExternalPtr should never fail")
+    }
+
     /// Returns the tag SEXP (type identifier symbol).
     #[inline]
     pub fn tag(&self) -> SEXP {

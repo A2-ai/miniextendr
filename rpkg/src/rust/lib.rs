@@ -34,6 +34,7 @@
 //! - [`dots_tests`]: R dots (`...`) handling tests
 //! - [`default_tests`]: Default parameter value tests
 //! - [`externalptr_tests`]: ExternalPtr functionality tests
+//! - [`externalptr_identity_tests`]: ExternalPtr identity preservation tests
 //! - [`visibility_tests`]: R return value visibility tests
 //! - [`identical_tests`]: R identical() comparison tests
 //! - [`factor_tests`]: R factor handling tests
@@ -150,6 +151,7 @@ mod encoding_tests;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_any_tests;
+mod externalptr_identity_tests;
 mod externalptr_self_tests;
 mod externalptr_tests;
 mod externalslice_tests;
