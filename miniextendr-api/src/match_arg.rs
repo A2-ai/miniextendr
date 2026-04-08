@@ -158,7 +158,7 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
             if len != 1 {
                 return Err(MatchArgError::InvalidLength(len));
             }
-            let idx = unsafe { *ffi::INTEGER(sexp) };
+            let idx = unsafe { *ffi::INTEGER_unchecked(sexp) };
             if idx == i32::MIN {
                 // NA_integer_
                 return Err(MatchArgError::IsNa);

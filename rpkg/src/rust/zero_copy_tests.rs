@@ -180,12 +180,10 @@ mod arrow {
         use miniextendr_api::optionals::arrow_impl::alloc_r_backed_buffer;
         let n = n as usize;
         let (buffer, sexp) = unsafe { alloc_r_backed_buffer::<f64>(n) };
-        // Fill via the SEXP's raw pointer
-        unsafe {
-            let ptr = miniextendr_api::ffi::REAL(sexp);
-            for i in 0..n {
-                *ptr.add(i) = (i + 1) as f64 * 100.0;
-            }
+        // Fill via SexpExt element-wise setter
+        use miniextendr_api::ffi::SexpExt;
+        for i in 0..n {
+            sexp.set_real_elt(i as isize, (i + 1) as f64 * 100.0);
         }
         let values = miniextendr_api::optionals::arrow_impl::arrow_buffer::ScalarBuffer::<f64>::from(buffer);
         let array = miniextendr_api::optionals::arrow_impl::Float64Array::new(values, None);

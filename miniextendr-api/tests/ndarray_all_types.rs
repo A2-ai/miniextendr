@@ -13,17 +13,15 @@ fn array1_all_rnative_types() {
     // Verify Array1 blanket impl works for all RNativeType: i32, f64, u8, RLogical
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            INTEGER, LOGICAL, RAW, REAL, RLogical, Rf_allocVector, Rf_protect, Rf_unprotect,
-            SEXPTYPE,
+            RLogical, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt,
         };
 
         unsafe {
             // i32
             let sexp_int = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
-            let ptr_int = INTEGER(sexp_int);
-            *ptr_int.add(0) = 1;
-            *ptr_int.add(1) = 2;
-            *ptr_int.add(2) = 3;
+            sexp_int.set_integer_elt(0, 1);
+            sexp_int.set_integer_elt(1, 2);
+            sexp_int.set_integer_elt(2, 3);
             let arr_i32: Array1<i32> = TryFromSexp::try_from_sexp(sexp_int).unwrap();
             assert_eq!(arr_i32[0], 1);
             assert_eq!(arr_i32[1], 2);
@@ -31,10 +29,9 @@ fn array1_all_rnative_types() {
 
             // f64
             let sexp_real = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 3));
-            let ptr_real = REAL(sexp_real);
-            *ptr_real.add(0) = 1.5;
-            *ptr_real.add(1) = 2.5;
-            *ptr_real.add(2) = 3.5;
+            sexp_real.set_real_elt(0, 1.5);
+            sexp_real.set_real_elt(1, 2.5);
+            sexp_real.set_real_elt(2, 3.5);
             let arr_f64: Array1<f64> = TryFromSexp::try_from_sexp(sexp_real).unwrap();
             assert_eq!(arr_f64[0], 1.5);
             assert_eq!(arr_f64[1], 2.5);
@@ -42,10 +39,9 @@ fn array1_all_rnative_types() {
 
             // u8
             let sexp_raw = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 3));
-            let ptr_raw = RAW(sexp_raw);
-            *ptr_raw.add(0) = 10;
-            *ptr_raw.add(1) = 20;
-            *ptr_raw.add(2) = 30;
+            sexp_raw.set_raw_elt(0, 10);
+            sexp_raw.set_raw_elt(1, 20);
+            sexp_raw.set_raw_elt(2, 30);
             let arr_u8: Array1<u8> = TryFromSexp::try_from_sexp(sexp_raw).unwrap();
             assert_eq!(arr_u8[0], 10);
             assert_eq!(arr_u8[1], 20);
@@ -53,10 +49,9 @@ fn array1_all_rnative_types() {
 
             // RLogical
             let sexp_lgl = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, 3));
-            let ptr_lgl = LOGICAL(sexp_lgl);
-            *ptr_lgl.add(0) = 1; // TRUE
-            *ptr_lgl.add(1) = 0; // FALSE
-            *ptr_lgl.add(2) = 1; // TRUE
+            sexp_lgl.set_logical_elt(0, 1); // TRUE
+            sexp_lgl.set_logical_elt(1, 0); // FALSE
+            sexp_lgl.set_logical_elt(2, 1); // TRUE
             let arr_lgl: Array1<RLogical> = TryFromSexp::try_from_sexp(sexp_lgl).unwrap();
             assert_eq!(arr_lgl[0], RLogical::from(true));
             assert_eq!(arr_lgl[1], RLogical::from(false));
@@ -97,16 +92,15 @@ fn array0_scalar_all_types() {
 fn array2_u8_blanket_impl() {
     // Verify Array2 works for u8 (raw matrices)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{RAW, Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 2x2 raw matrix
             let sexp = Rf_protect(Rf_allocMatrix(SEXPTYPE::RAWSXP, 2, 2));
-            let ptr = RAW(sexp);
-            *ptr.add(0) = 1;
-            *ptr.add(1) = 2;
-            *ptr.add(2) = 3;
-            *ptr.add(3) = 4;
+            sexp.set_raw_elt(0, 1);
+            sexp.set_raw_elt(1, 2);
+            sexp.set_raw_elt(2, 3);
+            sexp.set_raw_elt(3, 4);
 
             let arr: Array2<u8> = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(arr.nrows(), 2);
@@ -126,14 +120,13 @@ fn array2_u8_blanket_impl() {
 fn arrayd_i32_from_vector() {
     // Test ArrayD created from R vector (1D)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
         use ndarray::ArrayD;
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 5));
-            let ptr = INTEGER(sexp);
             for i in 0..5 {
-                *ptr.add(i) = i as i32;
+                sexp.set_integer_elt(i as isize, i as i32);
             }
 
             let arr: ArrayD<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();

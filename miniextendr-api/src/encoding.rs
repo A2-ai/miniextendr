@@ -58,7 +58,8 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
         "must be called from R main thread"
     );
     use crate::ffi::{
-        LOGICAL, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SexpExt,
+        LOGICAL_unchecked, R_BaseEnv, Rf_eval, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength,
+        SexpExt,
     };
 
     unsafe {
@@ -78,7 +79,7 @@ pub extern "C" fn miniextendr_assert_utf8_locale() {
             let name = std::ffi::CStr::from_ptr(name_ptr);
             if name == c"UTF-8" {
                 let elt = info.vector_elt(i);
-                is_utf8 = LOGICAL(elt).read() != 0;
+                is_utf8 = LOGICAL_unchecked(elt).read() != 0;
                 break;
             }
         }

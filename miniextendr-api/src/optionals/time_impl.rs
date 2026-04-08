@@ -51,7 +51,9 @@
 pub use time::{Date, OffsetDateTime};
 
 use crate::cached_class::set_posixct_utc;
-use crate::ffi::{REAL, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{
+    REAL_unchecked, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
+};
 use crate::from_r::{SexpError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -83,7 +85,7 @@ impl TryFromSexp for OffsetDateTime {
             )));
         }
 
-        let secs = unsafe { *REAL(sexp) };
+        let secs = unsafe { *REAL_unchecked(sexp) };
         if secs.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -123,7 +125,7 @@ impl IntoR for OffsetDateTime {
             let duration = self - UNIX_EPOCH;
             let secs = duration.whole_seconds() as f64
                 + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
-            *REAL(vec) = secs;
+            *REAL_unchecked(vec) = secs;
 
             set_posixct_utc(vec);
 
@@ -160,7 +162,7 @@ impl TryFromSexp for Option<OffsetDateTime> {
             )));
         }
 
-        let secs = unsafe { *REAL(sexp) };
+        let secs = unsafe { *REAL_unchecked(sexp) };
         if secs.is_nan() {
             return Ok(None);
         }
@@ -192,7 +194,7 @@ impl IntoR for Option<OffsetDateTime> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                *REAL(vec) = f64::NAN;
+                *REAL_unchecked(vec) = f64::NAN;
                 set_posixct_utc(vec);
                 Rf_unprotect(1);
                 vec
@@ -366,7 +368,7 @@ impl TryFromSexp for Date {
             )));
         }
 
-        let days = unsafe { *REAL(sexp) };
+        let days = unsafe { *REAL_unchecked(sexp) };
         if days.is_nan() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
@@ -397,7 +399,7 @@ impl IntoR for Date {
 
             // Calculate days since epoch
             let days = (self - UNIX_EPOCH_DATE).whole_days() as f64;
-            *REAL(vec) = days;
+            *REAL_unchecked(vec) = days;
 
             // Set class = "Date"
             vec.set_class(crate::cached_class::date_class_sexp());
@@ -435,7 +437,7 @@ impl TryFromSexp for Option<Date> {
             )));
         }
 
-        let days = unsafe { *REAL(sexp) };
+        let days = unsafe { *REAL_unchecked(sexp) };
         if days.is_nan() {
             return Ok(None);
         }
@@ -464,7 +466,7 @@ impl IntoR for Option<Date> {
             None => unsafe {
                 let vec = Rf_allocVector(SEXPTYPE::REALSXP, 1);
                 Rf_protect(vec);
-                *REAL(vec) = f64::NAN;
+                *REAL_unchecked(vec) = f64::NAN;
 
                 vec.set_class(crate::cached_class::date_class_sexp());
 

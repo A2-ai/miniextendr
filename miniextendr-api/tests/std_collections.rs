@@ -87,14 +87,13 @@ fn cow_slice_owned() {
 #[test]
 fn cow_slice_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
-            let ptr = INTEGER(sexp);
-            *ptr.add(0) = 100;
-            *ptr.add(1) = 200;
-            *ptr.add(2) = 300;
+            sexp.set_integer_elt(0, 100);
+            sexp.set_integer_elt(1, 200);
+            sexp.set_integer_elt(2, 300);
 
             let cow: Cow<'static, [i32]> = TryFromSexp::try_from_sexp(sexp).unwrap();
 

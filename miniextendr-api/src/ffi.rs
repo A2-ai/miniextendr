@@ -1249,7 +1249,7 @@ impl RNativeType for i32 {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
             } else {
-                INTEGER(sexp)
+                INTEGER_unchecked(sexp)
             }
         }
     }
@@ -1266,7 +1266,7 @@ impl RNativeType for f64 {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
             } else {
-                REAL(sexp)
+                REAL_unchecked(sexp)
             }
         }
     }
@@ -1283,7 +1283,7 @@ impl RNativeType for u8 {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
             } else {
-                RAW(sexp)
+                RAW_unchecked(sexp)
             }
         }
     }
@@ -1301,7 +1301,7 @@ impl RNativeType for RLogical {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
             } else {
-                LOGICAL(sexp).cast()
+                LOGICAL_unchecked(sexp).cast()
             }
         }
     }
@@ -1318,7 +1318,7 @@ impl RNativeType for Rcomplex {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
             } else {
-                COMPLEX(sexp)
+                COMPLEX_unchecked(sexp)
             }
         }
     }
@@ -2120,27 +2120,32 @@ unsafe extern "C-unwind" {
     /// Get mutable pointer to logical vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
-    pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
+    /// Prefer `SexpExt::logical_elt` / `SexpExt::set_logical_elt` instead.
+    pub(crate) fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
 
     /// Get mutable pointer to integer vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
-    pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
+    /// Prefer `SexpExt::integer_elt` / `SexpExt::set_integer_elt` instead.
+    pub(crate) fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
 
     /// Get mutable pointer to real vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
-    pub fn REAL(x: SEXP) -> *mut f64;
+    /// Prefer `SexpExt::real_elt` / `SexpExt::set_real_elt` instead.
+    pub(crate) fn REAL(x: SEXP) -> *mut f64;
 
     /// Get mutable pointer to complex vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
+    /// Prefer `SexpExt::complex_elt` / `SexpExt::set_complex_elt` instead.
     pub(crate) fn COMPLEX(x: SEXP) -> *mut Rcomplex;
 
     /// Get mutable pointer to raw vector data.
     ///
     /// For ALTREP vectors, this may force materialization.
-    pub fn RAW(x: SEXP) -> *mut Rbyte;
+    /// Prefer `SexpExt::raw_elt` / `SexpExt::set_raw_elt` instead.
+    pub(crate) fn RAW(x: SEXP) -> *mut Rbyte;
 
     // endregion
 

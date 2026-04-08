@@ -440,7 +440,7 @@ impl ProtectScope {
     /// unsafe fn make_ints(n: R_xlen_t) -> SEXP {
     ///     let scope = ProtectScope::new();
     ///     let vec = scope.alloc_vector(SEXPTYPE::INTSXP, n);
-    ///     // fill via INTEGER(vec.get()) ...
+    ///     // fill via vec.get().set_integer_elt(i, val) ...
     ///     vec.get()
     /// }
     /// ```

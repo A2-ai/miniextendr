@@ -12,15 +12,14 @@ use miniextendr_api::{Array0, Array1, Array2, Array3, ArrayD};
 fn array1_i32_blanket_impl() {
     // Verify blanket impl works for i32
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 4));
-            let ptr = INTEGER(sexp);
-            *ptr.add(0) = 1;
-            *ptr.add(1) = 2;
-            *ptr.add(2) = 3;
-            *ptr.add(3) = 4;
+            sexp.set_integer_elt(0, 1);
+            sexp.set_integer_elt(1, 2);
+            sexp.set_integer_elt(2, 3);
+            sexp.set_integer_elt(3, 4);
 
             let arr: Array1<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(arr.len(), 4);
@@ -39,14 +38,13 @@ fn array1_i32_blanket_impl() {
 fn array1_u8_blanket_impl() {
     // Verify blanket impl works for u8 (raw)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{RAW, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 3));
-            let ptr = RAW(sexp);
-            *ptr.add(0) = 10;
-            *ptr.add(1) = 20;
-            *ptr.add(2) = 30;
+            sexp.set_raw_elt(0, 10);
+            sexp.set_raw_elt(1, 20);
+            sexp.set_raw_elt(2, 30);
 
             let arr: Array1<u8> = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(arr.len(), 3);
@@ -64,15 +62,14 @@ fn array1_u8_blanket_impl() {
 fn array2_i32_blanket_impl() {
     // Verify blanket impl works for i32 matrices
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{INTEGER, Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             // Create 2x3 matrix
             let sexp = Rf_protect(Rf_allocMatrix(SEXPTYPE::INTSXP, 2, 3));
-            let ptr = INTEGER(sexp);
             // Column-major layout
             for i in 0..6 {
-                *ptr.add(i) = i as i32 + 1;
+                sexp.set_integer_elt(i as isize, i as i32 + 1);
             }
 
             let arr: Array2<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();

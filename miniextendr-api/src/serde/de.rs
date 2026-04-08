@@ -414,7 +414,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         }
 
         let len = self.len();
-        let ptr = unsafe { crate::ffi::RAW(self.sexp) };
+        let ptr = unsafe { crate::ffi::RAW_unchecked(self.sexp) };
         let bytes = unsafe { crate::from_r::r_slice(ptr, len) };
         visitor.visit_bytes(bytes)
     }
@@ -428,7 +428,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         }
 
         let len = self.len();
-        let ptr = unsafe { crate::ffi::RAW(self.sexp) };
+        let ptr = unsafe { crate::ffi::RAW_unchecked(self.sexp) };
         let bytes = unsafe { crate::from_r::r_slice(ptr, len) };
         visitor.visit_byte_buf(bytes.to_vec())
     }

@@ -30,7 +30,7 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
+    INTEGER_unchecked, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
@@ -141,7 +141,7 @@ impl<'a> Factor<'a> {
         }
 
         let len = unsafe { Rf_xlength(sexp) } as usize;
-        let ptr = unsafe { INTEGER(sexp) };
+        let ptr = unsafe { INTEGER_unchecked(sexp) };
         let indices = unsafe { crate::from_r::r_slice(ptr, len) };
         let levels_sexp = sexp.get_levels();
 
@@ -239,7 +239,7 @@ impl<'a> FactorMut<'a> {
         }
 
         let len = unsafe { Rf_xlength(sexp) } as usize;
-        let ptr = unsafe { INTEGER(sexp) };
+        let ptr = unsafe { INTEGER_unchecked(sexp) };
         let indices = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         let levels_sexp = sexp.get_levels();
 

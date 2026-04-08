@@ -40,8 +40,8 @@ macro_rules! impl_vec_option_try_from_sexp {
     };
 }
 
-impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
-impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
+impl_vec_option_try_from_sexp!(f64, REALSXP, REAL_unchecked, is_na_real);
+impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER_unchecked, |v: i32| v == i32::MIN);
 
 /// Macro for NA-aware `R vector → Box<[Option<T>]>` conversions.
 macro_rules! impl_boxed_slice_option_try_from_sexp {
@@ -72,8 +72,8 @@ macro_rules! impl_boxed_slice_option_try_from_sexp {
     };
 }
 
-impl_boxed_slice_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
-impl_boxed_slice_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
+impl_boxed_slice_option_try_from_sexp!(f64, REALSXP, REAL_unchecked, is_na_real);
+impl_boxed_slice_option_try_from_sexp!(i32, INTSXP, INTEGER_unchecked, |v: i32| v == i32::MIN);
 
 /// Convert R logical vector (LGLSXP) to `Vec<Option<bool>>` with NA support.
 impl TryFromSexp for Vec<Option<bool>> {
@@ -90,7 +90,7 @@ impl TryFromSexp for Vec<Option<bool>> {
         }
 
         let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let ptr = unsafe { crate::ffi::LOGICAL_unchecked(sexp) };
         let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
@@ -110,7 +110,7 @@ impl TryFromSexp for Vec<Option<bool>> {
         }
 
         let len = unsafe { sexp.len_unchecked() };
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let ptr = unsafe { crate::ffi::LOGICAL_unchecked(sexp) };
         let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
@@ -145,7 +145,7 @@ impl TryFromSexp for Vec<Rboolean> {
         }
 
         let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let ptr = unsafe { crate::ffi::LOGICAL_unchecked(sexp) };
         let slice = unsafe { r_slice(ptr, len) };
 
         slice
@@ -180,7 +180,7 @@ impl TryFromSexp for Vec<Option<Rboolean>> {
         }
 
         let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let ptr = unsafe { crate::ffi::LOGICAL_unchecked(sexp) };
         let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
@@ -213,7 +213,7 @@ impl TryFromSexp for Vec<crate::altrep_data::Logical> {
         }
 
         let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let ptr = unsafe { crate::ffi::LOGICAL_unchecked(sexp) };
         let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
@@ -238,7 +238,7 @@ impl TryFromSexp for Vec<Option<RLogical>> {
         }
 
         let len = sexp.len();
-        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let ptr = unsafe { crate::ffi::LOGICAL_unchecked(sexp) };
         let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
@@ -322,7 +322,7 @@ impl TryFromSexp for Vec<Option<u8>> {
         }
 
         let len = sexp.len();
-        let ptr = unsafe { crate::ffi::RAW(sexp) };
+        let ptr = unsafe { crate::ffi::RAW_unchecked(sexp) };
         let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice.iter().map(|&v| Some(v)).collect())
