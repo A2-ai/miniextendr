@@ -509,6 +509,12 @@ jobs:
     timeout-minutes: 90
     needs: changes
     if: needs.changes.outputs.r == 'true'
+    # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
+    # This matches R's own build system (SHELL = sh from Rtools).
+    # See docs/windows-build-environment.md for details.
+    defaults:
+      run:
+        shell: C:\rtools45\usr\bin\bash.exe -e -o pipefail {0}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
@@ -546,8 +552,7 @@ jobs:
 
       - name: Set RUSTC_WRAPPER if sccache available
         if: steps.sccache.outcome == 'success'
-        shell: pwsh
-        run: echo "RUSTC_WRAPPER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -557,40 +562,40 @@ jobs:
           cache-on-failure: true
 
       - name: Configure Windows Rust environment
-        shell: pwsh
         run: |
-          $rtools_home = "C:\rtools45"
-
-          # Add Rtools to PATH for configure/vendor steps
-          Add-Content -Path $env:GITHUB_PATH -Value "${rtools_home}\x86_64-w64-mingw32.static.posix\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "${rtools_home}\usr\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$(Rscript.exe -e 'cat(normalizePath(R.home()))')\bin\x64"
+          # Add Rtools to GITHUB_PATH for all subsequent steps
+          rtools_home="/c/rtools45"
+          echo "${rtools_home}/x86_64-w64-mingw32.static.posix/bin" >> "$GITHUB_PATH"
+          echo "${rtools_home}/usr/bin" >> "$GITHUB_PATH"
+          echo "$(cygpath -u "$(Rscript.exe -e 'cat(R.home())')")/bin/x64" >> "$GITHUB_PATH"
+          if [ -n "${CARGO_HOME:-}" ]; then
+            echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
+          fi
 
           # Create empty libgcc stubs for Rust linking (Rust std expects these)
-          New-Item -Path libgcc_mock -Type Directory -Force
-          New-Item -Path libgcc_mock\libgcc_eh.a -Type File -Force
-          New-Item -Path libgcc_mock\libgcc_s.a -Type File -Force
+          mkdir -p libgcc_mock
+          touch libgcc_mock/libgcc_eh.a libgcc_mock/libgcc_s.a
 
           # Configure Cargo for Windows GNU target
-          New-Item -Path .cargo -ItemType Directory -Force
-          $pwd_slash = (Get-Location).Path -replace '\\','/'
-          $config = "[target.x86_64-pc-windows-gnu]`nlinker = `"x86_64-w64-mingw32.static.posix-gcc.exe`"`n`n[env]`nLIBRARY_PATH = `"$pwd_slash/libgcc_mock`""
-          [System.IO.File]::WriteAllText("$PWD\.cargo\config.toml", $config)
+          mkdir -p .cargo
+          pwd_slash="$(cygpath -m "$(pwd)")"
+          cat > .cargo/config.toml <<TOML
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+
+          [env]
+          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
+          TOML
 
       - name: Install just
-        uses: taiki-e/install-action@just
+        run: cargo install just
 
       - name: Install cargo-revendor
         run: cargo install --path cargo-revendor
 
       - name: Configure and vendor
-        shell: C:\rtools45\usr\bin\bash.exe -e -o pipefail {0}
         run: |
-          export PATH="/c/rtools45/usr/bin:/c/rtools45/x86_64-w64-mingw32.static.posix/bin:$PATH"
-          if [ -n "${CARGO_HOME:-}" ]; then
-            export PATH="$(cygpath -u "$CARGO_HOME")/bin:$PATH"
-          fi
-          CARGO_BUILD_TARGET=x86_64-pc-windows-gnu just configure
+          just configure
           just vendor
 
       - name: R CMD check
@@ -605,7 +610,6 @@ jobs:
 
       - name: Print failed tests
         if: always()
-        shell: bash
         run: |
           for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
             [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
@@ -613,7 +617,6 @@ jobs:
 
       - name: Print 00check.log and 00install.out
         if: always()
-        shell: bash
         run: |
           echo "=== 00install.out ==="
           cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
