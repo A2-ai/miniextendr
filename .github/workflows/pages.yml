@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'site/**'
-      - 'src/**'
       - '*/src/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -23,7 +22,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install R
         uses: r-lib/actions/setup-r@v2
@@ -31,11 +30,12 @@ jobs:
           r-version: 'release'
           install-r: true
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
 
       - name: Build rustdoc
-        run: cargo doc --no-deps -p miniextendr-api -p miniextendr-macros -p miniextendr-macros-core -p miniextendr-lint
+        env:
+          RUSTDOCFLAGS: --cfg=docsrs -Dwarnings -Z unstable-options --document-private-items
+        run: cargo doc --no-deps -Z rustdoc-map -p miniextendr-api -p miniextendr-macros -p miniextendr-macros-core -p miniextendr-lint
 
       - name: Install Zola
         run: |
@@ -49,8 +49,17 @@ jobs:
       - name: Copy rustdoc into site
         run: cp -r target/doc site/public/rustdoc
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Fix permissions
+        run: |
+          chmod -c -R +rX "site/public" | while read line; do
+            echo "::warning title=Invalid file permissions automatically fixed::$line"
+          done
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: site/public
 
@@ -63,4 +72,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
