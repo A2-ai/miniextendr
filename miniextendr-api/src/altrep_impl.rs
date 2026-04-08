@@ -130,6 +130,13 @@ macro_rules! impl_altinteger_from_data {
     ($ty:ty, serialize, subset) => {
         $crate::impl_altinteger_from_data!($ty, subset, serialize);
     };
+    // Materializing dataptr only (no serialization)
+    ($ty:ty, materializing_dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_integer_dataptr!($ty);
+        $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
+    };
     // Materializing dataptr + serialize (for computed types like Range<i32>)
     ($ty:ty, materializing_dataptr, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
@@ -838,6 +845,13 @@ macro_rules! impl_altreal_from_data {
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altreal_from_data!($ty, dataptr, serialize);
     };
+    // Materializing dataptr only (no serialization)
+    ($ty:ty, materializing_dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_real_dataptr!($ty);
+        $crate::__impl_altreal_methods!($ty);
+        $crate::impl_inferbase_real!($ty);
+    };
     // Materializing dataptr + serialize (for computed types like Range<f64>)
     ($ty:ty, materializing_dataptr, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
@@ -939,6 +953,13 @@ macro_rules! impl_altlogical_from_data {
     };
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
+    };
+    // Materializing dataptr only (no serialization)
+    ($ty:ty, materializing_dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_logical_dataptr!($ty);
+        $crate::__impl_altlogical_methods!($ty);
+        $crate::impl_inferbase_logical!($ty);
     };
     // Materializing dataptr + serialize (for bool types that need bool→i32 conversion)
     ($ty:ty, materializing_dataptr, serialize) => {

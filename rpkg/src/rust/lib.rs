@@ -304,7 +304,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for ConstantIntData {
 }
 
 // Generate low-level traits from data traits (also enables base type inference)
-miniextendr_api::impl_altinteger_from_data!(ConstantIntData, serialize);
+miniextendr_api::impl_altinteger_from_data!(ConstantIntData, materializing_dataptr, serialize);
 
 /// ALTREP class wrapper for constant integer data.
 #[miniextendr(class = "ConstantInt")]
@@ -359,7 +359,7 @@ impl AltRealData for ConstantRealData {
     }
 }
 
-miniextendr_api::impl_altreal_from_data!(ConstantRealData);
+miniextendr_api::impl_altreal_from_data!(ConstantRealData, materializing_dataptr);
 
 #[miniextendr(class = "ConstantReal")]
 pub struct ConstantRealClass(pub ConstantRealData);
