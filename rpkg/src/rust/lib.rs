@@ -286,8 +286,25 @@ impl AltIntegerData for ConstantIntData {
     }
 }
 
+// Serialization support: save as [value, len], reconstruct on load
+impl miniextendr_api::altrep_data::AltrepSerialize for ConstantIntData {
+    fn serialized_state(&self) -> miniextendr_api::ffi::SEXP {
+        vec![self.value, self.len as i32].into_sexp()
+    }
+    fn unserialize(state: miniextendr_api::ffi::SEXP) -> Option<Self> {
+        let v: Vec<i32> = miniextendr_api::TryFromSexp::try_from_sexp(state).ok()?;
+        if v.len() != 2 {
+            return None;
+        }
+        Some(ConstantIntData {
+            value: v[0],
+            len: v[1] as usize,
+        })
+    }
+}
+
 // Generate low-level traits from data traits (also enables base type inference)
-miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
+miniextendr_api::impl_altinteger_from_data!(ConstantIntData, serialize);
 
 /// ALTREP class wrapper for constant integer data.
 #[miniextendr(class = "ConstantInt")]

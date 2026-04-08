@@ -248,6 +248,30 @@ test_that("Range<f64> cross-session without package", {
 
 # endregion
 
+# region: Proc-macro-derived ALTREP types (1-field struct via #[miniextendr])
+#
+# These test the proc-macro codegen path (explicit base= in altrep.rs) which
+# previously passed null DllInfo to R, breaking cross-session readRDS (#62).
+
+test_that("Proc-macro ALTREP (ConstantInt) cross-session round-trip", {
+  original <- constant_int()  # 10 elements, all 42
+  loaded <- cross_session_with_pkg(original)
+  expect_equal(length(loaded), 10L)
+  expect_equal(loaded[1], 42L)
+  expect_equal(loaded[10], 42L)
+  expect_equal(sum(loaded), 420L)
+})
+
+test_that("Proc-macro ALTREP (ConstantInt) cross-session without package", {
+  original <- constant_int()
+  loaded <- cross_session_without_pkg(original)
+  expect_equal(length(loaded), 10L)
+  expect_equal(loaded[1], 42L)
+  expect_equal(sum(loaded), 420L)
+})
+
+# endregion
+
 # region: Arrow arrays (feature-gated)
 
 test_that("Float64Array cross-session round-trip", {
