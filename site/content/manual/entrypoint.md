@@ -1,0 +1,209 @@
++++
+title = "Automatic Registration & Package Initialization"
+weight = 12
++++
+
+This document explains how miniextendr automatically registers R-callable
+functions and initializes the runtime when an R package loads.
+
+## Overview
+
+When R loads a package's shared library, it calls `R_init_<pkgname>()`. In
+miniextendr, this function is **generated entirely in Rust** via the
+`miniextendr_init!` proc macro — no C entry point file is needed.
+
+## How It Works
+
+### 1. Annotate with `#[miniextendr]`
+
+Every function, impl block, or trait annotated with `#[miniextendr]`
+self-registers at link time via [linkme](https://docs.rs/linkme) distributed
+slices. No manual module declarations are needed.
+
+```rust
+use miniextendr_api::miniextendr;
+
+#[miniextendr]
+pub fn hello() -> &'static str {
+    "Hello from Rust!"
+}
+```
+
+### 2. Add `miniextendr_init!` to lib.rs
+
+The `miniextendr_init!` macro generates the `R_init_<pkgname>()` function:
+
+```rust
+// lib.rs
+use miniextendr_api::miniextendr;
+
+#[miniextendr]
+pub fn hello() -> &'static str {
+    "Hello from Rust!"
+}
+
+miniextendr_api::miniextendr_init!(mypkg);
+```
+
+### 3. Package loads — everything is automatic
+
+When R runs `library(mypkg)`, it calls `R_init_mypkg()`, which the macro
+expanded into Rust code that does all initialization.
+
+## What `miniextendr_init!` Does
+
+The macro generates a single `#[no_mangle] unsafe extern "C-unwind"` function
+that calls `package_init()`. This consolidates all initialization into one step:
+
+```rust
+// Expanded (simplified) — you never write this manually
+#[no_mangle]
+unsafe extern "C-unwind" fn R_init_mypkg(dll: *mut DllInfo) {
+    package_init(dll, b"mypkg\0");
+}
+```
+
+`package_init()` performs the following in order:
+
+1. **Install panic hook** — captures panic messages for R error reporting
+2. **Initialize runtime** — records main thread ID; with `worker-thread`
+   feature, also spawns the worker thread
+3. **Assert UTF-8 locale** — fails fast if locale isn't UTF-8
+4. **Register ALTREP classes** — registers all `#[derive(Altrep*)]` classes
+5. **Register trait ABI** — calls `mx_abi_register()` for cross-package
+   trait dispatch (`mx_wrap`, `mx_get`, `mx_query`)
+6. **Register routines** — calls `R_registerRoutines()` with all linkme-
+   collected `.Call` entries
+7. **Lock down symbols** — `R_useDynamicSymbols(dll, FALSE)` and
+   `R_forceSymbols(dll, TRUE)`
+
+## The `stub.c` File
+
+R's build system requires at least one `.c` file in `src/` to invoke the
+linker. Since all entry points are now defined in Rust, we include a minimal
+`stub.c`:
+
+```c
+// Minimal stub so R's build system produces a shared library.
+// All entry points (R_init_*) are defined in Rust via miniextendr_init!().
+```
+
+The `extern` reference to `miniextendr_force_link` forces the linker to pull
+in the Rust archive member containing `R_init_<pkg>` and all linkme entries.
+Without it, the linker would extract nothing from the staticlib.
+
+## Linkme Distributed Slices
+
+The `#[miniextendr]` proc macro generates a `#[distributed_slice]` entry for
+each annotated item. At link time, all entries are collected into a static
+slice. During `package_init()`, this slice is iterated to build the
+`R_CallMethodDef` array for `R_registerRoutines()`.
+
+```
+#[miniextendr] fn foo() → linkme slice entry for "C_foo"
+#[miniextendr] fn bar() → linkme slice entry for "C_bar"
+                          ↓
+              package_init() iterates slice
+                          ↓
+              R_registerRoutines(dll, NULL, call_methods, NULL, NULL)
+```
+
+### Linker Anchor (`codegen-units = 1`)
+
+Static libraries (`.a`) strip unreferenced archive members during linking.
+With `codegen-units = 1` in `Cargo.toml`, the entire user crate compiles
+into a single `.o` file inside the staticlib archive. `stub.c` references
+`miniextendr_force_link` (emitted by `miniextendr_init!`), which forces the
+linker to pull in that single archive member — bringing all linkme
+distributed_slice entries along. No platform-specific force-load flags needed.
+
+## R Wrapper Generation
+
+R wrapper functions (the `.R` file with `.Call()` invocations) are generated
+via a cdylib-based approach:
+
+1. `cargo rustc --crate-type cdylib` builds a temporary shared library
+2. R loads it via `dyn.load()` and calls `miniextendr_write_wrappers(path)`
+3. The function reads the linkme slices and writes R wrapper code to a file
+4. `roxygen2::roxygenise()` generates NAMESPACE exports from the wrappers
+
+This runs during `just devtools-document` or equivalent.
+
+## When APIs Can Be Called
+
+| API Category | When Safe |
+|--------------|-----------|
+| Panic hook | Anytime after `package_init()` |
+| R APIs (value-returning) | After init, on main thread (or via `with_r_thread` with `worker-thread` feature) |
+| R APIs (pointer-returning) | Main thread only, after init |
+| Trait ABI | After init |
+| User Rust functions | After init |
+
+## Minimal Example
+
+For a package named `myrust`:
+
+```rust
+// src/rust/lib.rs
+use miniextendr_api::miniextendr;
+
+#[miniextendr]
+pub fn add(x: i32, y: i32) -> i32 {
+    x + y
+}
+
+miniextendr_api::miniextendr_init!(myrust);
+```
+
+That's it — no C files to write, no module declarations, no manual registration.
+
+## Embedding R (miniextendr-engine)
+
+When embedding R in a Rust application (not an R package), initialization
+differs slightly:
+
+```rust
+use miniextendr_engine::REngine;
+
+fn main() {
+    // REngine::build() handles R initialization
+    let _r = REngine::build().unwrap();
+
+    // After this, you can call R APIs
+    // miniextendr_runtime_init() is called automatically
+}
+```
+
+Additional functions available when embedding:
+
+- `miniextendr_encoding_init()` - Initialize UTF-8 locale handling (non-API)
+
+These aren't available in R packages because they reference symbols not
+exported from libR.
+
+## Troubleshooting
+
+### "miniextendr_runtime_init() must be called"
+
+This panic means R API functions were called before initialization. Ensure
+`miniextendr_init!` is present in your `lib.rs`.
+
+### Thread check failures
+
+If `is_r_main_thread()` returns incorrect results, something called
+`miniextendr_runtime_init()` from the wrong thread. The init must run on R's
+main thread (which `miniextendr_init!` guarantees since `R_init_*` is called
+by R on its main thread).
+
+### Symbol not found errors
+
+Ensure `miniextendr_init!(pkgname)` matches the package name in DESCRIPTION
+and Cargo.toml. The crate name must use underscores (not hyphens) for the
+`R_init_*` C symbol.
+
+## See Also
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — High-level crate and call flow overview
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) — Complete `#[miniextendr]` reference
+- [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) — How R builds packages with compiled code
+- [LINKING.md](LINKING.md) — Shared library linking strategy (libR discovery)
