@@ -28,7 +28,7 @@ impl AltIntegerData for StreamingIntRangeData {
     }
 }
 
-miniextendr_api::impl_altinteger_from_data!(StreamingIntRangeData);
+miniextendr_api::impl_altinteger_from_data!(StreamingIntRangeData, serialize_materialize);
 
 /// ALTREP class for streaming integer range 1..=n.
 #[miniextendr(class = "StreamingIntRange")]
@@ -76,7 +76,7 @@ impl AltRealData for StreamingRealSquaresData {
     }
 }
 
-miniextendr_api::impl_altreal_from_data!(StreamingRealSquaresData);
+miniextendr_api::impl_altreal_from_data!(StreamingRealSquaresData, serialize_materialize);
 
 /// ALTREP class for streaming real squares 1^2, 2^2, ..., n^2.
 #[miniextendr(class = "StreamingRealSquares")]

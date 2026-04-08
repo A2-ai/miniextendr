@@ -287,7 +287,7 @@ impl AltIntegerData for ConstantIntData {
 }
 
 // Generate low-level traits from data traits (also enables base type inference)
-miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
+miniextendr_api::impl_altinteger_from_data!(ConstantIntData, serialize_materialize);
 
 /// ALTREP class wrapper for constant integer data.
 #[miniextendr(class = "ConstantInt")]
@@ -342,7 +342,7 @@ impl AltRealData for ConstantRealData {
     }
 }
 
-miniextendr_api::impl_altreal_from_data!(ConstantRealData);
+miniextendr_api::impl_altreal_from_data!(ConstantRealData, serialize_materialize);
 
 #[miniextendr(class = "ConstantReal")]
 pub struct ConstantRealClass(pub ConstantRealData);
@@ -384,7 +384,7 @@ impl AltRealData for ArithSeqData {
     }
 }
 
-miniextendr_api::impl_altreal_from_data!(ArithSeqData);
+miniextendr_api::impl_altreal_from_data!(ArithSeqData, serialize_materialize);
 
 #[miniextendr(class = "ArithSeq")]
 pub struct ArithSeqClass(pub ArithSeqData);
@@ -1053,7 +1053,7 @@ impl AltRawData for RepeatingRawData {
     }
 }
 
-miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
+miniextendr_api::impl_altraw_from_data!(RepeatingRawData, serialize_materialize);
 
 #[miniextendr(class = "RepeatingRaw")]
 pub struct RepeatingRawClass(pub RepeatingRawData);
@@ -1112,7 +1112,7 @@ impl AltComplexData for UnitCircleData {
     }
 }
 
-miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
+miniextendr_api::impl_altcomplex_from_data!(UnitCircleData, serialize_materialize);
 
 /// ALTREP class wrapper for unit circle complex data.
 #[miniextendr(class = "UnitCircle")]
@@ -1625,7 +1625,7 @@ impl miniextendr_api::altrep_data::AltIntegerData for SparseIntIterData {
     }
 }
 
-miniextendr_api::impl_altinteger_from_data!(SparseIntIterData);
+miniextendr_api::impl_altinteger_from_data!(SparseIntIterData, serialize_materialize);
 
 /// ALTREP class wrapper for sparse integer iterator.
 #[miniextendr(class = "SparseIntIter")]
@@ -1697,7 +1697,7 @@ impl miniextendr_api::altrep_data::AltRealData for SparseRealIterData {
     }
 }
 
-miniextendr_api::impl_altreal_from_data!(SparseRealIterData);
+miniextendr_api::impl_altreal_from_data!(SparseRealIterData, serialize_materialize);
 
 /// ALTREP class wrapper for sparse real iterator.
 #[miniextendr(class = "SparseRealIter")]
@@ -1745,7 +1745,7 @@ impl miniextendr_api::altrep_data::AltLogicalData for SparseLogicalIterData {
     }
 }
 
-miniextendr_api::impl_altlogical_from_data!(SparseLogicalIterData);
+miniextendr_api::impl_altlogical_from_data!(SparseLogicalIterData, serialize_materialize);
 
 /// ALTREP class wrapper for sparse logical iterator.
 #[miniextendr(class = "SparseLogicalIter")]
@@ -1795,7 +1795,7 @@ impl miniextendr_api::altrep_data::AltRawData for SparseRawIterData {
     }
 }
 
-miniextendr_api::impl_altraw_from_data!(SparseRawIterData);
+miniextendr_api::impl_altraw_from_data!(SparseRawIterData, serialize_materialize);
 
 /// ALTREP class wrapper for sparse raw byte iterator.
 #[miniextendr(class = "SparseRawIter")]

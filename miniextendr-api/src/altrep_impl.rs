@@ -49,6 +49,97 @@ pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] 
 }
 // endregion
 
+// region: Materializing serialization helpers
+//
+// These functions materialize ALTREP data into plain R vectors for serialization.
+// They read elements via the ALTREP Elt method (which delegates to the data trait's
+// `elt()` implementation). Used by `serialize_materialize` macro variants.
+
+/// Materialize an ALTINTEGER ALTREP into a plain R integer vector.
+///
+/// Reads elements via `INTEGER_ELT` (ALTREP-aware) and copies them into
+/// a freshly allocated plain R integer vector.
+///
+/// Called from ALTREP `serialized_state` trampolines (already on R main thread).
+pub fn materialize_integer_for_serialize(x: crate::ffi::SEXP) -> crate::ffi::SEXP {
+    use crate::ffi::{Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+    unsafe {
+        let n = SexpExt::xlength(&x);
+        let out = Rf_protect(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, n));
+        for i in 0..n {
+            SexpExt::set_integer_elt(&out, i, SexpExt::integer_elt(&x, i));
+        }
+        Rf_unprotect(1);
+        out
+    }
+}
+
+/// Materialize an ALTREAL ALTREP into a plain R real vector.
+///
+/// Called from ALTREP `serialized_state` trampolines (already on R main thread).
+pub fn materialize_real_for_serialize(x: crate::ffi::SEXP) -> crate::ffi::SEXP {
+    use crate::ffi::{Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+    unsafe {
+        let n = SexpExt::xlength(&x);
+        let out = Rf_protect(crate::ffi::Rf_allocVector(SEXPTYPE::REALSXP, n));
+        for i in 0..n {
+            SexpExt::set_real_elt(&out, i, SexpExt::real_elt(&x, i));
+        }
+        Rf_unprotect(1);
+        out
+    }
+}
+
+/// Materialize an ALTLOGICAL ALTREP into a plain R logical vector.
+///
+/// Called from ALTREP `serialized_state` trampolines (already on R main thread).
+pub fn materialize_logical_for_serialize(x: crate::ffi::SEXP) -> crate::ffi::SEXP {
+    use crate::ffi::{Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+    unsafe {
+        let n = SexpExt::xlength(&x);
+        let out = Rf_protect(crate::ffi::Rf_allocVector(SEXPTYPE::LGLSXP, n));
+        for i in 0..n {
+            SexpExt::set_logical_elt(&out, i, SexpExt::logical_elt(&x, i));
+        }
+        Rf_unprotect(1);
+        out
+    }
+}
+
+/// Materialize an ALTRAW ALTREP into a plain R raw vector.
+///
+/// Called from ALTREP `serialized_state` trampolines (already on R main thread).
+pub fn materialize_raw_for_serialize(x: crate::ffi::SEXP) -> crate::ffi::SEXP {
+    use crate::ffi::{Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+    unsafe {
+        let n = SexpExt::xlength(&x);
+        let out = Rf_protect(crate::ffi::Rf_allocVector(SEXPTYPE::RAWSXP, n));
+        for i in 0..n {
+            SexpExt::set_raw_elt(&out, i, SexpExt::raw_elt(&x, i));
+        }
+        Rf_unprotect(1);
+        out
+    }
+}
+
+/// Materialize an ALTCOMPLEX ALTREP into a plain R complex vector.
+///
+/// Called from ALTREP `serialized_state` trampolines (already on R main thread).
+pub fn materialize_complex_for_serialize(x: crate::ffi::SEXP) -> crate::ffi::SEXP {
+    use crate::ffi::{Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
+    unsafe {
+        let n = SexpExt::xlength(&x);
+        let out = Rf_protect(crate::ffi::Rf_allocVector(SEXPTYPE::CPLXSXP, n));
+        for i in 0..n {
+            SexpExt::set_complex_elt(&out, i, SexpExt::complex_elt(&x, i));
+        }
+        Rf_unprotect(1);
+        out
+    }
+}
+
+// endregion
+
 // region: Macros for generating trait implementations
 
 /// Generate ALTREP trait implementations for a type that implements AltIntegerData.
@@ -69,6 +160,12 @@ pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] 
 ///
 /// // With serialization (type must implement AltrepSerialize):
 /// impl_altinteger_from_data!(MyType, serialize);
+///
+/// // With materializing serialization (no trait impl needed):
+/// // Materializes via Elt into a plain R vector. On deserialize, returns
+/// // the plain vector (ALTREP class lost, data preserved). Use for
+/// // iterator/streaming types that can't reconstruct from serialized state.
+/// impl_altinteger_from_data!(MyType, serialize_materialize);
 ///
 /// // With subset optimization (type must implement AltrepExtractSubset):
 /// impl_altinteger_from_data!(MyType, subset);
@@ -129,6 +226,14 @@ macro_rules! impl_altinteger_from_data {
     };
     ($ty:ty, serialize, subset) => {
         $crate::impl_altinteger_from_data!($ty, subset, serialize);
+    };
+    ($ty:ty, serialize_materialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altinteger_methods,
+            impl_inferbase_integer,
+            serialize_materialize($crate::altrep_impl::materialize_integer_for_serialize)
+        );
     };
 }
 
@@ -224,6 +329,58 @@ macro_rules! __impl_altrep_base_with_serialize {
                     Rf_unprotect_unchecked(1);
                     out
                 }
+            }
+        }
+    };
+}
+
+/// Internal macro: impl Altrep with length + materializing serialization.
+///
+/// Unlike `__impl_altrep_base_with_serialize` which delegates to `AltrepSerialize`,
+/// this variant materializes the ALTREP data into a plain R vector for serialization.
+/// On deserialization, the plain R vector is returned as-is (no ALTREP reconstruction).
+///
+/// This is designed for iterator/streaming types where the original data source (closures,
+/// iterators) cannot be reconstructed from serialized state.
+///
+/// The `$serialize_fn` must be a function `fn(SEXP) -> SEXP` that takes the ALTREP SEXP,
+/// reads elements via Elt/Get_region, and allocates a native R vector.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altrep_base_with_serialize_materialize {
+    ($ty:ty, $serialize_fn:path) => {
+        $crate::__impl_altrep_base_with_serialize_materialize!($ty, $serialize_fn, RUnwind);
+    };
+    ($ty:ty, $serialize_fn:path, $guard:ident) => {
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        impl $crate::altrep_traits::Altrep for $ty {
+            const GUARD: $crate::altrep_traits::AltrepGuard =
+                $crate::altrep_traits::AltrepGuard::$guard;
+
+            fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
+                unsafe { $crate::altrep_data1_as::<$ty>(x) }
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
+                    .unwrap_or(0)
+            }
+
+            const HAS_SERIALIZED_STATE: bool = true;
+
+            fn serialized_state(x: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
+                $serialize_fn(x)
+            }
+
+            const HAS_UNSERIALIZE: bool = true;
+
+            fn unserialize(
+                _class: $crate::ffi::SEXP,
+                state: $crate::ffi::SEXP,
+            ) -> $crate::ffi::SEXP {
+                // Return the plain R vector as-is. The ALTREP class is lost on
+                // deserialization, but the data is preserved. This is the correct
+                // behavior for iterator/streaming types that cannot be reconstructed.
+                state
             }
         }
     };
@@ -560,6 +717,13 @@ macro_rules! __impl_alt_from_data {
         $crate::$methods!($ty);
         $crate::$inferbase!($ty);
     };
+    // Serialize-materialize: materialize via Elt into plain R vector
+    ($ty:ty, $methods:ident, $inferbase:ident, serialize_materialize($serialize_fn:path)) => {
+        $crate::__impl_altrep_base_with_serialize_materialize!($ty, $serialize_fn);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::$methods!($ty);
+        $crate::$inferbase!($ty);
+    };
 }
 // endregion
 
@@ -659,6 +823,14 @@ macro_rules! impl_altreal_from_data {
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altreal_from_data!($ty, dataptr, serialize);
     };
+    ($ty:ty, serialize_materialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altreal_methods,
+            impl_inferbase_real,
+            serialize_materialize($crate::altrep_impl::materialize_real_for_serialize)
+        );
+    };
 }
 
 /// Internal macro for AltReal method implementations.
@@ -754,6 +926,14 @@ macro_rules! impl_altlogical_from_data {
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
     };
+    ($ty:ty, serialize_materialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altlogical_methods,
+            impl_inferbase_logical,
+            serialize_materialize($crate::altrep_impl::materialize_logical_for_serialize)
+        );
+    };
 }
 
 /// Internal macro: impl AltLogical methods from AltLogicalData
@@ -837,6 +1017,14 @@ macro_rules! impl_altraw_from_data {
     };
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altraw_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, serialize_materialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altraw_methods,
+            impl_inferbase_raw,
+            serialize_materialize($crate::altrep_impl::materialize_raw_for_serialize)
+        );
     };
 }
 
@@ -1087,6 +1275,14 @@ macro_rules! impl_altcomplex_from_data {
     };
     ($ty:ty, serialize, subset) => {
         $crate::impl_altcomplex_from_data!($ty, subset, serialize);
+    };
+    ($ty:ty, serialize_materialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altcomplex_methods,
+            impl_inferbase_complex,
+            serialize_materialize($crate::altrep_impl::materialize_complex_for_serialize)
+        );
     };
 }
 // endregion
