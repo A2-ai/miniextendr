@@ -53,3 +53,4 @@ Static trait method MatrixCounter::default_value() for CounterTraitS4
 \item{\code{ptr}}{External pointer to Rust \code{CounterTraitS4} struct}
 }}
 
+\keyword{internal}

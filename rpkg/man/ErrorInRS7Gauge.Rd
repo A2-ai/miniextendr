@@ -39,3 +39,4 @@ Deliberately panic.
 
 Return Result::Err.
 }
+\keyword{internal}

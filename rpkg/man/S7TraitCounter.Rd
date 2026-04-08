@@ -42,3 +42,4 @@ Get value via inherent method.
 
 Create a new S7 trait counter.
 }
+\keyword{internal}

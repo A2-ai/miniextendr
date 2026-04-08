@@ -27,3 +27,4 @@ Length method without \code{...} (strict generic).
 
 Method with fallback to class_any.
 }
+\keyword{internal}

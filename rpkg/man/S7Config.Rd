@@ -25,3 +25,4 @@ S7Config(name, score, version, .ptr = NULL)
 \description{
 Regular getter for version.
 }
+\keyword{internal}
