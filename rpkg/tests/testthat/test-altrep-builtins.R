@@ -144,3 +144,101 @@ test_that("Range<i64> handles out-of-range values", {
   expect_false(anyNA(r64_normal))
   expect_equal(sum(r64_normal), 55L)
 })
+
+# =============================================================================
+# DATAPTR writability tests (#60)
+#
+# Verify that writing through DATAPTR (e.g. x[i] <- val) works correctly
+# for all ALTREP types: types with AltrepDataptr return a pointer into data1
+# (writes visible to Elt), types without Dataptr get duplicated by R into a
+# regular vector before writing.
+# =============================================================================
+
+test_that("Vec<i32> ALTREP write-through works (dataptr into data1)", {
+  x <- vec_int_altrep(5L)
+  expect_equal(x, 1:5)
+
+  # Single element write
+
+  x[1] <- 999L
+  expect_equal(x[1], 999L)
+  # Other elements unchanged
+  expect_equal(x[2:5], 2:5)
+
+  # Multiple element write
+  x[3:4] <- c(30L, 40L)
+  expect_equal(x, c(999L, 2L, 30L, 40L, 5L))
+})
+
+test_that("Vec<f64> ALTREP write-through works (dataptr into data1)", {
+  x <- vec_real_altrep(5L)
+  expect_equal(x, c(0.5, 1.0, 1.5, 2.0, 2.5))
+
+  x[2] <- 99.9
+  expect_equal(x[2], 99.9)
+  expect_equal(x[1], 0.5)
+  expect_equal(x[5], 2.5)
+})
+
+test_that("Box<[f64]> ALTREP write-through works (dataptr into data1)", {
+  x <- boxed_reals(4L)
+  expect_equal(x, c(1.5, 3.0, 4.5, 6.0))
+
+  x[3] <- -1.0
+  expect_equal(x[3], -1.0)
+  expect_equal(x[1], 1.5)
+  expect_equal(x[4], 6.0)
+})
+
+test_that("Box<[i32]> ALTREP write-through works (dataptr into data1)", {
+  x <- boxed_ints(3L)
+  expect_equal(x, 1:3)
+
+  x[2] <- 42L
+  expect_equal(x, c(1L, 42L, 3L))
+})
+
+test_that("Box<[String]> ALTREP write-through works (string materialization)", {
+  x <- boxed_strings(3L)
+  expect_equal(x, c("boxed_0", "boxed_1", "boxed_2"))
+
+  # Writing to a string ALTREP: R materializes the STRSXP cache in data2
+  # and then writes to it. Subsequent reads come from data2.
+  x[2] <- "modified"
+  expect_equal(x[2], "modified")
+  expect_equal(x[1], "boxed_0")
+  expect_equal(x[3], "boxed_2")
+})
+
+test_that("Range<i32> ALTREP is read-only (no Dataptr)", {
+  # Range<i32> has no Dataptr method. Subassignment errors because
+  # ALTREP types without Dataptr cannot provide a writable pointer.
+  # This is correct behavior for immutable computed types.
+  x <- range_int_altrep(1L, 6L)  # [1, 2, 3, 4, 5]
+  expect_equal(x[1], 1L)
+  expect_equal(x[5], 5L)
+  expect_equal(length(x), 5L)
+
+  # Direct subassignment errors (no DATAPTR)
+  expect_error(x[1] <- 999L, "cannot access data pointer")
+
+  # Workaround: extract elements one by one to create a regular vector
+  y <- vapply(seq_along(x), function(i) x[i], integer(1))
+  y[1] <- 999L
+  expect_equal(y, c(999L, 2L, 3L, 4L, 5L))
+})
+
+test_that("Range<f64> ALTREP is read-only (no Dataptr)", {
+  x <- range_real_altrep(0.5, 3.5)  # [0.5, 1.5, 2.5]
+  expect_equal(x[1], 0.5)
+  expect_equal(x[3], 2.5)
+  expect_equal(length(x), 3L)
+
+  # Direct subassignment errors (no DATAPTR)
+  expect_error(x[2] <- -1.0, "cannot access data pointer")
+
+  # Workaround: extract elements one by one
+  y <- vapply(seq_along(x), function(i) x[i], double(1))
+  y[2] <- -1.0
+  expect_equal(y, c(0.5, -1.0, 2.5))
+})

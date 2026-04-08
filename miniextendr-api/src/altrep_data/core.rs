@@ -195,13 +195,35 @@ impl From<i32> for Sortedness {
 // region: Dataptr / serialization / subset helpers
 
 /// Trait for ALTREP types that can expose a data pointer.
+///
+/// # Writability contract
+///
+/// When `writable = true`, R **will** write through the returned pointer
+/// (e.g., `x[i] <- val`). The implementation must ensure:
+///
+/// 1. The returned pointer is safe to write to (not read-only memory).
+/// 2. Writes are visible to subsequent `Elt`/`Get_region` calls (no stale cache).
+///
+/// For owned containers (`Vec<T>`, `Box<[T]>`), this is automatic because
+/// DATAPTR and Elt both access the same allocation (data1).
+///
+/// For copy-on-write types (`Cow<'static, [T]>`), `writable = true` should
+/// trigger the copy so writes go to owned memory. When `writable = false`,
+/// the borrowed pointer can be returned directly.
+///
+/// For immutable data (`&'static [T]`), `writable = true` should panic or
+/// return `None` since the data cannot be modified.
+///
+/// The `__impl_altvec_dataptr` macro uses `dataptr_or_null` for read-only
+/// access and only calls `dataptr(&mut self, true)` when R requests a
+/// writable pointer.
 pub trait AltrepDataptr<T> {
-    /// Get a mutable pointer to the underlying data.
+    /// Get a pointer to the underlying data, possibly triggering materialization.
     ///
-    /// If `writable` is true, R may modify the data.
+    /// When `writable` is true, R will write through the returned pointer.
+    /// Implementations for immutable data should panic or return `None`.
+    ///
     /// Return `None` if data cannot be accessed as a contiguous buffer.
-    ///
-    /// This method may trigger materialization of lazy data.
     fn dataptr(&mut self, writable: bool) -> Option<*mut T>;
 
     /// Get a read-only pointer without forcing materialization.
@@ -209,6 +231,9 @@ pub trait AltrepDataptr<T> {
     /// Return `None` if data is not already materialized or cannot provide
     /// a contiguous buffer. R will fall back to element-by-element access
     /// via `Elt` when this returns `None`.
+    ///
+    /// The `__impl_altvec_dataptr` macro calls this for `Dataptr(x, writable=false)`
+    /// to avoid unnecessary mutable borrows and copy-on-write overhead.
     fn dataptr_or_null(&self) -> Option<*const T> {
         None
     }
