@@ -112,7 +112,7 @@ just configure   # or: cd rpkg && NOT_CRAN=true bash ./configure
 
 ### dev-detached
 
-The rpkg directory exists outside the monorepo (e.g., after scaffolding with
+The example package directory (`rpkg/`) exists outside the monorepo (e.g., after scaffolding with
 minirextendr). Cargo uses git deps directly from the Cargo.toml. The `[patch]`
 section is stripped since monorepo paths are unavailable.
 

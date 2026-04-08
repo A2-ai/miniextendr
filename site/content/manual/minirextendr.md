@@ -67,7 +67,7 @@ myproject/
 ├── mypkg-rs/            # Main Rust crate
 │   ├── Cargo.toml
 │   └── src/lib.rs
-├── mypkg/               # R package (rpkg)
+├── mypkg/               # Generated R package
 │   ├── src/rust/        # R-facing Rust bindings
 │   └── vendor/
 ├── tools/               # Version management scripts

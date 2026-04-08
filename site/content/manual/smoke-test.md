@@ -15,7 +15,7 @@ The process below is the canonical reference for the demanding smoke lane.
 The smoke test validates the most failure-prone integration paths across the
 miniextendr ecosystem:
 
-1. **miniextendr** (rpkg) can configure, build, install, and run core runtime
+1. **The example miniextendr package** (`rpkg/`) can configure, build, install, and run core runtime
    paths in both dev and CRAN-like modes.
 2. **minirextendr** can scaffold working projects (standalone + monorepo) that
    actually build and execute Rust-backed R functions.
@@ -62,7 +62,7 @@ just minirextendr-install
 Rscript -e 'devtools::install("minirextendr")'
 ```
 
-### 2. Configure rpkg
+### 2. Configure the example package (`rpkg/`)
 
 Required before A2+ phases. If templates have drifted (e.g., after editing
 `rpkg/configure.ac`), approve them first:
@@ -169,7 +169,7 @@ just devtools-test FILTER=conversions
 
 ### Phase A3: High-Risk Runtime Filters
 
-Run after A2 with rpkg installed. These target the most crash-prone subsystems.
+Run after A2 with the example package (`rpkg/`) installed. These target the most crash-prone subsystems.
 
 ```bash
 just devtools-test FILTER=gc-stress
@@ -365,7 +365,7 @@ hundreds of lines like:
 This is harmless cosmetic noise from autoconf's environment dump, not real
 errors. It does not affect the configure output.
 
-### `just templates-check` fails after rpkg changes
+### `just templates-check` fails after example package changes
 
 Any change to files tracked by `just templates-sources` (e.g.,
 `rpkg/configure.ac`, `rpkg/src/Makevars.in`) will cause `just templates-check`

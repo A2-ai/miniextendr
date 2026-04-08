@@ -11,19 +11,19 @@ Templates are stored in `minirextendr/inst/templates/` and come in two flavors:
 - **`rpkg/`** - Standalone R package template (recommended for most users)
 - **`monorepo/`** - Workspace-based template with separate Rust crate
 
-### Master Source: rpkg/
+### Master Source: example package (`rpkg/`)
 
-**Important:** The templates are **derived from** `rpkg/` (the demo R package), not the other way around.
+**Important:** The templates are **derived from** the example package (`rpkg/`), not the other way around.
 
-- `rpkg/` is the **master source** where changes should be tested first
-- Templates are **copies** of rpkg files with additional logic for standalone use
+- The example package (`rpkg/`) is the **master source** where changes should be tested first
+- Templates are **copies** of the example package files with additional logic for standalone use
 - Changes flow: `rpkg/` → test → apply to templates → approve delta
 
 ## Template Sync System
 
 ### Approved Delta
 
-Templates are not exact copies of rpkg - they have legitimate differences for standalone projects:
+Templates are not exact copies of the example package (`rpkg/`) - they have legitimate differences for standalone projects:
 
 - **Conditional monorepo detection** - Check if miniextendr-api exists before using path overrides
 - **Standalone vendoring** - Run cargo vendor for transitive deps when not in monorepo
@@ -83,7 +83,7 @@ just templates-check
 
 ### 2. When templates-check Fails
 
-If `just templates-check` fails, it means templates have drifted from rpkg:
+If `just templates-check` fails, it means templates have drifted from the example package (`rpkg/`):
 
 ```bash
 # See what changed
@@ -99,7 +99,7 @@ git restore minirextendr/inst/templates/
 
 ### 3. Common Scenarios
 
-**Scenario: Updated configure.ac in rpkg**
+**Scenario: Updated configure.ac in the example package**
 
 ```bash
 # Edit and test in rpkg
@@ -168,7 +168,7 @@ The following files in rpkg/ have corresponding template versions:
 
 ### Files That Don't Need Sync
 
-These rpkg files are specific to the demo package and don't have template equivalents:
+These `rpkg/` files are specific to the example package and don't have template equivalents:
 
 - `DESCRIPTION` - Package metadata
 - `R/*.R` - R function implementations
@@ -198,7 +198,7 @@ The approve recipe:
 
 ### Patch File
 
-`patches/templates.patch` stores the approved differences between rpkg and templates as a unified diff. This allows:
+`patches/templates.patch` stores the approved differences between the example package and templates as a unified diff. This allows:
 
 - Intentional differences to be tracked and reviewed
 - Unexpected drift to be caught by `templates-check`
@@ -206,7 +206,7 @@ The approve recipe:
 
 ## Best Practices
 
-### Always Test in rpkg First
+### Always Test in the example package (`rpkg/`) first
 
 1. ✅ Make change in rpkg/
 2. ✅ Test thoroughly (just devtools-test)
@@ -246,7 +246,7 @@ just templates-check  # Must pass before commit
 
 ## Troubleshooting
 
-### templates-check fails after modifying rpkg
+### templates-check fails after modifying the example package
 
 **Expected behavior.** You modified the master source, so templates are now out of sync.
 
@@ -259,7 +259,7 @@ just templates-approve
 ### templates-check fails but I didn't change anything
 
 **Possible causes:**
-- Someone committed rpkg changes without updating templates
+- Someone committed example package changes without updating templates
 - The patch file is out of sync
 
 **Solution:**
@@ -273,9 +273,9 @@ just templates-check  # Shows differences
 just templates-approve
 ```
 
-### I modified templates but not rpkg
+### I modified templates but not the example package
 
-**Generally wrong approach.** Templates derive from rpkg.
+**Generally wrong approach.** Templates derive from the example package (`rpkg/`).
 
 **Solution:**
 ```bash
@@ -373,10 +373,10 @@ This ensures:
 ## Summary
 
 **Key Points:**
-1. `rpkg/` is the master source
+1. The example package (`rpkg/`) is the master source
 2. Templates are derived copies with minimal additions
 3. `patches/templates.patch` tracks approved differences
-4. Always test in rpkg before updating templates
+4. Always test in the example package before updating templates
 5. Run `just templates-check` before committing
 6. Use `just templates-approve` to update the approved delta
 

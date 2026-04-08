@@ -16,7 +16,7 @@ The trait ABI enables:
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │ R Code          │     │ C-callables      │     │ Rust Runtime    │
-│                 │     │ (rpkg)           │     │ (miniextendr)   │
+│                 │     │ (example pkg)    │     │ (miniextendr)   │
 │ .Call("method", │────►│ mx_query()       │────►│ vtable lookup   │
 │       obj, ...) │     │ mx_wrap()        │     │ method shim     │
 │                 │◄────│ mx_get()         │◄────│ type conversion │
@@ -50,7 +50,7 @@ The trait ABI enables:
 | `tag_collision` | Duplicate `mx_tag` values across traits |
 | `unused_trait_impl` | Vtable generated but type not exposed via ExternalPtr |
 
-### C (rpkg)
+### C (example package)
 
 | File | Purpose |
 |------|---------|
