@@ -248,6 +248,12 @@ macro_rules! __impl_altrep_base_with_serialize {
 }
 
 /// Internal macro: impl AltVec with dataptr support
+///
+/// When `writable = true`, obtains a mutable reference to the data via
+/// `altrep_data1_mut` so that writes through the returned pointer modify
+/// the Rust-owned data directly. When `writable = false`, uses the
+/// immutable `altrep_data1_as` + `dataptr_or_null` path, avoiding
+/// unnecessary mutable borrows (and, for `Cow`, avoiding a copy-on-write).
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_dataptr {
@@ -257,12 +263,32 @@ macro_rules! __impl_altvec_dataptr {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::ffi::SEXP, writable: bool) -> *mut core::ffi::c_void {
-                unsafe { $crate::altrep_data1_mut::<$ty>(x) }
-                    .and_then(|d| {
-                        <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, writable)
-                    })
-                    .map(|p| p.cast::<core::ffi::c_void>())
-                    .unwrap_or(core::ptr::null_mut())
+                if writable {
+                    // Writable: obtain &mut T so the caller can write through the pointer.
+                    unsafe { $crate::altrep_data1_mut::<$ty>(x) }
+                        .and_then(|d| {
+                            <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, true)
+                        })
+                        .map(|p| p.cast::<core::ffi::c_void>())
+                        .unwrap_or(core::ptr::null_mut())
+                } else {
+                    // Read-only: try immutable access first. This avoids &mut borrows
+                    // and, for Cow types, avoids unnecessary copy-on-write.
+                    let ro = unsafe { $crate::altrep_data1_as::<$ty>(x) }.and_then(|d| {
+                        <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d)
+                    });
+                    if let Some(p) = ro {
+                        return p.cast_mut().cast::<core::ffi::c_void>();
+                    }
+                    // dataptr_or_null returned None (data not yet available) — fall
+                    // back to the mutable path which may trigger materialization.
+                    unsafe { $crate::altrep_data1_mut::<$ty>(x) }
+                        .and_then(|d| {
+                            <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, false)
+                        })
+                        .map(|p| p.cast::<core::ffi::c_void>())
+                        .unwrap_or(core::ptr::null_mut())
+                }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
