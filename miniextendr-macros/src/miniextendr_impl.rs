@@ -79,6 +79,7 @@
 //! | `&mut self` | `RefMut` | Instance method (mutable, chainable) |
 //! | `self: &ExternalPtr<Self>` | `ExternalPtrRef` | Instance method (immutable, full ExternalPtr access) |
 //! | `self: &mut ExternalPtr<Self>` | `ExternalPtrRefMut` | Instance method (mutable, full ExternalPtr access) |
+//! | `self: ExternalPtr<Self>` | `ExternalPtrValue` | Instance method (owned ExternalPtr, full access) |
 //! | `self` | `Value` | Consuming method (not supported in v1) |
 //! | (none) | `None` | Static method or constructor |
 //!
@@ -152,12 +153,15 @@ fn replace_self_in_tokens(
         .collect()
 }
 
-/// Rewrite methods with `self: &ExternalPtr<Self>` or `self: &mut ExternalPtr<Self>`
-/// receivers so they compile on stable Rust (which lacks `arbitrary_self_types`).
+/// Rewrite methods with ExternalPtr-based receivers so they compile on stable Rust
+/// (which lacks `arbitrary_self_types`).
 ///
-/// Transforms:
-/// - The `self` receiver → a regular parameter `__miniextendr_self: &[mut] ExternalPtr<Self>`
-/// - All `self` references in the method body → `__miniextendr_self`
+/// Handles:
+/// - `self: &ExternalPtr<Self>` → `__miniextendr_self: &ExternalPtr<Self>`
+/// - `self: &mut ExternalPtr<Self>` → `__miniextendr_self: &mut ExternalPtr<Self>`
+/// - `self: ExternalPtr<Self>` → `__miniextendr_self: ExternalPtr<Self>`
+///
+/// Also replaces all `self` references in the method body with `__miniextendr_self`.
 fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
     for item in &mut item_impl.items {
         let syn::ImplItem::Fn(method) = item else {
@@ -169,20 +173,32 @@ fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl
         if receiver.colon_token.is_none() {
             continue;
         }
-        let syn::Type::Reference(type_ref) = receiver.ty.as_ref() else {
-            continue;
-        };
-        if !is_external_ptr_type(&type_ref.elem) {
-            continue;
-        }
 
-        // This is an ExternalPtr receiver — rewrite it.
-        let mutability = type_ref.mutability;
-        let inner_ty = &type_ref.elem;
+        // Determine if this is an ExternalPtr receiver and build the replacement param.
+        let new_param: Option<syn::FnArg> =
+            if let syn::Type::Reference(type_ref) = receiver.ty.as_ref() {
+                // self: &ExternalPtr<Self> or self: &mut ExternalPtr<Self>
+                if is_external_ptr_type(&type_ref.elem) {
+                    let mutability = type_ref.mutability;
+                    let inner_ty = &type_ref.elem;
+                    Some(syn::parse_quote! {
+                        __miniextendr_self: &#mutability #inner_ty
+                    })
+                } else {
+                    None
+                }
+            } else if is_external_ptr_type(receiver.ty.as_ref()) {
+                // self: ExternalPtr<Self> (by value)
+                let inner_ty = &receiver.ty;
+                Some(syn::parse_quote! {
+                    __miniextendr_self: #inner_ty
+                })
+            } else {
+                None
+            };
 
-        // Create new first parameter: __miniextendr_self: &[mut] ExternalPtr<Self>
-        let new_param: syn::FnArg = syn::parse_quote! {
-            __miniextendr_self: &#mutability #inner_ty
+        let Some(new_param) = new_param else {
+            continue;
         };
 
         // Replace first parameter
@@ -368,6 +384,8 @@ pub enum ReceiverKind {
     ExternalPtrRef,
     /// `self: &mut ExternalPtr<Self>` — mutable borrow of the wrapping ExternalPtr
     ExternalPtrRefMut,
+    /// `self: ExternalPtr<Self>` — owned ExternalPtr (not consuming the inner T)
+    ExternalPtrValue,
 }
 
 impl ReceiverKind {
@@ -379,6 +397,7 @@ impl ReceiverKind {
                 | ReceiverKind::RefMut
                 | ReceiverKind::ExternalPtrRef
                 | ReceiverKind::ExternalPtrRefMut
+                | ReceiverKind::ExternalPtrValue
         )
     }
 
@@ -1708,9 +1727,10 @@ impl ParsedMethod {
     /// Detect the [`ReceiverKind`] from a method's function signature.
     ///
     /// Inspects the first parameter to determine whether this is a static function
-    /// (`None`), immutable borrow (`Ref`), mutable borrow (`RefMut`), or consuming
-    /// method (`Value`). Handles both standard receivers (`&self`, `&mut self`) and
-    /// typed receivers (`self: &Self`, `self: &mut Self`, `self: Box<Self>`).
+    /// (`None`), immutable borrow (`Ref`), mutable borrow (`RefMut`), consuming
+    /// method (`Value`), or ExternalPtr receiver (`ExternalPtrRef`, `ExternalPtrRefMut`,
+    /// `ExternalPtrValue`). Handles both standard receivers (`&self`, `&mut self`) and
+    /// typed receivers (`self: &Self`, `self: ExternalPtr<Self>`, etc.).
     fn detect_env(sig: &syn::Signature) -> ReceiverKind {
         match sig.inputs.first() {
             Some(syn::FnArg::Receiver(r)) => {
@@ -1736,6 +1756,9 @@ impl ParsedMethod {
                         } else {
                             ReceiverKind::Ref
                         }
+                    } else if is_external_ptr_type(r.ty.as_ref()) {
+                        // self: ExternalPtr<Self> — owned ExternalPtr
+                        ReceiverKind::ExternalPtrValue
                     } else {
                         // self: Box<Self>, self: Rc<Self>, etc. - treat as by value
                         ReceiverKind::Value
@@ -2352,6 +2375,14 @@ pub fn generate_method_c_wrapper(
                     };
                 }
             }
+            ReceiverKind::ExternalPtrValue => {
+                quote! {
+                    let __self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(self_sexp)
+                            .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
+                    };
+                }
+            }
             _ => unreachable!(),
         };
         vec![self_extraction]
@@ -2369,6 +2400,9 @@ pub fn generate_method_c_wrapper(
         }
         ReceiverKind::ExternalPtrRefMut => {
             quote! { #type_ident::#method_ident(&mut __self_ptr, #(#rust_args),*) }
+        }
+        ReceiverKind::ExternalPtrValue => {
+            quote! { #type_ident::#method_ident(__self_ptr, #(#rust_args),*) }
         }
         ReceiverKind::None | ReceiverKind::Value => {
             quote! { #type_ident::#method_ident(#(#rust_args),*) }

@@ -1,4 +1,5 @@
-//! Tests for `self: &ExternalPtr<Self>` and `self: &mut ExternalPtr<Self>` receivers.
+//! Tests for ExternalPtr-based self receivers:
+//! `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`, and `self: ExternalPtr<Self>`.
 
 use miniextendr_api::externalptr::ExternalPtr;
 use miniextendr_api::miniextendr;
@@ -37,5 +38,10 @@ impl PtrSelfTest {
     /// Mutable ExternalPtr self — modify inner value via DerefMut.
     pub fn set_value_via_ptr(self: &mut ExternalPtr<Self>, new_val: i32) {
         self.value = new_val;
+    }
+
+    /// By-value ExternalPtr self — access inner value via Deref on owned ptr.
+    pub fn value_owned_ptr(self: ExternalPtr<Self>) -> i32 {
+        self.value
     }
 }
