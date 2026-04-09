@@ -1590,6 +1590,8 @@ unsafe extern "C-unwind" {
     pub static R_BaseEnv: SEXP;
     /// Empty root environment.
     pub static R_EmptyEnv: SEXP;
+    /// Base package namespace (internal base, not user-visible base env).
+    pub(crate) static R_BaseNamespace: SEXP;
 
     /// The "missing argument" sentinel value.
     ///
@@ -2355,6 +2357,16 @@ unsafe extern "C-unwind" {
     pub(crate) fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "findFun")]
     pub(crate) fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
+
+    /// Find a registered namespace by name. **Longjmps on error** — prefer
+    /// `REnv::package_namespace()` which wraps this safely.
+    #[doc(alias = "FindNamespace")]
+    pub(crate) fn R_FindNamespace(info: SEXP) -> SEXP;
+
+    /// Return the current execution environment (innermost closure on call
+    /// stack, or `R_GlobalEnv` if none).
+    #[doc(alias = "GetCurrentEnv")]
+    pub(crate) fn R_GetCurrentEnv() -> SEXP;
 
     // Evaluation
     #[doc(alias = "eval")]
