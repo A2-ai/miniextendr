@@ -115,6 +115,7 @@ fn generate_explicit_setters(base_name: &str, tramp_ty: &syn::Type) -> proc_macr
                     "t_lgl_is_sorted",
                 ),
                 ("HAS_NO_NA", "R_set_altlogical_No_NA_method", "t_lgl_no_na"),
+                ("HAS_SUM", "R_set_altlogical_Sum_method", "t_lgl_sum"),
             ][..],
             &[][..],
         ),
@@ -488,7 +489,9 @@ pub(crate) fn generate_altrep_impls(
             // Base optional methods
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_SERIALIZED_STATE, R_set_altrep_Serialized_state_method, bridge::t_serialized_state::<#tramp_ty>);
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_UNSERIALIZE, R_set_altrep_Unserialize_method, bridge::t_unserialize::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_UNSERIALIZE_EX, R_set_altrep_UnserializeEX_method, bridge::t_unserialize_ex::<#tramp_ty>);
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_DUPLICATE, R_set_altrep_Duplicate_method, bridge::t_duplicate::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_DUPLICATE_EX, R_set_altrep_DuplicateEX_method, bridge::t_duplicate_ex::<#tramp_ty>);
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_COERCE, R_set_altrep_Coerce_method, bridge::t_coerce::<#tramp_ty>);
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_INSPECT, R_set_altrep_Inspect_method, bridge::t_inspect::<#tramp_ty>);
 

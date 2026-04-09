@@ -957,8 +957,12 @@ macro_rules! __impl_altinteger_methods {
 /// // With serialization (type must implement AltrepSerialize):
 /// impl_altreal_from_data!(MyType, serialize);
 ///
-/// // With both dataptr and serialization:
+/// // With subset optimization (type must implement AltrepExtractSubset):
+/// impl_altreal_from_data!(MyType, subset);
+///
+/// // Combine multiple options:
 /// impl_altreal_from_data!(MyType, dataptr, serialize);
+/// impl_altreal_from_data!(MyType, subset, serialize);
 /// ```
 #[macro_export]
 macro_rules! impl_altreal_from_data {
@@ -993,6 +997,21 @@ macro_rules! impl_altreal_from_data {
     };
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altreal_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, subset) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altreal_methods, impl_inferbase_real, subset);
+    };
+    ($ty:ty, subset, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altreal_methods,
+            impl_inferbase_real,
+            subset,
+            serialize
+        );
+    };
+    ($ty:ty, serialize, subset) => {
+        $crate::impl_altreal_from_data!($ty, subset, serialize);
     };
     // Materializing dataptr only (no serialization)
     ($ty:ty, materializing_dataptr) => {
@@ -1067,8 +1086,12 @@ macro_rules! __impl_altreal_methods {
 /// // With serialization (type must implement AltrepSerialize):
 /// impl_altlogical_from_data!(MyType, serialize);
 ///
-/// // With both dataptr and serialization:
+/// // With subset optimization (type must implement AltrepExtractSubset):
+/// impl_altlogical_from_data!(MyType, subset);
+///
+/// // Combine multiple options:
 /// impl_altlogical_from_data!(MyType, dataptr, serialize);
+/// impl_altlogical_from_data!(MyType, subset, serialize);
 /// ```
 #[macro_export]
 macro_rules! impl_altlogical_from_data {
@@ -1103,6 +1126,26 @@ macro_rules! impl_altlogical_from_data {
     };
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, subset) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altlogical_methods,
+            impl_inferbase_logical,
+            subset
+        );
+    };
+    ($ty:ty, subset, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altlogical_methods,
+            impl_inferbase_logical,
+            subset,
+            serialize
+        );
+    };
+    ($ty:ty, serialize, subset) => {
+        $crate::impl_altlogical_from_data!($ty, subset, serialize);
     };
     // Materializing dataptr only (no serialization)
     ($ty:ty, materializing_dataptr) => {
@@ -1176,8 +1219,12 @@ macro_rules! __impl_altlogical_methods {
 /// // With serialization (type must implement AltrepSerialize):
 /// impl_altraw_from_data!(MyType, serialize);
 ///
-/// // With both dataptr and serialization:
+/// // With subset optimization (type must implement AltrepExtractSubset):
+/// impl_altraw_from_data!(MyType, subset);
+///
+/// // Combine multiple options:
 /// impl_altraw_from_data!(MyType, dataptr, serialize);
+/// impl_altraw_from_data!(MyType, subset, serialize);
 /// ```
 #[macro_export]
 macro_rules! impl_altraw_from_data {
@@ -1208,6 +1255,21 @@ macro_rules! impl_altraw_from_data {
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altraw_from_data!($ty, dataptr, serialize);
     };
+    ($ty:ty, subset) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altraw_methods, impl_inferbase_raw, subset);
+    };
+    ($ty:ty, subset, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altraw_methods,
+            impl_inferbase_raw,
+            subset,
+            serialize
+        );
+    };
+    ($ty:ty, serialize, subset) => {
+        $crate::impl_altraw_from_data!($ty, subset, serialize);
+    };
 }
 
 /// Internal macro for AltRaw method implementations.
@@ -1231,8 +1293,18 @@ macro_rules! __impl_altraw_methods {
 /// // Basic (no serialization):
 /// impl_altstring_from_data!(MyType);
 ///
+/// // With dataptr (materialized STRSXP):
+/// impl_altstring_from_data!(MyType, dataptr);
+///
 /// // With serialization (type must implement AltrepSerialize):
 /// impl_altstring_from_data!(MyType, serialize);
+///
+/// // With subset optimization (type must implement AltrepExtractSubset):
+/// impl_altstring_from_data!(MyType, subset);
+///
+/// // Combine multiple options:
+/// impl_altstring_from_data!(MyType, dataptr, serialize);
+/// impl_altstring_from_data!(MyType, subset, serialize);
 /// ```
 #[macro_export]
 macro_rules! impl_altstring_from_data {
@@ -1264,6 +1336,21 @@ macro_rules! impl_altstring_from_data {
             string_dataptr,
             serialize
         );
+    };
+    ($ty:ty, subset) => {
+        $crate::__impl_alt_from_data!($ty, __impl_altstring_methods, impl_inferbase_string, subset);
+    };
+    ($ty:ty, subset, serialize) => {
+        $crate::__impl_alt_from_data!(
+            $ty,
+            __impl_altstring_methods,
+            impl_inferbase_string,
+            subset,
+            serialize
+        );
+    };
+    ($ty:ty, serialize, subset) => {
+        $crate::impl_altstring_from_data!($ty, subset, serialize);
     };
 }
 
