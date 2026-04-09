@@ -726,10 +726,9 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             quote! {
                 ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics, #guard);
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
-                #[allow(clippy::not_unsafe_ptr_arg_deref)]
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
-                        unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
+                        unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#name #ty_generics>(&x) }
                             .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
                             .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
                     }
@@ -740,10 +739,9 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             quote! {
                 ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics);
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
-                #[allow(clippy::not_unsafe_ptr_arg_deref)]
                 impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
-                        unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
+                        unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#name #ty_generics>(&x) }
                             .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
                             .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
                     }
