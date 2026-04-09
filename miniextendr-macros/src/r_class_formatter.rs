@@ -446,7 +446,12 @@ impl<'a> MethodDocBuilder<'a> {
                 let other_refs: Vec<&str> = other_tags.iter().map(|s| s.as_str()).collect();
                 crate::roxygen::push_roxygen_tags_str(&mut lines, &other_refs);
                 if !param_tags.is_empty() {
-                    lines.push("#'".to_string());
+                    // Only add blank separator if the previous line isn't @title
+                    // (roxygen2 treats blank lines after @title as multi-paragraph titles)
+                    let last_is_title = lines.last().is_some_and(|l| l.contains("@title"));
+                    if !last_is_title {
+                        lines.push("#'".to_string());
+                    }
                     lines.push("#' \\describe{".to_string());
                     for tag in &param_tags {
                         if let Some(rest) = tag.trim_start().strip_prefix("@param ") {

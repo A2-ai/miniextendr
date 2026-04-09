@@ -100,15 +100,15 @@ Create a Box<[String]> ALTREP string vector
 
 Create a Box<[bool]> ALTREP logical vector
 
-Create a Vec\if{html}{\out{<i32>}} ALTREP integer vector
+Create a \verb{Vec<i32>} ALTREP integer vector
 
-Create a Vec\if{html}{\out{<f64>}} ALTREP real vector
+Create a \verb{Vec<f64>} ALTREP real vector
 
-Create a Range\if{html}{\out{<i64>}} ALTREP real vector (i64 stored as f64 bit patterns)
+Create a \verb{Range<i64>} ALTREP real vector (i64 stored as f64 bit patterns)
 
-Create a Range\if{html}{\out{<i32>}} ALTREP integer vector
+Create a \verb{Range<i32>} ALTREP integer vector
 
-Create a Range\if{html}{\out{<f64>}} ALTREP real vector
+Create a \verb{Range<f64>} ALTREP real vector
 
-Create a Vec\if{html}{\out{<Rcomplex>}} ALTREP complex vector
+Create a \verb{Vec<Rcomplex>} ALTREP complex vector
 }

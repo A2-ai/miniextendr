@@ -109,8 +109,6 @@ fn parse_attrs(attr: proc_macro::TokenStream) -> syn::Result<StructEnumAttrs> {
                         "class" => attrs.class = Some(s.value()),
                         "base" => attrs.base = Some(s.value()),
                         "prefer" => attrs.prefer = Some(s.value()),
-                        // Silently ignore "pkg" for backwards compatibility
-                        "pkg" => {}
                         _ => {
                             return Err(syn::Error::new_spanned(
                                 &nv.path,
@@ -124,8 +122,11 @@ fn parse_attrs(attr: proc_macro::TokenStream) -> syn::Result<StructEnumAttrs> {
                     }
                 }
             }
-            syn::Meta::List(_) => {
-                // Not expected at this level
+            syn::Meta::List(list) => {
+                return Err(syn::Error::new_spanned(
+                    list,
+                    "unexpected list-style attribute; use path (`list`) or key-value (`class = \"...\"`) syntax",
+                ));
             }
         }
     }
@@ -283,12 +284,8 @@ fn expand_struct(
     }
 
     if effective_dataframe {
-        // DataFrame mode: IntoList + DataFrameRow + IntoR on companion type
+        // DataFrame mode: IntoList + DataFrameRow (which now includes companion IntoR)
         // IntoList is required by DataFrameRow's trait assertion.
-        // The companion type ({Name}DataFrame) gets IntoR so it can be returned
-        // from #[miniextendr] functions directly.
-        let ident = &item_struct.ident;
-        let df_ident = quote::format_ident!("{}DataFrame", ident);
         let result = (|| -> syn::Result<proc_macro2::TokenStream> {
             let into_list = crate::list_derive::derive_into_list(derive_input.clone())?;
             let dataframe_row = crate::dataframe_derive::derive_dataframe_row(derive_input)?;
@@ -296,30 +293,6 @@ fn expand_struct(
                 #item_ts
                 #into_list
                 #dataframe_row
-
-                impl ::miniextendr_api::into_r::IntoR for #df_ident {
-                    type Error = std::convert::Infallible;
-
-                    #[inline]
-                    fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
-                        Ok(self.into_sexp())
-                    }
-
-                    #[inline]
-                    unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
-                        self.try_into_sexp()
-                    }
-
-                    #[inline]
-                    fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
-                        ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
-                    }
-
-                    #[inline]
-                    unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
-                        ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
-                    }
-                }
             })
         })();
         return result.unwrap_or_else(|e| e.into_compile_error()).into();

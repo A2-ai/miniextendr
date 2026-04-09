@@ -291,22 +291,23 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
 
     // Collect method information
     // Filter to only include instance methods (with &self or &mut self) that aren't skipped
-    let methods: Vec<_> = trait_item
-        .items
-        .iter()
-        .filter_map(|item| {
+    let methods: Vec<_> = {
+        let mut collected = Vec::new();
+        for item in &trait_item.items {
             if let syn::TraitItem::Fn(method) = item {
-                let info = extract_method_info(method);
+                let info = match extract_method_info(method) {
+                    Ok(info) => info,
+                    Err(e) => return e.into_compile_error(),
+                };
                 if info.has_self && !info.skip {
-                    Some(info)
-                } else {
-                    None
+                    collected.push(info);
                 }
-            } else {
-                None
             }
-        })
-        .collect();
+        }
+        collected
+    }
+    .into_iter()
+    .collect();
 
     // Generate tag path string for hashing
     // IMPORTANT: For cross-package trait dispatch, the tag must NOT include module_path!()
@@ -499,12 +500,14 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     // This enables `#[miniextendr] impl Trait for Type {}` (empty body) to auto-expand wrappers.
     let tpie_macro = if !has_generics && assoc_types.is_empty() {
         // Collect ALL non-skipped methods (including static) for TPIE metadata
-        let tpie_method_metadata: Vec<TokenStream> = trait_item
-            .items
-            .iter()
-            .filter_map(|item| {
+        let tpie_method_metadata: Vec<TokenStream> = {
+            let mut collected = Vec::new();
+            for item in &trait_item.items {
                 if let syn::TraitItem::Fn(method) = item {
-                    let info = extract_method_info(method);
+                    let info = match extract_method_info(method) {
+                        Ok(info) => info,
+                        Err(e) => return e.into_compile_error(),
+                    };
                     if !info.skip {
                         let r_name_ident = if let Some(ref rn) = info.r_name {
                             quote::format_ident!("{}", rn)
@@ -512,17 +515,14 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                             method.sig.ident.clone()
                         };
                         let sig = &method.sig;
-                        Some(quote::quote! {
+                        collected.push(quote::quote! {
                             method { r_name = #r_name_ident; #sig; }
-                        })
-                    } else {
-                        None
+                        });
                     }
-                } else {
-                    None
                 }
-            })
-            .collect();
+            }
+            collected
+        };
 
         let tpie_macro_name = quote::format_ident!("__mx_impl_{}", trait_name);
         quote::quote! {
@@ -1177,7 +1177,7 @@ fn build_where_predicates(
 /// Parses the method signature to determine receiver type, parameter names/types,
 /// return type, and any `#[miniextendr(...)]` attributes like `skip` and `r_name`.
 /// Parameters with non-ident patterns are assigned synthetic names (`arg0`, `arg1`, etc.).
-fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
+fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
     let name = method.sig.ident.clone();
 
     // Check for #[miniextendr(skip)] and #[miniextendr(r_name = "...")]
@@ -1187,15 +1187,19 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
         if !attr.path().is_ident("miniextendr") {
             continue;
         }
-        let _ = attr.parse_nested_meta(|meta| {
+        attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("skip") {
                 skip = true;
             } else if meta.path.is_ident("r_name") {
                 let value: syn::LitStr = meta.value()?.parse()?;
                 r_name = Some(value.value());
+            } else {
+                return Err(meta.error(
+                    "unknown #[miniextendr] option on trait method; expected `skip` or `r_name`",
+                ));
             }
             Ok(())
-        });
+        })?;
     }
 
     // Check for receiver
@@ -1235,7 +1239,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
         }
     };
 
-    MethodInfo {
+    Ok(MethodInfo {
         name,
         has_self,
         is_mut,
@@ -1244,7 +1248,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
         return_type,
         skip,
         r_name,
-    }
+    })
 }
 
 #[cfg(test)]

@@ -151,6 +151,7 @@ mod encoding_tests;
 mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_any_tests;
+mod dataframe_derive_alignment_tests;
 mod externalptr_identity_tests;
 mod externalptr_self_tests;
 mod externalptr_tests;
@@ -230,6 +231,7 @@ mod tinyvec_adapter_tests;
 #[cfg(feature = "toml")]
 mod toml_adapter_tests;
 mod trait_abi_tests;
+mod trait_method_options_tests;
 mod unwind_protect_tests;
 #[cfg(feature = "url")]
 mod url_adapter_tests;

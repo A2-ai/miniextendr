@@ -30,170 +30,9 @@
 /// - `"Complex"` -- complex vector (`CPLXSXP`)
 const VALID_BASES: &[&str] = &["Int", "Real", "Logical", "Raw", "String", "List", "Complex"];
 
-/// Generates family-specific ALTREP method setter code for an explicit base type.
-///
-/// Each ALTREP family (Int, Real, Logical, etc.) has a set of R C API setter functions
-/// that register trampolines for optional and required callbacks. This function produces:
-///
-/// - `set_if!(...)` statements for **conditional** methods -- only registered if the
-///   user's type sets the corresponding `HAS_*` associated constant to `true` on the
-///   relevant trait (e.g., `AltInteger::HAS_ELT`).
-/// - `unsafe { setter(cls, ...) }` statements for **always-required** methods --
-///   currently `Elt` for String and List families, which have no `HAS_ELT` guard.
-///
-/// # Arguments
-///
-/// * `base_name` -- One of the [`VALID_BASES`] names (e.g., `"Int"`, `"String"`).
-/// * `tramp_ty` -- The inner data type of the ALTREP wrapper struct, used as the type
-///   parameter for the bridge trampoline functions (e.g., `Vec<i32>`).
-///
-/// # Returns
-///
-/// A [`TokenStream`](proc_macro2::TokenStream) containing the setter invocations,
-/// or an empty stream if `base_name` is not recognized.
-fn generate_explicit_setters(base_name: &str, tramp_ty: &syn::Type) -> proc_macro2::TokenStream {
-    let span = proc_macro2::Span::call_site();
-
-    // (trait_name, [(has_const, setter_fn, trampoline)], [(always_setter, always_trampoline)])
-    type Cond = [(&'static str, &'static str, &'static str)];
-    type Always = [(&'static str, &'static str)];
-    let (trait_name, cond, always): (&str, &Cond, &Always) = match base_name {
-        "Int" => (
-            "AltInteger",
-            &[
-                ("HAS_ELT", "R_set_altinteger_Elt_method", "t_int_elt"),
-                (
-                    "HAS_GET_REGION",
-                    "R_set_altinteger_Get_region_method",
-                    "t_int_get_region",
-                ),
-                (
-                    "HAS_IS_SORTED",
-                    "R_set_altinteger_Is_sorted_method",
-                    "t_int_is_sorted",
-                ),
-                ("HAS_NO_NA", "R_set_altinteger_No_NA_method", "t_int_no_na"),
-                ("HAS_SUM", "R_set_altinteger_Sum_method", "t_int_sum"),
-                ("HAS_MIN", "R_set_altinteger_Min_method", "t_int_min"),
-                ("HAS_MAX", "R_set_altinteger_Max_method", "t_int_max"),
-            ][..],
-            &[][..],
-        ),
-        "Real" => (
-            "AltReal",
-            &[
-                ("HAS_ELT", "R_set_altreal_Elt_method", "t_real_elt"),
-                (
-                    "HAS_GET_REGION",
-                    "R_set_altreal_Get_region_method",
-                    "t_real_get_region",
-                ),
-                (
-                    "HAS_IS_SORTED",
-                    "R_set_altreal_Is_sorted_method",
-                    "t_real_is_sorted",
-                ),
-                ("HAS_NO_NA", "R_set_altreal_No_NA_method", "t_real_no_na"),
-                ("HAS_SUM", "R_set_altreal_Sum_method", "t_real_sum"),
-                ("HAS_MIN", "R_set_altreal_Min_method", "t_real_min"),
-                ("HAS_MAX", "R_set_altreal_Max_method", "t_real_max"),
-            ][..],
-            &[][..],
-        ),
-        "Logical" => (
-            "AltLogical",
-            &[
-                ("HAS_ELT", "R_set_altlogical_Elt_method", "t_lgl_elt"),
-                (
-                    "HAS_GET_REGION",
-                    "R_set_altlogical_Get_region_method",
-                    "t_lgl_get_region",
-                ),
-                (
-                    "HAS_IS_SORTED",
-                    "R_set_altlogical_Is_sorted_method",
-                    "t_lgl_is_sorted",
-                ),
-                ("HAS_NO_NA", "R_set_altlogical_No_NA_method", "t_lgl_no_na"),
-                ("HAS_SUM", "R_set_altlogical_Sum_method", "t_lgl_sum"),
-            ][..],
-            &[][..],
-        ),
-        "Raw" => (
-            "AltRaw",
-            &[
-                ("HAS_ELT", "R_set_altraw_Elt_method", "t_raw_elt"),
-                (
-                    "HAS_GET_REGION",
-                    "R_set_altraw_Get_region_method",
-                    "t_raw_get_region",
-                ),
-            ][..],
-            &[][..],
-        ),
-        "String" => (
-            "AltString",
-            &[
-                (
-                    "HAS_IS_SORTED",
-                    "R_set_altstring_Is_sorted_method",
-                    "t_str_is_sorted",
-                ),
-                ("HAS_NO_NA", "R_set_altstring_No_NA_method", "t_str_no_na"),
-                (
-                    "HAS_SET_ELT",
-                    "R_set_altstring_Set_elt_method",
-                    "t_str_set_elt",
-                ),
-            ][..],
-            &[("R_set_altstring_Elt_method", "t_str_elt")][..],
-        ),
-        "List" => (
-            "AltList",
-            &[(
-                "HAS_SET_ELT",
-                "R_set_altlist_Set_elt_method",
-                "t_list_set_elt",
-            )][..],
-            &[("R_set_altlist_Elt_method", "t_list_elt")][..],
-        ),
-        "Complex" => (
-            "AltComplex",
-            &[
-                ("HAS_ELT", "R_set_altcomplex_Elt_method", "t_cplx_elt"),
-                (
-                    "HAS_GET_REGION",
-                    "R_set_altcomplex_Get_region_method",
-                    "t_cplx_get_region",
-                ),
-            ][..],
-            &[][..],
-        ),
-        _ => return quote::quote! {},
-    };
-
-    let trait_ident = syn::Ident::new(trait_name, span);
-
-    let always_stmts = always.iter().map(|(setter, tramp)| {
-        let s = syn::Ident::new(setter, span);
-        let t = syn::Ident::new(tramp, span);
-        quote::quote! { unsafe { #s(cls, Some(bridge::#t::<#tramp_ty>)); } }
-    });
-
-    let cond_stmts = cond.iter().map(|(has, setter, tramp)| {
-        let h = syn::Ident::new(has, span);
-        let s = syn::Ident::new(setter, span);
-        let t = syn::Ident::new(tramp, span);
-        quote::quote! {
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::#trait_ident>::#h, #s, bridge::#t::<#tramp_ty>);
-        }
-    });
-
-    quote::quote! {
-        #(#always_stmts)*
-        #(#cond_stmts)*
-    }
-}
+// The explicit-base method tables were removed in favor of delegating to bridge installers
+// (altrep_bridge::install_base, install_vec, install_<family>). This eliminates the drift
+// risk where the proc-macro's method table could diverge from the bridge's authoritative one.
 
 /// Generates the `R_make_alt*_class()` call and `validate_altrep_class()` assertion
 /// for an explicit base type.
@@ -291,13 +130,36 @@ pub(crate) fn generate_altrep_impls(
 
     let tramp_ty = data_ty.clone();
 
-    // Generate family setters and make_class based on the base type.
-    let (family_setters, make_class): (proc_macro2::TokenStream, proc_macro2::TokenStream) =
+    // Generate method installation and make_class based on the base type.
+    let (install_methods, make_class): (proc_macro2::TokenStream, proc_macro2::TokenStream) =
         if let Some(base_name) = base_name {
-            let setters = generate_explicit_setters(base_name, &tramp_ty);
+            // Explicit base: delegate to the bridge installer functions (single source of truth).
+            let family_installer = syn::Ident::new(
+                match base_name {
+                    "Int" => "install_int",
+                    "Real" => "install_real",
+                    "Logical" => "install_lgl",
+                    "Raw" => "install_raw",
+                    "String" => "install_str",
+                    "Complex" => "install_cplx",
+                    "List" => "install_list",
+                    _ => unreachable!("validated by VALID_BASES check"),
+                },
+                proc_macro2::Span::call_site(),
+            );
+            let setters = quote::quote! {
+                // SAFETY: Called during R initialization while holding exclusive R access.
+                // Bridge installers are the single source of truth for method tables.
+                unsafe {
+                    bridge::install_base::<#tramp_ty>(cls);
+                    bridge::install_vec::<#tramp_ty>(cls);
+                    bridge::#family_installer::<#tramp_ty>(cls);
+                }
+            };
             let make = generate_explicit_make_class(base_name, ident);
             (setters, make)
         } else {
+            // Inferred base: InferBase wires up everything (also delegates to bridge installers).
             let setters = quote::quote! {
                 // SAFETY: Called during R initialization while holding exclusive R access
                 unsafe { <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::install_methods(cls); }
@@ -481,32 +343,8 @@ pub(crate) fn generate_altrep_impls(
     let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
     let source_loc_doc = crate::source_location_doc(ident.span());
 
-    let method_registrar_install_body: proc_macro2::TokenStream = if base_name.is_some() {
-        quote::quote! {
-            // Base: length is ALWAYS required (no HAS_LENGTH check)
-            unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<#tramp_ty>)); }
-
-            // Base optional methods
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_SERIALIZED_STATE, R_set_altrep_Serialized_state_method, bridge::t_serialized_state::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_UNSERIALIZE, R_set_altrep_Unserialize_method, bridge::t_unserialize::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_UNSERIALIZE_EX, R_set_altrep_UnserializeEX_method, bridge::t_unserialize_ex::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_DUPLICATE, R_set_altrep_Duplicate_method, bridge::t_duplicate::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_DUPLICATE_EX, R_set_altrep_DuplicateEX_method, bridge::t_duplicate_ex::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_COERCE, R_set_altrep_Coerce_method, bridge::t_coerce::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_INSPECT, R_set_altrep_Inspect_method, bridge::t_inspect::<#tramp_ty>);
-
-            // Vec-level setters
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<#tramp_ty>);
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<#tramp_ty>);
-
-            // Family-specific
-            #family_setters
-        }
-    } else {
-        // Inferred base: the InferBase installer wires up base + vec + family methods.
-        quote::quote! { #family_setters }
-    };
+    // Both explicit and inferred paths now delegate to bridge installers.
+    let method_registrar_install_body = &install_methods;
 
     // For non-generic types, emit a distributed_slice ALTREP registration entry
     let altrep_reg_entry = if generics.params.is_empty() {
@@ -546,14 +384,10 @@ pub(crate) fn generate_altrep_impls(
                 static CLASS: OnceLock<::miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
                 *CLASS.get_or_init(move || {
                     let cls = unsafe { #make_class };
-                    // Install ALTREP methods
+                    // Install ALTREP methods via bridge installers
                     {
                         #[allow(unused_imports)]
                         use ::miniextendr_api::altrep_bridge as bridge;
-                        #[allow(unused_imports)]
-                        use ::miniextendr_api::ffi::altrep::*;
-                        #[allow(unused_macros)]
-                        macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
                         #method_registrar_install_body
                     }
                     cls
@@ -649,9 +483,16 @@ pub fn expand_altrep_struct(
                     base_name = Some(s.value());
                     base_lit = Some(s.clone());
                 }
-                // Silently ignore "pkg" for backwards compatibility
-                "pkg" => {}
-                _ => {}
+                other => {
+                    return syn::Error::new_spanned(
+                        &nv.path,
+                        format!(
+                            "unknown #[miniextendr] attribute `{other}`; expected `class` or `base`"
+                        ),
+                    )
+                    .into_compile_error()
+                    .into();
+                }
             }
         }
     }

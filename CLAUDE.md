@@ -7,7 +7,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **No backwards compatibility**: This is an unreleased project. Remove deprecated code, don't shim around it.
 - **Simple over complex**: Avoid over-engineering. Only make changes directly requested or clearly necessary.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
-- **No pre-existing warnings**: If you encounter a warning, lint issue, or test failure — fix it. There is no such thing as a "known issue" that can be ignored. Every warning is a bug to be fixed.
+- **No pre-existing warnings**: If you encounter a warning, lint issue, or test failure — fix it, even if it's pre-existing and unrelated to the current task. There is no such thing as a "known issue" that can be ignored. Every warning is a bug to be fixed. Always leave the codebase cleaner than you found it.
 - **just is for maintainers, not end users**: `just`/`justfile` is a convenience tool for miniextendr authors/maintainers only. End-user R packages built with miniextendr must NOT require `just`. Any build logic that end users need (vendoring, configure, etc.) must work through `configure.ac`, `tools/*.R` scripts, or standard R package mechanisms. Mitigate any reliance on `just` in generated/scaffolded packages.
 - **Edit `.in` templates, not generated files**: Many files in rpkg are generated from `.in` templates. Always edit the `.in` source file instead:
   - `rpkg/src/rust/.cargo/config.toml` → edit `rpkg/src/rust/cargo-config.toml.in`
@@ -222,6 +222,8 @@ just devtools-document  # 3. Run roxygen2 (regenerate NAMESPACE + man pages)
 - `just configure` generates build config files
 - Build compiles Rust, then auto-generates `rpkg/R/miniextendr-wrappers.R` via cdylib
 - `devtools-document` runs roxygen2 on the generated wrappers to update NAMESPACE
+
+**Always run `just devtools-document`** after any change that affects R wrapper output — this includes changes to roxygen generation in proc macros (`r_class_formatter.rs`, `r_wrapper_builder.rs`, `roxygen.rs`), R wrapper codegen (`r_wrappers.rs`, class system generators), or adding/removing `#[miniextendr]` functions/impls in rpkg. The generated files (`rpkg/R/miniextendr-wrappers.R`, `rpkg/NAMESPACE`, `rpkg/man/*.Rd`) must be committed in sync with the Rust changes that produced them.
 
 ### Testing Changes
 

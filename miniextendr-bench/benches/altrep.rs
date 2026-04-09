@@ -7,10 +7,10 @@ use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
-#[miniextendr(class = "BenchInt", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchInt")]
 struct BenchInt(Vec<i32>);
 
-#[miniextendr(class = "BenchReal", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchReal")]
 struct BenchReal(Vec<f64>);
 
 fn main() {

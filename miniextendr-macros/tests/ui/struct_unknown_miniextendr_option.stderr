@@ -1,0 +1,5 @@
+error: unknown #[miniextendr] attribute `typo`; expected one of: class, base, prefer
+ --> tests/ui/struct_unknown_miniextendr_option.rs:5:33
+  |
+5 | #[miniextendr(class = "MyInts", typo = "bad")]
+  |                                 ^^^^
