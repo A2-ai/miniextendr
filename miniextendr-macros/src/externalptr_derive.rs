@@ -503,11 +503,11 @@ fn generate_setter_body(
         }
         SlotKind::ScalarRaw => {
             quote::quote! {
-                use ::miniextendr_api::ffi::{RAW, SexpExt, SEXPTYPE};
+                use ::miniextendr_api::ffi::{SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
                     let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
-                    data.#field_name = *RAW(raw_vec);
+                    data.#field_name = raw_vec.raw_elt(0);
                     x
                 }
             }
