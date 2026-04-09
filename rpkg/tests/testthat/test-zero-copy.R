@@ -175,7 +175,12 @@ test_that("ALTREP with NAs: same-session readRDS preserves NAs", {
   expect_equal(loaded[3], 30.0)
 })
 
+# Skip cross-session (callr) tests on Windows: callr/processx leaves orphan
+# Rterm processes that hold stdout pipe handles open, hanging R CMD check.
+# Cross-session behavior is platform-independent and tested on Linux/macOS.
+
 test_that("ALTREP cross-session readRDS works (classes registered at init)", {
+  skip_on_os("windows")
   x <- c(1.0, 2.0, 3.0)
   altrep_result <- zero_copy_arrow_f64_altrep(x)
   tmp <- tempfile(fileext = ".rds")
@@ -192,6 +197,7 @@ test_that("ALTREP cross-session readRDS works (classes registered at init)", {
 })
 
 test_that("ALTREP cross-session readRDS WITHOUT package returns plain vector", {
+  skip_on_os("windows")
   x <- c(1.0, 2.0, 3.0)
   altrep_result <- zero_copy_arrow_f64_altrep(x)
   tmp <- tempfile(fileext = ".rds")
@@ -208,6 +214,7 @@ test_that("ALTREP cross-session readRDS WITHOUT package returns plain vector", {
 })
 
 test_that("Vec<f64> ALTREP cross-session readRDS", {
+  skip_on_os("windows")
   altrep_result <- zero_copy_vec_f64_altrep(4L)
   expect_equal(altrep_result, c(0.0, 1.5, 3.0, 4.5))
 
@@ -227,6 +234,7 @@ test_that("Vec<f64> ALTREP cross-session readRDS", {
 })
 
 test_that("Int32 ALTREP cross-session readRDS", {
+  skip_on_os("windows")
   altrep_result <- zero_copy_arrow_i32_altrep(c(1L, 2L, 3L))
   tmp <- tempfile(fileext = ".rds")
   on.exit(unlink(tmp), add = TRUE)
@@ -240,6 +248,7 @@ test_that("Int32 ALTREP cross-session readRDS", {
 })
 
 test_that("Arrow ALTREP with NAs cross-session readRDS", {
+  skip_on_os("windows")
   x <- c(1.0, NA, 3.0)
   altrep_result <- zero_copy_arrow_f64_altrep(x)
   tmp <- tempfile(fileext = ".rds")
@@ -256,6 +265,7 @@ test_that("Arrow ALTREP with NAs cross-session readRDS", {
 })
 
 test_that("Double round-trip: saveRDS → readRDS → saveRDS → readRDS", {
+  skip_on_os("windows")
   altrep_result <- zero_copy_vec_f64_altrep(3L)
   expected <- c(0.0, 1.5, 3.0)
 
@@ -273,6 +283,7 @@ test_that("Double round-trip: saveRDS → readRDS → saveRDS → readRDS", {
 })
 
 test_that("Materialized ALTREP serializes correctly", {
+  skip_on_os("windows")
   altrep_result <- zero_copy_arrow_f64_altrep(c(1.0, 2.0, 3.0))
   # Force materialization by accessing all elements
   dummy <- sum(altrep_result)
