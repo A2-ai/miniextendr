@@ -502,7 +502,7 @@ jobs:
 
   # ===========================================================================
   # R Package: R CMD check on Windows
-  # DISABLED: Windows CI hangs — see https://github.com/CGMossa/miniextendr/issues/TBD
+  # DISABLED: Windows CI hangs — see https://github.com/CGMossa/miniextendr/issues/94
   # ===========================================================================
   r-check-windows:
     name: R CMD check / Windows
