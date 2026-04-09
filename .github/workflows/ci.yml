@@ -502,13 +502,14 @@ jobs:
 
   # ===========================================================================
   # R Package: R CMD check on Windows
+  # DISABLED: Windows CI hangs — see https://github.com/CGMossa/miniextendr/issues/94
   # ===========================================================================
   r-check-windows:
     name: R CMD check / Windows
     runs-on: windows-latest
     timeout-minutes: 90
     needs: changes
-    if: needs.changes.outputs.r == 'true'
+    if: false  # Disabled — Windows CI hangs (linking or test phase)
     # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
     # This matches R's own build system (SHELL = sh from Rtools).
     # See docs/windows-build-environment.md for details.
@@ -989,7 +990,7 @@ jobs:
             "${{ needs.changes.result }}"
             "${{ needs.r-check-linux.result }}"
             "${{ needs.r-check-macos.result }}"
-            "${{ needs.r-check-windows.result }}"
+            "${{ needs.r-check-windows.result }}"  # Currently always "skipped" — Windows CI disabled
             "${{ needs.r-tests.result }}"
             "${{ needs.cross-package-tests.result }}"
             "${{ needs.minirextendr.result }}"
