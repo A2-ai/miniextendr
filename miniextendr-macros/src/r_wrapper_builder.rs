@@ -511,7 +511,7 @@ impl RoxygenBuilder {
     }
 
     /// Set the `@description` tag.
-    #[allow(dead_code)] // Public API for external consumers
+    #[allow(dead_code)] // Exercised by tests
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
         self
@@ -530,7 +530,7 @@ impl RoxygenBuilder {
     }
 
     /// Add `@exportMethod` tag (for S4).
-    #[allow(dead_code)] // Public API for external consumers
+    #[allow(dead_code)] // Exercised by tests
     pub fn export_method(mut self, method: impl Into<String>) -> Self {
         self.export_method = Some(method.into());
         self

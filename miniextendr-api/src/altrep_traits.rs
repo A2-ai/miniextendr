@@ -186,7 +186,7 @@ pub trait AltInteger: AltVec {
     /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
     /// Bulk read elements into buffer.
-    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut i32) -> R_xlen_t {
+    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: &mut [i32]) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 
@@ -241,7 +241,7 @@ pub trait AltReal: AltVec {
     /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
     /// Bulk read elements into buffer.
-    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut f64) -> R_xlen_t {
+    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: &mut [f64]) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 
@@ -296,7 +296,7 @@ pub trait AltLogical: AltVec {
     /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
     /// Bulk read elements into buffer.
-    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut i32) -> R_xlen_t {
+    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: &mut [i32]) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 
@@ -338,7 +338,7 @@ pub trait AltRaw: AltVec {
     /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
     /// Bulk read elements into buffer.
-    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut u8) -> R_xlen_t {
+    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: &mut [u8]) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 }
@@ -358,7 +358,7 @@ pub trait AltComplex: AltVec {
     /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
     /// Bulk read elements into buffer.
-    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut Rcomplex) -> R_xlen_t {
+    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: &mut [Rcomplex]) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 }

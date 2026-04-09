@@ -118,15 +118,6 @@ impl ProjectContext {
         )
     }
 
-    /// Returns the DESCRIPTION path, or an error with guidance.
-    #[allow(dead_code)]
-    pub fn require_description(&self) -> Result<&Path> {
-        self.description.as_deref().context(
-            "No DESCRIPTION file found. Is this an R package directory?\n\
-             Run `miniextendr init package` to create a new package.",
-        )
-    }
-
     /// Returns the configure.ac path, or an error with guidance.
     pub fn require_configure_ac(&self) -> Result<&Path> {
         self.configure_ac.as_deref().context(

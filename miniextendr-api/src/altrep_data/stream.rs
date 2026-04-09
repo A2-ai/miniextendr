@@ -163,12 +163,11 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltReal
         x: crate::ffi::SEXP,
         start: crate::ffi::R_xlen_t,
         len: crate::ffi::R_xlen_t,
-        buf: *mut f64,
+        buf: &mut [f64],
     ) -> crate::ffi::R_xlen_t {
         unsafe { crate::altrep_data1_as::<Self>(x) }
             .map(|d| {
-                let slice = unsafe { crate::altrep_impl::altrep_region_buf(buf, len as usize) };
-                AltRealData::get_region(&*d, start as usize, len as usize, slice)
+                AltRealData::get_region(&*d, start as usize, len as usize, buf)
                     as crate::ffi::R_xlen_t
             })
             .unwrap_or(0)
@@ -330,12 +329,11 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltInteg
         x: crate::ffi::SEXP,
         start: crate::ffi::R_xlen_t,
         len: crate::ffi::R_xlen_t,
-        buf: *mut i32,
+        buf: &mut [i32],
     ) -> crate::ffi::R_xlen_t {
         unsafe { crate::altrep_data1_as::<Self>(x) }
             .map(|d| {
-                let slice = unsafe { crate::altrep_impl::altrep_region_buf(buf, len as usize) };
-                AltIntegerData::get_region(&*d, start as usize, len as usize, slice)
+                AltIntegerData::get_region(&*d, start as usize, len as usize, buf)
                     as crate::ffi::R_xlen_t
             })
             .unwrap_or(0)
