@@ -114,7 +114,10 @@ pub(super) fn generate_vtable_static(
     }
 
     // Parse methods and consts from the impl block
-    let all_methods = extract_methods(impl_item);
+    let all_methods = match extract_methods(impl_item) {
+        Ok(m) => m,
+        Err(e) => return e.into_compile_error(),
+    };
     let consts = extract_consts(impl_item);
 
     // Separate skipped methods: skipped methods are kept in the emitted impl block
@@ -500,56 +503,52 @@ fn generate_concrete_vtable_shims(
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,
 /// `#[miniextendr(...)]` attributes (coerce, skip, r_name, defaults, etc.),
 /// and roxygen `@param` tags from doc comments.
-fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
-    impl_item
-        .items
-        .iter()
-        .filter_map(|item| {
-            if let syn::ImplItem::Fn(method) = item {
-                // Check receiver type
-                let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
-                    if let syn::FnArg::Receiver(r) = arg {
-                        (true, r.mutability.is_some())
-                    } else {
-                        (false, false)
-                    }
-                });
-                let attrs = parse_trait_method_attrs(&method.attrs);
+fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
+    let mut methods = Vec::new();
+    for item in &impl_item.items {
+        if let syn::ImplItem::Fn(method) = item {
+            // Check receiver type
+            let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
+                if let syn::FnArg::Receiver(r) = arg {
+                    (true, r.mutability.is_some())
+                } else {
+                    (false, false)
+                }
+            });
+            let attrs = parse_trait_method_attrs(&method.attrs)?;
 
-                // Extract @param tags from method doc comments
-                let all_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
-                let param_tags: Vec<String> = all_tags
-                    .into_iter()
-                    .filter(|tag| tag.starts_with("@param"))
-                    .collect();
+            // Extract @param tags from method doc comments
+            let all_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
+            let param_tags: Vec<String> = all_tags
+                .into_iter()
+                .filter(|tag| tag.starts_with("@param"))
+                .collect();
 
-                Some(TraitMethod {
-                    ident: method.sig.ident.clone(),
-                    sig: method.sig.clone(),
-                    has_self,
-                    is_mut,
-                    worker: attrs.worker,
-                    unsafe_main_thread: attrs.unsafe_main_thread,
-                    coerce: attrs.coerce,
-                    check_interrupt: attrs.check_interrupt,
-                    rng: attrs.rng,
-                    unwrap_in_r: attrs.unwrap_in_r,
-                    error_in_r: attrs.error_in_r,
-                    param_defaults: attrs.defaults,
-                    param_tags,
-                    skip: attrs.skip,
-                    r_name: attrs.r_name,
-                    strict: attrs.strict,
-                    lifecycle: attrs.lifecycle,
-                    r_entry: attrs.r_entry,
-                    r_post_checks: attrs.r_post_checks,
-                    r_on_exit: attrs.r_on_exit,
-                })
-            } else {
-                None
-            }
-        })
-        .collect()
+            methods.push(TraitMethod {
+                ident: method.sig.ident.clone(),
+                sig: method.sig.clone(),
+                has_self,
+                is_mut,
+                worker: attrs.worker,
+                unsafe_main_thread: attrs.unsafe_main_thread,
+                coerce: attrs.coerce,
+                check_interrupt: attrs.check_interrupt,
+                rng: attrs.rng,
+                unwrap_in_r: attrs.unwrap_in_r,
+                error_in_r: attrs.error_in_r,
+                param_defaults: attrs.defaults,
+                param_tags,
+                skip: attrs.skip,
+                r_name: attrs.r_name,
+                strict: attrs.strict,
+                lifecycle: attrs.lifecycle,
+                r_entry: attrs.r_entry,
+                r_post_checks: attrs.r_post_checks,
+                r_on_exit: attrs.r_on_exit,
+            });
+        }
+    }
+    Ok(methods)
 }
 
 /// Parsed `#[miniextendr(...)]` attributes for a single trait method.
@@ -598,7 +597,7 @@ struct TraitMethodAttrs {
 /// Both styles can coexist. The `worker` flag controls whether static methods
 /// dispatch to the worker thread (defaults to `cfg!(feature = "default-worker")`).
 /// `error_in_r` and `unwrap_in_r` are mutually exclusive.
-fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
+fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethodAttrs> {
     let mut worker = false;
     let mut unsafe_main_thread = false;
     let mut coerce = false;
@@ -620,7 +619,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
             continue;
         }
 
-        let _ = attr.parse_nested_meta(|meta| {
+        attr.parse_nested_meta(|meta| {
             let is_class_meta = meta.path.is_ident("env")
                 || meta.path.is_ident("r6")
                 || meta.path.is_ident("s7")
@@ -803,10 +802,10 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                 ));
             }
             Ok(())
-        });
+        })?;
     }
 
-    TraitMethodAttrs {
+    Ok(TraitMethodAttrs {
         worker: worker || cfg!(feature = "default-worker"),
         unsafe_main_thread,
         coerce,
@@ -822,7 +821,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         r_entry,
         r_post_checks,
         r_on_exit,
-    }
+    })
 }
 
 /// Extract associated constant items from a trait impl block.

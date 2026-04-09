@@ -1,0 +1,5 @@
+error: unexpected list-style attribute; use path (`list`) or key-value (`class = "..."`) syntax
+ --> tests/ui/struct_list_syntax_rejected.rs:5:15
+  |
+5 | #[miniextendr(list(nested = "bad"))]
+  |               ^^^^^^^^^^^^^^^^^^^^

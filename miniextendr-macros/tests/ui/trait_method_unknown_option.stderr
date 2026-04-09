@@ -1,0 +1,5 @@
+error: unknown #[miniextendr] option on trait method; expected `skip` or `r_name`
+ --> tests/ui/trait_method_unknown_option.rs:7:19
+  |
+7 |     #[miniextendr(typo_option)]
+  |                   ^^^^^^^^^^^

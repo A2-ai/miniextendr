@@ -302,7 +302,7 @@ fn extract_method_info_captures_name() {
     })
     .unwrap();
 
-    let info = extract_method_info(&method);
+    let info = extract_method_info(&method).unwrap();
     assert_eq!(info.name.to_string(), "my_method");
 }
 
@@ -312,14 +312,14 @@ fn extract_method_info_detects_self() {
         fn method(&self) -> i32;
     })
     .unwrap();
-    let info = extract_method_info(&with_self);
+    let info = extract_method_info(&with_self).unwrap();
     assert!(info.has_self);
 
     let without_self: syn::TraitItemFn = syn::parse2(quote::quote! {
         fn static_method() -> i32;
     })
     .unwrap();
-    let info = extract_method_info(&without_self);
+    let info = extract_method_info(&without_self).unwrap();
     assert!(!info.has_self);
 }
 
@@ -329,14 +329,14 @@ fn extract_method_info_detects_mutability() {
         fn get(&self) -> i32;
     })
     .unwrap();
-    let info = extract_method_info(&immutable);
+    let info = extract_method_info(&immutable).unwrap();
     assert!(!info.is_mut);
 
     let mutable: syn::TraitItemFn = syn::parse2(quote::quote! {
         fn set(&mut self, value: i32);
     })
     .unwrap();
-    let info = extract_method_info(&mutable);
+    let info = extract_method_info(&mutable).unwrap();
     assert!(info.is_mut);
 }
 
@@ -347,7 +347,7 @@ fn extract_method_info_extracts_params() {
     })
     .unwrap();
 
-    let info = extract_method_info(&method);
+    let info = extract_method_info(&method).unwrap();
     assert_eq!(info.param_names.len(), 2);
     assert_eq!(info.param_names[0].to_string(), "a");
     assert_eq!(info.param_names[1].to_string(), "b");
