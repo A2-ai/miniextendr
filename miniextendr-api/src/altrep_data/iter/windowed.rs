@@ -300,7 +300,7 @@ impl<I: Iterator<Item = i32> + 'static> InferBase for WindowedIterIntData<I> {
 
 impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::Altrep for WindowedIterIntData<I> {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| d.len() as crate::ffi::R_xlen_t)
             .unwrap_or(0)
     }
@@ -314,7 +314,7 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| AltIntegerData::elt(&*d, i as usize))
             .unwrap_or(i32::MIN)
     }
@@ -327,7 +327,7 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger
         len: crate::ffi::R_xlen_t,
         buf: &mut [i32],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| {
                 AltIntegerData::get_region(&*d, start as usize, len as usize, buf)
                     as crate::ffi::R_xlen_t
@@ -412,7 +412,7 @@ impl<I: Iterator<Item = f64> + 'static> InferBase for WindowedIterRealData<I> {
 
 impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::Altrep for WindowedIterRealData<I> {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| d.len() as crate::ffi::R_xlen_t)
             .unwrap_or(0)
     }
@@ -424,7 +424,7 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for Window
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| AltRealData::elt(&*d, i as usize))
             .unwrap_or(f64::NAN)
     }
@@ -437,7 +437,7 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for Window
         len: crate::ffi::R_xlen_t,
         buf: &mut [f64],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| {
                 AltRealData::get_region(&*d, start as usize, len as usize, buf)
                     as crate::ffi::R_xlen_t

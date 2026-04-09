@@ -221,6 +221,7 @@ pub use miniextendr_macros::{
 pub mod altrep;
 pub mod altrep_bridge;
 pub mod altrep_data;
+pub mod altrep_ext;
 pub mod altrep_impl;
 pub mod altrep_sexp;
 pub mod altrep_traits;

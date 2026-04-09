@@ -135,7 +135,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::Altrep
     for StreamingRealData<F>
 {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| d.len() as crate::ffi::R_xlen_t)
             .unwrap_or(0)
     }
@@ -152,7 +152,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltReal
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| AltRealData::elt(&*d, i as usize))
             .unwrap_or(f64::NAN)
     }
@@ -165,7 +165,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize + 'static> crate::altrep_traits::AltReal
         len: crate::ffi::R_xlen_t,
         buf: &mut [f64],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| {
                 AltRealData::get_region(&*d, start as usize, len as usize, buf)
                     as crate::ffi::R_xlen_t
@@ -301,7 +301,7 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::Altrep
     for StreamingIntData<F>
 {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| d.len() as crate::ffi::R_xlen_t)
             .unwrap_or(0)
     }
@@ -318,7 +318,7 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltInteg
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| AltIntegerData::elt(&*d, i as usize))
             .unwrap_or(i32::MIN)
     }
@@ -331,7 +331,7 @@ impl<F: Fn(usize, &mut [i32]) -> usize + 'static> crate::altrep_traits::AltInteg
         len: crate::ffi::R_xlen_t,
         buf: &mut [i32],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_data1_as::<Self>(x) }
+        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
             .map(|d| {
                 AltIntegerData::get_region(&*d, start as usize, len as usize, buf)
                     as crate::ffi::R_xlen_t
