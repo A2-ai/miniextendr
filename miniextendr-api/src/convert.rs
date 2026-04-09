@@ -877,14 +877,14 @@ where
 // region: Extension traits for ergonomic wrapping
 //
 // These extension traits provide method-style wrapping that works even when
-// the destination type isn't constrained (i.e., `value.as_list()` instead of
-// `value.into()` which requires type inference).
+// the destination type isn't constrained (i.e., `value.wrap_list()` instead
+// of `value.into()` which requires type inference).
 //
 // ```ignore
 // // These all work without type annotations:
-// let wrapped = my_struct.as_list();
-// let ptr = my_value.as_external_ptr();
-// let native = my_num.as_r_native();
+// let wrapped = my_struct.wrap_list();
+// let ptr = my_value.wrap_external_ptr();
+// let native = my_num.wrap_r_native();
 // ```
 
 /// Extension trait for wrapping values as [`AsList`].
@@ -900,15 +900,11 @@ where
 /// struct Point { x: f64, y: f64 }
 ///
 /// let point = Point { x: 1.0, y: 2.0 };
-/// let wrapped: AsList<Point> = point.as_list();
+/// let wrapped: AsList<Point> = point.wrap_list();
 /// ```
 pub trait AsListExt: IntoList + Sized {
     /// Wrap `self` in [`AsList`] for R list conversion.
-    ///
-    /// Note: This method consumes `self` despite the `as_` prefix because
-    /// it wraps the value in an `AsList` wrapper (matching the type name).
-    #[allow(clippy::wrong_self_convention)]
-    fn as_list(self) -> AsList<Self> {
+    fn wrap_list(self) -> AsList<Self> {
         AsList(self)
     }
 }
@@ -965,15 +961,11 @@ impl<T: IntoDataFrame> ToDataFrameExt for T {}
 /// struct Connection { handle: u64 }
 ///
 /// let conn = Connection { handle: 42 };
-/// let wrapped: AsExternalPtr<Connection> = conn.as_external_ptr();
+/// let wrapped: AsExternalPtr<Connection> = conn.wrap_external_ptr();
 /// ```
 pub trait AsExternalPtrExt: IntoExternalPtr + Sized {
     /// Wrap `self` in [`AsExternalPtr`] for R external pointer conversion.
-    ///
-    /// Note: This method consumes `self` despite the `as_` prefix because
-    /// it wraps the value in an `AsExternalPtr` wrapper (matching the type name).
-    #[allow(clippy::wrong_self_convention)]
-    fn as_external_ptr(self) -> AsExternalPtr<Self> {
+    fn wrap_external_ptr(self) -> AsExternalPtr<Self> {
         AsExternalPtr(self)
     }
 }
@@ -990,11 +982,11 @@ impl<T: IntoExternalPtr> AsExternalPtrExt for T {}
 /// use miniextendr_api::convert::AsRNativeExt;
 ///
 /// let x: f64 = 42.5;
-/// let wrapped: AsRNative<f64> = x.as_r_native();
+/// let wrapped: AsRNative<f64> = x.wrap_r_native();
 /// ```
 pub trait AsRNativeExt: RNativeType + Sized {
     /// Wrap `self` in [`AsRNative`] for native R scalar conversion.
-    fn as_r_native(self) -> AsRNative<Self> {
+    fn wrap_r_native(self) -> AsRNative<Self> {
         AsRNative(self)
     }
 }
@@ -1007,12 +999,11 @@ impl<T: RNativeType> AsRNativeExt for T {}
 ///
 /// ```ignore
 /// let pairs = vec![("x".to_string(), 1i32), ("y".to_string(), 2i32)];
-/// let wrapped = pairs.as_named_list();
+/// let wrapped = pairs.wrap_named_list();
 /// ```
 pub trait AsNamedListExt: Sized {
     /// Wrap `self` in [`AsNamedList`] for named R list conversion.
-    #[allow(clippy::wrong_self_convention)]
-    fn as_named_list(self) -> AsNamedList<Self> {
+    fn wrap_named_list(self) -> AsNamedList<Self> {
         AsNamedList(self)
     }
 }
@@ -1027,12 +1018,11 @@ impl<K: AsRef<str>, V: Clone + IntoR> AsNamedListExt for &[(K, V)] {}
 ///
 /// ```ignore
 /// let pairs = vec![("alice".to_string(), 95.0f64), ("bob".to_string(), 87.5)];
-/// let wrapped = pairs.as_named_vector();
+/// let wrapped = pairs.wrap_named_vector();
 /// ```
 pub trait AsNamedVectorExt: Sized {
     /// Wrap `self` in [`AsNamedVector`] for named atomic R vector conversion.
-    #[allow(clippy::wrong_self_convention)]
-    fn as_named_vector(self) -> AsNamedVector<Self> {
+    fn wrap_named_vector(self) -> AsNamedVector<Self> {
         AsNamedVector(self)
     }
 }

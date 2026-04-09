@@ -1578,13 +1578,13 @@ pub fn conv_as_named_vector_empty() -> AsNamedVector<Vec<(String, f64)>> {
 /// Return test: `AsNamedVectorExt` trait method -> R named integer vector.
 #[miniextendr]
 pub fn conv_as_named_vector_ext_trait() -> AsNamedVector<Vec<(&'static str, i32)>> {
-    vec![("one", 1), ("two", 2)].as_named_vector()
+    vec![("one", 1), ("two", 2)].wrap_named_vector()
 }
 
 /// Return test: `AsNamedListExt` trait method -> R named list.
 #[miniextendr]
 pub fn conv_as_named_list_ext_trait() -> AsNamedList<Vec<(&'static str, i32)>> {
-    vec![("one", 1), ("two", 2)].as_named_list()
+    vec![("one", 1), ("two", 2)].wrap_named_list()
 }
 
 /// Return test: `AsNamedList` from a borrowed slice -> R named list via SEXP.
