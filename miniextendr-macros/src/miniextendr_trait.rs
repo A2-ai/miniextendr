@@ -1193,6 +1193,10 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
             } else if meta.path.is_ident("r_name") {
                 let value: syn::LitStr = meta.value()?.parse()?;
                 r_name = Some(value.value());
+            } else {
+                return Err(meta.error(
+                    "unknown #[miniextendr] option on trait method; expected `skip` or `r_name`",
+                ));
             }
             Ok(())
         });

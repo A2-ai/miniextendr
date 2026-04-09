@@ -476,7 +476,7 @@ impl AltLogicalData for Vec<bool> {
 //
 // Box<[T]> CAN be used directly with ALTREP via the proc-macro:
 // ```
-// #[miniextendr(class = "BoxedInts", pkg = "mypkg")]
+// #[miniextendr(class = "BoxedInts")]
 // pub struct BoxedIntsClass(Box<[i32]>);
 // ```
 //
