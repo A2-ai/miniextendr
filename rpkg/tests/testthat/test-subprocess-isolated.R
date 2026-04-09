@@ -7,6 +7,12 @@
 
 skip_on_cran()
 skip_if_not_installed("callr")
+# Skip on Windows: callr/processx on Windows leaves orphan Rterm processes that
+# hold stdout pipe handles open, preventing R CMD check from detecting test
+# completion. This causes R CMD check to hang until the CI timeout.
+# These hazardous-path tests exercise platform-independent behavior and are
+# covered on Linux/macOS.
+skip_on_os("windows")
 
 # ---------------------------------------------------------------------------
 # Helper: run an expression in a subprocess with miniextendr loaded
