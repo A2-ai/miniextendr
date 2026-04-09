@@ -7,6 +7,12 @@
 #
 # Every ALTREP type with serialization support should have a test here.
 
+# Skip on Windows: callr/processx on Windows leaves orphan Rterm processes that
+# hold stdout pipe handles open, preventing R CMD check from detecting test
+# completion. This causes R CMD check to hang until the 90-minute CI timeout.
+# Serialization behavior is platform-independent and tested on Linux/macOS.
+skip_on_os("windows")
+
 # Helper: cross-session round-trip with package loaded
 cross_session_with_pkg <- function(value) {
   tmp <- tempfile(fileext = ".rds")
