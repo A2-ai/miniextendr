@@ -7,7 +7,7 @@
 //!
 //! - [`panic_tests`]: Panic, drop, and R error handling tests
 //! - [`unwind_protect_tests`]: `with_r_unwind_protect` mechanism tests
-//! - [`worker_tests`]: Worker thread and `with_r_thread` tests
+//! - `worker_tests`: Worker thread and `with_r_thread` tests
 //! - [`thread_tests`]: RThreadBuilder and thread safety tests
 //! - [`interrupt_tests`]: R interrupt checking tests
 //!
@@ -49,37 +49,37 @@
 //!
 //! These modules require specific Cargo features to be enabled:
 //!
-//! - [`rayon_tests`]: Parallel iteration tests (feature: `rayon`)
-//! - [`serde_r_tests`]: Serde R serialization tests (feature: `serde`)
-//! - [`ndarray_tests`]: N-dimensional array tests (feature: `ndarray`)
-//! - [`vctrs_tests`]: vctrs compatibility tests (feature: `vctrs`)
-//! - [`vctrs_class_example`]: vctrs class implementation example (feature: `vctrs`)
-//! - [`nonapi`]: Non-API R internals tests (feature: `nonapi`)
-//! - [`connection_tests`]: R connection handling tests (feature: `connections`)
+//! - `rayon_tests`: Parallel iteration tests (feature: `rayon`)
+//! - `serde_r_tests`: Serde R serialization tests (feature: `serde`)
+//! - `ndarray_tests`: N-dimensional array tests (feature: `ndarray`)
+//! - `vctrs_tests`: vctrs compatibility tests (feature: `vctrs`)
+//! - `vctrs_class_example`: vctrs class implementation example (feature: `vctrs`)
+//! - `nonapi`: Non-API R internals tests (feature: `nonapi`)
+//! - `connection_tests`: R connection handling tests (feature: `connections`)
 //!
 //! # Adapter Tests (Feature-Gated)
 //!
 //! Each adapter has its own feature flag:
 //!
-//! - [`uuid_adapter_tests`]: UUID type adapter (feature: `uuid`)
-//! - [`regex_adapter_tests`]: Regex type adapter (feature: `regex`)
-//! - [`time_adapter_tests`]: Time/date type adapter (feature: `time`)
-//! - [`ordered_float_adapter_tests`]: OrderedFloat adapter (feature: `ordered-float`)
-//! - [`bigint_adapter_tests`]: BigInt type adapter (feature: `num-bigint`)
-//! - [`decimal_adapter_tests`]: Decimal type adapter (feature: `rust_decimal`)
-//! - [`indexmap_adapter_tests`]: IndexMap type adapter (feature: `indexmap`)
-//! - [`bytes_adapter_tests`]: Bytes/BytesMut adapter (feature: `bytes`)
-//! - [`bitflags_adapter_tests`]: Bitflags adapter (feature: `bitflags`)
-//! - [`bitvec_adapter_tests`]: BitVec adapter (feature: `bitvec`)
-//! - [`tinyvec_adapter_tests`]: TinyVec/ArrayVec adapter (feature: `tinyvec`)
-//! - [`sha2_adapter_tests`]: SHA-2 hashing adapter (feature: `sha2`)
-//! - [`url_adapter_tests`]: URL parsing adapter (feature: `url`)
-//! - [`aho_corasick_adapter_tests`]: Aho-Corasick string search adapter (feature: `aho-corasick`)
-//! - [`toml_adapter_tests`]: TOML parsing adapter (feature: `toml`)
-//! - [`tabled_adapter_tests`]: Table formatting adapter (feature: `tabled`)
-//! - [`nalgebra_adapter_tests`]: Linear algebra adapter (feature: `nalgebra`)
-//! - [`either_adapter_tests`]: Either type adapter (feature: `either`)
-//! - [`serde_json_adapter_tests`]: JSON serialization adapter (feature: `serde_json`)
+//! - `uuid_adapter_tests`: UUID type adapter (feature: `uuid`)
+//! - `regex_adapter_tests`: Regex type adapter (feature: `regex`)
+//! - `time_adapter_tests`: Time/date type adapter (feature: `time`)
+//! - `ordered_float_adapter_tests`: OrderedFloat adapter (feature: `ordered-float`)
+//! - `bigint_adapter_tests`: BigInt type adapter (feature: `num-bigint`)
+//! - `decimal_adapter_tests`: Decimal type adapter (feature: `rust_decimal`)
+//! - `indexmap_adapter_tests`: IndexMap type adapter (feature: `indexmap`)
+//! - `bytes_adapter_tests`: Bytes/BytesMut adapter (feature: `bytes`)
+//! - `bitflags_adapter_tests`: Bitflags adapter (feature: `bitflags`)
+//! - `bitvec_adapter_tests`: BitVec adapter (feature: `bitvec`)
+//! - `tinyvec_adapter_tests`: TinyVec/ArrayVec adapter (feature: `tinyvec`)
+//! - `sha2_adapter_tests`: SHA-2 hashing adapter (feature: `sha2`)
+//! - `url_adapter_tests`: URL parsing adapter (feature: `url`)
+//! - `aho_corasick_adapter_tests`: Aho-Corasick string search adapter (feature: `aho-corasick`)
+//! - `toml_adapter_tests`: TOML parsing adapter (feature: `toml`)
+//! - `tabled_adapter_tests`: Table formatting adapter (feature: `tabled`)
+//! - `nalgebra_adapter_tests`: Linear algebra adapter (feature: `nalgebra`)
+//! - `either_adapter_tests`: Either type adapter (feature: `either`)
+//! - `serde_json_adapter_tests`: JSON serialization adapter (feature: `serde_json`)
 //!
 //! # Miscellaneous
 //!
@@ -1453,7 +1453,7 @@ pub fn iter_real_from_f32(n: i32) -> Altrep<Vec<f64>> {
     Altrep((0..len).map(|i| i as f64 * 1.5).collect())
 }
 
-/// Create a Vec<i32> ALTREP integer vector.
+/// Create a `Vec<i32>` ALTREP integer vector.
 /// @rdname altrep_vec
 /// @param n Number of elements.
 /// @return An ALTREP integer vector (1..=n).
@@ -1464,7 +1464,7 @@ pub fn vec_int_altrep(n: i32) -> Altrep<Vec<i32>> {
     Altrep((1..=len as i32).collect())
 }
 
-/// Create a Vec<f64> ALTREP real vector.
+/// Create a `Vec<f64>` ALTREP real vector.
 /// @rdname altrep_vec
 /// @param n Number of elements.
 /// @return An ALTREP real vector (0.5, 1.0, 1.5, ...).
@@ -1475,7 +1475,7 @@ pub fn vec_real_altrep(n: i32) -> Altrep<Vec<f64>> {
     Altrep((1..=len).map(|i| i as f64 * 0.5).collect())
 }
 
-/// Create a Vec<Rcomplex> ALTREP complex vector.
+/// Create a `Vec<Rcomplex>` ALTREP complex vector.
 /// @rdname altrep_vec
 /// @param n Number of elements.
 /// @return An ALTREP complex vector (k + -k*i for k in 0..n).
@@ -1571,7 +1571,7 @@ pub fn boxed_complex(n: i32) -> Altrep<Box<[Rcomplex]>> {
     Altrep(data)
 }
 
-/// Create a Range<i32> ALTREP integer vector.
+/// Create a `Range<i32>` ALTREP integer vector.
 /// @rdname altrep_vec
 /// @param from Start of range (inclusive).
 /// @param to End of range (exclusive).
@@ -1582,7 +1582,7 @@ pub fn range_int_altrep(from: i32, to: i32) -> Altrep<std::ops::Range<i32>> {
     Altrep(from..to)
 }
 
-/// Create a Range<i64> ALTREP real vector (i64 stored as f64 bit patterns).
+/// Create a `Range<i64>` ALTREP real vector (i64 stored as f64 bit patterns).
 /// @rdname altrep_vec
 /// @param from Start of range (inclusive).
 /// @param to End of range (exclusive).
@@ -1593,7 +1593,7 @@ pub fn range_i64_altrep(from: i64, to: i64) -> Altrep<std::ops::Range<i64>> {
     Altrep(from..to)
 }
 
-/// Create a Range<f64> ALTREP real vector.
+/// Create a `Range<f64>` ALTREP real vector.
 /// @rdname altrep_vec
 /// @param from Start of range (inclusive).
 /// @param to End of range (exclusive).

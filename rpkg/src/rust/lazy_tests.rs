@@ -1,4 +1,4 @@
-//! Test fixtures for Lazy<T> ALTREP wrappers.
+//! Test fixtures for `Lazy<T>` ALTREP wrappers.
 
 use miniextendr_api::into_r::Altrep;
 type Lazy<T> = Altrep<T>;
