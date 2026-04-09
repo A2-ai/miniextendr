@@ -26,8 +26,8 @@
 //! ```
 
 use crate::ffi::{
-    self, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_lcons, Rf_protect,
-    Rf_unprotect, SET_TAG, SEXP, SexpExt,
+    self, R_BaseEnv, R_BaseNamespace, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install,
+    Rf_lcons, Rf_protect, Rf_unprotect, SET_TAG, SEXP, SexpExt,
 };
 use std::ffi::{CStr, CString};
 
@@ -132,6 +132,67 @@ impl REnv {
     pub unsafe fn empty() -> Self {
         REnv {
             sexp: unsafe { R_EmptyEnv },
+        }
+    }
+
+    /// The base namespace (`R_BaseNamespace`).
+    ///
+    /// Unlike [`base()`](Self::base) which is the base *environment* (exported
+    /// functions visible to users), this is the base *namespace* (includes
+    /// internal helpers). Rarely needed — prefer [`base()`](Self::base) unless
+    /// you specifically need unexported base internals.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn base_namespace() -> Self {
+        REnv {
+            sexp: unsafe { R_BaseNamespace },
+        }
+    }
+
+    /// A package's namespace environment.
+    ///
+    /// Finds the namespace for a loaded package. Use this to evaluate functions
+    /// that live in a specific package (e.g., `slot()` from `methods`).
+    ///
+    /// This is a safe wrapper around `R_FindNamespace` — it uses
+    /// `R_tryEvalSilent` internally so that a missing namespace returns
+    /// `Err` instead of longjmping through Rust frames.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the package namespace is not found (package not loaded).
+    pub unsafe fn package_namespace(name: &str) -> Result<Self, String> {
+        unsafe {
+            let name_sexp = SEXP::scalar_string_from_str(name);
+            Rf_protect(name_sexp);
+            let result = RCall::new("getNamespace").arg(name_sexp).eval(R_BaseEnv);
+            Rf_unprotect(1);
+            result.map(|sexp| REnv { sexp })
+        }
+    }
+
+    /// The current execution environment.
+    ///
+    /// Returns the environment of the innermost active closure on R's call
+    /// stack, or the global environment if no closure is active.
+    ///
+    /// Useful when you need to evaluate an expression in the caller's context
+    /// rather than a fixed well-known environment.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn caller() -> Self {
+        REnv {
+            sexp: unsafe { ffi::R_GetCurrentEnv() },
         }
     }
 
@@ -326,16 +387,6 @@ impl RCall {
         }
     }
 
-    /// Evaluate in `R_GlobalEnv`.
-    ///
-    /// # Safety
-    ///
-    /// Same as [`eval`](Self::eval).
-    #[inline]
-    pub unsafe fn eval_global(&self) -> Result<SEXP, String> {
-        unsafe { self.eval(R_GlobalEnv) }
-    }
-
     /// Evaluate in `R_BaseEnv`.
     ///
     /// # Safety
@@ -442,6 +493,21 @@ mod tests {
         assert_sized::<RSymbol>();
         assert_sized::<RCall>();
         assert_sized::<REnv>();
+    }
+
+    #[test]
+    fn renv_constructors_compile() {
+        // Verify all REnv constructor signatures compile.
+        // Actual testing requires the R runtime.
+        fn assert_env_fn<F: FnOnce() -> REnv>(_f: F) {}
+        fn assert_env_result_fn<F: FnOnce() -> Result<REnv, String>>(_f: F) {}
+
+        assert_env_fn(|| unsafe { REnv::global() });
+        assert_env_fn(|| unsafe { REnv::base() });
+        assert_env_fn(|| unsafe { REnv::empty() });
+        assert_env_fn(|| unsafe { REnv::base_namespace() });
+        assert_env_fn(|| unsafe { REnv::caller() });
+        assert_env_result_fn(|| unsafe { REnv::package_namespace("base") });
     }
 }
 // endregion

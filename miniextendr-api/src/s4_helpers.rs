@@ -29,7 +29,7 @@
 /// }
 /// ```
 use crate::expression::{RCall, REnv};
-use crate::ffi::{self, Rf_protect, Rf_unprotect, SEXP, SexpExt};
+use crate::ffi::{self, SEXP, SexpExt};
 use std::ffi::CStr;
 
 /// Get the `methods` package namespace for evaluating S4 functions.
@@ -37,12 +37,8 @@ use std::ffi::CStr;
 /// # Safety
 ///
 /// Must be called from the R main thread.
-unsafe fn methods_namespace() -> Result<SEXP, String> {
-    unsafe {
-        RCall::new("getNamespace")
-            .arg(scalar_string("methods"))
-            .eval_base()
-    }
+unsafe fn methods_namespace() -> Result<REnv, String> {
+    unsafe { REnv::package_namespace("methods") }
 }
 
 /// Check if a SEXP is an S4 object.
@@ -85,8 +81,7 @@ pub unsafe fn s4_has_slot(obj: SEXP, slot_name: &str) -> bool {
 /// - `Err(String)` if the slot doesn't exist or another R error occurs.
 pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, String> {
     unsafe {
-        let ns = methods_namespace()?;
-        let env = REnv::from_sexp(ns);
+        let env = methods_namespace()?;
         RCall::new("slot")
             .arg(obj)
             .named_arg("name", scalar_string(slot_name))
@@ -111,8 +106,7 @@ pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, String> {
 pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(), String> {
     unsafe {
         // slot(obj, name) <- value  is equivalent to `slot<-`(obj, name, value)
-        let ns = methods_namespace()?;
-        let env = REnv::from_sexp(ns);
+        let env = methods_namespace()?;
         RCall::new("slot<-")
             .arg(obj)
             .named_arg("name", scalar_string(slot_name))
@@ -156,17 +150,11 @@ pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
 
 /// Create a scalar R character string from a Rust `&str`.
 ///
-/// The returned SEXP is unprotected.
-unsafe fn scalar_string(s: &str) -> SEXP {
-    use std::ffi::CString;
-    unsafe {
-        let c_str = CString::new(s).expect("slot name must not contain null bytes");
-        let charsxp = ffi::Rf_mkChar(c_str.as_ptr());
-        Rf_protect(charsxp);
-        let strsxp = SEXP::scalar_string(charsxp);
-        Rf_unprotect(1);
-        strsxp
-    }
+/// The returned SEXP is unprotected — caller must protect if further
+/// allocations will occur before use.
+#[inline]
+fn scalar_string(s: &str) -> SEXP {
+    SEXP::scalar_string_from_str(s)
 }
 
 #[cfg(test)]
