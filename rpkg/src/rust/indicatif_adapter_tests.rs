@@ -46,3 +46,73 @@ pub fn indicatif_short_bar() -> String {
     pb.finish_with_message("done");
     "done".to_string()
 }
+
+// region: Upstream example-derived fixtures
+
+/// Test a spinner (no length) progress indicator.
+#[miniextendr]
+pub fn indicatif_spinner_demo() -> String {
+    let target = term_like_stderr(60);
+    let pb = ProgressBar::with_draw_target(None, target);
+    pb.set_style(
+        ProgressStyle::with_template("{spinner} {msg}")
+            .unwrap(),
+    );
+    pb.set_message("working...");
+    for _ in 0..3 {
+        pb.tick();
+    }
+    pb.finish_with_message("done");
+    "done".to_string()
+}
+
+/// Test a progress bar with a custom download-style template.
+/// @param total Total number of steps.
+#[miniextendr]
+pub fn indicatif_download_style(total: i32) -> String {
+    let target = term_like_stderr(80);
+    let pb = ProgressBar::with_draw_target(Some(total as u64), target);
+    pb.set_style(
+        ProgressStyle::with_template("[{elapsed_precise}] [{bar:40}] {pos}/{len} ({eta})")
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    for _ in 0..total {
+        pb.inc(1);
+    }
+    pb.finish_with_message("complete");
+    "complete".to_string()
+}
+
+/// Test a progress bar with dynamic message updates at each step.
+/// @param steps Character vector of step messages.
+#[miniextendr]
+pub fn indicatif_with_messages(steps: Vec<String>) -> String {
+    let target = term_like_stderr(60);
+    let pb = ProgressBar::with_draw_target(Some(steps.len() as u64), target);
+    for step in &steps {
+        pb.set_message(step.clone());
+        pb.inc(1);
+    }
+    let last = steps.last().cloned().unwrap_or_else(|| "done".to_string());
+    pb.finish_with_message(last.clone());
+    last
+}
+
+/// Test a progress bar with elapsed time display.
+#[miniextendr]
+pub fn indicatif_elapsed_demo() -> String {
+    let target = term_like_stderr(60);
+    let pb = ProgressBar::with_draw_target(Some(3), target);
+    pb.set_style(
+        ProgressStyle::with_template("{elapsed} {bar:20} {pos}/{len}")
+            .unwrap(),
+    );
+    for _ in 0..3 {
+        pb.inc(1);
+    }
+    pb.finish();
+    "finished".to_string()
+}
+
+// endregion

@@ -279,3 +279,34 @@ test_that("RecordBatch handles Date columns", {
 })
 
 # endregion
+
+# region: Upstream example-derived fixtures
+
+test_that("arrow_f64_filter_non_null removes nulls", {
+
+  v <- c(1.0, NA, 3.0, NA, 5.0)
+  result <- arrow_f64_filter_non_null(v)
+  expect_equal(result, c(1.0, 3.0, 5.0))
+})
+
+test_that("arrow_f64_mean computes mean ignoring nulls", {
+
+  v <- c(2.0, NA, 4.0, NA, 6.0)
+  result <- arrow_f64_mean(v)
+  expect_equal(result, 4.0)
+})
+
+test_that("arrow_f64_mean returns NA for empty input", {
+
+  result <- arrow_f64_mean(numeric(0))
+  expect_true(is.na(result))
+})
+
+test_that("arrow_arrayref_type_name returns type string", {
+
+  result <- arrow_arrayref_type_name(c(1.0, 2.0))
+  expect_type(result, "character")
+  expect_true(nchar(result) > 0)
+})
+
+# endregion
