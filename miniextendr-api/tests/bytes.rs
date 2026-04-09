@@ -52,14 +52,14 @@ fn bytes_empty() {
 #[test]
 fn bytes_from_raw_vector() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{RAW, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 3));
-            let ptr = RAW(sexp);
-            *ptr.add(0) = 100;
-            *ptr.add(1) = 200;
-            *ptr.add(2) = 255;
+            let slice: &mut [u8] = sexp.as_mut_slice();
+            slice[0] = 100;
+            slice[1] = 200;
+            slice[2] = 255;
 
             let bytes: Bytes = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(bytes.len(), 3);
@@ -76,15 +76,15 @@ fn bytes_from_raw_vector() {
 #[test]
 fn bytesmut_from_raw_vector() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{RAW, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
+        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE, SexpExt};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 4));
-            let ptr = RAW(sexp);
-            *ptr.add(0) = 10;
-            *ptr.add(1) = 20;
-            *ptr.add(2) = 30;
-            *ptr.add(3) = 40;
+            let slice: &mut [u8] = sexp.as_mut_slice();
+            slice[0] = 10;
+            slice[1] = 20;
+            slice[2] = 30;
+            slice[3] = 40;
 
             let mut bytes: BytesMut = TryFromSexp::try_from_sexp(sexp).unwrap();
             assert_eq!(bytes.len(), 4);

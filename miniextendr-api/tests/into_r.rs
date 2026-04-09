@@ -3,11 +3,11 @@
 mod r_test_utils;
 
 use miniextendr_api::altrep_traits::NA_LOGICAL;
-use miniextendr_api::ffi::{LOGICAL, R_xlen_t, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
+use miniextendr_api::ffi::{R_xlen_t, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use miniextendr_api::into_r::IntoR;
 
-unsafe fn scalar_logical(sexp: SEXP) -> i32 {
-    unsafe { *LOGICAL(sexp) }
+fn scalar_logical(sexp: SEXP) -> i32 {
+    sexp.logical_elt(0)
 }
 
 fn string_elt_val(sexp: SEXP, idx: usize) -> Option<String> {
@@ -34,11 +34,11 @@ fn into_r_suite() {
 fn test_option_rlogical_scalar() {
     let sexp = Option::<RLogical>::Some(RLogical::TRUE).into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::LGLSXP);
-    assert_eq!(unsafe { scalar_logical(sexp) }, 1);
+    assert_eq!(scalar_logical(sexp), 1);
 
     let sexp_na = Option::<RLogical>::None.into_sexp();
     assert_eq!(sexp_na.type_of(), SEXPTYPE::LGLSXP);
-    assert_eq!(unsafe { scalar_logical(sexp_na) }, NA_LOGICAL);
+    assert_eq!(scalar_logical(sexp_na), NA_LOGICAL);
 }
 
 fn test_vec_option_rlogical() {
@@ -46,8 +46,8 @@ fn test_vec_option_rlogical() {
     assert_eq!(sexp.type_of(), SEXPTYPE::LGLSXP);
     assert_eq!(sexp.xlength(), 3);
 
-    let slice = unsafe { std::slice::from_raw_parts(LOGICAL(sexp), 3) };
-    assert_eq!(slice, &[1, NA_LOGICAL, 0]);
+    let elts: Vec<i32> = (0..3).map(|i| sexp.logical_elt(i)).collect();
+    assert_eq!(elts, &[1, NA_LOGICAL, 0]);
 }
 
 fn test_vec_option_rboolean() {
@@ -55,8 +55,8 @@ fn test_vec_option_rboolean() {
     assert_eq!(sexp.type_of(), SEXPTYPE::LGLSXP);
     assert_eq!(sexp.xlength(), 3);
 
-    let slice = unsafe { std::slice::from_raw_parts(LOGICAL(sexp), 3) };
-    assert_eq!(slice, &[1, NA_LOGICAL, 0]);
+    let elts: Vec<i32> = (0..3).map(|i| sexp.logical_elt(i)).collect();
+    assert_eq!(elts, &[1, NA_LOGICAL, 0]);
 }
 
 fn test_string_slice() {
@@ -71,7 +71,7 @@ fn test_string_slice() {
 
 // region: AsNamedList / AsNamedVector tests
 
-use miniextendr_api::ffi::{INTEGER, REAL};
+// SexpExt already imported above
 use miniextendr_api::{AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt};
 
 /// Extract names from an R SEXP as Vec<String>.
@@ -121,7 +121,7 @@ fn test_as_named_vector_vec() {
 
     let names = extract_names(sexp);
     assert_eq!(names, vec!["alice", "bob"]);
-    let data = unsafe { std::slice::from_raw_parts(INTEGER(sexp), 2) };
+    let data: &[i32] = unsafe { sexp.as_slice() };
     assert_eq!(data, &[95, 87]);
 }
 
@@ -134,7 +134,7 @@ fn test_as_named_vector_array() {
     let names = extract_names(sexp);
     assert_eq!(names, vec!["x", "y", "z"]);
 
-    let data = unsafe { std::slice::from_raw_parts(REAL(sexp), 3) };
+    let data: &[f64] = unsafe { sexp.as_slice() };
     assert_eq!(data, &[1.0, 2.0, 3.0]);
 }
 
@@ -147,7 +147,7 @@ fn test_as_named_vector_option() {
     let names = extract_names(sexp);
     assert_eq!(names, vec!["a", "b", "c"]);
 
-    let data = unsafe { std::slice::from_raw_parts(INTEGER(sexp), 3) };
+    let data: &[i32] = unsafe { sexp.as_slice() };
     assert_eq!(data[0], 1);
     assert_eq!(data[1], i32::MIN); // NA_integer_
     assert_eq!(data[2], 3);
@@ -172,7 +172,7 @@ fn test_as_named_vector_slice() {
     let names = extract_names(sexp);
     assert_eq!(names, vec!["x", "y"]);
 
-    let data = unsafe { std::slice::from_raw_parts(REAL(sexp), 2) };
+    let data: &[f64] = unsafe { sexp.as_slice() };
     assert_eq!(data, &[1.0, 2.0]);
 }
 // endregion
