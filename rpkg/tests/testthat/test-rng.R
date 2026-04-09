@@ -162,3 +162,27 @@ test_that("Rust RNG matches R's RNG with same seed", {
 
   expect_equal(rust_vals, r_vals)
 })
+
+# region: Upstream example-derived fixtures
+
+test_that("rng_bool returns logical", {
+  set.seed(123)
+  result <- rng_bool()
+  expect_type(result, "logical")
+})
+
+test_that("rng_range returns value in range", {
+  set.seed(456)
+  result <- rng_range(10.0, 20.0)
+  expect_true(result >= 10.0 && result < 20.0)
+})
+
+test_that("rng_chi_sq_approx returns positive values", {
+  set.seed(789)
+  result <- rng_chi_sq_approx(5L, 3L)
+  expect_equal(length(result), 5L)
+  # Chi-squared values are always non-negative
+  expect_true(all(result >= 0))
+})
+
+# endregion

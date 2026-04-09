@@ -82,3 +82,58 @@ pub fn toml_mixed_types() -> String {
     let v = toml_from_str(input).unwrap();
     toml_to_string_pretty(&v)
 }
+
+// region: Upstream example-derived fixtures
+
+/// Decode a TOML string and extract specific fields as a character vector.
+/// Returns [title, version, author] from a typical config TOML.
+/// @param input TOML string with title, version, and author fields.
+#[miniextendr]
+pub fn toml_decode_config(input: String) -> Vec<String> {
+    let v = toml_from_str(&input).unwrap();
+    let table = v.as_table().unwrap();
+    vec![
+        table
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        table
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        table
+            .get("author")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    ]
+}
+
+/// Extract a string value from a TOML table by key.
+/// @param input TOML string to parse.
+/// @param key Key to extract.
+#[miniextendr]
+pub fn toml_get_string(input: String, key: &str) -> Option<String> {
+    let v = toml_from_str(&input).unwrap();
+    v.as_table()
+        .and_then(|t| t.get(key))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+/// Test counting entries in a TOML array of tables.
+/// @param input TOML string containing an array of tables.
+/// @param key Key name of the array of tables.
+#[miniextendr]
+pub fn toml_array_count(input: String, key: &str) -> i32 {
+    let v = toml_from_str(&input).unwrap();
+    v.as_table()
+        .and_then(|t| t.get(key))
+        .and_then(|v| v.as_array())
+        .map(|a| a.len() as i32)
+        .unwrap_or(0)
+}
+
+// endregion

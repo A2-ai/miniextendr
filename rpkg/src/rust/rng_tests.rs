@@ -118,5 +118,37 @@ impl RngSampler {
 }
 // endregion
 
-// region: Module registration
+// region: Upstream example-derived fixtures
+
+/// Generate a random boolean using R's RNG.
+#[miniextendr(rng)]
+pub fn rng_bool() -> bool {
+    unsafe { unif_rand() < 0.5 }
+}
+
+/// Generate a random double in [min, max) using R's RNG.
+/// @param min Lower bound.
+/// @param max Upper bound.
+#[miniextendr(rng)]
+pub fn rng_range(min: f64, max: f64) -> f64 {
+    min + unsafe { unif_rand() } * (max - min)
+}
+
+/// Generate n chi-squared-like values using the sum-of-normals method.
+/// @param n Number of values.
+/// @param df Degrees of freedom (integer, used as count of squared normals).
+#[miniextendr(rng)]
+pub fn rng_chi_sq_approx(n: i32, df: i32) -> Vec<f64> {
+    (0..n)
+        .map(|_| {
+            (0..df)
+                .map(|_| {
+                    let z = unsafe { norm_rand() };
+                    z * z
+                })
+                .sum()
+        })
+        .collect()
+}
+
 // endregion

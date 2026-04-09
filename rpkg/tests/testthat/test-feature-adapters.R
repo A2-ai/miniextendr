@@ -84,6 +84,22 @@ test_that("regex_split splits by pattern", {
   expect_equal(regex_split("\\s+", "hello world  test"), c("hello", "world", "test"))
 })
 
+test_that("regex_captures extracts capture groups", {
+  skip_if_missing_feature("regex")
+  # Pattern with two capture groups
+  result <- regex_captures("(\\d{4})-(\\d{2})", "date: 2024-06-15")
+  expect_equal(length(result), 3L)  # full match + 2 groups
+  expect_equal(result[1], "2024-06")
+  expect_equal(result[2], "2024")
+  expect_equal(result[3], "06")
+})
+
+test_that("regex_count counts matches", {
+  skip_if_missing_feature("regex")
+  expect_equal(regex_count("\\d+", "a1b2c3d4"), 4L)
+  expect_equal(regex_count("\\d+", "no digits"), 0L)
+})
+
 # =============================================================================
 # Time feature tests
 # =============================================================================
@@ -494,6 +510,41 @@ test_that("bitflags_has_execute checks EXECUTE flag", {
   expect_false(bitflags_has_execute(3L))  # READ|WRITE
 })
 
+test_that("bitflags_display formats Debug output", {
+  skip_if_missing_feature("bitflags")
+  result <- bitflags_display(3L)  # READ|WRITE
+  expect_type(result, "character")
+  expect_true(grepl("READ", result))
+  expect_true(grepl("WRITE", result))
+})
+
+test_that("bitflags_xor computes symmetric difference", {
+  skip_if_missing_feature("bitflags")
+  # READ|WRITE (3) XOR WRITE|EXECUTE (6) = READ|EXECUTE (5)
+  expect_equal(bitflags_xor(3L, 6L), 5L)
+})
+
+test_that("bitflags_complement inverts flags", {
+  skip_if_missing_feature("bitflags")
+  # complement of READ (1) within all (7) = WRITE|EXECUTE (6)
+  expect_equal(bitflags_complement(1L), 6L)
+})
+
+test_that("bitflags_names returns set flag names", {
+  skip_if_missing_feature("bitflags")
+  names <- bitflags_names(5L)  # READ|EXECUTE
+  expect_true("READ" %in% names)
+  expect_true("EXECUTE" %in% names)
+  expect_false("WRITE" %in% names)
+})
+
+test_that("bitflags_count counts set bits", {
+  skip_if_missing_feature("bitflags")
+  expect_equal(bitflags_count(0L), 0L)
+  expect_equal(bitflags_count(1L), 1L)
+  expect_equal(bitflags_count(7L), 3L)
+})
+
 # =============================================================================
 # Bitvec feature tests
 # =============================================================================
@@ -869,6 +920,27 @@ test_that("toml_mixed_types handles bool, int, and string", {
   expect_true(grepl("name", result))
 })
 
+test_that("toml_decode_config extracts typed fields", {
+  skip_if_missing_feature("toml")
+  input <- 'title = "My App"\nversion = "1.0"\nauthor = "Alice"'
+  result <- toml_decode_config(input)
+  expect_equal(result, c("My App", "1.0", "Alice"))
+})
+
+test_that("toml_get_string extracts string by key", {
+  skip_if_missing_feature("toml")
+  input <- 'name = "test"\nversion = "2.0"'
+  expect_equal(toml_get_string(input, "name"), "test")
+  expect_equal(toml_get_string(input, "version"), "2.0")
+  expect_true(is.na(toml_get_string(input, "missing")))
+})
+
+test_that("toml_array_count counts array entries", {
+  skip_if_missing_feature("toml")
+  input <- '[[items]]\nname = "a"\n\n[[items]]\nname = "b"\n\n[[items]]\nname = "c"'
+  expect_equal(toml_array_count(input, "items"), 3L)
+})
+
 # =============================================================================
 # Tabled feature tests
 # =============================================================================
@@ -921,6 +993,67 @@ test_that("tabled_single_cell creates minimal table", {
   expect_type(result, "character")
   expect_true(grepl("Only", result))
   expect_true(grepl("cell", result))
+})
+
+test_that("tabled_builder_demo builds table row-by-row", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_builder_demo(c("foo", "bar", "baz"))
+  expect_type(result, "character")
+  expect_true(grepl("Item", result))
+  expect_true(grepl("Index", result))
+  expect_true(grepl("foo", result))
+  expect_true(grepl("bar", result))
+})
+
+test_that("tabled_struct_table formats derive struct", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_struct_table()
+  expect_type(result, "character")
+  expect_true(grepl("Rust", result))
+  expect_true(grepl("2010", result))
+  expect_true(grepl("1972", result))
+})
+
+test_that("tabled_styled applies different styles", {
+  skip_if_missing_feature("tabled")
+  ascii <- tabled_styled("ascii")
+  markdown <- tabled_styled("markdown")
+  expect_type(ascii, "character")
+  expect_type(markdown, "character")
+  # Markdown style uses pipes
+  expect_true(grepl("\\|", markdown))
+})
+
+test_that("tabled_with_max_width truncates long columns", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_with_max_width(10L)
+  expect_type(result, "character")
+  # The output should be shorter than without truncation
+  full <- tabled_with_max_width(100L)
+  expect_true(nchar(result) <= nchar(full))
+})
+
+test_that("tabled_aligned centers columns", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_aligned()
+  expect_type(result, "character")
+  expect_true(grepl("short", result))
+})
+
+test_that("tabled_compact builds simple table from vectors", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_compact(c("a", "b"), c("1", "2"))
+  expect_type(result, "character")
+  expect_true(grepl("Col1", result))
+  expect_true(grepl("Col2", result))
+})
+
+test_that("tabled_concat_horizontal merges columns", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_concat_horizontal(c("x", "y"), c("10", "20"))
+  expect_type(result, "character")
+  expect_true(grepl("Key", result))
+  expect_true(grepl("Value", result))
 })
 
 # =============================================================================
@@ -979,6 +1112,73 @@ test_that("nalgebra_dmatrix_trace computes trace", {
   skip_if_missing_feature("nalgebra")
   m <- matrix(c(1, 0, 0, 2), nrow = 2, ncol = 2)
   expect_equal(nalgebra_dmatrix_trace(m), 3.0)
+})
+
+test_that("nalgebra_solve solves Ax=b via LU", {
+  skip_if_missing_feature("nalgebra")
+  # Identity matrix: solution is b itself
+  a <- c(1, 0, 0, 1)  # column-major 2x2 identity
+
+  b <- c(3.0, 7.0)
+  result <- nalgebra_solve(a, b, 2L)
+  expect_equal(result, b)
+})
+
+test_that("nalgebra_determinant computes determinant", {
+  skip_if_missing_feature("nalgebra")
+  # det([[1,2],[3,4]]) = 1*4 - 2*3 = -2
+  m <- matrix(c(1, 3, 2, 4), nrow = 2, ncol = 2)
+  expect_equal(nalgebra_determinant(m), -2.0)
+})
+
+test_that("nalgebra_inverse inverts a matrix", {
+  skip_if_missing_feature("nalgebra")
+  m <- matrix(c(1, 0, 0, 2), nrow = 2, ncol = 2)
+  inv <- nalgebra_inverse(m)
+  expect_equal(inv, matrix(c(1, 0, 0, 0.5), nrow = 2, ncol = 2))
+})
+
+test_that("nalgebra_eigenvalues returns sorted eigenvalues", {
+  skip_if_missing_feature("nalgebra")
+  # Eigenvalues of diag(1, 3) are 1 and 3
+  m <- matrix(c(1, 0, 0, 3), nrow = 2, ncol = 2)
+  result <- nalgebra_eigenvalues(m)
+  expect_equal(result, c(1.0, 3.0))
+})
+
+test_that("nalgebra_from_row_slice constructs row-major matrix", {
+  skip_if_missing_feature("nalgebra")
+  # Row-major: [[1,2],[3,4]] → column-major R matrix
+  result <- nalgebra_from_row_slice(c(1, 2, 3, 4), 2L, 2L)
+  expect_equal(result[1, 1], 1.0)
+  expect_equal(result[1, 2], 2.0)
+  expect_equal(result[2, 1], 3.0)
+  expect_equal(result[2, 2], 4.0)
+})
+
+test_that("nalgebra_from_fn builds matrix from formula", {
+  skip_if_missing_feature("nalgebra")
+  # Element[r,c] = r * ncol + c (0-indexed)
+  result <- nalgebra_from_fn(2L, 3L)
+  expect_equal(result[1, 1], 0.0)  # 0*3+0
+  expect_equal(result[1, 2], 1.0)  # 0*3+1
+  expect_equal(result[2, 3], 5.0)  # 1*3+2
+})
+
+test_that("nalgebra_svector3_roundtrip preserves static vector", {
+  skip_if_missing_feature("nalgebra")
+  result <- nalgebra_svector3_roundtrip(1.0, 2.0, 3.0)
+  expect_equal(result, c(1.0, 2.0, 3.0))
+})
+
+test_that("nalgebra_reshape changes matrix dimensions", {
+  skip_if_missing_feature("nalgebra")
+  m <- matrix(as.double(1:6), nrow = 2, ncol = 3)
+  result <- nalgebra_reshape(m, 3L, 2L)
+  expect_equal(nrow(result), 3L)
+  expect_equal(ncol(result), 2L)
+  # Same data in column-major order
+  expect_equal(as.vector(result), as.vector(m))
 })
 
 # =============================================================================
@@ -1087,6 +1287,46 @@ test_that("json_to_pretty produces formatted JSON", {
   expect_type(result, "character")
   # Pretty-printed JSON has newlines
   expect_true(grepl("\n", result))
+})
+
+test_that("json_is_array identifies arrays", {
+  skip_if_missing_feature("serde_json")
+  expect_true(json_is_array(list(1L, 2L, 3L)))
+  expect_false(json_is_array(list(a = 1L)))
+})
+
+test_that("json_is_string identifies strings", {
+  skip_if_missing_feature("serde_json")
+  expect_true(json_is_string("hello"))
+  expect_false(json_is_string(42L))
+})
+
+test_that("json_is_number identifies numbers", {
+  skip_if_missing_feature("serde_json")
+  expect_true(json_is_number(42L))
+  expect_true(json_is_number(3.14))
+  expect_false(json_is_number("hello"))
+})
+
+test_that("json_is_null identifies null", {
+  skip_if_missing_feature("serde_json")
+  expect_true(json_is_null(NULL))
+  expect_false(json_is_null(1L))
+})
+
+test_that("json_array_len returns array length", {
+  skip_if_missing_feature("serde_json")
+  expect_equal(json_array_len(list(1L, 2L, 3L)), 3L)
+  # Non-array returns 0
+  expect_equal(json_array_len(list(a = 1L)), 0L)
+})
+
+test_that("json_from_key_values builds JSON object string", {
+  skip_if_missing_feature("serde_json")
+  result <- json_from_key_values(c("x", "y"), c(10L, 20L))
+  expect_type(result, "character")
+  expect_true(grepl('"x"', result))
+  expect_true(grepl("10", result))
 })
 
 # =============================================================================
@@ -1239,6 +1479,16 @@ test_that("borsh_option_roundtrip succeeds", {
   expect_true(borsh_option_roundtrip())
 })
 
+test_that("borsh_hashmap_roundtrip preserves HashMap", {
+  skip_if_missing_feature("borsh")
+  expect_true(borsh_hashmap_roundtrip())
+})
+
+test_that("borsh_vec_bool_roundtrip preserves bool vector", {
+  skip_if_missing_feature("borsh")
+  expect_true(borsh_vec_bool_roundtrip())
+})
+
 # =============================================================================
 # Indicatif feature tests (snapshot-based)
 # =============================================================================
@@ -1266,4 +1516,25 @@ test_that("indicatif_hidden_bar snapshot", {
 test_that("indicatif_short_bar snapshot", {
   skip_if_missing_feature("indicatif")
   expect_snapshot(indicatif_short_bar(), cnd_class = TRUE, transform = strip_ansi)
+})
+
+test_that("indicatif_spinner_demo returns done", {
+  skip_if_missing_feature("indicatif")
+  expect_equal(indicatif_spinner_demo(), "done")
+})
+
+test_that("indicatif_download_style completes", {
+  skip_if_missing_feature("indicatif")
+  expect_equal(indicatif_download_style(10L), "complete")
+})
+
+test_that("indicatif_with_messages processes all steps", {
+  skip_if_missing_feature("indicatif")
+  steps <- c("step1", "step2", "step3")
+  expect_equal(indicatif_with_messages(steps), "step3")
+})
+
+test_that("indicatif_elapsed_demo finishes", {
+  skip_if_missing_feature("indicatif")
+  expect_equal(indicatif_elapsed_demo(), "finished")
 })

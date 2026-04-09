@@ -84,3 +84,53 @@ pub fn bitflags_all() -> i32 {
 pub fn bitflags_has_execute(flags: RFlags<Perms>) -> bool {
     flags.contains(Perms::EXECUTE)
 }
+
+// region: Upstream example-derived fixtures
+
+/// Display the Debug format of a flag set.
+/// @param flags Permission flags as RFlags wrapper.
+#[miniextendr]
+pub fn bitflags_display(flags: RFlags<Perms>) -> String {
+    format!("{:?}", *flags)
+}
+
+/// Compute the symmetric difference (XOR) of two flag sets.
+/// @param a First permission flags.
+/// @param b Second permission flags.
+#[miniextendr]
+pub fn bitflags_xor(a: RFlags<Perms>, b: RFlags<Perms>) -> RFlags<Perms> {
+    RFlags::from(*a ^ *b)
+}
+
+/// Compute the complement (NOT) of a flag set (within defined bits).
+/// @param flags Permission flags as RFlags wrapper.
+#[miniextendr]
+pub fn bitflags_complement(flags: RFlags<Perms>) -> RFlags<Perms> {
+    RFlags::from(!*flags)
+}
+
+/// Get the names of all set flags as a character vector.
+/// @param flags Permission flags as RFlags wrapper.
+#[miniextendr]
+pub fn bitflags_names(flags: RFlags<Perms>) -> Vec<String> {
+    let mut names = Vec::new();
+    if flags.contains(Perms::READ) {
+        names.push("READ".to_string());
+    }
+    if flags.contains(Perms::WRITE) {
+        names.push("WRITE".to_string());
+    }
+    if flags.contains(Perms::EXECUTE) {
+        names.push("EXECUTE".to_string());
+    }
+    names
+}
+
+/// Count the number of flags that are set.
+/// @param flags Permission flags as RFlags wrapper.
+#[miniextendr]
+pub fn bitflags_count(flags: RFlags<Perms>) -> i32 {
+    flags.bits().count_ones() as i32
+}
+
+// endregion
