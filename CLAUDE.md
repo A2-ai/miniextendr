@@ -223,6 +223,8 @@ just devtools-document  # 3. Run roxygen2 (regenerate NAMESPACE + man pages)
 - Build compiles Rust, then auto-generates `rpkg/R/miniextendr-wrappers.R` via cdylib
 - `devtools-document` runs roxygen2 on the generated wrappers to update NAMESPACE
 
+**Always run `just devtools-document`** after any change that affects R wrapper output — this includes changes to roxygen generation in proc macros (`r_class_formatter.rs`, `r_wrapper_builder.rs`, `roxygen.rs`), R wrapper codegen (`r_wrappers.rs`, class system generators), or adding/removing `#[miniextendr]` functions/impls in rpkg. The generated files (`rpkg/R/miniextendr-wrappers.R`, `rpkg/NAMESPACE`, `rpkg/man/*.Rd`) must be committed in sync with the Rust changes that produced them.
+
 ### Testing Changes
 
 ```bash
