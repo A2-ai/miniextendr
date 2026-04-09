@@ -2975,7 +2975,6 @@ WithOptionals$from_r <- function(sexp) {
 ReceiverCounter <- new.env(parent = emptyenv())
 
 #' @title Creates a new counter with the given initial value
-#'
 #' \describe{
 #'   \item{\code{initial}}{Integer initial counter value.}
 #' }
@@ -6731,7 +6730,6 @@ TypeB$get_val <- function() {
 PtrSelfTest <- new.env(parent = emptyenv())
 
 #' @title Create a new PtrSelfTest
-#'
 #' \describe{
 #'   \item{\code{value}}{Integer value.}
 #' }
