@@ -67,6 +67,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor function
     if let Some(ctx) = parsed_impl.constructor_context() {
+        lines.push(ctx.source_comment(type_ident));
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
             // Use class name as @name to avoid duplicate "new" alias across S4 classes
@@ -98,6 +99,14 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S4 methods
     // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {
+        let start = method.ident.span().start();
+        lines.push(format!(
+            "# {}::{} ({}:{})",
+            type_ident,
+            method.ident,
+            start.line,
+            start.column + 1,
+        ));
         let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let method_name = if let Some(ref generic) = method.method_attrs.generic {
             generic.clone()
@@ -220,6 +229,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as regular functions
     for ctx in parsed_impl.static_method_contexts() {
+        lines.push(ctx.source_comment(type_ident));
         let method_name = ctx.method.r_method_name();
         let fn_name = format!("{}_{}", class_name, method_name);
 

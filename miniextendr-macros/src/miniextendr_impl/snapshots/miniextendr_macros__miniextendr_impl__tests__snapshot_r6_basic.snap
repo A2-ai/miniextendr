@@ -1,6 +1,5 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 1806
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Counter R6 Class
@@ -12,6 +11,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @export
 Counter <- R6::R6Class("Counter",
   public = list(
+    # Counter::new (1:1)
     #' @description Create a new counter
     #' @param value Initial value
     initialize = function(value, .ptr = NULL) {
@@ -34,6 +34,7 @@ Counter <- R6::R6Class("Counter",
         private$.ptr <- .val
       }
     },
+    # Counter::get (1:1)
     #' @description Get the current value
     get = function() {
       .val <- .Call(C_Counter__get, .call = match.call(), private$.ptr)
@@ -45,6 +46,7 @@ Counter <- R6::R6Class("Counter",
       }
       .val
     },
+    # Counter::increment (1:1)
     #' @description Increment by one
     increment = function() {
       .val <- .Call(C_Counter__increment, .call = match.call(), private$.ptr)
@@ -65,6 +67,7 @@ Counter <- R6::R6Class("Counter",
   cloneable = FALSE
 )
 
+# Counter::from_value (1:1)
 #' @description Create from value (static factory)
 #' @name Counter$from_value
 #' @rdname Counter
