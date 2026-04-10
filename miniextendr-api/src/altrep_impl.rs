@@ -261,6 +261,17 @@ macro_rules! __impl_altvec_dataptr {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::ffi::SEXP, writable: bool) -> *mut core::ffi::c_void {
+                // Check data2 cache first (materialized by a prior call).
+                unsafe {
+                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2)
+                            == <$elem as $crate::ffi::RNativeType>::SEXP_TYPE
+                    {
+                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
+                    }
+                }
+
                 // Try the fast path: direct pointer from the underlying data.
                 let direct = if writable {
                     unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1_mut_ref::<$ty>(&x) }
@@ -291,11 +302,9 @@ macro_rules! __impl_altvec_dataptr {
                 }
 
                 // The underlying data can't provide a contiguous pointer (e.g., Arrow
-                // array with null bitmask where dataptr_or_null returns None).
-                // Fall back to returning null — R's internal Dataptr default will
-                // kick in and materialize via the Elt method, OR `sexp_to_arrow_buffer`
-                // will detect the null and use the element-by-element fallback.
-                core::ptr::null_mut()
+                // array with null bitmask). Materialize into data2 via Elt methods.
+                // Must never return null — R doesn't fall back when custom Dataptr is set.
+                unsafe { $crate::altrep_data::materialize_altrep_data2(x) }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
