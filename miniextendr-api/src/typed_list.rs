@@ -339,7 +339,7 @@ impl TypedList {
         if let Some(names) = names_sexp {
             for i in 0..n {
                 let name_sexp = names.string_elt(i);
-                if name_sexp == unsafe { ffi::R_NaString } {
+                if name_sexp == SEXP::na_string() {
                     continue;
                 }
                 let name_ptr = name_sexp.r_char();
@@ -390,7 +390,7 @@ pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, Type
     if let Some(names) = names_sexp {
         for i in 0..n {
             let name_sexp = names.string_elt(i);
-            if name_sexp == unsafe { ffi::R_NaString } {
+            if name_sexp == SEXP::na_string() {
                 continue;
             }
             let name_ptr = name_sexp.r_char();
@@ -695,7 +695,7 @@ pub fn actual_type_string(sexp: SEXP) -> String {
         let class_len = unsafe { ffi::Rf_xlength(class_attr) };
         if class_len > 0 {
             let first_class = class_attr.string_elt(0);
-            if first_class != unsafe { ffi::R_NaString } {
+            if first_class != SEXP::na_string() {
                 let class_ptr = first_class.r_char();
                 let class_cstr = unsafe { CStr::from_ptr(class_ptr) };
                 if let Ok(s) = class_cstr.to_str() {

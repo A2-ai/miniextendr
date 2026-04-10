@@ -114,7 +114,7 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
         ffi::Rf_protect(vec);
         for (i, s) in choices.iter().enumerate() {
             let charsxp = if s.is_empty() {
-                ffi::R_BlankString
+                SEXP::blank_string()
             } else {
                 SEXP::charsxp(s)
             };
@@ -140,7 +140,7 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
                 return Err(MatchArgError::InvalidLength(len));
             }
             let charsxp = sexp.string_elt(0);
-            if charsxp == unsafe { ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 return Err(MatchArgError::IsNa);
             }
             let c_str = unsafe { ffi::Rf_translateCharUTF8(charsxp) };

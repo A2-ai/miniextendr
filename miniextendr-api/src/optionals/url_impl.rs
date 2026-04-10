@@ -70,7 +70,7 @@ impl TryFromSexp for Url {
         }
 
         let charsxp = sexp.string_elt(0);
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::STRSXP,
             }));
@@ -123,7 +123,7 @@ impl TryFromSexp for Option<Url> {
         }
 
         let charsxp = sexp.string_elt(0);
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok(None);
         }
 
@@ -170,7 +170,7 @@ impl TryFromSexp for Vec<Url> {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for Vec<Url>",
                     i
@@ -228,7 +228,7 @@ impl TryFromSexp for Vec<Option<Url>> {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 result.push(None);
             } else {
                 let s = unsafe { charsxp_to_str(charsxp) };

@@ -116,7 +116,7 @@ impl List {
         // Search for matching name
         for i in 0..n {
             let name_sexp = names_sexp.string_elt(i);
-            if name_sexp == unsafe { ffi::R_NaString } {
+            if name_sexp == SEXP::na_string() {
                 continue;
             }
             let name_ptr = name_sexp.r_char();
@@ -724,7 +724,7 @@ where
 
             let key = if let Some(names) = names_sexp {
                 let name_sexp = names.string_elt(idx);
-                if name_sexp == unsafe { ffi::R_NaString } {
+                if name_sexp == SEXP::na_string() {
                     format!("{i}")
                 } else {
                     let name_ptr = name_sexp.r_char();
@@ -781,7 +781,7 @@ where
 
             let key = if let Some(names) = names_sexp {
                 let name_sexp = names.string_elt(idx);
-                if name_sexp == unsafe { ffi::R_NaString } {
+                if name_sexp == SEXP::na_string() {
                     format!("{i}")
                 } else {
                     let name_ptr = name_sexp.r_char();
@@ -1103,7 +1103,7 @@ impl TryFromSexp for List {
             for i in 0..n {
                 let name_sexp = names_sexp.string_elt(i);
                 // Skip NA names
-                if name_sexp == unsafe { ffi::R_NaString } {
+                if name_sexp == SEXP::na_string() {
                     continue;
                 }
                 // Skip empty names

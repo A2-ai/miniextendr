@@ -89,9 +89,7 @@ impl TryFromSexp for Vec<Cow<'static, str>> {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
-            if charsxp == unsafe { crate::ffi::R_NaString }
-                || charsxp == unsafe { crate::ffi::R_BlankString }
-            {
+            if charsxp == SEXP::na_string() || charsxp == SEXP::blank_string() {
                 result.push(Cow::Borrowed(""));
             } else {
                 result.push(unsafe { charsxp_to_cow(charsxp) });
@@ -123,7 +121,7 @@ impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 result.push(None);
             } else {
                 // charsxp_to_cow returns Cow::Borrowed("") for R_BlankString-equivalent
@@ -185,7 +183,7 @@ impl TryFromSexp for Vec<String> {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
-            let s = if charsxp == unsafe { crate::ffi::R_NaString } {
+            let s = if charsxp == SEXP::na_string() {
                 String::new()
             } else {
                 let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
@@ -238,11 +236,11 @@ impl TryFromSexp for Vec<&'static str> {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 result.push("");
                 continue;
             }
-            if charsxp == unsafe { crate::ffi::R_BlankString } {
+            if charsxp == SEXP::blank_string() {
                 result.push("");
                 continue;
             }
@@ -272,11 +270,11 @@ impl TryFromSexp for Vec<Option<&'static str>> {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 result.push(None);
                 continue;
             }
-            if charsxp == unsafe { crate::ffi::R_BlankString } {
+            if charsxp == SEXP::blank_string() {
                 result.push(Some(""));
                 continue;
             }

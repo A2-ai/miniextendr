@@ -417,7 +417,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
         SEXPTYPE::STRSXP => {
             if len == 1 {
                 let charsxp = sexp.string_elt(0);
-                if charsxp == unsafe { crate::ffi::R_NaString } {
+                if charsxp == SEXP::na_string() {
                     return handle_na(opts, None);
                 }
                 let s = unsafe { charsxp_to_str(charsxp) };
@@ -426,7 +426,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                 let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
                     .map(|i| {
                         let charsxp = sexp.string_elt(isize::try_from(i).expect("index overflow"));
-                        if charsxp == unsafe { crate::ffi::R_NaString } {
+                        if charsxp == SEXP::na_string() {
                             handle_na(opts, Some(i))
                         } else {
                             let s = unsafe { charsxp_to_str(charsxp) };
@@ -447,7 +447,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                 let mut map = serde_json::Map::new();
                 for i in 0..len {
                     let charsxp = names.string_elt(isize::try_from(i).expect("index overflow"));
-                    let key = if charsxp == unsafe { crate::ffi::R_NaString } {
+                    let key = if charsxp == SEXP::na_string() {
                         format!("V{}", i + 1) // Auto-name for NA keys
                     } else {
                         unsafe { charsxp_to_str(charsxp) }.to_string()

@@ -278,7 +278,7 @@ impl<'a> ListAccumulator<'a> {
                         let charsxp = ffi::SEXP::charsxp(n);
                         names_sexp.get().set_string_elt(idx, charsxp);
                     } else {
-                        names_sexp.get().set_string_elt(idx, ffi::R_BlankString);
+                        names_sexp.get().set_string_elt(idx, SEXP::blank_string());
                     }
                 }
                 root.get().set_names(names_sexp.get());

@@ -94,7 +94,7 @@ where
     for i in 0..len {
         let key = if has_names {
             let charsxp = names.string_elt(i as crate::ffi::R_xlen_t);
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 String::new()
             } else {
                 let c_str = unsafe { Rf_translateCharUTF8(charsxp) };

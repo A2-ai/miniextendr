@@ -135,7 +135,7 @@ impl TryFromSexp for TomlValue {
         }
 
         let charsxp = sexp.string_elt(0);
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Err(SexpError::InvalidValue(
                 "NA not allowed for TOML parsing".to_string(),
             ));

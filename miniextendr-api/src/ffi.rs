@@ -1833,10 +1833,10 @@ unsafe extern "C-unwind" {
     pub static R_NilValue: SEXP;
 
     #[doc(alias = "NA_STRING")]
-    /// Missing string singleton (`NA_STRING`).
-    pub(crate) static R_NaString: SEXP;
-    /// Empty string CHARSXP (length 0).
-    pub(crate) static R_BlankString: SEXP;
+    /// Missing string singleton — encapsulated by SEXP::na_string()
+    static R_NaString: SEXP;
+    /// Empty string CHARSXP — encapsulated by SEXP::blank_string()
+    static R_BlankString: SEXP;
     /// Symbol for `names` attribute.
     pub(crate) static R_NamesSymbol: SEXP;
     /// Symbol for `dim` attribute.

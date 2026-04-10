@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::ffi::{self, SEXP, SexpExt};
+use crate::ffi::{SEXP, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -51,7 +51,7 @@ impl NamedList {
         for i in 0..n {
             let idx: isize = i.try_into().expect("index exceeds isize::MAX");
             let name_sexp = names_sexp.string_elt(idx);
-            if name_sexp == unsafe { ffi::R_NaString } {
+            if name_sexp == SEXP::na_string() {
                 continue;
             }
             let name_ptr = name_sexp.r_char();

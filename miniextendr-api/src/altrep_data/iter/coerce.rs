@@ -591,7 +591,7 @@ impl<I: Iterator<Item = String> + 'static> crate::altrep_traits::AltString for I
                 AltStringData::elt(&*d, i as usize)
                     .map(|s| unsafe { crate::altrep_impl::checked_mkchar(s) })
             })
-            .unwrap_or(unsafe { crate::ffi::R_NaString })
+            .unwrap_or(SEXP::na_string())
     }
 }
 

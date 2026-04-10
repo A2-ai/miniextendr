@@ -1320,7 +1320,7 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
                 let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp(s.as_ref()),
-                    None => crate::ffi::R_NaString,
+                    None => crate::ffi::SEXP::na_string(),
                 };
                 sexp.set_string_elt(idx, charsxp);
             }
@@ -1341,7 +1341,7 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
                 let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp_unchecked(s.as_ref()),
-                    None => crate::ffi::R_NaString,
+                    None => crate::ffi::SEXP::na_string(),
                 };
                 sexp.set_string_elt_unchecked(idx, charsxp);
             }
@@ -1753,7 +1753,7 @@ impl IntoR for Vec<Option<String>> {
                 let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp(s),
-                    None => crate::ffi::R_NaString,
+                    None => crate::ffi::SEXP::na_string(),
                 };
                 sexp.set_string_elt(idx, charsxp);
             }
@@ -1777,7 +1777,7 @@ impl IntoR for Vec<Option<String>> {
                 let idx: crate::ffi::R_xlen_t = i.try_into().expect("index exceeds isize::MAX");
                 let charsxp = match opt_s {
                     Some(s) => str_to_charsxp_unchecked(s),
-                    None => crate::ffi::R_NaString,
+                    None => crate::ffi::SEXP::na_string(),
                 };
                 sexp.set_string_elt_unchecked(idx, charsxp);
             }

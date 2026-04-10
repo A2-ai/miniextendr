@@ -234,7 +234,7 @@ impl AltrepSexp {
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
             let elt = self.sexp.string_elt(i as ffi::R_xlen_t);
-            if elt == unsafe { ffi::R_NaString } {
+            if elt == SEXP::na_string() {
                 out.push(None);
             } else {
                 let cstr = unsafe { ffi::Rf_translateCharUTF8(elt) };
