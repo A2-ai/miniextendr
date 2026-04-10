@@ -308,31 +308,42 @@ impl Drop for RPreservedSexp {
 /// the R SEXP alive. When all references to the Buffer are dropped, the
 /// guard releases the R object for GC.
 ///
+/// Returns `None` if the SEXP's data pointer is null (e.g., ALTREP types
+/// that return null from `DATAPTR_RO` when they cannot expose a contiguous
+/// buffer, such as Arrow arrays with null bitmasks after deserialization).
+///
 /// # Safety
 ///
 /// - `sexp` must be a valid R vector with contiguous data of type `T`
 /// - Must be called on R's main thread (for `R_PreserveObject`)
-unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> arrow_buffer::Buffer {
+unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffer::Buffer> {
     let len = sexp.len();
     if len == 0 {
-        return arrow_buffer::Buffer::from(Vec::<u8>::new());
+        return Some(arrow_buffer::Buffer::from(Vec::<u8>::new()));
+    }
+
+    let ptr = unsafe { ffi::DATAPTR_RO(sexp) }.cast::<u8>().cast_mut();
+
+    // ALTREP types with null bitmasks (e.g., deserialized Arrow arrays) may
+    // return null from DATAPTR_RO when they cannot provide a contiguous buffer.
+    if ptr.is_null() {
+        return None;
     }
 
     // Preserve the R object so it won't be GC'd while Arrow holds a reference
     unsafe { ffi::R_PreserveObject(sexp) };
     let guard = Arc::new(RPreservedSexp(sexp));
 
-    let ptr = unsafe { ffi::DATAPTR_RO(sexp) }.cast::<u8>().cast_mut();
     let byte_len = len * std::mem::size_of::<T>();
 
     // SAFETY: R vectors have contiguous memory. The guard keeps the SEXP alive.
-    unsafe {
+    Some(unsafe {
         arrow_buffer::Buffer::from_custom_allocation(
             std::ptr::NonNull::new_unchecked(ptr),
             byte_len,
             guard,
         )
-    }
+    })
 }
 
 /// Allocate an Arrow Buffer backed by a new R vector.
@@ -367,7 +378,9 @@ pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer
     }
     let len_isize: isize = len.try_into().expect("vector length exceeds isize::MAX");
     let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, len_isize) };
-    let buffer = unsafe { sexp_to_arrow_buffer::<T>(sexp) };
+    // freshly allocated R vectors always have a valid data pointer
+    let buffer = unsafe { sexp_to_arrow_buffer::<T>(sexp) }
+        .expect("freshly allocated R vector must have a valid data pointer");
     (buffer, sexp)
 }
 
@@ -433,15 +446,26 @@ impl TryFromSexp for Float64Array {
             return Ok(Float64Array::from(Vec::<f64>::new()));
         }
 
-        // Zero-copy: wrap R's data buffer
-        let buffer = unsafe { sexp_to_arrow_buffer::<f64>(sexp) };
-        let scalar_buffer = arrow_buffer::ScalarBuffer::<f64>::from(buffer);
+        // Try zero-copy: wrap R's data buffer directly
+        if let Some(buffer) = unsafe { sexp_to_arrow_buffer::<f64>(sexp) } {
+            let scalar_buffer = arrow_buffer::ScalarBuffer::<f64>::from(buffer);
 
-        // Scan for NAs to build null bitmap (data stays untouched)
-        let slice: &[f64] = unsafe { sexp.as_slice() };
-        let null_buffer = build_f64_null_buffer(slice);
+            // Scan for NAs to build null bitmap (data stays untouched)
+            let slice: &[f64] = unsafe { sexp.as_slice() };
+            let null_buffer = build_f64_null_buffer(slice);
 
-        Ok(Float64Array::new(scalar_buffer, null_buffer))
+            return Ok(Float64Array::new(scalar_buffer, null_buffer));
+        }
+
+        // Fallback: DATAPTR_RO returned null (e.g., ALTREP Arrow array with nulls).
+        // Read element-by-element via REAL_ELT which works for all SEXP types.
+        let values: Vec<Option<f64>> = (0..len)
+            .map(|i| {
+                let v = unsafe { ffi::REAL_ELT(sexp, i as ffi::R_xlen_t) };
+                if is_na_real(v) { None } else { Some(v) }
+            })
+            .collect();
+        Ok(Float64Array::from(values))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -466,13 +490,25 @@ impl TryFromSexp for Int32Array {
             return Ok(Int32Array::from(Vec::<i32>::new()));
         }
 
-        let buffer = unsafe { sexp_to_arrow_buffer::<i32>(sexp) };
-        let scalar_buffer = arrow_buffer::ScalarBuffer::<i32>::from(buffer);
+        // Try zero-copy: wrap R's data buffer directly
+        if let Some(buffer) = unsafe { sexp_to_arrow_buffer::<i32>(sexp) } {
+            let scalar_buffer = arrow_buffer::ScalarBuffer::<i32>::from(buffer);
 
-        let slice: &[i32] = unsafe { sexp.as_slice() };
-        let null_buffer = build_i32_null_buffer(slice);
+            let slice: &[i32] = unsafe { sexp.as_slice() };
+            let null_buffer = build_i32_null_buffer(slice);
 
-        Ok(Int32Array::new(scalar_buffer, null_buffer))
+            return Ok(Int32Array::new(scalar_buffer, null_buffer));
+        }
+
+        // Fallback: DATAPTR_RO returned null (e.g., ALTREP Arrow array with nulls).
+        // Read element-by-element via INTEGER_ELT.
+        let values: Vec<Option<i32>> = (0..len)
+            .map(|i| {
+                let v = unsafe { ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) };
+                if v == NA_INTEGER { None } else { Some(v) }
+            })
+            .collect();
+        Ok(Int32Array::from(values))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -498,10 +534,16 @@ impl TryFromSexp for UInt8Array {
         }
 
         // Zero-copy, no NA concept for raw vectors
-        let buffer = unsafe { sexp_to_arrow_buffer::<u8>(sexp) };
-        let scalar_buffer = arrow_buffer::ScalarBuffer::<u8>::from(buffer);
+        if let Some(buffer) = unsafe { sexp_to_arrow_buffer::<u8>(sexp) } {
+            let scalar_buffer = arrow_buffer::ScalarBuffer::<u8>::from(buffer);
+            return Ok(UInt8Array::new(scalar_buffer, None));
+        }
 
-        Ok(UInt8Array::new(scalar_buffer, None))
+        // Fallback: DATAPTR_RO returned null. Read element-by-element via RAW_ELT.
+        let values: Vec<u8> = (0..len)
+            .map(|i| unsafe { ffi::RAW_ELT(sexp, i as ffi::R_xlen_t) })
+            .collect();
+        Ok(UInt8Array::from(values))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {

@@ -545,7 +545,6 @@ test_that("i32 all-null ALTREP: cross-session readRDS", {
 
 test_that("f64 cross-session: compute → serialize → load → re-convert to Arrow", {
   skip_on_os("windows")
-  skip("segfaults in subprocess — see reviews/arrow-cross-session-reconvert-segfault.md")
   v <- c(1.0, NA, 3.0)
   # Compute in Arrow (multiply by 10), get ALTREP back
   altrep <- arrow_na_f64_altrep(v)

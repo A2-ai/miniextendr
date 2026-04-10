@@ -261,17 +261,16 @@ macro_rules! __impl_altvec_dataptr {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::ffi::SEXP, writable: bool) -> *mut core::ffi::c_void {
-                if writable {
-                    // Writable: obtain &mut T so the caller can write through the pointer.
+                // Try the fast path: direct pointer from the underlying data.
+                let direct = if writable {
                     unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1_mut_ref::<$ty>(&x) }
                         .and_then(|d| {
                             <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, true)
                         })
                         .map(|p| p.cast::<core::ffi::c_void>())
-                        .unwrap_or(core::ptr::null_mut())
                 } else {
-                    // Read-only: try immutable access first. This avoids &mut borrows
-                    // and, for Cow types, avoids unnecessary copy-on-write.
+                    // Read-only: try immutable access first to avoid &mut borrows
+                    // and unnecessary copy-on-write for Cow types.
                     let ro = unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
                         .and_then(|d| {
                             <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d)
@@ -279,20 +278,39 @@ macro_rules! __impl_altvec_dataptr {
                     if let Some(p) = ro {
                         return p.cast_mut().cast::<core::ffi::c_void>();
                     }
-                    // dataptr_or_null returned None (data not yet available) — fall
-                    // back to the mutable path which may trigger materialization.
+                    // dataptr_or_null returned None — try mutable path.
                     unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1_mut_ref::<$ty>(&x) }
                         .and_then(|d| {
                             <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, false)
                         })
                         .map(|p| p.cast::<core::ffi::c_void>())
-                        .unwrap_or(core::ptr::null_mut())
+                };
+
+                if let Some(p) = direct {
+                    return p;
                 }
+
+                // The underlying data can't provide a contiguous pointer (e.g., Arrow
+                // array with null bitmask where dataptr_or_null returns None).
+                // Fall back to returning null — R's internal Dataptr default will
+                // kick in and materialize via the Elt method, OR `sexp_to_arrow_buffer`
+                // will detect the null and use the element-by-element fallback.
+                core::ptr::null_mut()
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
 
             fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
+                // Check data2 cache first (may have been materialized by a prior dataptr call)
+                unsafe {
+                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
+                    if !data2.is_null()
+                        && $crate::ffi::SexpExt::type_of(&data2)
+                            == <$elem as $crate::ffi::RNativeType>::SEXP_TYPE
+                    {
+                        return $crate::ffi::DATAPTR_RO(data2);
+                    }
+                }
                 unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
                     .and_then(|d| {
                         <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d)
