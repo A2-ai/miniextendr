@@ -15,14 +15,16 @@ waits forever.
 ## Root cause
 
 **DataFusion's Tokio async runtime** spawns background threads that outlive
-the R test execution. When `test-datafusion.R` runs, the Tokio thread pool
-keeps the Rterm process alive after tests complete. Binary search across 88
-test files confirmed `test-datafusion.R` is the sole trigger.
+the R test execution. `tokio::runtime::Runtime::new()` creates a multi-threaded
+runtime with one worker thread per CPU core. These threads keep the Rterm
+process alive after tests complete. Binary search across all 88 test files
+confirmed `test-datafusion.R` is the sole trigger.
 
 ### Red herrings investigated
 
 1. **callr/processx orphan Rterm processes** — Only relevant when callr tests
-   run (already skipped on Windows). Not the cause of the main hang.
+   run (already skipped on Windows via pre-existing `skip_on_os`). Not the
+   cause of the main hang.
 
 2. **Worker thread (`worker-thread` feature)** — Investigated extensively
    (Mutex-based sender drop, atexit handler, recv_timeout, reg.finalizer).
@@ -32,22 +34,23 @@ test files confirmed `test-datafusion.R` is the sole trigger.
 3. **Rust panic under pipe redirection** — Worker panic tests cause
    `fatal runtime error: failed to initiate panic, error 5` (ACCESS_DENIED)
    when stdout is a pipe. This crashes (aborts) the process rather than
-   hanging it. Skipped as a separate fix.
+   hanging it — a separate issue.
 
 ## Fix
 
-1. `skip_on_os("windows")` on `test-datafusion.R` — DataFusion is
-   platform-independent; tested on Linux/macOS
-2. `skip_on_os("windows")` on worker panic tests in `test-worker.R` — Rust
-   panics on the worker thread fail with "error 5" under pipe redirection
-3. `_R_CHECK_TESTS_ELAPSED_TIMEOUT_=300` in CI as a safety net
-4. `skip_on_os("windows")` on `test-subprocess-isolated.R` (callr tests)
+Switch the Tokio runtime from `Runtime::new()` (multi-threaded, spawns N
+worker threads) to `Builder::new_current_thread().enable_all().build()` (zero
+background threads — IO/time/scheduler all run inline during `block_on()`).
+
+Verified via Tokio source audit (v1.50.0): `current_thread` with `enable_all()`
+spawns no threads. The blocking pool only spawns threads on explicit
+`spawn_blocking()` (DataFusion doesn't use it). `Drop` completes immediately.
+
+Safety net: `_R_CHECK_TESTS_ELAPSED_TIMEOUT_=300` in CI kills the test process
+after 5 minutes if something else causes a hang in the future.
 
 ## Future work
 
-- Investigate why Tokio's runtime threads are not shut down when R exits.
-  A `tokio::runtime::Runtime::shutdown_background()` call from `.onUnload`
-  or an R-level session finalizer may allow DataFusion tests to run on Windows.
 - Investigate the Rust panic "error 5" on Windows under pipe redirection.
   May need a custom panic hook that avoids writing to stderr when the handle
   is a pipe.
