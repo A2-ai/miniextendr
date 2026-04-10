@@ -1,11 +1,5 @@
 # Tests for DataFusion integration (RSessionContext + RDataFrame)
 
-# Skip on Windows: DataFusion's Tokio async runtime spawns background threads
-# that keep the Rterm process alive after tests complete, preventing R CMD check
-# from detecting test completion (system2 waits for stdout pipe handles to close).
-# DataFusion functionality is platform-independent and tested on Linux/macOS.
-skip_on_os("windows")
-
 make_test_df <- function() {
   data.frame(
     x = c(1L, 2L, 3L, 4L, 5L),

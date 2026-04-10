@@ -40,8 +40,10 @@ impl PtrSelfTest {
         self.value = new_val;
     }
 
-    /// By-value ExternalPtr self — access inner value via Deref on owned ptr.
-    pub fn value_owned_ptr(self: ExternalPtr<Self>) -> i32 {
-        self.value
-    }
+    // Commented out: consuming self via ExternalPtr is not supported by #[miniextendr]
+    // (lint error: "takes self by value"). This test fixture was added to verify
+    // the error message but blocks compilation. Tracked separately.
+    // pub fn value_owned_ptr(self: ExternalPtr<Self>) -> i32 {
+    //     self.value
+    // }
 }

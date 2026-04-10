@@ -171,7 +171,7 @@ arrow-buffer = { version = "55", optional = true }
 arrow-schema = { version = "55", optional = true }
 arrow-select = { version = "55", optional = true }
 datafusion = { version = "48", optional = true, default-features = false }
-tokio = { version = "1", optional = true, features = ["rt-multi-thread"] }
+tokio = { version = "1", optional = true, features = ["rt"] }
 log = { version = "0.4", optional = true }
 
 [dev-dependencies]

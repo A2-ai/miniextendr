@@ -42,9 +42,19 @@ use crate::ffi::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 
 /// Get or create a thread-local Tokio runtime for blocking on async DataFusion operations.
+///
+/// Uses `current_thread` flavor (no background worker threads). This is critical
+/// on Windows: `Runtime::new()` creates a multi-threaded runtime whose worker
+/// threads outlive the R process, keeping stdout pipe handles open and causing
+/// R CMD check to hang at "checking tests ...".
+///
+/// `current_thread` runs all async work on the calling thread during `block_on()`,
+/// which is exactly what we need for synchronous R ↔ DataFusion bridging.
 fn runtime() -> &'static tokio::runtime::Runtime {
     thread_local! {
-        static RT: tokio::runtime::Runtime = tokio::runtime::Runtime::new()
+        static RT: tokio::runtime::Runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .expect("failed to create Tokio runtime for DataFusion");
     }
     // SAFETY: The runtime is thread-local and lives for the thread's lifetime.
