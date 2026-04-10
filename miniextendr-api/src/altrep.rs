@@ -11,7 +11,10 @@
 //!   - Creates the class handle via `R_make_alt*`
 //!   - Installs methods based on trait bounds and HAS_* consts
 
-use crate::ffi::altrep::*;
+use crate::ffi::altrep::{
+    R_altrep_class_t, R_make_altcomplex_class, R_make_altinteger_class, R_make_altlist_class,
+    R_make_altlogical_class, R_make_altraw_class, R_make_altreal_class, R_make_altstring_class,
+};
 use std::ffi::CStr;
 use std::sync::Mutex;
 

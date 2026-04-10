@@ -182,9 +182,10 @@ unsafe impl Sync for R_altrep_class_t {}
 #[allow(missing_docs)]
 #[miniextendr_macros::r_ffi_checked]
 unsafe extern "C-unwind" {
-    pub fn R_new_altrep(aclass: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
+    // ALTREP instance construction (encapsulated by R_altrep_class_t::new_altrep)
+    fn R_new_altrep(aclass: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
 
-    // ALTREP class constructors
+    // ALTREP class constructors — pub because proc-macro generates calls from user crates
     pub fn R_make_altstring_class(
         cname: *const ::std::os::raw::c_char,
         pname: *const ::std::os::raw::c_char,
@@ -220,86 +221,478 @@ unsafe extern "C-unwind" {
         pname: *const ::std::os::raw::c_char,
         info: *mut DllInfo,
     ) -> R_altrep_class_t;
-    pub fn R_altrep_inherits(x: SEXP, aclass: R_altrep_class_t) -> Rboolean;
-    pub fn R_set_altrep_UnserializeEX_method(
+    // ALTREP class membership check (encapsulated by R_altrep_class_t::inherits)
+    fn R_altrep_inherits(x: SEXP, aclass: R_altrep_class_t) -> Rboolean;
+
+    // Method setters — private, encapsulated by R_altrep_class_t methods
+    fn R_set_altrep_UnserializeEX_method(
         cls: R_altrep_class_t,
         fun: R_altrep_UnserializeEX_method_t,
     );
-    pub fn R_set_altrep_Unserialize_method(
-        cls: R_altrep_class_t,
-        fun: R_altrep_Unserialize_method_t,
-    );
-    pub fn R_set_altrep_Serialized_state_method(
+    fn R_set_altrep_Unserialize_method(cls: R_altrep_class_t, fun: R_altrep_Unserialize_method_t);
+    fn R_set_altrep_Serialized_state_method(
         cls: R_altrep_class_t,
         fun: R_altrep_Serialized_state_method_t,
     );
-    pub fn R_set_altrep_DuplicateEX_method(
-        cls: R_altrep_class_t,
-        fun: R_altrep_DuplicateEX_method_t,
-    );
-    pub fn R_set_altrep_Duplicate_method(cls: R_altrep_class_t, fun: R_altrep_Duplicate_method_t);
-    pub fn R_set_altrep_Coerce_method(cls: R_altrep_class_t, fun: R_altrep_Coerce_method_t);
-    pub fn R_set_altrep_Inspect_method(cls: R_altrep_class_t, fun: R_altrep_Inspect_method_t);
-    pub fn R_set_altrep_Length_method(cls: R_altrep_class_t, fun: R_altrep_Length_method_t);
-    pub fn R_set_altvec_Dataptr_method(cls: R_altrep_class_t, fun: R_altvec_Dataptr_method_t);
-    pub fn R_set_altvec_Dataptr_or_null_method(
+    fn R_set_altrep_DuplicateEX_method(cls: R_altrep_class_t, fun: R_altrep_DuplicateEX_method_t);
+    fn R_set_altrep_Duplicate_method(cls: R_altrep_class_t, fun: R_altrep_Duplicate_method_t);
+    fn R_set_altrep_Coerce_method(cls: R_altrep_class_t, fun: R_altrep_Coerce_method_t);
+    fn R_set_altrep_Inspect_method(cls: R_altrep_class_t, fun: R_altrep_Inspect_method_t);
+    fn R_set_altrep_Length_method(cls: R_altrep_class_t, fun: R_altrep_Length_method_t);
+    fn R_set_altvec_Dataptr_method(cls: R_altrep_class_t, fun: R_altvec_Dataptr_method_t);
+    fn R_set_altvec_Dataptr_or_null_method(
         cls: R_altrep_class_t,
         fun: R_altvec_Dataptr_or_null_method_t,
     );
-    pub fn R_set_altvec_Extract_subset_method(
+    fn R_set_altvec_Extract_subset_method(
         cls: R_altrep_class_t,
         fun: R_altvec_Extract_subset_method_t,
     );
-    pub fn R_set_altinteger_Elt_method(cls: R_altrep_class_t, fun: R_altinteger_Elt_method_t);
-    pub fn R_set_altinteger_Get_region_method(
+    fn R_set_altinteger_Elt_method(cls: R_altrep_class_t, fun: R_altinteger_Elt_method_t);
+    fn R_set_altinteger_Get_region_method(
         cls: R_altrep_class_t,
         fun: R_altinteger_Get_region_method_t,
     );
-    pub fn R_set_altinteger_Is_sorted_method(
+    fn R_set_altinteger_Is_sorted_method(
         cls: R_altrep_class_t,
         fun: R_altinteger_Is_sorted_method_t,
     );
-    pub fn R_set_altinteger_No_NA_method(cls: R_altrep_class_t, fun: R_altinteger_No_NA_method_t);
-    pub fn R_set_altinteger_Sum_method(cls: R_altrep_class_t, fun: R_altinteger_Sum_method_t);
-    pub fn R_set_altinteger_Min_method(cls: R_altrep_class_t, fun: R_altinteger_Min_method_t);
-    pub fn R_set_altinteger_Max_method(cls: R_altrep_class_t, fun: R_altinteger_Max_method_t);
-    pub fn R_set_altreal_Elt_method(cls: R_altrep_class_t, fun: R_altreal_Elt_method_t);
-    pub fn R_set_altreal_Get_region_method(
-        cls: R_altrep_class_t,
-        fun: R_altreal_Get_region_method_t,
-    );
-    pub fn R_set_altreal_Is_sorted_method(cls: R_altrep_class_t, fun: R_altreal_Is_sorted_method_t);
-    pub fn R_set_altreal_No_NA_method(cls: R_altrep_class_t, fun: R_altreal_No_NA_method_t);
-    pub fn R_set_altreal_Sum_method(cls: R_altrep_class_t, fun: R_altreal_Sum_method_t);
-    pub fn R_set_altreal_Min_method(cls: R_altrep_class_t, fun: R_altreal_Min_method_t);
-    pub fn R_set_altreal_Max_method(cls: R_altrep_class_t, fun: R_altreal_Max_method_t);
-    pub fn R_set_altlogical_Elt_method(cls: R_altrep_class_t, fun: R_altlogical_Elt_method_t);
-    pub fn R_set_altlogical_Get_region_method(
+    fn R_set_altinteger_No_NA_method(cls: R_altrep_class_t, fun: R_altinteger_No_NA_method_t);
+    fn R_set_altinteger_Sum_method(cls: R_altrep_class_t, fun: R_altinteger_Sum_method_t);
+    fn R_set_altinteger_Min_method(cls: R_altrep_class_t, fun: R_altinteger_Min_method_t);
+    fn R_set_altinteger_Max_method(cls: R_altrep_class_t, fun: R_altinteger_Max_method_t);
+    fn R_set_altreal_Elt_method(cls: R_altrep_class_t, fun: R_altreal_Elt_method_t);
+    fn R_set_altreal_Get_region_method(cls: R_altrep_class_t, fun: R_altreal_Get_region_method_t);
+    fn R_set_altreal_Is_sorted_method(cls: R_altrep_class_t, fun: R_altreal_Is_sorted_method_t);
+    fn R_set_altreal_No_NA_method(cls: R_altrep_class_t, fun: R_altreal_No_NA_method_t);
+    fn R_set_altreal_Sum_method(cls: R_altrep_class_t, fun: R_altreal_Sum_method_t);
+    fn R_set_altreal_Min_method(cls: R_altrep_class_t, fun: R_altreal_Min_method_t);
+    fn R_set_altreal_Max_method(cls: R_altrep_class_t, fun: R_altreal_Max_method_t);
+    fn R_set_altlogical_Elt_method(cls: R_altrep_class_t, fun: R_altlogical_Elt_method_t);
+    fn R_set_altlogical_Get_region_method(
         cls: R_altrep_class_t,
         fun: R_altlogical_Get_region_method_t,
     );
-    pub fn R_set_altlogical_Is_sorted_method(
+    fn R_set_altlogical_Is_sorted_method(
         cls: R_altrep_class_t,
         fun: R_altlogical_Is_sorted_method_t,
     );
-    pub fn R_set_altlogical_No_NA_method(cls: R_altrep_class_t, fun: R_altlogical_No_NA_method_t);
-    pub fn R_set_altlogical_Sum_method(cls: R_altrep_class_t, fun: R_altlogical_Sum_method_t);
-    pub fn R_set_altraw_Elt_method(cls: R_altrep_class_t, fun: R_altraw_Elt_method_t);
-    pub fn R_set_altraw_Get_region_method(cls: R_altrep_class_t, fun: R_altraw_Get_region_method_t);
-    pub fn R_set_altcomplex_Elt_method(cls: R_altrep_class_t, fun: R_altcomplex_Elt_method_t);
-    pub fn R_set_altcomplex_Get_region_method(
+    fn R_set_altlogical_No_NA_method(cls: R_altrep_class_t, fun: R_altlogical_No_NA_method_t);
+    fn R_set_altlogical_Sum_method(cls: R_altrep_class_t, fun: R_altlogical_Sum_method_t);
+    fn R_set_altraw_Elt_method(cls: R_altrep_class_t, fun: R_altraw_Elt_method_t);
+    fn R_set_altraw_Get_region_method(cls: R_altrep_class_t, fun: R_altraw_Get_region_method_t);
+    fn R_set_altcomplex_Elt_method(cls: R_altrep_class_t, fun: R_altcomplex_Elt_method_t);
+    fn R_set_altcomplex_Get_region_method(
         cls: R_altrep_class_t,
         fun: R_altcomplex_Get_region_method_t,
     );
-    pub fn R_set_altstring_Elt_method(cls: R_altrep_class_t, fun: R_altstring_Elt_method_t);
-    pub fn R_set_altstring_Set_elt_method(cls: R_altrep_class_t, fun: R_altstring_Set_elt_method_t);
-    pub fn R_set_altstring_Is_sorted_method(
-        cls: R_altrep_class_t,
-        fun: R_altstring_Is_sorted_method_t,
-    );
-    pub fn R_set_altstring_No_NA_method(cls: R_altrep_class_t, fun: R_altstring_No_NA_method_t);
-    pub fn R_set_altlist_Elt_method(cls: R_altrep_class_t, fun: R_altlist_Elt_method_t);
-    pub fn R_set_altlist_Set_elt_method(cls: R_altrep_class_t, fun: R_altlist_Set_elt_method_t);
+    fn R_set_altstring_Elt_method(cls: R_altrep_class_t, fun: R_altstring_Elt_method_t);
+    fn R_set_altstring_Set_elt_method(cls: R_altrep_class_t, fun: R_altstring_Set_elt_method_t);
+    fn R_set_altstring_Is_sorted_method(cls: R_altrep_class_t, fun: R_altstring_Is_sorted_method_t);
+    fn R_set_altstring_No_NA_method(cls: R_altrep_class_t, fun: R_altstring_No_NA_method_t);
+    fn R_set_altlist_Elt_method(cls: R_altrep_class_t, fun: R_altlist_Elt_method_t);
+    fn R_set_altlist_Set_elt_method(cls: R_altrep_class_t, fun: R_altlist_Set_elt_method_t);
+}
+
+impl R_altrep_class_t {
+    /// Create from a raw SEXP pointer.
+    ///
+    /// Rust equivalent of C macro `R_SUBTYPE_INIT(x)`.
+    #[inline(always)]
+    pub const fn from_sexp(ptr: SEXP) -> Self {
+        Self { ptr }
+    }
+
+    /// Get the underlying SEXP.
+    ///
+    /// Rust equivalent of C macro `R_SEXP(x)`.
+    #[inline(always)]
+    pub fn as_sexp(self) -> SEXP {
+        self.ptr
+    }
+
+    /// Create a new ALTREP instance with data1 and data2 slots.
+    ///
+    /// # Safety
+    /// Must be called on R's main thread. `data1` and `data2` must be valid SEXPs.
+    #[inline]
+    pub unsafe fn new_altrep(self, data1: SEXP, data2: SEXP) -> SEXP {
+        unsafe { R_new_altrep(self, data1, data2) }
+    }
+
+    /// Create a new ALTREP instance (no thread check).
+    ///
+    /// # Safety
+    /// Must be called on R's main thread.
+    #[inline]
+    pub unsafe fn new_altrep_unchecked(self, data1: SEXP, data2: SEXP) -> SEXP {
+        unsafe { R_new_altrep_unchecked(self, data1, data2) }
+    }
+
+    /// Check if `x` is an instance of this ALTREP class.
+    ///
+    /// # Safety
+    /// Must be called on R's main thread. `x` must be a valid SEXP.
+    #[inline]
+    pub unsafe fn inherits(self, x: SEXP) -> bool {
+        unsafe { R_altrep_inherits(x, self) != Rboolean::FALSE }
+    }
+
+    // region: Base ALTREP method setters
+
+    /// Set the Length method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_length_method(self, fun: R_altrep_Length_method_t) {
+        unsafe { R_set_altrep_Length_method(self, fun) }
+    }
+
+    /// Set the Serialized_state method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_serialized_state_method(self, fun: R_altrep_Serialized_state_method_t) {
+        unsafe { R_set_altrep_Serialized_state_method(self, fun) }
+    }
+
+    /// Set the Unserialize method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_unserialize_method(self, fun: R_altrep_Unserialize_method_t) {
+        unsafe { R_set_altrep_Unserialize_method(self, fun) }
+    }
+
+    /// Set the UnserializeEX method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_unserialize_ex_method(self, fun: R_altrep_UnserializeEX_method_t) {
+        unsafe { R_set_altrep_UnserializeEX_method(self, fun) }
+    }
+
+    /// Set the Duplicate method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_duplicate_method(self, fun: R_altrep_Duplicate_method_t) {
+        unsafe { R_set_altrep_Duplicate_method(self, fun) }
+    }
+
+    /// Set the DuplicateEX method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_duplicate_ex_method(self, fun: R_altrep_DuplicateEX_method_t) {
+        unsafe { R_set_altrep_DuplicateEX_method(self, fun) }
+    }
+
+    /// Set the Coerce method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_coerce_method(self, fun: R_altrep_Coerce_method_t) {
+        unsafe { R_set_altrep_Coerce_method(self, fun) }
+    }
+
+    /// Set the Inspect method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_inspect_method(self, fun: R_altrep_Inspect_method_t) {
+        unsafe { R_set_altrep_Inspect_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: Vector-level method setters
+
+    /// Set the Dataptr method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_dataptr_method(self, fun: R_altvec_Dataptr_method_t) {
+        unsafe { R_set_altvec_Dataptr_method(self, fun) }
+    }
+
+    /// Set the Dataptr_or_null method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_dataptr_or_null_method(self, fun: R_altvec_Dataptr_or_null_method_t) {
+        unsafe { R_set_altvec_Dataptr_or_null_method(self, fun) }
+    }
+
+    /// Set the Extract_subset method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_extract_subset_method(self, fun: R_altvec_Extract_subset_method_t) {
+        unsafe { R_set_altvec_Extract_subset_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: Integer method setters
+
+    /// Set the integer Elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_integer_elt_method(self, fun: R_altinteger_Elt_method_t) {
+        unsafe { R_set_altinteger_Elt_method(self, fun) }
+    }
+
+    /// Set the integer Get_region method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_integer_get_region_method(self, fun: R_altinteger_Get_region_method_t) {
+        unsafe { R_set_altinteger_Get_region_method(self, fun) }
+    }
+
+    /// Set the integer Is_sorted method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_integer_is_sorted_method(self, fun: R_altinteger_Is_sorted_method_t) {
+        unsafe { R_set_altinteger_Is_sorted_method(self, fun) }
+    }
+
+    /// Set the integer No_NA method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_integer_no_na_method(self, fun: R_altinteger_No_NA_method_t) {
+        unsafe { R_set_altinteger_No_NA_method(self, fun) }
+    }
+
+    /// Set the integer Sum method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_integer_sum_method(self, fun: R_altinteger_Sum_method_t) {
+        unsafe { R_set_altinteger_Sum_method(self, fun) }
+    }
+
+    /// Set the integer Min method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_integer_min_method(self, fun: R_altinteger_Min_method_t) {
+        unsafe { R_set_altinteger_Min_method(self, fun) }
+    }
+
+    /// Set the integer Max method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_integer_max_method(self, fun: R_altinteger_Max_method_t) {
+        unsafe { R_set_altinteger_Max_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: Real method setters
+
+    /// Set the real Elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_real_elt_method(self, fun: R_altreal_Elt_method_t) {
+        unsafe { R_set_altreal_Elt_method(self, fun) }
+    }
+
+    /// Set the real Get_region method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_real_get_region_method(self, fun: R_altreal_Get_region_method_t) {
+        unsafe { R_set_altreal_Get_region_method(self, fun) }
+    }
+
+    /// Set the real Is_sorted method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_real_is_sorted_method(self, fun: R_altreal_Is_sorted_method_t) {
+        unsafe { R_set_altreal_Is_sorted_method(self, fun) }
+    }
+
+    /// Set the real No_NA method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_real_no_na_method(self, fun: R_altreal_No_NA_method_t) {
+        unsafe { R_set_altreal_No_NA_method(self, fun) }
+    }
+
+    /// Set the real Sum method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_real_sum_method(self, fun: R_altreal_Sum_method_t) {
+        unsafe { R_set_altreal_Sum_method(self, fun) }
+    }
+
+    /// Set the real Min method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_real_min_method(self, fun: R_altreal_Min_method_t) {
+        unsafe { R_set_altreal_Min_method(self, fun) }
+    }
+
+    /// Set the real Max method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_real_max_method(self, fun: R_altreal_Max_method_t) {
+        unsafe { R_set_altreal_Max_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: Logical method setters
+
+    /// Set the logical Elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_logical_elt_method(self, fun: R_altlogical_Elt_method_t) {
+        unsafe { R_set_altlogical_Elt_method(self, fun) }
+    }
+
+    /// Set the logical Get_region method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_logical_get_region_method(self, fun: R_altlogical_Get_region_method_t) {
+        unsafe { R_set_altlogical_Get_region_method(self, fun) }
+    }
+
+    /// Set the logical Is_sorted method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_logical_is_sorted_method(self, fun: R_altlogical_Is_sorted_method_t) {
+        unsafe { R_set_altlogical_Is_sorted_method(self, fun) }
+    }
+
+    /// Set the logical No_NA method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_logical_no_na_method(self, fun: R_altlogical_No_NA_method_t) {
+        unsafe { R_set_altlogical_No_NA_method(self, fun) }
+    }
+
+    /// Set the logical Sum method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_logical_sum_method(self, fun: R_altlogical_Sum_method_t) {
+        unsafe { R_set_altlogical_Sum_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: Raw method setters
+
+    /// Set the raw Elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_raw_elt_method(self, fun: R_altraw_Elt_method_t) {
+        unsafe { R_set_altraw_Elt_method(self, fun) }
+    }
+
+    /// Set the raw Get_region method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_raw_get_region_method(self, fun: R_altraw_Get_region_method_t) {
+        unsafe { R_set_altraw_Get_region_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: Complex method setters
+
+    /// Set the complex Elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_complex_elt_method(self, fun: R_altcomplex_Elt_method_t) {
+        unsafe { R_set_altcomplex_Elt_method(self, fun) }
+    }
+
+    /// Set the complex Get_region method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_complex_get_region_method(self, fun: R_altcomplex_Get_region_method_t) {
+        unsafe { R_set_altcomplex_Get_region_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: String method setters
+
+    /// Set the string Elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_string_elt_method(self, fun: R_altstring_Elt_method_t) {
+        unsafe { R_set_altstring_Elt_method(self, fun) }
+    }
+
+    /// Set the string Set_elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_string_set_elt_method(self, fun: R_altstring_Set_elt_method_t) {
+        unsafe { R_set_altstring_Set_elt_method(self, fun) }
+    }
+
+    /// Set the string Is_sorted method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_string_is_sorted_method(self, fun: R_altstring_Is_sorted_method_t) {
+        unsafe { R_set_altstring_Is_sorted_method(self, fun) }
+    }
+
+    /// Set the string No_NA method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_string_no_na_method(self, fun: R_altstring_No_NA_method_t) {
+        unsafe { R_set_altstring_No_NA_method(self, fun) }
+    }
+
+    // endregion
+
+    // region: List method setters
+
+    /// Set the list Elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_list_elt_method(self, fun: R_altlist_Elt_method_t) {
+        unsafe { R_set_altlist_Elt_method(self, fun) }
+    }
+
+    /// Set the list Set_elt method.
+    /// # Safety
+    /// Must be called during R initialization.
+    #[inline]
+    pub unsafe fn set_list_set_elt_method(self, fun: R_altlist_Set_elt_method_t) {
+        unsafe { R_set_altlist_Set_elt_method(self, fun) }
+    }
+
+    // endregion
 }
 
 // region: ALTREP Helper Functions (Rust equivalents of R's ALTREP macros)
