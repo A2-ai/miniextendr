@@ -54,10 +54,7 @@ pub fn indicatif_short_bar() -> String {
 pub fn indicatif_spinner_demo() -> String {
     let target = term_like_stderr(60);
     let pb = ProgressBar::with_draw_target(None, target);
-    pb.set_style(
-        ProgressStyle::with_template("{spinner} {msg}")
-            .unwrap(),
-    );
+    pb.set_style(ProgressStyle::with_template("{spinner} {msg}").unwrap());
     pb.set_message("working...");
     for _ in 0..3 {
         pb.tick();
@@ -104,10 +101,7 @@ pub fn indicatif_with_messages(steps: Vec<String>) -> String {
 pub fn indicatif_elapsed_demo() -> String {
     let target = term_like_stderr(60);
     let pb = ProgressBar::with_draw_target(Some(3), target);
-    pb.set_style(
-        ProgressStyle::with_template("{elapsed} {bar:20} {pos}/{len}")
-            .unwrap(),
-    );
+    pb.set_style(ProgressStyle::with_template("{elapsed} {bar:20} {pos}/{len}").unwrap());
     for _ in 0..3 {
         pb.inc(1);
     }
