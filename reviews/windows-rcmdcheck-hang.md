@@ -24,16 +24,15 @@ test files confirmed `test-datafusion.R` is the sole trigger.
 1. **callr/processx orphan Rterm processes** — Only relevant when callr tests
    run (already skipped on Windows). Not the cause of the main hang.
 
-2. **Worker thread (`worker-thread` feature)** — Investigated extensively.
-   The worker thread's `recv()` blocks, but the atexit handler drops the
-   sender channel, and the thread exits. Confirmed by ThreadCount=1 on the
-   hung process. The worker thread is NOT the root cause.
+2. **Worker thread (`worker-thread` feature)** — Investigated extensively
+   (Mutex-based sender drop, atexit handler, recv_timeout, reg.finalizer).
+   The worker thread CAN keep a process alive via blocking `recv()`, but
+   it is NOT the trigger for the observed hang — DataFusion is.
 
 3. **Rust panic under pipe redirection** — Worker panic tests cause
    `fatal runtime error: failed to initiate panic, error 5` (ACCESS_DENIED)
-   when stdout is a pipe. This crashes the process rather than hanging it.
-   Skipped as a separate fix (error 5 is a Windows-specific issue with
-   Rust's panic machinery under pipe redirection).
+   when stdout is a pipe. This crashes (aborts) the process rather than
+   hanging it. Skipped as a separate fix.
 
 ## Fix
 
@@ -43,3 +42,12 @@ test files confirmed `test-datafusion.R` is the sole trigger.
    panics on the worker thread fail with "error 5" under pipe redirection
 3. `_R_CHECK_TESTS_ELAPSED_TIMEOUT_=300` in CI as a safety net
 4. `skip_on_os("windows")` on `test-subprocess-isolated.R` (callr tests)
+
+## Future work
+
+- Investigate why Tokio's runtime threads are not shut down when R exits.
+  A `tokio::runtime::Runtime::shutdown_background()` call from `.onUnload`
+  or an R-level session finalizer may allow DataFusion tests to run on Windows.
+- Investigate the Rust panic "error 5" on Windows under pipe redirection.
+  May need a custom panic hook that avoids writing to stderr when the handle
+  is a pipe.

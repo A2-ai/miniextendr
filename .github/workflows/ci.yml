@@ -607,10 +607,11 @@ jobs:
           check-dir: '"check"'
         env:
           NOT_CRAN: false
-          # On Windows, the Rust worker thread keeps the test Rterm process
-          # alive after tests complete, preventing R CMD check from detecting
-          # test completion. This timeout (5 min) kills the test process if
-          # it hasn't exited (tests finish in ~60s). See reviews/ for details.
+          # On Windows, DataFusion's Tokio runtime threads keep the test
+          # Rterm process alive after tests complete, preventing R CMD check
+          # from detecting test completion via stdout pipe close. This timeout
+          # (5 min) kills the test process if it hasn't exited (tests finish
+          # in ~60s). See reviews/windows-rcmdcheck-hang.md for details.
           _R_CHECK_TESTS_ELAPSED_TIMEOUT_: 300
 
       - name: Print failed tests
