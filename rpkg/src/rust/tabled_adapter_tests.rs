@@ -95,11 +95,21 @@ pub fn tabled_styled(style: &str) -> String {
     builder.push_record(["b", "2"]);
     let mut table = builder.build();
     match style {
-        "markdown" => { table.with(Style::markdown()); }
-        "modern" => { table.with(Style::modern()); }
-        "rounded" => { table.with(Style::rounded()); }
-        "blank" => { table.with(Style::blank()); }
-        _ => { table.with(Style::ascii()); }
+        "markdown" => {
+            table.with(Style::markdown());
+        }
+        "modern" => {
+            table.with(Style::modern());
+        }
+        "rounded" => {
+            table.with(Style::rounded());
+        }
+        "blank" => {
+            table.with(Style::blank());
+        }
+        _ => {
+            table.with(Style::ascii());
+        }
     }
     table.to_string()
 }

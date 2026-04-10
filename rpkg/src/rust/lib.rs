@@ -109,7 +109,6 @@ mod aho_corasick_adapter_tests;
 mod altrep_sexp_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
-mod zero_copy_tests;
 mod as_coerce_tests;
 mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
@@ -152,8 +151,7 @@ mod error_in_r_tests;
 mod export_control_tests;
 mod externalptr_any_tests;
 mod externalptr_identity_tests;
-// TODO: externalptr_self_tests requires arbitrary_self_types (nightly)
-// mod externalptr_self_tests;
+mod externalptr_self_tests;
 mod externalptr_tests;
 mod externalslice_tests;
 mod factor_tests;
@@ -239,6 +237,7 @@ mod uuid_adapter_tests;
 mod visibility_tests;
 #[cfg(feature = "worker-thread")]
 mod worker_tests;
+mod zero_copy_tests;
 
 // region: proc-macro ALTREP test
 // This tests the #[miniextendr] on struct path for custom ALTREP classes.
