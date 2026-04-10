@@ -53,6 +53,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor
     if let Some(ctx) = parsed_impl.constructor_context() {
+        lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
             let method_doc =
@@ -80,6 +81,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods
     for ctx in parsed_impl.instance_method_contexts() {
         let method_name = ctx.method.r_method_name();
+        lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
             let method_doc =
@@ -139,6 +141,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods
     for ctx in parsed_impl.static_method_contexts() {
         let method_name = ctx.method.r_method_name();
+        lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
             let method_doc =

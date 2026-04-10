@@ -90,6 +90,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // If there's no explicit `new()` but there are factory methods returning Self,
     // generate a minimal initialize(.ptr) so factories can call $new(.ptr = val).
     if let Some(ctx) = parsed_impl.constructor_context() {
+        lines.push(format!("    {}", ctx.source_comment(type_ident)));
         // Add inline roxygen documentation for initialize method
         // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
         let has_description = ctx
@@ -219,6 +220,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ""
         };
 
+        lines.push(format!("    {}", ctx.source_comment(type_ident)));
         // Add inline roxygen documentation for this method
         // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
         let r_name = ctx.method.r_method_name();
@@ -306,6 +308,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Private instance methods
     for ctx in parsed_impl.private_instance_method_contexts() {
+        lines.push(format!("    {}", ctx.source_comment(type_ident)));
         lines.push(format!(
             "    {} = function({}) {{",
             ctx.method.r_method_name(),
@@ -503,6 +506,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let static_method_name = format!("{}${}", class_name, method_name);
         lines.push(String::new());
 
+        lines.push(ctx.source_comment(type_ident));
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                 .with_name_prefix("$")
