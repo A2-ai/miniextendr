@@ -172,7 +172,10 @@ test_that("rapid create-materialize-discard cycles", {
 
 test_that("materialization does not corrupt heap (subprocess)", {
   skip_on_os("windows")
-  result <- callr::r(function() {
+  skip_if_not_installed("callr")
+  lib_paths <- .libPaths()
+  result <- callr::r(function(lp) {
+    .libPaths(lp)
     library(miniextendr)
     tryCatch({
       # Create and materialize several ALTREP objects
@@ -192,6 +195,6 @@ test_that("materialization does not corrupt heap (subprocess)", {
     }, error = function(e) {
       paste0("ERROR: ", conditionMessage(e))
     })
-  }, timeout = 60)
+  }, args = list(lp = lib_paths), timeout = 60)
   expect_true(result)
 })
