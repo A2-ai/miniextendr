@@ -602,3 +602,209 @@ test_that("ALTREP i32 with NAs: R sum/mean handle NAs", {
 })
 
 # endregion
+
+# region: StringArray NA computation
+
+test_that("string uppercase preserves NAs (null propagation)", {
+  v <- c("hello", NA, "world")
+  result <- arrow_na_string_uppercase(v)
+  expect_equal(result[1], "HELLO")
+  expect_true(is.na(result[2]))
+  expect_equal(result[3], "WORLD")
+})
+
+test_that("string uppercase on all-NA returns all-NA", {
+  v <- c(NA_character_, NA_character_)
+  result <- arrow_na_string_uppercase(v)
+  expect_true(all(is.na(result)))
+  expect_equal(length(result), 2L)
+})
+
+test_that("string compact (remove NAs) works", {
+  v <- c("a", NA, "b", NA, "c")
+  result <- arrow_na_string_compact(v)
+  expect_equal(result, c("a", "b", "c"))
+})
+
+test_that("string compact of all-NA returns empty", {
+  v <- c(NA_character_, NA_character_)
+  result <- arrow_na_string_compact(v)
+  expect_equal(result, character(0))
+})
+
+test_that("string double roundtrip preserves NA positions", {
+  v <- c("hello", NA, "world")
+  result <- arrow_na_string_double_roundtrip(v)
+  expect_equal(result[1], "hello!")
+  expect_true(is.na(result[2]))
+  expect_equal(result[3], "world!")
+})
+
+test_that("string double roundtrip with all NAs", {
+  v <- c(NA_character_, NA_character_, NA_character_)
+  result <- arrow_na_string_double_roundtrip(v)
+  expect_true(all(is.na(result)))
+})
+
+# endregion
+
+# region: StringArray ALTREP with NAs
+
+test_that("string ALTREP with NAs: element access", {
+  v <- c("hello", NA, "world")
+  altrep <- arrow_na_string_altrep(v)
+  expect_equal(altrep[1], "[hello]")
+  expect_true(is.na(altrep[2]))
+  expect_equal(altrep[3], "[world]")
+})
+
+test_that("string ALTREP with NAs: is.na works", {
+  v <- c("a", NA, "b", NA)
+  altrep <- arrow_na_string_altrep(v)
+  expect_equal(is.na(altrep), c(FALSE, TRUE, FALSE, TRUE))
+})
+
+test_that("string ALTREP with NAs: subsetting", {
+  v <- c("a", NA, "b", NA, "c")
+  altrep <- arrow_na_string_altrep(v)
+  expect_equal(altrep[c(1, 3, 5)], c("[a]", "[b]", "[c]"))
+})
+
+test_that("string ALTREP with NAs: length", {
+  v <- c("a", NA, "b")
+  altrep <- arrow_na_string_altrep(v)
+  expect_equal(length(altrep), 3L)
+})
+
+test_that("string ALTREP all-null", {
+  altrep <- arrow_na_string_all_null_altrep(4L)
+  expect_true(all(is.na(altrep)))
+  expect_equal(length(altrep), 4L)
+})
+
+test_that("string ALTREP with NAs: paste ignores NAs", {
+  v <- c("hello", NA, "world")
+  altrep <- arrow_na_string_altrep(v)
+  # paste with na.rm isn't standard — use na.omit
+  expect_equal(paste(na.omit(altrep), collapse = " "), "[hello] [world]")
+})
+
+# endregion
+
+# region: StringArray ALTREP serialization
+
+test_that("string ALTREP with NAs: same-session saveRDS/readRDS", {
+  v <- c("hello", NA, "world")
+  altrep <- arrow_na_string_altrep(v)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep, tmp)
+  loaded <- readRDS(tmp)
+  expect_equal(loaded[1], "[hello]")
+  expect_true(is.na(loaded[2]))
+  expect_equal(loaded[3], "[world]")
+})
+
+test_that("string ALTREP all-null: same-session saveRDS/readRDS", {
+  altrep <- arrow_na_string_all_null_altrep(3L)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep, tmp)
+  loaded <- readRDS(tmp)
+  expect_true(all(is.na(loaded)))
+  expect_equal(length(loaded), 3L)
+})
+
+test_that("string ALTREP with NAs: cross-session readRDS (with package)", {
+  skip_on_os("windows")
+  v <- c("hello", NA, "world", NA)
+  altrep <- arrow_na_string_altrep(v)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep, tmp)
+
+  lib <- .libPaths()
+  loaded <- callr::r(function(path, lib) {
+    .libPaths(lib)
+    library(miniextendr)
+    readRDS(path)
+  }, args = list(path = tmp, lib = lib))
+
+  expect_equal(loaded[1], "[hello]")
+  expect_true(is.na(loaded[2]))
+  expect_equal(loaded[3], "[world]")
+  expect_true(is.na(loaded[4]))
+})
+
+test_that("string ALTREP with NAs: cross-session readRDS (without package)", {
+  skip_on_os("windows")
+  v <- c("a", NA, "b")
+  altrep <- arrow_na_string_altrep(v)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep, tmp)
+
+  loaded <- callr::r(function(path) {
+    readRDS(path)
+  }, args = list(path = tmp))
+
+  expect_equal(loaded[1], "[a]")
+  expect_true(is.na(loaded[2]))
+  expect_equal(loaded[3], "[b]")
+})
+
+test_that("string all-null ALTREP: cross-session readRDS", {
+  skip_on_os("windows")
+  altrep <- arrow_na_string_all_null_altrep(3L)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep, tmp)
+
+  lib <- .libPaths()
+  loaded <- callr::r(function(path, lib) {
+    .libPaths(lib)
+    library(miniextendr)
+    readRDS(path)
+  }, args = list(path = tmp, lib = lib))
+
+  expect_true(all(is.na(loaded)))
+  expect_equal(length(loaded), 3L)
+})
+
+test_that("string cross-session: compute → serialize → load → re-convert", {
+  skip_on_os("windows")
+  v <- c("hello", NA, "world")
+  altrep <- arrow_na_string_altrep(v)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(altrep, tmp)
+
+  lib <- .libPaths()
+  result <- callr::r(function(path, lib) {
+    .libPaths(lib)
+    library(miniextendr)
+    loaded <- readRDS(path)
+    miniextendr:::arrow_na_string_uppercase(loaded)
+  }, args = list(path = tmp, lib = lib))
+
+  expect_equal(result[1], "[HELLO]")
+  expect_true(is.na(result[2]))
+  expect_equal(result[3], "[WORLD]")
+})
+
+# endregion
+
+# region: StringArray R-side mutation after ALTREP materialization
+
+test_that("string ALTREP: R-side assignment after materialization", {
+  v <- c("a", NA, "b")
+  altrep <- arrow_na_string_altrep(v)
+  # Force materialization by converting to regular vector
+  regular <- as.character(altrep)
+  regular[2] <- "replaced"
+  expect_equal(regular, c("[a]", "replaced", "[b]"))
+  regular[1] <- NA
+  expect_true(is.na(regular[1]))
+})
+
+# endregion

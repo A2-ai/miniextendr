@@ -236,6 +236,92 @@ pub fn arrow_na_i32_all_null_altrep(n: i32) -> SEXP {
 
 // endregion
 
+// region: StringArray NA computation + ALTREP
+
+/// Uppercase non-null strings, preserving nulls.
+/// @param v character vector
+#[miniextendr]
+pub fn arrow_na_string_uppercase(v: StringArray) -> StringArray {
+    let values: Vec<Option<String>> = (0..v.len())
+        .map(|i| {
+            if v.is_null(i) {
+                None
+            } else {
+                Some(v.value(i).to_uppercase())
+            }
+        })
+        .collect();
+    let refs: Vec<Option<&str>> = values.iter().map(|o| o.as_deref()).collect();
+    StringArray::from(refs)
+}
+
+/// Filter out null strings, returning only non-null values.
+/// @param v character vector
+#[miniextendr]
+pub fn arrow_na_string_compact(v: StringArray) -> Vec<String> {
+    (0..v.len())
+        .filter(|&i| !v.is_null(i))
+        .map(|i| v.value(i).to_string())
+        .collect()
+}
+
+/// Double roundtrip: R → Arrow → compute → R → Arrow → R.
+/// @param v character vector
+#[miniextendr]
+pub fn arrow_na_string_double_roundtrip(v: StringArray) -> StringArray {
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+
+    // First: compute (append "!")
+    let values: Vec<Option<String>> = (0..v.len())
+        .map(|i| {
+            if v.is_null(i) {
+                None
+            } else {
+                Some(format!("{}!", v.value(i)))
+            }
+        })
+        .collect();
+    let refs: Vec<Option<&str>> = values.iter().map(|o| o.as_deref()).collect();
+    let computed = StringArray::from(refs);
+
+    // Second: Arrow → R (restores NA_character_ where nulls were)
+    let r_sexp = computed.into_sexp();
+
+    // Third: R → Arrow (re-scans for NA_character_)
+    TryFromSexp::try_from_sexp(r_sexp).unwrap()
+}
+
+/// Create a Rust-computed StringArray (with NAs) and return as ALTREP.
+/// @param v character vector
+#[miniextendr]
+pub fn arrow_na_string_altrep(v: StringArray) -> SEXP {
+    use miniextendr_api::IntoRAltrep;
+    let values: Vec<Option<String>> = (0..v.len())
+        .map(|i| {
+            if v.is_null(i) {
+                None
+            } else {
+                Some(format!("[{}]", v.value(i)))
+            }
+        })
+        .collect();
+    let refs: Vec<Option<&str>> = values.iter().map(|o| o.as_deref()).collect();
+    let arr = StringArray::from(refs);
+    arr.into_sexp_altrep()
+}
+
+/// Create an all-null StringArray as ALTREP.
+/// @param n length
+#[miniextendr]
+pub fn arrow_na_string_all_null_altrep(n: i32) -> SEXP {
+    use miniextendr_api::IntoRAltrep;
+    let arr: StringArray = (0..n).map(|_| Option::<&str>::None).collect();
+    arr.into_sexp_altrep()
+}
+
+// endregion
+
 // region: Zero-copy identity with NA edge cases
 
 /// Returns TRUE if the zero-copy round-trip preserves identity even with NAs.
