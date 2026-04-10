@@ -10,8 +10,7 @@ use crate::ffi::SEXP;
 // region: Construction helpers (Phase A)
 
 use crate::ffi::{
-    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_type2char, Rf_xlength, SEXPTYPE,
-    SexpExt,
+    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_xlength, SEXPTYPE, SexpExt,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
@@ -172,13 +171,8 @@ fn install_symbol(name: &str) -> SEXP {
 ///
 /// # Safety
 ///
-/// Must be called from R's main thread with a valid SEXP.
-unsafe fn get_typeof_name(sexp: SEXP) -> &'static str {
-    let sexptype = sexp.type_of();
-    let cstr = unsafe { Rf_type2char(sexptype) };
-    let cstr = unsafe { std::ffi::CStr::from_ptr(cstr) };
-    // SAFETY: R's type names are ASCII strings
-    cstr.to_str().unwrap_or("unknown")
+fn get_typeof_name(sexp: SEXP) -> &'static str {
+    sexp.type_of().type_name()
 }
 
 /// Repair NA names by replacing them with empty strings.
@@ -278,7 +272,7 @@ pub fn new_vctr(
 
     // Build class vector
     let base_type_name = if inherit {
-        Some(unsafe { get_typeof_name(data) })
+        Some(get_typeof_name(data))
     } else {
         None
     };

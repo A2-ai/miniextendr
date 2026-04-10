@@ -89,6 +89,18 @@ impl SEXPTYPE {
     /// R defines both `OBJSXP` and `S4SXP` as value 25. `S4SXP` is retained
     /// for backwards compatibility; `OBJSXP` is the preferred name.
     pub const OBJSXP: SEXPTYPE = SEXPTYPE::S4SXP;
+
+    /// Get R's name for this SEXPTYPE (e.g. `"double"`, `"integer"`, `"list"`).
+    ///
+    /// Returns the same string as R's `typeof()` function.
+    #[inline]
+    pub fn type_name(self) -> &'static str {
+        let cstr = unsafe { Rf_type2char(self) };
+        // SAFETY: R's type names are static ASCII strings
+        unsafe { std::ffi::CStr::from_ptr(cstr) }
+            .to_str()
+            .unwrap_or("unknown")
+    }
 }
 
 #[repr(transparent)]
@@ -647,6 +659,29 @@ pub trait SexpExt {
 
     // endregion
 
+    // region: Symbol and CHARSXP access
+
+    /// Get the print name (CHARSXP) of a symbol (SYMSXP).
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be a valid SYMSXP.
+    fn printname(&self) -> SEXP;
+
+    /// Get the C string pointer from a CHARSXP.
+    ///
+    /// The returned pointer is valid as long as the CHARSXP is protected.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be a valid CHARSXP.
+    fn r_char(&self) -> *const ::std::os::raw::c_char;
+
+    /// Get a `&str` from a CHARSXP. Returns `None` for `NA_character_`.
+    fn r_char_str(&self) -> Option<&str>;
+
+    // endregion
+
     // region: Vector resizing
 
     /// Resize a vector to a new length, returning a (possibly new) SEXP.
@@ -1154,6 +1189,33 @@ impl SexpExt for SEXP {
     #[inline]
     fn set_raw_elt(&self, i: isize, v: u8) {
         unsafe { SET_RAW_ELT(*self, i, v) }
+    }
+
+    // endregion
+
+    // region: Symbol and CHARSXP access
+
+    #[inline]
+    fn printname(&self) -> SEXP {
+        unsafe { PRINTNAME(*self) }
+    }
+
+    #[inline]
+    fn r_char(&self) -> *const ::std::os::raw::c_char {
+        unsafe { R_CHAR(*self) }
+    }
+
+    #[inline]
+    fn r_char_str(&self) -> Option<&str> {
+        if self.is_na_string() {
+            return None;
+        }
+        let p = unsafe { R_CHAR(*self) };
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(p) }
+                .to_str()
+                .unwrap_or(""),
+        )
     }
 
     // endregion
@@ -1833,13 +1895,13 @@ unsafe extern "C-unwind" {
     #[doc(alias = "translateCharUTF8")]
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
     #[doc(alias = "getCharCE")]
-    pub(crate) fn Rf_getCharCE(x: SEXP) -> cetype_t;
+    fn Rf_getCharCE(x: SEXP) -> cetype_t;
     #[doc(alias = "charIsASCII")]
-    pub(crate) fn Rf_charIsASCII(x: SEXP) -> Rboolean;
+    fn Rf_charIsASCII(x: SEXP) -> Rboolean;
     #[doc(alias = "charIsUTF8")]
-    pub(crate) fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
+    fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
     #[doc(alias = "charIsLatin1")]
-    pub(crate) fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
+    fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
     pub(crate) fn R_MakeUnwindCont() -> SEXP;
     pub(crate) fn R_ContinueUnwind(cont: SEXP) -> !;
@@ -2041,7 +2103,7 @@ unsafe extern "C-unwind" {
     #[cfg(feature = "nonapi")]
     pub(crate) fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
     pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
-    pub(crate) fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
+    fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
 
     // region: Cons Cell (Pairlist) Accessors
     //
@@ -2228,7 +2290,7 @@ unsafe extern "C-unwind" {
     #[doc(alias = "install")]
     pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
     /// Get the print name (CHARSXP) of a symbol (SYMSXP)
-    pub(crate) fn PRINTNAME(x: SEXP) -> SEXP;
+    fn PRINTNAME(x: SEXP) -> SEXP;
     /// Get the C string pointer from a CHARSXP
     #[doc(alias = "CHAR")]
     pub(crate) fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
@@ -3550,7 +3612,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns a string like "INTSXP", "REALSXP", etc.
     #[doc(alias = "type2char")]
-    pub(crate) fn Rf_type2char(sexptype: SEXPTYPE) -> *const ::std::os::raw::c_char;
+    fn Rf_type2char(sexptype: SEXPTYPE) -> *const ::std::os::raw::c_char;
 
     /// Print an R value to the console.
     ///
@@ -3572,21 +3634,21 @@ unsafe extern "C-unwind" {
     /// Check if a variable exists in an environment frame.
     ///
     /// Does not search enclosing environments.
-    pub(crate) fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
+    fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
 
     /// Remove a variable from an environment frame.
     ///
     /// # Returns
     ///
     /// The removed value, or R_NilValue if not found.
-    pub(crate) fn R_removeVarFromFrame(symbol: SEXP, env: SEXP) -> SEXP;
+    fn R_removeVarFromFrame(symbol: SEXP, env: SEXP) -> SEXP;
 
     /// Get the top-level environment.
     ///
     /// Walks up enclosing environments until reaching a top-level env
     /// (global, namespace, or base).
     #[doc(alias = "topenv")]
-    pub(crate) fn Rf_topenv(target: SEXP, envir: SEXP) -> SEXP;
+    fn Rf_topenv(target: SEXP, envir: SEXP) -> SEXP;
 
     // Matching functions
 
