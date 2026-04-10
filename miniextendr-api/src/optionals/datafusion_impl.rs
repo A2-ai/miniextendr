@@ -9,6 +9,27 @@
 //! internally so that `#[miniextendr]` functions remain synchronous. A per-thread Tokio
 //! runtime is created lazily on first use.
 //!
+//! # Tokio runtime: `current_thread` (not multi-threaded)
+//!
+//! The runtime **must** use `Builder::new_current_thread()`, not `Runtime::new()`.
+//!
+//! `Runtime::new()` creates a multi-threaded runtime (requires `rt-multi-thread` feature)
+//! that spawns N worker threads (one per CPU core). These threads outlive the R process
+//! on Windows, keeping stdout pipe handles open and causing R CMD check to hang
+//! indefinitely at "checking tests ..." — `system2()` waits for all pipe writers to close,
+//! but the Tokio worker threads never exit.
+//!
+//! `current_thread` with `enable_all()` is safe: it spawns **zero background threads**.
+//! The IO driver (mio), time driver (timer wheel), and scheduler all run inline on the
+//! calling thread during `block_on()`. The blocking pool only spawns threads when
+//! `tokio::spawn_blocking()` is explicitly called (DataFusion doesn't use it in our
+//! sync wrapper). On `Drop`, the runtime shuts down the blocking pool — but since no
+//! blocking tasks were spawned, this completes immediately.
+//!
+//! **Do not change this to `Runtime::new()` or `Builder::new_multi_thread()`** without
+//! verifying that R CMD check on Windows still completes. See
+//! `reviews/windows-rcmdcheck-hang.md` for the full investigation.
+//!
 //! # Example
 //!
 //! ```rust,ignore
@@ -42,9 +63,19 @@ use crate::ffi::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 
 /// Get or create a thread-local Tokio runtime for blocking on async DataFusion operations.
+///
+/// Uses `current_thread` flavor (no background worker threads). This is critical
+/// on Windows: `Runtime::new()` creates a multi-threaded runtime whose worker
+/// threads outlive the R process, keeping stdout pipe handles open and causing
+/// R CMD check to hang at "checking tests ...".
+///
+/// `current_thread` runs all async work on the calling thread during `block_on()`,
+/// which is exactly what we need for synchronous R ↔ DataFusion bridging.
 fn runtime() -> &'static tokio::runtime::Runtime {
     thread_local! {
-        static RT: tokio::runtime::Runtime = tokio::runtime::Runtime::new()
+        static RT: tokio::runtime::Runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .expect("failed to create Tokio runtime for DataFusion");
     }
     // SAFETY: The runtime is thread-local and lives for the thread's lifetime.
