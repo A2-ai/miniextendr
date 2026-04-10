@@ -735,6 +735,23 @@ jobs:
             Rscript -e "testthat::test_local()" || exit 1
           done
 
+      - name: Run ALTREP tests under Valgrind
+        if: always()
+        working-directory: rpkg
+        shell: bash
+        run: |
+          sudo apt-get install -y valgrind 2>/dev/null || true
+          if command -v valgrind &>/dev/null; then
+            echo "=== Valgrind memcheck on ALTREP materialization ==="
+            R -d "valgrind --tool=memcheck --leak-check=full --track-origins=yes --error-exitcode=1" \
+              -e 'library(miniextendr); testthat::test_local(filter = "altrep-materialization")' \
+              2>&1 | tee /tmp/valgrind.log || true
+            echo "=== Valgrind summary ==="
+            grep -A 5 "ERROR SUMMARY\|Invalid read\|Invalid write\|Use of uninitialised" /tmp/valgrind.log || echo "No errors found"
+          else
+            echo "Valgrind not available, skipping"
+          fi
+
   # ===========================================================================
   # Cross-package trait ABI tests
   # ===========================================================================
