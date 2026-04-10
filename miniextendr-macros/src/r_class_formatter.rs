@@ -135,6 +135,22 @@ impl<'a> MethodContext<'a> {
             .unwrap_or_else(|| self.method.ident.to_string())
     }
 
+    /// Generate a source location comment for this method.
+    ///
+    /// Returns a string like `# Type::method (line:col)` using the method's span info.
+    /// The file name is already stated in the impl block header comment, so line:col
+    /// is sufficient to locate the method within that file.
+    pub fn source_comment(&self, type_ident: &syn::Ident) -> String {
+        let start = self.method.ident.span().start();
+        format!(
+            "# {}::{} ({}:{})",
+            type_ident,
+            self.method.ident,
+            start.line,
+            start.column + 1,
+        )
+    }
+
     /// Check if this method uses a generic override (for existing generics like print).
     pub fn has_generic_override(&self) -> bool {
         self.method.method_attrs.generic.is_some()

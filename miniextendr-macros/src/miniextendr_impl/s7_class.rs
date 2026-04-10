@@ -516,6 +516,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if property_method_idents.contains(&method_ident) {
             continue;
         }
+        lines.push(ctx.source_comment(type_ident));
 
         let generic_name = ctx.generic_name();
         let full_params = ctx.instance_formals(true); // adds x, ..., params
@@ -746,6 +747,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as regular functions
     for ctx in parsed_impl.static_method_contexts() {
+        lines.push(ctx.source_comment(type_ident));
         let method_name = ctx.method.r_method_name();
         let fn_name = format!("{}_{}", class_name, method_name);
 

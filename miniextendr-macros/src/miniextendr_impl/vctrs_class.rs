@@ -40,6 +40,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor with combined class and constructor documentation
     if let Some(ctx) = parsed_impl.constructor_context() {
+        lines.push(ctx.source_comment(type_ident));
         let mut ctor_doc_tags = Vec::new();
         ctor_doc_tags.extend(class_doc_tags.iter().cloned());
         ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
@@ -195,6 +196,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods as S3 generics + methods
     for ctx in parsed_impl.instance_method_contexts() {
+        lines.push(ctx.source_comment(type_ident));
         // vctrs protocol override: use the protocol name as the S3 generic
         let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
         let generic_name = if let Some(ref proto) = ctx.method.method_attrs.vctrs_protocol {
@@ -297,6 +299,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as regular functions
     for ctx in parsed_impl.static_method_contexts() {
+        lines.push(ctx.source_comment(type_ident));
         let method_name = ctx.method.r_method_name();
         let fn_name = format!("{}_{}", class_name.to_lowercase(), method_name);
 
