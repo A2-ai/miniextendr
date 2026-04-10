@@ -22,8 +22,13 @@ test_that("worker with RAII resources returns correct value", {
 })
 
 # Panic scenarios
+# Skip on Windows: Rust panic on the worker thread under pipe-redirected
+# stdout (as used by R CMD check's system2()) triggers "failed to initiate
+# panic, error 5" (ACCESS_DENIED) which aborts the entire R process.
+# Panic propagation is platform-independent and tested on Linux/macOS.
 
 test_that("panic on worker thread is caught", {
+  skip_on_os("windows")
   expect_error(
     miniextendr:::unsafe_C_test_worker_panic_simple(),
     "simple panic on worker"
@@ -31,6 +36,7 @@ test_that("panic on worker thread is caught", {
 })
 
 test_that("panic on worker with RAII resources drops them", {
+  skip_on_os("windows")
   expect_error(
     miniextendr:::unsafe_C_test_worker_panic_with_drops(),
     "panic after creating resources"
@@ -38,6 +44,7 @@ test_that("panic on worker with RAII resources drops them", {
 })
 
 test_that("panic inside with_r_thread callback is caught", {
+  skip_on_os("windows")
   expect_error(
     miniextendr:::unsafe_C_test_worker_panic_in_r_thread(),
     "panic inside with_r_thread callback"
@@ -45,6 +52,7 @@ test_that("panic inside with_r_thread callback is caught", {
 })
 
 test_that("panic in with_r_thread with resources drops them", {
+  skip_on_os("windows")
   expect_error(
     miniextendr:::unsafe_C_test_worker_panic_in_r_thread_with_drops(),
     "panic in with_r_thread with resources"
@@ -82,6 +90,7 @@ test_that("multiple R calls then error propagates error", {
 })
 
 test_that("multiple R calls then panic propagates panic", {
+  skip_on_os("windows")
   expect_error(
     miniextendr:::unsafe_C_test_worker_r_calls_then_panic(),
     "Rust panic after successful R call"
@@ -186,6 +195,7 @@ test_that("nested with_r_thread with error propagates error", {
 })
 
 test_that("nested with_r_thread with panic propagates panic", {
+  skip_on_os("windows")
   expect_error(
     miniextendr:::unsafe_C_test_nested_with_panic(),
     "Panic in nested with_r_thread"
