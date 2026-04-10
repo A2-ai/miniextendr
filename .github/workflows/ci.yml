@@ -718,6 +718,23 @@ jobs:
         shell: bash
         run: Rscript -e "testthat::test_local()"
 
+      - name: Run tests with heap checking (3 rounds, randomized order)
+        working-directory: rpkg
+        shell: bash
+        env:
+          # MALLOC_CHECK_=3: glibc checks heap consistency on every malloc/free
+          # and aborts immediately on corruption (not lazily). This catches
+          # heap-corrupting UB at the point it happens, not later.
+          MALLOC_CHECK_: "3"
+          # MALLOC_PERTURB_: fills freed memory with a non-zero pattern,
+          # making use-after-free crashes deterministic instead of sporadic.
+          MALLOC_PERTURB_: "165"
+        run: |
+          for i in 1 2 3; do
+            echo "=== Heap-checked test run $i/3 ==="
+            Rscript -e "testthat::test_local()" || exit 1
+          done
+
   # ===========================================================================
   # Cross-package trait ABI tests
   # ===========================================================================
