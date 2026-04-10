@@ -276,8 +276,10 @@ impl AltrepAttrs {
     fn generate_lowlevel(
         &self,
         name: &syn::Ident,
+        generics: &syn::Generics,
         family: &AltrepFamilyConfig,
     ) -> syn::Result<TokenStream> {
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         let AltrepFamilyConfig {
             macro_base,
             ref dataptr_macro,
@@ -307,16 +309,17 @@ impl AltrepAttrs {
         let needs_expanded_path = self.has_non_default_guard() || has_subset;
 
         if !needs_expanded_path {
-            // Simple path: delegate to the impl_alt*_from_data! runtime macro
+            // Simple path: delegate to the impl_alt*_from_data! runtime macro.
+            // Note: runtime macros use `$ty:ty` which accepts `Name<T>` syntax.
             let macro_ident = syn::Ident::new(macro_base, proc_macro2::Span::call_site());
             if self.lowlevel_options.is_empty() {
                 return Ok(quote! {
-                    ::miniextendr_api::#macro_ident!(#name);
+                    ::miniextendr_api::#macro_ident!(#name #ty_generics);
                 });
             } else {
                 let options = &self.lowlevel_options;
                 return Ok(quote! {
-                    ::miniextendr_api::#macro_ident!(#name, #(#options),*);
+                    ::miniextendr_api::#macro_ident!(#name #ty_generics, #(#options),*);
                 });
             }
         }
@@ -330,9 +333,9 @@ impl AltrepAttrs {
 
         // 1. Altrep base (with or without serialize)
         let base_impl = if has_serialize {
-            quote! { ::miniextendr_api::__impl_altrep_base_with_serialize!(#name, #guard); }
+            quote! { ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics, #guard); }
         } else {
-            quote! { ::miniextendr_api::__impl_altrep_base!(#name, #guard); }
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard); }
         };
 
         // 2. AltVec impl
@@ -340,28 +343,28 @@ impl AltrepAttrs {
             if let Some((macro_name, elem_ty)) = altvec_dataptr_macro {
                 let dp_macro = syn::Ident::new(macro_name, proc_macro2::Span::call_site());
                 if let Some(elem) = elem_ty {
-                    quote! { ::miniextendr_api::#dp_macro!(#name, #elem); }
+                    quote! { ::miniextendr_api::#dp_macro!(#name #ty_generics, #elem); }
                 } else {
-                    quote! { ::miniextendr_api::#dp_macro!(#name); }
+                    quote! { ::miniextendr_api::#dp_macro!(#name #ty_generics); }
                 }
             } else if altvec_string_dataptr {
-                quote! { ::miniextendr_api::__impl_altvec_string_dataptr!(#name); }
+                quote! { ::miniextendr_api::__impl_altvec_string_dataptr!(#name #ty_generics); }
             } else {
-                quote! { impl ::miniextendr_api::altrep_traits::AltVec for #name {} }
+                quote! { impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {} }
             }
         } else if has_subset && altvec_subset {
-            quote! { ::miniextendr_api::__impl_altvec_extract_subset!(#name); }
+            quote! { ::miniextendr_api::__impl_altvec_extract_subset!(#name #ty_generics); }
         } else {
-            quote! { impl ::miniextendr_api::altrep_traits::AltVec for #name {} }
+            quote! { impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {} }
         };
 
         // 3. Type-specific methods
         let methods_ident = syn::Ident::new(methods_macro, proc_macro2::Span::call_site());
-        let methods_impl = quote! { ::miniextendr_api::#methods_ident!(#name); };
+        let methods_impl = quote! { ::miniextendr_api::#methods_ident!(#name #ty_generics); };
 
         // 4. InferBase
         let inferbase_ident = syn::Ident::new(inferbase_macro, proc_macro2::Span::call_site());
-        let inferbase_impl = quote! { ::miniextendr_api::#inferbase_ident!(#name); };
+        let inferbase_impl = quote! { ::miniextendr_api::#inferbase_ident!(#name #ty_generics); };
 
         Ok(quote! {
             #base_impl
@@ -442,7 +445,7 @@ fn derive_altrep_generic(
         }
     };
 
-    let lowlevel_impl = attrs.generate_lowlevel(name, family)?;
+    let lowlevel_impl = attrs.generate_lowlevel(name, generics, family)?;
 
     Ok(quote! {
         #altrep_len_impl
@@ -721,41 +724,41 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         if attrs.has_non_default_guard() {
             let guard = attrs.guard.as_ref().unwrap();
             quote! {
-                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name, #guard);
-                impl ::miniextendr_api::altrep_traits::AltVec for #name {}
+                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics, #guard);
+                impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
                 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-                impl ::miniextendr_api::altrep_traits::AltList for #name {
+                impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
-                        unsafe { ::miniextendr_api::altrep_data1_as::<#name>(x) }
-                            .map(|d| <#name as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                        unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
+                            .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
                             .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
                     }
                 }
-                ::miniextendr_api::impl_inferbase_list!(#name);
+                ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
             }
         } else {
             quote! {
-                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name);
-                impl ::miniextendr_api::altrep_traits::AltVec for #name {}
+                ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics);
+                impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {}
                 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-                impl ::miniextendr_api::altrep_traits::AltList for #name {
+                impl #impl_generics ::miniextendr_api::altrep_traits::AltList for #name #ty_generics #where_clause {
                     fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
-                        unsafe { ::miniextendr_api::altrep_data1_as::<#name>(x) }
-                            .map(|d| <#name as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                        unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
+                            .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
                             .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
                     }
                 }
-                ::miniextendr_api::impl_inferbase_list!(#name);
+                ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
             }
         }
     } else if attrs.has_non_default_guard() {
         let guard = attrs.guard.as_ref().unwrap();
         quote! {
-            ::miniextendr_api::impl_altlist_from_data!(#name, #guard);
+            ::miniextendr_api::impl_altlist_from_data!(#name #ty_generics, #guard);
         }
     } else {
         quote! {
-            ::miniextendr_api::impl_altlist_from_data!(#name);
+            ::miniextendr_api::impl_altlist_from_data!(#name #ty_generics);
         }
     };
 

@@ -129,14 +129,18 @@ mod arrow {
     /// The zero-copy path returns the original R SEXP — serialization is trivial.
     /// @export
     #[miniextendr]
-    pub fn zero_copy_arrow_f64_roundtrip(x: miniextendr_api::arrow_impl::Float64Array) -> miniextendr_api::arrow_impl::Float64Array {
+    pub fn zero_copy_arrow_f64_roundtrip(
+        x: miniextendr_api::arrow_impl::Float64Array,
+    ) -> miniextendr_api::arrow_impl::Float64Array {
         x
     }
 
     /// Round-trip Int32Array through Arrow and return the result.
     /// @export
     #[miniextendr]
-    pub fn zero_copy_arrow_i32_roundtrip(x: miniextendr_api::arrow_impl::Int32Array) -> miniextendr_api::arrow_impl::Int32Array {
+    pub fn zero_copy_arrow_i32_roundtrip(
+        x: miniextendr_api::arrow_impl::Int32Array,
+    ) -> miniextendr_api::arrow_impl::Int32Array {
         x
     }
 
@@ -144,7 +148,9 @@ mod arrow {
     /// The data lives in Rust memory — this is the interesting serialization case.
     /// @export
     #[miniextendr]
-    pub fn zero_copy_arrow_f64_altrep(x: miniextendr_api::arrow_impl::Float64Array) -> miniextendr_api::ffi::SEXP {
+    pub fn zero_copy_arrow_f64_altrep(
+        x: miniextendr_api::arrow_impl::Float64Array,
+    ) -> miniextendr_api::ffi::SEXP {
         use miniextendr_api::IntoRAltrep;
         // Compute creates a Rust-owned buffer (not R-backed)
         let computed: miniextendr_api::arrow_impl::Float64Array =
@@ -155,7 +161,9 @@ mod arrow {
     /// Create a Rust-allocated Int32Array and return as ALTREP.
     /// @export
     #[miniextendr]
-    pub fn zero_copy_arrow_i32_altrep(x: miniextendr_api::arrow_impl::Int32Array) -> miniextendr_api::ffi::SEXP {
+    pub fn zero_copy_arrow_i32_altrep(
+        x: miniextendr_api::arrow_impl::Int32Array,
+    ) -> miniextendr_api::ffi::SEXP {
         use miniextendr_api::IntoRAltrep;
         let computed: miniextendr_api::arrow_impl::Int32Array =
             x.iter().map(|v| v.map(|i| i + 100)).collect();
@@ -184,7 +192,8 @@ mod arrow {
         for i in 0..n {
             miniextendr_api::ffi::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64 * 100.0);
         }
-        let values = miniextendr_api::optionals::arrow_impl::arrow_buffer::ScalarBuffer::<f64>::from(buffer);
+        let values =
+            miniextendr_api::optionals::arrow_impl::arrow_buffer::ScalarBuffer::<f64>::from(buffer);
         let array = miniextendr_api::optionals::arrow_impl::Float64Array::new(values, None);
         array.into_sexp()
     }
@@ -212,7 +221,9 @@ mod arrow {
 /// Round-trip `Cow<[f64]>` and return the result.
 /// @export
 #[miniextendr]
-pub fn zero_copy_cow_f64_roundtrip(x: std::borrow::Cow<'static, [f64]>) -> std::borrow::Cow<'static, [f64]> {
+pub fn zero_copy_cow_f64_roundtrip(
+    x: std::borrow::Cow<'static, [f64]>,
+) -> std::borrow::Cow<'static, [f64]> {
     x
 }
 
@@ -225,7 +236,7 @@ pub fn zero_copy_cow_f64_roundtrip(x: std::borrow::Cow<'static, [f64]>) -> std::
 #[miniextendr]
 pub fn zero_copy_protected_strvec_unique(strings: miniextendr_api::ProtectedStrVec) -> i32 {
     use std::collections::HashSet;
-    let unique: HashSet<&str> = strings.iter().filter_map(|s| s).collect();
+    let unique: HashSet<&str> = strings.iter().flatten().collect();
     unique.len() as i32
 }
 

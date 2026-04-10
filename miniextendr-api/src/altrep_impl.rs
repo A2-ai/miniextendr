@@ -2547,7 +2547,7 @@ crate::impl_inferbase_string!(&'static [&'static str]);
 // Note: IntoR is NOT implemented here for Vec types because there are already
 // existing IntoR implementations that copy data to R eagerly. To get ALTREP
 // behavior, use wrapper structs:
-//   #[miniextendr(class = "MyVec", pkg = "mypkg")]
+//   #[miniextendr(class = "MyVec")]
 //   pub struct MyVecClass(pub Vec<i32>);
 //
 // Each type uses a static OnceLock to cache the ALTREP class handle, which is

@@ -35,6 +35,11 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         param_tags: vec![],
         skip: false,
         r_name: None,
+        strict: false,
+        lifecycle: None,
+        r_entry: None,
+        r_post_checks: None,
+        r_on_exit: None,
     }
 }
 

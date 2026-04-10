@@ -109,7 +109,6 @@ mod aho_corasick_adapter_tests;
 mod altrep_sexp_tests;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
-mod zero_copy_tests;
 mod as_coerce_tests;
 mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
@@ -134,6 +133,7 @@ mod connection_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
+mod dataframe_derive_alignment_tests;
 mod dataframe_examples;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
@@ -230,6 +230,7 @@ mod tinyvec_adapter_tests;
 #[cfg(feature = "toml")]
 mod toml_adapter_tests;
 mod trait_abi_tests;
+mod trait_method_options_tests;
 mod unwind_protect_tests;
 #[cfg(feature = "url")]
 mod url_adapter_tests;
@@ -238,6 +239,7 @@ mod uuid_adapter_tests;
 mod visibility_tests;
 #[cfg(feature = "worker-thread")]
 mod worker_tests;
+mod zero_copy_tests;
 
 // region: proc-macro ALTREP test
 // This tests the #[miniextendr] on struct path for custom ALTREP classes.

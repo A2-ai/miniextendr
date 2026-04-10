@@ -1,0 +1,5 @@
+error: unknown #[miniextendr] option on trait impl method; expected one of: `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, `check_interrupt`, `rng`, `unwrap_in_r`, `error_in_r`, `skip`, `r_name`, `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`
+  --> tests/ui/trait_impl_nested_unknown_option.rs:15:19
+   |
+15 |     #[miniextendr(typo_toplevel)]
+   |                   ^^^^^^^^^^^^^

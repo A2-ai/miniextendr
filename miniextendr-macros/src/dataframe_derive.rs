@@ -531,7 +531,7 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         .clone()
         .unwrap_or_else(|| format_ident!("{}DataFrame", row_name));
 
-    match &input.data {
+    let base = match &input.data {
         Data::Struct(data) => {
             // `align` is a no-op on structs (only semantically meaningful for enums)
             derive_struct_dataframe(row_name, &input, data, &df_name, &attrs)
@@ -544,7 +544,40 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             row_name,
             "DataFrameRow does not support unions",
         )),
-    }
+    }?;
+
+    // Generate IntoR for the companion DataFrame type so it can be returned
+    // directly from #[miniextendr] functions. This ensures both the standalone
+    // #[derive(DataFrameRow)] path and the #[miniextendr(dataframe)] path
+    // produce identical output.
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    Ok(quote::quote! {
+        #base
+
+        impl #impl_generics ::miniextendr_api::into_r::IntoR for #df_name #ty_generics #where_clause {
+            type Error = std::convert::Infallible;
+
+            #[inline]
+            fn try_into_sexp(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                Ok(self.into_sexp())
+            }
+
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::ffi::SEXP, Self::Error> {
+                self.try_into_sexp()
+            }
+
+            #[inline]
+            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+            }
+        }
+    })
 }
 // endregion
 

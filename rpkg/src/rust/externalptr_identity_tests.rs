@@ -45,9 +45,5 @@ pub fn ptr_pick_larger(
     a: ExternalPtr<PtrIdentityTest>,
     b: ExternalPtr<PtrIdentityTest>,
 ) -> ExternalPtr<PtrIdentityTest> {
-    if a.value >= b.value {
-        a
-    } else {
-        b
-    }
+    if a.value >= b.value { a } else { b }
 }

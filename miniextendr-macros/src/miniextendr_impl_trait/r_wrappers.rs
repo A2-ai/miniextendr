@@ -5,7 +5,7 @@
 //! constants. The top-level [`generate_trait_r_wrapper`] dispatches to the
 //! appropriate generator and applies post-processing for export/documentation control.
 
-use super::{TraitConst, TraitMethod, trait_method_body_lines};
+use super::{TraitConst, TraitMethod, trait_method_body_lines, trait_method_preamble_lines};
 use crate::miniextendr_impl::ClassSystem;
 
 /// Options controlling export visibility and documentation for trait R wrapper generation.
@@ -238,6 +238,7 @@ fn generate_trait_env_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, r_name, full_params
         ));
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         if method.has_self && method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -391,6 +392,7 @@ fn generate_trait_s3_r_wrapper(
             "{} <- function({}) {{",
             s3_method_name, full_params
         ));
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
@@ -449,6 +451,7 @@ fn generate_trait_s3_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, r_name, formals
         ));
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -590,6 +593,7 @@ fn generate_trait_s4_r_wrapper(
         // S4 objects store the ExternalPtr in x@ptr — extract it for .Call()
         lines.push("  .ptr <- x@ptr".to_string());
         let s4_call = call.replace(", x", ", .ptr");
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&s4_call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
@@ -628,6 +632,7 @@ fn generate_trait_s4_r_wrapper(
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!("{} <- function({}) {{", fn_name, formals));
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -765,6 +770,7 @@ fn generate_trait_s7_r_wrapper(
         // S7 objects store the ExternalPtr in x@.ptr — extract it for .Call()
         lines.push("  .ptr <- x@.ptr".to_string());
         let s7_call = call.replace(", x", ", .ptr");
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&s7_call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
@@ -811,6 +817,7 @@ fn generate_trait_s7_r_wrapper(
             "{}${} <- function({}) {{",
             trait_env_var, r_name, formals
         ));
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -938,6 +945,7 @@ fn generate_trait_r6_r_wrapper(
         lines.push("  .ptr <- x$.__enclos_env__$private$.ptr".to_string());
         // Replace x with .ptr in the .Call
         let r6_call = call.replace(", x", ", .ptr");
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&r6_call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
@@ -985,6 +993,7 @@ fn generate_trait_r6_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, r_name, formals
         ));
+        lines.extend(trait_method_preamble_lines(method, "  "));
         lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
