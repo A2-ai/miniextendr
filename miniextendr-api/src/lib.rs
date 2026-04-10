@@ -181,14 +181,6 @@
 //! | `debug-preserve` | Enable `preserve::count()` diagnostic helpers (tests/benchmarks only) |
 //! | `growth-debug` | Track and report collection growth events (zero-cost when off) |
 //! | `refcount-fast-hash` | Use ahash for refcount arenas (enabled by default, not DOS-resistant) |
-// ALTREP trait methods are safe fns that receive SEXP / *mut T parameters and
-// must pass them to FFI or unsafe helpers — clippy::not_unsafe_ptr_arg_deref
-// is unavoidable without making every trait method `unsafe fn`.
-// Per-impl-block `#[allow]` in the macros covers downstream crates; this
-// crate-level allow covers the hand-written impls in altrep_impl.rs and
-// altrep_data/iter.rs.
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
-
 // Re-export linkme for use by generated code (distributed_slice entries)
 #[doc(hidden)]
 pub use linkme;
@@ -229,6 +221,7 @@ pub use miniextendr_macros::{
 pub mod altrep;
 pub mod altrep_bridge;
 pub mod altrep_data;
+pub mod altrep_ext;
 pub mod altrep_impl;
 pub mod altrep_sexp;
 pub mod altrep_traits;

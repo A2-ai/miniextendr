@@ -362,8 +362,7 @@ use ordered_float::FloatCore;
 /// ```
 pub trait ROrderedFloatOps {
     /// Get the inner float value.
-    #[allow(clippy::wrong_self_convention)]
-    fn into_inner(&self) -> f64;
+    fn inner(&self) -> f64;
 
     /// Check if the value is NaN.
     fn is_nan(&self) -> bool;
@@ -415,7 +414,7 @@ impl<T: FloatCore + Into<f64> + Copy> ROrderedFloatOps for OrderedFloat<T>
 where
     f64: From<T>,
 {
-    fn into_inner(&self) -> f64 {
+    fn inner(&self) -> f64 {
         f64::from(self.0)
     }
 
