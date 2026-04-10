@@ -589,8 +589,8 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// # ALTREP
 ///
-/// Apply `#[miniextendr(class = "...", pkg = "...", base = "...")]` to a
-/// one-field wrapper struct. Registration is automatic.
+/// Apply `#[miniextendr(class = "...", base = "...")]` to a one-field
+/// wrapper struct. Registration is automatic.
 #[proc_macro_attribute]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
@@ -2192,7 +2192,7 @@ pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// // That's it! 3 lines instead of 30!
 /// // AltrepLen, AltIntegerData, and low-level impls are auto-generated
 ///
-/// #[miniextendr(class = "ConstantInt", pkg = "mypkg")]
+/// #[miniextendr(class = "ConstantInt")]
 /// pub struct ConstantIntClass(pub ConstantIntData);
 /// ```
 ///

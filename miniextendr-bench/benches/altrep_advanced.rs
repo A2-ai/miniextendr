@@ -36,13 +36,13 @@ pub struct GuardRUnwindData {
     len: usize,
 }
 
-#[miniextendr(class = "BenchGuardDefault", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchGuardDefault")]
 struct BenchGuardDefault(GuardDefaultData);
 
-#[miniextendr(class = "BenchGuardUnsafe", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchGuardUnsafe")]
 struct BenchGuardUnsafe(GuardUnsafeData);
 
-#[miniextendr(class = "BenchGuardRUnwind", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchGuardRUnwind")]
 struct BenchGuardRUnwind(GuardRUnwindData);
 // endregion
 
@@ -55,22 +55,22 @@ pub struct ConstantRealData {
     len: usize,
 }
 
-#[miniextendr(class = "BenchConstantReal", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchConstantReal")]
 struct BenchConstantReal(ConstantRealData);
 // endregion
 
 // region: Vec-backed ALTREP types (simple newtype pattern, default guard).
 
-#[miniextendr(class = "BenchIntVec", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchIntVec")]
 struct BenchIntVec(Vec<i32>);
 
-#[miniextendr(class = "BenchRealVec", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchRealVec")]
 struct BenchRealVec(Vec<f64>);
 
-#[miniextendr(class = "BenchString", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchString")]
 struct BenchString(Vec<Option<String>>);
 
-#[miniextendr(class = "BenchComplex", pkg = "miniextendr.bench")]
+#[miniextendr(class = "BenchComplex")]
 struct BenchComplex(Vec<Rcomplex>);
 
 fn main() {

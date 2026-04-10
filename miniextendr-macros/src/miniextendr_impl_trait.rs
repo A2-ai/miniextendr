@@ -151,6 +151,16 @@ struct TraitMethod {
     /// Override the R-facing method name. When set, the R wrapper uses this name
     /// instead of the Rust method name (e.g., `next` -> `next_item` to avoid R reserved words).
     r_name: Option<String>,
+    /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
+    strict: bool,
+    /// Lifecycle specification for deprecation/experimental status.
+    lifecycle: Option<crate::lifecycle::LifecycleSpec>,
+    /// R code to inject at the very top of the wrapper body.
+    r_entry: Option<String>,
+    /// R code to inject after all checks, immediately before `.Call()`.
+    r_post_checks: Option<String>,
+    /// Register `on.exit()` cleanup code in the R wrapper.
+    r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
 }
 
 impl TraitMethod {
@@ -332,6 +342,44 @@ use r_wrappers::generate_trait_r_wrapper;
 use vtable::generate_trait_method_c_wrapper;
 use vtable::generate_vtable_static;
 use vtable::is_self_ref_type;
+
+/// Generate R function body preamble lines (r_entry, on.exit, lifecycle, r_post_checks).
+///
+/// Returns lines to insert at the top of the R function body, before the `.Call()`.
+fn trait_method_preamble_lines(method: &TraitMethod, indent: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    // r_entry: inject at the very top
+    if let Some(ref entry) = method.r_entry {
+        for line in entry.lines() {
+            lines.push(format!("{}{}", indent, line));
+        }
+    }
+
+    // on.exit: register cleanup
+    if let Some(ref on_exit) = method.r_on_exit {
+        lines.push(format!("{}{}", indent, on_exit.to_r_code()));
+    }
+
+    // lifecycle: deprecation/experimental warnings
+    if let Some(ref spec) = method.lifecycle {
+        let what = method.r_method_name();
+        if let Some(prelude) = spec.r_prelude(&what) {
+            for line in prelude.lines() {
+                lines.push(format!("{}{}", indent, line));
+            }
+        }
+    }
+
+    // r_post_checks: inject after all checks, before .Call()
+    if let Some(ref post) = method.r_post_checks {
+        for line in post.lines() {
+            lines.push(format!("{}{}", indent, line));
+        }
+    }
+
+    lines
+}
 
 /// Generate R function body lines with optional error_in_r checking.
 ///
@@ -677,6 +725,11 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 param_defaults: Default::default(),
                 param_tags: vec![],
                 skip: false,
+                strict: false,
+                lifecycle: None,
+                r_entry: None,
+                r_post_checks: None,
+                r_on_exit: None,
                 r_name: if tm.sig.ident == tm.r_name {
                     None // r_name matches ident → no override
                 } else {
