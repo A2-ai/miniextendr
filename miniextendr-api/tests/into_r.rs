@@ -105,7 +105,7 @@ fn test_as_named_list_vec() {
 
 fn test_as_named_list_array() {
     let pairs = [("x", 1.0f64), ("y", 2.0)];
-    let sexp = pairs.as_named_list().into_sexp();
+    let sexp = pairs.wrap_named_list().into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::VECSXP);
     assert_eq!(sexp.xlength(), 2);
 
@@ -127,7 +127,7 @@ fn test_as_named_vector_vec() {
 
 fn test_as_named_vector_array() {
     let pairs = [("x", 1.0f64), ("y", 2.0), ("z", 3.0)];
-    let sexp = pairs.as_named_vector().into_sexp();
+    let sexp = pairs.wrap_named_vector().into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
     assert_eq!(sexp.xlength(), 3);
 
@@ -165,7 +165,7 @@ fn test_as_named_list_slice() {
 
 fn test_as_named_vector_slice() {
     let pairs: &[(&str, f64)] = &[("x", 1.0), ("y", 2.0)];
-    let sexp = pairs.as_named_vector().into_sexp();
+    let sexp = pairs.wrap_named_vector().into_sexp();
     assert_eq!(sexp.type_of(), SEXPTYPE::REALSXP);
     assert_eq!(sexp.xlength(), 2);
 

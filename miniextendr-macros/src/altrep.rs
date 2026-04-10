@@ -258,7 +258,6 @@ pub(crate) fn generate_altrep_impls(
             #[doc = #ref_doc]
             pub struct #ref_ident(::miniextendr_api::externalptr::ExternalPtr<#data_ty>);
 
-            #[allow(clippy::not_unsafe_ptr_arg_deref)]
             impl ::miniextendr_api::TryFromSexp for #ref_ident {
                 type Error = ::miniextendr_api::SexpTypeError;
 
@@ -272,7 +271,7 @@ pub(crate) fn generate_altrep_impls(
                         });
                     }
 
-                    match unsafe { ::miniextendr_api::altrep_data1_as::<#data_ty>(sexp) } {
+                    match unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#data_ty>(&sexp) } {
                         Some(ptr) => Ok(#ref_ident(ptr)),
                         None => Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::EXTPTRSXP,
@@ -293,7 +292,6 @@ pub(crate) fn generate_altrep_impls(
             #[doc = #mut_doc]
             pub struct #mut_ident(::miniextendr_api::externalptr::ExternalPtr<#data_ty>);
 
-            #[allow(clippy::not_unsafe_ptr_arg_deref)]
             impl ::miniextendr_api::TryFromSexp for #mut_ident {
                 type Error = ::miniextendr_api::SexpTypeError;
 
@@ -307,7 +305,7 @@ pub(crate) fn generate_altrep_impls(
                         });
                     }
 
-                    match unsafe { ::miniextendr_api::altrep_data1_as::<#data_ty>(sexp) } {
+                    match unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#data_ty>(&sexp) } {
                         Some(ptr) => Ok(#mut_ident(ptr)),
                         None => Err(::miniextendr_api::SexpTypeError {
                             expected: SEXPTYPE::EXTPTRSXP,
@@ -369,7 +367,6 @@ pub(crate) fn generate_altrep_impls(
         #[doc = #altrep_class_doc]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
             const BASE: ::miniextendr_api::altrep::RBase = #base_variant;

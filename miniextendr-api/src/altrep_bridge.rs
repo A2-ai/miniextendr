@@ -170,7 +170,11 @@ pub unsafe extern "C-unwind" fn t_int_get_region<T: AltInteger>(
     n: R_xlen_t,
     out: *mut i32,
 ) -> R_xlen_t {
-    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
+    if n <= 0 {
+        return 0;
+    }
+    let buf = unsafe { crate::altrep_impl::altrep_region_buf(out, n as usize) };
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, buf))
 }
 
 /// Trampoline for integer Is_sorted method.
@@ -227,7 +231,11 @@ pub unsafe extern "C-unwind" fn t_real_get_region<T: AltReal>(
     n: R_xlen_t,
     out: *mut f64,
 ) -> R_xlen_t {
-    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
+    if n <= 0 {
+        return 0;
+    }
+    let buf = unsafe { crate::altrep_impl::altrep_region_buf(out, n as usize) };
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, buf))
 }
 
 /// Trampoline for real Is_sorted method.
@@ -284,7 +292,11 @@ pub unsafe extern "C-unwind" fn t_lgl_get_region<T: AltLogical>(
     n: R_xlen_t,
     out: *mut i32,
 ) -> R_xlen_t {
-    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
+    if n <= 0 {
+        return 0;
+    }
+    let buf = unsafe { crate::altrep_impl::altrep_region_buf(out, n as usize) };
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, buf))
 }
 
 /// Trampoline for logical Is_sorted method.
@@ -329,7 +341,11 @@ pub unsafe extern "C-unwind" fn t_raw_get_region<T: AltRaw>(
     n: R_xlen_t,
     out: *mut Rbyte,
 ) -> R_xlen_t {
-    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
+    if n <= 0 {
+        return 0;
+    }
+    let buf = unsafe { crate::altrep_impl::altrep_region_buf(out, n as usize) };
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, buf))
 }
 // endregion
 
@@ -351,7 +367,11 @@ pub unsafe extern "C-unwind" fn t_cplx_get_region<T: AltComplex>(
     n: R_xlen_t,
     out: *mut Rcomplex,
 ) -> R_xlen_t {
-    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
+    if n <= 0 {
+        return 0;
+    }
+    let buf = unsafe { crate::altrep_impl::altrep_region_buf(out, n as usize) };
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, buf))
 }
 // endregion
 

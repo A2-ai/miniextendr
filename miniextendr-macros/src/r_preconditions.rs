@@ -311,17 +311,14 @@ fn extract_single_generic_arg(segment: &syn::PathSegment) -> Option<&syn::Type> 
     None
 }
 
-/// A parameter whose Rust type is not in the static type table and may need
-/// a fallback precheck in the future.
+/// A parameter whose Rust type is not in the static type table.
 ///
 /// Currently, fallback params are recorded but no R-side validation is generated
 /// for them -- the Rust-side conversion handles type errors with its own messages.
-#[allow(dead_code)]
+#[allow(dead_code)] // Read in tests
 pub struct FallbackParam {
     /// R-normalized parameter name (e.g., `_dots` becomes `.dots`).
     pub r_name: String,
-    /// The original Rust type, preserved for potential future type-aware validation.
-    pub rust_type: syn::Type,
 }
 
 /// Output of precondition analysis for a function's parameters.
@@ -336,10 +333,7 @@ pub struct PreconditionOutput {
     /// `stopifnot(`, indented assertion lines, and `)`.
     pub static_checks: Vec<String>,
     /// Parameters with unknown custom types that were not prechecked.
-    ///
-    /// These are recorded for potential future use but currently no R-side
-    /// validation is generated for them.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Read in tests
     pub fallback_params: Vec<FallbackParam>,
 }
 
@@ -425,10 +419,7 @@ pub fn build_precondition_checks(
             }
         } else if needs_fallback(pt.ty.as_ref()) {
             // Unknown type → record for potential future validation
-            fallback_params.push(FallbackParam {
-                r_name,
-                rust_type: (*pt.ty).clone(),
-            });
+            fallback_params.push(FallbackParam { r_name });
         }
     }
 
