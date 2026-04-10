@@ -15,3 +15,4 @@ test_that("By-value ExternalPtr self receiver works", {
   obj <- PtrSelfTest$new(99L)
   expect_equal(obj$value_owned_ptr(), 99L)
 })
+

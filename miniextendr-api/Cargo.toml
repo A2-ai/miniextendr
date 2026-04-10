@@ -86,7 +86,8 @@ borsh = ["dep:borsh"]
 ## and Arrow arrays/RecordBatch. Foundation for DataFusion and other Arrow-based tools.
 arrow = ["dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema", "dep:arrow-select"]
 ## Enable DataFusion SQL query engine. Depends on `arrow`. Provides `RSessionContext` for
-## running SQL queries on R data frames. Uses Tokio internally (block_on).
+## running SQL queries on R data frames. Uses Tokio internally (current_thread block_on).
+## IMPORTANT: Tokio uses `rt` (current_thread), NOT `rt-multi-thread`. See datafusion_impl.rs.
 datafusion = ["arrow", "dep:datafusion", "dep:tokio"]
 ## Enable log crate integration. Routes Rust log macros (info!, warn!, error!)
 ## to R's console output (Rprintf/REprintf). Automatically installed during package_init().
@@ -171,7 +172,7 @@ arrow-buffer = { version = "55", optional = true }
 arrow-schema = { version = "55", optional = true }
 arrow-select = { version = "55", optional = true }
 datafusion = { version = "48", optional = true, default-features = false }
-tokio = { version = "1", optional = true, features = ["rt-multi-thread"] }
+tokio = { version = "1", optional = true, features = ["rt"] }
 log = { version = "0.4", optional = true }
 
 [dev-dependencies]
