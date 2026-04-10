@@ -474,7 +474,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_names(&self) -> Option<SEXP> {
         // Safety: R_NamesSymbol is a known symbol
-        self.get_attr_opt(unsafe { ffi::R_NamesSymbol })
+        self.get_attr_opt(SEXP::names_symbol())
     }
 
     /// Get the `class` attribute if present.
@@ -487,7 +487,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_class(&self) -> Option<SEXP> {
         // Safety: R_ClassSymbol is a known symbol
-        self.get_attr_opt(unsafe { ffi::R_ClassSymbol })
+        self.get_attr_opt(SEXP::class_symbol())
     }
 
     /// Get the `dimnames` attribute if present.
@@ -500,7 +500,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn get_dimnames(&self) -> Option<SEXP> {
         // Safety: R_DimNamesSymbol is a known symbol
-        self.get_attr_opt(unsafe { ffi::R_DimNamesSymbol })
+        self.get_attr_opt(SEXP::dimnames_symbol())
     }
 
     /// Get row names from the `dimnames` attribute.

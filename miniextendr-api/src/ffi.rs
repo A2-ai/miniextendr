@@ -300,6 +300,58 @@ impl SEXP {
     }
 
     // endregion
+
+    // region: R global symbols and singletons
+
+    /// R's `names` attribute symbol.
+    #[inline]
+    pub fn names_symbol() -> SEXP {
+        unsafe { R_NamesSymbol }
+    }
+
+    /// R's `dim` attribute symbol.
+    #[inline]
+    pub fn dim_symbol() -> SEXP {
+        unsafe { R_DimSymbol }
+    }
+
+    /// R's `dimnames` attribute symbol.
+    #[inline]
+    pub fn dimnames_symbol() -> SEXP {
+        unsafe { R_DimNamesSymbol }
+    }
+
+    /// R's `class` attribute symbol.
+    #[inline]
+    pub fn class_symbol() -> SEXP {
+        unsafe { R_ClassSymbol }
+    }
+
+    /// R's `levels` attribute symbol (factors).
+    #[inline]
+    pub fn levels_symbol() -> SEXP {
+        unsafe { R_LevelsSymbol }
+    }
+
+    /// R's `tsp` attribute symbol (time series).
+    #[inline]
+    pub fn tsp_symbol() -> SEXP {
+        unsafe { R_TspSymbol }
+    }
+
+    /// R's base namespace environment.
+    #[inline]
+    pub fn base_namespace() -> SEXP {
+        unsafe { R_BaseNamespace }
+    }
+
+    /// R's missing argument sentinel.
+    #[inline]
+    pub fn missing_arg() -> SEXP {
+        unsafe { R_MissingArg }
+    }
+
+    // endregion
 }
 
 impl Default for SEXP {
@@ -1838,19 +1890,14 @@ unsafe extern "C-unwind" {
     /// Empty string CHARSXP — encapsulated by SEXP::blank_string()
     static R_BlankString: SEXP;
     /// Symbol for `names` attribute.
-    pub(crate) static R_NamesSymbol: SEXP;
-    /// Symbol for `dim` attribute.
-    pub(crate) static R_DimSymbol: SEXP;
-    /// Symbol for `dimnames` attribute.
-    pub(crate) static R_DimNamesSymbol: SEXP;
-    /// Symbol for `class` attribute.
-    pub(crate) static R_ClassSymbol: SEXP;
-    /// Symbol for row names — encapsulated by SexpExt::get_row_names()/set_row_names()
+    // Attribute symbols — encapsulated by SexpExt methods and SEXP::*_symbol()
+    static R_NamesSymbol: SEXP;
+    static R_DimSymbol: SEXP;
+    static R_DimNamesSymbol: SEXP;
+    static R_ClassSymbol: SEXP;
     static R_RowNamesSymbol: SEXP;
-    /// Symbol for factor levels.
-    pub(crate) static R_LevelsSymbol: SEXP;
-    /// Symbol for `tsp` attribute.
-    pub(crate) static R_TspSymbol: SEXP;
+    static R_LevelsSymbol: SEXP;
+    static R_TspSymbol: SEXP;
 
     /// Global environment (`.GlobalEnv`).
     pub static R_GlobalEnv: SEXP;
@@ -1858,8 +1905,8 @@ unsafe extern "C-unwind" {
     pub static R_BaseEnv: SEXP;
     /// Empty root environment.
     pub static R_EmptyEnv: SEXP;
-    /// Base package namespace (internal base, not user-visible base env).
-    pub(crate) static R_BaseNamespace: SEXP;
+    /// Base package namespace — encapsulated by SEXP::base_namespace()
+    static R_BaseNamespace: SEXP;
 
     /// The "missing argument" sentinel value.
     ///
@@ -1869,7 +1916,8 @@ unsafe extern "C-unwind" {
     /// while NULL is an explicit value.
     ///
     /// In R: `f <- function(x) missing(x); f()` returns `TRUE`.
-    pub(crate) static R_MissingArg: SEXP;
+    /// Encapsulated by SEXP::missing_arg()
+    static R_MissingArg: SEXP;
 
     // Rinterface.h
     pub(crate) fn R_FlushConsole();

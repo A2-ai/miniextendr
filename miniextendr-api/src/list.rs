@@ -143,25 +143,25 @@ impl List {
     /// Get the `names` attribute if present.
     #[inline]
     pub fn names(self) -> Option<SEXP> {
-        self.get_attr_opt(unsafe { ffi::R_NamesSymbol })
+        self.get_attr_opt(SEXP::names_symbol())
     }
 
     /// Get the `class` attribute if present.
     #[inline]
     pub fn get_class(self) -> Option<SEXP> {
-        self.get_attr_opt(unsafe { ffi::R_ClassSymbol })
+        self.get_attr_opt(SEXP::class_symbol())
     }
 
     /// Get the `dim` attribute if present.
     #[inline]
     pub fn get_dim(self) -> Option<SEXP> {
-        self.get_attr_opt(unsafe { ffi::R_DimSymbol })
+        self.get_attr_opt(SEXP::dim_symbol())
     }
 
     /// Get the `dimnames` attribute if present.
     #[inline]
     pub fn get_dimnames(self) -> Option<SEXP> {
-        self.get_attr_opt(unsafe { ffi::R_DimNamesSymbol })
+        self.get_attr_opt(SEXP::dimnames_symbol())
     }
 
     /// Get row names from the `dimnames` attribute.
@@ -193,13 +193,13 @@ impl List {
     /// Get the `levels` attribute if present (for factors).
     #[inline]
     pub fn get_levels(self) -> Option<SEXP> {
-        self.get_attr_opt(unsafe { ffi::R_LevelsSymbol })
+        self.get_attr_opt(SEXP::levels_symbol())
     }
 
     /// Get the `tsp` attribute if present (for time series).
     #[inline]
     pub fn get_tsp(self) -> Option<SEXP> {
-        self.get_attr_opt(unsafe { ffi::R_TspSymbol })
+        self.get_attr_opt(SEXP::tsp_symbol())
     }
     // endregion
 

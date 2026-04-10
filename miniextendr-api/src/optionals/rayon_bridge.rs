@@ -593,7 +593,7 @@ where
             *slot = d as i32;
         }
 
-        sexp.set_attr_unchecked(crate::ffi::R_DimSymbol, dim_sexp);
+        sexp.set_attr_unchecked(SEXP::dim_symbol(), dim_sexp);
         crate::ffi::Rf_unprotect_unchecked(1); // unprotect dim_sexp, sexp stays protected
 
         let ptr = T::dataptr_mut(sexp);

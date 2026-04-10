@@ -96,7 +96,7 @@ unsafe fn map_to_named_list_unchecked<V: IntoR>(
             names.set_string_elt_unchecked(idx, charsxp);
         }
 
-        list.set_attr_unchecked(crate::ffi::R_NamesSymbol, names);
+        list.set_attr_unchecked(crate::ffi::SEXP::names_symbol(), names);
 
         crate::ffi::Rf_unprotect(2);
         list

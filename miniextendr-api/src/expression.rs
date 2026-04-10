@@ -26,8 +26,8 @@
 //! ```
 
 use crate::ffi::{
-    self, PairListExt, R_BaseEnv, R_BaseNamespace, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent,
-    Rf_install, Rf_protect, Rf_unprotect, SEXP, SexpExt,
+    self, PairListExt, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_protect,
+    Rf_unprotect, SEXP, SexpExt,
 };
 use std::ffi::{CStr, CString};
 
@@ -135,7 +135,7 @@ impl REnv {
         }
     }
 
-    /// The base namespace (`R_BaseNamespace`).
+    /// The base namespace (`SEXP::base_namespace()`).
     ///
     /// Unlike [`base()`](Self::base) which is the base *environment* (exported
     /// functions visible to users), this is the base *namespace* (includes
@@ -146,9 +146,9 @@ impl REnv {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn base_namespace() -> Self {
+    pub fn base_namespace() -> Self {
         REnv {
-            sexp: unsafe { R_BaseNamespace },
+            sexp: SEXP::base_namespace(),
         }
     }
 
@@ -505,7 +505,7 @@ mod tests {
         assert_env_fn(|| unsafe { REnv::global() });
         assert_env_fn(|| unsafe { REnv::base() });
         assert_env_fn(|| unsafe { REnv::empty() });
-        assert_env_fn(|| unsafe { REnv::base_namespace() });
+        assert_env_fn(REnv::base_namespace);
         assert_env_fn(|| unsafe { REnv::caller() });
         assert_env_result_fn(|| unsafe { REnv::package_namespace("base") });
     }
