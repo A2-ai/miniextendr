@@ -26,8 +26,8 @@
 //! ```
 
 use crate::ffi::{
-    self, R_BaseEnv, R_BaseNamespace, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install,
-    Rf_lcons, Rf_protect, Rf_unprotect, SET_TAG, SEXP, SexpExt,
+    self, PairListExt, R_BaseEnv, R_BaseNamespace, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent,
+    Rf_install, Rf_protect, Rf_unprotect, SEXP, SexpExt,
 };
 use std::ffi::{CStr, CString};
 
@@ -333,17 +333,17 @@ impl RCall {
 
             let mut tail = SEXP::nil();
             for (name, value) in self.args.iter().rev() {
-                tail = ffi::Rf_cons(*value, tail);
+                tail = value.cons(tail);
                 Rf_protect(tail);
                 n_protect += 1;
 
                 if let Some(c_name) = name {
-                    SET_TAG(tail, Rf_install(c_name.as_ptr()));
+                    tail.set_tag(Rf_install(c_name.as_ptr()));
                 }
             }
 
             // Prepend the function as LANGSXP head
-            let call = Rf_lcons(self.fun, tail);
+            let call = self.fun.lcons(tail);
             Rf_protect(call);
             n_protect += 1;
 

@@ -1220,6 +1220,139 @@ impl SexpExt for SEXP {
     // endregion
 }
 
+/// Extension trait for SEXP providing pairlist (cons cell) operations.
+///
+/// Pairlist nodes have three slots: CAR (value), CDR (next), and TAG (name).
+/// This trait encapsulates the raw C functions behind method calls.
+#[allow(dead_code)]
+pub(crate) trait PairListExt {
+    /// Create a cons cell with this SEXP as CAR and `cdr` as CDR.
+    fn cons(self, cdr: SEXP) -> SEXP;
+
+    /// Create a language cons cell with this SEXP as CAR and `cdr` as CDR.
+    fn lcons(self, cdr: SEXP) -> SEXP;
+
+    /// Get the CAR (head/value) of this pairlist node.
+    fn car(&self) -> SEXP;
+
+    /// Get the CDR (tail/rest) of this pairlist node.
+    fn cdr(&self) -> SEXP;
+
+    /// Get the TAG (name symbol) of this pairlist node.
+    fn tag(&self) -> SEXP;
+
+    /// Set the TAG (name symbol) of this pairlist node.
+    fn set_tag(&self, tag: SEXP);
+
+    /// Set the CAR (value) of this pairlist node.
+    fn set_car(&self, value: SEXP) -> SEXP;
+
+    /// Set the CDR (tail) of this pairlist node.
+    fn set_cdr(&self, tail: SEXP) -> SEXP;
+
+    /// Create a cons cell (no thread check).
+    /// # Safety
+    /// Must be called from R's main thread.
+    unsafe fn cons_unchecked(self, cdr: SEXP) -> SEXP;
+
+    /// Get the CAR (no thread check).
+    /// # Safety
+    /// Must be called from R's main thread.
+    unsafe fn car_unchecked(&self) -> SEXP;
+
+    /// Get the CDR (no thread check).
+    /// # Safety
+    /// Must be called from R's main thread.
+    unsafe fn cdr_unchecked(&self) -> SEXP;
+
+    /// Set the TAG (no thread check).
+    /// # Safety
+    /// Must be called from R's main thread.
+    unsafe fn set_tag_unchecked(&self, tag: SEXP);
+
+    /// Set the CAR (no thread check).
+    /// # Safety
+    /// Must be called from R's main thread.
+    unsafe fn set_car_unchecked(&self, value: SEXP) -> SEXP;
+
+    /// Set the CDR (no thread check).
+    /// # Safety
+    /// Must be called from R's main thread.
+    unsafe fn set_cdr_unchecked(&self, tail: SEXP) -> SEXP;
+}
+
+impl PairListExt for SEXP {
+    #[inline]
+    fn cons(self, cdr: SEXP) -> SEXP {
+        unsafe { Rf_cons(self, cdr) }
+    }
+
+    #[inline]
+    fn lcons(self, cdr: SEXP) -> SEXP {
+        unsafe { Rf_lcons(self, cdr) }
+    }
+
+    #[inline]
+    fn car(&self) -> SEXP {
+        unsafe { CAR(*self) }
+    }
+
+    #[inline]
+    fn cdr(&self) -> SEXP {
+        unsafe { CDR(*self) }
+    }
+
+    #[inline]
+    fn tag(&self) -> SEXP {
+        unsafe { TAG(*self) }
+    }
+
+    #[inline]
+    fn set_tag(&self, tag: SEXP) {
+        unsafe { SET_TAG(*self, tag) }
+    }
+
+    #[inline]
+    fn set_car(&self, value: SEXP) -> SEXP {
+        unsafe { SETCAR(*self, value) }
+    }
+
+    #[inline]
+    fn set_cdr(&self, tail: SEXP) -> SEXP {
+        unsafe { SETCDR(*self, tail) }
+    }
+
+    #[inline]
+    unsafe fn cons_unchecked(self, cdr: SEXP) -> SEXP {
+        unsafe { Rf_cons_unchecked(self, cdr) }
+    }
+
+    #[inline]
+    unsafe fn car_unchecked(&self) -> SEXP {
+        unsafe { CAR_unchecked(*self) }
+    }
+
+    #[inline]
+    unsafe fn cdr_unchecked(&self) -> SEXP {
+        unsafe { CDR_unchecked(*self) }
+    }
+
+    #[inline]
+    unsafe fn set_tag_unchecked(&self, tag: SEXP) {
+        unsafe { SET_TAG_unchecked(*self, tag) }
+    }
+
+    #[inline]
+    unsafe fn set_car_unchecked(&self, value: SEXP) -> SEXP {
+        unsafe { SETCAR_unchecked(*self, value) }
+    }
+
+    #[inline]
+    unsafe fn set_cdr_unchecked(&self, tail: SEXP) -> SEXP {
+        unsafe { SETCDR_unchecked(*self, tail) }
+    }
+}
+
 /// Marker trait for types that correspond to R's native vector element types.
 ///
 /// This enables blanket implementations for `TryFromSexp` and safe conversions.
@@ -1880,13 +2013,9 @@ unsafe extern "C-unwind" {
     #[doc(alias = "allocSExp")]
     pub(crate) fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
 
-    // Pairlist construction
-    #[doc(alias = "CONS")]
-    #[doc(alias = "cons")]
-    pub(crate) fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
-    #[doc(alias = "LCONS")]
-    #[doc(alias = "lcons")]
-    pub(crate) fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
+    // Pairlist construction — encapsulated by PairListExt trait
+    fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
+    fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
 
     // Attribute manipulation — encapsulated by SexpExt methods
     #[doc(alias = "setAttrib")]
@@ -1938,161 +2067,25 @@ unsafe extern "C-unwind" {
     // Modern R mostly uses generic vectors (VECSXP) instead of pairlists,
     // but pairlists are still used internally for function calls.
 
-    /// Get the CAR (head/value) of a pairlist node.
-    ///
-    /// Returns the value stored in this cons cell.
-    /// For argument lists, this is the argument value.
-    /// For language objects, this is the function or first element.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
-    pub(crate) fn CAR(e: SEXP) -> SEXP;
-
-    /// Get the CDR (tail/rest) of a pairlist node.
-    ///
-    /// Returns the remainder of the list after this node.
-    /// This is either another pairlist node or R_NilValue (end of list).
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
-    pub(crate) fn CDR(e: SEXP) -> SEXP;
-
-    /// Get the CAR of the CAR (value of the first element's value).
-    ///
-    /// Equivalent to `CAR(CAR(e))`. Useful for nested lists.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid nested pairlist
-    pub(crate) fn CAAR(e: SEXP) -> SEXP;
-
-    /// Get the CDR of the CAR (tail of the first element).
-    ///
-    /// Equivalent to `CDR(CAR(e))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid nested pairlist
-    pub(crate) fn CDAR(e: SEXP) -> SEXP;
-
-    /// Get the CAR of the CDR (second element's value).
-    ///
-    /// Equivalent to `CAR(CDR(e))`. This gets the value of the 2nd list element.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 2 elements
-    pub(crate) fn CADR(e: SEXP) -> SEXP;
-
-    /// Get the CDR of the CDR (list starting from 3rd element).
-    ///
-    /// Equivalent to `CDR(CDR(e))`. Skips first two elements.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 2 elements
-    pub(crate) fn CDDR(e: SEXP) -> SEXP;
-
-    /// Get the value of the third element.
-    ///
-    /// Equivalent to `CAR(CDR(CDR(e)))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 3 elements
-    pub(crate) fn CADDR(e: SEXP) -> SEXP;
-
-    /// Get the value of the fourth element.
-    ///
-    /// Equivalent to `CAR(CDR(CDR(CDR(e))))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 4 elements
-    pub(crate) fn CADDDR(e: SEXP) -> SEXP;
-
-    /// Get the value of the fifth element.
-    ///
-    /// Equivalent to `CAR(CDR(CDR(CDR(CDR(e)))))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 5 elements
-    pub(crate) fn CAD4R(e: SEXP) -> SEXP;
-
-    /// Get the TAG (name) of a pairlist node.
-    ///
-    /// Returns the symbol associated with this element, or R_NilValue if unnamed.
-    /// For named arguments like `f(x = 5)`, TAG is the symbol "x".
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
-    pub(crate) fn TAG(e: SEXP) -> SEXP;
-
-    /// Set the TAG (name) of a pairlist node.
-    ///
-    /// # Safety
-    ///
-    /// - `x` must be a valid mutable pairlist node
-    /// - `y` must be a symbol (SYMSXP) or R_NilValue
-    pub(crate) fn SET_TAG(x: SEXP, y: SEXP);
-
-    /// Set the CAR (value) of a pairlist node.
-    ///
-    /// # Safety
-    ///
-    /// - `x` must be a valid mutable pairlist node
-    /// - `y` must be a valid SEXP
-    /// - Returns `y` for convenience
-    pub(crate) fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
-
-    /// Set the CDR (tail) of a pairlist node.
-    ///
-    /// # Safety
-    ///
-    /// - `x` must be a valid mutable pairlist node
-    /// - `y` must be a pairlist or R_NilValue
-    /// - Returns `y` for convenience
-    pub(crate) fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
-
-    /// Set the value of the second element.
-    ///
-    /// Equivalent to `SETCAR(CDR(x), y)`.
-    ///
-    /// # Safety
-    ///
-    /// `x` must be a pairlist with at least 2 elements
-    pub(crate) fn SETCADR(x: SEXP, y: SEXP) -> SEXP;
-
-    /// Set the value of the third element.
-    ///
-    /// Equivalent to `SETCAR(CDDR(x), y)`.
-    ///
-    /// # Safety
-    ///
-    /// `x` must be a pairlist with at least 3 elements
-    pub(crate) fn SETCADDR(x: SEXP, y: SEXP) -> SEXP;
-
-    /// Set the value of the fourth element.
-    ///
-    /// Equivalent to `SETCAR(CDR(CDDR(x)), y)`.
-    ///
-    /// # Safety
-    ///
-    /// `x` must be a pairlist with at least 4 elements
-    pub(crate) fn SETCADDDR(x: SEXP, y: SEXP) -> SEXP;
-
-    /// Set the value of the fifth element.
-    ///
-    /// Equivalent to `SETCAR(CAD4R(x), y)`.
-    ///
-    /// # Safety
-    ///
-    /// `x` must be a pairlist with at least 5 elements
-    pub(crate) fn SETCAD4R(e: SEXP, y: SEXP) -> SEXP;
+    // Pairlist accessors — basic ops encapsulated by PairListExt trait,
+    // compound accessors (CAAR, CADR, etc.) module-private since no callers exist.
+    fn CAR(e: SEXP) -> SEXP;
+    fn CDR(e: SEXP) -> SEXP;
+    fn CAAR(e: SEXP) -> SEXP;
+    fn CDAR(e: SEXP) -> SEXP;
+    fn CADR(e: SEXP) -> SEXP;
+    fn CDDR(e: SEXP) -> SEXP;
+    fn CADDR(e: SEXP) -> SEXP;
+    fn CADDDR(e: SEXP) -> SEXP;
+    fn CAD4R(e: SEXP) -> SEXP;
+    fn TAG(e: SEXP) -> SEXP;
+    fn SET_TAG(x: SEXP, y: SEXP);
+    fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
+    fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
+    fn SETCADR(x: SEXP, y: SEXP) -> SEXP;
+    fn SETCADDR(x: SEXP, y: SEXP) -> SEXP;
+    fn SETCADDDR(x: SEXP, y: SEXP) -> SEXP;
+    fn SETCAD4R(e: SEXP, y: SEXP) -> SEXP;
     fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     fn REAL_OR_NULL(x: SEXP) -> *const f64;
