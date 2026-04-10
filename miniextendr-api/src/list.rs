@@ -119,7 +119,7 @@ impl List {
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }
-            let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+            let name_ptr = name_sexp.r_char();
             let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
             if let Ok(s) = name_cstr.to_str() {
                 if s == name {
@@ -727,7 +727,7 @@ where
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
-                    let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+                    let name_ptr = name_sexp.r_char();
                     let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
                     name_cstr.to_str().unwrap_or(&format!("{i}")).to_string()
                 }
@@ -784,7 +784,7 @@ where
                 if name_sexp == unsafe { ffi::R_NaString } {
                     format!("{i}")
                 } else {
-                    let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+                    let name_ptr = name_sexp.r_char();
                     let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
                     name_cstr.to_str().unwrap_or(&format!("{i}")).to_string()
                 }
@@ -1107,7 +1107,7 @@ impl TryFromSexp for List {
                     continue;
                 }
                 // Skip empty names
-                let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+                let name_ptr = name_sexp.r_char();
                 let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
                 if let Ok(s) = name_cstr.to_str() {
                     if s.is_empty() {

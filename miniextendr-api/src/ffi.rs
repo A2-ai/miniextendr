@@ -736,6 +736,12 @@ pub trait SexpExt {
     /// Must be called from R's main thread.
     unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP);
 
+    /// Get C string pointer from a CHARSXP. No thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread. The SEXP must be a valid CHARSXP.
+    unsafe fn r_char_unchecked(&self) -> *const ::std::os::raw::c_char;
+
     // endregion
 }
 
@@ -1277,6 +1283,11 @@ impl SexpExt for SEXP {
         unsafe {
             Rf_setAttrib_unchecked(*self, name, val);
         }
+    }
+
+    #[inline]
+    unsafe fn r_char_unchecked(&self) -> *const ::std::os::raw::c_char {
+        unsafe { R_CHAR_unchecked(*self) }
     }
 
     // endregion
@@ -2291,9 +2302,9 @@ unsafe extern "C-unwind" {
     pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
     /// Get the print name (CHARSXP) of a symbol (SYMSXP)
     fn PRINTNAME(x: SEXP) -> SEXP;
-    /// Get the C string pointer from a CHARSXP
+    /// Get the C string pointer from a CHARSXP — encapsulated by SexpExt::r_char()
     #[doc(alias = "CHAR")]
-    pub(crate) fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
+    fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // Attribute access
     // Attribute accessors — encapsulated by SexpExt methods

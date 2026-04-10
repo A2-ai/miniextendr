@@ -54,7 +54,7 @@ impl NamedList {
             if name_sexp == unsafe { ffi::R_NaString } {
                 continue;
             }
-            let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+            let name_ptr = name_sexp.r_char();
             let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
             if let Ok(s) = name_cstr.to_str() {
                 if !s.is_empty() {

@@ -426,7 +426,7 @@ unsafe fn get_r_error_message() -> String {
         let result = if ffi::Rf_xlength(msg_sexp) > 0 {
             let charsxp = msg_sexp.string_elt(0);
             if !charsxp.is_null() {
-                let ptr = ffi::R_CHAR(charsxp);
+                let ptr = charsxp.r_char();
                 if !ptr.is_null() {
                     let msg = CStr::from_ptr(ptr).to_string_lossy().into_owned();
                     msg.trim_end().to_string()

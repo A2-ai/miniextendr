@@ -91,7 +91,7 @@ where
                     // NA or missing name -> generate auto name
                     format!("V{}", i + 1)
                 } else {
-                    let c_str = unsafe { R_CHAR(name_charsxp) };
+                    let c_str = unsafe { name_charsxp.r_char() };
                     if c_str.is_null() {
                         format!("V{}", i + 1)
                     } else {

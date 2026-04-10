@@ -65,13 +65,13 @@ pub(crate) fn is_na_real(value: f64) -> bool {
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
 #[inline]
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
-    unsafe { charsxp_to_str_impl(crate::ffi::R_CHAR(charsxp), charsxp) }
+    unsafe { charsxp_to_str_impl(charsxp.r_char(), charsxp) }
 }
 
 /// Unchecked version of [`charsxp_to_str`] (skips R thread checks on `R_CHAR`).
 #[inline]
 pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
-    unsafe { charsxp_to_str_impl(crate::ffi::R_CHAR_unchecked(charsxp), charsxp) }
+    unsafe { charsxp_to_str_impl(charsxp.r_char_unchecked(), charsxp) }
 }
 
 /// Shared implementation: given a data pointer and CHARSXP, produce `&str`.
