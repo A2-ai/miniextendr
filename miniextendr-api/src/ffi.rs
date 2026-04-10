@@ -2031,27 +2031,27 @@ unsafe extern "C-unwind" {
     ///
     /// `x` must be a pairlist with at least 5 elements
     pub(crate) fn SETCAD4R(e: SEXP, y: SEXP) -> SEXP;
-    pub(crate) fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
-    pub(crate) fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
-    pub(crate) fn REAL_OR_NULL(x: SEXP) -> *const f64;
-    pub(crate) fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
-    pub(crate) fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
+    fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    fn REAL_OR_NULL(x: SEXP) -> *const f64;
+    fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
+    fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
 
-    // Element-wise accessors (ALTREP-aware)
-    pub(crate) fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    pub(crate) fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
-    pub(crate) fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    pub(crate) fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
-    pub(crate) fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
-    pub(crate) fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    pub(crate) fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    pub(crate) fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
-    pub(crate) fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    pub(crate) fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    pub(crate) fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
-    pub(crate) fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
-    pub(crate) fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
-    pub(crate) fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
+    // Element-wise accessors (ALTREP-aware) — encapsulated by SexpExt methods
+    fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
+    fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
+    fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
+    fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
+    fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
+    fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
+    fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
+    fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
 
     // endregion
 
@@ -2061,7 +2061,7 @@ unsafe extern "C-unwind" {
     ///
     /// For long vectors, use `Rf_xlength()` instead.
     /// Returns 0 for R_NilValue.
-    pub(crate) fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
+    fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Get the length of a SEXP as `R_xlen_t` (supports long vectors).
     ///
@@ -2107,10 +2107,10 @@ unsafe extern "C-unwind" {
     // region: ALTREP support
 
     pub(crate) fn ALTREP_CLASS(x: SEXP) -> SEXP;
-    pub fn R_altrep_data1(x: SEXP) -> SEXP;
-    pub fn R_altrep_data2(x: SEXP) -> SEXP;
+    pub(crate) fn R_altrep_data1(x: SEXP) -> SEXP;
+    pub(crate) fn R_altrep_data2(x: SEXP) -> SEXP;
     pub(crate) fn R_set_altrep_data1(x: SEXP, v: SEXP);
-    pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
+    pub(crate) fn R_set_altrep_data2(x: SEXP, v: SEXP);
 
     /// Check if a SEXP is an ALTREP object (returns non-zero if true).
     ///
@@ -2163,9 +2163,9 @@ unsafe extern "C-unwind" {
 
     // endregion
 
-    // region: Type checking
+    // region: Type checking — encapsulated by SexpExt::type_of()
 
-    pub(crate) fn TYPEOF(x: SEXP) -> SEXPTYPE;
+    fn TYPEOF(x: SEXP) -> SEXPTYPE;
 
     // endregion
 

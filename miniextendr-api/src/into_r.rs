@@ -1322,7 +1322,7 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
                     Some(s) => str_to_charsxp(s.as_ref()),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT(*sexp, idx, charsxp);
+                sexp.set_string_elt(idx, charsxp);
             }
             *sexp
         }
@@ -1343,7 +1343,7 @@ impl IntoR for Vec<Option<std::borrow::Cow<'_, str>>> {
                     Some(s) => str_to_charsxp_unchecked(s.as_ref()),
                     None => crate::ffi::R_NaString,
                 };
-                crate::ffi::SET_STRING_ELT_unchecked(*sexp, idx, charsxp);
+                sexp.set_string_elt_unchecked(idx, charsxp);
             }
             *sexp
         }

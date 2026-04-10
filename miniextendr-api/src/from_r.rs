@@ -80,9 +80,7 @@ pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
 #[inline]
 unsafe fn charsxp_to_str_impl(ptr: *const std::os::raw::c_char, charsxp: SEXP) -> &'static str {
     unsafe {
-        let len: usize = crate::ffi::LENGTH(charsxp)
-            .try_into()
-            .expect("CHARSXP LENGTH must be non-negative");
+        let len: usize = charsxp.len();
         let bytes = r_slice(ptr.cast::<u8>(), len);
         // SAFETY: miniextendr_assert_utf8_locale() at init guarantees all
         // CHARSXPs in this session are valid UTF-8 or ASCII.
