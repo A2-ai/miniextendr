@@ -1845,8 +1845,8 @@ unsafe extern "C-unwind" {
     pub(crate) static R_DimNamesSymbol: SEXP;
     /// Symbol for `class` attribute.
     pub(crate) static R_ClassSymbol: SEXP;
-    /// Symbol for row names.
-    pub(crate) static R_RowNamesSymbol: SEXP;
+    /// Symbol for row names — encapsulated by SexpExt::get_row_names()/set_row_names()
+    static R_RowNamesSymbol: SEXP;
     /// Symbol for factor levels.
     pub(crate) static R_LevelsSymbol: SEXP;
     /// Symbol for `tsp` attribute.
@@ -1891,9 +1891,9 @@ unsafe extern "C-unwind" {
 
     // Rinternals.h
     #[doc(alias = "mkChar")]
-    pub(crate) fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
+    fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
     #[doc(alias = "mkCharLen")]
-    pub(crate) fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
+    fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     #[doc(alias = "mkCharLenCE")]
     pub fn Rf_mkCharLenCE(
         x: *const ::std::os::raw::c_char,
@@ -1953,11 +1953,11 @@ unsafe extern "C-unwind" {
     pub(crate) fn R_SetExternalPtrTag(s: SEXP, tag: SEXP);
     pub(crate) fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
     #[doc = " Added in R 3.4.0"]
-    pub(crate) fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
-    pub(crate) fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
-    pub(crate) fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
+    fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
+    fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
+    fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
     pub(crate) fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
-    pub(crate) fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
+    fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
     pub(crate) fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
 
     // R_ext/Rdynload.h - C-callable interface
@@ -2067,9 +2067,9 @@ unsafe extern "C-unwind" {
         ncol: ::std::os::raw::c_int,
     ) -> SEXP;
     #[doc(alias = "allocArray")]
-    pub(crate) fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
+    fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
     #[doc(alias = "alloc3DArray")]
-    pub(crate) fn Rf_alloc3DArray(
+    fn Rf_alloc3DArray(
         sexptype: SEXPTYPE,
         nrow: ::std::os::raw::c_int,
         ncol: ::std::os::raw::c_int,
@@ -2080,11 +2080,11 @@ unsafe extern "C-unwind" {
     #[doc(alias = "allocList")]
     pub(crate) fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocLang")]
-    pub(crate) fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
+    fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocS4Object")]
-    pub(crate) fn Rf_allocS4Object() -> SEXP;
+    fn Rf_allocS4Object() -> SEXP;
     #[doc(alias = "allocSExp")]
-    pub(crate) fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
+    fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
 
     // Pairlist construction — encapsulated by PairListExt trait
     fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
@@ -2475,22 +2475,22 @@ unsafe extern "C-unwind" {
 
     // Environment operations
     #[doc(alias = "findVar")]
-    pub(crate) fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
+    fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
     #[doc(alias = "findVarInFrame")]
-    pub(crate) fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
+    fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
     #[doc(alias = "findVarInFrame3")]
-    pub(crate) fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
+    fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
     #[doc(alias = "defineVar")]
-    pub(crate) fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "setVar")]
-    pub(crate) fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
     #[doc(alias = "findFun")]
-    pub(crate) fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
+    fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
 
     /// Find a registered namespace by name. **Longjmps on error** — prefer
     /// `REnv::package_namespace()` which wraps this safely.
     #[doc(alias = "FindNamespace")]
-    pub(crate) fn R_FindNamespace(info: SEXP) -> SEXP;
+    fn R_FindNamespace(info: SEXP) -> SEXP;
 
     /// Return the current execution environment (innermost closure on call
     /// stack, or `R_GlobalEnv` if none).
@@ -2501,7 +2501,7 @@ unsafe extern "C-unwind" {
     #[doc(alias = "eval")]
     pub fn Rf_eval(expr: SEXP, rho: SEXP) -> SEXP;
     #[doc(alias = "applyClosure")]
-    pub(crate) fn Rf_applyClosure(
+    fn Rf_applyClosure(
         call: SEXP,
         op: SEXP,
         args: SEXP,
@@ -2509,17 +2509,13 @@ unsafe extern "C-unwind" {
         suppliedvars: SEXP,
         check: Rboolean,
     ) -> SEXP;
-    pub(crate) fn R_tryEval(
-        expr: SEXP,
-        env: SEXP,
-        error_occurred: *mut ::std::os::raw::c_int,
-    ) -> SEXP;
+    fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
     pub(crate) fn R_tryEvalSilent(
         expr: SEXP,
         env: SEXP,
         error_occurred: *mut ::std::os::raw::c_int,
     ) -> SEXP;
-    pub(crate) fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
+    fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
 }
 
 // region: Connections API (R_ext/Connections.h)
@@ -2759,23 +2755,23 @@ pub mod legacy_c {
     unsafe extern "C" {
         /// Register a C finalizer callback.
         #[link_name = "R_RegisterCFinalizer"]
-        pub(crate) fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);
+        fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);
 
         /// Register a C finalizer callback with `onexit` behavior.
         #[link_name = "R_RegisterCFinalizerEx"]
-        pub(crate) fn R_RegisterCFinalizerEx_C(s: SEXP, fun: R_CFinalizer_t_C, onexit: Rboolean);
+        fn R_RegisterCFinalizerEx_C(s: SEXP, fun: R_CFinalizer_t_C, onexit: Rboolean);
 
         /// Create function external pointer (`R_MakeExternalPtrFn`).
         #[link_name = "R_MakeExternalPtrFn"]
-        pub(crate) fn R_MakeExternalPtrFn_C(p: DL_FUNC_C, tag: SEXP, prot: SEXP) -> SEXP;
+        fn R_MakeExternalPtrFn_C(p: DL_FUNC_C, tag: SEXP, prot: SEXP) -> SEXP;
 
         /// Extract function pointer from external pointer.
         #[link_name = "R_ExternalPtrAddrFn"]
-        pub(crate) fn R_ExternalPtrAddrFn_C(s: SEXP) -> DL_FUNC_C;
+        fn R_ExternalPtrAddrFn_C(s: SEXP) -> DL_FUNC_C;
 
         /// Register native routines using legacy ABI types.
         #[link_name = "R_registerRoutines"]
-        pub(crate) fn R_registerRoutines_C(
+        fn R_registerRoutines_C(
             info: *mut super::DllInfo,
             croutines: *const ::std::os::raw::c_void,
             callRoutines: *const R_CallMethodDef_C,
