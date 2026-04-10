@@ -1826,9 +1826,9 @@ unsafe extern "C-unwind" {
     #[doc(alias = "lcons")]
     pub(crate) fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
 
-    // Attribute manipulation
+    // Attribute manipulation — encapsulated by SexpExt methods
     #[doc(alias = "setAttrib")]
-    pub(crate) fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
+    fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
     #[doc(alias = "ScalarComplex")]
@@ -2179,17 +2179,18 @@ unsafe extern "C-unwind" {
     pub(crate) fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // Attribute access
+    // Attribute accessors — encapsulated by SexpExt methods
     /// Read an attribute from an object by symbol (e.g. `R_NamesSymbol`).
     ///
     /// Returns `R_NilValue` if the attribute is not set.
     #[doc(alias = "getAttrib")]
-    pub(crate) fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
+    fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
     /// Set the `names` attribute; returns the updated object.
     #[doc(alias = "namesgets")]
-    pub(crate) fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
+    fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
     /// Set the `dim` attribute; returns the updated object.
     #[doc(alias = "dimgets")]
-    pub(crate) fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
+    fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
 
     // Duplication
     #[doc(alias = "duplicate")]
@@ -2237,17 +2238,17 @@ pub const IDENT_EXTPTR_AS_REF: ::std::os::raw::c_int = 64;
 #[allow(missing_docs)]
 #[r_ffi_checked]
 unsafe extern "C-unwind" {
-    // Type coercion
+    // Type coercion — encapsulated by SexpExt methods
     #[doc(alias = "asLogical")]
-    pub(crate) fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
+    fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "asInteger")]
-    pub(crate) fn Rf_asInteger(x: SEXP) -> ::std::os::raw::c_int;
+    fn Rf_asInteger(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "asReal")]
-    pub(crate) fn Rf_asReal(x: SEXP) -> f64;
+    fn Rf_asReal(x: SEXP) -> f64;
     #[doc(alias = "asChar")]
-    pub(crate) fn Rf_asChar(x: SEXP) -> SEXP;
+    fn Rf_asChar(x: SEXP) -> SEXP;
     #[doc(alias = "coerceVector")]
-    pub(crate) fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
+    fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
 
     // Matrix utilities
     #[doc(alias = "nrows")]
@@ -2255,27 +2256,27 @@ unsafe extern "C-unwind" {
     #[doc(alias = "ncols")]
     pub(crate) fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
 
-    // Inheritance checking
+    // Inheritance checking — encapsulated by SexpExt::inherits_class()
     #[doc(alias = "inherits")]
-    pub(crate) fn Rf_inherits(x: SEXP, klass: *const ::std::os::raw::c_char) -> Rboolean;
+    fn Rf_inherits(x: SEXP, klass: *const ::std::os::raw::c_char) -> Rboolean;
 
-    // Type checking predicates
+    // Type checking predicates — encapsulated by SexpExt type-check methods
     #[doc(alias = "isNull")]
     fn Rf_isNull(s: SEXP) -> Rboolean;
     #[doc(alias = "isSymbol")]
-    pub(crate) fn Rf_isSymbol(s: SEXP) -> Rboolean;
+    fn Rf_isSymbol(s: SEXP) -> Rboolean;
     #[doc(alias = "isLogical")]
-    pub(crate) fn Rf_isLogical(s: SEXP) -> Rboolean;
+    fn Rf_isLogical(s: SEXP) -> Rboolean;
     #[doc(alias = "isReal")]
-    pub(crate) fn Rf_isReal(s: SEXP) -> Rboolean;
+    fn Rf_isReal(s: SEXP) -> Rboolean;
     #[doc(alias = "isComplex")]
-    pub(crate) fn Rf_isComplex(s: SEXP) -> Rboolean;
+    fn Rf_isComplex(s: SEXP) -> Rboolean;
     #[doc(alias = "isExpression")]
-    pub(crate) fn Rf_isExpression(s: SEXP) -> Rboolean;
+    fn Rf_isExpression(s: SEXP) -> Rboolean;
     #[doc(alias = "isEnvironment")]
     fn Rf_isEnvironment(s: SEXP) -> Rboolean;
     #[doc(alias = "isString")]
-    pub(crate) fn Rf_isString(s: SEXP) -> Rboolean;
+    fn Rf_isString(s: SEXP) -> Rboolean;
 
     // Composite type checking (from inline functions)
     #[doc(alias = "isArray")]
@@ -2285,21 +2286,21 @@ unsafe extern "C-unwind" {
     #[doc(alias = "isList")]
     fn Rf_isList(s: SEXP) -> Rboolean;
     #[doc(alias = "isNewList")]
-    pub(crate) fn Rf_isNewList(s: SEXP) -> Rboolean;
+    fn Rf_isNewList(s: SEXP) -> Rboolean;
     #[doc(alias = "isPairList")]
-    pub(crate) fn Rf_isPairList(s: SEXP) -> Rboolean;
+    fn Rf_isPairList(s: SEXP) -> Rboolean;
     #[doc(alias = "isFunction")]
     fn Rf_isFunction(s: SEXP) -> Rboolean;
     #[doc(alias = "isPrimitive")]
-    pub(crate) fn Rf_isPrimitive(s: SEXP) -> Rboolean;
+    fn Rf_isPrimitive(s: SEXP) -> Rboolean;
     #[doc(alias = "isLanguage")]
-    pub(crate) fn Rf_isLanguage(s: SEXP) -> Rboolean;
+    fn Rf_isLanguage(s: SEXP) -> Rboolean;
     #[doc(alias = "isDataFrame")]
     fn Rf_isDataFrame(s: SEXP) -> Rboolean;
     #[doc(alias = "isFactor")]
     fn Rf_isFactor(s: SEXP) -> Rboolean;
     #[doc(alias = "isInteger")]
-    pub(crate) fn Rf_isInteger(s: SEXP) -> Rboolean;
+    fn Rf_isInteger(s: SEXP) -> Rboolean;
     #[doc(alias = "isObject")]
     fn Rf_isObject(s: SEXP) -> Rboolean;
 
@@ -2327,7 +2328,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns the modified vector (like all "*gets" functions).
     #[doc(alias = "classgets")]
-    pub(crate) fn Rf_classgets(vec: SEXP, klass: SEXP) -> SEXP;
+    fn Rf_classgets(vec: SEXP, klass: SEXP) -> SEXP;
 
     /// Set the dimnames attribute of an array/matrix.
     ///
@@ -2338,7 +2339,7 @@ unsafe extern "C-unwind" {
     ///
     /// Returns the modified vector.
     #[doc(alias = "dimnamesgets")]
-    pub(crate) fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
+    fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
     #[doc(alias = "GetRowNames")]
     pub(crate) fn Rf_GetRowNames(dimnames: SEXP) -> SEXP;
     #[doc(alias = "GetColNames")]
