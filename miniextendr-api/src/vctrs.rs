@@ -164,16 +164,8 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
 }
 
 /// Create an R symbol from a Rust string.
-///
-/// Uses Rf_installChar to create a symbol from a CHARSXP, which properly
-/// handles non-null-terminated strings.
-///
-/// # Safety
-///
-/// Must be called from R's main thread.
-unsafe fn install_symbol(name: &str) -> SEXP {
-    let charsxp = SEXP::charsxp(name);
-    unsafe { crate::ffi::Rf_installChar(charsxp) }
+fn install_symbol(name: &str) -> SEXP {
+    SEXP::symbol(name)
 }
 
 /// Get the R typeof name for a SEXP (e.g., "double", "integer", "list").
@@ -313,7 +305,7 @@ pub fn new_vctr(
 
     // Set additional attributes
     for (name, value) in attrs {
-        let name_sym = unsafe { install_symbol(name) };
+        let name_sym = install_symbol(name);
         data.set_attr(name_sym, *value);
     }
 
@@ -417,7 +409,7 @@ pub fn new_rcrd(
 
     // Set additional attributes
     for (name, value) in attrs {
-        let name_sym = unsafe { install_symbol(name) };
+        let name_sym = install_symbol(name);
         data.set_attr(name_sym, *value);
     }
 
@@ -501,7 +493,7 @@ pub fn new_list_of(
 
     // Set additional attributes
     for (name, value) in attrs {
-        let name_sym = unsafe { install_symbol(name) };
+        let name_sym = install_symbol(name);
         data.set_attr(name_sym, *value);
     }
 

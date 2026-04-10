@@ -166,8 +166,7 @@
 
 use crate::ffi::{
     R_NewEnv, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList, Rf_allocMatrix,
-    Rf_allocVector, Rf_duplicate, Rf_protect, Rf_shallow_duplicate, Rf_unprotect, SEXP, SEXPTYPE,
-    SexpExt,
+    Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
 };
 use core::cell::Cell;
 use core::marker::PhantomData;
@@ -647,7 +646,7 @@ impl ProtectScope {
     /// Must be called from the R main thread. `x` must be a valid SEXP.
     #[inline]
     pub unsafe fn duplicate<'a>(&'a self, x: SEXP) -> Root<'a> {
-        unsafe { self.protect(Rf_duplicate(x)) }
+        unsafe { self.protect(x.duplicate()) }
     }
 
     /// Shallow-duplicate a SEXP, protected.
@@ -657,7 +656,7 @@ impl ProtectScope {
     /// Must be called from the R main thread. `x` must be a valid SEXP.
     #[inline]
     pub unsafe fn shallow_duplicate<'a>(&'a self, x: SEXP) -> Root<'a> {
-        unsafe { self.protect(Rf_shallow_duplicate(x)) }
+        unsafe { self.protect(x.shallow_duplicate()) }
     }
 
     /// Coerce a SEXP to a different type, protected.

@@ -215,6 +215,24 @@ impl SEXP {
         unsafe { R_BlankString }
     }
 
+    /// Create an R symbol (SYMSXP) from a CHARSXP.
+    ///
+    /// Equivalent to `Rf_installChar(charsxp)`. The symbol is interned
+    /// in R's global symbol table and never garbage collected.
+    #[inline]
+    pub fn install_char(charsxp: SEXP) -> SEXP {
+        unsafe { Rf_installChar(charsxp) }
+    }
+
+    /// Create an R symbol (SYMSXP) from a Rust `&str`.
+    ///
+    /// Combines `SEXP::charsxp()` + `Rf_installChar` into one call.
+    /// The symbol is interned and never garbage collected.
+    #[inline]
+    pub fn symbol(name: &str) -> SEXP {
+        Self::install_char(Self::charsxp(name))
+    }
+
     // endregion
 
     // region: Scalar construction
@@ -626,6 +644,27 @@ pub trait SexpExt {
     fn set_complex_elt(&self, i: isize, v: Rcomplex);
     /// Set the i-th raw element.
     fn set_raw_elt(&self, i: isize, v: u8);
+
+    // endregion
+
+    // region: Vector resizing
+
+    /// Resize a vector to a new length, returning a (possibly new) SEXP.
+    ///
+    /// If the new length is shorter, elements are truncated.
+    /// If longer, new elements are filled with NA/NULL.
+    /// Equivalent to R's `Rf_xlengthgets(x, newlen)`.
+    fn resize(&self, newlen: R_xlen_t) -> SEXP;
+
+    // endregion
+
+    // region: Duplication
+
+    /// Deep-copy this SEXP. Equivalent to R's `Rf_duplicate(x)`.
+    fn duplicate(&self) -> SEXP;
+
+    /// Shallow-copy this SEXP. Equivalent to R's `Rf_shallow_duplicate(x)`.
+    fn shallow_duplicate(&self) -> SEXP;
 
     // endregion
 
@@ -1115,6 +1154,29 @@ impl SexpExt for SEXP {
     #[inline]
     fn set_raw_elt(&self, i: isize, v: u8) {
         unsafe { SET_RAW_ELT(*self, i, v) }
+    }
+
+    // endregion
+
+    // region: Vector resizing
+
+    #[inline]
+    fn resize(&self, newlen: R_xlen_t) -> SEXP {
+        unsafe { Rf_xlengthgets(*self, newlen) }
+    }
+
+    // endregion
+
+    // region: Duplication
+
+    #[inline]
+    fn duplicate(&self) -> SEXP {
+        unsafe { Rf_duplicate(*self) }
+    }
+
+    #[inline]
+    fn shallow_duplicate(&self) -> SEXP {
+        unsafe { Rf_shallow_duplicate(*self) }
     }
 
     // endregion
@@ -2194,9 +2256,9 @@ unsafe extern "C-unwind" {
 
     // Duplication
     #[doc(alias = "duplicate")]
-    pub(crate) fn Rf_duplicate(s: SEXP) -> SEXP;
+    fn Rf_duplicate(s: SEXP) -> SEXP;
     #[doc(alias = "shallow_duplicate")]
-    pub(crate) fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
+    fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
 
     // Object comparison
     /// Check if two R objects are identical (deep semantic equality).
@@ -2250,11 +2312,11 @@ unsafe extern "C-unwind" {
     #[doc(alias = "coerceVector")]
     fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
 
-    // Matrix utilities
+    // Matrix utilities — no callers outside ffi.rs
     #[doc(alias = "nrows")]
-    pub(crate) fn Rf_nrows(x: SEXP) -> ::std::os::raw::c_int;
+    fn Rf_nrows(x: SEXP) -> ::std::os::raw::c_int;
     #[doc(alias = "ncols")]
-    pub(crate) fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
+    fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
 
     // Inheritance checking — encapsulated by SexpExt::inherits_class()
     #[doc(alias = "inherits")]
@@ -3600,11 +3662,11 @@ unsafe extern "C-unwind" {
     /// - `object`: Object to convert
     /// - `flag`: Conversion flag
     #[doc(alias = "asS4")]
-    pub(crate) fn Rf_asS4(object: SEXP, flag: Rboolean, complete: ::std::os::raw::c_int) -> SEXP;
+    fn Rf_asS4(object: SEXP, flag: Rboolean, complete: ::std::os::raw::c_int) -> SEXP;
 
     /// Get the S3 class of an S4 object.
     #[doc(alias = "S3Class")]
-    pub(crate) fn Rf_S3Class(object: SEXP) -> SEXP;
+    fn Rf_S3Class(object: SEXP) -> SEXP;
 
     // Option access
 
@@ -3616,29 +3678,29 @@ unsafe extern "C-unwind" {
     ///
     /// - `tag`: Symbol for option name
     #[doc(alias = "GetOption1")]
-    pub(crate) fn Rf_GetOption1(tag: SEXP) -> SEXP;
+    fn Rf_GetOption1(tag: SEXP) -> SEXP;
 
     /// Get the `digits` option.
     ///
     /// Returns the value of `getOption("digits")`.
     #[doc(alias = "GetOptionDigits")]
-    pub(crate) fn Rf_GetOptionDigits() -> ::std::os::raw::c_int;
+    fn Rf_GetOptionDigits() -> ::std::os::raw::c_int;
 
     /// Get the `width` option.
     ///
     /// Returns the value of `getOption("width")`.
     #[doc(alias = "GetOptionWidth")]
-    pub(crate) fn Rf_GetOptionWidth() -> ::std::os::raw::c_int;
+    fn Rf_GetOptionWidth() -> ::std::os::raw::c_int;
 
     // Factor functions
 
     /// Check if a factor is ordered.
     #[doc(alias = "isOrdered")]
-    pub(crate) fn Rf_isOrdered(s: SEXP) -> Rboolean;
+    fn Rf_isOrdered(s: SEXP) -> Rboolean;
 
     /// Check if a factor is unordered.
     #[doc(alias = "isUnordered")]
-    pub(crate) fn Rf_isUnordered(s: SEXP) -> Rboolean;
+    fn Rf_isUnordered(s: SEXP) -> Rboolean;
 
     /// Check if a vector is unsorted.
     ///
@@ -3647,7 +3709,7 @@ unsafe extern "C-unwind" {
     /// - `x`: Vector to check
     /// - `strictly`: If TRUE, check for strictly increasing
     #[doc(alias = "isUnsorted")]
-    pub(crate) fn Rf_isUnsorted(x: SEXP, strictly: Rboolean) -> ::std::os::raw::c_int;
+    fn Rf_isUnsorted(x: SEXP, strictly: Rboolean) -> ::std::os::raw::c_int;
 
     // Expression and evaluation
 
@@ -3655,17 +3717,17 @@ unsafe extern "C-unwind" {
     ///
     /// Like R's `substitute()` function.
     #[doc(alias = "substitute")]
-    pub(crate) fn Rf_substitute(lang: SEXP, rho: SEXP) -> SEXP;
+    fn Rf_substitute(lang: SEXP, rho: SEXP) -> SEXP;
 
     /// Set vector length.
     ///
     /// For short vectors (length < 2^31).
     #[doc(alias = "lengthgets")]
-    pub(crate) fn Rf_lengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+    fn Rf_lengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
 
     /// Set vector length (long vector version).
     #[doc(alias = "xlengthgets")]
-    pub(crate) fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+    fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
 
     // Protection (indexed — see cost table in the "GC protection" region above)
 
@@ -3721,11 +3783,11 @@ unsafe extern "C-unwind" {
 
     /// Convert a pairlist to a generic vector (list).
     #[doc(alias = "PairToVectorList")]
-    pub(crate) fn Rf_PairToVectorList(x: SEXP) -> SEXP;
+    fn Rf_PairToVectorList(x: SEXP) -> SEXP;
 
     /// Convert a generic vector (list) to a pairlist.
     #[doc(alias = "VectorToPairList")]
-    pub(crate) fn Rf_VectorToPairList(x: SEXP) -> SEXP;
+    fn Rf_VectorToPairList(x: SEXP) -> SEXP;
 
     // Install with CHARSXP
 
@@ -3733,7 +3795,7 @@ unsafe extern "C-unwind" {
     ///
     /// Like `Rf_install()` but takes a CHARSXP instead of C string.
     #[doc(alias = "installChar")]
-    pub(crate) fn Rf_installChar(x: SEXP) -> SEXP;
+    fn Rf_installChar(x: SEXP) -> SEXP;
 }
 
 // endregion
