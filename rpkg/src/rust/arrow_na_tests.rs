@@ -322,6 +322,84 @@ pub fn arrow_na_string_all_null_altrep(n: i32) -> SEXP {
 
 // endregion
 
+// region: Stale null bitmap tests (R mutation after Arrow conversion)
+
+/// Convert R vector to Arrow, return the Arrow null_count.
+/// The Arrow array holds a zero-copy reference to R's buffer.
+/// If R mutates the buffer after conversion, the Arrow null bitmap becomes stale.
+///
+/// This fixture takes the SEXP, converts to Float64Array (scanning for NAs),
+/// then reads element values and null status from the Arrow side.
+/// Returns: [null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...]
+/// @param x SEXP (numeric vector)
+#[miniextendr]
+pub fn arrow_na_f64_inspect_arrow(x: SEXP) -> Vec<f64> {
+    use miniextendr_api::from_r::TryFromSexp;
+    let arr: Float64Array = TryFromSexp::try_from_sexp(x).unwrap();
+    let mut result = vec![arr.logical_null_count() as f64];
+    for i in 0..arr.len() {
+        // Raw value in the data buffer (may be NA_REAL sentinel)
+        result.push(if arr.is_null(i) {
+            f64::NAN // represent null as NaN for inspection
+        } else {
+            arr.value(i)
+        });
+        result.push(if arr.is_null(i) { 1.0 } else { 0.0 });
+    }
+    result
+}
+
+/// Allocate an R-backed Arrow buffer, fill with non-NA values, then
+/// set one element to NA_REAL in the R buffer. Return the Arrow null_count
+/// (which was computed BEFORE the mutation) and the raw values.
+///
+/// This demonstrates the stale bitmap problem: Arrow's bitmap says "all valid"
+/// but the R buffer now contains an NA sentinel.
+/// @param n length
+#[miniextendr]
+pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::optionals::arrow_impl::alloc_r_backed_buffer;
+
+    let n = n as usize;
+    let (buffer, sexp) = unsafe { alloc_r_backed_buffer::<f64>(n) };
+
+    // Fill with non-NA values
+    for i in 0..n {
+        miniextendr_api::ffi::SexpExt::set_real_elt(&sexp, i as isize, (i + 1) as f64);
+    }
+
+    // Create Arrow array — bitmap says "no nulls" (all values are valid)
+    let scalar_buffer =
+        miniextendr_api::optionals::arrow_impl::arrow_buffer::ScalarBuffer::<f64>::from(buffer);
+    let arr = Float64Array::new(scalar_buffer, None); // None = no nulls
+
+    // Now mutate the R buffer AFTER Arrow array was created
+    miniextendr_api::ffi::SexpExt::set_real_elt(
+        &sexp,
+        1, // set index 1 to NA
+        miniextendr_api::altrep_traits::NA_REAL,
+    );
+
+    // Arrow's view: null_count is still 0 (bitmap is stale)
+    let null_count = arr.logical_null_count() as f64;
+
+    // But if we convert back to R via IntoR, pointer recovery returns the
+    // original SEXP (which now has the NA sentinel in it)
+    let result_sexp = arr.into_sexp();
+
+    // Read back from R to see what R thinks
+    use miniextendr_api::ffi::SexpExt;
+    let r_len = result_sexp.len();
+    let mut result = vec![null_count, r_len as f64];
+    for i in 0..r_len {
+        result.push(result_sexp.real_elt(i as isize));
+    }
+    result
+}
+
+// endregion
+
 // region: Zero-copy identity with NA edge cases
 
 /// Returns TRUE if the zero-copy round-trip preserves identity even with NAs.

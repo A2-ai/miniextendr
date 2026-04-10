@@ -268,6 +268,81 @@ test_that("RecordBatch mixed NA patterns across columns", {
 
 # endregion
 
+# region: R copy-on-write vs Arrow bitmap coherence
+
+test_that("f64: R copy-on-write protects Arrow bitmap from mutation", {
+  # When R roundtrips a vector through Arrow (zero-copy), the returned SEXP
+  # is the same object. But R's refcount > 1, so assignment triggers COW:
+  # R copies the vector before mutating. The Arrow bitmap stays coherent
+  # because the original buffer is never mutated.
+  v <- c(1.0, 2.0, 3.0)
+  # Zero-copy roundtrip returns same R object
+  expect_true(arrow_na_f64_zero_copy_identity(v))
+
+  result <- arrow_na_f64_roundtrip(v)
+
+  # Mutate result — R's COW copies it first (refcount > 1)
+  result[2] <- NA
+  expect_equal(v, c(1.0, 2.0, 3.0))    # original unchanged
+  expect_true(is.na(result[2]))          # copy has NA
+
+  # Re-convert the mutated copy through Arrow — correctly detects the new NA
+  expect_equal(arrow_na_f64_null_count(result), 1L)
+})
+
+test_that("i32: R copy-on-write protects Arrow bitmap from mutation", {
+  v <- c(1L, 2L, 3L)
+  result <- arrow_na_i32_roundtrip(v)
+  result[2] <- NA
+  expect_equal(v, c(1L, 2L, 3L))
+  expect_equal(arrow_na_i32_null_count(result), 1L)
+})
+
+test_that("f64: stale bitmap when Rust mutates R-backed buffer after Arrow creation", {
+  # This is the dangerous case: Rust allocates an R-backed buffer, creates an
+  # Arrow array (bitmap says "no nulls"), then mutates the R buffer to contain
+  # an NA sentinel. The Arrow bitmap is now stale.
+  result <- arrow_na_f64_stale_bitmap_demo(3L)
+  arrow_null_count <- result[1]
+  r_len <- result[2]
+  r_values <- result[3:(2 + r_len)]
+
+  # Arrow thinks there are no nulls (bitmap is stale)
+  expect_equal(arrow_null_count, 0)
+
+  # But the R vector has NA at index 2 (0-based index 1)
+  expect_equal(r_values[1], 1.0)
+  expect_true(is.na(r_values[2]))  # NA sentinel is in the data
+  expect_equal(r_values[3], 3.0)
+})
+
+test_that("f64: Arrow re-scan detects NAs introduced by R mutation", {
+  # If we re-convert the mutated R vector through Arrow, the new scan
+  # correctly builds a fresh bitmap that reflects the current state.
+  v <- c(1.0, 2.0, 3.0)
+  expect_equal(arrow_na_f64_null_count(v), 0L)
+
+  # Force a copy and introduce NA
+  v2 <- v
+  v2[2] <- NA
+  expect_equal(arrow_na_f64_null_count(v2), 1L)
+  expect_equal(arrow_na_f64_null_positions(v2), c(FALSE, TRUE, FALSE))
+})
+
+test_that("f64: setting non-NA to NA and back preserves correctness", {
+  v <- c(1.0, NA, 3.0)
+  result <- arrow_na_f64_roundtrip(v)
+  # Replace NA with value
+  result[2] <- 99.0
+  expect_equal(arrow_na_f64_null_count(result), 0L)
+  # Replace value with NA again
+  result[1] <- NA
+  expect_equal(arrow_na_f64_null_count(result), 1L)
+  expect_equal(arrow_na_f64_null_positions(result), c(TRUE, FALSE, FALSE))
+})
+
+# endregion
+
 # region: R-side mutation after Arrow roundtrip
 
 test_that("f64: R-side assignment after Arrow roundtrip works", {
