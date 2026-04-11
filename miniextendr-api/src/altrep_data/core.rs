@@ -290,6 +290,68 @@ pub trait AltrepExtractSubset {
 }
 // endregion
 
+// region: AltrepExtract - how to get &Self from an ALTREP SEXP
+
+/// How to extract a reference to `Self` from an ALTREP SEXP's data1 slot.
+///
+/// The default implementation (for types that implement `TypedExternal`) extracts
+/// via `ExternalPtr<T>` downcast from data1. Power users who want native SEXP
+/// storage can implement this trait manually.
+///
+/// # Safety
+///
+/// Implementations must ensure that the returned references are valid for the
+/// duration of the ALTREP callback (i.e., the SEXP is protected by R's GC).
+pub trait AltrepExtract: Sized {
+    /// Extract a shared reference from the ALTREP data1 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `x` must be a valid ALTREP SEXP whose data1 holds data of type `Self`
+    /// - Must be called from R's main thread
+    unsafe fn altrep_extract_ref(x: crate::ffi::SEXP) -> &'static Self;
+
+    /// Extract a mutable reference from the ALTREP data1 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `x` must be a valid ALTREP SEXP whose data1 holds data of type `Self`
+    /// - Must be called from R's main thread
+    /// - The caller must ensure no other references to the data exist
+    unsafe fn altrep_extract_mut(x: crate::ffi::SEXP) -> &'static mut Self;
+}
+
+/// Blanket implementation for types stored in ExternalPtr (the common case).
+///
+/// This is the default storage strategy: data1 is an EXTPTRSXP wrapping a
+/// `Box<Box<dyn Any>>` that downcasts to `&T`.
+impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
+    unsafe fn altrep_extract_ref(x: crate::ffi::SEXP) -> &'static Self {
+        // Use the unchecked variant — ALTREP callbacks are always on R's main thread.
+        // ExternalPtr wraps the SEXP and provides Deref<Target=T>.
+        // We transmute the borrow to 'static since the ALTREP object is GC-protected
+        // for the duration of the callback.
+        unsafe {
+            let ext = crate::altrep_data1_as_unchecked::<T>(x)
+                .expect("ALTREP data1 ExternalPtr extraction failed");
+            // ExternalPtr's Deref gives &T with the ExternalPtr's lifetime.
+            // The ALTREP SEXP keeps the ExternalPtr alive, so 'static is sound
+            // within the callback scope.
+            &*(ext.as_ref().unwrap() as *const T)
+        }
+    }
+
+    unsafe fn altrep_extract_mut(x: crate::ffi::SEXP) -> &'static mut Self {
+        // SAFETY: caller guarantees x is a valid ALTREP with ExternalPtr<T> in data1
+        // and that no other references exist. ALTREP callbacks are on R's main thread.
+        unsafe {
+            crate::altrep_data1_mut_unchecked::<T>(x)
+                .expect("ALTREP data1 mutable ExternalPtr extraction failed")
+        }
+    }
+}
+// endregion
+
 // region: InferBase trait - automatic base type inference from data traits
 
 /// Trait for inferring the R base type from a data type's implemented traits.
