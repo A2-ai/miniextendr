@@ -92,7 +92,8 @@ $(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
 # Automatic R wrapper generation.
 # Builds a cdylib (shared library) containing all linkme distributed_slice
 # entries, loads it in R, and calls miniextendr_write_wrappers() which
-# writes R/miniextendr-wrappers.R.
+# writes R/*-wrappers.R. The Rust code diffs old vs new and only overwrites
+# when content changes (printing a devtools::document() reminder).
 # NAMESPACE is NOT generated here — use devtools::document() for that.
 $(WRAPPERS_R): $(CARGO_CDYLIB)
 	@echo "Generating R wrappers..."
@@ -102,7 +103,7 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 	  _cdylib=$$(cygpath -m "$$_cdylib"); \
 	  _wrappers=$$(cygpath -m "$$_wrappers"); \
 	fi; \
-	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib')"
+	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib') }))"
 	@echo "Removing cdylib to prevent linker collision with staticlib..."
 	@rm -f '$(CARGO_CDYLIB)'
 
