@@ -781,9 +781,20 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
+    // Generate full registration (TypedExternal, AltrepClass, RegisterAltrep, IntoR,
+    // linkme entry, Ref/Mut) — same as derive_altrep_generic.
+    let class_name = attrs
+        .class_name
+        .as_deref()
+        .unwrap_or(&name.to_string())
+        .to_string();
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(name, generics, &class_name)?;
+
     Ok(quote! {
         #altrep_len_impl
         #alt_list_impl
         #lowlevel_impl
+        #registration_impl
     })
 }

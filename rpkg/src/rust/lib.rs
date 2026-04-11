@@ -1218,7 +1218,17 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for SimpleVecIntData {
     }
 }
 
-miniextendr_api::impl_altinteger_from_data!(SimpleVecIntData, dataptr);
+impl miniextendr_api::altrep_data::AltrepSerialize for SimpleVecIntData {
+    fn serialized_state(&self) -> miniextendr_api::ffi::SEXP {
+        <Vec<i32> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
+    }
+    fn unserialize(state: miniextendr_api::ffi::SEXP) -> Option<Self> {
+        <Vec<i32> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
+            .map(|data| Self { data })
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(SimpleVecIntData, dataptr, serialize);
 // endregion
 
 // region: SimpleVecString: Vec<Option<String>> wrapper (preserves NA)
@@ -1245,7 +1255,19 @@ impl AltStringData for StringVecData {
     }
 }
 
-miniextendr_api::impl_altstring_from_data!(StringVecData, dataptr);
+impl miniextendr_api::altrep_data::AltrepSerialize for StringVecData {
+    fn serialized_state(&self) -> miniextendr_api::ffi::SEXP {
+        <Vec<Option<String>> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(
+            &self.data,
+        )
+    }
+    fn unserialize(state: miniextendr_api::ffi::SEXP) -> Option<Self> {
+        <Vec<Option<String>> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
+            .map(|data| Self { data })
+    }
+}
+
+miniextendr_api::impl_altstring_from_data!(StringVecData, dataptr, serialize);
 
 // endregion
 
@@ -1281,7 +1303,17 @@ impl miniextendr_api::altrep_data::AltrepDataptr<u8> for SimpleVecRawData {
     }
 }
 
-miniextendr_api::impl_altraw_from_data!(SimpleVecRawData, dataptr);
+impl miniextendr_api::altrep_data::AltrepSerialize for SimpleVecRawData {
+    fn serialized_state(&self) -> miniextendr_api::ffi::SEXP {
+        <Vec<u8> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
+    }
+    fn unserialize(state: miniextendr_api::ffi::SEXP) -> Option<Self> {
+        <Vec<u8> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
+            .map(|data| Self { data })
+    }
+}
+
+miniextendr_api::impl_altraw_from_data!(SimpleVecRawData, dataptr, serialize);
 // endregion
 
 // region: InferredVecReal: Vec<f64> wrapper with base type inferred from inner type
@@ -1317,7 +1349,17 @@ impl miniextendr_api::altrep_data::AltrepDataptr<f64> for InferredVecRealData {
     }
 }
 
-miniextendr_api::impl_altreal_from_data!(InferredVecRealData, dataptr);
+impl miniextendr_api::altrep_data::AltrepSerialize for InferredVecRealData {
+    fn serialized_state(&self) -> miniextendr_api::ffi::SEXP {
+        <Vec<f64> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
+    }
+    fn unserialize(state: miniextendr_api::ffi::SEXP) -> Option<Self> {
+        <Vec<f64> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
+            .map(|data| Self { data })
+    }
+}
+
+miniextendr_api::impl_altreal_from_data!(InferredVecRealData, dataptr, serialize);
 // endregion
 
 // region: BoxedInts: Box<[i32]> wrapper (owned slice example)
@@ -1353,7 +1395,17 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for BoxedIntsData {
     }
 }
 
-miniextendr_api::impl_altinteger_from_data!(BoxedIntsData, dataptr);
+impl miniextendr_api::altrep_data::AltrepSerialize for BoxedIntsData {
+    fn serialized_state(&self) -> miniextendr_api::ffi::SEXP {
+        <Box<[i32]> as miniextendr_api::altrep_data::AltrepSerialize>::serialized_state(&self.data)
+    }
+    fn unserialize(state: miniextendr_api::ffi::SEXP) -> Option<Self> {
+        <Box<[i32]> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state)
+            .map(|data| Self { data })
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(BoxedIntsData, dataptr, serialize);
 
 /// Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`).
 /// @rdname altrep_special
