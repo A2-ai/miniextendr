@@ -51,9 +51,7 @@
 
 pub use indexmap::IndexMap;
 
-use crate::ffi::{
-    R_CHAR, R_NaString, R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt,
-};
+use crate::ffi::{R_xlen_t, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -87,11 +85,11 @@ where
             // Get name for this element
             let name = if has_names {
                 let name_charsxp = names_sexp.string_elt(i as R_xlen_t);
-                if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::nil() {
+                if name_charsxp == SEXP::na_string() || name_charsxp == SEXP::nil() {
                     // NA or missing name -> generate auto name
                     format!("V{}", i + 1)
                 } else {
-                    let c_str = unsafe { name_charsxp.r_char() };
+                    let c_str = name_charsxp.r_char();
                     if c_str.is_null() {
                         format!("V{}", i + 1)
                     } else {

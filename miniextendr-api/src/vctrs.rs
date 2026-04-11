@@ -9,9 +9,7 @@ use crate::ffi::SEXP;
 
 // region: Construction helpers (Phase A)
 
-use crate::ffi::{
-    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_xlength, SEXPTYPE, SexpExt,
-};
+use crate::ffi::{R_xlen_t, Rf_allocVector, Rf_xlength, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
 
@@ -189,7 +187,7 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
 
     // First pass: check if any NA
     for i in 0..n {
-        if unsafe { names.string_elt(i) == R_NaString } {
+        if names.string_elt(i) == SEXP::na_string() {
             has_na = true;
             break;
         }
@@ -203,8 +201,8 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
     let repaired = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
     for i in 0..n {
         let elem = names.string_elt(i);
-        let new_elem = if elem == unsafe { R_NaString } {
-            unsafe { R_BlankString }
+        let new_elem = if elem == SEXP::na_string() {
+            SEXP::blank_string()
         } else {
             elem
         };
@@ -362,7 +360,7 @@ pub fn new_rcrd(
     for i in 0..n_fields {
         // Check name
         let name_charsxp = names_sexp.string_elt(i);
-        if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::nil() {
+        if name_charsxp == SEXP::na_string() || name_charsxp == SEXP::nil() {
             return Err(VctrsBuildError::UnnamedFields);
         }
 
