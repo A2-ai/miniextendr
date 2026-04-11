@@ -163,11 +163,9 @@ macro_rules! __impl_altrep_base {
                 $crate::altrep_traits::AltrepGuard::$guard;
 
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltrepLen>::len(data) as $crate::ffi::R_xlen_t
             }
         }
     };
@@ -197,19 +195,17 @@ macro_rules! __impl_altrep_base_with_serialize {
                 $crate::altrep_traits::AltrepGuard::$guard;
 
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltrepLen>::len(data) as $crate::ffi::R_xlen_t
             }
 
             const HAS_SERIALIZED_STATE: bool = true;
 
             fn serialized_state(x: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepSerialize>::serialized_state(&*d))
-                    .unwrap_or($crate::ffi::SEXP::nil())
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltrepSerialize>::serialized_state(data)
             }
 
             const HAS_UNSERIALIZE: bool = true;
@@ -274,26 +270,26 @@ macro_rules! __impl_altvec_dataptr {
 
                 // Try the fast path: direct pointer from the underlying data.
                 let direct = if writable {
-                    unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1_mut_ref::<$ty>(&x) }
-                        .and_then(|d| {
-                            <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, true)
-                        })
+                    let d = unsafe {
+                        <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_mut(x)
+                    };
+                    <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, true)
                         .map(|p| p.cast::<core::ffi::c_void>())
                 } else {
                     // Read-only: try immutable access first to avoid &mut borrows
                     // and unnecessary copy-on-write for Cow types.
-                    let ro = unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                        .and_then(|d| {
-                            <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d)
-                        });
+                    let d = unsafe {
+                        <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+                    };
+                    let ro = <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(d);
                     if let Some(p) = ro {
                         return p.cast_mut().cast::<core::ffi::c_void>();
                     }
                     // dataptr_or_null returned None — try mutable path.
-                    unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1_mut_ref::<$ty>(&x) }
-                        .and_then(|d| {
-                            <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, false)
-                        })
+                    let d = unsafe {
+                        <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_mut(x)
+                    };
+                    <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, false)
                         .map(|p| p.cast::<core::ffi::c_void>())
                 };
 
@@ -320,10 +316,9 @@ macro_rules! __impl_altvec_dataptr {
                         return $crate::ffi::DATAPTR_RO(data2);
                     }
                 }
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| {
-                        <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d)
-                    })
+                let d =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(d)
                     .map(|p| p.cast::<core::ffi::c_void>())
                     .unwrap_or(core::ptr::null())
             }
@@ -505,12 +500,9 @@ macro_rules! __impl_altvec_extract_subset {
                 // Convert indx SEXP to slice using SexpExt (avoids raw-ptr-deref lint)
                 let indices = unsafe { $crate::ffi::SexpExt::as_slice::<i32>(&indx) };
 
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| {
-                        <$ty as $crate::altrep_data::AltrepExtractSubset>::extract_subset(
-                            &*d, indices,
-                        )
-                    })
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltrepExtractSubset>::extract_subset(data, indices)
                     .unwrap_or($crate::ffi::SEXP::nil())
             }
         }
@@ -535,9 +527,9 @@ macro_rules! __impl_alt_elt {
         const HAS_ELT: bool = true;
 
         fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $elem {
-            unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                .map(|d| <$ty as $trait>::elt(&*d, i.max(0) as usize))
-                .unwrap_or($na)
+            let data =
+                unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+            <$ty as $trait>::elt(data, i.max(0) as usize)
         }
     };
 }
@@ -558,16 +550,13 @@ macro_rules! __impl_alt_get_region {
             len: $crate::ffi::R_xlen_t,
             buf: &mut [$buf_ty],
         ) -> $crate::ffi::R_xlen_t {
-            unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                .map(|d| {
-                    if start < 0 || len <= 0 {
-                        return 0;
-                    }
-                    let len = len as usize;
-                    <$ty as $trait>::get_region(&*d, start as usize, len, buf)
-                        as $crate::ffi::R_xlen_t
-                })
-                .unwrap_or(0)
+            if start < 0 || len <= 0 {
+                return 0;
+            }
+            let data =
+                unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+            let len = len as usize;
+            <$ty as $trait>::get_region(data, start as usize, len, buf) as $crate::ffi::R_xlen_t
         }
     };
 }
@@ -583,8 +572,9 @@ macro_rules! __impl_alt_is_sorted {
         const HAS_IS_SORTED: bool = true;
 
         fn is_sorted(x: $crate::ffi::SEXP) -> i32 {
-            unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                .and_then(|d| <$ty as $trait>::is_sorted(&*d))
+            let data =
+                unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+            <$ty as $trait>::is_sorted(data)
                 .map(|s| s.to_r_int())
                 .unwrap_or(i32::MIN)
         }
@@ -602,8 +592,9 @@ macro_rules! __impl_alt_no_na {
         const HAS_NO_NA: bool = true;
 
         fn no_na(x: $crate::ffi::SEXP) -> i32 {
-            unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                .and_then(|d| <$ty as $trait>::no_na(&*d))
+            let data =
+                unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+            <$ty as $trait>::no_na(data)
                 .map(|b| if b { 1 } else { 0 })
                 .unwrap_or(0)
         }
@@ -725,23 +716,26 @@ macro_rules! __impl_altinteger_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::sum(&*d, narm))
-                    .map(|s| {
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                match <$ty as $crate::altrep_data::AltIntegerData>::sum(data, narm) {
+                    Some(s) => {
                         if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
                             $crate::ffi::SEXP::scalar_integer(s as i32)
                         } else {
                             $crate::ffi::SEXP::scalar_real(s as f64)
                         }
-                    })
-                    .unwrap_or($crate::ffi::SEXP::null())
+                    }
+                    None => $crate::ffi::SEXP::null(),
+                }
             }
 
             const HAS_MIN: bool = true;
 
             fn min(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::min(&*d, narm))
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltIntegerData>::min(data, narm)
                     .map(|m| $crate::ffi::SEXP::scalar_integer(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
@@ -749,8 +743,9 @@ macro_rules! __impl_altinteger_methods {
             const HAS_MAX: bool = true;
 
             fn max(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::max(&*d, narm))
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltIntegerData>::max(data, narm)
                     .map(|m| $crate::ffi::SEXP::scalar_integer(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
@@ -859,8 +854,9 @@ macro_rules! __impl_altreal_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::sum(&*d, narm))
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltRealData>::sum(data, narm)
                     .map(|s| $crate::ffi::SEXP::scalar_real(s))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
@@ -868,8 +864,9 @@ macro_rules! __impl_altreal_methods {
             const HAS_MIN: bool = true;
 
             fn min(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::min(&*d, narm))
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltRealData>::min(data, narm)
                     .map(|m| $crate::ffi::SEXP::scalar_real(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
@@ -877,8 +874,9 @@ macro_rules! __impl_altreal_methods {
             const HAS_MAX: bool = true;
 
             fn max(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::max(&*d, narm))
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltRealData>::max(data, narm)
                     .map(|m| $crate::ffi::SEXP::scalar_real(m))
                     .unwrap_or($crate::ffi::SEXP::null())
             }
@@ -987,12 +985,10 @@ macro_rules! __impl_altlogical_methods {
             const HAS_ELT: bool = true;
 
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> i32 {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltLogicalData>::elt(&*d, i.max(0) as usize)
-                            .to_r_int()
-                    })
-                    .unwrap_or(i32::MIN)
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltLogicalData>::elt(data, i.max(0) as usize)
+                    .to_r_int()
             }
 
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltLogicalData, i32);
@@ -1003,16 +999,18 @@ macro_rules! __impl_altlogical_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::ffi::SEXP, narm: bool) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltLogicalData>::sum(&*d, narm))
-                    .map(|s| {
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                match <$ty as $crate::altrep_data::AltLogicalData>::sum(data, narm) {
+                    Some(s) => {
                         if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
                             $crate::ffi::SEXP::scalar_integer(s as i32)
                         } else {
                             $crate::ffi::SEXP::scalar_real(s as f64)
                         }
-                    })
-                    .unwrap_or($crate::ffi::SEXP::null())
+                    }
+                    None => $crate::ffi::SEXP::null(),
+                }
             }
         }
     };
@@ -1215,16 +1213,12 @@ macro_rules! __impl_altstring_methods {
                     }
 
                     // Cache miss (or genuine NA) — probe Rust source
-                    match $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) {
-                        Some(d) => {
-                            match <$ty as $crate::altrep_data::AltStringData>::elt(&*d, idx) {
-                                Some(s) => {
-                                    let charsxp = $crate::altrep_impl::checked_mkchar(s);
-                                    $crate::ffi::SexpExt::set_string_elt(&data2, i, charsxp);
-                                    charsxp
-                                }
-                                None => $crate::ffi::SEXP::na_string(),
-                            }
+                    let data = <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x);
+                    match <$ty as $crate::altrep_data::AltStringData>::elt(data, idx) {
+                        Some(s) => {
+                            let charsxp = $crate::altrep_impl::checked_mkchar(s);
+                            $crate::ffi::SexpExt::set_string_elt(&data2, i, charsxp);
+                            charsxp
                         }
                         None => $crate::ffi::SEXP::na_string(),
                     }
@@ -1249,11 +1243,9 @@ macro_rules! impl_altlist_from_data {
                 $crate::altrep_traits::AltrepGuard::$guard;
 
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltrepLen>::len(data) as $crate::ffi::R_xlen_t
             }
         }
 
@@ -1261,9 +1253,9 @@ macro_rules! impl_altlist_from_data {
 
         impl $crate::altrep_traits::AltList for $ty {
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
-                unsafe { $crate::altrep_ext::AltrepSexpExt::altrep_data1::<$ty>(&x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
-                    .unwrap_or(unsafe { $crate::ffi::SEXP::nil() })
+                let data =
+                    unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+                <$ty as $crate::altrep_data::AltListData>::elt(data, i.max(0) as usize)
             }
         }
 

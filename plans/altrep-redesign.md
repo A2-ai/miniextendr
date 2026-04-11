@@ -3,6 +3,7 @@
 ## Goal
 
 Redesign the ALTREP system so that:
+
 1. One struct + one derive = complete ALTREP class (no wrapper struct, no macro calls)
 2. The storage strategy (ExternalPtr vs native SEXP vs computed) is explicit and pluggable
 3. The trait system matches R's actual runtime dispatch model
@@ -11,6 +12,7 @@ Redesign the ALTREP system so that:
 ## R's ALTREP: What Actually Exists
 
 From `altrep.c` and `Altrep.h`, an ALTREP object is:
+
 - A normal SEXP (INTSXP, REALSXP, etc.) with the ALTREP bit set
 - TAG field points to the class object
 - Class object = RAWSXP whose DATAPTR holds a method struct (vtable)
@@ -43,6 +45,7 @@ From `altrep.c` and `Altrep.h`, an ALTREP object is:
 | altlist | Elt, Set_elt | Elt **required** (default = error) |
 
 Key R behaviors:
+
 - **Elt default for numeric types falls back to DATAPTR** — `INTEGER(x)[i]` calls `DATAPTR(x)` which calls the Dataptr method. If neither Elt nor Dataptr is set, you get "cannot access data pointer" error.
 - **Get_region default iterates Elt** — so providing Elt is sufficient.
 - **Sum/Min/Max default returns NULL** — R falls back to its standard implementation.
@@ -314,6 +317,7 @@ Layer 1 (R):        R_set_altinteger_Elt_method(cls, fn_ptr)
 ```
 
 Problems:
+
 1. **Two-struct pattern**: wrapper struct + data struct, always
 2. **Three separate derives/macros**: `#[derive(ExternalPtr)]` + `#[derive(AltrepInteger)]` + `impl_altinteger_from_data!(T)` or `#[miniextendr]` on wrapper
 3. **Always ExternalPtr**: no way to use native SEXP storage
@@ -341,6 +345,7 @@ impl AltIntegerData for ArithSeq {
 ```
 
 The `#[derive(Altrep)]` generates:
+
 1. `impl TypedExternal for ArithSeq` (ExternalPtr storage)
 2. `impl Altrep for ArithSeq` (bridges to AltrepLen)
 3. `impl AltVec for ArithSeq` (bridges to AltrepDataptr if implemented)
@@ -408,6 +413,7 @@ trait AltrepExtract: Sized {
 ```
 
 For ExternalPtr-backed types (the default):
+
 ```rust
 impl<T: TypedExternal> AltrepExtract for T {
     unsafe fn extract_ref(x: SEXP) -> &T {
@@ -476,6 +482,7 @@ struct MyVec(Vec<i32>);
 ```
 
 Or equivalently, implement the capability traits:
+
 ```rust
 impl AltrepDataptr<i32> for MyVec { ... }
 impl AltrepSerialize for MyVec { ... }
