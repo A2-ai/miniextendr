@@ -20,7 +20,7 @@ R's build system is a hierarchy of makefiles included in a specific order.
 Understanding this order is essential because later includes can override
 earlier definitions.
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │ 1. Package's src/Makevars              │  ← We define PKG_LIBS, deps, recipes
 │    (or src/Makevars.win on Windows)     │
@@ -193,7 +193,7 @@ This means:
 
 ## Build Flow Summary
 
-```
+```text
 configure.ac → configure → Makevars (from Makevars.in)
                          → .cargo/config.toml (from cargo-config.toml.in)
 

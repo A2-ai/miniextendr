@@ -91,7 +91,7 @@ The class-level roxygen block gets a single `@importFrom lifecycle badge depreca
 
 The generated R code depends on the `lifecycle` package. Add it to your package's `DESCRIPTION`:
 
-```
+```text
 Imports: lifecycle
 ```
 

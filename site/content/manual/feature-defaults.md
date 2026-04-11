@@ -72,7 +72,7 @@ These feature pairs cannot be enabled simultaneously (compile error):
 
 Features are defined in `miniextendr-macros` and forwarded by `miniextendr-api`:
 
-```
+```text
 miniextendr-api/default-strict  →  miniextendr-macros/default-strict
 ```
 
@@ -148,7 +148,7 @@ impl MyType {
 `error_in_r` and `unwrap_in_r` are mutually exclusive. Since `error_in_r` is now the
 default, specifying `unwrap_in_r` without `no_error_in_r` produces a helpful error:
 
-```
+```text
 error: `error_in_r` (default) and `unwrap_in_r` are mutually exclusive;
        use `no_error_in_r` to opt out
 ```

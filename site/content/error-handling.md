@@ -58,7 +58,7 @@ try_parse("abc")     # list(error = "invalid digit...")
 
 miniextendr wraps all R API calls in `R_UnwindProtect`, ensuring Rust destructors run even when R longjmps (e.g., on `stop()` or `Rf_error()`).
 
-```
+```text
 User Rust code
   |
   v
