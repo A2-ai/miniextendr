@@ -438,9 +438,13 @@ pub fn write_r_wrappers_to_file(path: &str) {
         .unwrap_or_else(|e| panic!("failed to write {path}: {e}"));
 
     if !existing.is_empty() {
-        eprintln!(
-            "NOTE: miniextendr-wrappers.R changed — run `just devtools-document` to update NAMESPACE + man pages"
-        );
+        let filename = std::path::Path::new(path)
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("wrappers.R");
+        eprintln!();
+        eprintln!("NOTE: {filename} changed — run devtools::document() to update NAMESPACE.");
+        eprintln!();
     }
 }
 // endregion
