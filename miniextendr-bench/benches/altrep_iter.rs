@@ -8,7 +8,7 @@ use miniextendr_bench::raw_ffi;
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
 #[derive(miniextendr_api::Altrep)]
-#[altrep_derive_opts(class = "BenchIterInt")]
+#[altrep(class = "BenchIterInt")]
 pub struct BenchIterIntData {
     inner: IterIntData<std::ops::Range<i32>>,
 }

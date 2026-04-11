@@ -302,6 +302,15 @@ pub trait AltrepExtractSubset {
 ///
 /// Implementations must ensure that the returned references are valid for the
 /// duration of the ALTREP callback (i.e., the SEXP is protected by R's GC).
+///
+/// # Panics
+///
+/// The blanket implementation panics if ExternalPtr extraction fails (type
+/// mismatch, null pointer, etc.). This is a programmer error, not a runtime
+/// condition. Callers must ensure the ALTREP SEXP was created with the correct
+/// data type. The panic is caught by the ALTREP guard (`RustUnwind` or `RUnwind`)
+/// and converted to an R error. Using `AltrepGuard::Unsafe` with a type that
+/// can fail extraction is unsound.
 pub trait AltrepExtract: Sized {
     /// Extract a shared reference from the ALTREP data1 slot.
     ///
@@ -327,16 +336,14 @@ pub trait AltrepExtract: Sized {
 /// `Box<Box<dyn Any>>` that downcasts to `&T`.
 impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
     unsafe fn altrep_extract_ref(x: crate::ffi::SEXP) -> &'static Self {
-        // Use the unchecked variant — ALTREP callbacks are always on R's main thread.
-        // ExternalPtr wraps the SEXP and provides Deref<Target=T>.
-        // We transmute the borrow to 'static since the ALTREP object is GC-protected
-        // for the duration of the callback.
+        // SAFETY: ALTREP callbacks are always on R's main thread, so unchecked is safe.
+        // `ExternalPtr` is a non-owning wrapper around an R SEXP — dropping it does NOT
+        // deallocate the underlying data. The data lives in the ALTREP's data1 slot,
+        // which R's GC keeps alive for the duration of the callback. So the pointer
+        // derived from `ext.as_ref()` remains valid after `ext` is dropped.
         unsafe {
             let ext = crate::altrep_data1_as_unchecked::<T>(x)
                 .expect("ALTREP data1 ExternalPtr extraction failed");
-            // ExternalPtr's Deref gives &T with the ExternalPtr's lifetime.
-            // The ALTREP SEXP keeps the ExternalPtr alive, so 'static is sound
-            // within the callback scope.
             &*(ext.as_ref().unwrap() as *const T)
         }
     }
@@ -344,6 +351,9 @@ impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
     unsafe fn altrep_extract_mut(x: crate::ffi::SEXP) -> &'static mut Self {
         // SAFETY: caller guarantees x is a valid ALTREP with ExternalPtr<T> in data1
         // and that no other references exist. ALTREP callbacks are on R's main thread.
+        // `altrep_data1_mut_unchecked` goes through `ErasedExternalPtr::downcast_mut`
+        // which returns a reference with transmuted 'static lifetime — sound because
+        // R's GC protects the ALTREP SEXP (and thus its data1) for the callback duration.
         unsafe {
             crate::altrep_data1_mut_unchecked::<T>(x)
                 .expect("ALTREP data1 mutable ExternalPtr extraction failed")

@@ -12,7 +12,7 @@ use miniextendr_api::prelude::*;
 type IntReader = Box<dyn Fn(usize, &mut [i32]) -> usize>;
 
 #[derive(miniextendr_api::Altrep)]
-#[altrep_derive_opts(class = "StreamingIntRange")]
+#[altrep(class = "StreamingIntRange")]
 pub struct StreamingIntRangeData {
     inner: StreamingIntData<IntReader>,
 }
@@ -57,7 +57,7 @@ pub fn streaming_int_range(n: i32) -> StreamingIntRangeData {
 type RealReader = Box<dyn Fn(usize, &mut [f64]) -> usize>;
 
 #[derive(miniextendr_api::Altrep)]
-#[altrep_derive_opts(class = "StreamingRealSquares")]
+#[altrep(class = "StreamingRealSquares")]
 pub struct StreamingRealSquaresData {
     inner: StreamingRealData<RealReader>,
 }

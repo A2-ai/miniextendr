@@ -2307,24 +2307,30 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
         .into()
 }
 
-/// Derive ALTREP class registration for a 1-field wrapper struct.
+/// Derive ALTREP registration for a data struct.
 ///
-/// Generates `AltrepClass`, `RegisterAltrep`, `IntoR`, `TryFromSexp` (Ref/Mut),
-/// and `From` implementations — the same output as `#[miniextendr]` on a 1-field struct.
+/// Generates `TypedExternal`, `AltrepClass`, `RegisterAltrep`, `IntoR`,
+/// linkme registration entry, and `Ref`/`Mut` accessor types.
+///
+/// The struct must already implement the low-level ALTREP traits (via
+/// `impl_alt*_from_data!` or a family-specific derive like `#[derive(AltrepInteger)]`).
 ///
 /// # Attributes
 ///
-/// - `#[altrep_derive_opts(class = "ClassName")]` — custom ALTREP class name (defaults to struct name)
-/// - `#[altrep_derive_opts(base = "Int")]` — explicit base type (Int|Real|Logical|Raw|String|List|Complex)
+/// - `#[altrep(class = "ClassName")]` — custom ALTREP class name (defaults to struct name)
 ///
 /// # Example
 ///
 /// ```ignore
 /// #[derive(Altrep)]
-/// #[altrep_derive_opts(base = "Int")]
-/// struct MyInts(Vec<i32>);
+/// #[altrep(class = "MyCustom")]
+/// struct MyData { ... }
+///
+/// impl AltrepLen for MyData { ... }
+/// impl AltIntegerData for MyData { ... }
+/// impl_altinteger_from_data!(MyData);
 /// ```
-#[proc_macro_derive(Altrep, attributes(altrep_derive_opts))]
+#[proc_macro_derive(Altrep, attributes(altrep, altrep_derive_opts))]
 pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep::derive_altrep(input)

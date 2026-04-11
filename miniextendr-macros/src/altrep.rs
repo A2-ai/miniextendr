@@ -259,8 +259,10 @@ pub(crate) fn generate_direct_altrep_registration(
 /// # Helper attributes
 ///
 /// ```ignore
-/// #[altrep_derive_opts(class = "CustomName")]  // override ALTREP class name (default: struct name)
+/// #[altrep(class = "CustomName")]  // override ALTREP class name (default: struct name)
 /// ```
+///
+/// The legacy `#[altrep_derive_opts(class = "...")]` syntax is also accepted.
 pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     use syn::spanned::Spanned;
 
@@ -273,23 +275,24 @@ pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenS
         ));
     }
 
-    // Parse #[altrep_derive_opts(class = "...")] helper attributes
+    // Parse class name from either #[altrep(class = "...")] or #[altrep_derive_opts(class = "...")]
     let mut class_name = None::<String>;
 
     for attr in &input.attrs {
-        if attr.path().is_ident("altrep_derive_opts") {
-            attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("class") {
-                    let value: syn::LitStr = meta.value()?.parse()?;
-                    class_name = Some(value.value());
-                } else {
-                    return Err(
-                        meta.error("unknown altrep_derive_opts attribute; expected `class`")
-                    );
-                }
-                Ok(())
-            })?;
+        let is_altrep = attr.path().is_ident("altrep");
+        let is_opts = attr.path().is_ident("altrep_derive_opts");
+        if !is_altrep && !is_opts {
+            continue;
         }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("class") {
+                let value: syn::LitStr = meta.value()?.parse()?;
+                class_name = Some(value.value());
+            } else {
+                return Err(meta.error("unknown attribute; expected `class`"));
+            }
+            Ok(())
+        })?;
     }
 
     let class_name = class_name.unwrap_or_else(|| ident.to_string());

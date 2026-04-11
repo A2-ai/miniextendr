@@ -209,13 +209,13 @@ fn expand_struct(
         attrs.externalptr || (!has_mode_attr && attrs.prefer.as_deref() == Some("externalptr"));
     let effective_mode = effective_list || effective_dataframe || effective_externalptr;
 
-    // 1-field struct: used to default to ALTREP, now use #[derive(Altrep)] instead
-    if n_fields == 1 && !effective_mode && attrs.prefer.is_none() {
+    // 1-field struct with explicit ALTREP attrs: error with migration guidance.
+    // ALTREP via #[miniextendr] is removed — use #[derive(Altrep)] instead.
+    if n_fields == 1 && has_altrep_attrs && !effective_mode {
         return syn::Error::new(
             item_struct.ident.span(),
-            "#[miniextendr] on 1-field structs is no longer supported for ALTREP. \
-             Use #[derive(miniextendr_api::Altrep)] with #[altrep_derive_opts(class = \"...\")] instead, \
-             or add #[miniextendr(prefer = \"externalptr\")] for ExternalPtr wrapping.",
+            "#[miniextendr] no longer supports ALTREP (class/base attributes). \
+             Use #[derive(miniextendr_api::Altrep)] with #[altrep_derive_opts(class = \"...\")] instead.",
         )
         .into_compile_error()
         .into();
