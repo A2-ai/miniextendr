@@ -869,8 +869,11 @@ pub fn bench_vec_altrep(n: i32) -> SEXP {
 
 // region: ConstantLogical: All TRUE or all FALSE
 
-#[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepLogical)]
-#[altrep(len = "len", elt = "value", dataptr)]
+// NEW PATTERN: single struct, no wrapper needed.
+// `#[derive(AltrepLogical)]` generates everything: TypedExternal, AltrepClass,
+// RegisterAltrep, IntoR, linkme entry, Ref/Mut accessor types.
+#[derive(miniextendr_api::AltrepLogical)]
+#[altrep(len = "len", elt = "value", dataptr, class = "ConstantLogical")]
 pub struct ConstantLogicalData {
     value: Logical,
     len: usize,
@@ -892,9 +895,6 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for ConstantLogicalData {
     }
 }
 
-#[miniextendr(class = "ConstantLogical")]
-pub struct ConstantLogicalClass(pub ConstantLogicalData);
-
 /// Create a constant-value logical ALTREP vector.
 /// @rdname constant_altrep
 /// @param value Integer encoding of the logical value (0 = FALSE, NA_integer_ = NA, other = TRUE).
@@ -913,7 +913,7 @@ pub fn constant_logical(value: i32, n: i32) -> SEXP {
         len: n as usize,
         materialized: None,
     };
-    ConstantLogicalClass(data).into_sexp()
+    data.into_sexp()
 }
 // endregion
 

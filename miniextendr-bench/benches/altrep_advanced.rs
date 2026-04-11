@@ -15,48 +15,36 @@ const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
 // region: Guard mode types: constant-value integer ALTREP with different guard modes. (Using constant elt isolates guard overhead from data access cost.)
 
-#[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepInteger)]
-#[altrep(len = "len", elt = "value")]
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(len = "len", elt = "value", class = "BenchGuardDefault")]
 pub struct GuardDefaultData {
     value: i32,
     len: usize,
 }
 
-#[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepInteger)]
-#[altrep(len = "len", elt = "value", r#unsafe)]
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(len = "len", elt = "value", r#unsafe, class = "BenchGuardUnsafe")]
 pub struct GuardUnsafeData {
     value: i32,
     len: usize,
 }
 
-#[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepInteger)]
-#[altrep(len = "len", elt = "value", r_unwind)]
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(len = "len", elt = "value", r_unwind, class = "BenchGuardRUnwind")]
 pub struct GuardRUnwindData {
     value: i32,
     len: usize,
 }
-
-#[miniextendr(class = "BenchGuardDefault")]
-struct BenchGuardDefault(GuardDefaultData);
-
-#[miniextendr(class = "BenchGuardUnsafe")]
-struct BenchGuardUnsafe(GuardUnsafeData);
-
-#[miniextendr(class = "BenchGuardRUnwind")]
-struct BenchGuardRUnwind(GuardRUnwindData);
 // endregion
 
 // region: Zero-allocation real ALTREP (constant value, no backing Vec).
 
-#[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepReal)]
-#[altrep(len = "len", elt = "value")]
+#[derive(miniextendr_api::AltrepReal)]
+#[altrep(len = "len", elt = "value", class = "BenchConstantReal")]
 pub struct ConstantRealData {
     value: f64,
     len: usize,
 }
-
-#[miniextendr(class = "BenchConstantReal")]
-struct BenchConstantReal(ConstantRealData);
 // endregion
 
 // region: Vec-backed ALTREP types (simple newtype pattern, default guard).
@@ -89,7 +77,7 @@ mod guard_modes {
     fn default_guard(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = GuardDefaultData { value: 42, len };
-        let sexp = BenchGuardDefault(data).into_sexp();
+        let sexp = data.into_sexp();
         let mut sum = 0i64;
         for i in 0..len {
             sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
@@ -102,7 +90,7 @@ mod guard_modes {
     fn unsafe_guard(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = GuardUnsafeData { value: 42, len };
-        let sexp = BenchGuardUnsafe(data).into_sexp();
+        let sexp = data.into_sexp();
         let mut sum = 0i64;
         for i in 0..len {
             sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
@@ -115,7 +103,7 @@ mod guard_modes {
     fn r_unwind_guard(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = GuardRUnwindData { value: 42, len };
-        let sexp = BenchGuardRUnwind(data).into_sexp();
+        let sexp = data.into_sexp();
         let mut sum = 0i64;
         for i in 0..len {
             sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
@@ -343,7 +331,7 @@ mod zero_alloc {
     fn create_constant(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = ConstantRealData { value: 1.0, len };
-        divan::black_box(BenchConstantReal(data).into_sexp());
+        divan::black_box(data.into_sexp());
     }
 
     /// Vec-backed real ALTREP creation (allocates Vec<f64>).
@@ -367,7 +355,7 @@ mod zero_alloc {
     fn constant_elt(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = ConstantRealData { value: 1.0, len };
-        let sexp = BenchConstantReal(data).into_sexp();
+        let sexp = data.into_sexp();
         divan::black_box(sexp.real_elt(0));
     }
 
@@ -385,7 +373,7 @@ mod zero_alloc {
     fn constant_full_scan(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = ConstantRealData { value: 1.0, len };
-        let sexp = BenchConstantReal(data).into_sexp();
+        let sexp = data.into_sexp();
         let mut sum = 0.0f64;
         for i in 0..len {
             sum += sexp.real_elt(i as ffi::R_xlen_t);
@@ -478,7 +466,7 @@ mod creation {
     fn constant_real(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data = ConstantRealData { value: 1.0, len };
-        divan::black_box(BenchConstantReal(data).into_sexp());
+        divan::black_box(data.into_sexp());
     }
 }
 // endregion
