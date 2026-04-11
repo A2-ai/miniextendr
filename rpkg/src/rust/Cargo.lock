@@ -3748,3 +3748,19 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[patch.unused]]
+name = "miniextendr-api"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "miniextendr-lint"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "miniextendr-macros"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "miniextendr-macros-core"
+version = "0.1.0"

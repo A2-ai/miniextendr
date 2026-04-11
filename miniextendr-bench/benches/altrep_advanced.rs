@@ -5,10 +5,13 @@
 //! characteristics. Guard mode benchmarks use constant-value ALTREP to isolate
 //! guard overhead from data-access patterns.
 
+use miniextendr_api::IntoR;
+use miniextendr_api::altrep_data::{
+    AltComplexData, AltIntegerData, AltRealData, AltStringData, AltrepDataptr, AltrepLen,
+};
 use miniextendr_api::ffi;
 use miniextendr_api::ffi::Rcomplex;
 use miniextendr_api::ffi::SexpExt;
-use miniextendr_api::{IntoR, miniextendr};
 use miniextendr_bench::raw_ffi;
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
@@ -47,19 +50,129 @@ pub struct ConstantRealData {
 }
 // endregion
 
-// region: Vec-backed ALTREP types (simple newtype pattern, default guard).
+// region: Vec-backed ALTREP types (named-field struct pattern, default guard).
 
-#[miniextendr(class = "BenchIntVec")]
-struct BenchIntVec(Vec<i32>);
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "BenchIntVec")]
+pub struct BenchIntVec {
+    data: Vec<i32>,
+}
 
-#[miniextendr(class = "BenchRealVec")]
-struct BenchRealVec(Vec<f64>);
+impl AltrepLen for BenchIntVec {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
 
-#[miniextendr(class = "BenchString")]
-struct BenchString(Vec<Option<String>>);
+impl AltIntegerData for BenchIntVec {
+    fn elt(&self, i: usize) -> i32 {
+        self.data[i]
+    }
 
-#[miniextendr(class = "BenchComplex")]
-struct BenchComplex(Vec<Rcomplex>);
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
+}
+
+impl AltrepDataptr<i32> for BenchIntVec {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        Some(self.data.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(BenchIntVec, dataptr);
+
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "BenchRealVec")]
+pub struct BenchRealVec {
+    data: Vec<f64>,
+}
+
+impl AltrepLen for BenchRealVec {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltRealData for BenchRealVec {
+    fn elt(&self, i: usize) -> f64 {
+        self.data[i]
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        Some(&self.data)
+    }
+}
+
+impl AltrepDataptr<f64> for BenchRealVec {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
+        Some(self.data.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const f64> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altreal_from_data!(BenchRealVec, dataptr);
+
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "BenchString")]
+pub struct BenchString {
+    data: Vec<Option<String>>,
+}
+
+impl AltrepLen for BenchString {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltStringData for BenchString {
+    fn elt(&self, i: usize) -> Option<&str> {
+        self.data[i].as_deref()
+    }
+}
+
+miniextendr_api::impl_altstring_from_data!(BenchString);
+
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "BenchComplex")]
+pub struct BenchComplex {
+    data: Vec<Rcomplex>,
+}
+
+impl AltrepLen for BenchComplex {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltComplexData for BenchComplex {
+    fn elt(&self, i: usize) -> Rcomplex {
+        self.data[i]
+    }
+
+    fn as_slice(&self) -> Option<&[Rcomplex]> {
+        Some(&self.data)
+    }
+}
+
+impl AltrepDataptr<Rcomplex> for BenchComplex {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut Rcomplex> {
+        Some(self.data.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const Rcomplex> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altcomplex_from_data!(BenchComplex, dataptr);
 
 fn main() {
     miniextendr_bench::init();
@@ -135,7 +248,7 @@ mod materialization {
     fn altrep_dataptr_ro(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<i32> = (0..len as i32).collect();
-        let sexp = BenchIntVec::from(data).into_sexp();
+        let sexp = (BenchIntVec { data }).into_sexp();
         unsafe {
             divan::black_box(ffi::DATAPTR_RO(sexp));
         }
@@ -146,7 +259,7 @@ mod materialization {
     fn altrep_full_scan_elt(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<i32> = (0..len as i32).collect();
-        let sexp = BenchIntVec::from(data).into_sexp();
+        let sexp = (BenchIntVec { data }).into_sexp();
         let mut sum: i64 = 0;
         for i in 0..len {
             sum += sexp.integer_elt(i as ffi::R_xlen_t) as i64;
@@ -159,7 +272,7 @@ mod materialization {
     fn altrep_full_scan_dataptr(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<i32> = (0..len as i32).collect();
-        let sexp = BenchIntVec::from(data).into_sexp();
+        let sexp = (BenchIntVec { data }).into_sexp();
         unsafe {
             let ptr = ffi::DATAPTR_RO(sexp).cast::<i32>();
             let mut sum: i64 = 0;
@@ -206,7 +319,7 @@ mod string_altrep {
     fn create(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<Option<String>> = (0..len).map(|i| Some(format!("str_{i}"))).collect();
-        divan::black_box(BenchString::from(data).into_sexp());
+        divan::black_box((BenchString { data }).into_sexp());
     }
 
     /// String ALTREP elt access (returns CHARSXP, converts from Rust String).
@@ -214,7 +327,7 @@ mod string_altrep {
     fn elt(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<Option<String>> = (0..len).map(|i| Some(format!("str_{i}"))).collect();
-        let sexp = BenchString::from(data).into_sexp();
+        let sexp = (BenchString { data }).into_sexp();
         unsafe {
             divan::black_box(raw_ffi::STRING_ELT(sexp, 0));
         }
@@ -233,7 +346,7 @@ mod string_altrep {
                 }
             })
             .collect();
-        let sexp = BenchString::from(data).into_sexp();
+        let sexp = (BenchString { data }).into_sexp();
         unsafe {
             divan::black_box(raw_ffi::STRING_ELT(sexp, (len - 1) as isize));
         }
@@ -244,7 +357,7 @@ mod string_altrep {
     fn force_materialize(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<Option<String>> = (0..len).map(|i| Some(format!("str_{i}"))).collect();
-        let sexp = BenchString::from(data).into_sexp();
+        let sexp = (BenchString { data }).into_sexp();
         unsafe {
             divan::black_box(ffi::DATAPTR_RO(sexp));
         }
@@ -281,7 +394,7 @@ mod complex_altrep {
                 }
             })
             .collect();
-        let sexp = BenchComplex::from(data).into_sexp();
+        let sexp = (BenchComplex { data }).into_sexp();
         divan::black_box(sexp.complex_elt(0));
     }
 
@@ -295,7 +408,7 @@ mod complex_altrep {
                 i: 0.0,
             })
             .collect();
-        let sexp = BenchComplex::from(data).into_sexp();
+        let sexp = (BenchComplex { data }).into_sexp();
         unsafe {
             divan::black_box(ffi::DATAPTR_RO(sexp));
         }
@@ -311,7 +424,7 @@ mod complex_altrep {
                 i: 0.0,
             })
             .collect();
-        let sexp = BenchComplex::from(data).into_sexp();
+        let sexp = (BenchComplex { data }).into_sexp();
         let mut sum_r = 0.0f64;
         for i in 0..len {
             sum_r += sexp.complex_elt(i as ffi::R_xlen_t).r;
@@ -339,7 +452,7 @@ mod zero_alloc {
     fn create_vec_backed(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
-        divan::black_box(BenchRealVec::from(data).into_sexp());
+        divan::black_box((BenchRealVec { data }).into_sexp());
     }
 
     /// Plain REALSXP creation (baseline).
@@ -364,7 +477,7 @@ mod zero_alloc {
     fn vec_backed_elt(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
-        let sexp = BenchRealVec::from(data).into_sexp();
+        let sexp = (BenchRealVec { data }).into_sexp();
         divan::black_box(sexp.real_elt(0));
     }
 
@@ -386,7 +499,7 @@ mod zero_alloc {
     fn vec_backed_full_scan(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<f64> = (0..len).map(|i| i as f64).collect();
-        let sexp = BenchRealVec::from(data).into_sexp();
+        let sexp = (BenchRealVec { data }).into_sexp();
         let mut sum = 0.0f64;
         for i in 0..len {
             sum += sexp.real_elt(i as ffi::R_xlen_t);
@@ -421,7 +534,7 @@ mod creation {
     fn altrep_int(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<i32> = (0..len as i32).collect();
-        divan::black_box(BenchIntVec::from(data).into_sexp());
+        divan::black_box((BenchIntVec { data }).into_sexp());
     }
 
     /// Plain INTSXP creation via into_sexp (baseline).
@@ -437,7 +550,7 @@ mod creation {
     fn altrep_string(size_idx: usize) {
         let len = miniextendr_bench::SIZES[size_idx];
         let data: Vec<Option<String>> = (0..len).map(|i| Some(format!("s{i}"))).collect();
-        divan::black_box(BenchString::from(data).into_sexp());
+        divan::black_box((BenchString { data }).into_sexp());
     }
 
     /// Plain STRSXP creation via into_sexp (baseline).
@@ -458,7 +571,7 @@ mod creation {
                 i: 0.0,
             })
             .collect();
-        divan::black_box(BenchComplex::from(data).into_sexp());
+        divan::black_box((BenchComplex { data }).into_sexp());
     }
 
     /// Zero-allocation constant ALTREP — cost should be O(1) regardless of len.

@@ -244,20 +244,23 @@ mod worker_tests;
 mod zero_copy_tests;
 
 // region: proc-macro ALTREP test
-// This tests the #[miniextendr] on struct path for custom ALTREP classes.
+// This tests #[derive(Altrep)] for custom ALTREP classes.
 //
-// The new approach requires:
-// 1. A data type that implements high-level data traits (AltrepLen, AltIntegerData, etc.)
-// 2. Low-level trait impls generated via impl_alt*_from_data! macro
-// 3. A 1-field wrapper struct with #[miniextendr] macro
+// The direct registration pattern requires:
+// 1. A data type with #[derive(Altrep)] + #[altrep_derive_opts(class = "...")]
+// 2. High-level data trait impls (AltrepLen, AltIntegerData, etc.)
+// 3. Low-level trait impls generated via impl_alt*_from_data! macro
+// No wrapper struct needed — the data type registers directly.
 
 use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
 // endregion
 
 // region: ConstantInt: An ALTREP integer that always returns the same value
 
-/// Data type that stores a constant value and length
-#[derive(miniextendr_api::ExternalPtr)]
+/// Data type that stores a constant value and length.
+/// Uses the direct registration pattern — no wrapper struct needed.
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "ConstantInt")]
 pub struct ConstantIntData {
     value: i32,
     len: usize,
@@ -313,27 +316,23 @@ impl miniextendr_api::altrep_data::AltrepSerialize for ConstantIntData {
 // Generate low-level traits from data traits (also enables base type inference)
 miniextendr_api::impl_altinteger_from_data!(ConstantIntData, materializing_dataptr, serialize);
 
-/// ALTREP class wrapper for constant integer data.
-#[miniextendr(class = "ConstantInt")]
-pub struct ConstantIntClass(pub ConstantIntData);
-
 /// Create a constant-value integer ALTREP vector (10 elements, all 42).
 /// @rdname constant_altrep
 /// @return An ALTREP integer vector.
 /// @export
 #[miniextendr]
-pub fn constant_int() -> ConstantIntClass {
-    ConstantIntClass(ConstantIntData { value: 42, len: 10 })
+pub fn constant_int() -> ConstantIntData {
+    ConstantIntData { value: 42, len: 10 }
 }
 
 // endregion
 
-// region: Additional ALTREP examples - using new 1-field struct pattern
+// region: Additional ALTREP examples - using direct registration pattern
 //
-// The new ALTREP API requires:
-// 1. A data type that implements high-level data traits (AltrepLen, Alt*Data)
-// 2. Low-level trait impls generated via impl_alt*_from_data! macro
-// 3. A 1-field wrapper struct with #[miniextendr] macro
+// The ALTREP API requires:
+// 1. A data type with #[derive(Altrep)] + #[altrep_derive_opts(class = "...")]
+// 2. High-level data trait impls (AltrepLen, Alt*Data)
+// 3. Low-level trait impls generated via impl_alt*_from_data! macro
 //
 // For custom behavior that can't be expressed through the data traits,
 // manually implement the low-level traits on the data type.
@@ -345,7 +344,8 @@ use miniextendr_api::altrep_data::{
 
 // region: ConstantReal: All elements are PI
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "ConstantReal")]
 pub struct ConstantRealData {
     value: f64,
     len: usize,
@@ -368,25 +368,23 @@ impl AltRealData for ConstantRealData {
 
 miniextendr_api::impl_altreal_from_data!(ConstantRealData, materializing_dataptr);
 
-#[miniextendr(class = "ConstantReal")]
-pub struct ConstantRealClass(pub ConstantRealData);
-
 /// Create a constant-value real ALTREP vector (10 elements, all pi).
 /// @rdname constant_altrep
 /// @return An ALTREP real vector.
 /// @export
 #[miniextendr]
-pub fn constant_real() -> ConstantRealClass {
-    ConstantRealClass(ConstantRealData {
+pub fn constant_real() -> ConstantRealData {
+    ConstantRealData {
         value: std::f64::consts::PI,
         len: 10,
-    })
+    }
 }
 // endregion
 
 // region: ArithSeq: Arithmetic sequence (like R's seq())
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "ArithSeq")]
 pub struct ArithSeqData {
     start: f64,
     step: f64,
@@ -410,9 +408,6 @@ impl AltRealData for ArithSeqData {
 
 miniextendr_api::impl_altreal_from_data!(ArithSeqData);
 
-#[miniextendr(class = "ArithSeq")]
-pub struct ArithSeqClass(pub ArithSeqData);
-
 #[miniextendr]
 pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
     let len = length_out as usize;
@@ -421,7 +416,7 @@ pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
         step,
         len,
     };
-    ArithSeqClass(data).into_sexp()
+    data.into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -433,7 +428,8 @@ pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
 // -----------------------------------------------------------------------------
 
 /// Data type for lazy integer sequence with materialization support
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "LazyIntSeq")]
 pub struct LazyIntSeqData {
     start: i32,
     step: i32,
@@ -638,10 +634,6 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
 // Use the dataptr + serialize variant to enable both Dataptr and serialization methods
 miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
 
-/// ALTREP class wrapper for lazy integer sequences.
-#[miniextendr(class = "LazyIntSeq")]
-pub struct LazyIntSeqClass(pub LazyIntSeqData);
-
 /// Create a lazy integer sequence ALTREP (like R's `seq()`).
 ///
 /// Elements are computed on demand; materialization is deferred until
@@ -664,7 +656,7 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
         len,
         materialized: None,
     };
-    LazyIntSeqClass(data).into_sexp()
+    data.into_sexp()
 }
 
 /// Check if a lazy integer sequence ALTREP has been materialized.
@@ -703,17 +695,17 @@ pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
 /// @return An ALTREP integer vector.
 /// @export
 #[miniextendr]
-pub fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
+pub fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqData {
     if n < 0 {
         panic!("altrep_compact_int: n must be >= 0");
     }
     let len = if n == 0 { 0 } else { n as usize };
-    LazyIntSeqClass(LazyIntSeqData {
+    LazyIntSeqData {
         start,
         step,
         len,
         materialized: None,
-    })
+    }
 }
 
 /// Create an ALTREP real vector from a double vector.
@@ -722,8 +714,8 @@ pub fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
 /// @return An ALTREP real vector.
 /// @export
 #[miniextendr]
-pub fn altrep_from_doubles(x: Vec<f64>) -> InferredVecRealClass {
-    InferredVecRealClass(x)
+pub fn altrep_from_doubles(x: Vec<f64>) -> InferredVecRealData {
+    InferredVecRealData { data: x }
 }
 
 /// Create an ALTREP string vector from a character vector (NA-preserving).
@@ -732,8 +724,8 @@ pub fn altrep_from_doubles(x: Vec<f64>) -> InferredVecRealClass {
 /// @return An ALTREP string vector.
 /// @export
 #[miniextendr]
-pub fn altrep_from_strings(x: Vec<Option<String>>) -> SimpleVecStringClass {
-    SimpleVecStringClass(StringVecData { data: x })
+pub fn altrep_from_strings(x: Vec<Option<String>>) -> StringVecData {
+    StringVecData { data: x }
 }
 
 /// Create an ALTREP logical vector from a logical vector (NA-preserving).
@@ -742,8 +734,8 @@ pub fn altrep_from_strings(x: Vec<Option<String>>) -> SimpleVecStringClass {
 /// @return An ALTREP logical vector.
 /// @export
 #[miniextendr]
-pub fn altrep_from_logicals(x: Vec<Logical>) -> LogicalVecClass {
-    LogicalVecClass(LogicalVecData { data: x })
+pub fn altrep_from_logicals(x: Vec<Logical>) -> LogicalVecData {
+    LogicalVecData { data: x }
 }
 
 /// Create an ALTREP raw vector from raw bytes.
@@ -752,8 +744,8 @@ pub fn altrep_from_logicals(x: Vec<Logical>) -> LogicalVecClass {
 /// @return An ALTREP raw vector.
 /// @export
 #[miniextendr]
-pub fn altrep_from_raw(x: &[u8]) -> SimpleVecRawClass {
-    SimpleVecRawClass(x.to_vec())
+pub fn altrep_from_raw(x: &[u8]) -> SimpleVecRawData {
+    SimpleVecRawData { data: x.to_vec() }
 }
 
 /// Create an ALTREP integer vector from an integer vector.
@@ -762,8 +754,8 @@ pub fn altrep_from_raw(x: &[u8]) -> SimpleVecRawClass {
 /// @return An ALTREP integer vector.
 /// @export
 #[miniextendr]
-pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
-    SimpleVecIntClass(x)
+pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntData {
+    SimpleVecIntData { data: x }
 }
 
 /// Create an ALTREP list from an R list, preserving the original SEXP.
@@ -772,7 +764,7 @@ pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
 /// @return An ALTREP list.
 /// @export
 #[miniextendr]
-pub fn altrep_from_list(x: SEXP) -> ListDataClass {
+pub fn altrep_from_list(x: SEXP) -> ListData {
     use miniextendr_api::ffi::{R_PreserveObject, SexpExt};
 
     if !x.is_list() {
@@ -784,7 +776,7 @@ pub fn altrep_from_list(x: SEXP) -> ListDataClass {
     }
 
     let len = x.len();
-    ListDataClass(ListData { list: x, len })
+    ListData { list: x, len }
 }
 // endregion
 
@@ -919,7 +911,8 @@ pub fn constant_logical(value: i32, n: i32) -> SEXP {
 
 // region: LogicalVec: Vec<Logical> wrapper (preserves NA)
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "LogicalVec")]
 pub struct LogicalVecData {
     data: Vec<Logical>,
 }
@@ -1002,13 +995,12 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
 
 miniextendr_api::impl_altlogical_from_data!(LogicalVecData, serialize);
 
-#[miniextendr(class = "LogicalVec")]
-pub struct LogicalVecClass(pub LogicalVecData);
 // endregion
 
 // region: LazyString: Lazily-generated strings
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "LazyString")]
 pub struct LazyStringData {
     pub prefix: String,
     pub len: usize,
@@ -1034,9 +1026,6 @@ impl AltStringData for LazyStringData {
 
 miniextendr_api::impl_altstring_from_data!(LazyStringData);
 
-#[miniextendr(class = "LazyString")]
-pub struct LazyStringClass(pub LazyStringData);
-
 /// Create a lazy string ALTREP that computes elements on demand.
 /// @rdname lazy_string_altrep
 /// @param prefix String prefix for generated elements.
@@ -1049,13 +1038,14 @@ pub fn lazy_string(prefix: &str, n: i32) -> SEXP {
         prefix: prefix.to_string(),
         len: n as usize,
     };
-    LazyStringClass(data).into_sexp()
+    data.into_sexp()
 }
 // endregion
 
 // region: RepeatingRaw: Repeating byte pattern
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "RepeatingRaw")]
 pub struct RepeatingRawData {
     pattern: Vec<u8>,
     total_len: usize,
@@ -1079,9 +1069,6 @@ impl AltRawData for RepeatingRawData {
 
 miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
 
-#[miniextendr(class = "RepeatingRaw")]
-pub struct RepeatingRawClass(pub RepeatingRawData);
-
 /// Create a repeating raw byte pattern ALTREP vector.
 /// @rdname lazy_string_altrep
 /// @param pattern A raw vector containing the byte pattern to repeat.
@@ -1094,7 +1081,7 @@ pub fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
         pattern: pattern.to_vec(),
         total_len: n as usize,
     };
-    RepeatingRawClass(data).into_sexp()
+    data.into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -1105,7 +1092,8 @@ pub fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
 use miniextendr_api::altrep_data::AltComplexData;
 use miniextendr_api::ffi::Rcomplex;
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "UnitCircle")]
 pub struct UnitCircleData {
     /// Number of points on the unit circle
     n: usize,
@@ -1138,10 +1126,6 @@ impl AltComplexData for UnitCircleData {
 
 miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
 
-/// ALTREP class wrapper for unit circle complex data.
-#[miniextendr(class = "UnitCircle")]
-pub struct UnitCircleClass(pub UnitCircleData);
-
 /// Create a complex ALTREP of n points on the unit circle (e^(i*2*pi*k/n)).
 /// @rdname altrep_special
 /// @param n Number of points on the unit circle.
@@ -1150,7 +1134,7 @@ pub struct UnitCircleClass(pub UnitCircleData);
 #[miniextendr]
 pub fn unit_circle(n: i32) -> SEXP {
     let data = UnitCircleData { n: n as usize };
-    UnitCircleClass(data).into_sexp()
+    data.into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -1158,7 +1142,8 @@ pub fn unit_circle(n: i32) -> SEXP {
 // This demonstrates ALTREP for list vectors (VECSXP)
 // -----------------------------------------------------------------------------
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "IntegerSequenceList")]
 pub struct IntegerSequenceListData {
     /// Number of elements in the list
     n: usize,
@@ -1184,10 +1169,6 @@ impl AltListData for IntegerSequenceListData {
 
 miniextendr_api::impl_altlist_from_data!(IntegerSequenceListData);
 
-/// ALTREP class wrapper for integer sequence list data.
-#[miniextendr(class = "IntegerSequenceList")]
-pub struct IntegerSequenceListClass(pub IntegerSequenceListData);
-
 /// Create a list ALTREP where each element is an integer sequence.
 ///
 /// @param n Number of elements in the list.
@@ -1201,19 +1182,49 @@ pub struct IntegerSequenceListClass(pub IntegerSequenceListData);
 #[miniextendr]
 pub fn integer_sequence_list(n: i32) -> SEXP {
     let data = IntegerSequenceListData { n: n as usize };
-    IntegerSequenceListClass(data).into_sexp()
+    data.into_sexp()
 }
 // endregion
 
 // region: SimpleVecInt: Vec<i32> wrapper (simplest example)
 
-#[miniextendr(class = "SimpleVecInt")]
-pub struct SimpleVecIntClass(pub Vec<i32>);
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "SimpleVecInt")]
+pub struct SimpleVecIntData {
+    data: Vec<i32>,
+}
+
+impl AltrepLen for SimpleVecIntData {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltIntegerData for SimpleVecIntData {
+    fn elt(&self, i: usize) -> i32 {
+        self.data[i]
+    }
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltrepDataptr<i32> for SimpleVecIntData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        Some(self.data.as_mut_ptr())
+    }
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(SimpleVecIntData, dataptr);
 // endregion
 
 // region: SimpleVecString: Vec<Option<String>> wrapper (preserves NA)
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "SimpleVecString")]
 pub struct StringVecData {
     data: Vec<Option<String>>,
 }
@@ -1236,28 +1247,113 @@ impl AltStringData for StringVecData {
 
 miniextendr_api::impl_altstring_from_data!(StringVecData, dataptr);
 
-#[miniextendr(class = "SimpleVecString")]
-pub struct SimpleVecStringClass(pub StringVecData);
 // endregion
 
 // region: SimpleVecRaw: Vec<u8> wrapper
 
-#[miniextendr(class = "SimpleVecRaw")]
-pub struct SimpleVecRawClass(pub Vec<u8>);
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "SimpleVecRaw")]
+pub struct SimpleVecRawData {
+    data: Vec<u8>,
+}
+
+impl AltrepLen for SimpleVecRawData {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltRawData for SimpleVecRawData {
+    fn elt(&self, i: usize) -> u8 {
+        self.data[i]
+    }
+    fn as_slice(&self) -> Option<&[u8]> {
+        Some(&self.data)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltrepDataptr<u8> for SimpleVecRawData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
+        Some(self.data.as_mut_ptr())
+    }
+    fn dataptr_or_null(&self) -> Option<*const u8> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altraw_from_data!(SimpleVecRawData, dataptr);
 // endregion
 
 // region: InferredVecReal: Vec<f64> wrapper with base type inferred from inner type
 
 /// ALTREP class wrapper for inferred real vector.
-#[miniextendr(class = "InferredVecReal")]
-pub struct InferredVecRealClass(pub Vec<f64>);
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "InferredVecReal")]
+pub struct InferredVecRealData {
+    data: Vec<f64>,
+}
+
+impl AltrepLen for InferredVecRealData {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltRealData for InferredVecRealData {
+    fn elt(&self, i: usize) -> f64 {
+        self.data[i]
+    }
+    fn as_slice(&self) -> Option<&[f64]> {
+        Some(&self.data)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltrepDataptr<f64> for InferredVecRealData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
+        Some(self.data.as_mut_ptr())
+    }
+    fn dataptr_or_null(&self) -> Option<*const f64> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altreal_from_data!(InferredVecRealData, dataptr);
 // endregion
 
 // region: BoxedInts: Box<[i32]> wrapper (owned slice example)
 
 /// ALTREP class wrapper for boxed integer slice.
-#[miniextendr(class = "BoxedInts")]
-pub struct BoxedIntsClass(pub Box<[i32]>);
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "BoxedInts")]
+pub struct BoxedIntsData {
+    data: Box<[i32]>,
+}
+
+impl AltrepLen for BoxedIntsData {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltIntegerData for BoxedIntsData {
+    fn elt(&self, i: usize) -> i32 {
+        self.data[i]
+    }
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltrepDataptr<i32> for BoxedIntsData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        Some(self.data.as_mut_ptr())
+    }
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(BoxedIntsData, dataptr);
 
 /// Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`).
 /// @rdname altrep_special
@@ -1267,7 +1363,7 @@ pub struct BoxedIntsClass(pub Box<[i32]>);
 #[miniextendr]
 pub fn boxed_ints(n: i32) -> SEXP {
     let data: Box<[i32]> = (1..=n).collect::<Vec<_>>().into_boxed_slice();
-    BoxedIntsClass(data).into_sexp()
+    BoxedIntsData { data }.into_sexp()
 }
 // endregion
 
@@ -1279,8 +1375,38 @@ pub fn boxed_ints(n: i32) -> SEXP {
 static STATIC_INTS: [i32; 5] = [10, 20, 30, 40, 50];
 
 /// ALTREP class wrapper for static integer slice.
-#[miniextendr(class = "StaticInts")]
-pub struct StaticIntsClass(pub &'static [i32]);
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "StaticInts")]
+pub struct StaticIntsData {
+    data: &'static [i32],
+}
+
+impl AltrepLen for StaticIntsData {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltIntegerData for StaticIntsData {
+    fn elt(&self, i: usize) -> i32 {
+        self.data[i]
+    }
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(self.data)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltrepDataptr<i32> for StaticIntsData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        // Static data is read-only — no mutable pointer available
+        None
+    }
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(StaticIntsData, dataptr);
 
 /// Create an ALTREP integer vector backed by a static slice (`&'static [i32]`).
 /// @rdname altrep_special
@@ -1288,7 +1414,7 @@ pub struct StaticIntsClass(pub &'static [i32]);
 /// @export
 #[miniextendr]
 pub fn static_ints() -> SEXP {
-    StaticIntsClass(&STATIC_INTS[..]).into_sexp()
+    StaticIntsData { data: &STATIC_INTS[..] }.into_sexp()
 }
 
 /// Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime).
@@ -1301,7 +1427,7 @@ pub fn leaked_ints(n: i32) -> SEXP {
     // Create data and leak it to get 'static lifetime
     let data: Vec<i32> = (1..=n).collect();
     let leaked: &'static [i32] = Box::leak(data.into_boxed_slice());
-    StaticIntsClass(leaked).into_sexp()
+    StaticIntsData { data: leaked }.into_sexp()
 }
 
 // endregion
@@ -1314,8 +1440,29 @@ pub fn leaked_ints(n: i32) -> SEXP {
 static STATIC_STRINGS: [&str; 4] = ["alpha", "beta", "gamma", "delta"];
 
 /// ALTREP class wrapper for static string slice.
-#[miniextendr(class = "StaticStrings")]
-pub struct StaticStringsClass(pub &'static [&'static str]);
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "StaticStrings")]
+pub struct StaticStringsData {
+    data: &'static [&'static str],
+}
+
+impl AltrepLen for StaticStringsData {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl AltStringData for StaticStringsData {
+    fn elt(&self, i: usize) -> Option<&str> {
+        Some(self.data[i])
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true) // Static string slices never contain NA
+    }
+}
+
+miniextendr_api::impl_altstring_from_data!(StaticStringsData, dataptr);
 
 /// Create an ALTREP string vector backed by a static string slice.
 /// @rdname altrep_special
@@ -1323,14 +1470,15 @@ pub struct StaticStringsClass(pub &'static [&'static str]);
 /// @export
 #[miniextendr]
 pub fn static_strings() -> SEXP {
-    StaticStringsClass(&STATIC_STRINGS[..]).into_sexp()
+    StaticStringsData { data: &STATIC_STRINGS[..] }.into_sexp()
 }
 
 // endregion
 
 // region: ListData: list-backed ALTREP (stores original list SEXP)
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "ListData")]
 pub struct ListData {
     list: SEXP,
     len: usize,
@@ -1361,8 +1509,6 @@ impl AltListData for ListData {
 
 miniextendr_api::impl_altlist_from_data!(ListData);
 
-#[miniextendr(class = "ListData")]
-pub struct ListDataClass(pub ListData);
 // endregion
 
 // region: Builtin ALTREP test fixtures
@@ -1624,7 +1770,8 @@ use miniextendr_api::altrep_data::{
 type BoxedIntIter = Box<dyn Iterator<Item = i32>>;
 
 /// Wrapper for sparse integer iterator ALTREP
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "SparseIntIter")]
 pub struct SparseIntIterData {
     inner: SparseIterIntData<BoxedIntIter>,
 }
@@ -1651,10 +1798,6 @@ impl miniextendr_api::altrep_data::AltIntegerData for SparseIntIterData {
 
 miniextendr_api::impl_altinteger_from_data!(SparseIntIterData);
 
-/// ALTREP class wrapper for sparse integer iterator.
-#[miniextendr(class = "SparseIntIter")]
-pub struct SparseIntIterClass(pub SparseIntIterData);
-
 /// Create a sparse integer iterator ALTREP that skips elements.
 ///
 /// Elements are computed on-demand using Iterator::nth(). Once an element
@@ -1674,7 +1817,7 @@ pub fn sparse_iter_int(from: i32, to: i32) -> SEXP {
     let data = SparseIntIterData {
         inner: SparseIterIntData::from_iter(iter, len),
     };
-    SparseIntIterClass(data).into_sexp()
+    data.into_sexp()
 }
 
 /// Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...).
@@ -1689,14 +1832,15 @@ pub fn sparse_iter_int_squares(n: i32) -> SEXP {
     let data = SparseIntIterData {
         inner: SparseIterIntData::from_iter(iter, len),
     };
-    SparseIntIterClass(data).into_sexp()
+    data.into_sexp()
 }
 
 /// Type alias for boxed iterator producing f64
 type BoxedRealIter = Box<dyn Iterator<Item = f64>>;
 
 /// Wrapper for sparse real iterator ALTREP
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "SparseRealIter")]
 pub struct SparseRealIterData {
     inner: SparseIterRealData<BoxedRealIter>,
 }
@@ -1723,10 +1867,6 @@ impl miniextendr_api::altrep_data::AltRealData for SparseRealIterData {
 
 miniextendr_api::impl_altreal_from_data!(SparseRealIterData);
 
-/// ALTREP class wrapper for sparse real iterator.
-#[miniextendr(class = "SparseRealIter")]
-pub struct SparseRealIterClass(pub SparseRealIterData);
-
 /// Create a sparse real iterator ALTREP with arithmetic progression.
 /// @rdname sparse_altrep
 /// @param from Start value.
@@ -1741,14 +1881,15 @@ pub fn sparse_iter_real(from: f64, step: f64, n: i32) -> SEXP {
     let data = SparseRealIterData {
         inner: SparseIterRealData::from_iter(iter, len),
     };
-    SparseRealIterClass(data).into_sexp()
+    data.into_sexp()
 }
 
 /// Type alias for boxed iterator producing bool
 type BoxedLogicalIter = Box<dyn Iterator<Item = bool>>;
 
 /// Wrapper for sparse logical iterator ALTREP
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "SparseLogicalIter")]
 pub struct SparseLogicalIterData {
     inner: SparseIterLogicalData<BoxedLogicalIter>,
 }
@@ -1771,10 +1912,6 @@ impl miniextendr_api::altrep_data::AltLogicalData for SparseLogicalIterData {
 
 miniextendr_api::impl_altlogical_from_data!(SparseLogicalIterData);
 
-/// ALTREP class wrapper for sparse logical iterator.
-#[miniextendr(class = "SparseLogicalIter")]
-pub struct SparseLogicalIterClass(pub SparseLogicalIterData);
-
 /// Create a sparse logical iterator ALTREP (alternating TRUE/FALSE).
 /// @rdname sparse_altrep
 /// @param n Number of elements.
@@ -1787,14 +1924,15 @@ pub fn sparse_iter_logical(n: i32) -> SEXP {
     let data = SparseLogicalIterData {
         inner: SparseIterLogicalData::from_iter(iter, len),
     };
-    SparseLogicalIterClass(data).into_sexp()
+    data.into_sexp()
 }
 
 /// Type alias for boxed iterator producing u8
 type BoxedRawIter = Box<dyn Iterator<Item = u8>>;
 
 /// Wrapper for sparse raw iterator ALTREP
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep_derive_opts(class = "SparseRawIter")]
 pub struct SparseRawIterData {
     inner: SparseIterRawData<BoxedRawIter>,
 }
@@ -1821,10 +1959,6 @@ impl miniextendr_api::altrep_data::AltRawData for SparseRawIterData {
 
 miniextendr_api::impl_altraw_from_data!(SparseRawIterData);
 
-/// ALTREP class wrapper for sparse raw byte iterator.
-#[miniextendr(class = "SparseRawIter")]
-pub struct SparseRawIterClass(pub SparseRawIterData);
-
 /// Create a sparse raw iterator ALTREP (cycling bytes 0..255).
 /// @rdname sparse_altrep
 /// @param n Number of elements.
@@ -1837,7 +1971,7 @@ pub fn sparse_iter_raw(n: i32) -> SEXP {
     let data = SparseRawIterData {
         inner: SparseIterRawData::from_iter(iter, len),
     };
-    SparseRawIterClass(data).into_sexp()
+    data.into_sexp()
 }
 
 // endregion

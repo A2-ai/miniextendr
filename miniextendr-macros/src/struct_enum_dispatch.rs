@@ -209,10 +209,16 @@ fn expand_struct(
         attrs.externalptr || (!has_mode_attr && attrs.prefer.as_deref() == Some("externalptr"));
     let effective_mode = effective_list || effective_dataframe || effective_externalptr;
 
-    // 1-field struct: default to ALTREP unless explicitly overridden
+    // 1-field struct: used to default to ALTREP, now use #[derive(Altrep)] instead
     if n_fields == 1 && !effective_mode && attrs.prefer.is_none() {
-        // ALTREP path (backwards compat or explicit class/base)
-        return crate::altrep::expand_altrep_struct(attr, item);
+        return syn::Error::new(
+            item_struct.ident.span(),
+            "#[miniextendr] on 1-field structs is no longer supported for ALTREP. \
+             Use #[derive(miniextendr_api::Altrep)] with #[altrep_derive_opts(class = \"...\")] instead, \
+             or add #[miniextendr(prefer = \"externalptr\")] for ExternalPtr wrapping.",
+        )
+        .into_compile_error()
+        .into();
     }
 
     // Reject ALTREP attrs on non-ALTREP paths
