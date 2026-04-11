@@ -96,7 +96,7 @@ each annotated item. At link time, all entries are collected into a static
 slice. During `package_init()`, this slice is iterated to build the
 `R_CallMethodDef` array for `R_registerRoutines()`.
 
-```
+```text
 #[miniextendr] fn foo() → linkme slice entry for "C_foo"
 #[miniextendr] fn bar() → linkme slice entry for "C_bar"
                           ↓

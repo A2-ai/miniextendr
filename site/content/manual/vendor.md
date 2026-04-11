@@ -83,7 +83,7 @@ devtools workflows to fail (they need network access for `[patch]` resolution).
 The configure script resolves one of four build contexts. `PREPARE_CRAN` is
 one input; the full truth table is:
 
-```
+```text
 PREPARE_CRAN=true                              → prepare-cran
 NOT_CRAN explicit=true  + monorepo present     → dev-monorepo
 NOT_CRAN explicit=true  + monorepo absent      → dev-detached
@@ -135,7 +135,7 @@ of what else exists on disk.
 
 Creates `rpkg/inst/vendor.tar.xz` containing all dependencies:
 
-```
+```text
 just vendor
   │
   ├─ Rscript rpkg/tools/vendor-crates.R pack
@@ -211,7 +211,7 @@ conversion.
 
 The `vendor/` directory at the package root is excluded by `.Rbuildignore`:
 
-```
+```text
 ^vendor$
 ```
 

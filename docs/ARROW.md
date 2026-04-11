@@ -315,7 +315,7 @@ pub fn lazy_strings(prefix: &str, n: i32) -> SEXP {
 
 R stores vector data at a fixed offset from the SEXP header:
 
-```
+```text
 [VECTOR_SEXPREC header (48 bytes on 64-bit)] [data...]
  ^                                            ^
  SEXP                                         DATAPTR_RO(sexp)
@@ -327,7 +327,7 @@ data pointers.
 
 At package init, we measure the offset on a real R vector. Then in `IntoR`:
 
-```
+```text
 candidate_sexp = data_ptr - offset
 verify: TYPEOF(candidate) == expected AND LENGTH(candidate) == expected AND DATAPTR_RO(candidate) == data_ptr
 ```
@@ -349,7 +349,7 @@ the result in `Cow::Borrowed` (always borrowed, never owned).
 
 ## Type Decision Tree
 
-```
+```text
 Need strings from R?
 ├── Scalar → Cow<'static, str>          (zero-copy)
 ├── Vector, need ownership → Vec<String> (copies, lossy NA→"")

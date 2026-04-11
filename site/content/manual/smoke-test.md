@@ -358,7 +358,7 @@ These checks verify diagnostics and recovery paths:
 When `./configure` runs, `config.status` dumps the environment and prints
 hundreds of lines like:
 
-```
+```text
 /path/to/config.status: line 123: SOME_VAR: command not found
 ```
 

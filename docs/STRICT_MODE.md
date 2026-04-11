@@ -112,12 +112,12 @@ Use `#[miniextendr(no_strict)]` to opt out.
 
 Strict panics produce descriptive messages:
 
-```
+```text
 strict conversion failed: i64 value 1099511627776 is outside R integer range
 (-2147483647..=2147483647); use a non-strict function to allow lossy f64 widening
 ```
 
-```
+```text
 strict conversion failed for parameter 'count': expected integer or double, got LGLSXP
 ```
 

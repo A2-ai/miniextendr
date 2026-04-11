@@ -181,7 +181,7 @@ The trait ABI enables cross-package dispatch where:
 
 ### Architecture
 
-```
+```text
 Every package (rpkg, producer.pkg, consumer.pkg, ...)
 ────────────────────────────────────────────────────
 mx_abi.rs (compiled into each package's staticlib via miniextendr-api)

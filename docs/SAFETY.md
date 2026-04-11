@@ -18,7 +18,7 @@ miniextendr provides abstractions to handle all three safely.
 
 ### Default: Main Thread with R_UnwindProtect
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  R Main Thread                                                  │
 │  ├── R_init_<pkgname>() calls miniextendr_runtime_init()         │
@@ -32,7 +32,7 @@ miniextendr provides abstractions to handle all three safely.
 
 ### Optional: Worker Thread (with `worker-thread` feature)
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  R Main Thread                                                  │
 │  ├── .Call() entry points run on this thread                    │

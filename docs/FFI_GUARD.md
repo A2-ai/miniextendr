@@ -18,7 +18,7 @@ Each boundary converts Rust panics into R errors (or safe fallback values). The
 `ffi_guard` module extracts the common catch-and-convert pattern, and
 `panic_telemetry` provides a hook that fires at every conversion site.
 
-```
+```text
 Rust panic
   |
   v

@@ -30,7 +30,7 @@ create_miniextendr_package("mypackage")
 ```
 
 This creates:
-```
+```text
 mypackage/
 ├── DESCRIPTION
 ├── NAMESPACE

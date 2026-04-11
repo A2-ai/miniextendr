@@ -15,7 +15,7 @@ miniextendr differs from extendr in several key design decisions:
 
 ## Crate Architecture
 
-```
+```text
 miniextendr-macros        miniextendr-engine
 (proc macros)             (code generation)
       |                         |
@@ -61,7 +61,7 @@ Build-time static analysis. Checks `#[miniextendr]` source-level attributes for 
 
 When R calls a miniextendr function:
 
-```
+```text
 R: my_function(x, y)
   |
   v
@@ -88,7 +88,7 @@ Key safety properties:
 
 ### Template / configure flow
 
-```
+```text
 .in templates --[autoconf]--> configure script --[./configure]--> generated files
 
 Makevars.in -------------------------------------------------> Makevars
@@ -108,7 +108,7 @@ For CRAN compatibility, all dependencies must be vendored:
 
 ExternalPtr objects can be passed between R packages. The `TypedExternal` trait uses R symbols for type identification, enabling trait dispatch across package boundaries without shared Rust types.
 
-```
+```text
 producer.pkg:                 consumer.pkg:
   Counter { value: i32 }       uses CounterView (trait object)
   impl Counter trait            impl Counter trait for DoubleCounter

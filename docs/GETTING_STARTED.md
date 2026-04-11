@@ -30,7 +30,7 @@ create_miniextendr_package("mypackage")
 ```
 
 This creates a package structure with:
-```
+```text
 mypackage/
 ├── DESCRIPTION
 ├── NAMESPACE

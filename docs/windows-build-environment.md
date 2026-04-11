@@ -7,7 +7,7 @@
 Open the **MSYS2 UCRT64** shell that ships with Rtools45. On a default
 install this is:
 
-```
+```text
 c:\rtools45\ucrt64.exe
 ```
 
@@ -29,7 +29,7 @@ echo $MSYSTEM    # should say UCRT64
 
 Open the **MSYS2 CLANG64** shell from Rtools45-aarch64:
 
-```
+```text
 c:\rtools45-aarch64\clangarm64.exe
 ```
 
@@ -79,14 +79,14 @@ hardcoded path to gcc or any tool. From `MkRules.rules`:
 
 The key PATH entries for Rtools45 x86_64 are:
 
-```
+```text
 c:/rtools45/x86_64-w64-mingw32.static.posix/bin   # gcc, g++, gfortran, ar, etc.
 c:/rtools45/usr/bin                                 # sh, make, sed, tar, etc.
 ```
 
 For aarch64:
 
-```
+```text
 c:/rtools45-aarch64/aarch64-w64-mingw32.static.posix/bin   # clang, flang, lld, etc.
 c:/rtools45-aarch64/usr/bin                                  # sh, make, sed, tar, etc.
 ```
@@ -132,7 +132,7 @@ You can override it with `R_CUSTOM_TOOLS_SOFT`.
 
 When you run `make` in `src/gnuwin32/`, here is what happens:
 
-```
+```text
 MkRules.dist          # shipped defaults (template, not read directly)
     |
     v
@@ -214,7 +214,7 @@ When you run `R CMD INSTALL` on a package with compiled code, R:
 The `Rcmd_environ` file sets up the PATH for this (lines 39-42 are
 uncommented during installer builds):
 
-```
+```text
 R_RTOOLS45_PATH="${RTOOLS45_HOME:-c:/rtools45}/x86_64-w64-mingw32.static.posix/bin;${RTOOLS45_HOME:-c:/rtools45}/usr/bin"
 PATH="${R_CUSTOM_TOOLS_PATH:-${R_RTOOLS45_PATH}};${PATH}/"
 ```

@@ -152,7 +152,7 @@ fn get_data() -> SEXP {
 
 ### Decision Guide
 
-```
+```text
 Is your data > 1000 elements?
 ├─ Yes → Use .into_sexp_altrep()
 └─ No
@@ -217,7 +217,7 @@ return vec.into_sexp_altrep();
 
 miniextendr's ALTREP system has three layers:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  Layer 3: ALTREP Wrapper Struct                                 │
 │  #[miniextendr(class = "...", pkg = "...")]                     │
@@ -540,7 +540,7 @@ pub(crate) fn register_builtin_altrep_classes() {
 
 ### What happens during readRDS
 
-```
+```text
 Session A: saveRDS(altrep_vec, "data.rds")
   → ALTREP serialize hook fires
   → serialized_state() materializes data to plain R vector
