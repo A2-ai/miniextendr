@@ -1477,9 +1477,9 @@ pub(crate) fn register_arrow_altrep_classes() {
 // Integer arrays
 impl<const N: usize> crate::altrep_traits::Altrep for [i32; N] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[i32; N]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data =
+            unsafe { <[i32; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -1487,12 +1487,9 @@ impl<const N: usize> crate::altrep_traits::AltVec for [i32; N] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[i32; N]>(&x) }
-            .and_then(|d| {
-                <[i32; N] as crate::altrep_data::AltIntegerData>::as_slice(&*d)
-                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
-            })
-            .unwrap_or(std::ptr::null_mut())
+        let data =
+            unsafe { <[i32; N] as crate::altrep_data::AltrepExtract>::altrep_extract_mut(x) };
+        data.as_mut_ptr().cast::<std::ffi::c_void>()
     }
 }
 
@@ -1500,9 +1497,9 @@ impl<const N: usize> crate::altrep_traits::AltInteger for [i32; N] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[i32; N]>(&x) }
-            .map(|d| <[i32; N] as crate::altrep_data::AltIntegerData>::elt(&*d, i.max(0) as usize))
-            .unwrap_or(i32::MIN)
+        let data =
+            unsafe { <[i32; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        <[i32; N] as crate::altrep_data::AltIntegerData>::elt(data, i.max(0) as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -1513,27 +1510,22 @@ impl<const N: usize> crate::altrep_traits::AltInteger for [i32; N] {
         len: crate::ffi::R_xlen_t,
         buf: &mut [i32],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[i32; N]>(&x) }
-            .map(|d| {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let len = len as usize;
-                <[i32; N] as crate::altrep_data::AltIntegerData>::get_region(
-                    &*d,
-                    start as usize,
-                    len,
-                    buf,
-                ) as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        if start < 0 || len <= 0 {
+            return 0;
+        }
+        let data =
+            unsafe { <[i32; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        let len = len as usize;
+        <[i32; N] as crate::altrep_data::AltIntegerData>::get_region(data, start as usize, len, buf)
+            as crate::ffi::R_xlen_t
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[i32; N]>(&x) }
-            .and_then(|d| <[i32; N] as crate::altrep_data::AltIntegerData>::no_na(&*d))
+        let data =
+            unsafe { <[i32; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        <[i32; N] as crate::altrep_data::AltIntegerData>::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
@@ -1542,9 +1534,9 @@ impl<const N: usize> crate::altrep_traits::AltInteger for [i32; N] {
 // Real arrays
 impl<const N: usize> crate::altrep_traits::Altrep for [f64; N] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[f64; N]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data =
+            unsafe { <[f64; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -1552,12 +1544,9 @@ impl<const N: usize> crate::altrep_traits::AltVec for [f64; N] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[f64; N]>(&x) }
-            .and_then(|d| {
-                <[f64; N] as crate::altrep_data::AltRealData>::as_slice(&*d)
-                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
-            })
-            .unwrap_or(std::ptr::null_mut())
+        let data =
+            unsafe { <[f64; N] as crate::altrep_data::AltrepExtract>::altrep_extract_mut(x) };
+        data.as_mut_ptr().cast::<std::ffi::c_void>()
     }
 }
 
@@ -1565,9 +1554,9 @@ impl<const N: usize> crate::altrep_traits::AltReal for [f64; N] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[f64; N]>(&x) }
-            .map(|d| <[f64; N] as crate::altrep_data::AltRealData>::elt(&*d, i.max(0) as usize))
-            .unwrap_or(f64::NAN)
+        let data =
+            unsafe { <[f64; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        <[f64; N] as crate::altrep_data::AltRealData>::elt(data, i.max(0) as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -1578,27 +1567,22 @@ impl<const N: usize> crate::altrep_traits::AltReal for [f64; N] {
         len: crate::ffi::R_xlen_t,
         buf: &mut [f64],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[f64; N]>(&x) }
-            .map(|d| {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let len = len as usize;
-                <[f64; N] as crate::altrep_data::AltRealData>::get_region(
-                    &*d,
-                    start as usize,
-                    len,
-                    buf,
-                ) as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        if start < 0 || len <= 0 {
+            return 0;
+        }
+        let data =
+            unsafe { <[f64; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        let len = len as usize;
+        <[f64; N] as crate::altrep_data::AltRealData>::get_region(data, start as usize, len, buf)
+            as crate::ffi::R_xlen_t
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[f64; N]>(&x) }
-            .and_then(|d| <[f64; N] as crate::altrep_data::AltRealData>::no_na(&*d))
+        let data =
+            unsafe { <[f64; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        <[f64; N] as crate::altrep_data::AltRealData>::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
@@ -1607,9 +1591,9 @@ impl<const N: usize> crate::altrep_traits::AltReal for [f64; N] {
 // Logical arrays
 impl<const N: usize> crate::altrep_traits::Altrep for [bool; N] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[bool; N]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data =
+            unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -1619,19 +1603,17 @@ impl<const N: usize> crate::altrep_traits::AltLogical for [bool; N] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[bool; N]>(&x) }
-            .map(|d| {
-                <[bool; N] as crate::altrep_data::AltLogicalData>::elt(&*d, i.max(0) as usize)
-                    .to_r_int()
-            })
-            .unwrap_or(crate::altrep_traits::NA_LOGICAL)
+        let data =
+            unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        <[bool; N] as crate::altrep_data::AltLogicalData>::elt(data, i.max(0) as usize).to_r_int()
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[bool; N]>(&x) }
-            .and_then(|d| <[bool; N] as crate::altrep_data::AltLogicalData>::no_na(&*d))
+        let data =
+            unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        <[bool; N] as crate::altrep_data::AltLogicalData>::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
@@ -1640,9 +1622,8 @@ impl<const N: usize> crate::altrep_traits::AltLogical for [bool; N] {
 // Raw arrays
 impl<const N: usize> crate::altrep_traits::Altrep for [u8; N] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[u8; N]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe { <[u8; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -1650,12 +1631,8 @@ impl<const N: usize> crate::altrep_traits::AltVec for [u8; N] {
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[u8; N]>(&x) }
-            .and_then(|d| {
-                <[u8; N] as crate::altrep_data::AltRawData>::as_slice(&*d)
-                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
-            })
-            .unwrap_or(std::ptr::null_mut())
+        let data = unsafe { <[u8; N] as crate::altrep_data::AltrepExtract>::altrep_extract_mut(x) };
+        data.as_mut_ptr().cast::<std::ffi::c_void>()
     }
 }
 
@@ -1663,9 +1640,8 @@ impl<const N: usize> crate::altrep_traits::AltRaw for [u8; N] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::Rbyte {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[u8; N]>(&x) }
-            .map(|d| <[u8; N] as crate::altrep_data::AltRawData>::elt(&*d, i.max(0) as usize))
-            .unwrap_or(0)
+        let data = unsafe { <[u8; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        <[u8; N] as crate::altrep_data::AltRawData>::elt(data, i.max(0) as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -1676,20 +1652,13 @@ impl<const N: usize> crate::altrep_traits::AltRaw for [u8; N] {
         len: crate::ffi::R_xlen_t,
         buf: &mut [u8],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[u8; N]>(&x) }
-            .map(|d| {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let len = len as usize;
-                <[u8; N] as crate::altrep_data::AltRawData>::get_region(
-                    &*d,
-                    start as usize,
-                    len,
-                    buf,
-                ) as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        if start < 0 || len <= 0 {
+            return 0;
+        }
+        let data = unsafe { <[u8; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        let len = len as usize;
+        <[u8; N] as crate::altrep_data::AltRawData>::get_region(data, start as usize, len, buf)
+            as crate::ffi::R_xlen_t
     }
 }
 
@@ -1699,9 +1668,9 @@ impl<const N: usize> crate::altrep_traits::Altrep for [String; N] {
     const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
 
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[String; N]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data =
+            unsafe { <[String; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -1709,16 +1678,10 @@ impl<const N: usize> crate::altrep_traits::AltVec for [String; N] {}
 
 impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
-        match unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[String; N]>(&x) } {
-            Some(d) => {
-                match <[String; N] as crate::altrep_data::AltStringData>::elt(
-                    &*d,
-                    i.max(0) as usize,
-                ) {
-                    Some(s) => unsafe { checked_mkchar(s) },
-                    None => crate::ffi::SEXP::na_string(),
-                }
-            }
+        let data =
+            unsafe { <[String; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        match <[String; N] as crate::altrep_data::AltStringData>::elt(data, i.max(0) as usize) {
+            Some(s) => unsafe { checked_mkchar(s) },
             None => crate::ffi::SEXP::na_string(),
         }
     }
@@ -1727,9 +1690,10 @@ impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
 // Complex arrays
 impl<const N: usize> crate::altrep_traits::Altrep for [crate::ffi::Rcomplex; N] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[crate::ffi::Rcomplex; N]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe {
+            <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -1737,12 +1701,10 @@ impl<const N: usize> crate::altrep_traits::AltVec for [crate::ffi::Rcomplex; N] 
     const HAS_DATAPTR: bool = true;
 
     fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[crate::ffi::Rcomplex; N]>(&x) }
-            .and_then(|d| {
-                <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::as_slice(&*d)
-                    .map(|s| s.as_ptr().cast::<std::ffi::c_void>().cast_mut())
-            })
-            .unwrap_or(std::ptr::null_mut())
+        let data = unsafe {
+            <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltrepExtract>::altrep_extract_mut(x)
+        };
+        data.as_mut_ptr().cast::<std::ffi::c_void>()
     }
 }
 
@@ -1750,17 +1712,13 @@ impl<const N: usize> crate::altrep_traits::AltComplex for [crate::ffi::Rcomplex;
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::Rcomplex {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[crate::ffi::Rcomplex; N]>(&x) }
-            .map(|d| {
-                <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::elt(
-                    &*d,
-                    i.max(0) as usize,
-                )
-            })
-            .unwrap_or(crate::ffi::Rcomplex {
-                r: f64::NAN,
-                i: f64::NAN,
-            })
+        let data = unsafe {
+            <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::elt(
+            data,
+            i.max(0) as usize,
+        )
     }
 
     const HAS_GET_REGION: bool = true;
@@ -1771,20 +1729,19 @@ impl<const N: usize> crate::altrep_traits::AltComplex for [crate::ffi::Rcomplex;
         len: crate::ffi::R_xlen_t,
         buf: &mut [crate::ffi::Rcomplex],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<[crate::ffi::Rcomplex; N]>(&x) }
-            .map(|d| {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let len = len as usize;
-                <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::get_region(
-                    &*d,
-                    start as usize,
-                    len,
-                    buf,
-                ) as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        if start < 0 || len <= 0 {
+            return 0;
+        }
+        let data = unsafe {
+            <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        let len = len as usize;
+        <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::get_region(
+            data,
+            start as usize,
+            len,
+            buf,
+        ) as crate::ffi::R_xlen_t
     }
 }
 // endregion
@@ -1942,9 +1899,9 @@ impl<const N: usize> crate::altrep_data::InferBase for [crate::ffi::Rcomplex; N]
 // Integer static slices
 impl crate::altrep_traits::Altrep for &'static [i32] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -1957,17 +1914,17 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
             !writable,
             "cannot get writable DATAPTR for static ALTREP data"
         );
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
-            .unwrap_or(std::ptr::null_mut())
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.as_ptr().cast::<std::ffi::c_void>().cast_mut()
     }
 
     const HAS_DATAPTR_OR_NULL: bool = true;
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>())
-            .unwrap_or(std::ptr::null())
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.as_ptr().cast::<std::ffi::c_void>()
     }
 }
 
@@ -1975,9 +1932,9 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .map(|d| crate::altrep_data::AltIntegerData::elt(&*d, i.max(0) as usize))
-            .unwrap_or(i32::MIN)
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltIntegerData::elt(data, i.max(0) as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -1988,23 +1945,22 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
         len: crate::ffi::R_xlen_t,
         buf: &mut [i32],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .map(|d| {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let len = len as usize;
-                crate::altrep_data::AltIntegerData::get_region(&*d, start as usize, len, buf)
-                    as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        if start < 0 || len <= 0 {
+            return 0;
+        }
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        let len = len as usize;
+        crate::altrep_data::AltIntegerData::get_region(data, start as usize, len, buf)
+            as crate::ffi::R_xlen_t
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .and_then(|d| crate::altrep_data::AltIntegerData::no_na(&*d))
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltIntegerData::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
@@ -2013,8 +1969,9 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
 
     // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .and_then(|d| crate::altrep_data::AltIntegerData::sum(&*d, narm))
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltIntegerData::sum(data, narm)
             .map(|s| {
                 if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
                     crate::ffi::SEXP::scalar_integer(s as i32)
@@ -2028,8 +1985,9 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
     const HAS_MIN: bool = true;
 
     fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .and_then(|d| crate::altrep_data::AltIntegerData::min(&*d, narm))
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltIntegerData::min(data, narm)
             .map(crate::ffi::SEXP::scalar_integer)
             .unwrap_or(crate::ffi::SEXP::null())
     }
@@ -2037,8 +1995,9 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
     const HAS_MAX: bool = true;
 
     fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [i32]>(&x) }
-            .and_then(|d| crate::altrep_data::AltIntegerData::max(&*d, narm))
+        let data =
+            unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltIntegerData::max(data, narm)
             .map(crate::ffi::SEXP::scalar_integer)
             .unwrap_or(crate::ffi::SEXP::null())
     }
@@ -2049,9 +2008,9 @@ crate::impl_inferbase_integer!(&'static [i32]);
 // Real static slices
 impl crate::altrep_traits::Altrep for &'static [f64] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -2063,17 +2022,17 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
             !writable,
             "cannot get writable DATAPTR for static ALTREP data"
         );
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
-            .unwrap_or(std::ptr::null_mut())
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.as_ptr().cast::<std::ffi::c_void>().cast_mut()
     }
 
     const HAS_DATAPTR_OR_NULL: bool = true;
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>())
-            .unwrap_or(std::ptr::null())
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.as_ptr().cast::<std::ffi::c_void>()
     }
 }
 
@@ -2081,9 +2040,9 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .map(|d| crate::altrep_data::AltRealData::elt(&*d, i.max(0) as usize))
-            .unwrap_or(f64::NAN)
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltRealData::elt(data, i.max(0) as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -2094,23 +2053,22 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
         len: crate::ffi::R_xlen_t,
         buf: &mut [f64],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .map(|d| {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let len = len as usize;
-                crate::altrep_data::AltRealData::get_region(&*d, start as usize, len, buf)
-                    as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        if start < 0 || len <= 0 {
+            return 0;
+        }
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        let len = len as usize;
+        crate::altrep_data::AltRealData::get_region(data, start as usize, len, buf)
+            as crate::ffi::R_xlen_t
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .and_then(|d| crate::altrep_data::AltRealData::no_na(&*d))
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltRealData::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
@@ -2119,8 +2077,9 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
 
     // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .and_then(|d| crate::altrep_data::AltRealData::sum(&*d, narm))
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltRealData::sum(data, narm)
             .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
@@ -2128,8 +2087,9 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
     const HAS_MIN: bool = true;
 
     fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .and_then(|d| crate::altrep_data::AltRealData::min(&*d, narm))
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltRealData::min(data, narm)
             .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
@@ -2137,8 +2097,9 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
     const HAS_MAX: bool = true;
 
     fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [f64]>(&x) }
-            .and_then(|d| crate::altrep_data::AltRealData::max(&*d, narm))
+        let data =
+            unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltRealData::max(data, narm)
             .map(crate::ffi::SEXP::scalar_real)
             .unwrap_or(crate::ffi::SEXP::null())
     }
@@ -2149,9 +2110,10 @@ crate::impl_inferbase_real!(&'static [f64]);
 // Logical static slices
 impl crate::altrep_traits::Altrep for &'static [bool] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [bool]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe {
+            <&'static [bool] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -2161,16 +2123,19 @@ impl crate::altrep_traits::AltLogical for &'static [bool] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [bool]>(&x) }
-            .map(|d| crate::altrep_data::AltLogicalData::elt(&*d, i.max(0) as usize).to_r_int())
-            .unwrap_or(crate::altrep_traits::NA_LOGICAL)
+        let data = unsafe {
+            <&'static [bool] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltLogicalData::elt(data, i.max(0) as usize).to_r_int()
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [bool]>(&x) }
-            .and_then(|d| crate::altrep_data::AltLogicalData::no_na(&*d))
+        let data = unsafe {
+            <&'static [bool] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltLogicalData::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
@@ -2179,8 +2144,10 @@ impl crate::altrep_traits::AltLogical for &'static [bool] {
 
     // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
     fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [bool]>(&x) }
-            .and_then(|d| crate::altrep_data::AltLogicalData::sum(&*d, narm))
+        let data = unsafe {
+            <&'static [bool] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltLogicalData::sum(data, narm)
             .map(|s| {
                 if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
                     crate::ffi::SEXP::scalar_integer(s as i32)
@@ -2197,9 +2164,9 @@ crate::impl_inferbase_logical!(&'static [bool]);
 // Raw static slices
 impl crate::altrep_traits::Altrep for &'static [u8] {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [u8]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data =
+            unsafe { <&'static [u8] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -2211,17 +2178,17 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
             !writable,
             "cannot get writable DATAPTR for static ALTREP data"
         );
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [u8]>(&x) }
-            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>().cast_mut())
-            .unwrap_or(std::ptr::null_mut())
+        let data =
+            unsafe { <&'static [u8] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.as_ptr().cast::<std::ffi::c_void>().cast_mut()
     }
 
     const HAS_DATAPTR_OR_NULL: bool = true;
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [u8]>(&x) }
-            .map(|d| (*d).as_ptr().cast::<std::ffi::c_void>())
-            .unwrap_or(std::ptr::null())
+        let data =
+            unsafe { <&'static [u8] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.as_ptr().cast::<std::ffi::c_void>()
     }
 }
 
@@ -2229,9 +2196,9 @@ impl crate::altrep_traits::AltRaw for &'static [u8] {
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::Rbyte {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [u8]>(&x) }
-            .map(|d| crate::altrep_data::AltRawData::elt(&*d, i.max(0) as usize))
-            .unwrap_or(0)
+        let data =
+            unsafe { <&'static [u8] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        crate::altrep_data::AltRawData::elt(data, i.max(0) as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -2242,16 +2209,14 @@ impl crate::altrep_traits::AltRaw for &'static [u8] {
         len: crate::ffi::R_xlen_t,
         buf: &mut [u8],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [u8]>(&x) }
-            .map(|d| {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let len = len as usize;
-                crate::altrep_data::AltRawData::get_region(&*d, start as usize, len, buf)
-                    as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        if start < 0 || len <= 0 {
+            return 0;
+        }
+        let data =
+            unsafe { <&'static [u8] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        let len = len as usize;
+        crate::altrep_data::AltRawData::get_region(data, start as usize, len, buf)
+            as crate::ffi::R_xlen_t
     }
 }
 
@@ -2263,9 +2228,10 @@ impl crate::altrep_traits::Altrep for &'static [String] {
     const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
 
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [String]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe {
+            <&'static [String] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -2273,11 +2239,11 @@ impl crate::altrep_traits::AltVec for &'static [String] {}
 
 impl crate::altrep_traits::AltString for &'static [String] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
-        match unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [String]>(&x) } {
-            Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
-                Some(s) => unsafe { checked_mkchar(s) },
-                None => crate::ffi::SEXP::na_string(),
-            },
+        let data = unsafe {
+            <&'static [String] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        match crate::altrep_data::AltStringData::elt(data, i.max(0) as usize) {
+            Some(s) => unsafe { checked_mkchar(s) },
             None => crate::ffi::SEXP::na_string(),
         }
     }
@@ -2285,8 +2251,10 @@ impl crate::altrep_traits::AltString for &'static [String] {
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [String]>(&x) }
-            .and_then(|d| crate::altrep_data::AltStringData::no_na(&*d))
+        let data = unsafe {
+            <&'static [String] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltStringData::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
@@ -2300,9 +2268,10 @@ impl crate::altrep_traits::Altrep for &'static [&'static str] {
     const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
 
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [&'static str]>(&x) }
-            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe {
+            <&'static [&'static str] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltrepLen::len(data) as crate::ffi::R_xlen_t
     }
 }
 
@@ -2310,13 +2279,11 @@ impl crate::altrep_traits::AltVec for &'static [&'static str] {}
 
 impl crate::altrep_traits::AltString for &'static [&'static str] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
-        match unsafe {
-            crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [&'static str]>(&x)
-        } {
-            Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
-                Some(s) => unsafe { checked_mkchar(s) },
-                None => crate::ffi::SEXP::na_string(),
-            },
+        let data = unsafe {
+            <&'static [&'static str] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        match crate::altrep_data::AltStringData::elt(data, i.max(0) as usize) {
+            Some(s) => unsafe { checked_mkchar(s) },
             None => crate::ffi::SEXP::na_string(),
         }
     }
@@ -2324,8 +2291,10 @@ impl crate::altrep_traits::AltString for &'static [&'static str] {
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::ffi::SEXP) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<&'static [&'static str]>(&x) }
-            .and_then(|d| crate::altrep_data::AltStringData::no_na(&*d))
+        let data = unsafe {
+            <&'static [&'static str] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+        };
+        crate::altrep_data::AltStringData::no_na(data)
             .map(|b| if b { 1 } else { 0 })
             .unwrap_or(0)
     }
