@@ -166,7 +166,7 @@ inspect ALTREP state without triggering materialization.
 
 ## Thread Safety Model
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │  R Main Thread                                           │
 │                                                          │
@@ -218,7 +218,7 @@ the underlying memory won't move or be freed while the SEXP is protected.
 
 ## Decision Guide
 
-```
+```text
 What parameter type should I use?
 
 Need the actual data? (sum, transform, filter)

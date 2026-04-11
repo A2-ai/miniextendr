@@ -196,7 +196,7 @@ impl MyEnvType {
 ```
 
 All of these generate proper S3 method wrappers that R can dispatch to.
-```
+```text
 
 ## Best Practices
 
@@ -218,6 +218,6 @@ impl AsDataFrame for MyType {
         // ...
     }
 }
-```
+```text
 
 However, the `#[miniextendr(as = "...")]` attribute is the recommended approach as it generates the R wrappers automatically.

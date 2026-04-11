@@ -16,7 +16,7 @@ One-page reference for miniextendr's ALTREP system.
 
 ### Quick Decision Guide
 
-```
+```text
 Is your data > 1000 elements?
 ├─ Yes → Use .into_sexp_altrep()
 └─ No
@@ -186,7 +186,7 @@ fn elt(&self, i: usize) -> T { (self.function)(i) }
 
 ## DATAPTR Decision Tree
 
-```
+```text
 Do you have data in memory?
 ├─ Yes (Vec/Box/slice)
 │  └─ Provide dataptr() → Fast operations

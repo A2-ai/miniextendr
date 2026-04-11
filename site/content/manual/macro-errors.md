@@ -130,7 +130,7 @@ unsafe {
 
 ### Suppression syntax
 
-```
+```rust
 // mxl::allow(CODE)
 // mxl::allow(CODE1, CODE2)
 // mxl::allow(CODE1, CODE2, CODE3)

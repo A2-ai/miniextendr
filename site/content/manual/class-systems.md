@@ -20,7 +20,7 @@ miniextendr supports five R class systems. This guide helps you choose the right
 
 ## Choosing a Class System
 
-```
+```text
                          ┌─────────────────────────────────────┐
                          │  Do you need method dispatch on     │
                          │  object type (polymorphism)?        │

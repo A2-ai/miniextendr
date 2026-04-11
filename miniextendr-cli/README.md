@@ -17,7 +17,7 @@ just cli-install  # install to ~/.cargo/bin
 
 ## Usage
 
-```
+```text
 miniextendr [OPTIONS] <COMMAND>
 
 Options:

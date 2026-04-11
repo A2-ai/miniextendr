@@ -325,7 +325,7 @@ HashMap variants are faster than BTreeMap for large collections (O(1) vs O(log n
 
 ### Choosing a Strategy
 
-```
+```text
 Need GC protection?
 ├─ Within a single .Call?
 │  ├─ 1 value → OwnedProtect

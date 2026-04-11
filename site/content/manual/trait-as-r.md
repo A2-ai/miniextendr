@@ -17,7 +17,7 @@ The trait ABI enables:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │ R Code          │     │ C-callables      │     │ Rust Runtime    │
 │                 │     │ (example pkg)    │     │ (miniextendr)   │
@@ -200,7 +200,7 @@ Packages that want to use the trait ABI must:
 
 Add `miniextendr` (or the base package name) to both `LinkingTo` and `Imports`:
 
-```
+```text
 Package: mypackage
 LinkingTo: miniextendr
 Imports: miniextendr

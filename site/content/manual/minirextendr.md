@@ -31,7 +31,7 @@ create_miniextendr_package("mypackage")
 
 Creates a complete R package with Rust backend:
 
-```
+```text
 mypackage/
 ├── DESCRIPTION          # Config/build/bootstrap: TRUE
 ├── NAMESPACE
@@ -61,7 +61,7 @@ create_miniextendr_monorepo("myproject",
 
 Creates a Cargo workspace with a separate Rust crate alongside the R package:
 
-```
+```text
 myproject/
 ├── Cargo.toml           # Workspace root
 ├── mypkg-rs/            # Main Rust crate

@@ -25,7 +25,7 @@ on dealloc.
 
 Each allocation creates one R `RAWSXP` vector. Inside its data region:
 
-```
+```text
 RAWSXP data bytes:
 ┌──────────────────┬──────────────┬──────────────────────┐
 │  alignment pad   │   Header     │   user bytes ...     │
