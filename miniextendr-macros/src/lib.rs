@@ -2061,14 +2061,20 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    // Extract inner type - must be a newtype (single field)
-    let inner_ty: syn::Type = match &input.data {
+    // Extract inner type and constructor — must be a newtype (single field)
+    let (inner_ty, elt_ctor): (syn::Type, proc_macro2::TokenStream) = match &input.data {
         syn::Data::Struct(data) => match &data.fields {
             syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
-                fields.unnamed.first().unwrap().ty.clone()
+                let ty = fields.unnamed.first().unwrap().ty.clone();
+                let ctor = quote::quote! { Self(val) };
+                (ty, ctor)
             }
             syn::Fields::Named(fields) if fields.named.len() == 1 => {
-                fields.named.first().unwrap().ty.clone()
+                let field = fields.named.first().unwrap();
+                let ty = field.ty.clone();
+                let field_name = field.ident.as_ref().unwrap();
+                let ctor = quote::quote! { Self { #field_name: val } };
+                (ty, ctor)
             }
             _ => {
                 return syn::Error::new_spanned(
@@ -2097,6 +2103,12 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
                 unsafe {
                     <#inner_ty as ::miniextendr_api::ffi::RNativeType>::dataptr_mut(sexp).cast()
                 }
+            }
+
+            #[inline]
+            fn elt(sexp: ::miniextendr_api::ffi::SEXP, i: isize) -> Self {
+                let val = <#inner_ty as ::miniextendr_api::ffi::RNativeType>::elt(sexp, i);
+                #elt_ctor
             }
         }
 

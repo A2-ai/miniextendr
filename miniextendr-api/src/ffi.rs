@@ -1496,6 +1496,11 @@ pub trait RNativeType: Sized + Copy + 'static {
     /// - `sexp` must be a valid, non-null SEXP of the corresponding vector type.
     /// - For ALTREP vectors, this may trigger materialization.
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self;
+
+    /// Read the i-th element via the appropriate `*_ELT` accessor.
+    ///
+    /// Goes through R's ALTREP dispatch for ALTREP vectors.
+    fn elt(sexp: SEXP, i: isize) -> Self;
 }
 
 /// R's logical element type (the contents of a `LGLSXP` vector).
@@ -1563,8 +1568,6 @@ impl RNativeType for i32 {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        // R returns 0x1 for empty vectors, which isn't properly aligned.
-        // Return an aligned dangling pointer for empty case.
         unsafe {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
@@ -1573,6 +1576,11 @@ impl RNativeType for i32 {
             }
         }
     }
+
+    #[inline]
+    fn elt(sexp: SEXP, i: isize) -> Self {
+        unsafe { INTEGER_ELT(sexp, i) }
+    }
 }
 
 impl RNativeType for f64 {
@@ -1580,8 +1588,6 @@ impl RNativeType for f64 {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        // R returns 0x1 for empty vectors, which isn't properly aligned.
-        // Return an aligned dangling pointer for empty case.
         unsafe {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
@@ -1590,6 +1596,11 @@ impl RNativeType for f64 {
             }
         }
     }
+
+    #[inline]
+    fn elt(sexp: SEXP, i: isize) -> Self {
+        unsafe { REAL_ELT(sexp, i) }
+    }
 }
 
 impl RNativeType for u8 {
@@ -1597,8 +1608,6 @@ impl RNativeType for u8 {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        // R returns 0x1 for empty vectors, which isn't properly aligned.
-        // Return an aligned dangling pointer for empty case.
         unsafe {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
@@ -1607,6 +1616,11 @@ impl RNativeType for u8 {
             }
         }
     }
+
+    #[inline]
+    fn elt(sexp: SEXP, i: isize) -> Self {
+        unsafe { RAW_ELT(sexp, i) }
+    }
 }
 
 impl RNativeType for RLogical {
@@ -1614,8 +1628,6 @@ impl RNativeType for RLogical {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        // R returns 0x1 for empty vectors, which isn't properly aligned.
-        // Return an aligned dangling pointer for empty case.
         // LOGICAL returns *mut c_int, RLogical is repr(transparent) over i32
         unsafe {
             if Rf_xlength(sexp) == 0 {
@@ -1625,6 +1637,11 @@ impl RNativeType for RLogical {
             }
         }
     }
+
+    #[inline]
+    fn elt(sexp: SEXP, i: isize) -> Self {
+        RLogical(unsafe { LOGICAL_ELT(sexp, i) })
+    }
 }
 
 impl RNativeType for Rcomplex {
@@ -1632,8 +1649,6 @@ impl RNativeType for Rcomplex {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        // R returns 0x1 for empty vectors, which isn't properly aligned.
-        // Return an aligned dangling pointer for empty case.
         unsafe {
             if Rf_xlength(sexp) == 0 {
                 std::ptr::NonNull::<Self>::dangling().as_ptr()
@@ -1641,6 +1656,11 @@ impl RNativeType for Rcomplex {
                 COMPLEX(sexp)
             }
         }
+    }
+
+    #[inline]
+    fn elt(sexp: SEXP, i: isize) -> Self {
+        unsafe { COMPLEX_ELT(sexp, i) }
     }
 }
 
@@ -1775,7 +1795,7 @@ unsafe extern "C-unwind" {
     /// # Feature Gate
     ///
     /// This is a non-API function and requires the `nonapi` feature.
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, dead_code)] // used by worker.rs under worker-thread feature
     pub(crate) fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
 }
 
