@@ -304,7 +304,7 @@ macro_rules! __impl_altvec_dataptr {
                 // The underlying data can't provide a contiguous pointer (e.g., Arrow
                 // array with null bitmask). Materialize into data2 via Elt methods.
                 // Must never return null — R doesn't fall back when custom Dataptr is set.
-                unsafe { $crate::altrep_data::materialize_altrep_data2(x) }
+                unsafe { $crate::altrep_data::materialize_altrep_data2::<$elem>(x) }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
@@ -491,12 +491,9 @@ macro_rules! __impl_altvec_integer_dataptr {
                         $crate::ffi::SEXPTYPE::INTSXP,
                         n,
                     ));
+                    let dst: &mut [i32] = $crate::ffi::SexpExt::as_mut_slice(&vec);
                     for i in 0..n {
-                        $crate::ffi::SexpExt::set_integer_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltInteger>::elt(x, i),
-                        );
+                        dst[i as usize] = <$ty as $crate::altrep_traits::AltInteger>::elt(x, i);
                     }
                     $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
                     $crate::ffi::Rf_unprotect(1);
@@ -547,12 +544,9 @@ macro_rules! __impl_altvec_real_dataptr {
                         $crate::ffi::SEXPTYPE::REALSXP,
                         n,
                     ));
+                    let dst: &mut [f64] = $crate::ffi::SexpExt::as_mut_slice(&vec);
                     for i in 0..n {
-                        $crate::ffi::SexpExt::set_real_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltReal>::elt(x, i),
-                        );
+                        dst[i as usize] = <$ty as $crate::altrep_traits::AltReal>::elt(x, i);
                     }
                     $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
                     $crate::ffi::Rf_unprotect(1);
@@ -600,12 +594,9 @@ macro_rules! __impl_altvec_raw_dataptr {
                         $crate::ffi::SEXPTYPE::RAWSXP,
                         n,
                     ));
+                    let dst: &mut [u8] = $crate::ffi::SexpExt::as_mut_slice(&vec);
                     for i in 0..n {
-                        $crate::ffi::SexpExt::set_raw_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltRaw>::elt(x, i),
-                        );
+                        dst[i as usize] = <$ty as $crate::altrep_traits::AltRaw>::elt(x, i);
                     }
                     $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
                     $crate::ffi::Rf_unprotect(1);
@@ -653,12 +644,10 @@ macro_rules! __impl_altvec_complex_dataptr {
                         $crate::ffi::SEXPTYPE::CPLXSXP,
                         n,
                     ));
+                    let dst: &mut [$crate::ffi::Rcomplex] =
+                        $crate::ffi::SexpExt::as_mut_slice(&vec);
                     for i in 0..n {
-                        $crate::ffi::SexpExt::set_complex_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltComplex>::elt(x, i),
-                        );
+                        dst[i as usize] = <$ty as $crate::altrep_traits::AltComplex>::elt(x, i);
                     }
                     $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
                     $crate::ffi::Rf_unprotect(1);

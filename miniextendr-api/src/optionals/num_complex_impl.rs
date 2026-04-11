@@ -203,18 +203,17 @@ impl TryFromSexp for Vec<Complex<f64>> {
             .into());
         }
 
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
+        let slice: &[Rcomplex] = unsafe { SexpExt::as_slice(&sexp) };
+        let mut result = Vec::with_capacity(slice.len());
 
-        for i in 0..len {
-            let rcomplex = sexp.complex_elt(i as crate::ffi::R_xlen_t);
-            if is_na_rcomplex(&rcomplex) {
+        for (i, rcomplex) in slice.iter().enumerate() {
+            if is_na_rcomplex(rcomplex) {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for Vec<Complex<f64>>",
                     i
                 )));
             }
-            result.push(from_rcomplex(rcomplex));
+            result.push(from_rcomplex(*rcomplex));
         }
 
         Ok(result)
@@ -234,9 +233,10 @@ impl IntoR for Vec<Complex<f64>> {
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
+        let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
 
         for (i, c) in self.into_iter().enumerate() {
-            sexp.set_complex_elt(i as crate::ffi::R_xlen_t, to_rcomplex(c));
+            dst[i] = to_rcomplex(c);
         }
 
         sexp
@@ -259,17 +259,17 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
             .into());
         }
 
-        let len = sexp.len();
-        let mut result = Vec::with_capacity(len);
-
-        for i in 0..len {
-            let rcomplex = sexp.complex_elt(i as crate::ffi::R_xlen_t);
-            if is_na_rcomplex(&rcomplex) {
-                result.push(None);
-            } else {
-                result.push(Some(from_rcomplex(rcomplex)));
-            }
-        }
+        let slice: &[Rcomplex] = unsafe { SexpExt::as_slice(&sexp) };
+        let result = slice
+            .iter()
+            .map(|rcomplex| {
+                if is_na_rcomplex(rcomplex) {
+                    None
+                } else {
+                    Some(from_rcomplex(*rcomplex))
+                }
+            })
+            .collect();
 
         Ok(result)
     }
@@ -288,13 +288,13 @@ impl IntoR for Vec<Option<Complex<f64>>> {
 
         let len = self.len();
         let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::ffi::R_xlen_t) };
+        let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
 
         for (i, opt) in self.into_iter().enumerate() {
-            let rcomplex = match opt {
+            dst[i] = match opt {
                 Some(c) => to_rcomplex(c),
                 None => na_rcomplex(),
             };
-            sexp.set_complex_elt(i as crate::ffi::R_xlen_t, rcomplex);
         }
 
         sexp

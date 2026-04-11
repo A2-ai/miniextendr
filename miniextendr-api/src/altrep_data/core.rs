@@ -242,47 +242,24 @@ pub trait AltrepDataptr<T> {
 /// Materialize an ALTREP SEXP into a plain R vector in data2.
 ///
 /// Called by `__impl_altvec_dataptr` when the custom `dataptr()` returns `None`.
-/// Allocates an R vector, fills it element-by-element via `SexpExt` accessors
-/// (which go through R's ALTREP dispatch to call the registered `Elt` method),
-/// stores it in data2, and returns DATAPTR of data2.
+/// Allocates a destination vector via `alloc_r_vector_unchecked`, fills it from
+/// `T::elt()` (which goes through R's ALTREP Elt dispatch), stores in data2,
+/// and returns DATAPTR of data2.
 ///
 /// # Safety
-/// - `x` must be a valid ALTREP SEXP
+/// - `x` must be a valid ALTREP SEXP of element type `T`
 /// - Must be called on R's main thread
-pub unsafe fn materialize_altrep_data2(x: SEXP) -> *mut core::ffi::c_void {
+pub unsafe fn materialize_altrep_data2<T: crate::ffi::RNativeType>(
+    x: SEXP,
+) -> *mut core::ffi::c_void {
     use crate::altrep_ext::AltrepSexpExt;
-    use crate::ffi::{self, SEXPTYPE, SexpExt};
+    use crate::ffi::{self, SexpExt};
 
-    let stype = x.type_of();
     let n = x.len();
-    // SAFETY: called from ALTREP Dataptr callback — always on R main thread.
-    let vec =
-        unsafe { ffi::Rf_protect_unchecked(ffi::Rf_allocVector_unchecked(stype, n as isize)) };
-
-    // Fill element-by-element via SexpExt accessors. These go through R's
-    // ALTREP Elt dispatch on `x`, producing correct NA sentinels for nulls.
-    match stype {
-        SEXPTYPE::REALSXP => {
-            for i in 0..n {
-                vec.set_real_elt(i as isize, x.real_elt(i as isize));
-            }
-        }
-        SEXPTYPE::INTSXP => {
-            for i in 0..n {
-                vec.set_integer_elt(i as isize, x.integer_elt(i as isize));
-            }
-        }
-        SEXPTYPE::RAWSXP => {
-            for i in 0..n {
-                vec.set_raw_elt(i as isize, x.raw_elt(i as isize));
-            }
-        }
-        SEXPTYPE::CPLXSXP => {
-            for i in 0..n {
-                vec.set_complex_elt(i as isize, x.complex_elt(i as isize));
-            }
-        }
-        _ => {}
+    let (vec, dst) = unsafe { crate::into_r::alloc_r_vector_unchecked::<T>(n) };
+    unsafe { ffi::Rf_protect_unchecked(vec) };
+    for (i, slot) in dst.iter_mut().enumerate() {
+        *slot = T::elt(x, i as isize);
     }
 
     unsafe {

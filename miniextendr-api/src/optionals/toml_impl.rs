@@ -405,12 +405,10 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                             isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
                         )
                     };
+                    let dst: &mut [i32] = unsafe { SexpExt::as_mut_slice(&sexp) };
                     for (i, v) in arr.iter().enumerate() {
                         if let TomlValue::Integer(n) = v {
-                            sexp.set_integer_elt(
-                                isize::try_from(i).expect("index overflow"),
-                                i32::try_from(*n).expect("validated by i64_fits_r_int"),
-                            )
+                            dst[i] = i32::try_from(*n).expect("validated by i64_fits_r_int");
                         }
                     }
                     return sexp;
@@ -422,10 +420,13 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
                     )
                 };
+                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Integer(n) = v {
                         #[allow(clippy::cast_precision_loss)]
-                        sexp.set_real_elt(isize::try_from(i).expect("index overflow"), *n as f64)
+                        {
+                            dst[i] = *n as f64;
+                        }
                     }
                 }
                 return sexp;
@@ -437,9 +438,10 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
                     )
                 };
+                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Float(f) = v {
-                        sexp.set_real_elt(isize::try_from(i).expect("index overflow"), *f)
+                        dst[i] = *f;
                     }
                 }
                 return sexp;
@@ -451,12 +453,10 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
                     )
                 };
+                let dst: &mut [crate::ffi::RLogical] = unsafe { SexpExt::as_mut_slice(&sexp) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Boolean(b) = v {
-                        sexp.set_logical_elt(
-                            isize::try_from(i).expect("index overflow"),
-                            if *b { 1 } else { 0 },
-                        )
+                        dst[i] = crate::ffi::RLogical::from(*b);
                     }
                 }
                 return sexp;
