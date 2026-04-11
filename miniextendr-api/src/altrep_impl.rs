@@ -229,14 +229,15 @@ macro_rules! __impl_altrep_base_with_serialize {
                 // SAFETY: Unserialize is called by R on the main thread.
                 unsafe {
                     use $crate::externalptr::ExternalPtr;
-                    use $crate::ffi::altrep::{R_altrep_class_t, R_new_altrep};
+                    use $crate::ffi::altrep::R_altrep_class_t;
                     use $crate::ffi::{Rf_protect_unchecked, Rf_unprotect_unchecked, SEXP};
 
                     let ext_ptr = ExternalPtr::new_unchecked(data);
                     let data1 = ext_ptr.as_sexp();
-                    // Protect across the allocation in R_new_altrep.
+                    // Protect across the allocation in new_altrep_unchecked.
                     Rf_protect_unchecked(data1);
-                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, SEXP::nil());
+                    let cls = R_altrep_class_t::from_sexp(class);
+                    let out = cls.new_altrep_unchecked(data1, SEXP::nil());
                     Rf_unprotect_unchecked(1);
                     out
                 }

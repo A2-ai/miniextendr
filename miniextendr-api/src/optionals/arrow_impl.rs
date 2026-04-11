@@ -48,7 +48,7 @@ pub use arrow_schema::{self, DataType, Field, Schema};
 
 use arrow_array::types::ArrowPrimitiveType;
 
-use crate::ffi::{self, R_NaString, R_xlen_t, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{self, R_NaString, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -587,25 +587,19 @@ pub type StringDictionaryArray = DictionaryArray<Int32Type>;
 
 /// Check if an R SEXP has a specific class (checks "class" attribute).
 ///
-/// `class` must be a NUL-terminated string (e.g., `"factor\0"`).
-unsafe fn r_inherits(sexp: SEXP, class: &str) -> bool {
-    debug_assert!(class.ends_with('\0'), "class must be NUL-terminated");
-    unsafe { ffi::Rf_inherits(sexp, class.as_ptr().cast()) != Rboolean::FALSE }
-}
-
 /// Check if an R SEXP is a factor (INTSXP with "levels" attribute).
-unsafe fn is_factor(sexp: SEXP) -> bool {
-    sexp.type_of() == SEXPTYPE::INTSXP && unsafe { r_inherits(sexp, "factor\0") }
+fn is_factor(sexp: SEXP) -> bool {
+    sexp.type_of() == SEXPTYPE::INTSXP && sexp.inherits_class(c"factor")
 }
 
 /// Check if an R SEXP is a Date (REALSXP with class "Date").
-unsafe fn is_date(sexp: SEXP) -> bool {
-    sexp.type_of() == SEXPTYPE::REALSXP && unsafe { r_inherits(sexp, "Date\0") }
+fn is_date(sexp: SEXP) -> bool {
+    sexp.type_of() == SEXPTYPE::REALSXP && sexp.inherits_class(c"Date")
 }
 
 /// Check if an R SEXP is POSIXct (REALSXP with class "POSIXct").
-unsafe fn is_posixct(sexp: SEXP) -> bool {
-    sexp.type_of() == SEXPTYPE::REALSXP && unsafe { r_inherits(sexp, "POSIXct\0") }
+fn is_posixct(sexp: SEXP) -> bool {
+    sexp.type_of() == SEXPTYPE::REALSXP && sexp.inherits_class(c"POSIXct")
 }
 
 /// Convert R factor to Arrow DictionaryArray<Int32Type> with string values.
@@ -617,7 +611,7 @@ impl TryFromSexp for StringDictionaryArray {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if !unsafe { is_factor(sexp) } {
+        if !is_factor(sexp) {
             return Err(SexpError::InvalidValue(
                 "expected R factor (integer with levels attribute)".into(),
             ));
@@ -670,7 +664,7 @@ impl TryFromSexp for Date32Array {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if !unsafe { is_date(sexp) } {
+        if !is_date(sexp) {
             return Err(SexpError::InvalidValue(
                 "expected R Date object (numeric with class 'Date')".into(),
             ));
@@ -702,7 +696,7 @@ impl TryFromSexp for Date32Array {
 /// Arrow TimestampSecondArray uses i64 seconds. Fractional seconds are truncated.
 /// Timezone from R's "tzone" attribute is preserved if present.
 pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpError> {
-    if !unsafe { is_posixct(sexp) } {
+    if !is_posixct(sexp) {
         return Err(SexpError::InvalidValue(
             "expected R POSIXct object (numeric with class 'POSIXct')".into(),
         ));

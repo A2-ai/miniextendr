@@ -9,10 +9,7 @@ use crate::ffi::SEXP;
 
 // region: Construction helpers (Phase A)
 
-use crate::ffi::{
-    R_BlankString, R_NaString, R_xlen_t, Rf_allocVector, Rf_type2char, Rf_xlength, SEXPTYPE,
-    SexpExt,
-};
+use crate::ffi::{R_xlen_t, Rf_allocVector, Rf_xlength, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::list::List;
 
@@ -164,29 +161,16 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
 }
 
 /// Create an R symbol from a Rust string.
-///
-/// Uses Rf_installChar to create a symbol from a CHARSXP, which properly
-/// handles non-null-terminated strings.
-///
-/// # Safety
-///
-/// Must be called from R's main thread.
-unsafe fn install_symbol(name: &str) -> SEXP {
-    let charsxp = SEXP::charsxp(name);
-    unsafe { crate::ffi::Rf_installChar(charsxp) }
+fn install_symbol(name: &str) -> SEXP {
+    SEXP::symbol(name)
 }
 
 /// Get the R typeof name for a SEXP (e.g., "double", "integer", "list").
 ///
 /// # Safety
 ///
-/// Must be called from R's main thread with a valid SEXP.
-unsafe fn get_typeof_name(sexp: SEXP) -> &'static str {
-    let sexptype = sexp.type_of();
-    let cstr = unsafe { Rf_type2char(sexptype) };
-    let cstr = unsafe { std::ffi::CStr::from_ptr(cstr) };
-    // SAFETY: R's type names are ASCII strings
-    cstr.to_str().unwrap_or("unknown")
+fn get_typeof_name(sexp: SEXP) -> &'static str {
+    sexp.type_of().type_name()
 }
 
 /// Repair NA names by replacing them with empty strings.
@@ -203,7 +187,7 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
 
     // First pass: check if any NA
     for i in 0..n {
-        if unsafe { names.string_elt(i) == R_NaString } {
+        if names.string_elt(i) == SEXP::na_string() {
             has_na = true;
             break;
         }
@@ -217,8 +201,8 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
     let repaired = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
     for i in 0..n {
         let elem = names.string_elt(i);
-        let new_elem = if elem == unsafe { R_NaString } {
-            unsafe { R_BlankString }
+        let new_elem = if elem == SEXP::na_string() {
+            SEXP::blank_string()
         } else {
             elem
         };
@@ -286,7 +270,7 @@ pub fn new_vctr(
 
     // Build class vector
     let base_type_name = if inherit {
-        Some(unsafe { get_typeof_name(data) })
+        Some(get_typeof_name(data))
     } else {
         None
     };
@@ -313,7 +297,7 @@ pub fn new_vctr(
 
     // Set additional attributes
     for (name, value) in attrs {
-        let name_sym = unsafe { install_symbol(name) };
+        let name_sym = install_symbol(name);
         data.set_attr(name_sym, *value);
     }
 
@@ -376,11 +360,11 @@ pub fn new_rcrd(
     for i in 0..n_fields {
         // Check name
         let name_charsxp = names_sexp.string_elt(i);
-        if name_charsxp == unsafe { R_NaString } || name_charsxp == SEXP::nil() {
+        if name_charsxp == SEXP::na_string() || name_charsxp == SEXP::nil() {
             return Err(VctrsBuildError::UnnamedFields);
         }
 
-        let name_cstr = unsafe { std::ffi::CStr::from_ptr(crate::ffi::R_CHAR(name_charsxp)) };
+        let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_charsxp.r_char()) };
         let name = name_cstr.to_str().unwrap_or("");
         if name.is_empty() {
             return Err(VctrsBuildError::UnnamedFields);
@@ -417,7 +401,7 @@ pub fn new_rcrd(
 
     // Set additional attributes
     for (name, value) in attrs {
-        let name_sym = unsafe { install_symbol(name) };
+        let name_sym = install_symbol(name);
         data.set_attr(name_sym, *value);
     }
 
@@ -501,7 +485,7 @@ pub fn new_list_of(
 
     // Set additional attributes
     for (name, value) in attrs {
-        let name_sym = unsafe { install_symbol(name) };
+        let name_sym = install_symbol(name);
         data.set_attr(name_sym, *value);
     }
 

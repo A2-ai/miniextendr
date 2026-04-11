@@ -26,8 +26,8 @@
 //! ```
 
 use crate::ffi::{
-    self, R_BaseEnv, R_BaseNamespace, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install,
-    Rf_lcons, Rf_protect, Rf_unprotect, SET_TAG, SEXP, SexpExt,
+    self, PairListExt, R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_tryEvalSilent, Rf_install, Rf_protect,
+    Rf_unprotect, SEXP, SexpExt,
 };
 use std::ffi::{CStr, CString};
 
@@ -135,7 +135,7 @@ impl REnv {
         }
     }
 
-    /// The base namespace (`R_BaseNamespace`).
+    /// The base namespace (`SEXP::base_namespace()`).
     ///
     /// Unlike [`base()`](Self::base) which is the base *environment* (exported
     /// functions visible to users), this is the base *namespace* (includes
@@ -146,9 +146,9 @@ impl REnv {
     ///
     /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn base_namespace() -> Self {
+    pub fn base_namespace() -> Self {
         REnv {
-            sexp: unsafe { R_BaseNamespace },
+            sexp: SEXP::base_namespace(),
         }
     }
 
@@ -333,17 +333,17 @@ impl RCall {
 
             let mut tail = SEXP::nil();
             for (name, value) in self.args.iter().rev() {
-                tail = ffi::Rf_cons(*value, tail);
+                tail = value.cons(tail);
                 Rf_protect(tail);
                 n_protect += 1;
 
                 if let Some(c_name) = name {
-                    SET_TAG(tail, Rf_install(c_name.as_ptr()));
+                    tail.set_tag(Rf_install(c_name.as_ptr()));
                 }
             }
 
             // Prepend the function as LANGSXP head
-            let call = Rf_lcons(self.fun, tail);
+            let call = self.fun.lcons(tail);
             Rf_protect(call);
             n_protect += 1;
 
@@ -426,7 +426,7 @@ unsafe fn get_r_error_message() -> String {
         let result = if ffi::Rf_xlength(msg_sexp) > 0 {
             let charsxp = msg_sexp.string_elt(0);
             if !charsxp.is_null() {
-                let ptr = ffi::R_CHAR(charsxp);
+                let ptr = charsxp.r_char();
                 if !ptr.is_null() {
                     let msg = CStr::from_ptr(ptr).to_string_lossy().into_owned();
                     msg.trim_end().to_string()
@@ -505,7 +505,7 @@ mod tests {
         assert_env_fn(|| unsafe { REnv::global() });
         assert_env_fn(|| unsafe { REnv::base() });
         assert_env_fn(|| unsafe { REnv::empty() });
-        assert_env_fn(|| unsafe { REnv::base_namespace() });
+        assert_env_fn(REnv::base_namespace);
         assert_env_fn(|| unsafe { REnv::caller() });
         assert_env_result_fn(|| unsafe { REnv::package_namespace("base") });
     }

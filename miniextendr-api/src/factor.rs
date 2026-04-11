@@ -29,9 +29,7 @@ use std::ops::Deref;
 use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::ffi::{
-    INTEGER, PRINTNAME, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
-};
+use crate::ffi::{INTEGER, Rf_allocVector, Rf_install, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
@@ -45,7 +43,7 @@ pub(crate) fn factor_class_sexp() -> SEXP {
         crate::ffi::R_PreserveObject(class_sexp);
         // Use symbol PRINTNAME for permanent CHARSXP
         let sym = Rf_install(c"factor".as_ptr());
-        class_sexp.set_string_elt(0, PRINTNAME(sym));
+        class_sexp.set_string_elt(0, sym.printname());
         class_sexp
     })
 }
@@ -78,7 +76,7 @@ pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
             // Install as symbol - symbols and their PRINTNAMEs are never GC'd
             let c_str = CString::new(*level).expect("level name contains null byte");
             let sym = Rf_install(c_str.as_ptr());
-            sexp.set_string_elt(i as isize, PRINTNAME(sym));
+            sexp.set_string_elt(i as isize, sym.printname());
         }
         sexp
     }

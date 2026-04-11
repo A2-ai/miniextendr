@@ -57,10 +57,10 @@ impl TryFromSexp for &'static str {
         let charsxp = sexp.string_elt(0);
 
         // Check for NA_STRING or R_BlankString
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok("");
         }
-        if charsxp == unsafe { crate::ffi::R_BlankString } {
+        if charsxp == SEXP::blank_string() {
             return Ok("");
         }
 
@@ -92,10 +92,10 @@ impl TryFromSexp for &'static str {
         let charsxp = unsafe { sexp.string_elt_unchecked(0) };
 
         // Check for NA_STRING or R_BlankString
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok("");
         }
-        if charsxp == unsafe { crate::ffi::R_BlankString } {
+        if charsxp == SEXP::blank_string() {
             return Ok("");
         }
 
@@ -132,10 +132,10 @@ impl TryFromSexp for Option<&'static str> {
         }
 
         let charsxp = sexp.string_elt(0);
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok(None);
         }
-        if charsxp == unsafe { crate::ffi::R_BlankString } {
+        if charsxp == SEXP::blank_string() {
             return Ok(Some(""));
         }
 
@@ -167,10 +167,10 @@ impl TryFromSexp for Option<&'static str> {
         }
 
         let charsxp = unsafe { sexp.string_elt_unchecked(0) };
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok(None);
         }
-        if charsxp == unsafe { crate::ffi::R_BlankString } {
+        if charsxp == SEXP::blank_string() {
             return Ok(Some(""));
         }
 
@@ -257,7 +257,7 @@ impl TryFromSexp for String {
         let charsxp = sexp.string_elt(0);
 
         // Check for NA_STRING
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok(String::new());
         }
 
@@ -303,7 +303,7 @@ impl TryFromSexp for String {
         let charsxp = unsafe { sexp.string_elt_unchecked(0) };
 
         // Check for NA_STRING
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok(String::new());
         }
 
@@ -366,7 +366,7 @@ impl TryFromSexp for Option<String> {
         let charsxp = sexp.string_elt(0);
 
         // Return None for NA_STRING
-        if charsxp == unsafe { crate::ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Ok(None);
         }
 

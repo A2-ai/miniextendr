@@ -1,7 +1,7 @@
 //! Support for R's missing arguments.
 //!
 //! When an R function is called without providing a value for a formal argument,
-//! R passes `R_MissingArg` as a placeholder. This is different from `NULL` -
+//! R passes `SEXP::missing_arg()` as a placeholder. This is different from `NULL` -
 //! a missing argument means "not provided", while `NULL` is an explicit value.
 //!
 //! # Example
@@ -27,7 +27,7 @@
 //! # Difference from `Option<T>`
 //!
 //! - `Option<T>` treats `NULL` as `None` and any other value as `Some(T)`.
-//! - `Missing<T>` treats `R_MissingArg` as missing and any other value (including `NULL`) as present.
+//! - `Missing<T>` treats `SEXP::missing_arg()` as missing and any other value (including `NULL`) as present.
 //!
 //! Use `Missing<Option<T>>` if you need to distinguish between:
 //! - Missing argument (not passed)
@@ -61,13 +61,13 @@
 //! ```
 //!
 //! `quote(expr=)` is an R idiom that captures the "missing" state - calling `quote()`
-//! without providing its `expr` argument returns `R_MissingArg`. This allows:
+//! without providing its `expr` argument returns `SEXP::missing_arg()`. This allows:
 //!
 //! 1. The call to proceed without error
-//! 2. `R_MissingArg` to be passed through `.Call()` to Rust
+//! 2. `SEXP::missing_arg()` to be passed through `.Call()` to Rust
 //! 3. `Missing<T>` to detect it as `Missing::Absent`
 
-use crate::ffi::{R_MissingArg, SEXP};
+use crate::ffi::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 
 /// Wrapper type that detects if an R argument was not passed (missing).
@@ -247,7 +247,7 @@ impl<T> From<Missing<T>> for Option<T> {
 /// Check if a SEXP is the missing argument sentinel.
 #[inline]
 pub fn is_missing_arg(sexp: SEXP) -> bool {
-    std::ptr::addr_eq(sexp.0, unsafe { R_MissingArg.0 })
+    std::ptr::addr_eq(sexp.0, SEXP::missing_arg().0)
 }
 
 impl<T> TryFromSexp for Missing<T>

@@ -250,7 +250,7 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
         let charsxp = names.string_elt(i as ffi::R_xlen_t);
 
         // Reject NA names
-        if charsxp == unsafe { ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Err(SexpError::InvalidValue(
                 "NamedVector does not allow NA names".to_string(),
             ));

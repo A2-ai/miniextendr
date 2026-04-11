@@ -106,8 +106,9 @@ pub(crate) use cached_strsxp;
 /// from any module.
 #[doc(hidden)]
 #[inline]
-pub(crate) unsafe fn permanent_charsxp(name: &std::ffi::CStr) -> crate::ffi::SEXP {
-    unsafe { crate::ffi::PRINTNAME(crate::ffi::Rf_install(name.as_ptr())) }
+pub(crate) fn permanent_charsxp(name: &std::ffi::CStr) -> crate::ffi::SEXP {
+    use crate::ffi::SexpExt;
+    unsafe { crate::ffi::Rf_install(name.as_ptr()) }.printname()
 }
 
 // endregion

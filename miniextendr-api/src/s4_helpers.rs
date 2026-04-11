@@ -137,7 +137,7 @@ pub unsafe fn s4_class_name(obj: SEXP) -> Option<String> {
             return None;
         }
 
-        let ptr = ffi::R_CHAR(first);
+        let ptr = first.r_char();
         if ptr.is_null() {
             return None;
         }

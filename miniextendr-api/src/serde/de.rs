@@ -5,7 +5,7 @@
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::ffi::{R_NaString, Rf_xlength, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{Rf_xlength, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
@@ -128,7 +128,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             }
             SEXPTYPE::STRSXP if len == 1 => {
                 let charsxp = self.sexp.string_elt(0);
-                if charsxp == unsafe { R_NaString } {
+                if charsxp == SEXP::na_string() {
                     visitor.visit_none()
                 } else {
                     let s = unsafe { charsxp_to_str(charsxp) };
@@ -463,7 +463,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
                 SEXPTYPE::STRSXP => {
                     let charsxp = self.sexp.string_elt(0);
-                    if charsxp == unsafe { R_NaString } {
+                    if charsxp == SEXP::na_string() {
                         return visitor.visit_none();
                     }
                 }
@@ -578,7 +578,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             // String -> unit variant
             SEXPTYPE::STRSXP if self.len() == 1 => {
                 let charsxp = self.sexp.string_elt(0);
-                if charsxp == unsafe { R_NaString } {
+                if charsxp == SEXP::na_string() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 let variant = unsafe { charsxp_to_str(charsxp) };
@@ -672,7 +672,7 @@ impl RDeserializer {
         }
 
         let charsxp = self.sexp.string_elt(0);
-        if charsxp == unsafe { R_NaString } {
+        if charsxp == SEXP::na_string() {
             return Err(RSerdeError::UnexpectedNa);
         }
         Ok(unsafe { charsxp_to_str(charsxp) })
@@ -775,7 +775,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
             }
             SEXPTYPE::STRSXP => {
                 let charsxp = self.sexp.string_elt(self.index as isize);
-                if charsxp == unsafe { R_NaString } {
+                if charsxp == SEXP::na_string() {
                     visitor.visit_none()
                 } else {
                     let s = unsafe { charsxp_to_str(charsxp) };

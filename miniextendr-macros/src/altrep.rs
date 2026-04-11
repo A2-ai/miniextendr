@@ -219,7 +219,6 @@ pub(crate) fn generate_altrep_impls(
                 fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                     use ::miniextendr_api::altrep_registration::RegisterAltrep;
                     use ::miniextendr_api::externalptr::ExternalPtr;
-                    use ::miniextendr_api::ffi::altrep::R_new_altrep;
                     use ::miniextendr_api::ffi::{SEXP, Rf_protect, Rf_unprotect};
 
                     let ext_ptr = ExternalPtr::new(self.0);
@@ -227,7 +226,7 @@ pub(crate) fn generate_altrep_impls(
                     let data1 = ext_ptr.as_sexp();
                     unsafe {
                         Rf_protect(data1);
-                        let altrep = R_new_altrep(cls, data1, SEXP::nil());
+                        let altrep = cls.new_altrep(data1, SEXP::nil());
                         Rf_unprotect(1);
                         altrep
                     }
@@ -236,7 +235,6 @@ pub(crate) fn generate_altrep_impls(
                 unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
                     use ::miniextendr_api::altrep_registration::RegisterAltrep;
                     use ::miniextendr_api::externalptr::ExternalPtr;
-                    use ::miniextendr_api::ffi::altrep::R_new_altrep_unchecked;
                     use ::miniextendr_api::ffi::{Rf_protect_unchecked, Rf_unprotect_unchecked};
 
                     let ext_ptr = ExternalPtr::new(self.0);
@@ -244,8 +242,7 @@ pub(crate) fn generate_altrep_impls(
                     let data1 = ext_ptr.as_sexp();
                     unsafe {
                         Rf_protect_unchecked(data1);
-                        let altrep = R_new_altrep_unchecked(
-                            cls,
+                        let altrep = cls.new_altrep_unchecked(
                             data1,
                             ::miniextendr_api::ffi::SEXP::nil(),
                         );

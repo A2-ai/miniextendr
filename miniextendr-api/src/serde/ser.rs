@@ -4,7 +4,7 @@
 //! to serialize any serde-compatible Rust type into R data structures.
 
 use super::error::RSerdeError;
-use crate::ffi::{R_NaString, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use serde::ser::{self, Serialize};
@@ -532,7 +532,7 @@ fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
     }
 
     let charsxp = sexp.string_elt(0);
-    if charsxp == unsafe { R_NaString } {
+    if charsxp == SEXP::na_string() {
         return Err(RSerdeError::NonStringKey);
     }
 

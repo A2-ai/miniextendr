@@ -51,10 +51,7 @@
 //!
 //! All functions in this module are unsafe and must be called from the R main thread.
 
-use crate::ffi::{
-    CAR, CDR, R_PreserveObject, Rf_cons, Rf_protect, Rf_unprotect, SET_TAG, SETCAR, SETCDR, SEXP,
-    SexpExt,
-};
+use crate::ffi::{PairListExt, R_PreserveObject, Rf_protect, Rf_unprotect, SEXP, SexpExt};
 use std::cell::OnceCell;
 
 thread_local! {
@@ -76,7 +73,7 @@ thread_local! {
 #[inline]
 unsafe fn init() -> SEXP {
     unsafe {
-        let out = Rf_cons(SEXP::nil(), Rf_cons(SEXP::nil(), SEXP::nil()));
+        let out = SEXP::nil().cons(SEXP::nil().cons(SEXP::nil()));
         R_PreserveObject(out);
         out
     }
@@ -92,10 +89,10 @@ unsafe fn init() -> SEXP {
 /// you're certain you're on the main thread.
 #[inline]
 unsafe fn init_unchecked() -> SEXP {
-    use crate::ffi::{R_PreserveObject_unchecked, Rf_cons_unchecked};
+    use crate::ffi::{PairListExt, R_PreserveObject_unchecked};
 
     unsafe {
-        let out = Rf_cons_unchecked(SEXP::nil(), Rf_cons_unchecked(SEXP::nil(), SEXP::nil()));
+        let out = SEXP::nil().cons_unchecked(SEXP::nil().cons_unchecked(SEXP::nil()));
         R_PreserveObject_unchecked(out);
         out
     }
@@ -192,15 +189,15 @@ pub unsafe fn insert(x: SEXP) -> SEXP {
 
         // head is the list itself; next is the node after head
         let head = list;
-        let next = CDR(list);
+        let next = head.cdr();
 
         // New cell points to current head and next
-        let cell = Rf_protect(Rf_cons(head, next));
-        SET_TAG(cell, x);
+        let cell = Rf_protect(head.cons(next));
+        cell.set_tag(x);
 
         // Splice cell between head and next
-        SETCDR(head, cell);
-        SETCAR(next, cell);
+        head.set_cdr(cell);
+        next.set_car(cell);
 
         Rf_unprotect(2);
 
@@ -220,10 +217,7 @@ pub unsafe fn insert(x: SEXP) -> SEXP {
 /// The returned cell must eventually be passed to [`release_unchecked`].
 #[inline]
 pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
-    use crate::ffi::{
-        CDR_unchecked, Rf_cons_unchecked, Rf_protect_unchecked, Rf_unprotect_unchecked,
-        SET_TAG_unchecked, SETCAR_unchecked, SETCDR_unchecked,
-    };
+    use crate::ffi::{PairListExt, Rf_protect_unchecked, Rf_unprotect_unchecked};
 
     unsafe {
         if x.is_nil() {
@@ -236,15 +230,15 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
 
         // head is the list itself; next is the node after head
         let head = list;
-        let next = CDR_unchecked(list);
+        let next = head.cdr_unchecked();
 
         // New cell points to current head and next
-        let cell = Rf_protect_unchecked(Rf_cons_unchecked(head, next));
-        SET_TAG_unchecked(cell, x);
+        let cell = Rf_protect_unchecked(head.cons_unchecked(next));
+        cell.set_tag_unchecked(x);
 
         // Splice cell between head and next
-        SETCDR_unchecked(head, cell);
-        SETCAR_unchecked(next, cell);
+        head.set_cdr_unchecked(cell);
+        next.set_car_unchecked(cell);
 
         Rf_unprotect_unchecked(2);
 
@@ -264,24 +258,17 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
 /// cell returned from [`insert`] and must not have been released already.
 #[inline]
 pub unsafe fn release(cell: SEXP) {
-    unsafe {
-        if cell.is_nil() {
-            return;
-        }
-
-        // Neighbors around the cell
-        let lhs = CAR(cell);
-        let rhs = CDR(cell);
-
-        // Bypass cell
-        SETCDR(lhs, rhs);
-        SETCAR(rhs, lhs);
-
-        // Optional hygiene (unnecessary but can help catch bugs)
-        // SET_TAG(cell, R_NilValue);
-        // SETCAR(cell, R_NilValue);
-        // SETCDR(cell, R_NilValue);
+    if cell.is_nil() {
+        return;
     }
+
+    // Neighbors around the cell
+    let lhs = cell.car();
+    let rhs = cell.cdr();
+
+    // Bypass cell
+    lhs.set_cdr(rhs);
+    rhs.set_car(lhs);
 }
 
 /// Release a previously protected SEXP (unchecked version).
@@ -296,7 +283,7 @@ pub unsafe fn release(cell: SEXP) {
 /// cell returned from [`insert_unchecked`] and must not have been released already.
 #[inline]
 pub unsafe fn release_unchecked(cell: SEXP) {
-    use crate::ffi::{CAR_unchecked, CDR_unchecked, SETCAR_unchecked, SETCDR_unchecked};
+    use crate::ffi::PairListExt;
 
     unsafe {
         if cell.is_nil() {
@@ -304,11 +291,11 @@ pub unsafe fn release_unchecked(cell: SEXP) {
         }
 
         // Neighbors around the cell
-        let lhs = CAR_unchecked(cell);
-        let rhs = CDR_unchecked(cell);
+        let lhs = cell.car_unchecked();
+        let rhs = cell.cdr_unchecked();
 
         // Bypass cell
-        SETCDR_unchecked(lhs, rhs);
-        SETCAR_unchecked(rhs, lhs);
+        lhs.set_cdr_unchecked(rhs);
+        rhs.set_car_unchecked(lhs);
     }
 }
