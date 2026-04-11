@@ -304,7 +304,7 @@ macro_rules! __impl_altvec_dataptr {
                 // The underlying data can't provide a contiguous pointer (e.g., Arrow
                 // array with null bitmask). Materialize into data2 via Elt methods.
                 // Must never return null — R doesn't fall back when custom Dataptr is set.
-                unsafe { $crate::altrep_data::materialize_altrep_data2(x) }
+                unsafe { $crate::altrep_data::materialize_altrep_data2::<$elem>(x) }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
@@ -406,175 +406,52 @@ macro_rules! __impl_altvec_string_dataptr {
 
 /// Internal macro: impl AltVec with materializing dataptr for logical ALTREP.
 ///
-/// Rust `bool` vectors can't expose DATAPTR directly (bool is 1 byte, R logical
-/// is `int`/4 bytes). This materializes into an LGLSXP cached in data2, matching
-/// R's own compact-sequence pattern (`compact_intseq_Dataptr` in altclasses.c).
+/// Thin wrapper: provides a trivial `AltrepDataptr` (no direct pointer) and
+/// delegates to `__impl_altvec_dataptr` which materializes via `RNativeType::elt`.
+/// R logicals are stored as `i32` but accessed through `RLogical` for type safety.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_logical_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
-            const HAS_DATAPTR: bool = true;
-
-            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                unsafe {
-                    // Check if already materialized in data2
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::LGLSXP
-                    {
-                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
-                    }
-
-                    // Materialize: allocate LGLSXP and convert bool→i32
-                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let lgl = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
-                        $crate::ffi::SEXPTYPE::LGLSXP,
-                        n,
-                    ));
-                    for i in 0..n {
-                        $crate::ffi::SexpExt::set_logical_elt(
-                            &lgl,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltLogical>::elt(x, i),
-                        );
-                    }
-
-                    $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, lgl);
-                    $crate::ffi::Rf_unprotect(1);
-                    $crate::ffi::DATAPTR_RO(lgl).cast_mut()
-                }
-            }
-
-            const HAS_DATAPTR_OR_NULL: bool = true;
-
-            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
-                // Return null if not yet materialized — tells R to use Elt access.
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::LGLSXP
-                    {
-                        $crate::ffi::DATAPTR_RO(data2)
-                    } else {
-                        core::ptr::null()
-                    }
-                }
+        impl $crate::altrep_data::AltrepDataptr<$crate::ffi::RLogical> for $ty {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $crate::ffi::RLogical> {
+                None
             }
         }
+        $crate::__impl_altvec_dataptr!($ty, $crate::ffi::RLogical);
     };
 }
 
 /// Internal macro: impl AltVec with materializing dataptr for integer ALTREP.
 ///
-/// For types that compute elements on demand (e.g., `Range<i32>`, `Range<i64>`),
-/// this materializes into an INTSXP cached in data2 on first DATAPTR call,
-/// matching R's own `compact_intseq_Dataptr` pattern in altclasses.c.
+/// Internal macro: impl AltVec with materializing dataptr for integer ALTREP.
+///
+/// Thin wrapper: provides a trivial `AltrepDataptr` (no direct pointer) and
+/// delegates to `__impl_altvec_dataptr` which materializes via `RNativeType::elt`.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_integer_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
-            const HAS_DATAPTR: bool = true;
-
-            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::INTSXP
-                    {
-                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
-                    }
-
-                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let vec = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
-                        $crate::ffi::SEXPTYPE::INTSXP,
-                        n,
-                    ));
-                    for i in 0..n {
-                        $crate::ffi::SexpExt::set_integer_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltInteger>::elt(x, i),
-                        );
-                    }
-                    $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
-                    $crate::ffi::Rf_unprotect(1);
-                    $crate::ffi::DATAPTR_RO(vec).cast_mut()
-                }
-            }
-
-            const HAS_DATAPTR_OR_NULL: bool = true;
-
-            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::INTSXP
-                    {
-                        $crate::ffi::DATAPTR_RO(data2)
-                    } else {
-                        core::ptr::null()
-                    }
-                }
+        impl $crate::altrep_data::AltrepDataptr<i32> for $ty {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+                None
             }
         }
+        $crate::__impl_altvec_dataptr!($ty, i32);
     };
 }
 
 /// Internal macro: impl AltVec with materializing dataptr for real ALTREP.
-///
-/// For types that compute elements on demand (e.g., `Range<f64>`), this
-/// materializes into a REALSXP cached in data2.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_real_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
-            const HAS_DATAPTR: bool = true;
-
-            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::REALSXP
-                    {
-                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
-                    }
-
-                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let vec = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
-                        $crate::ffi::SEXPTYPE::REALSXP,
-                        n,
-                    ));
-                    for i in 0..n {
-                        $crate::ffi::SexpExt::set_real_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltReal>::elt(x, i),
-                        );
-                    }
-                    $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
-                    $crate::ffi::Rf_unprotect(1);
-                    $crate::ffi::DATAPTR_RO(vec).cast_mut()
-                }
-            }
-
-            const HAS_DATAPTR_OR_NULL: bool = true;
-
-            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::REALSXP
-                    {
-                        $crate::ffi::DATAPTR_RO(data2)
-                    } else {
-                        core::ptr::null()
-                    }
-                }
+        impl $crate::altrep_data::AltrepDataptr<f64> for $ty {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
+                None
             }
         }
+        $crate::__impl_altvec_dataptr!($ty, f64);
     };
 }
 
@@ -583,51 +460,12 @@ macro_rules! __impl_altvec_real_dataptr {
 #[doc(hidden)]
 macro_rules! __impl_altvec_raw_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
-            const HAS_DATAPTR: bool = true;
-
-            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::RAWSXP
-                    {
-                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
-                    }
-
-                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let vec = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
-                        $crate::ffi::SEXPTYPE::RAWSXP,
-                        n,
-                    ));
-                    for i in 0..n {
-                        $crate::ffi::SexpExt::set_raw_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltRaw>::elt(x, i),
-                        );
-                    }
-                    $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
-                    $crate::ffi::Rf_unprotect(1);
-                    $crate::ffi::DATAPTR_RO(vec).cast_mut()
-                }
-            }
-
-            const HAS_DATAPTR_OR_NULL: bool = true;
-
-            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::RAWSXP
-                    {
-                        $crate::ffi::DATAPTR_RO(data2)
-                    } else {
-                        core::ptr::null()
-                    }
-                }
+        impl $crate::altrep_data::AltrepDataptr<u8> for $ty {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
+                None
             }
         }
+        $crate::__impl_altvec_dataptr!($ty, u8);
     };
 }
 
@@ -636,51 +474,12 @@ macro_rules! __impl_altvec_raw_dataptr {
 #[doc(hidden)]
 macro_rules! __impl_altvec_complex_dataptr {
     ($ty:ty) => {
-        impl $crate::altrep_traits::AltVec for $ty {
-            const HAS_DATAPTR: bool = true;
-
-            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::CPLXSXP
-                    {
-                        return $crate::ffi::DATAPTR_RO(data2).cast_mut();
-                    }
-
-                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let vec = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
-                        $crate::ffi::SEXPTYPE::CPLXSXP,
-                        n,
-                    ));
-                    for i in 0..n {
-                        $crate::ffi::SexpExt::set_complex_elt(
-                            &vec,
-                            i as isize,
-                            <$ty as $crate::altrep_traits::AltComplex>::elt(x, i),
-                        );
-                    }
-                    $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, vec);
-                    $crate::ffi::Rf_unprotect(1);
-                    $crate::ffi::DATAPTR_RO(vec).cast_mut()
-                }
-            }
-
-            const HAS_DATAPTR_OR_NULL: bool = true;
-
-            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2(&x);
-                    if !data2.is_null()
-                        && $crate::ffi::SexpExt::type_of(&data2) == $crate::ffi::SEXPTYPE::CPLXSXP
-                    {
-                        $crate::ffi::DATAPTR_RO(data2)
-                    } else {
-                        core::ptr::null()
-                    }
-                }
+        impl $crate::altrep_data::AltrepDataptr<$crate::ffi::Rcomplex> for $ty {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $crate::ffi::Rcomplex> {
+                None
             }
         }
+        $crate::__impl_altvec_dataptr!($ty, $crate::ffi::Rcomplex);
     };
 }
 

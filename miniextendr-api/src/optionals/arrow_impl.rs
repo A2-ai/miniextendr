@@ -48,7 +48,7 @@ pub use arrow_schema::{self, DataType, Field, Schema};
 
 use arrow_array::types::ArrowPrimitiveType;
 
-use crate::ffi::{self, R_NaString, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{self, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -458,10 +458,10 @@ impl TryFromSexp for Float64Array {
         }
 
         // Fallback: DATAPTR_RO returned null (e.g., ALTREP Arrow array with nulls).
-        // Read element-by-element via REAL_ELT which works for all SEXP types.
+        // Read element-by-element via elt() which works for all SEXP types.
         let values: Vec<Option<f64>> = (0..len)
             .map(|i| {
-                let v = unsafe { ffi::REAL_ELT(sexp, i as ffi::R_xlen_t) };
+                let v = f64::elt(sexp, i as ffi::R_xlen_t);
                 if is_na_real(v) { None } else { Some(v) }
             })
             .collect();
@@ -501,10 +501,10 @@ impl TryFromSexp for Int32Array {
         }
 
         // Fallback: DATAPTR_RO returned null (e.g., ALTREP Arrow array with nulls).
-        // Read element-by-element via INTEGER_ELT.
+        // Read element-by-element via elt() which works for all SEXP types.
         let values: Vec<Option<i32>> = (0..len)
             .map(|i| {
-                let v = unsafe { ffi::INTEGER_ELT(sexp, i as ffi::R_xlen_t) };
+                let v = i32::elt(sexp, i as ffi::R_xlen_t);
                 if v == NA_INTEGER { None } else { Some(v) }
             })
             .collect();
@@ -539,9 +539,9 @@ impl TryFromSexp for UInt8Array {
             return Ok(UInt8Array::new(scalar_buffer, None));
         }
 
-        // Fallback: DATAPTR_RO returned null. Read element-by-element via RAW_ELT.
+        // Fallback: DATAPTR_RO returned null. Read element-by-element via elt().
         let values: Vec<u8> = (0..len)
-            .map(|i| unsafe { ffi::RAW_ELT(sexp, i as ffi::R_xlen_t) })
+            .map(|i| u8::elt(sexp, i as ffi::R_xlen_t))
             .collect();
         Ok(UInt8Array::from(values))
     }
@@ -604,7 +604,7 @@ impl TryFromSexp for StringArray {
 
         for i in 0..len {
             let charsxp = sexp.string_elt(i as R_xlen_t);
-            if std::ptr::addr_eq(charsxp.0, unsafe { R_NaString.0 }) {
+            if charsxp.is_na_string() {
                 builder.append_null();
             } else {
                 let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
@@ -912,35 +912,33 @@ impl IntoR for TimestampSecondArray {
 /// falls back to TYPEOF for plain vectors.
 fn sexp_column_to_arrow(col_sexp: SEXP, col_name: &str) -> Result<(Field, ArrayRef), SexpError> {
     // Check class-based types first (before plain TYPEOF dispatch)
-    unsafe {
-        if is_factor(col_sexp) {
-            let arr = StringDictionaryArray::try_from_sexp(col_sexp)?;
-            let nullable = arr.logical_null_count() > 0;
-            return Ok((
-                Field::new(
-                    col_name,
-                    DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
-                    nullable,
-                ),
-                Arc::new(arr),
-            ));
-        }
-        if is_date(col_sexp) {
-            let arr = Date32Array::try_from_sexp(col_sexp)?;
-            let nullable = arr.null_count() > 0;
-            return Ok((
-                Field::new(col_name, DataType::Date32, nullable),
-                Arc::new(arr),
-            ));
-        }
-        if is_posixct(col_sexp) {
-            let arr = posixct_to_timestamp(col_sexp)?;
-            let nullable = arr.null_count() > 0;
-            return Ok((
-                Field::new(col_name, arr.data_type().clone(), nullable),
-                Arc::new(arr),
-            ));
-        }
+    if is_factor(col_sexp) {
+        let arr = StringDictionaryArray::try_from_sexp(col_sexp)?;
+        let nullable = arr.logical_null_count() > 0;
+        return Ok((
+            Field::new(
+                col_name,
+                DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                nullable,
+            ),
+            Arc::new(arr),
+        ));
+    }
+    if is_date(col_sexp) {
+        let arr = Date32Array::try_from_sexp(col_sexp)?;
+        let nullable = arr.null_count() > 0;
+        return Ok((
+            Field::new(col_name, DataType::Date32, nullable),
+            Arc::new(arr),
+        ));
+    }
+    if is_posixct(col_sexp) {
+        let arr = posixct_to_timestamp(col_sexp)?;
+        let nullable = arr.null_count() > 0;
+        return Ok((
+            Field::new(col_name, arr.data_type().clone(), nullable),
+            Arc::new(arr),
+        ));
     }
 
     // Plain TYPEOF dispatch
@@ -1382,7 +1380,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
                         let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
                         let guard = crate::gc_protect::OwnedProtect::new(sexp);
                         for i in 0..n {
-                            guard.get().set_string_elt(i as R_xlen_t, R_NaString);
+                            guard.get().set_string_elt(i as R_xlen_t, SEXP::na_string());
                         }
                         guard.get()
                     }
@@ -1395,7 +1393,7 @@ fn arrow_array_to_sexp(array: &ArrayRef) -> SEXP {
                 let sexp = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as R_xlen_t);
                 let guard = crate::gc_protect::OwnedProtect::new(sexp);
                 for i in 0..n {
-                    guard.get().set_string_elt(i as R_xlen_t, R_NaString);
+                    guard.get().set_string_elt(i as R_xlen_t, SEXP::na_string());
                 }
                 guard.get()
             }

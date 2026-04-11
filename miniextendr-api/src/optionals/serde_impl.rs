@@ -380,16 +380,18 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
             }
         }
         SEXPTYPE::INTSXP => {
+            let slice: &[i32] = unsafe { SexpExt::as_slice(&sexp) };
             if len == 1 {
-                let val = sexp.integer_elt(0);
+                let val = slice[0];
                 if val == NA_INTEGER {
                     return handle_na(opts, None);
                 }
                 Ok(JsonValue::Number(serde_json::Number::from(val)))
             } else {
-                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
-                    .map(|i| {
-                        let val = sexp.integer_elt(isize::try_from(i).expect("index overflow"));
+                let arr: Result<Vec<JsonValue>, SexpError> = slice
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &val)| {
                         if val == NA_INTEGER {
                             handle_na(opts, Some(i))
                         } else {
@@ -401,15 +403,15 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
             }
         }
         SEXPTYPE::REALSXP => {
+            let slice: &[f64] = unsafe { SexpExt::as_slice(&sexp) };
             if len == 1 {
-                let val = sexp.real_elt(0);
+                let val = slice[0];
                 real_to_json(val, opts, None)
             } else {
-                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
-                    .map(|i| {
-                        let val = sexp.real_elt(isize::try_from(i).expect("index overflow"));
-                        real_to_json(val, opts, Some(i))
-                    })
+                let arr: Result<Vec<JsonValue>, SexpError> = slice
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &val)| real_to_json(val, opts, Some(i)))
                     .collect();
                 Ok(JsonValue::Array(arr?))
             }
@@ -527,10 +529,11 @@ fn real_to_json(
 }
 
 fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
-    let len = unsafe { Rf_xlength(sexp) }
+    let len: usize = unsafe { Rf_xlength(sexp) }
         .try_into()
         .expect("length overflow");
     let levels = sexp.get_levels();
+    let slice: &[i32] = unsafe { SexpExt::as_slice(&sexp) };
 
     // Helper to convert factor index to JSON based on FactorHandling
     let index_to_json = |idx: i32| -> JsonValue {
@@ -546,15 +549,16 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
     };
 
     if len == 1 {
-        let idx = sexp.integer_elt(0);
+        let idx = slice[0];
         if idx == NA_INTEGER {
             return handle_na(opts, None);
         }
         Ok(index_to_json(idx))
     } else {
-        let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
-            .map(|i| {
-                let idx = sexp.integer_elt(isize::try_from(i).expect("index overflow"));
+        let arr: Result<Vec<JsonValue>, SexpError> = slice
+            .iter()
+            .enumerate()
+            .map(|(i, &idx)| {
                 if idx == NA_INTEGER {
                     handle_na(opts, Some(i))
                 } else {
@@ -820,16 +824,11 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                             isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
                         )
                     };
+                    let dst: &mut [i32] = unsafe { SexpExt::as_mut_slice(&sexp) };
                     for (i, v) in arr.iter().enumerate() {
                         if let JsonValue::Number(n) = v {
                             let i64_val = n.as_i64().expect("all_i32 check verified this");
-                            let i32_val =
-                                i32::try_from(i64_val).expect("all_i32 check verified range");
-
-                            sexp.set_integer_elt(
-                                isize::try_from(i).expect("index overflow"),
-                                i32_val,
-                            )
+                            dst[i] = i32::try_from(i64_val).expect("all_i32 check verified range");
                         }
                     }
                     return sexp;
@@ -842,12 +841,10 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                         isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
                     )
                 };
+                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp) };
                 for (i, v) in arr.iter().enumerate() {
                     if let JsonValue::Number(n) = v {
-                        sexp.set_real_elt(
-                            isize::try_from(i).expect("index overflow"),
-                            n.as_f64().unwrap_or(f64::NAN),
-                        )
+                        dst[i] = n.as_f64().unwrap_or(f64::NAN);
                     }
                 }
                 return sexp;
