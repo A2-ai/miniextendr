@@ -275,7 +275,7 @@ impl TryFromSexp for Vec<Option<String>> {
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
 
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 result.push(None);
             } else {
                 let c_str = unsafe { Rf_translateCharUTF8(charsxp) };

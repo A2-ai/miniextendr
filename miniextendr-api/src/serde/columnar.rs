@@ -72,7 +72,7 @@ macro_rules! reject_non_struct {
 unsafe fn col_name(names_sexp: SEXP, i: isize) -> &'static str {
     unsafe {
         let s = names_sexp.string_elt(i);
-        let p = crate::ffi::R_CHAR(s);
+        let p = s.r_char();
         std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
     }
 }

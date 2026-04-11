@@ -151,10 +151,10 @@ where
         let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
         let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
         let data1 = ext_ptr.as_sexp();
-        // Protect data1 across R_new_altrep — it may allocate and trigger GC.
+        // Protect data1 across new_altrep — it may allocate and trigger GC.
         unsafe {
             crate::ffi::Rf_protect_unchecked(data1);
-            let out = crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::nil());
+            let out = cls.new_altrep(data1, crate::ffi::SEXP::nil());
             crate::ffi::Rf_unprotect_unchecked(1);
             out
         }
@@ -165,8 +165,7 @@ where
         let data1 = ext_ptr.as_sexp();
         unsafe {
             crate::ffi::Rf_protect_unchecked(data1);
-            let out =
-                crate::ffi::altrep::R_new_altrep_unchecked(cls, data1, crate::ffi::SEXP::nil());
+            let out = cls.new_altrep_unchecked(data1, crate::ffi::SEXP::nil());
             crate::ffi::Rf_unprotect_unchecked(1);
             out
         }

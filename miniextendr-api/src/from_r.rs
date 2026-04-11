@@ -65,13 +65,13 @@ pub(crate) fn is_na_real(value: f64) -> bool {
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
 #[inline]
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
-    unsafe { charsxp_to_str_impl(crate::ffi::R_CHAR(charsxp), charsxp) }
+    unsafe { charsxp_to_str_impl(charsxp.r_char(), charsxp) }
 }
 
 /// Unchecked version of [`charsxp_to_str`] (skips R thread checks on `R_CHAR`).
 #[inline]
 pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
-    unsafe { charsxp_to_str_impl(crate::ffi::R_CHAR_unchecked(charsxp), charsxp) }
+    unsafe { charsxp_to_str_impl(charsxp.r_char_unchecked(), charsxp) }
 }
 
 /// Shared implementation: given a data pointer and CHARSXP, produce `&str`.
@@ -80,9 +80,7 @@ pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
 #[inline]
 unsafe fn charsxp_to_str_impl(ptr: *const std::os::raw::c_char, charsxp: SEXP) -> &'static str {
     unsafe {
-        let len: usize = crate::ffi::LENGTH(charsxp)
-            .try_into()
-            .expect("CHARSXP LENGTH must be non-negative");
+        let len: usize = charsxp.len();
         let bytes = r_slice(ptr.cast::<u8>(), len);
         // SAFETY: miniextendr_assert_utf8_locale() at init guarantees all
         // CHARSXPs in this session are valid UTF-8 or ASCII.

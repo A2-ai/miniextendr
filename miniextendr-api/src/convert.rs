@@ -506,7 +506,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         for i in 0..n_cols {
             unsafe {
                 let name_sexp = names_sexp.string_elt(i);
-                let name_ptr = crate::ffi::R_CHAR(name_sexp);
+                let name_ptr = name_sexp.r_char();
                 let name_cstr = std::ffi::CStr::from_ptr(name_ptr);
                 if let Ok(s) = name_cstr.to_str() {
                     col_names.push(s.to_string());

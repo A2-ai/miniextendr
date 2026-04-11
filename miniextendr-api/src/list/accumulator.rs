@@ -256,7 +256,7 @@ impl<'a> ListAccumulator<'a> {
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         let root = if self.len < self.cap {
             unsafe {
-                let shrunk = ffi::Rf_xlengthgets(self.list.get(), len_isize);
+                let shrunk = self.list.get().resize(len_isize);
                 // The shrunk list might be the same or a new allocation
                 // Either way, we protect it via the scope
                 self.scope.protect(shrunk)
@@ -278,7 +278,7 @@ impl<'a> ListAccumulator<'a> {
                         let charsxp = ffi::SEXP::charsxp(n);
                         names_sexp.get().set_string_elt(idx, charsxp);
                     } else {
-                        names_sexp.get().set_string_elt(idx, ffi::R_BlankString);
+                        names_sexp.get().set_string_elt(idx, SEXP::blank_string());
                     }
                 }
                 root.get().set_names(names_sexp.get());

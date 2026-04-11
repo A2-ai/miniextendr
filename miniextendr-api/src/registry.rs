@@ -462,10 +462,10 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
     path_sexp: crate::ffi::SEXP,
 ) -> crate::ffi::SEXP {
     unsafe {
-        use crate::ffi::{R_CHAR_unchecked, SEXP, SexpExt};
+        use crate::ffi::{SEXP, SexpExt};
 
         let char_sexp = path_sexp.string_elt_unchecked(0);
-        let c_str = std::ffi::CStr::from_ptr(R_CHAR_unchecked(char_sexp));
+        let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
         let path = c_str
             .to_str()
             .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));

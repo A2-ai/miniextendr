@@ -118,7 +118,7 @@ impl TryFromSexp for Vec<Uuid> {
             let charsxp = sexp.string_elt(i as crate::ffi::R_xlen_t);
 
             // Check for NA
-            if charsxp == unsafe { crate::ffi::R_NaString } {
+            if charsxp == SEXP::na_string() {
                 return Err(SexpError::InvalidValue(format!(
                     "NA at index {} not allowed for Vec<Uuid>",
                     i

@@ -377,8 +377,8 @@ fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFrameError> {
             // Try to get the column name for the error message
             let col_name = if let Some(names) = names_sexp {
                 let name_sexp = names.string_elt(i);
-                if name_sexp != unsafe { ffi::R_NaString } {
-                    let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+                if name_sexp != SEXP::na_string() {
+                    let name_ptr = name_sexp.r_char();
                     let name_cstr = unsafe { CStr::from_ptr(name_ptr) };
                     name_cstr.to_str().unwrap_or("<invalid>").to_string()
                 } else {

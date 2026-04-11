@@ -202,11 +202,11 @@ unsafe fn type_id_symbol_unchecked<T: TypedExternal>() -> SEXP {
 ///
 /// `sym` must be a valid SYMSXP.
 #[inline]
-unsafe fn symbol_name(sym: SEXP) -> &'static str {
-    // SYMSXP's PRINTNAME is a CHARSXP
-    let printname = unsafe { crate::ffi::PRINTNAME(sym) };
-    let cstr = unsafe { crate::ffi::R_CHAR(printname) };
-    let len = unsafe { crate::ffi::Rf_xlength(printname) as usize };
+fn symbol_name(sym: SEXP) -> &'static str {
+    use crate::ffi::SexpExt;
+    let printname = sym.printname();
+    let cstr = printname.r_char();
+    let len = printname.len();
     unsafe {
         std::str::from_utf8(std::slice::from_raw_parts(cstr.cast(), len))
             .expect("R SYMSXP PRINTNAME is not valid UTF-8")

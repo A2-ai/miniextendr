@@ -66,7 +66,7 @@ impl StrVec {
     pub fn get_str(self, idx: isize) -> Option<&'static str> {
         let charsxp = self.get_charsxp(idx)?;
         unsafe {
-            if charsxp == ffi::R_NaString {
+            if charsxp == SEXP::na_string() {
                 return None;
             }
             Some(charsxp_to_str(charsxp))
@@ -82,7 +82,7 @@ impl StrVec {
     pub fn get_cow(self, idx: isize) -> Option<Cow<'static, str>> {
         let charsxp = self.get_charsxp(idx)?;
         unsafe {
-            if charsxp == ffi::R_NaString {
+            if charsxp == SEXP::na_string() {
                 return None;
             }
             Some(charsxp_to_cow(charsxp))
@@ -192,11 +192,9 @@ impl StrVec {
     /// Panics if `idx` is out of bounds.
     #[inline]
     pub unsafe fn set_na(self, idx: isize) {
-        unsafe {
-            assert!(idx >= 0 && idx < self.len(), "index out of bounds");
-            // R_NaString is a global constant, no protection needed
-            self.0.set_string_elt(idx, ffi::R_NaString);
-        }
+        assert!(idx >= 0 && idx < self.len(), "index out of bounds");
+        // R_NaString is a global constant, no protection needed
+        self.0.set_string_elt(idx, SEXP::na_string());
     }
 
     /// Set an element from an optional string.
@@ -243,7 +241,7 @@ impl Iterator for StrVecIter {
         }
         let charsxp = self.vec.0.string_elt(self.idx);
         self.idx += 1;
-        if charsxp == unsafe { ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             Some(None)
         } else {
             Some(Some(unsafe { charsxp_to_str(charsxp) }))
@@ -278,7 +276,7 @@ impl Iterator for StrVecCowIter {
         }
         let charsxp = self.vec.0.string_elt(self.idx);
         self.idx += 1;
-        if charsxp == unsafe { ffi::R_NaString } {
+        if charsxp == SEXP::na_string() {
             Some(None)
         } else {
             Some(Some(unsafe { charsxp_to_cow(charsxp) }))

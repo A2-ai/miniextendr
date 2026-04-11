@@ -409,13 +409,11 @@ impl<T: crate::externalptr::IntoExternalPtr> IntoR for T {
 /// Uses UTF-8 encoding. Empty strings return R_BlankString (static, no allocation).
 #[inline]
 pub(crate) fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
-    unsafe {
-        if s.is_empty() {
-            crate::ffi::R_BlankString
-        } else {
-            let _len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
-            crate::ffi::SEXP::charsxp(s)
-        }
+    if s.is_empty() {
+        crate::ffi::SEXP::blank_string()
+    } else {
+        let _len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
+        crate::ffi::SEXP::charsxp(s)
     }
 }
 
@@ -424,7 +422,7 @@ pub(crate) fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
 pub(crate) unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
     unsafe {
         if s.is_empty() {
-            crate::ffi::R_BlankString
+            crate::ffi::SEXP::blank_string()
         } else {
             let len: i32 = s.len().try_into().expect("string exceeds i32::MAX bytes");
             crate::ffi::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), len, crate::ffi::CE_UTF8)
@@ -523,20 +521,18 @@ impl IntoR for Option<&str> {
     }
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe {
-            let charsxp = match self {
-                Some(s) => str_to_charsxp(s),
-                None => crate::ffi::R_NaString,
-            };
-            crate::ffi::SEXP::scalar_string(charsxp)
-        }
+        let charsxp = match self {
+            Some(s) => str_to_charsxp(s),
+            None => crate::ffi::SEXP::na_string(),
+        };
+        crate::ffi::SEXP::scalar_string(charsxp)
     }
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         unsafe {
             let charsxp = match self {
                 Some(s) => str_to_charsxp_unchecked(s),
-                None => crate::ffi::R_NaString,
+                None => crate::ffi::SEXP::na_string(),
             };
             crate::ffi::Rf_ScalarString_unchecked(charsxp)
         }
