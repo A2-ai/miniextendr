@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-04-12 19:14:58
-+++ b/monorepo/rpkg/Makevars.in	2026-04-12 19:15:03
+--- a/monorepo/rpkg/Makevars.in	2026-04-12 19:17:31
++++ b/monorepo/rpkg/Makevars.in	2026-04-12 19:17:33
 @@ -26,5 +26,5 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -95,8 +95,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
        echo "configure: created inst/vendor.tar.xz"
      fi
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-04-12 19:14:58
-+++ b/rpkg/Makevars.in	2026-04-12 19:15:01
+--- a/rpkg/Makevars.in	2026-04-12 19:17:31
++++ b/rpkg/Makevars.in	2026-04-12 19:17:32
 @@ -26,5 +26,5 @@
  
  CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml

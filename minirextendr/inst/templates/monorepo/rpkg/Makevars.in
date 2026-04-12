@@ -114,7 +114,7 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 # Build cdylib for wrapper generation.
 # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
 # Vendor extraction is handled by $(CARGO_AR) which builds first.
-$(CARGO_CDYLIB): FORCE_CARGO
+$(CARGO_CDYLIB): FORCE_CARGO | $(CARGO_AR)
 	@set -e; \
 	TARGET_OPT=""; \
 	CDYLIB_LINK_ARGS=""; \
