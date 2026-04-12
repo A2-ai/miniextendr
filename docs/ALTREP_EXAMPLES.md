@@ -21,7 +21,8 @@ use miniextendr_api::altrep_data::{AltrepLen, AltListData};
 use miniextendr_api::ffi::SEXP;
 use std::cell::RefCell;
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "DatabaseResultSet")]
 pub struct DatabaseResultSet {
     connection_id: usize,
     query: String,
@@ -80,7 +81,8 @@ use miniextendr_api::altrep_data::{AltrepLen, AltRawData, AltrepDataptr};
 use memmap2::Mmap;
 use std::fs::File;
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "MappedFile")]
 pub struct MappedFile {
     _file: File,
     mmap: Mmap,
@@ -134,7 +136,8 @@ checksum <- sum(as.integer(file))  # Process entire file
 ```rust
 use miniextendr_api::altrep_data::{AltrepLen, AltRealData};
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "SinewaveTimeSeries")]
 pub struct SinewaveTimeSeries {
     frequency: f64,
     amplitude: f64,
@@ -186,7 +189,8 @@ max(wave)           # Find peak (should be ~1.0)
 use miniextendr_api::altrep_data::{AltrepLen, AltIntegerData};
 use std::collections::HashMap;
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "SparseVector")]
 pub struct SparseVector {
     length: usize,
     default_value: i32,
@@ -252,7 +256,8 @@ use miniextendr_api::altrep_data::{AltrepLen, AltStringData};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "ApiStringCache")]
 pub struct ApiStringCache {
     api_endpoint: String,
     item_ids: Vec<String>,
