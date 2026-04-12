@@ -37,6 +37,26 @@ NNG 1.11.0 and mbedtls 3.6.5 are compiled by R's Makevars, linked into the R pac
 - PAIR echo, REQ/REP request-reply over `inproc://`
 - `bg_add`, `bg_greeting`, `bg_pi_approx` (1M iterations), `bg_result_ok`, `bg_panicking`
 
+## Why NNG/mbedtls sources are bundled (not reusing nanonext)
+
+The nanonext R package compiles NNG + mbedtls during its own installation.
+Ideally we'd reuse that build via `LinkingTo: nanonext`. We can't because:
+
+1. **No `inst/include/`** — nanonext doesn't ship NNG headers
+2. **No `R_RegisterCCallable`** — no C API is exported
+3. **`-fvisibility=hidden`** — NNG symbols are hidden in nanonext.so
+4. **Static libs cleaned up** — `nano-install/` deleted after linking
+
+Without headers or visible symbols, there's no way for another package to
+link against nanonext's NNG. Even a C shim using `R_GetCCallable` or
+`dlsym(RTLD_DEFAULT, ...)` can't find the hidden symbols.
+
+**Tracked in:** #130 — explores upstream changes to nanonext that would
+enable `LinkingTo: nanonext` and eliminate bundling.
+
+**Mitigation:** The bundled sources add ~150 C files. Future work could
+strip unused protocols/transports or compress into `inst/vendor.tar.xz`.
+
 ## Known Concessions / Limitations
 
 ### Build system
