@@ -4,13 +4,21 @@
 \alias{use_miniextendr_git_hooks}
 \title{Install git hooks for a miniextendr package}
 \usage{
-use_miniextendr_git_hooks(path = ".", hooks = c("pre-commit", "post-merge"))
+use_miniextendr_git_hooks(
+  path = ".",
+  hooks = miniextendr_hook_names,
+  force = FALSE
+)
 }
 \arguments{
 \item{path}{Path to the R package (or monorepo) root.}
 
 \item{hooks}{Character vector of hook names to install. Defaults to
 \code{c("pre-commit", "post-merge")}.}
+
+\item{force}{If \code{TRUE}, replaces an existing miniextendr hook section with
+the current version from minirextendr. Useful after upgrading minirextendr.
+Default is \code{FALSE} (skip if already installed).}
 }
 \value{
 Invisibly returns \code{TRUE} if any hooks were installed or updated.
