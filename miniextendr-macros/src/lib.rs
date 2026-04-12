@@ -2330,7 +2330,7 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 /// impl AltIntegerData for MyData { ... }
 /// impl_altinteger_from_data!(MyData);
 /// ```
-#[proc_macro_derive(Altrep, attributes(altrep, altrep_derive_opts))]
+#[proc_macro_derive(Altrep, attributes(altrep))]
 pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep::derive_altrep(input)

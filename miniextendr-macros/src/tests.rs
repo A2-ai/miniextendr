@@ -783,34 +783,6 @@ fn test_derive_altrep_class_attr() {
 }
 
 #[test]
-fn test_derive_altrep_class_attr_legacy_syntax() {
-    let input: syn::DeriveInput = syn::parse2(quote::quote! {
-        #[altrep_derive_opts(class = "LegacyName")]
-        pub struct TestData2 {
-            data: Vec<i32>,
-            len: usize,
-        }
-    })
-    .unwrap();
-
-    let output = crate::altrep::derive_altrep(input).unwrap();
-    let output_str = output.to_string();
-
-    assert!(
-        output_str.contains("LegacyName"),
-        "legacy #[altrep_derive_opts(class = ...)] must still work"
-    );
-    assert!(
-        output_str.contains("TypedExternal"),
-        "must generate TypedExternal"
-    );
-    assert!(
-        output_str.contains("RegisterAltrep"),
-        "must generate RegisterAltrep"
-    );
-}
-
-#[test]
 fn test_derive_altrep_family_class_attr() {
     // Test that family-specific derives also respect #[altrep(class = "...")]
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
