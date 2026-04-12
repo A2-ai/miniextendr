@@ -347,3 +347,38 @@ test_that("ALTREP serialization preserves special values", {
   expect_true(is.nan(restored[4]))
   expect_equal(restored[5], 0.0)
 })
+
+test_that("LazyIntSeq ALTREP survives serialization round-trip", {
+  # lazy_int_seq(from, to, by) creates an arithmetic integer sequence
+  # with lazy materialization. Serialization saves (start, step, len),
+  # deserialization reconstructs without materializing.
+  original <- lazy_int_seq(10L, 22L, 3L)  # 10, 13, 16, 19, 22
+  expect_equal(length(original), 5L)
+  expect_equal(original[1], 10L)
+  expect_equal(original[5], 22L)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(restored, original)
+  expect_equal(length(restored), 5L)
+  expect_equal(restored[1], 10L)
+  expect_equal(restored[3], 16L)
+  expect_equal(restored[5], 22L)
+  expect_equal(sum(restored), 80L)
+})
+
+test_that("LazyIntSeq single-element serialization round-trip", {
+  original <- lazy_int_seq(42L, 42L, 1L)  # just 42
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(restored, 42L)
+})

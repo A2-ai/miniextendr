@@ -21834,7 +21834,7 @@ arith_seq <- function(from, step, length_out) {
   .val
 }
 
-# Generated from Rust fn `boxed_raw` (lib.rs:1682:8)
+# Generated from Rust fn `boxed_raw` (lib.rs:1734:8)
 #' @title Create a Box<\[u8\]> ALTREP raw vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -23314,7 +23314,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `boxed_ints` (lib.rs:1364:8)
+# Generated from Rust fn `boxed_ints` (lib.rs:1416:8)
 #' @title Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -24248,7 +24248,7 @@ derived_rational_class_info <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_reals` (lib.rs:1652:8)
+# Generated from Rust fn `boxed_reals` (lib.rs:1704:8)
 #' @title Create a Box<\[f64\]> ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -24295,7 +24295,7 @@ lazy_string <- function(prefix, n) {
   .val
 }
 
-# Generated from Rust fn `leaked_ints` (lib.rs:1426:8)
+# Generated from Rust fn `leaked_ints` (lib.rs:1478:8)
 #' @title Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -24317,7 +24317,7 @@ leaked_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `static_ints` (lib.rs:1416:8)
+# Generated from Rust fn `static_ints` (lib.rs:1468:8)
 #' @title Create an ALTREP integer vector backed by a static slice (`&'static [i32]`)
 #' @rdname altrep_special
 #' @return An ALTREP integer vector with values 10, 20, 30, 40, 50.
@@ -26061,7 +26061,7 @@ streaming_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_complex` (lib.rs:1712:8)
+# Generated from Rust fn `boxed_complex` (lib.rs:1764:8)
 #' @title Create a Box<\[Rcomplex\]> ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -26083,7 +26083,7 @@ boxed_complex <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_strings` (lib.rs:1697:8)
+# Generated from Rust fn `boxed_strings` (lib.rs:1749:8)
 #' @title Create a Box<\[String\]> ALTREP string vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -26166,7 +26166,7 @@ bench_vec_copy <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_logicals` (lib.rs:1667:8)
+# Generated from Rust fn `boxed_logicals` (lib.rs:1719:8)
 #' @title Create a Box<\[bool\]> ALTREP logical vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -26188,7 +26188,7 @@ boxed_logicals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_range` (lib.rs:1533:8)
+# Generated from Rust fn `iter_int_range` (lib.rs:1585:8)
 #' @title Create an integer ALTREP from a collected range iterator
 #' @rdname altrep_iterators
 #' @param from Start of range (inclusive).
@@ -26213,7 +26213,7 @@ iter_int_range <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `iter_raw_bytes` (lib.rs:1565:8)
+# Generated from Rust fn `iter_raw_bytes` (lib.rs:1617:8)
 #' @title Create a raw bytes ALTREP via iterator collect (cycling 0..255)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -26250,7 +26250,7 @@ small_vec_copy <- function() {
   .val
 }
 
-# Generated from Rust fn `static_strings` (lib.rs:1472:8)
+# Generated from Rust fn `static_strings` (lib.rs:1524:8)
 #' @title Create an ALTREP string vector backed by a static string slice
 #' @rdname altrep_special
 #' @return An ALTREP string vector with 4 static entries.
@@ -26267,7 +26267,7 @@ static_strings <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_int_altrep` (lib.rs:1612:8)
+# Generated from Rust fn `vec_int_altrep` (lib.rs:1664:8)
 #' @title Create a `Vec<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -26779,7 +26779,7 @@ altrep_from_raw <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int` (lib.rs:1813:8)
+# Generated from Rust fn `sparse_iter_int` (lib.rs:1865:8)
 #' @title Create a sparse integer iterator ALTREP that skips elements
 #' @description Elements are computed on-demand using Iterator::nth(). Once an element is skipped (a higher index is accessed first), it cannot be retrieved and will return NA.
 #' @rdname sparse_altrep
@@ -26805,7 +26805,7 @@ sparse_iter_int <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_raw` (lib.rs:1968:8)
+# Generated from Rust fn `sparse_iter_raw` (lib.rs:2020:8)
 #' @title Create a sparse raw iterator ALTREP (cycling bytes 0..255)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -26827,7 +26827,7 @@ sparse_iter_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_real_altrep` (lib.rs:1623:8)
+# Generated from Rust fn `vec_real_altrep` (lib.rs:1675:8)
 #' @title Create a `Vec<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -27088,7 +27088,7 @@ large_vec_altrep <- function() {
   .val
 }
 
-# Generated from Rust fn `range_i64_altrep` (lib.rs:1742:8)
+# Generated from Rust fn `range_i64_altrep` (lib.rs:1794:8)
 #' @title Create a `Range<i64>` ALTREP real vector (i64 stored as f64 bit patterns)
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -27113,7 +27113,7 @@ range_i64_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `range_int_altrep` (lib.rs:1731:8)
+# Generated from Rust fn `range_int_altrep` (lib.rs:1783:8)
 #' @title Create a `Range<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -27138,7 +27138,7 @@ range_int_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_real` (lib.rs:1878:8)
+# Generated from Rust fn `sparse_iter_real` (lib.rs:1930:8)
 #' @title Create a sparse real iterator ALTREP with arithmetic progression
 #' @rdname sparse_altrep
 #' @param from Start value.
@@ -27412,7 +27412,7 @@ boxed_data_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_from_u16` (lib.rs:1590:8)
+# Generated from Rust fn `iter_int_from_u16` (lib.rs:1642:8)
 #' @title Create an integer ALTREP from u16-range values coerced to i32 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -27434,7 +27434,7 @@ iter_int_from_u16 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_real_squares` (lib.rs:1543:8)
+# Generated from Rust fn `iter_real_squares` (lib.rs:1595:8)
 #' @title Create a real ALTREP of squared values (0, 1, 4, 9, ...) via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -27456,7 +27456,7 @@ iter_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_string_items` (lib.rs:1576:8)
+# Generated from Rust fn `iter_string_items` (lib.rs:1628:8)
 #' @title Create a string ALTREP via iterator collect ("item_0", "item_1", ...)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -27478,7 +27478,7 @@ iter_string_items <- function(n) {
   .val
 }
 
-# Generated from Rust fn `range_real_altrep` (lib.rs:1753:8)
+# Generated from Rust fn `range_real_altrep` (lib.rs:1805:8)
 #' @title Create a `Range<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -27691,7 +27691,7 @@ altrep_compact_int <- function(n, start, step) {
   .val
 }
 
-# Generated from Rust fn `iter_real_from_f32` (lib.rs:1601:8)
+# Generated from Rust fn `iter_real_from_f32` (lib.rs:1653:8)
 #' @title Create a real ALTREP from f32-precision values coerced to f64 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -27713,7 +27713,7 @@ iter_real_from_f32 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_complex_altrep` (lib.rs:1634:8)
+# Generated from Rust fn `vec_complex_altrep` (lib.rs:1686:8)
 #' @title Create a `Vec<Rcomplex>` ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -27773,7 +27773,7 @@ altrep_from_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_logical` (lib.rs:1921:8)
+# Generated from Rust fn `sparse_iter_logical` (lib.rs:1973:8)
 #' @title Create a sparse logical iterator ALTREP (alternating TRUE/FALSE)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -27858,7 +27858,7 @@ integer_sequence_list <- function(n) {
   .val
 }
 
-# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2009:8)
+# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2061:8)
 #' @title Returns a vector of enabled feature names for this build
 #' @description This function is useful for R tests to skip tests when features are not enabled.
 #' @name rpkg_enabled_features
@@ -27894,7 +27894,7 @@ standalone_dataframe_roundtrip <- function() {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1829:8)
+# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1881:8)
 #' @title Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -27916,7 +27916,7 @@ sparse_iter_int_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_logical_alternating` (lib.rs:1554:8)
+# Generated from Rust fn `iter_logical_alternating` (lib.rs:1606:8)
 #' @title Create an alternating TRUE/FALSE logical ALTREP via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
