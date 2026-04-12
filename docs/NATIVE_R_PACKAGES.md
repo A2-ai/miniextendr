@@ -469,3 +469,38 @@ $(CARGO_AR): FORCE_CARGO $(WRAPPERS_R) $(OBJECTS) $(LIBNNG) $(LIBMBEDTLS)
 This way adding a new R package header binding (e.g., for `later` or
 `processx`) is just: drop the wrapper `.h` and `_static_wrappers.c` in
 `src/`, add `LinkingTo:`, and it compiles automatically.
+
+## Known limitations
+
+### `--wrap-static-fns` only works in C mode
+
+bindgen's `--wrap-static-fns` flag generates C shim wrappers for
+`static` and `static inline` functions. This only works when parsing
+headers in C mode (`-x c`). In C++ mode (`-x c++`), the flag is
+silently ignored — no `*_static_wrappers.c` file is generated.
+
+This matters for R packages that use the `R_GetCCallable()` pattern
+via `static R_INLINE` functions (e.g., `cli`, `nanoarrow`). For these
+packages, `use_native_package()` detects them as pure C and uses C
+mode, preserving static wrapper generation. For C++ packages that also
+have `static inline` functions, users would need to write the C shim
+manually or invoke bindgen separately in C mode for those functions.
+
+### Windows
+
+The `-isysroot` flag is macOS-specific. On Windows (MSYS2/MinGW), the
+C++ stdlib is provided differently. The `Makevars.win` template does
+not yet include `NATIVE_PKG_CPPFLAGS` or the OBJECTS link-arg pattern.
+Windows support requires:
+
+- Detecting the MinGW C++ include path
+- Updating `Makevars.win` / `configure.win` templates
+- Testing with `R CMD INSTALL` on Windows
+
+### LinkingTo resolution
+
+`resolve_include_paths()` walks the LinkingTo dependency tree
+recursively via BFS. However, some packages have LinkingTo deps that
+aren't installed (e.g., Bioconductor packages). Missing deps are
+silently skipped — the include path just won't be added, and bindgen
+will fail with "file not found" for headers from those deps.

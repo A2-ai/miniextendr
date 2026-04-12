@@ -208,26 +208,41 @@ resolve_bindgen_args <- function(pkg, pkg_info, headers,
   )
 }
 
-#' Resolve include paths: package + transitive LinkingTo deps
+#' Resolve include paths: package + recursive LinkingTo deps
+#'
+#' Walks the LinkingTo dependency tree recursively so that transitive
+#' deps (e.g., mlpack → RcppArmadillo → Rcpp + BH) are all included.
 #' @noRd
 resolve_include_paths <- function(pkg, pkg_include_path) {
   paths <- pkg_include_path
+  visited <- pkg
 
-  # Get LinkingTo deps from installed DESCRIPTION
-  desc_path <- system.file("DESCRIPTION", package = pkg)
-  if (nzchar(desc_path)) {
+  # BFS through LinkingTo deps
+  queue <- pkg
+  while (length(queue) > 0) {
+    current <- queue[[1]]
+    queue <- queue[-1]
+
+    desc_path <- system.file("DESCRIPTION", package = current)
+    if (!nzchar(desc_path)) next
+
     desc <- read.dcf(desc_path)
-    if ("LinkingTo" %in% colnames(desc)) {
-      lt_raw <- desc[1, "LinkingTo"]
-      deps <- trimws(strsplit(lt_raw, ",")[[1]])
-      deps <- sub("\\s*\\(.*", "", deps)  # strip version constraints
+    if (!("LinkingTo" %in% colnames(desc))) next
 
-      for (dep in deps) {
-        dep_include <- system.file("include", package = dep)
-        if (nzchar(dep_include)) {
-          paths <- c(paths, dep_include)
-        }
+    lt_raw <- desc[1, "LinkingTo"]
+    deps <- trimws(strsplit(lt_raw, ",")[[1]])
+    deps <- sub("\\s*\\(.*", "", deps)
+
+    for (dep in deps) {
+      if (dep %in% visited) next
+      visited <- c(visited, dep)
+
+      dep_include <- system.file("include", package = dep)
+      if (nzchar(dep_include)) {
+        paths <- c(paths, dep_include)
       }
+      # Enqueue for recursive resolution
+      queue <- c(queue, dep)
     }
   }
 
@@ -291,17 +306,28 @@ detect_sdk_path <- function() {
 #' Some header libraries contain anonymous types or constructs that crash
 #' bindgen. We blocklist their internal headers while still allowing the
 #' target package to reference their types opaquely.
+#' Uses the same recursive BFS as resolve_include_paths.
 #' @noRd
 resolve_blocklist_files <- function(pkg) {
-  # Collect all transitive deps to check
+  # Collect ALL transitive deps via BFS
   all_deps <- character()
-  desc_path <- system.file("DESCRIPTION", package = pkg)
-  if (nzchar(desc_path)) {
+  visited <- pkg
+  queue <- pkg
+  while (length(queue) > 0) {
+    current <- queue[[1]]
+    queue <- queue[-1]
+    desc_path <- system.file("DESCRIPTION", package = current)
+    if (!nzchar(desc_path)) next
     desc <- read.dcf(desc_path)
-    if ("LinkingTo" %in% colnames(desc)) {
-      lt_raw <- desc[1, "LinkingTo"]
-      deps <- trimws(strsplit(lt_raw, ",")[[1]])
-      all_deps <- sub("\\s*\\(.*", "", deps)
+    if (!("LinkingTo" %in% colnames(desc))) next
+    lt_raw <- desc[1, "LinkingTo"]
+    deps <- trimws(strsplit(lt_raw, ",")[[1]])
+    deps <- sub("\\s*\\(.*", "", deps)
+    for (dep in deps) {
+      if (dep %in% visited) next
+      visited <- c(visited, dep)
+      all_deps <- c(all_deps, dep)
+      queue <- c(queue, dep)
     }
   }
 

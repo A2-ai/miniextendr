@@ -843,6 +843,16 @@ revendor-test:
 revendor-test-all:
     cargo test --manifest-path cargo-revendor/Cargo.toml -- --include-ignored --test-threads=1
 
+# ── Native R package bindgen corpus ─────────────────────────────────────────
+
+# Run bindgen corpus test (C-only mode, ~69 packages)
+bindgen-corpus:
+    bash dev/run_bindgen_corpus.sh
+
+# Run bindgen corpus test (C + C++ mode, ~308 packages)
+bindgen-corpus-v3:
+    bash dev/run_bindgen_corpus_v3.sh
+
 # ── Documentation site ──────────────────────────────────────────────────────
 
 # Build Zola site (output in site/public/)
