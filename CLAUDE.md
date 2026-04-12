@@ -617,6 +617,22 @@ Alternatively, use `devtools::install()` which handles library paths:
 just devtools-install
 ```
 
+### Debugging segfaults
+
+Use `R -d lldb` to run R under the LLDB debugger:
+
+```bash
+R -d lldb -e 'library(miniextendr); lazy_int_seq(0L, -1L, 1L)'
+# At the (lldb) prompt: run
+# After crash: bt (backtrace), frame select N, p variable
+```
+
+For segfaults during `R CMD check` or `devtools::test()`:
+
+```bash
+R -d lldb -e 'testthat::test_file("rpkg/tests/testthat/test-altrep.R")'
+```
+
 ## Code Style
 
 ### Module Structure
