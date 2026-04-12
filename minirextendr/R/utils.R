@@ -546,7 +546,7 @@ template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
     package = pkg,
     package_rs = pkg_rs,
     Package = tools::toTitleCase(pkg),
-    features_var = paste0(toupper(pkg_rs), "_FEATURES"),
+    features_var = "CARGO_FEATURES",
     year = format(Sys.Date(), "%Y")
   )
 
@@ -592,7 +592,7 @@ is_miniextendr_package <- function() {
   }
 
   contents <- readLines(configure_ac, warn = FALSE)
-  if (!any(grepl("_FEATURES", contents, fixed = TRUE))) {
+  if (!any(grepl("CARGO_FEATURES", contents, fixed = TRUE))) {
     return(FALSE)
   }
 

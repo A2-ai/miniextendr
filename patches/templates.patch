@@ -1,192 +1,98 @@
-diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-04-11 10:12:00
-+++ b/monorepo/rpkg/Makevars.in	2026-04-11 10:12:37
-@@ -26,5 +26,5 @@
- 
- CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
--WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
-+WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
- 
- # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-04-09 08:22:52
-+++ b/monorepo/rpkg/configure.ac	2026-04-09 08:22:52
+--- a/monorepo/rpkg/configure.ac	2026-04-12 19:27:27
++++ b/monorepo/rpkg/configure.ac	2026-04-12 19:27:35
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
-@@ -54,31 +54,27 @@
+@@ -54,7 +54,6 @@
  dnl Set cargo features flag
  dnl
 -dnl rpkg is a demo package that demonstrates ALL miniextendr features.
 -dnl Enable all optional features by default (both dev and CRAN modes).
--dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
-+dnl Users can enable optional features via {{{features_var}}} environment variable.
+-dnl Advanced users can override via CARGO_FEATURES environment variable.
++dnl Users can enable optional features via CARGO_FEATURES environment variable.
 +dnl By default, no extra features are enabled.
  dnl
  dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
- dnl Only enable when you specifically need those features and understand the risks.
--AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
-+AC_ARG_VAR([{{{features_var}}}], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+@@ -62,9 +61,8 @@
+ AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
  
 -dnl Enable all features by default for this demo package
--dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
--if test -z "${MINIEXTENDR_FEATURES+x}"; then
--  dnl MINIEXTENDR_FEATURES not set — auto-detect via R script if available,
--  dnl falling back to the full feature set for this demo package
+-dnl Users can override by setting CARGO_FEATURES explicitly (even to empty string)
 +dnl Default: no extra features enabled
-+dnl Users can set {{{features_var}}} to enable specific features
-+if test -z "${{{{features_var}}}+x}"; then
-+  dnl {{{features_var}}} not set - auto-detect via R script if available
++dnl Users can set CARGO_FEATURES to enable specific features
+ if test -z "${CARGO_FEATURES+x}"; then
+-  dnl CARGO_FEATURES not set — auto-detect via R script if available,
+-  dnl falling back to the full feature set for this demo package
++  dnl CARGO_FEATURES not set - auto-detect via R script if available
    if test -f "${srcdir}/tools/detect-features.R"; then
--    MINIEXTENDR_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
--    if test -n "$MINIEXTENDR_FEATURES"; then
--      AC_MSG_NOTICE([Auto-detected features: $MINIEXTENDR_FEATURES])
-+    {{{features_var}}}=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-+    if test -n "${{{features_var}}}"; then
-+      AC_MSG_NOTICE([Auto-detected features: ${{{features_var}}}])
+     CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+@@ -72,9 +70,7 @@
+       AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
      fi
 +  else
-+    {{{features_var}}}=""
++    CARGO_FEATURES=""
    fi
 -  dnl If auto-detection returned nothing, enable all features
--  if test -z "$MINIEXTENDR_FEATURES"; then
--    MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
+-  if test -z "$CARGO_FEATURES"; then
+-    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
 -  fi
  fi
  
--if test -n "$MINIEXTENDR_FEATURES"; then
--  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-+if test -n "${{{features_var}}}"; then
-+  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
- else
-   CARGO_FEATURES_FLAG=""
-@@ -232,6 +228,6 @@
- AS_IF([test -n "$CARGO_BUILD_TARGET"],
-       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
--AS_IF([test -n "$MINIEXTENDR_FEATURES"],
--      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
-+AS_IF([test -n "${{{features_var}}}"],
-+      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
- 
- dnl ---- package name → Rust-safe variants ----
 @@ -289,4 +285,5 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -299,5 +296,5 @@
-   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
-   src/Makevars:src/Makevars.in
--  src/miniextendr-win.def:src/win.def.in
-+  src/{{package}}-win.def:src/win.def.in
- ])
- 
-@@ -486,8 +483,5 @@
-     if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-       mkdir -p "$abs_rpkg_dir/inst"
--      dnl Exclude Makefiles from vendored crates — R CMD check warns about
--      dnl GNU extensions (+=, :=, $(shell), etc.) in Makefiles. These are
--      dnl crate build helpers, not used by the R package build.
--      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
-+      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
-       echo "configure: created inst/vendor.tar.xz"
-     fi
-diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-04-11 10:12:00
-+++ b/rpkg/Makevars.in	2026-04-11 10:12:23
-@@ -26,5 +26,5 @@
- 
- CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
--WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
-+WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
- 
- # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-04-09 08:22:52
-+++ b/rpkg/configure.ac	2026-04-09 08:22:52
+--- a/rpkg/configure.ac	2026-04-12 19:27:27
++++ b/rpkg/configure.ac	2026-04-12 19:27:34
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
-@@ -54,31 +54,27 @@
+@@ -54,7 +54,6 @@
  dnl Set cargo features flag
  dnl
 -dnl rpkg is a demo package that demonstrates ALL miniextendr features.
 -dnl Enable all optional features by default (both dev and CRAN modes).
--dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
-+dnl Users can enable optional features via {{{features_var}}} environment variable.
+-dnl Advanced users can override via CARGO_FEATURES environment variable.
++dnl Users can enable optional features via CARGO_FEATURES environment variable.
 +dnl By default, no extra features are enabled.
  dnl
  dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
- dnl Only enable when you specifically need those features and understand the risks.
--AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
-+AC_ARG_VAR([{{{features_var}}}], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+@@ -62,9 +61,8 @@
+ AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
  
 -dnl Enable all features by default for this demo package
--dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
--if test -z "${MINIEXTENDR_FEATURES+x}"; then
--  dnl MINIEXTENDR_FEATURES not set — auto-detect via R script if available,
--  dnl falling back to the full feature set for this demo package
+-dnl Users can override by setting CARGO_FEATURES explicitly (even to empty string)
 +dnl Default: no extra features enabled
-+dnl Users can set {{{features_var}}} to enable specific features
-+if test -z "${{{{features_var}}}+x}"; then
-+  dnl {{{features_var}}} not set - auto-detect via R script if available
++dnl Users can set CARGO_FEATURES to enable specific features
+ if test -z "${CARGO_FEATURES+x}"; then
+-  dnl CARGO_FEATURES not set — auto-detect via R script if available,
+-  dnl falling back to the full feature set for this demo package
++  dnl CARGO_FEATURES not set - auto-detect via R script if available
    if test -f "${srcdir}/tools/detect-features.R"; then
--    MINIEXTENDR_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
--    if test -n "$MINIEXTENDR_FEATURES"; then
--      AC_MSG_NOTICE([Auto-detected features: $MINIEXTENDR_FEATURES])
-+    {{{features_var}}}=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-+    if test -n "${{{features_var}}}"; then
-+      AC_MSG_NOTICE([Auto-detected features: ${{{features_var}}}])
+     CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+@@ -72,9 +70,7 @@
+       AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
      fi
 +  else
-+    {{{features_var}}}=""
++    CARGO_FEATURES=""
    fi
 -  dnl If auto-detection returned nothing, enable all features
--  if test -z "$MINIEXTENDR_FEATURES"; then
--    MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
+-  if test -z "$CARGO_FEATURES"; then
+-    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
 -  fi
  fi
  
--if test -n "$MINIEXTENDR_FEATURES"; then
--  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-+if test -n "${{{features_var}}}"; then
-+  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
- else
-   CARGO_FEATURES_FLAG=""
-@@ -232,6 +228,6 @@
- AS_IF([test -n "$CARGO_BUILD_TARGET"],
-       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
--AS_IF([test -n "$MINIEXTENDR_FEATURES"],
--      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
-+AS_IF([test -n "${{{features_var}}}"],
-+      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
- 
- dnl ---- package name → Rust-safe variants ----
 @@ -289,4 +285,5 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -299,5 +296,5 @@
-   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
-   src/Makevars:src/Makevars.in
--  src/miniextendr-win.def:src/win.def.in
-+  src/{{package}}-win.def:src/win.def.in
- ])
- 
-@@ -486,8 +483,5 @@
-     if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-       mkdir -p "$abs_rpkg_dir/inst"
--      dnl Exclude Makefiles from vendored crates — R CMD check warns about
--      dnl GNU extensions (+=, :=, $(shell), etc.) in Makefiles. These are
--      dnl crate build helpers, not used by the R package build.
--      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
-+      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
-       echo "configure: created inst/vendor.tar.xz"
-     fi

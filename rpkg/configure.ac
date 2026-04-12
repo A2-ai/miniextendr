@@ -55,31 +55,31 @@ dnl Set cargo features flag
 dnl
 dnl rpkg is a demo package that demonstrates ALL miniextendr features.
 dnl Enable all optional features by default (both dev and CRAN modes).
-dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
+dnl Advanced users can override via CARGO_FEATURES environment variable.
 dnl
 dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
-AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
 
 dnl Enable all features by default for this demo package
-dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
-if test -z "${MINIEXTENDR_FEATURES+x}"; then
-  dnl MINIEXTENDR_FEATURES not set — auto-detect via R script if available,
+dnl Users can override by setting CARGO_FEATURES explicitly (even to empty string)
+if test -z "${CARGO_FEATURES+x}"; then
+  dnl CARGO_FEATURES not set — auto-detect via R script if available,
   dnl falling back to the full feature set for this demo package
   if test -f "${srcdir}/tools/detect-features.R"; then
-    MINIEXTENDR_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-    if test -n "$MINIEXTENDR_FEATURES"; then
-      AC_MSG_NOTICE([Auto-detected features: $MINIEXTENDR_FEATURES])
+    CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+    if test -n "$CARGO_FEATURES"; then
+      AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
     fi
   fi
   dnl If auto-detection returned nothing, enable all features
-  if test -z "$MINIEXTENDR_FEATURES"; then
-    MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
+  if test -z "$CARGO_FEATURES"; then
+    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
   fi
 fi
 
-if test -n "$MINIEXTENDR_FEATURES"; then
-  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+if test -n "$CARGO_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$CARGO_FEATURES"
 else
   CARGO_FEATURES_FLAG=""
 fi
@@ -231,8 +231,8 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
       [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
 AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
-AS_IF([test -n "$MINIEXTENDR_FEATURES"],
-      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
+AS_IF([test -n "$CARGO_FEATURES"],
+      [AC_MSG_NOTICE([CARGO_FEATURES  = $CARGO_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
@@ -340,7 +340,7 @@ AS_MKDIR_P([src/rust/.cargo])
 AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
-  src/miniextendr-win.def:src/win.def.in
+  src/$PACKAGE_NAME-win.def:src/win.def.in
 ])
 
 dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
