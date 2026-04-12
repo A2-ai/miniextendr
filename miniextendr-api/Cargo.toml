@@ -96,6 +96,12 @@ log = ["dep:log"]
 ## short_vec_size, short_vec_recycle) via R_GetCCallable. Requires vctrs R package.
 ## Also enables the #[derive(Vctrs)] proc-macro.
 vctrs = ["miniextendr-macros/vctrs"]
+## Enable async handle for background Rust computations via `#[miniextendr(background)]`.
+## No external dependencies — uses std::thread + std::sync::mpsc.
+async = []
+## Enable NNG (nanomsg next gen) safe Rust wrappers for messaging/async IO.
+## Requires NNG C library linked via Makevars (no Cargo deps).
+nng = []
 ## Enable macro expansion coverage module. Used for `cargo expand` auditing.
 macro-coverage = []
 ## Project-wide defaults for #[miniextendr] options (forwarded to miniextendr-macros).

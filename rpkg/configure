@@ -594,6 +594,8 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
+NNG_LIBS
+NNG_DEFINES
 CDYLIB_EXT
 CDYLIB_PREFIX
 TAR_FORCE_LOCAL
@@ -2509,6 +2511,42 @@ esac
 
 
 
+NNG_DEFINES="-DNNG_STATIC_LIB -DNNG_PRIVATE"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_INPROC -DNNG_TRANSPORT_IPC -DNNG_TRANSPORT_TCP"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_TLS -DNNG_TRANSPORT_WS -DNNG_TRANSPORT_WSS"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_FDC"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_BUS0 -DNNG_PROTO_PAIR0 -DNNG_PROTO_PAIR1"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_PUB0 -DNNG_PROTO_SUB0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_REQ0 -DNNG_PROTO_REP0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_PUSH0 -DNNG_PROTO_PULL0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_SURVEYOR0 -DNNG_PROTO_RESPONDENT0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_SUPP_TLS -DNNG_SUPP_HTTP -DNNG_SUPP_WEBSOCKET"
+NNG_DEFINES="$NNG_DEFINES -DNNG_SUPP_BASE64 -DNNG_SUPP_SHA1 -DNNG_ENABLE_STATS"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_INIT=nng_tls_engine_init_mbed"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_FINI=nng_tls_engine_fini_mbed"
+
+NNG_LIBS=""
+
+case "$host_os" in
+  darwin*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_DARWIN"
+    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_KQUEUE -DNNG_HAVE_ARC4RANDOM -DNNG_HAVE_STDATOMIC"
+    ;;
+  linux*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX"
+    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_EPOLL -DNNG_USE_EVENTFD -DNNG_HAVE_GETRANDOM -DNNG_HAVE_STDATOMIC"
+    ;;
+  *mingw*|*msys*|*cygwin*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_WINDOWS"
+    NNG_LIBS="$NNG_LIBS -lbcrypt -liphlpapi -lws2_32"
+    ;;
+  *)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_HAVE_STDATOMIC"
+    ;;
+esac
+
+
+
 
 
 case "$FORCE_VENDOR" in
@@ -3647,10 +3685,14 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
   RPKG_CFG="src/rust/.cargo/config.toml"
 
   if test "$NOT_CRAN" = "true"; then
-        if test -f "$RPKG_CFG"; then
-      rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode - using git deps)"
-    fi
+                cat > "$RPKG_CFG" << 'VENDOR_CFG'
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../../vendor"
+VENDOR_CFG
+    echo "configure: wrote cargo config (dev mode - using vendored sources)"
   elif test -f "$RPKG_CFG"; then
             for _url in $("$SED" -n 's/.*git = "\(https:\/\/[^"]*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
       if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then

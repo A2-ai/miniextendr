@@ -357,6 +357,14 @@ pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod unwind_protect;
 pub mod worker;
 
+// Async handle for background Rust computations via #[miniextendr(background)]
+#[cfg(feature = "async")]
+pub mod async_handle;
+
+// Safe Rust wrappers for NNG (nanomsg next generation) messaging library
+#[cfg(feature = "nng")]
+pub mod nng;
+
 // Re-export commonly used worker items at root for convenience
 pub use worker::{Sendable, is_r_main_thread, with_r_thread};
 

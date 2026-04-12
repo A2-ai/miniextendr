@@ -1011,6 +1011,10 @@ pub(crate) struct MiniextendrFnAttrs {
     /// When set, replaces auto-extracted roxygen from Rust doc comments.
     /// Each `\n` in the string becomes a separate `#'` line.
     pub(crate) doc: Option<String>,
+    /// Run in background thread. Returns `MxAsyncHandle` immediately to R.
+    /// Generates `$is_resolved()` and `$value()` methods on the R side.
+    /// Mutually exclusive with `worker` and `unsafe(main_thread)`.
+    pub(crate) background: bool,
     /// Custom C symbol name for the generated wrapper.
     ///
     /// Overrides the default `C_<fn_name>` naming convention.
@@ -1134,6 +1138,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut noexport = false;
         let mut export = false;
         let mut doc = None;
+        let mut background = false;
         let mut c_symbol = None;
         let mut r_name = None;
         let mut r_entry = None;
@@ -1161,6 +1166,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 noexport,
                 export,
                 doc,
+                background,
                 c_symbol,
                 r_name,
                 r_entry,
@@ -1221,10 +1227,18 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             noexport = true;
                         } else if ident == "export" {
                             export = true;
+                        } else if ident == "background" {
+                            if force_worker == Some(true) {
+                                return Err(syn::Error::new_spanned(
+                                    ident,
+                                    "`background` and `worker` are mutually exclusive",
+                                ));
+                            }
+                            background = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export, background",
                             ));
                         }
                     }
@@ -1770,6 +1784,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             noexport,
             export,
             doc,
+            background,
             c_symbol,
             r_name,
             r_entry,

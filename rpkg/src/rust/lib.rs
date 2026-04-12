@@ -102,6 +102,11 @@ pub use miniextendr_api::serde_crate as serde;
 
 mod raw_ffi;
 
+mod nng_test;
+
+#[cfg(feature = "async")]
+mod async_tests;
+
 // Test modules
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
