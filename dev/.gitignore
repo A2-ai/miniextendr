@@ -1,0 +1,5 @@
+# Keep CSV results and scripts, ignore generated bindgen output
+bindgen-corpus-results/
+bindgen-corpus-cpp-results/
+bindgen-corpus-v3-results/
+bindgen-reference/
