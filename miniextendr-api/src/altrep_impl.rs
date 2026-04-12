@@ -1431,11 +1431,9 @@ pub(crate) fn register_builtin_altrep_classes() {
     Vec::<Option<String>>::get_or_init_class();
     Vec::<crate::ffi::Rcomplex>::get_or_init_class();
 
-    // Note: Vec<Cow<str>> ALTREP classes don't have RegisterAltrep
-    // (they use impl_altstring_from_data! without a hand-written RegisterAltrep).
-    // They'll be registered lazily on first use. Cross-session readRDS won't
-    // work for Cow ALTREP — but Cow vectors are primarily used for zero-copy
-    // input, not ALTREP output.
+    // Cow string vectors
+    Vec::<std::borrow::Cow<'static, str>>::get_or_init_class();
+    Vec::<Option<std::borrow::Cow<'static, str>>>::get_or_init_class();
 
     // Box<[T]>
     Box::<[i32]>::get_or_init_class();
@@ -2374,5 +2372,12 @@ impl_register_altrep_builtin!(std::borrow::Cow<'static, [u8]>, "Cow_u8");
 impl_register_altrep_builtin!(
     std::borrow::Cow<'static, [crate::ffi::Rcomplex]>,
     "Cow_Rcomplex"
+);
+
+// Cow string vector types
+impl_register_altrep_builtin!(Vec<std::borrow::Cow<'static, str>>, "Vec_Cow_str");
+impl_register_altrep_builtin!(
+    Vec<Option<std::borrow::Cow<'static, str>>>,
+    "Vec_Option_Cow_str"
 );
 // endregion

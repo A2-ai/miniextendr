@@ -16,7 +16,7 @@
 //! For types with manual trait impls (registration only):
 //! ```ignore
 //! #[derive(Altrep)]
-//! #[altrep_derive_opts(class = "MyCustom")]
+//! #[altrep(class = "MyCustom")]
 //! struct MyCustomData { ... }
 //!
 //! impl AltrepLen for MyCustomData { ... }

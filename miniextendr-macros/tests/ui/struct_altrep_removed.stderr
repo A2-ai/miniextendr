@@ -1,4 +1,4 @@
-error: #[miniextendr] no longer supports ALTREP (class/base attributes). Use #[derive(miniextendr_api::Altrep)] with #[altrep_derive_opts(class = "...")] instead.
+error: #[miniextendr] no longer supports ALTREP (class/base attributes). Use #[derive(miniextendr_api::Altrep)] with #[altrep(class = "...")] instead.
  --> tests/ui/struct_altrep_removed.rs:6:12
   |
 6 | pub struct MyWrapper(Vec<i32>);

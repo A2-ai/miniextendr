@@ -340,7 +340,7 @@ NOT_CRAN=true just devtools-test # Run R tests
 - **TypedExternal**: Trait providing R-visible type name (`TYPE_NAME_CSTR` for display tag, `TYPE_ID_CSTR` for error messages). No longer used for type safety — `Any::downcast` is authoritative.
 - **ALTREP**: Lazy/compact vectors. Single-struct pattern — no wrapper struct. Two paths:
   - **Field-based derive**: `#[derive(AltrepInteger)]` with `#[altrep(len = "field", elt = "field", class = "Name")]` generates everything (AltrepLen, AltIntegerData, low-level traits, TypedExternal, RegisterAltrep, IntoR, linkme entry, Ref/Mut)
-  - **Manual traits + registration**: `#[derive(Altrep)]` with `#[altrep_derive_opts(class = "Name")]` generates registration only; user implements `AltrepLen`, `Alt*Data`, and calls `impl_alt*_from_data!()` manually
+  - **Manual traits + registration**: `#[derive(Altrep)]` with `#[altrep(class = "Name")]` generates registration only; user implements `AltrepLen`, `Alt*Data`, and calls `impl_alt*_from_data!()` manually
   - **`AltrepExtract` trait**: abstracts data extraction from ALTREP SEXP. Blanket impl for `TypedExternal` (ExternalPtr). Override for custom storage.
   - **`#[miniextendr]` on 1-field structs is removed** — use derives instead
 - **R_UnwindProtect**: Ensures Rust destructors run on R errors
