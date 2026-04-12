@@ -49,6 +49,8 @@ arrow = ["miniextendr-api/arrow"]
 datafusion = ["miniextendr-api/datafusion"]
 log = ["miniextendr-api/log", "dep:log"]
 indicatif = ["miniextendr-api/indicatif"]
+async = ["miniextendr-api/async"]
+nng = ["miniextendr-api/nng"]
 # Diagnostic / development features (shallow pass-through)
 macro-coverage = ["miniextendr-api/macro-coverage"]
 debug-preserve = ["miniextendr-api/debug-preserve"]

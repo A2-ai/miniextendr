@@ -18,12 +18,13 @@ CDYLIB_PREFIX = @CDYLIB_PREFIX@
 CDYLIB_EXT = @CDYLIB_EXT@
 TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS = @NATIVE_PKG_CPPFLAGS@
+NNG_DEFINES = @NNG_DEFINES@
+NNG_LIBS = @NNG_LIBS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # codegen-units = 1 in Cargo.toml ensures the user crate compiles into a single .o
 # inside the staticlib archive. The linker pulls it in (via R_init_<pkg>), which
 # brings all linkme distributed_slice entries along — no force_load needed.
-PKG_LIBS = $(CARGO_AR)
 PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -31,7 +32,6 @@ WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
 
 # cdylib for R wrapper generation (platform-specific extension)
 CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
-## ----------------------------------------------------------------------
 
 # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
 # letting Cargo's own incremental compilation decide what to rebuild.
@@ -43,6 +43,203 @@ CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_
 #   2. Cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
 #   3. R wrappers are generated from the cdylib
 all: $(SHLIB) $(WRAPPERS_R)
+
+## --- NNG/mbedtls C library build --------------------------------------
+## Compiled from bundled sources; platform-specific files self-guard via #ifdef.
+## Built as static archives, linked into the final .so alongside the Rust staticlib.
+
+NNG_CPPFLAGS = -Inng/include -Inng/src -Imbedtls/include $(NNG_DEFINES)
+MBEDTLS_CPPFLAGS = -Imbedtls/include -Imbedtls/library
+
+# NNG source files (POSIX platform; Windows files self-guard to empty on Unix)
+NNG_SOURCES = \
+  nng/src/nng.c \
+  nng/src/core/aio.c \
+  nng/src/core/device.c \
+  nng/src/core/dialer.c \
+  nng/src/core/file.c \
+  nng/src/core/idhash.c \
+  nng/src/core/init.c \
+  nng/src/core/list.c \
+  nng/src/core/listener.c \
+  nng/src/core/lmq.c \
+  nng/src/core/message.c \
+  nng/src/core/msgqueue.c \
+  nng/src/core/options.c \
+  nng/src/core/panic.c \
+  nng/src/core/pipe.c \
+  nng/src/core/pollable.c \
+  nng/src/core/reap.c \
+  nng/src/core/socket.c \
+  nng/src/core/sockfd.c \
+  nng/src/core/stats.c \
+  nng/src/core/stream.c \
+  nng/src/core/strs.c \
+  nng/src/core/taskq.c \
+  nng/src/core/tcp.c \
+  nng/src/core/thread.c \
+  nng/src/core/url.c \
+  nng/src/platform/posix/posix_alloc.c \
+  nng/src/platform/posix/posix_atomic.c \
+  nng/src/platform/posix/posix_clock.c \
+  nng/src/platform/posix/posix_debug.c \
+  nng/src/platform/posix/posix_file.c \
+  nng/src/platform/posix/posix_ipcconn.c \
+  nng/src/platform/posix/posix_ipcdial.c \
+  nng/src/platform/posix/posix_ipclisten.c \
+  nng/src/platform/posix/posix_peerid.c \
+  nng/src/platform/posix/posix_pipe.c \
+  nng/src/platform/posix/posix_pollq_epoll.c \
+  nng/src/platform/posix/posix_pollq_kqueue.c \
+  nng/src/platform/posix/posix_pollq_poll.c \
+  nng/src/platform/posix/posix_pollq_port.c \
+  nng/src/platform/posix/posix_rand_arc4random.c \
+  nng/src/platform/posix/posix_rand_getrandom.c \
+  nng/src/platform/posix/posix_rand_urandom.c \
+  nng/src/platform/posix/posix_resolv_gai.c \
+  nng/src/platform/posix/posix_sockaddr.c \
+  nng/src/platform/posix/posix_socketpair.c \
+  nng/src/platform/posix/posix_sockfd.c \
+  nng/src/platform/posix/posix_tcpconn.c \
+  nng/src/platform/posix/posix_tcpdial.c \
+  nng/src/platform/posix/posix_tcplisten.c \
+  nng/src/platform/posix/posix_thread.c \
+  nng/src/platform/posix/posix_udp.c \
+  nng/src/sp/protocol.c \
+  nng/src/sp/transport.c \
+  nng/src/sp/protocol/bus0/bus.c \
+  nng/src/sp/protocol/pair0/pair.c \
+  nng/src/sp/protocol/pair1/pair.c \
+  nng/src/sp/protocol/pair1/pair1_poly.c \
+  nng/src/sp/protocol/pipeline0/pull.c \
+  nng/src/sp/protocol/pipeline0/push.c \
+  nng/src/sp/protocol/pubsub0/pub.c \
+  nng/src/sp/protocol/pubsub0/sub.c \
+  nng/src/sp/protocol/pubsub0/xsub.c \
+  nng/src/sp/protocol/reqrep0/rep.c \
+  nng/src/sp/protocol/reqrep0/req.c \
+  nng/src/sp/protocol/reqrep0/xrep.c \
+  nng/src/sp/protocol/reqrep0/xreq.c \
+  nng/src/sp/protocol/survey0/respond.c \
+  nng/src/sp/protocol/survey0/survey.c \
+  nng/src/sp/protocol/survey0/xrespond.c \
+  nng/src/sp/protocol/survey0/xsurvey.c \
+  nng/src/sp/transport/inproc/inproc.c \
+  nng/src/sp/transport/ipc/ipc.c \
+  nng/src/sp/transport/socket/sockfd.c \
+  nng/src/sp/transport/tcp/tcp.c \
+  nng/src/sp/transport/tls/tls.c \
+  nng/src/sp/transport/ws/websocket.c \
+  nng/src/supplemental/base64/base64.c \
+  nng/src/supplemental/http/http_chunk.c \
+  nng/src/supplemental/http/http_client.c \
+  nng/src/supplemental/http/http_conn.c \
+  nng/src/supplemental/http/http_msg.c \
+  nng/src/supplemental/http/http_public.c \
+  nng/src/supplemental/http/http_schemes.c \
+  nng/src/supplemental/http/http_server.c \
+  nng/src/supplemental/sha1/sha1.c \
+  nng/src/supplemental/tls/mbedtls/tls.c \
+  nng/src/supplemental/tls/tls_common.c \
+  nng/src/supplemental/util/options.c \
+  nng/src/supplemental/util/platform.c \
+  nng/src/supplemental/websocket/websocket.c
+
+# mbedtls source files (all in library/)
+MBEDTLS_SOURCES = \
+  mbedtls/library/aes.c \
+  mbedtls/library/aesce.c \
+  mbedtls/library/aesni.c \
+  mbedtls/library/asn1parse.c \
+  mbedtls/library/asn1write.c \
+  mbedtls/library/base64.c \
+  mbedtls/library/bignum.c \
+  mbedtls/library/bignum_core.c \
+  mbedtls/library/block_cipher.c \
+  mbedtls/library/ccm.c \
+  mbedtls/library/chacha20.c \
+  mbedtls/library/chachapoly.c \
+  mbedtls/library/cipher.c \
+  mbedtls/library/cipher_wrap.c \
+  mbedtls/library/cmac.c \
+  mbedtls/library/constant_time.c \
+  mbedtls/library/ctr_drbg.c \
+  mbedtls/library/des.c \
+  mbedtls/library/ecdh.c \
+  mbedtls/library/ecdsa.c \
+  mbedtls/library/ecp.c \
+  mbedtls/library/ecp_curves.c \
+  mbedtls/library/entropy.c \
+  mbedtls/library/entropy_poll.c \
+  mbedtls/library/error.c \
+  mbedtls/library/gcm.c \
+  mbedtls/library/hkdf.c \
+  mbedtls/library/md.c \
+  mbedtls/library/md5.c \
+  mbedtls/library/net_sockets.c \
+  mbedtls/library/oid.c \
+  mbedtls/library/pem.c \
+  mbedtls/library/pk.c \
+  mbedtls/library/pk_ecc.c \
+  mbedtls/library/pk_wrap.c \
+  mbedtls/library/pkcs12.c \
+  mbedtls/library/pkcs5.c \
+  mbedtls/library/pkparse.c \
+  mbedtls/library/pkwrite.c \
+  mbedtls/library/platform.c \
+  mbedtls/library/platform_util.c \
+  mbedtls/library/poly1305.c \
+  mbedtls/library/rsa.c \
+  mbedtls/library/rsa_alt_helpers.c \
+  mbedtls/library/sha1.c \
+  mbedtls/library/sha256.c \
+  mbedtls/library/sha512.c \
+  mbedtls/library/ssl_cache.c \
+  mbedtls/library/ssl_ciphersuites.c \
+  mbedtls/library/ssl_client.c \
+  mbedtls/library/ssl_cookie.c \
+  mbedtls/library/ssl_debug_helpers_generated.c \
+  mbedtls/library/ssl_msg.c \
+  mbedtls/library/ssl_ticket.c \
+  mbedtls/library/ssl_tls.c \
+  mbedtls/library/ssl_tls12_client.c \
+  mbedtls/library/ssl_tls12_server.c \
+  mbedtls/library/threading.c \
+  mbedtls/library/timing.c \
+  mbedtls/library/version.c \
+  mbedtls/library/x509.c \
+  mbedtls/library/x509_create.c \
+  mbedtls/library/x509_crl.c \
+  mbedtls/library/x509_crt.c \
+  mbedtls/library/x509_csr.c \
+  mbedtls/library/x509write.c \
+  mbedtls/library/x509write_crt.c \
+  mbedtls/library/x509write_csr.c
+
+NNG_OBJECTS = $(NNG_SOURCES:.c=.o)
+MBEDTLS_OBJECTS = $(MBEDTLS_SOURCES:.c=.o)
+
+LIBNNG = nng/libnng.a
+LIBMBEDTLS = mbedtls/libmbedtls_all.a
+
+PKG_LIBS = $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS)
+
+## --- pattern rules for subdirectory C compilation ---------------------
+## R's default suffix rules don't handle subdirectories; these pattern rules do.
+nng/%.o: nng/%.c
+	$(CC) $(NNG_CPPFLAGS) $(CPPFLAGS) $(CPICFLAGS) $(CFLAGS) -c $< -o $@
+
+mbedtls/%.o: mbedtls/%.c
+	$(CC) $(MBEDTLS_CPPFLAGS) $(CPPFLAGS) $(CPICFLAGS) $(CFLAGS) -c $< -o $@
+
+## --- static archive rules ---------------------------------------------
+$(LIBNNG): $(NNG_OBJECTS)
+	$(AR) rcs $@ $^
+
+$(LIBMBEDTLS): $(MBEDTLS_OBJECTS)
+	$(AR) rcs $@ $^
+
+## ----------------------------------------------------------------------
 	@# Dev mode: touch Cargo.toml so pkgbuild always thinks sources changed
 	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
@@ -66,7 +263,7 @@ all: $(SHLIB) $(WRAPPERS_R)
 # Phony target to force Cargo invocation (no recipe - just triggers dependents)
 FORCE_CARGO:
 
-$(SHLIB): $(OBJECTS) $(CARGO_AR)
+$(SHLIB): $(OBJECTS) $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS)
 
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
@@ -79,7 +276,7 @@ VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
 
 # OBJECTS are passed to cargo as link-args so the Rust crate can reference
 # symbols from C shim files (bindgen-generated static inline wrappers).
-$(CARGO_AR): FORCE_CARGO $(OBJECTS)
+$(CARGO_AR): FORCE_CARGO $(OBJECTS) $(LIBNNG) $(LIBMBEDTLS)
 	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 	  echo "Unpacking vendor.tar.xz from inst/..."; \
@@ -90,7 +287,7 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	LINK_ARGS=""; \
 	for obj in $(OBJECTS); do LINK_ARGS="$$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
-	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
+	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)" \
 	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 	  --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
@@ -120,11 +317,12 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 # Build cdylib for wrapper generation.
 # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
 # Vendor extraction is handled by $(CARGO_AR) which builds first.
-$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
+$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) $(LIBNNG) $(LIBMBEDTLS) | $(CARGO_AR)
 	@set -e; \
 	TARGET_OPT=""; \
 	CDYLIB_LINK_ARGS=""; \
 	for obj in $(OBJECTS); do CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
+	CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)"; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	if [ "$(CDYLIB_EXT)" = "dll" ]; then \
 	  CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
@@ -138,3 +336,4 @@ $(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
 	  -- $$CDYLIB_LINK_ARGS
 
 clean:
+	rm -f $(NNG_OBJECTS) $(MBEDTLS_OBJECTS) $(LIBNNG) $(LIBMBEDTLS)

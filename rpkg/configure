@@ -594,7 +594,8 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
-NATIVE_PKG_CPPFLAGS
+NNG_LIBS
+NNG_DEFINES
 CDYLIB_EXT
 CDYLIB_PREFIX
 TAR_FORCE_LOCAL
@@ -614,7 +615,7 @@ CARGO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURES_FLAG
-CARGO_FEATURES
+MINIEXTENDR_FEATURES
 NOT_CRAN
 CARGO_OFFLINE_FLAG
 host_os
@@ -671,7 +672,7 @@ enable_option_checking
       ac_precious_vars='build_alias
 host_alias
 target_alias
-CARGO_FEATURES
+MINIEXTENDR_FEATURES
 RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
@@ -1296,7 +1297,7 @@ if test -n "$ac_init_help"; then
   cat <<\_ACEOF
 
 Some influential environment variables:
-  CARGO_FEATURES
+  MINIEXTENDR_FEATURES
               Comma-separated cargo features to enable (e.g., "nonapi,rayon")
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
@@ -2012,21 +2013,21 @@ fi
 
 
 
-if test -z "${CARGO_FEATURES+x}"; then
+if test -z "${MINIEXTENDR_FEATURES+x}"; then
       if test -f "${srcdir}/tools/detect-features.R"; then
-    CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-    if test -n "$CARGO_FEATURES"; then
-      { printf '%s\n' "$as_me:${as_lineno-$LINENO}: Auto-detected features: $CARGO_FEATURES" >&5
-printf '%s\n' "$as_me: Auto-detected features: $CARGO_FEATURES" >&6;}
+    MINIEXTENDR_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+    if test -n "$MINIEXTENDR_FEATURES"; then
+      { printf '%s\n' "$as_me:${as_lineno-$LINENO}: Auto-detected features: $MINIEXTENDR_FEATURES" >&5
+printf '%s\n' "$as_me: Auto-detected features: $MINIEXTENDR_FEATURES" >&6;}
     fi
   fi
-    if test -z "$CARGO_FEATURES"; then
-    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
+    if test -z "$MINIEXTENDR_FEATURES"; then
+    MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
   fi
 fi
 
-if test -n "$CARGO_FEATURES"; then
-  CARGO_FEATURES_FLAG="--features=$CARGO_FEATURES"
+if test -n "$MINIEXTENDR_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
 else
   CARGO_FEATURES_FLAG=""
 fi
@@ -2484,10 +2485,10 @@ then :
   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&5
 printf '%s\n' "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
 fi
-if test -n "$CARGO_FEATURES"
+if test -n "$MINIEXTENDR_FEATURES"
 then :
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_FEATURES  = $CARGO_FEATURES" >&5
-printf '%s\n' "$as_me: CARGO_FEATURES  = $CARGO_FEATURES" >&6;}
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
+printf '%s\n' "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
 fi
 
 CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
@@ -2510,17 +2511,40 @@ esac
 
 
 
-NATIVE_PKG_CPPFLAGS=""
+NNG_DEFINES="-DNNG_STATIC_LIB -DNNG_PRIVATE"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_INPROC -DNNG_TRANSPORT_IPC -DNNG_TRANSPORT_TCP"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_TLS -DNNG_TRANSPORT_WS -DNNG_TRANSPORT_WSS"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_FDC"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_BUS0 -DNNG_PROTO_PAIR0 -DNNG_PROTO_PAIR1"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_PUB0 -DNNG_PROTO_SUB0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_REQ0 -DNNG_PROTO_REP0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_PUSH0 -DNNG_PROTO_PULL0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_SURVEYOR0 -DNNG_PROTO_RESPONDENT0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_SUPP_TLS -DNNG_SUPP_HTTP -DNNG_SUPP_WEBSOCKET"
+NNG_DEFINES="$NNG_DEFINES -DNNG_SUPP_BASE64 -DNNG_SUPP_SHA1 -DNNG_ENABLE_STATS"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_INIT=nng_tls_engine_init_mbed"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_FINI=nng_tls_engine_fini_mbed"
 
-CLI_INCLUDE=$("${R_HOME}/bin/Rscript" -e "cat(system.file('include', package='cli'))")
-if test -n "$CLI_INCLUDE" && test -d "$CLI_INCLUDE"; then
-  NATIVE_PKG_CPPFLAGS="$NATIVE_PKG_CPPFLAGS -I$CLI_INCLUDE"
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: cli include: $CLI_INCLUDE" >&5
-printf '%s\n' "$as_me: cli include: $CLI_INCLUDE" >&6;}
-else
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: WARNING: cli package not found — native CLI bindings will not compile" >&5
-printf '%s\n' "$as_me: WARNING: cli package not found — native CLI bindings will not compile" >&2;}
-fi
+NNG_LIBS=""
+
+case "$host_os" in
+  darwin*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_DARWIN"
+    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_KQUEUE -DNNG_HAVE_ARC4RANDOM -DNNG_HAVE_STDATOMIC"
+    ;;
+  linux*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX"
+    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_EPOLL -DNNG_USE_EVENTFD -DNNG_HAVE_GETRANDOM -DNNG_HAVE_STDATOMIC"
+    ;;
+  *mingw*|*msys*|*cygwin*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_WINDOWS"
+    NNG_LIBS="$NNG_LIBS -lbcrypt -liphlpapi -lws2_32"
+    ;;
+  *)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_HAVE_STDATOMIC"
+    ;;
+esac
+
 
 
 
@@ -2546,7 +2570,7 @@ VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
-ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/$PACKAGE_NAME-win.def:src/win.def.in"
+ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/miniextendr-win.def:src/win.def.in"
 
 
 ac_config_commands="$ac_config_commands dev-cargo-config"
@@ -3233,7 +3257,7 @@ do
   case $ac_config_target in
     "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars:src/Makevars.in" ;;
-    "src/$PACKAGE_NAME-win.def") CONFIG_FILES="$CONFIG_FILES src/$PACKAGE_NAME-win.def:src/win.def.in" ;;
+    "src/miniextendr-win.def") CONFIG_FILES="$CONFIG_FILES src/miniextendr-win.def:src/win.def.in" ;;
     "dev-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS dev-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
@@ -3661,10 +3685,14 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
   RPKG_CFG="src/rust/.cargo/config.toml"
 
   if test "$NOT_CRAN" = "true"; then
-        if test -f "$RPKG_CFG"; then
-      rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode - using git deps)"
-    fi
+                cat > "$RPKG_CFG" << 'VENDOR_CFG'
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../../vendor"
+VENDOR_CFG
+    echo "configure: wrote cargo config (dev mode - using vendored sources)"
   elif test -f "$RPKG_CFG"; then
             for _url in $("$SED" -n 's/.*git = "\(https:\/\/[^"]*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
       if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then

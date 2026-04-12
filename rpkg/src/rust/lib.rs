@@ -108,6 +108,11 @@ mod native;
 // Test module for native R package integration
 mod native_cli_test;
 
+mod nng_test;
+
+#[cfg(feature = "async")]
+mod async_tests;
+
 // Test modules
 mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]

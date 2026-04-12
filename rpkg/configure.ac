@@ -274,6 +274,48 @@ else
 fi
 AC_SUBST([NATIVE_PKG_CPPFLAGS])
 
+dnl ---- NNG/mbedtls platform detection ----
+dnl NNG and mbedtls are compiled from bundled sources in src/nng/ and src/mbedtls/.
+dnl Platform-specific defines control which code paths compile (files self-guard via #ifdef).
+NNG_DEFINES="-DNNG_STATIC_LIB -DNNG_PRIVATE"
+dnl Transport registration (without these, nng_listen/nng_dial return NNG_ENOTSUP)
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_INPROC -DNNG_TRANSPORT_IPC -DNNG_TRANSPORT_TCP"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_TLS -DNNG_TRANSPORT_WS -DNNG_TRANSPORT_WSS"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TRANSPORT_FDC"
+dnl Protocol registration (without these, nng_*_open returns success but sockets are inert)
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_BUS0 -DNNG_PROTO_PAIR0 -DNNG_PROTO_PAIR1"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_PUB0 -DNNG_PROTO_SUB0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_REQ0 -DNNG_PROTO_REP0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_PUSH0 -DNNG_PROTO_PULL0"
+NNG_DEFINES="$NNG_DEFINES -DNNG_PROTO_SURVEYOR0 -DNNG_PROTO_RESPONDENT0"
+dnl Supplemental features
+NNG_DEFINES="$NNG_DEFINES -DNNG_SUPP_TLS -DNNG_SUPP_HTTP -DNNG_SUPP_WEBSOCKET"
+NNG_DEFINES="$NNG_DEFINES -DNNG_SUPP_BASE64 -DNNG_SUPP_SHA1 -DNNG_ENABLE_STATS"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_INIT=nng_tls_engine_init_mbed"
+NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_FINI=nng_tls_engine_fini_mbed"
+
+NNG_LIBS=""
+
+case "$host_os" in
+  darwin*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_DARWIN"
+    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_KQUEUE -DNNG_HAVE_ARC4RANDOM -DNNG_HAVE_STDATOMIC"
+    ;;
+  linux*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX"
+    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_EPOLL -DNNG_USE_EVENTFD -DNNG_HAVE_GETRANDOM -DNNG_HAVE_STDATOMIC"
+    ;;
+  *mingw*|*msys*|*cygwin*)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_WINDOWS"
+    NNG_LIBS="$NNG_LIBS -lbcrypt -liphlpapi -lws2_32"
+    ;;
+  *)
+    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_HAVE_STDATOMIC"
+    ;;
+esac
+AC_SUBST([NNG_DEFINES])
+AC_SUBST([NNG_LIBS])
+
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
@@ -325,11 +367,17 @@ AC_CONFIG_COMMANDS([dev-cargo-config],
   RPKG_CFG="src/rust/.cargo/config.toml"
 
   if test "$NOT_CRAN" = "true"; then
-    dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
-    if test -f "$RPKG_CFG"; then
-      rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode - using git deps)"
-    fi
+    dnl In dev mode, write a minimal cargo config that uses vendor/ as source.
+    dnl This prevents workspace discovery from walking up to the parent monorepo
+    dnl in git worktree setups, ensuring the vendored macros are used.
+    cat > "$RPKG_CFG" << 'VENDOR_CFG'
+@<:@source.crates-io@:>@
+replace-with = "vendored-sources"
+
+@<:@source.vendored-sources@:>@
+directory = "../../vendor"
+VENDOR_CFG
+    echo "configure: wrote cargo config (dev mode - using vendored sources)"
   elif test -f "$RPKG_CFG"; then
     dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
     dnl so [patch.crates-io] git entries also resolve to vendor/

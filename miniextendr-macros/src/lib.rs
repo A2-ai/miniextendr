@@ -177,6 +177,7 @@
 // miniextendr-macros procedural macros
 
 mod altrep;
+mod async_codegen;
 mod c_wrapper_builder;
 mod list_macro;
 mod miniextendr_fn;
@@ -630,6 +631,7 @@ pub fn miniextendr(
         export,
         doc,
         error_in_r,
+        background,
         c_symbol,
         r_name: fn_r_name,
         r_entry,
@@ -663,6 +665,90 @@ pub fn miniextendr(
 
     parsed.add_track_caller_if_needed();
     parsed.add_inline_never_if_needed();
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Background (async) codegen path
+    // ═══════════════════════════════════════════════════════════════════
+    if background {
+        let rust_ident = parsed.ident().clone();
+        let c_ident = if let Some(ref sym) = c_symbol {
+            syn::Ident::new(sym, parsed.c_wrapper_ident().span())
+        } else {
+            parsed.c_wrapper_ident()
+        };
+        let inputs = parsed.inputs();
+        let output = parsed.output();
+        let vis = parsed.vis();
+        let rust_inputs: Vec<syn::Ident> = inputs
+            .iter()
+            .filter_map(|arg| {
+                if let syn::FnArg::Typed(pt) = arg
+                    && let syn::Pat::Ident(p) = pt.pat.as_ref()
+                {
+                    Some(p.ident.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Build conversion statements for args (SEXP → Rust)
+        let mut conversion_builder = crate::rust_conversion_builder::RustConversionBuilder::new();
+        if strict {
+            conversion_builder = conversion_builder.with_strict();
+        }
+        if error_in_r {
+            conversion_builder = conversion_builder.with_error_in_r();
+        }
+        if coerce_all {
+            conversion_builder = conversion_builder.with_coerce_all();
+        }
+        let conversion_stmts: Vec<proc_macro2::TokenStream> = inputs
+            .iter()
+            .zip(rust_inputs.iter())
+            .filter_map(|(arg, sexp_ident)| {
+                if let syn::FnArg::Typed(pat_type) = arg {
+                    let (owned, borrowed) =
+                        conversion_builder.build_conversion_split(pat_type, sexp_ident);
+                    let mut stmts = owned;
+                    stmts.extend(borrowed);
+                    Some(stmts)
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
+
+        let roxygen_tags = if let Some(ref doc_text) = doc {
+            doc_text.lines().map(|l| l.to_string()).collect::<Vec<_>>()
+        } else {
+            crate::roxygen::roxygen_tags_from_attrs(parsed.attrs())
+        };
+        let cfg_attrs = extract_cfg_attrs(parsed.attrs());
+
+        let info = async_codegen::BackgroundFnInfo {
+            rust_ident: &rust_ident,
+            c_ident: &c_ident,
+            inputs,
+            output,
+            vis,
+            rust_inputs: &rust_inputs,
+            is_pub: matches!(vis, syn::Visibility::Public(_)),
+            error_in_r,
+            strict,
+            coerce_all,
+            roxygen_tags: &roxygen_tags,
+            cfg_attrs: &cfg_attrs,
+            internal,
+            noexport,
+            export,
+        };
+
+        let (tokens, _r_wrapper) =
+            async_codegen::generate_background_fn(&info, parsed.item(), &conversion_stmts);
+        return tokens.into();
+    }
 
     // Extract commonly used values
     let uses_internal_c_wrapper = parsed.uses_internal_c_wrapper();
