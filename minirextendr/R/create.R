@@ -166,6 +166,15 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
     cli::cli_alert_info("Tip: install {.url https://git-lfs.com} and run {.code minirextendr::use_git_lfs()} to avoid bloating git with vendor.tar.xz")
   }
 
+  # Git hooks
+  cli::cli_h2("Installing git hooks")
+  tryCatch(
+    use_miniextendr_git_hooks(),
+    error = function(e) {
+      cli::cli_alert_info("Tip: run {.code minirextendr::use_miniextendr_git_hooks()} to install git hooks")
+    }
+  )
+
   cli::cli_h1("Monorepo created!")
   cli::cli_alert_info("Next steps:")
   cli::cli_bullets(c(
@@ -453,6 +462,15 @@ use_miniextendr <- function(path = ".",
   # Configuration file
   cli::cli_h2("Creating configuration")
   use_miniextendr_config()
+
+  # Git hooks
+  cli::cli_h2("Installing git hooks")
+  tryCatch(
+    use_miniextendr_git_hooks(),
+    error = function(e) {
+      cli::cli_alert_info("Tip: run {.code minirextendr::use_miniextendr_git_hooks()} to install git hooks")
+    }
+  )
 
   # Summary
   cli::cli_h1("Setup complete!")

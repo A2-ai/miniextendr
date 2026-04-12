@@ -1,0 +1,68 @@
+#!/bin/bash
+# miniextendr post-merge hook
+# Reminds to reconfigure when build files change after merge/pull.
+# Installed by minirextendr::use_miniextendr_git_hooks()
+
+set -euo pipefail
+
+# Files changed in this merge (compared to previous HEAD)
+CHANGED=$(git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD 2>/dev/null || true)
+if [ -z "$CHANGED" ]; then
+    exit 0
+fi
+
+# ── Locate the R package directory ───────────────────────────────────────────
+RPKG_DIR=""
+if [ -f "src/rust/Cargo.toml" ]; then
+    RPKG_DIR="."
+else
+    for d in */; do
+        if [ -f "${d}src/rust/Cargo.toml" ]; then
+            RPKG_DIR="${d%/}"
+            break
+        fi
+    done
+fi
+
+if [ -z "$RPKG_DIR" ]; then
+    exit 0
+fi
+
+if [ "$RPKG_DIR" = "." ]; then
+    PREFIX=""
+else
+    PREFIX="${RPKG_DIR}/"
+fi
+
+# ── Check if build-relevant files changed ────────────────────────────────────
+NEEDS_CONFIGURE=false
+
+# configure.ac or Makevars.in changed
+if echo "$CHANGED" | grep -qE "^${PREFIX}(configure\.ac|src/Makevars\.in)$"; then
+    NEEDS_CONFIGURE=true
+fi
+
+# Cargo.toml or Cargo.lock changed (dependency updates)
+if echo "$CHANGED" | grep -qE "^${PREFIX}src/rust/Cargo\.(toml|lock)$"; then
+    NEEDS_CONFIGURE=true
+fi
+
+# Rust source files changed
+if echo "$CHANGED" | grep -qE "^${PREFIX}src/rust/.*\.rs$"; then
+    NEEDS_CONFIGURE=true
+fi
+
+if [ "$NEEDS_CONFIGURE" = true ]; then
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  miniextendr: build files changed after merge/pull.        ║"
+    echo "║  You may need to reconfigure and rebuild:                  ║"
+    echo "║                                                            ║"
+    if [ "$RPKG_DIR" = "." ]; then
+    echo "║    bash ./configure && R CMD INSTALL .                     ║"
+    else
+    echo "║    cd ${RPKG_DIR} && bash ./configure && R CMD INSTALL .   ║"
+    fi
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+fi
