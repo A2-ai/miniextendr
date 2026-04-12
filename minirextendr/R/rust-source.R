@@ -468,8 +468,6 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   # configure.ac
   configure_ac <- template_path("configure.ac")
   ac_content <- readLines(configure_ac, warn = FALSE)
-  ac_content <- gsub("\\{\\{\\{features_var\\}\\}\\}", paste0(toupper(pkg_rs), "_FEATURES"),
-                      ac_content)
   ac_content <- gsub("\\{\\{package\\}\\}", pkg_name, ac_content)
   writeLines(ac_content, fs::path(pkg_dir, "configure.ac"))
 

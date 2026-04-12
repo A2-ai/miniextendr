@@ -1,12 +1,12 @@
 # Tests for configure-time feature detection (tools/detect-features.R)
 
 test_that("generate_empty_detect_script produces valid structure", {
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   text <- paste(lines, collapse = "\n")
 
   expect_true(any(grepl("^## BEGIN RULES", lines)))
   expect_true(any(grepl("^## END RULES", lines)))
-  expect_true(any(grepl("MYPKG_FEATURES", lines)))
+  expect_true(any(grepl("CARGO_FEATURES", lines)))
   expect_true(any(grepl("mypkg", lines)))
   expect_true(any(grepl('cat\\(paste\\(features', lines)))
 })
@@ -15,7 +15,7 @@ test_that("append and parse feature rules round-trip", {
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
 
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, tmp)
 
   # Add a TRUE rule
@@ -36,7 +36,7 @@ test_that("remove_feature_rule_from_script removes correct rule", {
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
 
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, tmp)
   minirextendr:::append_feature_rule(tmp, "rayon", TRUE)
   minirextendr:::append_feature_rule(tmp, "vctrs", 'requireNamespace("vctrs", quietly = TRUE)')
@@ -55,7 +55,7 @@ test_that("remove_feature_rule_from_script returns FALSE for missing rule", {
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
 
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, tmp)
 
   result <- minirextendr:::remove_feature_rule_from_script(tmp, "nonexistent")
@@ -66,7 +66,7 @@ test_that("parse_detect_features_script returns empty list for no rules", {
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
 
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, tmp)
 
   rules <- minirextendr:::parse_detect_features_script(tmp)
@@ -78,7 +78,7 @@ test_that("generated detect script is valid R and outputs features", {
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
 
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, tmp)
   minirextendr:::append_feature_rule(tmp, "rayon", TRUE)
   minirextendr:::append_feature_rule(tmp, "vctrs", "FALSE")
@@ -95,7 +95,7 @@ test_that("generated detect script outputs multiple features comma-separated", {
   tmp <- tempfile(fileext = ".R")
   on.exit(unlink(tmp), add = TRUE)
 
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, tmp)
   minirextendr:::append_feature_rule(tmp, "rayon", TRUE)
   minirextendr:::append_feature_rule(tmp, "serde", TRUE)
@@ -114,14 +114,14 @@ test_that("patch_configure_ac_for_detection patches old-style block", {
   # Write a configure.ac with the old-style block
   writeLines(c(
     'AC_INIT([mypkg], [1.0])',
-    'if test -z "${MYPKG_FEATURES+x}"; then',
-    '  dnl MYPKG_FEATURES not set - use empty (no extra features)',
-    '  MYPKG_FEATURES=""',
+    'if test -z "${CARGO_FEATURES+x}"; then',
+    '  dnl CARGO_FEATURES not set - use empty (no extra features)',
+    '  CARGO_FEATURES=""',
     'fi',
     'AC_OUTPUT'
   ), tmp)
 
-  result <- minirextendr:::patch_configure_ac_for_detection(tmp, "MYPKG_FEATURES")
+  result <- minirextendr:::patch_configure_ac_for_detection(tmp, "CARGO_FEATURES")
   expect_true(result)
 
   text <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
@@ -138,18 +138,18 @@ test_that("patch_configure_ac_for_detection is idempotent", {
 
   writeLines(c(
     'AC_INIT([mypkg], [1.0])',
-    'if test -z "${MYPKG_FEATURES+x}"; then',
-    '  dnl MYPKG_FEATURES not set - use empty (no extra features)',
-    '  MYPKG_FEATURES=""',
+    'if test -z "${CARGO_FEATURES+x}"; then',
+    '  dnl CARGO_FEATURES not set - use empty (no extra features)',
+    '  CARGO_FEATURES=""',
     'fi',
     'AC_OUTPUT'
   ), tmp)
 
-  minirextendr:::patch_configure_ac_for_detection(tmp, "MYPKG_FEATURES")
+  minirextendr:::patch_configure_ac_for_detection(tmp, "CARGO_FEATURES")
   text_after_first <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
 
   # Second call should detect it's already patched
-  result <- minirextendr:::patch_configure_ac_for_detection(tmp, "MYPKG_FEATURES")
+  result <- minirextendr:::patch_configure_ac_for_detection(tmp, "CARGO_FEATURES")
   expect_false(result)
 
   text_after_second <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
@@ -159,7 +159,7 @@ test_that("patch_configure_ac_for_detection is idempotent", {
 test_that("add_feature_rule validates optional_dep parameter", {
   proj <- withr::local_tempdir()
   dir.create(file.path(proj, "tools"), recursive = TRUE)
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, file.path(proj, "tools", "detect-features.R"))
 
   local_mocked_bindings(
@@ -187,7 +187,7 @@ test_that("add_feature_rule validates optional_dep parameter", {
 test_that("add_feature_rule with optional_dep = FALSE skips cargo_add", {
   proj <- withr::local_tempdir()
   dir.create(file.path(proj, "tools"), recursive = TRUE)
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, file.path(proj, "tools", "detect-features.R"))
 
   cargo_add_called <- FALSE
@@ -212,7 +212,7 @@ test_that("add_feature_rule with optional_dep = FALSE skips cargo_add", {
 test_that("add_feature_rule with optional_dep = TRUE calls cargo_add", {
   proj <- withr::local_tempdir()
   dir.create(file.path(proj, "tools"), recursive = TRUE)
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, file.path(proj, "tools", "detect-features.R"))
 
   captured_args <- NULL
@@ -240,7 +240,7 @@ test_that("add_feature_rule with optional_dep = TRUE calls cargo_add", {
 test_that("add_feature_rule with optional_dep string uses it as dep spec", {
   proj <- withr::local_tempdir()
   dir.create(file.path(proj, "tools"), recursive = TRUE)
-  lines <- minirextendr:::generate_empty_detect_script("mypkg", "MYPKG_FEATURES")
+  lines <- minirextendr:::generate_empty_detect_script("mypkg", "CARGO_FEATURES")
   writeLines(lines, file.path(proj, "tools", "detect-features.R"))
 
   captured_args <- NULL
