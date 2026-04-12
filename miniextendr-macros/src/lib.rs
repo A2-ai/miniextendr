@@ -2312,23 +2312,30 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 /// Generates `TypedExternal`, `AltrepClass`, `RegisterAltrep`, `IntoR`,
 /// linkme registration entry, and `Ref`/`Mut` accessor types.
 ///
-/// The struct must already implement the low-level ALTREP traits (via
-/// `impl_alt*_from_data!` or a family-specific derive like `#[derive(AltrepInteger)]`).
+/// When `base` is specified, also generates the low-level trait impls (Altrep,
+/// AltVec, family-specific methods, InferBase), so no manual `impl_alt*_from_data!()`
+/// call is needed. Without `base`, the struct must already have those traits.
 ///
 /// # Attributes
 ///
-/// - `#[altrep(class = "ClassName")]` — custom ALTREP class name (defaults to struct name)
+/// - `#[altrep(class = "Name")]` — custom ALTREP class name (defaults to struct name)
+/// - `#[altrep(base = "Integer")]` — generate low-level traits for this family
+///   (Integer, Int, Real, Logical, Raw, String, Complex)
+/// - `#[altrep(dataptr)]` — enable DATAPTR method (requires `base`)
+/// - `#[altrep(serialize)]` — enable serialization (requires `base`)
+/// - `#[altrep(subset)]` — enable Extract_subset (requires `base`)
+/// - `#[altrep(unsafe)]` / `#[altrep(rust_unwind)]` / `#[altrep(r_unwind)]` — guard mode
 ///
 /// # Example
 ///
 /// ```ignore
 /// #[derive(Altrep)]
-/// #[altrep(class = "MyCustom")]
+/// #[altrep(class = "MyCustom", base = "Integer", serialize)]
 /// struct MyData { ... }
 ///
 /// impl AltrepLen for MyData { ... }
 /// impl AltIntegerData for MyData { ... }
-/// impl_altinteger_from_data!(MyData);
+/// // Done — no impl_altinteger_from_data!() needed.
 /// ```
 #[proc_macro_derive(Altrep, attributes(altrep))]
 pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
