@@ -13,15 +13,15 @@
 //! struct MyConstInt { value: i32, len: usize }
 //! ```
 //!
-//! For types with manual trait impls (registration + low-level traits):
+//! For types with manual trait impls (lowlevel + registration, user writes data traits):
 //! ```ignore
-//! #[derive(Altrep)]
-//! #[altrep(class = "MyCustom", base = "Integer", serialize)]
+//! #[derive(AltrepInteger)]
+//! #[altrep(manual, class = "MyCustom", serialize)]
 //! struct MyCustomData { ... }
 //!
 //! impl AltrepLen for MyCustomData { ... }
 //! impl AltIntegerData for MyCustomData { ... }
-//! // Done — base = "Integer" generates Altrep, AltVec, AltInteger, InferBase.
+//! // Family derived from AltrepInteger — generates Altrep, AltVec, AltInteger, InferBase.
 //! ```
 
 /// Generates full ALTREP registration for a data struct.
@@ -250,21 +250,20 @@ pub(crate) fn generate_direct_altrep_registration(
 
 /// Entry point for `#[derive(Altrep)]`.
 ///
-/// Generates ALTREP registration for a data struct (TypedExternal, AltrepClass,
+/// Generates ALTREP registration only (TypedExternal, AltrepClass,
 /// RegisterAltrep, IntoR, linkme entry, Ref/Mut accessor types).
 ///
-/// When `base` is specified, also generates the low-level ALTREP trait impls
-/// (Altrep, AltVec, family-specific methods, InferBase), eliminating the need
-/// for a manual `impl_alt*_from_data!()` call.
+/// The struct must already have low-level ALTREP traits implemented.
+/// For most use cases, prefer a family-specific derive instead:
+/// `#[derive(AltrepInteger)]`, `#[derive(AltrepReal)]`, etc.
+/// Those generate both the low-level traits AND registration.
+/// Use `#[altrep(manual)]` on a family derive to skip data trait generation
+/// when you provide your own `AltrepLen` + `Alt*Data` impls.
 ///
 /// # Helper attributes
 ///
 /// ```ignore
 /// #[altrep(class = "CustomName")]  // override ALTREP class name (default: struct name)
-/// #[altrep(base = "Integer")]      // generate low-level traits for this family
-/// #[altrep(dataptr)]               // enable DATAPTR (requires base)
-/// #[altrep(serialize)]             // enable serialization (requires base)
-/// #[altrep(subset)]                // enable Extract_subset (requires base)
 /// ```
 pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     use syn::spanned::Spanned;
@@ -278,11 +277,8 @@ pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenS
         ));
     }
 
-    // Parse #[altrep(...)] attributes
+    // Parse class name from #[altrep(class = "...")]
     let mut class_name = None::<String>;
-    let mut base = None::<String>;
-    let mut lowlevel_options = Vec::new();
-    let mut guard = None::<syn::Ident>;
 
     for attr in &input.attrs {
         if !attr.path().is_ident("altrep") {
@@ -292,58 +288,14 @@ pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenS
             if meta.path.is_ident("class") {
                 let value: syn::LitStr = meta.value()?.parse()?;
                 class_name = Some(value.value());
-            } else if meta.path.is_ident("base") {
-                let value: syn::LitStr = meta.value()?.parse()?;
-                base = Some(value.value());
-            } else if meta.path.is_ident("dataptr") {
-                lowlevel_options.push(syn::Ident::new("dataptr", meta.path.span()));
-            } else if meta.path.is_ident("serialize") {
-                lowlevel_options.push(syn::Ident::new("serialize", meta.path.span()));
-            } else if meta.path.is_ident("subset") {
-                lowlevel_options.push(syn::Ident::new("subset", meta.path.span()));
-            } else if meta.path.is_ident("r#unsafe") || meta.path.is_ident("unsafe") {
-                guard = Some(syn::Ident::new("Unsafe", meta.path.span()));
-            } else if meta.path.is_ident("rust_unwind") {
-                guard = Some(syn::Ident::new("RustUnwind", meta.path.span()));
-            } else if meta.path.is_ident("r_unwind") {
-                guard = Some(syn::Ident::new("RUnwind", meta.path.span()));
             } else {
-                return Err(meta.error(
-                    "unknown #[altrep(...)] attribute; expected one of: \
-                     `class`, `base`, `dataptr`, `serialize`, `subset`, \
-                     `unsafe`, `rust_unwind`, `r_unwind`",
-                ));
+                return Err(meta.error("unknown #[altrep(...)] attribute; expected `class`"));
             }
             Ok(())
         })?;
     }
 
-    // Validate: lowlevel options require base
-    if base.is_none() && (!lowlevel_options.is_empty() || guard.is_some()) {
-        return Err(syn::Error::new(
-            ident.span(),
-            "`dataptr`, `serialize`, `subset`, and guard options require `base = \"...\"`",
-        ));
-    }
-
     let class_name = class_name.unwrap_or_else(|| ident.to_string());
 
-    let registration = generate_direct_altrep_registration(ident, &input.generics, &class_name)?;
-
-    let lowlevel = if let Some(ref base_name) = base {
-        crate::altrep_derive::generate_lowlevel_for_base(
-            ident,
-            &input.generics,
-            base_name,
-            lowlevel_options,
-            guard,
-        )?
-    } else {
-        proc_macro2::TokenStream::new()
-    };
-
-    Ok(quote::quote! {
-        #lowlevel
-        #registration
-    })
+    generate_direct_altrep_registration(ident, &input.generics, &class_name)
 }
