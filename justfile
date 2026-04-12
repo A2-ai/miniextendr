@@ -853,6 +853,15 @@ bindgen-corpus:
 bindgen-corpus-v3:
     bash dev/run_bindgen_corpus_v3.sh
 
+# Add all CRAN corpus packages (with inst/include) to rv, excluding Rcpp/cpp11 ecosystem
+bindgen-corpus-add-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PKGS=$(awk -F',' 'NR>1 && $13=="FALSE" {print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
+    echo "Adding $(echo $PKGS | wc -w | tr -d ' ') packages to rv..."
+    rv add --no-sync $PKGS
+    echo "Run 'rv sync' to install them."
+
 # ── Documentation site ──────────────────────────────────────────────────────
 
 # Build Zola site (output in site/public/)
