@@ -43,13 +43,13 @@ use_miniextendr_git_hooks <- function(path = ".", hooks = c("pre-commit", "post-
 
     dest <- file.path(hooks_dir, hook_name)
     hook_content <- readLines(src, warn = FALSE)
-    miniextendr_marker <- "# miniextendr"
+    miniextendr_marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\\(\\)|minirextendr::use_miniextendr_git_hooks"
 
     if (file.exists(dest)) {
       existing <- readLines(dest, warn = FALSE)
 
       # Already installed — check if update needed
-      if (any(grepl(miniextendr_marker, existing, fixed = TRUE))) {
+      if (any(grepl(miniextendr_marker, existing))) {
         cli::cli_alert_info("Hook {.val {hook_name}} already has miniextendr section — skipping.")
         next
       }
@@ -98,13 +98,13 @@ has_miniextendr_git_hooks <- function(path = ".") {
 
   hooks_dir <- file.path(git_dir, "hooks")
   hook_names <- c("pre-commit", "post-merge")
-  marker <- "# miniextendr"
+  marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\\(\\)|minirextendr::use_miniextendr_git_hooks"
 
   result <- vapply(hook_names, function(name) {
     hook_file <- file.path(hooks_dir, name)
     if (!file.exists(hook_file)) return(FALSE)
     lines <- readLines(hook_file, warn = FALSE)
-    any(grepl(marker, lines, fixed = TRUE))
+    any(grepl(marker, lines))
   }, logical(1))
 
   result
