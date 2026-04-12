@@ -163,8 +163,8 @@ already use `bash ./configure`; follow the same pattern when running manually.
 The configure script (dev mode):
 
 1. Generates `Makevars` from `Makevars.in` and other build config files
-2. Cleans up stale vendor artifacts (`vendor/`, `inst/vendor.tar.xz`)
-3. Does NOT vendor — cargo resolves deps via `[patch]` in `Cargo.toml`
+2. Syncs workspace crates into `rpkg/vendor/` (copies miniextendr-api, -macros, -macros-core, -lint)
+3. Does NOT create `inst/vendor.tar.xz` — that's `just vendor` for CRAN release prep
 
 For CRAN release prep, use `just vendor` to create the vendor tarball.
 
@@ -482,6 +482,12 @@ After `just vendor`, verify vendored copies match workspace sources:
 just vendor-sync-check  # Verify vendored crates match workspace
 just vendor             # Refresh if drift detected
 ```
+
+**Recovery from stale vendor freeze**: `just vendor --freeze` writes `path = "../../vendor/..."` into
+`rpkg/src/rust/Cargo.toml` `[dependencies]` AND `[patch.crates-io]`. After merging main (which may
+add new features to workspace crates), the frozen vendor/ copies become stale and `cargo metadata`
+fails. Fix: reset the frozen path deps in `[dependencies]` back to `"*"`, delete `rpkg/vendor/` and
+`rpkg/src/rust/Cargo.lock`, then run `just configure` (dev-monorepo mode syncs fresh workspace crates).
 
 ### Template Sync
 
