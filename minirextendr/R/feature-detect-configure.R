@@ -495,7 +495,7 @@ parse_cargo_metadata_json <- function(json) {
 #' Generate empty detect-features.R script
 #'
 #' @param package_name R package name
-#' @param features_var Features environment variable name (e.g., "MYPKG_FEATURES")
+#' @param features_var Features environment variable name (e.g., "CARGO_FEATURES")
 #' @return Character vector of script lines
 #' @noRd
 generate_empty_detect_script <- function(package_name, features_var) {

@@ -613,7 +613,7 @@ CARGO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURES_FLAG
-MINIEXTENDR_FEATURES
+CARGO_FEATURES
 NOT_CRAN
 CARGO_OFFLINE_FLAG
 host_os
@@ -670,7 +670,7 @@ enable_option_checking
       ac_precious_vars='build_alias
 host_alias
 target_alias
-MINIEXTENDR_FEATURES
+CARGO_FEATURES
 RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
@@ -1295,7 +1295,7 @@ if test -n "$ac_init_help"; then
   cat <<\_ACEOF
 
 Some influential environment variables:
-  MINIEXTENDR_FEATURES
+  CARGO_FEATURES
               Comma-separated cargo features to enable (e.g., "nonapi,rayon")
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
@@ -2011,21 +2011,21 @@ fi
 
 
 
-if test -z "${MINIEXTENDR_FEATURES+x}"; then
+if test -z "${CARGO_FEATURES+x}"; then
       if test -f "${srcdir}/tools/detect-features.R"; then
-    MINIEXTENDR_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-    if test -n "$MINIEXTENDR_FEATURES"; then
-      { printf '%s\n' "$as_me:${as_lineno-$LINENO}: Auto-detected features: $MINIEXTENDR_FEATURES" >&5
-printf '%s\n' "$as_me: Auto-detected features: $MINIEXTENDR_FEATURES" >&6;}
+    CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+    if test -n "$CARGO_FEATURES"; then
+      { printf '%s\n' "$as_me:${as_lineno-$LINENO}: Auto-detected features: $CARGO_FEATURES" >&5
+printf '%s\n' "$as_me: Auto-detected features: $CARGO_FEATURES" >&6;}
     fi
   fi
-    if test -z "$MINIEXTENDR_FEATURES"; then
-    MINIEXTENDR_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
+    if test -z "$CARGO_FEATURES"; then
+    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
   fi
 fi
 
-if test -n "$MINIEXTENDR_FEATURES"; then
-  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+if test -n "$CARGO_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$CARGO_FEATURES"
 else
   CARGO_FEATURES_FLAG=""
 fi
@@ -2483,10 +2483,10 @@ then :
   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&5
 printf '%s\n' "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
 fi
-if test -n "$MINIEXTENDR_FEATURES"
+if test -n "$CARGO_FEATURES"
 then :
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
-printf '%s\n' "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_FEATURES  = $CARGO_FEATURES" >&5
+printf '%s\n' "$as_me: CARGO_FEATURES  = $CARGO_FEATURES" >&6;}
 fi
 
 CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
