@@ -5,7 +5,8 @@
 #' Installs pre-commit and post-merge hooks that help keep your miniextendr
 #' package in a healthy state:
 #'
-#' - **pre-commit**: Checks `cargo fmt`, warns on stale `configure` script,
+#' - **pre-commit**: Checks `cargo fmt`, blocks on stale `configure` script
+#'   or stale NAMESPACE (when `*-wrappers.R` changed without `devtools::document()`),
 #'   notes when `inst/vendor.tar.xz` may need updating
 #' - **post-merge**: Reminds you to reconfigure after pulling changes to
 #'   build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
