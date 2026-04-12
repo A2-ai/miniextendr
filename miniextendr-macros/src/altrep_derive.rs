@@ -877,12 +877,66 @@ pub(crate) fn generate_lowlevel_for_base(
     options: Vec<syn::Ident>,
     guard: Option<syn::Ident>,
 ) -> syn::Result<proc_macro2::TokenStream> {
+    // List has its own code path — doesn't use AltrepFamilyConfig.
+    if base == "List" {
+        // Validate: List rejects dataptr and subset
+        for opt in &options {
+            if opt == "dataptr" || opt == "subset" {
+                return Err(syn::Error::new(
+                    opt.span(),
+                    format!("`{opt}` is not supported for List"),
+                ));
+            }
+        }
+
+        let has_serialize = options.iter().any(|o| o == "serialize");
+        let (_impl_generics, ty_generics, _where_clause) = generics.split_for_impl();
+
+        return if has_serialize {
+            if let Some(ref g) = guard {
+                Ok(quote! {
+                    ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics, #g);
+                    impl ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics {}
+                    impl ::miniextendr_api::altrep_traits::AltList for #name #ty_generics {
+                        fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
+                            unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#name #ty_generics>(&x) }
+                                .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                                .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
+                        }
+                    }
+                    ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
+                })
+            } else {
+                Ok(quote! {
+                    ::miniextendr_api::__impl_altrep_base_with_serialize!(#name #ty_generics);
+                    impl ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics {}
+                    impl ::miniextendr_api::altrep_traits::AltList for #name #ty_generics {
+                        fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP {
+                            unsafe { ::miniextendr_api::altrep_ext::AltrepSexpExt::altrep_data1::<#name #ty_generics>(&x) }
+                                .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                                .unwrap_or(::miniextendr_api::ffi::SEXP::nil())
+                        }
+                    }
+                    ::miniextendr_api::impl_inferbase_list!(#name #ty_generics);
+                })
+            }
+        } else if let Some(ref g) = guard {
+            Ok(quote! {
+                ::miniextendr_api::impl_altlist_from_data!(#name #ty_generics, #g);
+            })
+        } else {
+            Ok(quote! {
+                ::miniextendr_api::impl_altlist_from_data!(#name #ty_generics);
+            })
+        };
+    }
+
     let family = family_config_for_base(base).ok_or_else(|| {
         syn::Error::new(
             name.span(),
             format!(
                 "unknown ALTREP base type `{base}`; \
-                 expected one of: Integer, Int, Real, Logical, Raw, String, Complex"
+                 expected one of: Integer, Int, Real, Logical, Raw, String, Complex, List"
             ),
         )
     })?;

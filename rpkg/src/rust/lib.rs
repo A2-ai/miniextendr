@@ -1133,7 +1133,7 @@ pub fn unit_circle(n: i32) -> SEXP {
 // -----------------------------------------------------------------------------
 
 #[derive(miniextendr_api::Altrep)]
-#[altrep(class = "IntegerSequenceList")]
+#[altrep(class = "IntegerSequenceList", base = "List")]
 pub struct IntegerSequenceListData {
     /// Number of elements in the list
     n: usize,
@@ -1157,7 +1157,6 @@ impl AltListData for IntegerSequenceListData {
     }
 }
 
-miniextendr_api::impl_altlist_from_data!(IntegerSequenceListData);
 
 /// Create a list ALTREP where each element is an integer sequence.
 ///
@@ -1519,7 +1518,7 @@ pub fn static_strings() -> SEXP {
 // region: ListData: list-backed ALTREP (stores original list SEXP)
 
 #[derive(miniextendr_api::Altrep)]
-#[altrep(class = "ListData")]
+#[altrep(class = "ListData", base = "List")]
 pub struct ListData {
     list: SEXP,
     len: usize,
@@ -1548,7 +1547,6 @@ impl AltListData for ListData {
     }
 }
 
-miniextendr_api::impl_altlist_from_data!(ListData);
 
 // endregion
 
