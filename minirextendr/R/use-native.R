@@ -30,6 +30,9 @@ use_native_package <- function(pkg,
                                 allowlist_pattern = NULL) {
   with_project(path)
 
+  # Check bindgen is installed
+  assert_bindgen_installed()
+
   # Check for known-unsupported packages
   warn_known_bad_package(pkg)
 
@@ -97,6 +100,7 @@ use_native_package <- function(pkg,
 #'   `n_headers`, `mode`, `error`.
 #' @export
 check_native_package <- function(pkg) {
+  assert_bindgen_installed()
   info <- discover_native_package(pkg)
 
   if (!info$has_include) {
@@ -348,6 +352,22 @@ resolve_blocklist_files <- function(pkg) {
   }
 
   blocklist
+}
+
+# =============================================================================
+# Prerequisites
+# =============================================================================
+
+#' Assert that bindgen CLI is installed
+#' @noRd
+assert_bindgen_installed <- function() {
+  if (!nzchar(Sys.which("bindgen"))) {
+    cli::cli_abort(c(
+      "{.strong bindgen} is not installed",
+      "i" = "Install it with: {.code cargo install --force --locked bindgen-cli}",
+      "i" = "bindgen generates Rust FFI bindings from C/C++ headers"
+    ))
+  }
 }
 
 # =============================================================================
@@ -646,7 +666,7 @@ invoke_bindgen <- function(wrapper_path, ffi_out, static_out, args) {
   bindgen_path <- Sys.which("bindgen")
   if (!nzchar(bindgen_path)) {
     return(list(success = FALSE,
-                error = "bindgen not found. Install: cargo install bindgen-cli"))
+                error = "bindgen not found (cargo install --force --locked bindgen-cli)"))
   }
 
   # Build bindgen CLI args

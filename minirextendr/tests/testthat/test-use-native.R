@@ -47,6 +47,11 @@ test_that("resolve_blocklist_files adds boost for BH-dependent packages", {
   expect_true(".*/boost/.*" %in% bl)
 })
 
+test_that("assert_bindgen_installed errors when bindgen missing", {
+  withr::local_envvar(PATH = "")
+  expect_error(assert_bindgen_installed(), "bindgen.*not installed")
+})
+
 test_that("check_native_package succeeds for cli", {
   skip_if_not_installed("cli")
   skip_if(nchar(Sys.which("bindgen")) == 0, "bindgen not installed")
