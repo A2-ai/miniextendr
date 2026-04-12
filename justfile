@@ -862,6 +862,15 @@ bindgen-corpus-add-packages:
     rv add --no-sync $PKGS
     echo "Run 'rv sync' to install them."
 
+# Remove all CRAN corpus packages from rv (keeps core dev deps)
+bindgen-corpus-remove-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PKGS=$(awk -F',' 'NR>1 && $13=="FALSE" {print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
+    echo "Removing $(echo $PKGS | wc -w | tr -d ' ') corpus packages from rv..."
+    rv remove --no-sync $PKGS
+    echo "Run 'rv sync' to clean the library."
+
 # ── Documentation site ──────────────────────────────────────────────────────
 
 # Build Zola site (output in site/public/)
