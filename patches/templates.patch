@@ -10,7 +10,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 --- a/monorepo/rpkg/configure.ac	2026-04-11 10:31:41
-+++ b/monorepo/rpkg/configure.ac	2026-04-11 10:31:41
++++ b/monorepo/rpkg/configure.ac	2026-04-12 19:20:51
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -84,16 +84,6 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  src/{{package}}-win.def:src/win.def.in
  ])
  
-@@ -486,8 +483,5 @@
-     if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-       mkdir -p "$abs_rpkg_dir/inst"
--      dnl Exclude Makefiles from vendored crates — R CMD check warns about
--      dnl GNU extensions (+=, :=, $(shell), etc.) in Makefiles. These are
--      dnl crate build helpers, not used by the R package build.
--      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
-+      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
-       echo "configure: created inst/vendor.tar.xz"
-     fi
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 --- a/rpkg/Makevars.in	2026-04-12 19:17:31
 +++ b/rpkg/Makevars.in	2026-04-12 19:17:32
@@ -106,7 +96,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 --- a/rpkg/configure.ac	2026-04-11 10:31:41
-+++ b/rpkg/configure.ac	2026-04-11 10:31:41
++++ b/rpkg/configure.ac	2026-04-12 19:20:49
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -180,13 +170,3 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  src/{{package}}-win.def:src/win.def.in
  ])
  
-@@ -486,8 +483,5 @@
-     if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-       mkdir -p "$abs_rpkg_dir/inst"
--      dnl Exclude Makefiles from vendored crates — R CMD check warns about
--      dnl GNU extensions (+=, :=, $(shell), etc.) in Makefiles. These are
--      dnl crate build helpers, not used by the R package build.
--      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
-+      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
-       echo "configure: created inst/vendor.tar.xz"
-     fi

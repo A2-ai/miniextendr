@@ -482,7 +482,10 @@ AC_CONFIG_COMMANDS([vendor-tarball],
   if test ! -f "$_tarball"; then
     if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
       mkdir -p "$abs_rpkg_dir/inst"
-      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
+      dnl Exclude Makefiles from vendored crates — R CMD check warns about
+      dnl GNU extensions (+=, :=, $(shell), etc.) in Makefiles. These are
+      dnl crate build helpers, not used by the R package build.
+      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
       echo "configure: created inst/vendor.tar.xz"
     fi
   fi
