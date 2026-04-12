@@ -1,13 +1,3 @@
-diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-04-12 19:17:31
-+++ b/monorepo/rpkg/Makevars.in	2026-04-12 19:17:33
-@@ -26,5 +26,5 @@
- 
- CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
--WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
-+WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
- 
- # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 --- a/monorepo/rpkg/configure.ac	2026-04-11 10:31:41
 +++ b/monorepo/rpkg/configure.ac	2026-04-12 19:20:51
@@ -84,16 +74,6 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  src/{{package}}-win.def:src/win.def.in
  ])
  
-diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-04-12 19:17:31
-+++ b/rpkg/Makevars.in	2026-04-12 19:17:32
-@@ -26,5 +26,5 @@
- 
- CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
--WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/miniextendr-wrappers.R
-+WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
- 
- # cdylib for R wrapper generation (platform-specific extension)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 --- a/rpkg/configure.ac	2026-04-11 10:31:41
 +++ b/rpkg/configure.ac	2026-04-12 19:20:49
