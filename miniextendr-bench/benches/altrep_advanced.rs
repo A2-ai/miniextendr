@@ -52,8 +52,8 @@ pub struct ConstantRealData {
 
 // region: Vec-backed ALTREP types (named-field struct pattern, default guard).
 
-#[derive(miniextendr_api::Altrep)]
-#[altrep(class = "BenchIntVec", base = "Integer", dataptr)]
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(class = "BenchIntVec", manual, dataptr)]
 pub struct BenchIntVec {
     data: Vec<i32>,
 }
@@ -84,8 +84,8 @@ impl AltrepDataptr<i32> for BenchIntVec {
     }
 }
 
-#[derive(miniextendr_api::Altrep)]
-#[altrep(class = "BenchRealVec", base = "Real", dataptr)]
+#[derive(miniextendr_api::AltrepReal)]
+#[altrep(class = "BenchRealVec", manual, dataptr)]
 pub struct BenchRealVec {
     data: Vec<f64>,
 }
@@ -116,8 +116,8 @@ impl AltrepDataptr<f64> for BenchRealVec {
     }
 }
 
-#[derive(miniextendr_api::Altrep)]
-#[altrep(class = "BenchString", base = "String")]
+#[derive(miniextendr_api::AltrepString)]
+#[altrep(class = "BenchString", manual)]
 pub struct BenchString {
     data: Vec<Option<String>>,
 }
@@ -134,8 +134,8 @@ impl AltStringData for BenchString {
     }
 }
 
-#[derive(miniextendr_api::Altrep)]
-#[altrep(class = "BenchComplex", base = "Complex", dataptr)]
+#[derive(miniextendr_api::AltrepComplex)]
+#[altrep(class = "BenchComplex", manual, dataptr)]
 pub struct BenchComplex {
     data: Vec<Rcomplex>,
 }

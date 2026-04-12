@@ -118,8 +118,8 @@ pub fn mx_verbosity_check(v: MxVerbosity) -> String {
 // region: 6. #[derive(Altrep)] on data struct → ALTREP registration (direct pattern)
 
 /// Data struct via derive: generates full ALTREP registration.
-#[derive(miniextendr_api::Altrep)]
-#[altrep(class = "MxDerivedInts", base = "Integer", dataptr)]
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(class = "MxDerivedInts", manual, dataptr)]
 pub struct MxDerivedIntsData {
     data: Vec<i32>,
 }
