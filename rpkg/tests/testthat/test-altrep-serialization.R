@@ -371,6 +371,21 @@ test_that("LazyIntSeq ALTREP survives serialization round-trip", {
   expect_equal(sum(restored), 80L)
 })
 
+test_that("LazyIntSeq empty serialization round-trip", {
+  # lazy_int_seq(from, to, by): len = ((to - from) / by + 1).max(0)
+  # from=0, to=-1, by=1 → len = ((-1-0)/1 + 1).max(0) = 0
+  original <- lazy_int_seq(0L, -1L, 1L)
+  expect_equal(length(original), 0L)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 0L)
+})
+
 test_that("LazyIntSeq single-element serialization round-trip", {
   original <- lazy_int_seq(42L, 42L, 1L)  # just 42
 
