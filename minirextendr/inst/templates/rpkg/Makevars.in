@@ -35,8 +35,12 @@ CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_
 # letting Cargo's own incremental compilation decide what to rebuild.
 .PHONY: all clean FORCE_CARGO
 
-# all must be defined FIRST to be the default target
-all: $(SHLIB)
+# all must be defined FIRST to be the default target.
+# Depend on both $(SHLIB) and $(WRAPPERS_R) so that:
+#   1. Staticlib builds first ($(SHLIB) needs $(CARGO_AR)), warming the incremental cache
+#   2. Cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
+#   3. R wrappers are generated from the cdylib
+all: $(SHLIB) $(WRAPPERS_R)
 	@# Dev mode: touch Cargo.toml so pkgbuild always thinks sources changed
 	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
@@ -71,7 +75,7 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR)
 # to avoid NOTEs about hidden files and long paths. We unpack it here.
 VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
 
-$(CARGO_AR): FORCE_CARGO $(WRAPPERS_R)
+$(CARGO_AR): FORCE_CARGO
 	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
 	  echo "Unpacking vendor.tar.xz from inst/..."; \
@@ -107,13 +111,10 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 	@echo "Removing cdylib to prevent linker collision with staticlib..."
 	@rm -f '$(CARGO_CDYLIB)'
 
-# Build cdylib for wrapper generation (shares incremental compilation with staticlib)
-$(CARGO_CDYLIB): FORCE_CARGO
-	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
-	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
-	  echo "Unpacking vendor.tar.xz from inst/..."; \
-	  cd "$(ABS_TOP_SRCDIR)" && tar $(TAR_FORCE_LOCAL) -xJf "$(VENDOR_TARBALL)"; \
-	fi
+# Build cdylib for wrapper generation.
+# Runs after staticlib (via `all` ordering), so the incremental cache is warm.
+# Vendor extraction is handled by $(CARGO_AR) which builds first.
+$(CARGO_CDYLIB): FORCE_CARGO | $(CARGO_AR)
 	@set -e; \
 	TARGET_OPT=""; \
 	CDYLIB_LINK_ARGS=""; \
