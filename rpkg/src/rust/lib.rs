@@ -1466,7 +1466,10 @@ miniextendr_api::impl_altinteger_from_data!(StaticIntsData, dataptr);
 /// @export
 #[miniextendr]
 pub fn static_ints() -> SEXP {
-    StaticIntsData { data: &STATIC_INTS[..] }.into_sexp()
+    StaticIntsData {
+        data: &STATIC_INTS[..],
+    }
+    .into_sexp()
 }
 
 /// Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime).
@@ -1522,7 +1525,10 @@ miniextendr_api::impl_altstring_from_data!(StaticStringsData, dataptr);
 /// @export
 #[miniextendr]
 pub fn static_strings() -> SEXP {
-    StaticStringsData { data: &STATIC_STRINGS[..] }.into_sexp()
+    StaticStringsData {
+        data: &STATIC_STRINGS[..],
+    }
+    .into_sexp()
 }
 
 // endregion
