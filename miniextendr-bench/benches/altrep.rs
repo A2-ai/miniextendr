@@ -9,7 +9,7 @@ use miniextendr_bench::raw_ffi;
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 
 #[derive(miniextendr_api::Altrep)]
-#[altrep(class = "BenchInt")]
+#[altrep(class = "BenchInt", base = "Integer", dataptr)]
 pub struct BenchInt {
     data: Vec<i32>,
 }
@@ -40,10 +40,8 @@ impl AltrepDataptr<i32> for BenchInt {
     }
 }
 
-miniextendr_api::impl_altinteger_from_data!(BenchInt, dataptr);
-
 #[derive(miniextendr_api::Altrep)]
-#[altrep(class = "BenchReal")]
+#[altrep(class = "BenchReal", base = "Real", dataptr)]
 pub struct BenchReal {
     data: Vec<f64>,
 }
@@ -73,8 +71,6 @@ impl AltrepDataptr<f64> for BenchReal {
         Some(self.data.as_ptr())
     }
 }
-
-miniextendr_api::impl_altreal_from_data!(BenchReal, dataptr);
 
 fn main() {
     miniextendr_bench::init();

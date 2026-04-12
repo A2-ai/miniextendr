@@ -798,3 +798,107 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         #registration_impl
     })
 }
+
+// region: Public helper for derive(Altrep) with base parameter
+
+/// Returns the family config for a given base name (e.g., "Integer", "Real", etc.).
+///
+/// Used by `derive_altrep` when `#[altrep(base = "...")]` is specified.
+fn family_config_for_base(base: &str) -> Option<AltrepFamilyConfig<'static>> {
+    match base {
+        "Integer" | "Int" => Some(AltrepFamilyConfig {
+            macro_base: "impl_altinteger_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altinteger_methods",
+            inferbase_macro: "impl_inferbase_integer",
+            default_guard: "RUnwind",
+        }),
+        "Real" => Some(AltrepFamilyConfig {
+            macro_base: "impl_altreal_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altreal_methods",
+            inferbase_macro: "impl_inferbase_real",
+            default_guard: "RUnwind",
+        }),
+        "Logical" => Some(AltrepFamilyConfig {
+            macro_base: "impl_altlogical_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altlogical_methods",
+            inferbase_macro: "impl_inferbase_logical",
+            default_guard: "RUnwind",
+        }),
+        "Raw" => Some(AltrepFamilyConfig {
+            macro_base: "impl_altraw_from_data",
+            dataptr_macro: Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altraw_methods",
+            inferbase_macro: "impl_inferbase_raw",
+            default_guard: "RUnwind",
+        }),
+        "String" => Some(AltrepFamilyConfig {
+            macro_base: "impl_altstring_from_data",
+            dataptr_macro: None,
+            string_dataptr: true,
+            subset: true,
+            methods_macro: "__impl_altstring_methods",
+            inferbase_macro: "impl_inferbase_string",
+            default_guard: "RUnwind",
+        }),
+        "Complex" => Some(AltrepFamilyConfig {
+            macro_base: "impl_altcomplex_from_data",
+            dataptr_macro: Some((
+                "__impl_altvec_dataptr",
+                Some(quote! { ::miniextendr_api::ffi::Rcomplex }),
+            )),
+            string_dataptr: false,
+            subset: true,
+            methods_macro: "__impl_altcomplex_methods",
+            inferbase_macro: "impl_inferbase_complex",
+            default_guard: "RUnwind",
+        }),
+        _ => None,
+    }
+}
+
+/// Generate low-level ALTREP trait impls for `#[derive(Altrep)]` with `base` parameter.
+///
+/// Called from `altrep::derive_altrep` when `#[altrep(base = "...")]` is present.
+pub(crate) fn generate_lowlevel_for_base(
+    name: &syn::Ident,
+    generics: &syn::Generics,
+    base: &str,
+    options: Vec<syn::Ident>,
+    guard: Option<syn::Ident>,
+) -> syn::Result<proc_macro2::TokenStream> {
+    let family = family_config_for_base(base).ok_or_else(|| {
+        syn::Error::new(
+            name.span(),
+            format!(
+                "unknown ALTREP base type `{base}`; \
+                 expected one of: Integer, Int, Real, Logical, Raw, String, Complex"
+            ),
+        )
+    })?;
+
+    // Build an AltrepAttrs with the parsed options
+    let attrs = AltrepAttrs {
+        len_field: None,
+        elt_field: None,
+        elt_delegate: None,
+        generate_lowlevel: true,
+        lowlevel_options: options,
+        guard,
+        class_name: None,
+    };
+
+    attrs.generate_lowlevel(name, generics, &family)
+}
+
+// endregion
