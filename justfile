@@ -857,7 +857,7 @@ bindgen-corpus-v3:
 bindgen-corpus-add-packages:
     #!/usr/bin/env bash
     set -euo pipefail
-    PKGS=$(awk -F',' 'NR>1 && $13=="FALSE" {print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
+    PKGS=$(awk -F',' 'NR==1{for(i=1;i<=NF;i++){gsub(/"/,"",$i);if($i=="excluded_rcpp_ecosystem")col=i}} NR>1{gsub(/"/,"",$col);gsub(/"/,"",$1);if($col=="FALSE")print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
     echo "Adding $(echo $PKGS | wc -w | tr -d ' ') packages to rv..."
     rv add --no-sync $PKGS
     echo "Run 'rv sync' to install them."
@@ -866,7 +866,7 @@ bindgen-corpus-add-packages:
 bindgen-corpus-remove-packages:
     #!/usr/bin/env bash
     set -euo pipefail
-    PKGS=$(awk -F',' 'NR>1 && $13=="FALSE" {print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
+    PKGS=$(awk -F',' 'NR==1{for(i=1;i<=NF;i++){gsub(/"/,"",$i);if($i=="excluded_rcpp_ecosystem")col=i}} NR>1{gsub(/"/,"",$col);gsub(/"/,"",$1);if($col=="FALSE")print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
     echo "Removing $(echo $PKGS | wc -w | tr -d ' ') corpus packages from rv..."
     rv remove --no-sync $PKGS
     echo "Run 'rv sync' to clean the library."

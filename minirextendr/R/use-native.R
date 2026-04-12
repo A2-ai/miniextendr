@@ -75,7 +75,7 @@ use_native_package <- function(pkg,
   # 8. Add mod declaration to lib.rs
   add_native_mod_to_lib_rs(pkg)
 
-  # 8. Report
+  # 9. Report
   if (result$success) {
     cli::cli_alert_success("Generated Rust FFI bindings for {.pkg {pkg}}")
     if (!is.null(result$static_wrappers_c)) {
@@ -124,19 +124,22 @@ check_native_package <- function(pkg) {
 
   result <- invoke_bindgen(wrapper, ffi_out, static_out, args)
   used_mode <- args$mode
+  last_std <- args$cxx_std
 
   # C failed → retry C++17
   if (!result$success && args$mode == "c") {
     args_cpp <- args
     args_cpp$mode <- "cpp"
     args_cpp$cxx_std <- "c++17"
+    last_std <- "c++17"
     result <- invoke_bindgen(wrapper, ffi_out, static_out, args_cpp)
     if (result$success) used_mode <- "cpp"
   }
 
   # C++17 failed → retry C++14
-  if (!result$success && identical(args$cxx_std, "c++17")) {
+  if (!result$success && identical(last_std, "c++17")) {
     args_14 <- args
+    args_14$mode <- "cpp"
     args_14$cxx_std <- "c++14"
     result <- invoke_bindgen(wrapper, ffi_out, static_out, args_14)
     if (result$success) used_mode <- "cpp14"
@@ -597,18 +600,21 @@ run_bindgen <- function(pkg, wrapper_path, args) {
 
   # Try primary mode (C or C++ depending on detection)
   result <- invoke_bindgen(wrapper_path, ffi_rs, static_c, args)
+  last_std <- args$cxx_std  # track which standard was last attempted
 
   # Fallback: C failed → retry as C++17 (many .h files have C++ includes)
   if (!result$success && args$mode == "c") {
     args_cpp <- args
     args_cpp$mode <- "cpp"
     args_cpp$cxx_std <- "c++17"
+    last_std <- "c++17"
     result <- invoke_bindgen(wrapper_path, ffi_rs, static_c, args_cpp)
   }
 
   # Fallback: C++17 failed → retry as C++14 (deprecated APIs like auto_ptr)
-  if (!result$success && identical(args$cxx_std, "c++17")) {
+  if (!result$success && identical(last_std, "c++17")) {
     args_14 <- args
+    args_14$mode <- "cpp"
     args_14$cxx_std <- "c++14"
     result <- invoke_bindgen(wrapper_path, ffi_rs, static_c, args_14)
   }

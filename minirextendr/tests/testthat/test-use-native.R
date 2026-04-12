@@ -56,3 +56,46 @@ test_that("check_native_package succeeds for cli", {
   expect_true(result$has_static_fns)
   expect_gt(result$n_lines, 0)
 })
+
+test_that("C→C++ fallback works for packages with C++ includes in .h files", {
+  skip_if_not_installed("Countr")
+  skip_if(nchar(Sys.which("bindgen")) == 0, "bindgen not installed")
+  # Countr has .h files that #include <cmath> — detected as C initially,
+  # falls back to C++ mode
+  result <- check_native_package("Countr")
+  expect_true(result$success)
+  expect_equal(result$mode, "cpp")
+})
+
+test_that("resolve_include_paths is recursive", {
+  skip_if_not_installed("svines")
+  skip_if_not_installed("RcppEigen")
+  info <- discover_native_package("svines")
+  paths <- resolve_include_paths("svines", info$include_path)
+  # svines → rvinecopulib → Eigen. RcppEigen should be in the resolved paths.
+  eigen_found <- any(grepl("RcppEigen", paths))
+  expect_true(eigen_found)
+})
+
+test_that("add_native_to_configure_ac appends detection block", {
+  skip_if_not_installed("cli")
+  tmp <- withr::local_tempdir()
+  # Create a minimal configure.ac
+  writeLines(c(
+    'NATIVE_PKG_CPPFLAGS=""',
+    'dnl {{native_pkg_cppflags}}',
+    'AC_SUBST([NATIVE_PKG_CPPFLAGS])',
+    'AC_CONFIG_SRCDIR([src/rust/lib.rs])'
+  ), file.path(tmp, "configure.ac"))
+  writeLines("Package: testpkg", file.path(tmp, "DESCRIPTION"))
+  withr::local_dir(tmp)
+  usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
+  add_native_to_configure_ac("cli")
+  lines <- readLines(file.path(tmp, "configure.ac"))
+  expect_true(any(grepl("dnl native: cli", lines)))
+  expect_true(any(grepl("CLI_INCLUDE", lines)))
+  # Second call should be idempotent
+  add_native_to_configure_ac("cli")
+  lines2 <- readLines(file.path(tmp, "configure.ac"))
+  expect_equal(sum(grepl("dnl native: cli", lines2)), 1)
+})

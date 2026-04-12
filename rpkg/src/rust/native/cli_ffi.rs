@@ -10,6 +10,10 @@ use miniextendr_api::ffi::SEXP;
 
 pub type vint = ::std::os::raw::c_int;
 pub const cli__false: vint = 0;
+
+// Note: cli_progress_set_format() is omitted — it's variadic (...) which
+// bindgen cannot wrap. Use cli_progress_set_name/set_status instead.
+
 unsafe extern "C" {
     #[link_name = "cli_progress_add__extern"]
     pub fn cli_progress_add(bar: SEXP, inc: f64);
@@ -33,7 +37,11 @@ unsafe extern "C" {
     pub fn cli_progress_set_type(bar: SEXP, type_: *const ::std::os::raw::c_char);
     #[link_name = "cli_progress_update__extern"]
     pub fn cli_progress_update(bar: SEXP, set: f64, inc: f64, force: ::std::os::raw::c_int);
-    pub static mut cli__should_tick: *mut vint;
     #[link_name = "cli_progress_sleep__extern"]
     pub fn cli_progress_sleep(s: ::std::os::raw::c_int, ns: ::std::os::raw::c_long);
 }
+
+// cli__should_tick is a `static volatile int*` in the C header. bindgen
+// generates `pub static mut` which is unsound in Rust 2024. Access it
+// via the CLI_SHOULD_TICK macro pattern instead (call cli_progress_init_timer
+// first, then check via cli_progress_num or cli_progress_update with force=1).
