@@ -64,8 +64,15 @@ use_miniextendr_git_hooks <- function(path = ".", hooks = miniextendr_hook_names
       }
 
       if (has_miniextendr && force) {
-        # Remove old miniextendr section, then re-append fresh version
         existing <- strip_miniextendr_section(existing)
+        if (length(existing) == 0) {
+          # Standalone install (no banner, entire file was ours) — overwrite
+          cli::cli_alert_info("Replacing {.val {hook_name}} hook.")
+          writeLines(hook_content, dest)
+          Sys.chmod(dest, mode = "0755")
+          changed <- TRUE
+          next
+        }
         cli::cli_alert_info("Replacing miniextendr section in {.val {hook_name}} hook.")
       } else {
         cli::cli_alert_info("Existing {.val {hook_name}} hook found — appending miniextendr checks.")
@@ -134,7 +141,10 @@ has_miniextendr_git_hooks <- function(path = ".") {
 #' @noRd
 strip_miniextendr_section <- function(lines) {
   banner_idx <- grep("miniextendr hooks (added by", lines, fixed = TRUE)
-  if (length(banner_idx) == 0) return(lines)
+  if (length(banner_idx) == 0) {
+    # No banner — this was a standalone install (entire file is ours)
+    return(character(0))
+  }
   # Keep everything before the banner (drop trailing blank lines)
   keep <- lines[seq_len(banner_idx[1] - 1)]
   # Trim trailing empty lines
