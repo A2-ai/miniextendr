@@ -2532,7 +2532,7 @@ VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
-ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/miniextendr-win.def:src/win.def.in"
+ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/$PACKAGE_NAME-win.def:src/win.def.in"
 
 
 ac_config_commands="$ac_config_commands dev-cargo-config"
@@ -3219,7 +3219,7 @@ do
   case $ac_config_target in
     "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars:src/Makevars.in" ;;
-    "src/miniextendr-win.def") CONFIG_FILES="$CONFIG_FILES src/miniextendr-win.def:src/win.def.in" ;;
+    "src/$PACKAGE_NAME-win.def") CONFIG_FILES="$CONFIG_FILES src/$PACKAGE_NAME-win.def:src/win.def.in" ;;
     "dev-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS dev-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;

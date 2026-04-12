@@ -295,7 +295,7 @@ AS_MKDIR_P([src/rust/.cargo])
 AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
-  src/{{package}}-win.def:src/win.def.in
+  src/$PACKAGE_NAME-win.def:src/win.def.in
 ])
 
 dnl 1) Remove cargo config in dev mode, or augment for CRAN mode

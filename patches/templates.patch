@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-04-11 10:31:41
-+++ b/monorepo/rpkg/configure.ac	2026-04-12 19:20:51
+--- a/monorepo/rpkg/configure.ac	2026-04-12 19:23:15
++++ b/monorepo/rpkg/configure.ac	2026-04-12 19:23:28
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -67,16 +67,9 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -299,5 +296,5 @@
-   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
-   src/Makevars:src/Makevars.in
--  src/miniextendr-win.def:src/win.def.in
-+  src/{{package}}-win.def:src/win.def.in
- ])
- 
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-04-11 10:31:41
-+++ b/rpkg/configure.ac	2026-04-12 19:20:49
+--- a/rpkg/configure.ac	2026-04-12 19:23:15
++++ b/rpkg/configure.ac	2026-04-12 19:23:27
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -143,10 +136,3 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -299,5 +296,5 @@
-   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
-   src/Makevars:src/Makevars.in
--  src/miniextendr-win.def:src/win.def.in
-+  src/{{package}}-win.def:src/win.def.in
- ])
- 
