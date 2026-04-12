@@ -100,7 +100,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
     Package = tools::toTitleCase(package),
     crate_name = crate_name,
     rpkg_name = rpkg_name,
-    features_var = paste0(toupper(pkg_rs), "_FEATURES"),
+    features_var = "CARGO_FEATURES",
     year = format(Sys.Date(), "%Y")
   )
 

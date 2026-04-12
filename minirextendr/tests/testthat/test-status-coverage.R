@@ -93,7 +93,7 @@ test_that("miniextendr_validate warns on missing Config/build/bootstrap", {
     file.path(tmp, "DESCRIPTION"))
 
   # Create minimal configure.ac
-  writeLines("AC_INIT([testpkg], [0.0.1])\nTESTPKG_FEATURES=\n",
+  writeLines("AC_INIT([testpkg], [0.0.1])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))
 
   # Should return TRUE with warnings (DESCRIPTION missing Config fields)
@@ -117,7 +117,7 @@ test_that("miniextendr_status derives wrapper filename from package name", {
     file.path(tmp, "DESCRIPTION"))
   # Create minimal miniextendr-like structure
   dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
-  writeLines("AC_INIT([mypkg])\nMYPKG_FEATURES=\n",
+  writeLines("AC_INIT([mypkg])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))
   writeLines('[package]\nname = "mypkg"',
     file.path(tmp, "src", "rust", "Cargo.toml"))
@@ -217,7 +217,7 @@ test_that("miniextendr_validate warns when SystemRequirements lacks Rust", {
     "Config/build/bootstrap: TRUE\n"
   ), file.path(tmp, "DESCRIPTION"))
 
-  writeLines("AC_INIT([testpkg], [0.0.1])\nTESTPKG_FEATURES=\n",
+  writeLines("AC_INIT([testpkg], [0.0.1])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))
 
   expect_message(
@@ -240,7 +240,7 @@ test_that("miniextendr_validate warns on AC_INIT mismatch", {
   ), file.path(tmp, "DESCRIPTION"))
 
   # AC_INIT with wrong package name
-  writeLines("AC_INIT([wrongpkg], [0.0.1])\nWRONGPKG_FEATURES=\n",
+  writeLines("AC_INIT([wrongpkg], [0.0.1])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))
 
   expect_message(
@@ -261,7 +261,7 @@ test_that("miniextendr_validate warns on missing vendored crates", {
     "SystemRequirements: Rust (>= 1.85)\n"
   ), file.path(tmp, "DESCRIPTION"))
 
-  writeLines("AC_INIT([testpkg], [0.0.1])\nTESTPKG_FEATURES=\n",
+  writeLines("AC_INIT([testpkg], [0.0.1])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))
 
   # No vendor/ directory at all

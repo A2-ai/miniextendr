@@ -53,29 +53,29 @@ AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
 dnl
-dnl Users can enable optional features via {{{features_var}}} environment variable.
+dnl Users can enable optional features via CARGO_FEATURES environment variable.
 dnl By default, no extra features are enabled.
 dnl
 dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
-AC_ARG_VAR([{{{features_var}}}], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
 
 dnl Default: no extra features enabled
-dnl Users can set {{{features_var}}} to enable specific features
-if test -z "${{{{features_var}}}+x}"; then
-  dnl {{{features_var}}} not set - auto-detect via R script if available
+dnl Users can set CARGO_FEATURES to enable specific features
+if test -z "${CARGO_FEATURES+x}"; then
+  dnl CARGO_FEATURES not set - auto-detect via R script if available
   if test -f "${srcdir}/tools/detect-features.R"; then
-    {{{features_var}}}=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-    if test -n "${{{features_var}}}"; then
-      AC_MSG_NOTICE([Auto-detected features: ${{{features_var}}}])
+    CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
+    if test -n "$CARGO_FEATURES"; then
+      AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
     fi
   else
-    {{{features_var}}}=""
+    CARGO_FEATURES=""
   fi
 fi
 
-if test -n "${{{features_var}}}"; then
-  CARGO_FEATURES_FLAG="--features=${{{features_var}}}"
+if test -n "$CARGO_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$CARGO_FEATURES"
 else
   CARGO_FEATURES_FLAG=""
 fi
@@ -227,8 +227,8 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
       [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
 AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
-AS_IF([test -n "${{{features_var}}}"],
-      [AC_MSG_NOTICE([{{{features_var}}}  = ${{{features_var}}}])])
+AS_IF([test -n "$CARGO_FEATURES"],
+      [AC_MSG_NOTICE([CARGO_FEATURES  = $CARGO_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
@@ -295,7 +295,7 @@ AS_MKDIR_P([src/rust/.cargo])
 AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
-  src/{{package}}-win.def:src/win.def.in
+  src/$PACKAGE_NAME-win.def:src/win.def.in
 ])
 
 dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
@@ -482,7 +482,10 @@ AC_CONFIG_COMMANDS([vendor-tarball],
   if test ! -f "$_tarball"; then
     if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
       mkdir -p "$abs_rpkg_dir/inst"
-      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" vendor
+      dnl Exclude Makefiles from vendored crates — R CMD check warns about
+      dnl GNU extensions (+=, :=, $(shell), etc.) in Makefiles. These are
+      dnl crate build helpers, not used by the R package build.
+      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
       echo "configure: created inst/vendor.tar.xz"
     fi
   fi

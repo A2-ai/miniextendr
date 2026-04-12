@@ -45,7 +45,7 @@ make_test_project <- function() {
     'AC_SUBST([VENDOR_OUT])',
     'VENDOR_OUT_CARGO="$abs_top_srcdir/vendor"',
     'AC_SUBST([VENDOR_OUT_CARGO])',
-    'TESTPKG_FEATURES=""',
+    'CARGO_FEATURES=""',
     '',
     'AC_CONFIG_FILES([src/Makevars:src/Makevars.in])',
     '',
