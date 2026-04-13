@@ -271,12 +271,7 @@ pub(super) fn derive_enum_dataframe(
     for (variant_idx, vi) in variant_infos.iter().enumerate() {
         for erf in &vi.fields {
             // Use the rust_name span for error reporting
-            let err_span = match erf {
-                EnumResolvedField::Single(data) => data.rust_name.span(),
-                EnumResolvedField::ExpandedFixed(data) => data.rust_name.span(),
-                EnumResolvedField::ExpandedVec(data) => data.rust_name.span(),
-                EnumResolvedField::AutoExpandVec(data) => data.rust_name.span(),
-            };
+            let err_span = erf.rust_name().span();
             match erf {
                 EnumResolvedField::Single(data) => {
                     registry.register(
@@ -668,20 +663,8 @@ pub(super) fn derive_enum_dataframe(
             match vi.shape {
                 VariantShape::Named => {
                     let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let (rust_name, binding) = match erf {
-                            EnumResolvedField::Single(data) => {
-                                (&data.rust_name, &data.binding)
-                            }
-                            EnumResolvedField::ExpandedFixed(data) => {
-                                (&data.rust_name, &data.binding)
-                            }
-                            EnumResolvedField::ExpandedVec(data) => {
-                                (&data.rust_name, &data.binding)
-                            }
-                            EnumResolvedField::AutoExpandVec(data) => {
-                                (&data.rust_name, &data.binding)
-                            }
-                        };
+                        let rust_name = erf.rust_name();
+                        let binding = erf.binding();
                         quote! { #rust_name: #binding }
                     }).collect();
                     // Add skipped fields as wildcard bindings
@@ -698,12 +681,7 @@ pub(super) fn derive_enum_dataframe(
                 }
                 VariantShape::Tuple => {
                     let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let binding = match erf {
-                            EnumResolvedField::Single(data) => &data.binding,
-                            EnumResolvedField::ExpandedFixed(data) => &data.binding,
-                            EnumResolvedField::ExpandedVec(data) => &data.binding,
-                            EnumResolvedField::AutoExpandVec(data) => &data.binding,
-                        };
+                        let binding = erf.binding();
                         quote! { #binding }
                     }).collect();
                     quote! {
@@ -909,20 +887,8 @@ pub(super) fn derive_enum_dataframe(
                 match vi.shape {
                     VariantShape::Named => {
                         let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                            let (rust_name, binding) = match erf {
-                                EnumResolvedField::Single(data) => {
-                                    (&data.rust_name, &data.binding)
-                                }
-                                EnumResolvedField::ExpandedFixed(data) => {
-                                    (&data.rust_name, &data.binding)
-                                }
-                                EnumResolvedField::ExpandedVec(data) => {
-                                    (&data.rust_name, &data.binding)
-                                }
-                                EnumResolvedField::AutoExpandVec(data) => {
-                                    (&data.rust_name, &data.binding)
-                                }
-                            };
+                            let rust_name = erf.rust_name();
+                            let binding = erf.binding();
                             quote! { #rust_name: #binding }
                         }).collect();
                         for skipped in &vi.skipped_fields {
@@ -938,12 +904,7 @@ pub(super) fn derive_enum_dataframe(
                     }
                     VariantShape::Tuple => {
                         let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                            let binding = match erf {
-                                EnumResolvedField::Single(data) => &data.binding,
-                                EnumResolvedField::ExpandedFixed(data) => &data.binding,
-                                EnumResolvedField::ExpandedVec(data) => &data.binding,
-                                EnumResolvedField::AutoExpandVec(data) => &data.binding,
-                            };
+                            let binding = erf.binding();
                             quote! { #binding }
                         }).collect();
                         quote! {
