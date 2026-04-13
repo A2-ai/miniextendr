@@ -148,6 +148,20 @@ miniextendr_doctor <- function(path = ".") {
     }
   }
 
+  # ── Git Hooks ──
+  cli::cli_h2("Git Hooks")
+
+  hook_status <- has_miniextendr_git_hooks(usethis::proj_get())
+  if (all(hook_status)) {
+    cli::cli_alert_success("miniextendr git hooks installed (pre-commit, post-merge)")
+    results$pass <- c(results$pass, "git hooks installed")
+  } else {
+    missing <- names(hook_status)[!hook_status]
+    cli::cli_alert_warning("Missing miniextendr git hooks: {paste(missing, collapse = ', ')}")
+    cli::cli_alert_info("Run {.code minirextendr::use_miniextendr_git_hooks()} to install")
+    results$warn <- c(results$warn, "git hooks missing")
+  }
+
   # ── Summary ──
   cli::cli_h2("Summary")
   cli::cli_alert_success("{length(results$pass)} passed")
