@@ -297,62 +297,73 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> FieldTypeKind<'_> {
 /// - `ExpandedFixed`: `[T; N]` -> N columns (`name_1..name_N`) at compile time
 /// - `ExpandedVec`: `Vec<T>` + `width = N` -> N `Vec<Option<T>>` columns
 /// - `AutoExpandVec`: `Vec<T>` + `expand` -> dynamic column count at runtime
-#[allow(clippy::large_enum_variant)]
 enum ResolvedField {
     /// Single column: `name → Vec<ty>`.
-    Single {
-        /// Rust field name (for access).
-        rust_name: syn::Ident,
-        /// Column name in the DataFrame.
-        col_name: syn::Ident,
-        /// Column name string.
-        col_name_str: String,
-        /// Field type.
-        ty: syn::Type,
-        /// Index in tuple struct (None for named).
-        tuple_index: Option<syn::Index>,
-    },
+    Single(Box<SingleFieldData>),
     /// Expanded fixed array: `name: [T; N]` → `name_1..name_N`.
-    ExpandedFixed {
-        /// Rust field name.
-        rust_name: syn::Ident,
-        /// Base column name (before suffix).
-        base_name: String,
-        /// Element type T.
-        elem_ty: syn::Type,
-        /// Array length N.
-        len: usize,
-        /// Index in tuple struct.
-        tuple_index: Option<syn::Index>,
-    },
+    ExpandedFixed(Box<ExpandedFixedData>),
     /// Expanded variable vec with pinned width: `name: Vec<T>` + `width = N`.
-    ExpandedVec {
-        /// Rust field name.
-        rust_name: syn::Ident,
-        /// Base column name.
-        base_name: String,
-        /// Element type T.
-        elem_ty: syn::Type,
-        /// Pinned width.
-        width: usize,
-        /// Index in tuple struct.
-        tuple_index: Option<syn::Index>,
-    },
+    ExpandedVec(Box<ExpandedVecData>),
     /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime from max row length.
-    AutoExpandVec {
-        /// Rust field name (for row access).
-        rust_name: syn::Ident,
-        /// Companion struct field name (ident).
-        col_name: syn::Ident,
-        /// Column name base string (for suffixed column names).
-        col_name_str: String,
-        /// Element type T.
-        elem_ty: syn::Type,
-        /// Container type for companion struct (Vec<T> or Box<[T]>).
-        container_ty: syn::Type,
-        /// Index in tuple struct.
-        tuple_index: Option<syn::Index>,
-    },
+    AutoExpandVec(Box<AutoExpandVecData>),
+}
+
+/// Data for [`ResolvedField::Single`].
+struct SingleFieldData {
+    /// Rust field name (for access).
+    rust_name: syn::Ident,
+    /// Column name in the DataFrame.
+    col_name: syn::Ident,
+    /// Column name string.
+    col_name_str: String,
+    /// Field type.
+    ty: syn::Type,
+    /// Index in tuple struct (None for named).
+    tuple_index: Option<syn::Index>,
+}
+
+/// Data for [`ResolvedField::ExpandedFixed`].
+struct ExpandedFixedData {
+    /// Rust field name.
+    rust_name: syn::Ident,
+    /// Base column name (before suffix).
+    base_name: String,
+    /// Element type T.
+    elem_ty: syn::Type,
+    /// Array length N.
+    len: usize,
+    /// Index in tuple struct.
+    tuple_index: Option<syn::Index>,
+}
+
+/// Data for [`ResolvedField::ExpandedVec`].
+struct ExpandedVecData {
+    /// Rust field name.
+    rust_name: syn::Ident,
+    /// Base column name.
+    base_name: String,
+    /// Element type T.
+    elem_ty: syn::Type,
+    /// Pinned width.
+    width: usize,
+    /// Index in tuple struct.
+    tuple_index: Option<syn::Index>,
+}
+
+/// Data for [`ResolvedField::AutoExpandVec`].
+struct AutoExpandVecData {
+    /// Rust field name (for row access).
+    rust_name: syn::Ident,
+    /// Companion struct field name (ident).
+    col_name: syn::Ident,
+    /// Column name base string (for suffixed column names).
+    col_name_str: String,
+    /// Element type T.
+    elem_ty: syn::Type,
+    /// Container type for companion struct (Vec<T> or Box<[T]>).
+    container_ty: syn::Type,
+    /// Index in tuple struct.
+    tuple_index: Option<syn::Index>,
 }
 
 /// Resolve a struct field into a [`ResolvedField`], applying field attributes.
@@ -401,52 +412,58 @@ fn resolve_struct_field(
 
     // as_list suppresses expansion
     if field_attrs.as_list {
-        return Ok(Some(ResolvedField::Single {
+        return Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
             rust_name,
             col_name,
             col_name_str,
             ty: ty.clone(),
             tuple_index,
-        }));
+        }))));
     }
 
     match kind {
-        FieldTypeKind::FixedArray(elem_ty, len) => Ok(Some(ResolvedField::ExpandedFixed {
-            rust_name,
-            base_name: col_name_str,
-            elem_ty: elem_ty.clone(),
-            len,
-            tuple_index,
-        })),
+        FieldTypeKind::FixedArray(elem_ty, len) => Ok(Some(ResolvedField::ExpandedFixed(
+            Box::new(ExpandedFixedData {
+                rust_name,
+                base_name: col_name_str,
+                elem_ty: elem_ty.clone(),
+                len,
+                tuple_index,
+            }),
+        ))),
         FieldTypeKind::VariableVec(elem_ty)
         | FieldTypeKind::BoxedSlice(elem_ty)
         | FieldTypeKind::BorrowedSlice(elem_ty) => {
             if let Some(width) = field_attrs.width {
-                Ok(Some(ResolvedField::ExpandedVec {
-                    rust_name,
-                    base_name: col_name_str,
-                    elem_ty: elem_ty.clone(),
-                    width,
-                    tuple_index,
-                }))
+                Ok(Some(ResolvedField::ExpandedVec(Box::new(
+                    ExpandedVecData {
+                        rust_name,
+                        base_name: col_name_str,
+                        elem_ty: elem_ty.clone(),
+                        width,
+                        tuple_index,
+                    },
+                ))))
             } else if field_attrs.expand {
-                Ok(Some(ResolvedField::AutoExpandVec {
-                    rust_name,
-                    col_name,
-                    col_name_str,
-                    elem_ty: elem_ty.clone(),
-                    container_ty: ty.clone(),
-                    tuple_index,
-                }))
+                Ok(Some(ResolvedField::AutoExpandVec(Box::new(
+                    AutoExpandVecData {
+                        rust_name,
+                        col_name,
+                        col_name_str,
+                        elem_ty: elem_ty.clone(),
+                        container_ty: ty.clone(),
+                        tuple_index,
+                    },
+                ))))
             } else {
                 // No expansion — keep as opaque single column
-                Ok(Some(ResolvedField::Single {
+                Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
                     rust_name,
                     col_name,
                     col_name_str,
                     ty: ty.clone(),
                     tuple_index,
-                }))
+                }))))
             }
         }
         FieldTypeKind::Scalar => {
@@ -462,13 +479,13 @@ fn resolve_struct_field(
                     "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                 ));
             }
-            Ok(Some(ResolvedField::Single {
+            Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
                 rust_name,
                 col_name,
                 col_name_str,
                 ty: ty.clone(),
                 tuple_index,
-            }))
+            }))))
         }
     }
 }
@@ -634,7 +651,7 @@ fn derive_struct_dataframe(
     // IntoIterator (expanded fields change the companion struct shape).
     let has_expansion = resolved
         .iter()
-        .any(|rf| !matches!(rf, ResolvedField::Single { .. }));
+        .any(|rf| !matches!(rf, ResolvedField::Single(..)));
     // Track which Rust fields were skipped (for destructure patterns).
     let skipped_fields: Vec<syn::Ident> = match &data.fields {
         Fields::Named(fields) => fields
@@ -670,51 +687,37 @@ fn derive_struct_dataframe(
 
     for rf in &resolved {
         match rf {
-            ResolvedField::Single {
-                col_name,
-                col_name_str,
-                ty,
-                ..
-            } => {
+            ResolvedField::Single(data) => {
                 flat_cols.push(FlatCol {
-                    df_field: col_name.clone(),
-                    col_name_str: col_name_str.clone(),
-                    vec_elem_ty: ty.clone(),
+                    df_field: data.col_name.clone(),
+                    col_name_str: data.col_name_str.clone(),
+                    vec_elem_ty: data.ty.clone(),
                 });
             }
-            ResolvedField::ExpandedFixed {
-                base_name,
-                elem_ty,
-                len,
-                ..
-            } => {
-                for i in 1..=*len {
-                    let name = format!("{}_{}", base_name, i);
+            ResolvedField::ExpandedFixed(data) => {
+                for i in 1..=data.len {
+                    let name = format!("{}_{}", data.base_name, i);
                     flat_cols.push(FlatCol {
-                        df_field: format_ident!("{}_{}", base_name, i),
+                        df_field: format_ident!("{}_{}", data.base_name, i),
                         col_name_str: name,
-                        vec_elem_ty: elem_ty.clone(),
+                        vec_elem_ty: data.elem_ty.clone(),
                     });
                 }
             }
-            ResolvedField::ExpandedVec {
-                base_name,
-                elem_ty,
-                width,
-                ..
-            } => {
-                for i in 1..=*width {
-                    let name = format!("{}_{}", base_name, i);
+            ResolvedField::ExpandedVec(data) => {
+                for i in 1..=data.width {
+                    let name = format!("{}_{}", data.base_name, i);
+                    let elem_ty = &data.elem_ty;
                     let opt_ty: syn::Type = syn::parse_quote!(Option<#elem_ty>);
                     flat_cols.push(FlatCol {
-                        df_field: format_ident!("{}_{}", base_name, i),
+                        df_field: format_ident!("{}_{}", data.base_name, i),
                         col_name_str: name,
                         vec_elem_ty: opt_ty,
                     });
                 }
             }
             // AutoExpandVec does not produce FlatCols — handled separately.
-            ResolvedField::AutoExpandVec { .. } => {}
+            ResolvedField::AutoExpandVec(..) => {}
         }
     }
     // endregion
@@ -730,15 +733,10 @@ fn derive_struct_dataframe(
     let auto_expand_cols: Vec<AutoExpandCol> = resolved
         .iter()
         .filter_map(|rf| {
-            if let ResolvedField::AutoExpandVec {
-                col_name_str,
-                container_ty,
-                ..
-            } = rf
-            {
+            if let ResolvedField::AutoExpandVec(data) = rf {
                 Some(AutoExpandCol {
-                    df_field: format_ident!("{}", col_name_str),
-                    container_ty: container_ty.clone(),
+                    df_field: format_ident!("{}", data.col_name_str),
+                    container_ty: data.container_ty.clone(),
                 })
             } else {
                 None
@@ -846,11 +844,9 @@ fn derive_struct_dataframe(
         let pair_pushes: Vec<TokenStream> = resolved
             .iter()
             .map(|rf| match rf {
-                ResolvedField::Single {
-                    col_name,
-                    col_name_str,
-                    ..
-                } => {
+                ResolvedField::Single(data) => {
+                    let col_name = &data.col_name;
+                    let col_name_str = &data.col_name_str;
                     quote! {
                         __df_pairs.push((
                             #col_name_str.to_string(),
@@ -858,11 +854,11 @@ fn derive_struct_dataframe(
                         ));
                     }
                 }
-                ResolvedField::ExpandedFixed { base_name, len, .. } => {
-                    let pushes: Vec<TokenStream> = (1..=*len)
+                ResolvedField::ExpandedFixed(data) => {
+                    let pushes: Vec<TokenStream> = (1..=data.len)
                         .map(|i| {
-                            let name = format!("{}_{}", base_name, i);
-                            let ident = format_ident!("{}_{}", base_name, i);
+                            let name = format!("{}_{}", data.base_name, i);
+                            let ident = format_ident!("{}_{}", data.base_name, i);
                             quote! {
                                 __df_pairs.push((
                                     #name.to_string(),
@@ -873,13 +869,11 @@ fn derive_struct_dataframe(
                         .collect();
                     quote! { #(#pushes)* }
                 }
-                ResolvedField::ExpandedVec {
-                    base_name, width, ..
-                } => {
-                    let pushes: Vec<TokenStream> = (1..=*width)
+                ResolvedField::ExpandedVec(data) => {
+                    let pushes: Vec<TokenStream> = (1..=data.width)
                         .map(|i| {
-                            let name = format!("{}_{}", base_name, i);
-                            let ident = format_ident!("{}_{}", base_name, i);
+                            let name = format!("{}_{}", data.base_name, i);
+                            let ident = format_ident!("{}_{}", data.base_name, i);
                             quote! {
                                 __df_pairs.push((
                                     #name.to_string(),
@@ -890,12 +884,10 @@ fn derive_struct_dataframe(
                         .collect();
                     quote! { #(#pushes)* }
                 }
-                ResolvedField::AutoExpandVec {
-                    col_name,
-                    col_name_str,
-                    elem_ty,
-                    ..
-                } => {
+                ResolvedField::AutoExpandVec(data) => {
+                    let col_name = &data.col_name;
+                    let col_name_str = &data.col_name_str;
+                    let elem_ty = &data.elem_ty;
                     quote! {
                         {
                             let __auto = self.#col_name;
@@ -986,35 +978,27 @@ fn derive_struct_dataframe(
     let col_pushes: Vec<TokenStream> = resolved
         .iter()
         .map(|rf| match rf {
-            ResolvedField::Single {
-                rust_name,
-                col_name,
-                tuple_index,
-                ..
-            } => {
-                let access = if let Some(idx) = tuple_index {
+            ResolvedField::Single(data) => {
+                let access = if let Some(idx) = &data.tuple_index {
                     quote! { row.#idx }
                 } else {
+                    let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
+                let col_name = &data.col_name;
                 quote! { #col_name.push(#access); }
             }
-            ResolvedField::ExpandedFixed {
-                rust_name,
-                base_name,
-                len,
-                tuple_index,
-                ..
-            } => {
-                let access = if let Some(idx) = tuple_index {
+            ResolvedField::ExpandedFixed(data) => {
+                let access = if let Some(idx) = &data.tuple_index {
                     quote! { row.#idx }
                 } else {
+                    let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
-                let bind = format_ident!("__arr_{}", rust_name);
-                let pushes: Vec<TokenStream> = (0..*len)
+                let bind = format_ident!("__arr_{}", data.rust_name);
+                let pushes: Vec<TokenStream> = (0..data.len)
                     .map(|i| {
-                        let col_ident = format_ident!("{}_{}", base_name, i + 1);
+                        let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
                         let idx = syn::Index::from(i);
                         quote! { #col_ident.push(#bind[#idx]); }
                     })
@@ -1024,22 +1008,17 @@ fn derive_struct_dataframe(
                     #(#pushes)*
                 }
             }
-            ResolvedField::ExpandedVec {
-                rust_name,
-                base_name,
-                width,
-                tuple_index,
-                ..
-            } => {
-                let access = if let Some(idx) = tuple_index {
+            ResolvedField::ExpandedVec(data) => {
+                let access = if let Some(idx) = &data.tuple_index {
                     quote! { row.#idx }
                 } else {
+                    let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
-                let bind = format_ident!("__vec_{}", rust_name);
-                let pushes: Vec<TokenStream> = (0..*width)
+                let bind = format_ident!("__vec_{}", data.rust_name);
+                let pushes: Vec<TokenStream> = (0..data.width)
                     .map(|i| {
-                        let col_ident = format_ident!("{}_{}", base_name, i + 1);
+                        let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
                         quote! { #col_ident.push(#bind.get(#i).cloned()); }
                     })
                     .collect();
@@ -1048,17 +1027,14 @@ fn derive_struct_dataframe(
                     #(#pushes)*
                 }
             }
-            ResolvedField::AutoExpandVec {
-                rust_name,
-                col_name,
-                tuple_index,
-                ..
-            } => {
-                let access = if let Some(idx) = tuple_index {
+            ResolvedField::AutoExpandVec(data) => {
+                let access = if let Some(idx) = &data.tuple_index {
                     quote! { row.#idx }
                 } else {
+                    let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
+                let col_name = &data.col_name;
                 quote! { #col_name.push(#access); }
             }
         })
@@ -1180,36 +1156,27 @@ fn derive_struct_dataframe(
         let par_write_calls: Vec<TokenStream> = resolved
             .iter()
             .map(|rf| match rf {
-                ResolvedField::Single {
-                    rust_name,
-                    col_name,
-                    tuple_index,
-                    ..
-                } => {
-                    let access = if let Some(idx) = tuple_index {
+                ResolvedField::Single(data) => {
+                    let access = if let Some(idx) = &data.tuple_index {
                         quote! { __row.#idx }
                     } else {
+                        let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let w_name = format_ident!("__w_{}", col_name);
+                    let w_name = format_ident!("__w_{}", data.col_name);
                     quote! { #w_name.write(__i, #access); }
                 }
-                ResolvedField::ExpandedFixed {
-                    rust_name,
-                    base_name,
-                    len,
-                    tuple_index,
-                    ..
-                } => {
-                    let access = if let Some(idx) = tuple_index {
+                ResolvedField::ExpandedFixed(data) => {
+                    let access = if let Some(idx) = &data.tuple_index {
                         quote! { __row.#idx }
                     } else {
+                        let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let bind = format_ident!("__arr_{}", rust_name);
-                    let writes: Vec<TokenStream> = (0..*len)
+                    let bind = format_ident!("__arr_{}", data.rust_name);
+                    let writes: Vec<TokenStream> = (0..data.len)
                         .map(|i| {
-                            let w_name = format_ident!("__w_{}_{}", base_name, i + 1);
+                            let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
                             let idx = syn::Index::from(i);
                             quote! { #w_name.write(__i, #bind[#idx]); }
                         })
@@ -1219,22 +1186,17 @@ fn derive_struct_dataframe(
                         #(#writes)*
                     }
                 }
-                ResolvedField::ExpandedVec {
-                    rust_name,
-                    base_name,
-                    width,
-                    tuple_index,
-                    ..
-                } => {
-                    let access = if let Some(idx) = tuple_index {
+                ResolvedField::ExpandedVec(data) => {
+                    let access = if let Some(idx) = &data.tuple_index {
                         quote! { __row.#idx }
                     } else {
+                        let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let bind = format_ident!("__vec_{}", rust_name);
-                    let writes: Vec<TokenStream> = (0..*width)
+                    let bind = format_ident!("__vec_{}", data.rust_name);
+                    let writes: Vec<TokenStream> = (0..data.width)
                         .map(|i| {
-                            let w_name = format_ident!("__w_{}_{}", base_name, i + 1);
+                            let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
                             quote! { #w_name.write(__i, #bind.get(#i).cloned()); }
                         })
                         .collect();
@@ -1243,18 +1205,14 @@ fn derive_struct_dataframe(
                         #(#writes)*
                     }
                 }
-                ResolvedField::AutoExpandVec {
-                    rust_name,
-                    col_name,
-                    tuple_index,
-                    ..
-                } => {
-                    let access = if let Some(idx) = tuple_index {
+                ResolvedField::AutoExpandVec(data) => {
+                    let access = if let Some(idx) = &data.tuple_index {
                         quote! { __row.#idx }
                     } else {
+                        let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let w_name = format_ident!("__w_{}", col_name);
+                    let w_name = format_ident!("__w_{}", data.col_name);
                     quote! { #w_name.write(__i, #access); }
                 }
             })
@@ -1350,15 +1308,12 @@ fn derive_struct_dataframe(
         // For next(): reconstruct original field names (col_name == rust_name for Single)
         let mut next_struct_tokens = TokenStream::new();
         for (i, rf) in resolved.iter().enumerate() {
-            if let ResolvedField::Single {
-                rust_name,
-                col_name,
-                ..
-            } = rf
-            {
+            if let ResolvedField::Single(data) = rf {
                 if i > 0 {
                     next_struct_tokens.extend(quote! { , });
                 }
+                let rust_name = &data.rust_name;
+                let col_name = &data.col_name;
                 next_struct_tokens.extend(quote! { #rust_name: self.#col_name.next()? });
             }
         }
@@ -1590,58 +1545,91 @@ pub(super) enum VariantShape {
 /// This is the enum-path counterpart of [`ResolvedField`] (used for structs).
 /// Each variant carries both the binding name (for destructure patterns) and the
 /// original Rust field name (for error reporting and named-variant patterns).
-#[allow(clippy::large_enum_variant)]
 pub(super) enum EnumResolvedField {
     /// Single column contribution.
-    Single {
-        /// Column name in the schema.
-        col_name: syn::Ident,
-        /// Binding name used in destructure pattern.
-        binding: syn::Ident,
-        /// Original Rust field name (for named variants).
-        rust_name: syn::Ident,
-        /// Column type.
-        ty: syn::Type,
-    },
+    Single(Box<EnumSingleFieldData>),
     /// Expanded from [T; N].
-    ExpandedFixed {
-        /// Base column name.
-        base_name: String,
-        /// Binding name.
-        binding: syn::Ident,
-        /// Original Rust field name.
-        rust_name: syn::Ident,
-        /// Element type.
-        elem_ty: syn::Type,
-        /// Array length.
-        len: usize,
-    },
+    ExpandedFixed(Box<EnumExpandedFixedData>),
     /// Expanded from Vec<T> with pinned width.
-    ExpandedVec {
-        /// Base column name.
-        base_name: String,
-        /// Binding name.
-        binding: syn::Ident,
-        /// Original Rust field name.
-        rust_name: syn::Ident,
-        /// Element type.
-        elem_ty: syn::Type,
-        /// Pinned width.
-        width: usize,
-    },
+    ExpandedVec(Box<EnumExpandedVecData>),
     /// Auto-expanded Vec<T>/Box<[T]>: column count determined at runtime.
-    AutoExpandVec {
-        /// Base column name.
-        base_name: String,
-        /// Binding name.
-        binding: syn::Ident,
-        /// Original Rust field name.
-        rust_name: syn::Ident,
-        /// Element type.
-        elem_ty: syn::Type,
-        /// Container type for companion struct (Vec<T> or Box<[T]>).
-        container_ty: syn::Type,
-    },
+    AutoExpandVec(Box<EnumAutoExpandVecData>),
+}
+
+impl EnumResolvedField {
+    /// Binding name used in destructure patterns.
+    pub(super) fn binding(&self) -> &syn::Ident {
+        match self {
+            Self::Single(data) => &data.binding,
+            Self::ExpandedFixed(data) => &data.binding,
+            Self::ExpandedVec(data) => &data.binding,
+            Self::AutoExpandVec(data) => &data.binding,
+        }
+    }
+
+    /// Original Rust field name.
+    pub(super) fn rust_name(&self) -> &syn::Ident {
+        match self {
+            Self::Single(data) => &data.rust_name,
+            Self::ExpandedFixed(data) => &data.rust_name,
+            Self::ExpandedVec(data) => &data.rust_name,
+            Self::AutoExpandVec(data) => &data.rust_name,
+        }
+    }
+}
+
+/// Data for [`EnumResolvedField::Single`].
+pub(super) struct EnumSingleFieldData {
+    /// Column name in the schema.
+    pub(super) col_name: syn::Ident,
+    /// Binding name used in destructure pattern.
+    pub(super) binding: syn::Ident,
+    /// Original Rust field name (for named variants).
+    pub(super) rust_name: syn::Ident,
+    /// Column type.
+    pub(super) ty: syn::Type,
+}
+
+/// Data for [`EnumResolvedField::ExpandedFixed`].
+pub(super) struct EnumExpandedFixedData {
+    /// Base column name.
+    pub(super) base_name: String,
+    /// Binding name.
+    pub(super) binding: syn::Ident,
+    /// Original Rust field name.
+    pub(super) rust_name: syn::Ident,
+    /// Element type.
+    pub(super) elem_ty: syn::Type,
+    /// Array length.
+    pub(super) len: usize,
+}
+
+/// Data for [`EnumResolvedField::ExpandedVec`].
+pub(super) struct EnumExpandedVecData {
+    /// Base column name.
+    pub(super) base_name: String,
+    /// Binding name.
+    pub(super) binding: syn::Ident,
+    /// Original Rust field name.
+    pub(super) rust_name: syn::Ident,
+    /// Element type.
+    pub(super) elem_ty: syn::Type,
+    /// Pinned width.
+    pub(super) width: usize,
+}
+
+/// Data for [`EnumResolvedField::AutoExpandVec`].
+pub(super) struct EnumAutoExpandVecData {
+    /// Base column name.
+    pub(super) base_name: String,
+    /// Binding name.
+    pub(super) binding: syn::Ident,
+    /// Original Rust field name.
+    pub(super) rust_name: syn::Ident,
+    /// Element type.
+    pub(super) elem_ty: syn::Type,
+    /// Container type for companion struct (Vec<T> or Box<[T]>).
+    pub(super) container_ty: syn::Type,
 }
 
 /// Parsed and resolved information about a single enum variant for DataFrame codegen.
