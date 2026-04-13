@@ -1,6 +1,6 @@
 //! Test fixtures for streaming ALTREP data types.
 //!
-//! Uses the standard rpkg pattern: data struct + wrapper struct with #[miniextendr].
+//! Uses the direct registration pattern: data struct with #[derive(Altrep)].
 
 use miniextendr_api::altrep_data::{
     AltIntegerData, AltRealData, AltrepLen, StreamingIntData, StreamingRealData,
@@ -11,7 +11,8 @@ use miniextendr_api::prelude::*;
 
 type IntReader = Box<dyn Fn(usize, &mut [i32]) -> usize>;
 
-#[derive(ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "StreamingIntRange")]
 pub struct StreamingIntRangeData {
     inner: StreamingIntData<IntReader>,
 }
@@ -30,15 +31,11 @@ impl AltIntegerData for StreamingIntRangeData {
 
 miniextendr_api::impl_altinteger_from_data!(StreamingIntRangeData);
 
-/// ALTREP class for streaming integer range 1..=n.
-#[miniextendr(class = "StreamingIntRange")]
-pub struct StreamingIntRange(pub StreamingIntRangeData);
-
 /// Create a streaming integer ALTREP `1..=n`.
 #[miniextendr]
-pub fn streaming_int_range(n: i32) -> StreamingIntRange {
+pub fn streaming_int_range(n: i32) -> StreamingIntRangeData {
     let len = n as usize;
-    StreamingIntRange(StreamingIntRangeData {
+    StreamingIntRangeData {
         inner: StreamingIntData::new(
             len,
             64,
@@ -50,7 +47,7 @@ pub fn streaming_int_range(n: i32) -> StreamingIntRange {
                 count
             }),
         ),
-    })
+    }
 }
 
 // endregion
@@ -59,7 +56,8 @@ pub fn streaming_int_range(n: i32) -> StreamingIntRange {
 
 type RealReader = Box<dyn Fn(usize, &mut [f64]) -> usize>;
 
-#[derive(ExternalPtr)]
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "StreamingRealSquares")]
 pub struct StreamingRealSquaresData {
     inner: StreamingRealData<RealReader>,
 }
@@ -78,15 +76,11 @@ impl AltRealData for StreamingRealSquaresData {
 
 miniextendr_api::impl_altreal_from_data!(StreamingRealSquaresData);
 
-/// ALTREP class for streaming real squares 1^2, 2^2, ..., n^2.
-#[miniextendr(class = "StreamingRealSquares")]
-pub struct StreamingRealSquares(pub StreamingRealSquaresData);
-
 /// Create a streaming real ALTREP `1^2, 2^2, ..., n^2`.
 #[miniextendr]
-pub fn streaming_real_squares(n: i32) -> StreamingRealSquares {
+pub fn streaming_real_squares(n: i32) -> StreamingRealSquaresData {
     let len = n as usize;
-    StreamingRealSquares(StreamingRealSquaresData {
+    StreamingRealSquaresData {
         inner: StreamingRealData::new(
             len,
             32,
@@ -99,7 +93,7 @@ pub fn streaming_real_squares(n: i32) -> StreamingRealSquares {
                 count
             }),
         ),
-    })
+    }
 }
 
 // endregion

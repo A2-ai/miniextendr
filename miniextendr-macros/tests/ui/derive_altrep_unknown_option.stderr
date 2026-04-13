@@ -1,4 +1,4 @@
-error: unknown #[altrep(...)] attribute; expected one of: `len`, `elt`, `elt_delegate`, `no_lowlevel`, `dataptr`, `serialize`, `subset`, `unsafe`, `rust_unwind`, `r_unwind`
+error: unknown #[altrep(...)] attribute; expected one of: `len`, `elt`, `elt_delegate`, `no_lowlevel`, `class`, `dataptr`, `serialize`, `subset`, `unsafe`, `rust_unwind`, `r_unwind`
  --> tests/ui/derive_altrep_unknown_option.rs:6:10
   |
 6 | #[altrep(typo_option)]

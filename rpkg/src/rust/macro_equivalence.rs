@@ -115,16 +115,47 @@ pub fn mx_verbosity_check(v: MxVerbosity) -> String {
 }
 // endregion
 
-// region: 6. #[derive(Altrep)] on 1-field struct → ALTREP registration
+// region: 6. #[derive(Altrep)] on data struct → ALTREP registration (direct pattern)
 
-/// 1-field struct via derive: generates ALTREP class registration.
+/// Data struct via derive: generates full ALTREP registration.
 #[derive(miniextendr_api::Altrep)]
-pub struct MxDerivedInts(Vec<i32>);
+#[altrep(class = "MxDerivedInts")]
+pub struct MxDerivedIntsData {
+    data: Vec<i32>,
+}
+
+impl miniextendr_api::altrep_data::AltrepLen for MxDerivedIntsData {
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl miniextendr_api::altrep_data::AltIntegerData for MxDerivedIntsData {
+    fn elt(&self, i: usize) -> i32 {
+        self.data[i]
+    }
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltrepDataptr<i32> for MxDerivedIntsData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        Some(self.data.as_mut_ptr())
+    }
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(MxDerivedIntsData, dataptr);
 
 /// Test creating an ALTREP integer vector via derive(Altrep).
 #[miniextendr]
-pub fn mx_derived_ints() -> MxDerivedInts {
-    MxDerivedInts(vec![10, 20, 30])
+pub fn mx_derived_ints() -> MxDerivedIntsData {
+    MxDerivedIntsData {
+        data: vec![10, 20, 30],
+    }
 }
 // endregion
 

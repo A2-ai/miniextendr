@@ -312,6 +312,50 @@ fn test_derive_altrep_integer_basic() {
 
     // Should call impl_altinteger_from_data!
     assert!(output_str.contains("impl_altinteger_from_data"));
+
+    // Registration: TypedExternal
+    assert!(
+        output_str.contains("TypedExternal"),
+        "AltrepInteger derive must generate TypedExternal impl"
+    );
+
+    // Registration: AltrepClass
+    assert!(
+        output_str.contains("AltrepClass"),
+        "AltrepInteger derive must generate AltrepClass impl"
+    );
+
+    // Registration: RegisterAltrep (OnceLock class registration)
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "AltrepInteger derive must generate RegisterAltrep impl"
+    );
+
+    // Registration: IntoR / into_sexp conversion
+    assert!(
+        output_str.contains("IntoR"),
+        "AltrepInteger derive must generate IntoR impl"
+    );
+    assert!(
+        output_str.contains("into_sexp"),
+        "AltrepInteger derive must generate into_sexp method"
+    );
+
+    // Registration: linkme distributed_slice entry
+    assert!(
+        output_str.contains("distributed_slice") || output_str.contains("MX_ALTREP_REGISTRATIONS"),
+        "AltrepInteger derive must generate linkme distributed_slice entry"
+    );
+
+    // Registration: Ref and Mut accessor types
+    assert!(
+        output_str.contains("TestDataRef"),
+        "AltrepInteger derive must generate Ref accessor type"
+    );
+    assert!(
+        output_str.contains("TestDataMut"),
+        "AltrepInteger derive must generate Mut accessor type"
+    );
 }
 
 #[test]
@@ -373,6 +417,40 @@ fn test_derive_altrep_logical_basic() {
 
     // Should call impl_altlogical_from_data!
     assert!(output_str.contains("impl_altlogical_from_data"));
+
+    // Registration checks: every family derive must generate registration code
+    assert!(
+        output_str.contains("TypedExternal"),
+        "AltrepLogical derive must generate TypedExternal impl"
+    );
+    assert!(
+        output_str.contains("AltrepClass"),
+        "AltrepLogical derive must generate AltrepClass impl"
+    );
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "AltrepLogical derive must generate RegisterAltrep impl"
+    );
+    assert!(
+        output_str.contains("IntoR"),
+        "AltrepLogical derive must generate IntoR impl"
+    );
+    assert!(
+        output_str.contains("into_sexp"),
+        "AltrepLogical derive must generate into_sexp method"
+    );
+    assert!(
+        output_str.contains("distributed_slice") || output_str.contains("MX_ALTREP_REGISTRATIONS"),
+        "AltrepLogical derive must generate linkme entry"
+    );
+    assert!(
+        output_str.contains("TestLogicalRef"),
+        "AltrepLogical derive must generate Ref accessor type"
+    );
+    assert!(
+        output_str.contains("TestLogicalMut"),
+        "AltrepLogical derive must generate Mut accessor type"
+    );
 }
 
 #[test]
@@ -409,6 +487,322 @@ fn test_derive_altrep_logical_with_options() {
 
     // Should pass options to macro
     assert!(output_str.contains("dataptr"));
+}
+#[test]
+fn test_derive_altrep_real_generates_registration() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestReal {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_real(input).unwrap();
+    let output_str = output.to_string();
+
+    // Low-level traits
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("AltRealData"));
+    assert!(output_str.contains("impl_altreal_from_data"));
+
+    // Registration: TypedExternal, AltrepClass, RegisterAltrep, IntoR, linkme, Ref/Mut
+    assert!(
+        output_str.contains("TypedExternal"),
+        "AltrepReal derive must generate TypedExternal impl"
+    );
+    assert!(
+        output_str.contains("AltrepClass"),
+        "AltrepReal derive must generate AltrepClass impl"
+    );
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "AltrepReal derive must generate RegisterAltrep impl"
+    );
+    assert!(
+        output_str.contains("IntoR"),
+        "AltrepReal derive must generate IntoR impl"
+    );
+    assert!(
+        output_str.contains("into_sexp"),
+        "AltrepReal derive must generate into_sexp method"
+    );
+    assert!(
+        output_str.contains("distributed_slice") || output_str.contains("MX_ALTREP_REGISTRATIONS"),
+        "AltrepReal derive must generate linkme entry"
+    );
+    assert!(
+        output_str.contains("TestRealRef"),
+        "AltrepReal derive must generate Ref accessor type"
+    );
+    assert!(
+        output_str.contains("TestRealMut"),
+        "AltrepReal derive must generate Mut accessor type"
+    );
+}
+
+#[test]
+fn test_derive_altrep_raw_generates_registration() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestRaw {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_raw(input).unwrap();
+    let output_str = output.to_string();
+
+    // Low-level traits
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("AltRawData"));
+    assert!(output_str.contains("impl_altraw_from_data"));
+
+    // Registration
+    assert!(
+        output_str.contains("TypedExternal"),
+        "AltrepRaw derive must generate TypedExternal impl"
+    );
+    assert!(
+        output_str.contains("AltrepClass"),
+        "AltrepRaw derive must generate AltrepClass impl"
+    );
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "AltrepRaw derive must generate RegisterAltrep impl"
+    );
+    assert!(
+        output_str.contains("IntoR"),
+        "AltrepRaw derive must generate IntoR impl"
+    );
+    assert!(
+        output_str.contains("into_sexp"),
+        "AltrepRaw derive must generate into_sexp method"
+    );
+    assert!(
+        output_str.contains("distributed_slice") || output_str.contains("MX_ALTREP_REGISTRATIONS"),
+        "AltrepRaw derive must generate linkme entry"
+    );
+    assert!(
+        output_str.contains("TestRawRef"),
+        "AltrepRaw derive must generate Ref accessor type"
+    );
+    assert!(
+        output_str.contains("TestRawMut"),
+        "AltrepRaw derive must generate Mut accessor type"
+    );
+}
+
+#[test]
+fn test_derive_altrep_string_generates_registration() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestString {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_string(input).unwrap();
+    let output_str = output.to_string();
+
+    // Low-level traits
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("AltStringData"));
+    assert!(output_str.contains("impl_altstring_from_data"));
+
+    // Registration
+    assert!(
+        output_str.contains("TypedExternal"),
+        "AltrepString derive must generate TypedExternal impl"
+    );
+    assert!(
+        output_str.contains("AltrepClass"),
+        "AltrepString derive must generate AltrepClass impl"
+    );
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "AltrepString derive must generate RegisterAltrep impl"
+    );
+    assert!(
+        output_str.contains("IntoR"),
+        "AltrepString derive must generate IntoR impl"
+    );
+    assert!(
+        output_str.contains("into_sexp"),
+        "AltrepString derive must generate into_sexp method"
+    );
+    assert!(
+        output_str.contains("distributed_slice") || output_str.contains("MX_ALTREP_REGISTRATIONS"),
+        "AltrepString derive must generate linkme entry"
+    );
+    assert!(
+        output_str.contains("TestStringRef"),
+        "AltrepString derive must generate Ref accessor type"
+    );
+    assert!(
+        output_str.contains("TestStringMut"),
+        "AltrepString derive must generate Mut accessor type"
+    );
+}
+
+#[test]
+fn test_derive_altrep_complex_generates_registration() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestComplex {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_complex(input).unwrap();
+    let output_str = output.to_string();
+
+    // Low-level traits
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("AltComplexData"));
+    assert!(output_str.contains("impl_altcomplex_from_data"));
+
+    // Registration
+    assert!(
+        output_str.contains("TypedExternal"),
+        "AltrepComplex derive must generate TypedExternal impl"
+    );
+    assert!(
+        output_str.contains("AltrepClass"),
+        "AltrepComplex derive must generate AltrepClass impl"
+    );
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "AltrepComplex derive must generate RegisterAltrep impl"
+    );
+    assert!(
+        output_str.contains("IntoR"),
+        "AltrepComplex derive must generate IntoR impl"
+    );
+    assert!(
+        output_str.contains("into_sexp"),
+        "AltrepComplex derive must generate into_sexp method"
+    );
+    assert!(
+        output_str.contains("distributed_slice") || output_str.contains("MX_ALTREP_REGISTRATIONS"),
+        "AltrepComplex derive must generate linkme entry"
+    );
+    assert!(
+        output_str.contains("TestComplexRef"),
+        "AltrepComplex derive must generate Ref accessor type"
+    );
+    assert!(
+        output_str.contains("TestComplexMut"),
+        "AltrepComplex derive must generate Mut accessor type"
+    );
+}
+// endregion
+
+// region: ALTREP list registration test
+
+#[test]
+fn test_derive_altrep_list_generates_registration() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestListData {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_list(input).unwrap();
+    let output_str = output.to_string();
+
+    // Must generate registration (not just low-level traits)
+    assert!(
+        output_str.contains("TypedExternal"),
+        "AltrepList derive must generate TypedExternal"
+    );
+    assert!(
+        output_str.contains("AltrepClass"),
+        "AltrepList derive must generate AltrepClass"
+    );
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "AltrepList derive must generate RegisterAltrep"
+    );
+    assert!(
+        output_str.contains("IntoR"),
+        "AltrepList derive must generate IntoR"
+    );
+    assert!(
+        output_str.contains("into_sexp"),
+        "AltrepList derive must generate into_sexp"
+    );
+    assert!(
+        output_str.contains("distributed_slice") || output_str.contains("MX_ALTREP_REGISTRATIONS"),
+        "AltrepList derive must generate linkme entry"
+    );
+    assert!(
+        output_str.contains("TestListDataRef"),
+        "AltrepList derive must generate Ref accessor type"
+    );
+    assert!(
+        output_str.contains("TestListDataMut"),
+        "AltrepList derive must generate Mut accessor type"
+    );
+
+    // Low-level list traits
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("AltListData"));
+    assert!(output_str.contains("impl_altlist_from_data"));
+}
+// endregion
+
+// region: ALTREP class attribute tests
+
+#[test]
+fn test_derive_altrep_class_attr() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(class = "CustomName")]
+        pub struct TestData {
+            data: Vec<i32>,
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep::derive_altrep(input).unwrap();
+    let output_str = output.to_string();
+
+    assert!(
+        output_str.contains("CustomName"),
+        "class name must appear in output"
+    );
+    assert!(
+        output_str.contains("TypedExternal"),
+        "must generate TypedExternal"
+    );
+    assert!(
+        output_str.contains("RegisterAltrep"),
+        "must generate RegisterAltrep"
+    );
+}
+
+#[test]
+fn test_derive_altrep_family_class_attr() {
+    // Test that family-specific derives also respect #[altrep(class = "...")]
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(class = "MyCustomInteger")]
+        pub struct CustomIntData {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    assert!(
+        output_str.contains("MyCustomInteger"),
+        "family derive must use custom class name from #[altrep(class = ...)]"
+    );
+    assert!(output_str.contains("TypedExternal"));
+    assert!(output_str.contains("RegisterAltrep"));
+    assert!(output_str.contains("IntoR"));
 }
 // endregion
 

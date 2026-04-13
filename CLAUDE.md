@@ -338,7 +338,11 @@ NOT_CRAN=true just devtools-test # Run R tests
 - **Worker thread pattern**: Rust code runs on worker thread for proper panic handling
 - **ExternalPtr**: Box-like owned pointer using R's EXTPTRSXP. Stores `Box<Box<dyn Any>>` — thin pointer (in `R_ExternalPtrAddr`) → fat pointer (heap, carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic finalizer (`release_any`). `cached_ptr` must have mutable provenance (`downcast_mut` / `ptr::from_mut`, never `downcast_ref`).
 - **TypedExternal**: Trait providing R-visible type name (`TYPE_NAME_CSTR` for display tag, `TYPE_ID_CSTR` for error messages). No longer used for type safety — `Any::downcast` is authoritative.
-- **ALTREP**: Lazy/compact vectors via proc-macro method traits. Derive options: `len = "field"`, `elt = "field"` (constant), `elt_delegate = "field"` (delegates to inner type's `elt(i)`)
+- **ALTREP**: Lazy/compact vectors. Single-struct pattern — no wrapper struct. Two paths:
+  - **Field-based derive**: `#[derive(AltrepInteger)]` with `#[altrep(len = "field", elt = "field", class = "Name")]` generates everything (AltrepLen, AltIntegerData, low-level traits, TypedExternal, RegisterAltrep, IntoR, linkme entry, Ref/Mut)
+  - **Manual traits + registration**: `#[derive(Altrep)]` with `#[altrep_derive_opts(class = "Name")]` generates registration only; user implements `AltrepLen`, `Alt*Data`, and calls `impl_alt*_from_data!()` manually
+  - **`AltrepExtract` trait**: abstracts data extraction from ALTREP SEXP. Blanket impl for `TypedExternal` (ExternalPtr). Override for custom storage.
+  - **`#[miniextendr]` on 1-field structs is removed** — use derives instead
 - **R_UnwindProtect**: Ensures Rust destructors run on R errors
 - **GC Protection**: Use `OwnedProtect`/`ProtectScope` for RAII-based protect/unprotect
 - **Dots (`...`)**: R's variadic args become `_dots: &Dots`. Use `name @ ...` for custom name. See `docs/DOTS_TYPED_LIST.md`
@@ -611,6 +615,22 @@ Alternatively, use `devtools::install()` which handles library paths:
 
 ```bash
 just devtools-install
+```
+
+### Debugging segfaults
+
+Use `R -d lldb` to run R under the LLDB debugger:
+
+```bash
+R -d lldb -e 'library(miniextendr); lazy_int_seq(0L, -1L, 1L)'
+# At the (lldb) prompt: run
+# After crash: bt (backtrace), frame select N, p variable
+```
+
+For segfaults during `R CMD check` or `devtools::test()`:
+
+```bash
+R -d lldb -e 'testthat::test_file("rpkg/tests/testthat/test-altrep.R")'
 ```
 
 ## Code Style

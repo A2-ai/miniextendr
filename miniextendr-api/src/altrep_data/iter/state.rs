@@ -300,9 +300,8 @@ impl<I: Iterator<Item = i32> + 'static> InferBase for IterIntData<I> {
 
 impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::Altrep for IterIntData<I> {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| d.len() as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.len() as crate::ffi::R_xlen_t
     }
 }
 
@@ -312,9 +311,8 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger for Ite
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| AltIntegerData::elt(&*d, i as usize))
-            .unwrap_or(i32::MIN)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltIntegerData::elt(data, i as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -325,12 +323,8 @@ impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger for Ite
         len: crate::ffi::R_xlen_t,
         buf: &mut [i32],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| {
-                AltIntegerData::get_region(&*d, start as usize, len as usize, buf)
-                    as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltIntegerData::get_region(data, start as usize, len as usize, buf) as crate::ffi::R_xlen_t
     }
 }
 
@@ -406,9 +400,8 @@ impl<I: Iterator<Item = f64> + 'static> InferBase for IterRealData<I> {
 
 impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::Altrep for IterRealData<I> {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| d.len() as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.len() as crate::ffi::R_xlen_t
     }
 }
 
@@ -418,9 +411,8 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for IterRe
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| AltRealData::elt(&*d, i as usize))
-            .unwrap_or(f64::NAN)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltRealData::elt(data, i as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -431,12 +423,8 @@ impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for IterRe
         len: crate::ffi::R_xlen_t,
         buf: &mut [f64],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| {
-                AltRealData::get_region(&*d, start as usize, len as usize, buf)
-                    as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltRealData::get_region(data, start as usize, len as usize, buf) as crate::ffi::R_xlen_t
     }
 }
 
@@ -511,9 +499,8 @@ impl<I: Iterator<Item = bool> + 'static> InferBase for IterLogicalData<I> {
 
 impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep for IterLogicalData<I> {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| d.len() as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.len() as crate::ffi::R_xlen_t
     }
 }
 
@@ -523,9 +510,8 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltLogical for It
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| AltLogicalData::elt(&*d, i as usize).to_r_int())
-            .unwrap_or(crate::altrep_traits::NA_LOGICAL)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltLogicalData::elt(data, i as usize).to_r_int()
     }
 
     const HAS_GET_REGION: bool = true;
@@ -536,12 +522,8 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltLogical for It
         len: crate::ffi::R_xlen_t,
         buf: &mut [i32],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| {
-                AltLogicalData::get_region(&*d, start as usize, len as usize, buf)
-                    as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltLogicalData::get_region(data, start as usize, len as usize, buf) as crate::ffi::R_xlen_t
     }
 }
 
@@ -617,9 +599,8 @@ impl<I: Iterator<Item = u8> + 'static> InferBase for IterRawData<I> {
 
 impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::Altrep for IterRawData<I> {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| d.len() as crate::ffi::R_xlen_t)
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        data.len() as crate::ffi::R_xlen_t
     }
 }
 
@@ -629,9 +610,8 @@ impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltRaw for IterRawD
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> u8 {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| AltRawData::elt(&*d, i as usize))
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltRawData::elt(data, i as usize)
     }
 
     const HAS_GET_REGION: bool = true;
@@ -642,12 +622,8 @@ impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltRaw for IterRawD
         len: crate::ffi::R_xlen_t,
         buf: &mut [u8],
     ) -> crate::ffi::R_xlen_t {
-        unsafe { crate::altrep_ext::AltrepSexpExt::altrep_data1::<Self>(&x) }
-            .map(|d| {
-                AltRawData::get_region(&*d, start as usize, len as usize, buf)
-                    as crate::ffi::R_xlen_t
-            })
-            .unwrap_or(0)
+        let data = unsafe { <Self as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
+        AltRawData::get_region(data, start as usize, len as usize, buf) as crate::ffi::R_xlen_t
     }
 }
 // endregion

@@ -253,6 +253,7 @@ pub use altrep_data::{
     AltRealData,
     AltStringData,
     AltrepDataptr,
+    AltrepExtract,
     AltrepLen,
     // Iterator-backed ALTREP types (R-native)
     IterComplexData,
