@@ -84,6 +84,9 @@ struct AltrepAttrs {
     guard: Option<syn::Ident>,
     /// Override the ALTREP class name. Default: struct name.
     class_name: Option<String>,
+    /// Manual mode: skip `AltrepLen` and `Alt*Data` generation. User provides their own.
+    /// Set by `#[altrep(manual)]`. Lowlevel traits + registration still generated.
+    manual: bool,
 }
 
 impl AltrepAttrs {
@@ -104,6 +107,7 @@ impl AltrepAttrs {
         let mut lowlevel_options = Vec::new();
         let mut guard = None;
         let mut class_name = None;
+        let mut manual = false;
 
         for attr in &input.attrs {
             if !attr.path().is_ident("altrep") {
@@ -125,6 +129,8 @@ impl AltrepAttrs {
                     elt_delegate = Some(syn::Ident::new(&field.value(), field.span()));
                 } else if meta.path.is_ident("no_lowlevel") {
                     generate_lowlevel = false;
+                } else if meta.path.is_ident("manual") {
+                    manual = true;
                 } else if meta.path.is_ident("class") {
                     let _: syn::Token![=] = meta.input.parse()?;
                     let name: syn::LitStr = meta.input.parse()?;
@@ -144,7 +150,7 @@ impl AltrepAttrs {
                 } else {
                     return Err(meta.error(
                         "unknown #[altrep(...)] attribute; expected one of: \
-                         `len`, `elt`, `elt_delegate`, `no_lowlevel`, `class`, \
+                         `len`, `elt`, `elt_delegate`, `manual`, `no_lowlevel`, `class`, \
                          `dataptr`, `serialize`, `subset`, `unsafe`, \
                          `rust_unwind`, `r_unwind`",
                     ));
@@ -161,6 +167,7 @@ impl AltrepAttrs {
             lowlevel_options,
             guard,
             class_name,
+            manual,
         })
     }
 
@@ -442,16 +449,20 @@ fn derive_altrep_generic(
     let name = &input.ident;
     let generics = &input.generics;
     let attrs = AltrepAttrs::parse(&input)?;
-    let len_field = attrs.get_len_field(&input)?;
 
-    let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let elt_impl = gen_elt_impl(attrs.elt_field.as_ref(), attrs.elt_delegate.as_ref());
-
-    let data_trait_impl = quote! {
-        impl #impl_generics #data_trait_path for #name #ty_generics #where_clause {
-            #elt_impl
+    // In manual mode, skip AltrepLen + data trait generation — user provides their own.
+    let data_traits = if attrs.manual {
+        quote! {}
+    } else {
+        let len_field = attrs.get_len_field(&input)?;
+        let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        let elt_impl = gen_elt_impl(attrs.elt_field.as_ref(), attrs.elt_delegate.as_ref());
+        quote! {
+            #altrep_len_impl
+            impl #impl_generics #data_trait_path for #name #ty_generics #where_clause {
+                #elt_impl
+            }
         }
     };
 
@@ -468,8 +479,7 @@ fn derive_altrep_generic(
         crate::altrep::generate_direct_altrep_registration(name, generics, &class_name)?;
 
     Ok(quote! {
-        #altrep_len_impl
-        #data_trait_impl
+        #data_traits
         #lowlevel_impl
         #registration_impl
     })
@@ -698,29 +708,35 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let generics = &input.generics;
     let attrs = AltrepAttrs::parse(&input)?;
-    let len_field = attrs.get_len_field(&input)?;
-
-    let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    // List elt() returns SEXP - if elt_field specified, assume it's a Vec<SEXP> or similar
-    let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
-        quote! {
-            fn elt(&self, i: usize) -> ::miniextendr_api::ffi::SEXP {
-                self.#elt_field[i]
-            }
-        }
+    // In manual mode, skip AltrepLen + AltListData generation.
+    let data_traits = if attrs.manual {
+        quote! {}
     } else {
-        quote! {
-            fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::ffi::SEXP::nil()
-            }
-        }
-    };
+        let len_field = attrs.get_len_field(&input)?;
+        let altrep_len_impl = generate_altrep_len(name, generics, &len_field);
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let alt_list_impl = quote! {
-        impl #impl_generics ::miniextendr_api::altrep_data::AltListData for #name #ty_generics #where_clause {
-            #elt_impl
+        let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
+            quote! {
+                fn elt(&self, i: usize) -> ::miniextendr_api::ffi::SEXP {
+                    self.#elt_field[i]
+                }
+            }
+        } else {
+            quote! {
+                fn elt(&self, _i: usize) -> ::miniextendr_api::ffi::SEXP {
+                    ::miniextendr_api::ffi::SEXP::nil()
+                }
+            }
+        };
+
+        quote! {
+            #altrep_len_impl
+            impl #impl_generics ::miniextendr_api::altrep_data::AltListData for #name #ty_generics #where_clause {
+                #elt_impl
+            }
         }
     };
 
@@ -792,9 +808,10 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         crate::altrep::generate_direct_altrep_registration(name, generics, &class_name)?;
 
     Ok(quote! {
-        #altrep_len_impl
-        #alt_list_impl
+        #data_traits
         #lowlevel_impl
         #registration_impl
     })
 }
+
+// region: Public helper for derive(Altrep) with base parameter

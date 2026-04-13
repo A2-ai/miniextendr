@@ -2312,23 +2312,26 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 /// Generates `TypedExternal`, `AltrepClass`, `RegisterAltrep`, `IntoR`,
 /// linkme registration entry, and `Ref`/`Mut` accessor types.
 ///
-/// The struct must already implement the low-level ALTREP traits (via
-/// `impl_alt*_from_data!` or a family-specific derive like `#[derive(AltrepInteger)]`).
+/// The struct must already have low-level ALTREP traits implemented.
+/// For most use cases, prefer a family-specific derive:
+/// `#[derive(AltrepInteger)]`, `#[derive(AltrepReal)]`, etc.
+/// Use `#[altrep(manual)]` on a family derive to skip data trait generation
+/// when you provide your own `AltrepLen` + `Alt*Data` impls.
 ///
 /// # Attributes
 ///
-/// - `#[altrep(class = "ClassName")]` — custom ALTREP class name (defaults to struct name)
+/// - `#[altrep(class = "Name")]` — custom ALTREP class name (defaults to struct name)
 ///
 /// # Example
 ///
 /// ```ignore
-/// #[derive(Altrep)]
-/// #[altrep(class = "MyCustom")]
+/// // Prefer family derives with manual:
+/// #[derive(AltrepInteger)]
+/// #[altrep(manual, class = "MyCustom", serialize)]
 /// struct MyData { ... }
 ///
 /// impl AltrepLen for MyData { ... }
 /// impl AltIntegerData for MyData { ... }
-/// impl_altinteger_from_data!(MyData);
 /// ```
 #[proc_macro_derive(Altrep, attributes(altrep))]
 pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

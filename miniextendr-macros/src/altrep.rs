@@ -13,15 +13,15 @@
 //! struct MyConstInt { value: i32, len: usize }
 //! ```
 //!
-//! For types with manual trait impls (registration only):
+//! For types with manual trait impls (lowlevel + registration, user writes data traits):
 //! ```ignore
-//! #[derive(Altrep)]
-//! #[altrep_derive_opts(class = "MyCustom")]
+//! #[derive(AltrepInteger)]
+//! #[altrep(manual, class = "MyCustom", serialize)]
 //! struct MyCustomData { ... }
 //!
 //! impl AltrepLen for MyCustomData { ... }
 //! impl AltIntegerData for MyCustomData { ... }
-//! impl_altinteger_from_data!(MyCustomData);
+//! // Family derived from AltrepInteger — generates Altrep, AltVec, AltInteger, InferBase.
 //! ```
 
 /// Generates full ALTREP registration for a data struct.
@@ -250,11 +250,15 @@ pub(crate) fn generate_direct_altrep_registration(
 
 /// Entry point for `#[derive(Altrep)]`.
 ///
-/// Generates ALTREP registration for a data struct (TypedExternal, AltrepClass,
+/// Generates ALTREP registration only (TypedExternal, AltrepClass,
 /// RegisterAltrep, IntoR, linkme entry, Ref/Mut accessor types).
 ///
-/// The struct must already have low-level ALTREP traits implemented (via
-/// `impl_alt*_from_data!` or a family-specific derive like `#[derive(AltrepInteger)]`).
+/// The struct must already have low-level ALTREP traits implemented.
+/// For most use cases, prefer a family-specific derive instead:
+/// `#[derive(AltrepInteger)]`, `#[derive(AltrepReal)]`, etc.
+/// Those generate both the low-level traits AND registration.
+/// Use `#[altrep(manual)]` on a family derive to skip data trait generation
+/// when you provide your own `AltrepLen` + `Alt*Data` impls.
 ///
 /// # Helper attributes
 ///
