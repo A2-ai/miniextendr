@@ -1556,6 +1556,28 @@ pub(super) enum EnumResolvedField {
     AutoExpandVec(Box<EnumAutoExpandVecData>),
 }
 
+impl EnumResolvedField {
+    /// Binding name used in destructure patterns.
+    pub(super) fn binding(&self) -> &syn::Ident {
+        match self {
+            Self::Single(data) => &data.binding,
+            Self::ExpandedFixed(data) => &data.binding,
+            Self::ExpandedVec(data) => &data.binding,
+            Self::AutoExpandVec(data) => &data.binding,
+        }
+    }
+
+    /// Original Rust field name.
+    pub(super) fn rust_name(&self) -> &syn::Ident {
+        match self {
+            Self::Single(data) => &data.rust_name,
+            Self::ExpandedFixed(data) => &data.rust_name,
+            Self::ExpandedVec(data) => &data.rust_name,
+            Self::AutoExpandVec(data) => &data.rust_name,
+        }
+    }
+}
+
 /// Data for [`EnumResolvedField::Single`].
 pub(super) struct EnumSingleFieldData {
     /// Column name in the schema.
