@@ -1,12 +1,35 @@
-# Windows-specific Makevars - includes base Makevars and overrides PKG_LIBS
+# Windows-specific Makevars - includes base Makevars and overrides platform sources
 include Makevars
 
+# Override NNG platform sources (Makevars sets POSIX; we replace with Windows)
+NNG_PLATFORM_SOURCES = \
+  nng/src/platform/windows/win_clock.c \
+  nng/src/platform/windows/win_debug.c \
+  nng/src/platform/windows/win_file.c \
+  nng/src/platform/windows/win_io.c \
+  nng/src/platform/windows/win_ipcconn.c \
+  nng/src/platform/windows/win_ipcdial.c \
+  nng/src/platform/windows/win_ipclisten.c \
+  nng/src/platform/windows/win_pipe.c \
+  nng/src/platform/windows/win_rand.c \
+  nng/src/platform/windows/win_resolv.c \
+  nng/src/platform/windows/win_sockaddr.c \
+  nng/src/platform/windows/win_socketpair.c \
+  nng/src/platform/windows/win_tcp.c \
+  nng/src/platform/windows/win_tcpconn.c \
+  nng/src/platform/windows/win_tcpdial.c \
+  nng/src/platform/windows/win_tcplisten.c \
+  nng/src/platform/windows/win_thread.c \
+  nng/src/platform/windows/win_udp.c
+
 # Windows-specific: Rust std lib and crates require these Windows system libraries
-# - ws2_32: Windows Sockets (network)
+# - ws2_32: Windows Sockets (network) [also in NNG_LIBS from configure]
 # - ntdll: NT kernel functions (pipes, file I/O)
 # - userenv: User profile functions
-# - bcrypt: Cryptography
+# - bcrypt: Cryptography [also in NNG_LIBS from configure]
 # - advapi32: Security functions
 # - secur32: Security Support Provider Interface (GetUserNameExW for whoami crate)
+# - mswsock: Winsock extensions (NNG uses ConnectEx, AcceptEx)
+# - iphlpapi: IP helper API (NNG uses GetAdaptersAddresses) [also in NNG_LIBS from configure]
 # Use full path to staticlib to avoid MinGW linker picking up cdylib's .dll.a import lib
-PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32
+PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS) -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32 -lmswsock -liphlpapi
