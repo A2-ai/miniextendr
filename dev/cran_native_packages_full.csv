@@ -1,0 +1,649 @@
+"Package","has_inst_include","n_include_files","n_header_files","NeedsCompilation","mode","std","bindgen_status","n_lines","has_static_fns","error_category","error_detail","excluded_rcpp_ecosystem"
+"BH",TRUE,13608,12312,"no","cpp","","compile_error",0,"no","compile_error","progress.hpp:23:3: error: This header is deprecated and will be removed. (You can define BOOST_TIMER_ENABLE_DEPRECATED to suppress this error.)",FALSE
+"cgal4h",TRUE,3065,2930,"no","cpp","","missing_header",0,"no","missing_header","'boost/config.hpp' file not found",FALSE
+"StanHeaders",TRUE,2216,2142,"yes","cpp","","missing_header",0,"no","missing_header","'petscsnes.h' file not found",FALSE
+"RcppBlaze",TRUE,1742,1683,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppArmadillo",TRUE,1325,1303,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"mlpack",TRUE,1333,1149,"yes","cpp","","compile_error",0,"no","compile_error","base.hpp:82:4: error: Need to enable C++17 mode in your compiler",FALSE
+"dlib",TRUE,1290,913,"yes","cpp","c++14","ok",20663,"no","","",FALSE
+"Boom",TRUE,1008,876,"yes","cpp","c++17","ok",34562,"no","","",FALSE
+"nimble",TRUE,895,726,"yes","cpp","","compile_error",0,"no","compile_error","ordered.hpp:36:28: error: no template named 'AD'",FALSE
+"armadillo4r",TRUE,658,652,"no","cpp","","missing_header",0,"no","missing_header","'cpp4r.hpp' file not found",FALSE
+"RcppMsgPack",TRUE,733,652,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"cpp11armadillo",TRUE,645,641,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"AsioHeaders",TRUE,650,544,"no","cpp","","compile_error",0,"no","compile_error","detached.hpp:32:22: error: unknown type name 'detached_t'",FALSE
+"RcppEigen",TRUE,617,479,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppEigenAD",TRUE,469,425,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"cpp11eigen",TRUE,518,389,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"Rcpp",TRUE,405,364,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"abseil",TRUE,1538,353,"no","cpp","","missing_header",0,"no","missing_header","'gmock/gmock.h' file not found",FALSE
+"RcppEnsmallen",TRUE,365,297,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"TMB",TRUE,329,287,"yes","cpp","","compile_error",0,"no","compile_error","Vectorize.hpp:172:7: error: use of undeclared identifier 'CppAD'",FALSE
+"RViennaCL",TRUE,289,251,"no","cpp","","rcpp_dep",0,"no","rcpp_dep","'Rcpp.h' file not found",FALSE
+"piton",TRUE,185,179,"yes","cpp","c++17","ok",15661,"no","","",FALSE
+"libopenexr",TRUE,161,158,"yes","cpp","","missing_header",0,"no","missing_header","'ImathBox.h' file not found",FALSE
+"rjsoncons",TRUE,178,156,"yes","cpp","","compile_error",0,"no","compile_error","json_decoder.hpp:54:110: error: use of undeclared identifier 'index_key_value'",FALSE
+"RcppAlgos",TRUE,136,125,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppSpdlog",TRUE,119,110,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"r2sundials",TRUE,108,98,"yes","cpp","","missing_header",0,"no","missing_header","'petscsnes.h' file not found",FALSE
+"balnet",TRUE,159,95,"yes","cpp","c++17","ok",35204,"no","","",FALSE
+"Rcereal",TRUE,102,85,"no","cpp","","missing_header",0,"no","missing_header","'boost/variant/variant_fwd.hpp' file not found",FALSE
+"RcppXsimd",TRUE,87,79,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"HighFive",TRUE,82,76,"no","cpp","","missing_header",0,"no","missing_header","'H5Ppublic.h' file not found",FALSE
+"ergm",TRUE,79,74,"yes","cpp","","compile_error",0,"no","compile_error","ergm_nodelist.h:31:36: error: unexpected type name 'NodeList': expected expression",FALSE
+"profoc",TRUE,85,74,"yes","cpp","","rcpp_dep",0,"no","rcpp_dep","'rcpptimer.h' file not found",FALSE
+"colourvalues",TRUE,85,71,"yes","cpp","c++17","ok",21657,"no","","",FALSE
+"epiworldR",TRUE,78,71,"yes","cpp","","compile_error",0,"no","compile_error","config.hpp:78:23: error: no template named 'shared_ptr' in namespace 'std'",FALSE
+"eimpute",TRUE,76,68,"yes","cpp","c++17","ok",41720,"no","","",FALSE
+"rethnicity",TRUE,74,68,"yes","cpp","c++17","ok",37111,"no","","",FALSE
+"ribiosUtils",TRUE,68,67,"yes","c","","compile_error",0,"no","compile_error","notifier.h:30:51: error: unknown type name 'Texta'",FALSE
+"rTRNG",TRUE,68,66,"yes","cpp","c++17","ok",13851,"no","","",FALSE
+"barry",TRUE,68,62,"no","cpp","","compile_error",0,"no","compile_error","barray-meat.hpp:18:17: error: no template named 'BArray'",FALSE
+"RSpectra",TRUE,69,62,"yes","cpp","c++17","ok",28023,"no","","",FALSE
+"tidysq",TRUE,63,56,"yes","cpp","c++17","ok",19010,"no","","",FALSE
+"FIRM",TRUE,61,54,"yes","cpp","","compile_error",0,"no","compile_error","RitzPairs.h:55:15: error: unknown type name 'SortRule'",FALSE
+"sfheaders",TRUE,80,54,"yes","cpp","c++17","ok",18244,"no","","",FALSE
+"abess",TRUE,57,50,"yes","cpp","c++17","ok",27855,"no","","",FALSE
+"rkriging",TRUE,57,50,"yes","cpp","c++17","ok",27855,"no","","",FALSE
+"rvinecopulib",TRUE,87,48,"yes","cpp","","compile_error",0,"no","compile_error","tools_thread.hpp:21:7: error: definition of type 'ThreadPool' conflicts with typedef of the same name",FALSE
+"bvhar",TRUE,66,47,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"Rblpapi",TRUE,43,42,"yes","cpp","c++17","ok",25711,"no","","",FALSE
+"RcppFastAD",TRUE,50,41,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"rapidjsonr",TRUE,43,38,"no","cpp","c++17","ok",12253,"no","","",FALSE
+"RcppTOML",TRUE,53,37,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"libimath",TRUE,37,35,"yes","cpp","","missing_header",0,"no","missing_header","'GL/gl.h' file not found",FALSE
+"simmer",TRUE,41,35,"yes","cpp","c++17","ok",19572,"no","","",FALSE
+"SLOPE",TRUE,39,35,"yes","cpp","c++17","ok",29451,"no","","",FALSE
+"MPCR",TRUE,45,34,"yes","cpp","","rcpp_dep",0,"no","rcpp_dep","'Rcpp.h' file not found",FALSE
+"abclass",TRUE,35,33,"yes","cpp","c++17","ok",29658,"no","","",FALSE
+"ernm",TRUE,33,32,"yes","cpp","c++17","ok",25764,"no","","",FALSE
+"geepack",TRUE,34,32,"yes","cpp","c++17","ok",15106,"no","","",FALSE
+"geometries",TRUE,54,32,"yes","cpp","c++17","ok",18155,"no","","",FALSE
+"glmmrBase",TRUE,35,32,"yes","cpp","","compile_error",0,"no","compile_error","maths.h:842:10: error: use of class template 'std::normal_distribution' requires template arguments",FALSE
+"lessSEM",TRUE,37,32,"yes","cpp","c++17","ok",29742,"no","","",FALSE
+"tpr",TRUE,34,32,"yes","cpp","c++17","ok",15090,"no","","",FALSE
+"lpSolveAPI",TRUE,32,31,"yes","c","","compile_error",0,"no","compile_error","lp_rlp.h:653:5: error: unknown type name 'YYSTYPE'",FALSE
+"sourcetools",TRUE,45,31,"yes","cpp","","missing_header",0,"no","missing_header","'testthat.h' file not found",FALSE
+"cpp4r",TRUE,31,29,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"fntl",TRUE,30,29,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"vcfppR",TRUE,31,29,"yes","c","c","ok",10103,"yes","","",FALSE
+"gaston",TRUE,30,28,"yes","cpp","c++17","ok",34259,"no","","",FALSE
+"rnndescent",TRUE,31,28,"yes","cpp","","compile_error",0,"no","compile_error","distance.h:531:17: error: no member named 'clamp' in namespace 'std'",FALSE
+"treestats",TRUE,29,28,"yes","cpp","c++17","ok",29978,"no","","",FALSE
+"cpp11",TRUE,30,27,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"duckdb",TRUE,27,25,"yes","cpp","","compile_error",0,"no","compile_error","R.hpp:7:2: error: R headers were included before cpp11 headers   and at least one of R_NO_REMAP or STRICT_R_HEADERS   was not defined.",FALSE
+"lolog",TRUE,26,25,"yes","cpp","c++17","ok",22984,"no","","",FALSE
+"rxylib",TRUE,27,25,"yes","cpp","","compile_error",0,"no","compile_error","csv.h:34:9: error: unknown type name 'OBLIGATORY_DATASET_MEMBERS'",FALSE
+"phutil",TRUE,26,24,"yes","cpp","","compile_error",0,"no","compile_error","R.hpp:7:2: error: R headers were included before cpp11 headers   and at least one of R_NO_REMAP or STRICT_R_HEADERS   was not defined.",FALSE
+"tidyfast",TRUE,26,24,"yes","cpp","","compile_error",0,"no","compile_error","R.hpp:7:2: error: R headers were included before cpp11 headers   and at least one of R_NO_REMAP or STRICT_R_HEADERS   was not defined.",FALSE
+"covafillr",TRUE,43,23,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"approxOT",TRUE,24,22,"yes","cpp","c++17","ok",49715,"no","","",FALSE
+"RcppClassic",TRUE,24,22,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"scorematchingad",TRUE,28,22,"yes","cpp","c++17","ok",35790,"no","","",FALSE
+"hesim",TRUE,28,21,"yes","cpp","c++17","ok",29771,"no","","",FALSE
+"polylabelr",TRUE,24,21,"yes","cpp","","compile_error",0,"no","compile_error","feature.hpp:118:5: error: use of undeclared identifier 'match'",FALSE
+"VarSelLCM",TRUE,22,21,"yes","cpp","c++17","ok",30256,"no","","",FALSE
+"msde",TRUE,25,20,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"RcppTskit",TRUE,26,20,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"sox",TRUE,25,20,"yes","cpp","","missing_header",0,"no","missing_header","'mex.h' file not found",FALSE
+"spatialwidget",TRUE,36,19,"yes","cpp","","rcpp_dep",0,"no","rcpp_dep","'Rcpp.h' file not found",FALSE
+"tzdb",TRUE,22,19,"yes","cpp","c++17","ok",15029,"no","","",FALSE
+"VineCopula",TRUE,21,19,"yes","c","c","ok",6828,"yes","","",FALSE
+"vws",TRUE,20,19,"yes","cpp","c++17","ok",19193,"no","","",FALSE
+"galamm",TRUE,27,18,"yes","cpp","c++17","ok",26792,"no","","",FALSE
+"GeneralizedUmatrixGPU",TRUE,20,18,"yes","c","","missing_header",0,"no","missing_header","'d3d11.h' file not found",FALSE
+"geojsonsf",TRUE,31,18,"yes","cpp","","compile_error",0,"no","compile_error","geojson_properties.hpp:197:3: error: unknown type name 'StringBuffer'",FALSE
+"milorGWAS",TRUE,20,18,"yes","cpp","c++17","ok",35605,"no","","",FALSE
+"RcppBigIntAlgos",TRUE,20,18,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppNumerical",TRUE,22,18,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppSMC",TRUE,19,18,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"spacefillr",TRUE,20,18,"yes","cpp","c++17","ok",19691,"no","","",FALSE
+"ggdmcHeaders",TRUE,19,17,"yes","cpp","","rcpp_dep",0,"no","rcpp_dep","'RcppArmadillo.h' file not found",FALSE
+"matchingMarkets",TRUE,18,17,"yes","cpp","","missing_header",0,"no","missing_header","'minisat/mtl/Vec.h' file not found",FALSE
+"NlinTS",TRUE,18,17,"yes","cpp","c++17","ok",19927,"no","","",FALSE
+"rstan",TRUE,21,17,"yes","cpp","","missing_header",0,"no","missing_header","'stan/callbacks/writer.hpp' file not found",FALSE
+"dqrng",TRUE,18,16,"yes","cpp","","rcpp_dep",0,"no","rcpp_dep","'RcppParallel/RVector.h' file not found",FALSE
+"pg",TRUE,17,16,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rxode2",TRUE,19,16,"yes","cpp","","missing_header",0,"no","missing_header","'../inst/include/rxode2.h' file not found",FALSE
+"unigd",TRUE,18,16,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'fstream' file not found",FALSE
+"birdie",TRUE,18,15,"yes","cpp","","missing_header",0,"no","missing_header","'stan/callbacks/writer.hpp' file not found",FALSE
+"infoxtr",TRUE,17,15,"yes","cpp","c++17","ok",19395,"no","","",FALSE
+"ggmlR",TRUE,15,14,"yes","cpp","c++17","ok",23673,"no","","",FALSE
+"IFC",TRUE,15,14,"yes","cpp","c++17","ok",19191,"no","","",FALSE
+"RiemBase",TRUE,17,14,"yes","cpp","c++17","ok",29211,"no","","",FALSE
+"RNifti",TRUE,18,14,"yes","cpp","","compile_error",0,"no","compile_error","nifti2_image.h:12:3: error: typedef redefinition with different types ('struct nifti_dmat44' vs 'struct nifti_dmat44')",FALSE
+"vapour",TRUE,24,14,"yes","cpp","","missing_header",0,"no","missing_header","'gdal_priv.h' file not found",FALSE
+"bigstatsr",TRUE,16,13,"yes","cpp","","compile_error",0,"no","compile_error","RcppArmadillo.h:25:6: error: The file 'Rcpp.h' should not be included. Please correct to include only 'RcppArmadillo.h'.",FALSE
+"FisPro",TRUE,15,13,"yes","cpp","","missing_header",0,"no","missing_header","'util/ptr_deleter.h' file not found",FALSE
+"intsurv",TRUE,15,13,"yes","cpp","c++17","ok",29460,"no","","",FALSE
+"jsonify",TRUE,21,13,"yes","cpp","c++17","ok",19054,"no","","",FALSE
+"parallelpam",TRUE,14,13,"yes","cpp","c++17","ok",20351,"no","","",FALSE
+"RcppSimdJson",TRUE,17,13,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"SAMtool",TRUE,15,13,"yes","cpp","","compile_error",0,"no","compile_error","cDD.hpp:9:10: error: no template named 'objective_function'",FALSE
+"scellpam",TRUE,14,13,"yes","cpp","c++17","ok",20351,"no","","",FALSE
+"uwot",TRUE,15,13,"yes","cpp","c++17","ok",13439,"no","","",FALSE
+"wdm",TRUE,15,13,"yes","cpp","","missing_header",0,"no","missing_header","'Eigen/Dense' file not found",FALSE
+"ABM",TRUE,13,12,"yes","cpp","c++17","ok",19051,"no","","",FALSE
+"fido",TRUE,14,12,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"LocalCop",TRUE,15,12,"yes","cpp","","compile_error",0,"no","compile_error","gumbel.hpp:26:3: error: unknown type name 'VECTORIZE4_ttti'",FALSE
+"RcppZiggurat",TRUE,13,12,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"splines2",TRUE,14,12,"yes","cpp","c++17","ok",29312,"no","","",FALSE
+"fastText",TRUE,12,11,"yes","cpp","c++17","ok",16379,"no","","",FALSE
+"FSelectorRcpp",TRUE,18,11,"yes","cpp","","compile_error",0,"no","compile_error","equalsize.h:38:56: error: no member named 'order' in namespace 'fselector::support'",FALSE
+"lidR",TRUE,13,11,"yes","cpp","","missing_header",0,"no","missing_header","'Shapes.h' file not found",FALSE
+"pc",TRUE,13,11,"yes","cpp","c++17","ok",19341,"no","","",FALSE
+"psychonetrics",TRUE,14,11,"yes","cpp","c++17","ok",25434,"no","","",FALSE
+"Rfast",TRUE,13,11,"yes","cpp","","compile_error",0,"no","compile_error","FactorVector.hpp:5:11: error: redefinition of 'FactorVector'",FALSE
+"dbarts",TRUE,14,10,"yes","cpp","c++17","ok",13132,"no","","",FALSE
+"ggdmc",TRUE,12,10,"yes","cpp","","compile_error",0,"no","compile_error","Phi.hpp:18:3: error: unknown type name 'Prior'",FALSE
+"pfr",TRUE,12,10,"no","cpp","","missing_header",0,"no","missing_header","'Eigen/Dense' file not found",FALSE
+"RcppDate",TRUE,11,10,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppDist",TRUE,11,10,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppParallel",TRUE,14,10,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppThread",TRUE,12,10,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"seqtrie",TRUE,19,10,"yes","cpp","","compile_error",0,"no","compile_error","unordered_dense.h:79:6: error: ankerl::unordered_dense requires C++17 or higher",FALSE
+"SuperGauss",TRUE,12,10,"yes","cpp","","missing_header",0,"no","missing_header","'fftw3.h' file not found",FALSE
+"TreeTools",TRUE,12,10,"yes","cpp","c++17","ok",16899,"no","","",FALSE
+"Countr",TRUE,10,9,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ipaddress",TRUE,11,9,"yes","cpp","c++17","ok",22743,"no","","",FALSE
+"kde1d",TRUE,11,9,"yes","cpp","","compile_error",0,"no","compile_error","kde1d-wrappers.hpp:33:8: error: use of undeclared identifier 'Rcpp'",FALSE
+"LearnNonparam",TRUE,11,9,"yes","cpp","","compile_error",0,"no","compile_error","progress.hpp:97:23: error: unknown type name 'RObject'",FALSE
+"luajr",TRUE,10,9,"yes","c","","compile_error",0,"no","compile_error","luajr_funcs.h:4:14: error: unknown type name 'lua_State'",FALSE
+"PRIMME",TRUE,11,9,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"psqn",TRUE,10,9,"yes","cpp","","compile_error",0,"no","compile_error","richardson-extrapolation.h:54:8: error: redefinition of 'richardson_extrapolation'",FALSE
+"ravetools",TRUE,13,9,"yes","cpp","","compile_error",0,"no","compile_error","Timer.h:93:36: error: no member named 'get_nanotime' in namespace 'Rcpp'",FALSE
+"RcppFastFloat",TRUE,11,9,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppMagicEnum",TRUE,12,9,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"sparsepp",TRUE,42,9,"no","cpp","c++17","ok",14802,"no","","",FALSE
+"tiledb",TRUE,11,9,"yes","cpp","","missing_header",0,"no","missing_header","'tiledb/tiledb' file not found",FALSE
+"torch",TRUE,11,9,"yes","cpp","","missing_header",0,"no","missing_header","'c10/core/Device.h' file not found",FALSE
+"bigmemory",TRUE,11,8,"yes","cpp","","compile_error",0,"no","compile_error","util.h:44:46: error: use of undeclared identifier 'Rcpp'",FALSE
+"crownsegmentr",TRUE,9,8,"yes","c","","compile_error",0,"no","compile_error","geometry.hpp:26:2: error: Use C++14 or higher to compile Boost.Geometry; or use Boost 1.72 or lower.",FALSE
+"CSeQTL",TRUE,9,8,"yes","none","","not_installed",0,"no","not_installed","",FALSE
+"evesim",TRUE,10,8,"yes","cpp","c++17","ok",23995,"no","","",FALSE
+"jmatrix",TRUE,9,8,"yes","cpp","c++17","ok",19048,"no","","",FALSE
+"Matrix",TRUE,12,8,"yes","none","","not_installed",0,"no","not_installed","",FALSE
+"microsimulation",TRUE,12,8,"yes","cpp","","compile_error",0,"no","compile_error","RcppArmadillo.h:25:6: error: The file 'Rcpp.h' should not be included. Please correct to include only 'RcppArmadillo.h'.",FALSE
+"qualpalr",TRUE,10,8,"yes","cpp","c++17","ok",13644,"no","","",FALSE
+"RcppGSL",TRUE,9,8,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppHNSW",TRUE,10,8,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppML",TRUE,10,8,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"Rfast2",TRUE,10,8,"yes","cpp","c++17","ok",36157,"no","","",FALSE
+"ribiosIO",TRUE,10,8,"yes","c","c","ok",4846,"yes","","",FALSE
+"rmumps",TRUE,9,8,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"shide",TRUE,10,8,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cassert' file not found",FALSE
+"dipsaus",TRUE,11,7,"yes","cpp","","compile_error",0,"no","compile_error","Timer.h:19:13: error: use of undeclared identifier 'Rcpp'",FALSE
+"fastcpd",TRUE,8,7,"yes","cpp","c++17","ok",45125,"no","","",FALSE
+"glmmrOptim",TRUE,9,7,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"mniw",TRUE,9,7,"yes","cpp","c++17","ok",34632,"no","","",FALSE
+"oeli",TRUE,8,7,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rgen",TRUE,9,7,"no","c","","rcpp_dep",0,"no","rcpp_dep","'RcppArmadillo.h' file not found",FALSE
+"rminqa",TRUE,8,7,"yes","cpp","","compile_error",0,"no","compile_error","optim.h:42:12: error: 'auto' not allowed in template parameter until C++17",FALSE
+"Rnanoflann",TRUE,9,7,"yes","cpp","c++17","ok",30227,"no","","",FALSE
+"rsparse",TRUE,8,7,"yes","cpp","","compile_error",0,"no","compile_error","nnls.hpp:11:14: error: redefinition of 'scd_ls_update'",FALSE
+"tidyCpp",TRUE,10,7,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"TTR.PGM",TRUE,9,7,"yes","cpp","c++17","ok",29501,"no","","",FALSE
+"aphylo",TRUE,7,6,"yes","cpp","","compile_error",0,"no","compile_error","treeiterator_meat.hpp:7:33: error: redefinition of 'TreeIterator<Data_Type>'",FALSE
+"cheapr",TRUE,9,6,"yes","cpp","","compile_error",0,"no","compile_error","R.hpp:5:2: error: R headers were included before cpp11 headers   and at least one of R_NO_REMAP or STRICT_R_HEADERS   was not defined.",FALSE
+"fdacluster",TRUE,7,6,"yes","cpp","","compile_error",0,"no","compile_error","sharedFactoryClass.hpp:5:32: error: redefinition of 'Instantiate'",FALSE
+"filearray",TRUE,10,6,"yes","cpp","","compile_error",0,"no","compile_error","Timer.h:19:13: error: use of undeclared identifier 'Rcpp'",FALSE
+"iglm",TRUE,8,6,"yes","cpp","c++17","ok",29841,"no","","",FALSE
+"interleave",TRUE,13,6,"yes","cpp","","compile_error",0,"no","compile_error","earcut.hpp:863:5: error: use of undeclared identifier 'Rcpp'",FALSE
+"kdecopula",TRUE,7,6,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"MLZ",TRUE,7,6,"yes","cpp","","compile_error",0,"no","compile_error","functions.hpp:15:3: error: no template named 'matrix'",FALSE
+"nanotime",TRUE,8,6,"yes","cpp","c++17","ok",19063,"no","","",FALSE
+"ratematrix",TRUE,7,6,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"RcppBDT",TRUE,7,6,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppCCTZ",TRUE,8,6,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"readstata13",TRUE,7,6,"yes","cpp","","compile_error",0,"no","compile_error","read_pre13_dta.h:21:1: error: use of undeclared identifier 'Rcpp'",FALSE
+"RInside",TRUE,7,6,"yes","cpp","","compile_error",0,"no","compile_error","MemBuf.h:23:7: error: redefinition of 'MemBuf'",FALSE
+"cubature",TRUE,6,5,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"meteoland",TRUE,7,5,"yes","cpp","c++17","ok",18181,"no","","",FALSE
+"meteor",TRUE,6,5,"yes","cpp","","missing_header",0,"no","missing_header","'ConvertUTF.h' file not found",FALSE
+"mrgsolve",TRUE,6,5,"yes","cpp","","missing_header",0,"no","missing_header","'mrgsolv.h' file not found",FALSE
+"pcalg",TRUE,7,5,"yes","none","","not_installed",0,"no","not_installed","",FALSE
+"qlcal",TRUE,6,5,"yes","c","","missing_header",0,"no","missing_header","'ql/quantlib.hpp' file not found",FALSE
+"rangen",TRUE,7,5,"yes","cpp","c++17","ok",29495,"no","","",FALSE
+"RcppProgress",TRUE,6,5,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppQuantuccia",TRUE,6,5,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"rmio",TRUE,12,5,"no","cpp","c++17","ok",14984,"no","","",FALSE
+"roll",TRUE,6,5,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"RQuantLib",TRUE,6,5,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"stochvol",TRUE,6,5,"yes","cpp","c++17","ok",29494,"no","","",FALSE
+"svines",TRUE,11,5,"yes","cpp","","bindgen_panic",0,"no","bindgen_panic","bindgen crashed on complex C++ templates",FALSE
+"valr",TRUE,7,5,"yes","none","","not_installed",0,"no","not_installed","",FALSE
+"adapt3",TRUE,6,4,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bnclassify",TRUE,5,4,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ctsmTMB",TRUE,5,4,"yes","c","","missing_header",0,"no","missing_header","'TMB.hpp' file not found",FALSE
+"CVXR",TRUE,5,4,"yes","cpp","","compile_error",0,"no","compile_error","CVXR.h:17:10: error: use of undeclared identifier 'genRandomId'",FALSE
+"fastglm",TRUE,5,4,"yes","cpp","c++17","ok",34136,"no","","",FALSE
+"GiRaF",TRUE,5,4,"yes","cpp","","compile_error",0,"no","compile_error","lattice.hpp:7:10: error: use of undeclared identifier 'arma'",FALSE
+"houba",TRUE,8,4,"yes","cpp","c++17","ok",15092,"no","","",FALSE
+"IBMPopSim",TRUE,12,4,"yes","cpp","","compile_error",0,"no","compile_error","popsim_algorithm.hpp:10:25: error: no member named 'max' in namespace 'std'",FALSE
+"imager",TRUE,7,4,"yes","cpp","","compile_error",0,"no","compile_error","inpaint.h:59:6: error: use of undeclared identifier 'T'",FALSE
+"lefko3",TRUE,6,4,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"nlmixr2est",TRUE,7,4,"yes","cpp","c++17","ok",44515,"no","","",FALSE
+"quanteda",TRUE,5,4,"yes","cpp","","compile_error",0,"no","compile_error","tokens.h:12:7: error: redefinition of 'TokensObj'",FALSE
+"rapidxmlr",TRUE,6,4,"no","cpp","","compile_error",0,"no","compile_error","rapidxml_iterators.hpp:21:26: error: expected a qualified name after 'typename'",FALSE
+"RcppAnnoy",TRUE,5,4,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppCWB",TRUE,7,4,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"reda",TRUE,6,4,"yes","cpp","c++17","ok",29299,"no","","",FALSE
+"redistmetrics",TRUE,5,4,"yes","cpp","c++17","ok",29835,"no","","",FALSE
+"roptim",TRUE,5,4,"yes","cpp","c++17","ok",29427,"no","","",FALSE
+"rstpm2",TRUE,5,4,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"RTMB",TRUE,7,4,"yes","cpp","","compile_error",0,"no","compile_error","CallRTMB.hpp:32:3: error: use of undeclared identifier 'getSetGlobalPtr'",FALSE
+"Runuran",TRUE,6,4,"yes","c","c","ok",6594,"yes","","",FALSE
+"RWNN",TRUE,5,4,"yes","cpp","","compile_error",0,"no","compile_error","rwnn_forward.hpp:9:19: error: expected ')'",FALSE
+"SparseChol",TRUE,5,4,"yes","cpp","c++17","ok",34210,"no","","",FALSE
+"TiPS",TRUE,5,4,"yes","cpp","c++17","ok",20219,"no","","",FALSE
+"triebeard",TRUE,6,4,"yes","cpp","c++17","ok",12892,"no","","",FALSE
+"trustOptim",TRUE,7,4,"yes","cpp","","compile_error",0,"no","compile_error","CG-quasi.h:19:17: error: expected namespace name",FALSE
+"wk",TRUE,8,4,"yes","cpp","","missing_header",0,"no","missing_header","'cpp11/external_pointer.hpp' file not found",FALSE
+"bigsparser",TRUE,5,3,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"bindrcpp",TRUE,4,3,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"cbbinom",TRUE,5,3,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"finalsize",TRUE,4,3,"yes","cpp","c++17","ok",33971,"no","","",FALSE
+"gRbase",TRUE,4,3,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"hypergeo2",TRUE,6,3,"yes","c","","missing_header",0,"no","missing_header","'array' file not found",FALSE
+"jackalope",TRUE,5,3,"yes","none","","not_installed",0,"no","not_installed","",FALSE
+"lbfgsb3c",TRUE,4,3,"yes","c","","compile_error",0,"no","compile_error","lbfgsb3x.h:18:6: error: redefinition of 'lbfgsb3C' as different kind of symbol",FALSE
+"libcoin",TRUE,4,3,"yes","c","c","ok",11885,"yes","","",FALSE
+"ManifoldOptim",TRUE,4,3,"yes","cpp","c++17","ok",29226,"no","","",FALSE
+"OpenImageR",TRUE,4,3,"yes","cpp","","compile_error",0,"no","compile_error","SLIC.h:100:3: error: use of undeclared identifier 'arma'",FALSE
+"OptimalBinningWoE",TRUE,5,3,"yes","cpp","c++17","ok",11922,"no","","",FALSE
+"PartialNetwork",TRUE,4,3,"yes","c","","rcpp_dep",0,"no","rcpp_dep","'RcppArmadillo.h' file not found",FALSE
+"RcppColMetric",TRUE,5,3,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppJagger",TRUE,5,3,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppMeCab",TRUE,4,3,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"sitmo",TRUE,4,3,"yes","cpp","c++17","ok",12870,"no","","",FALSE
+"squat",TRUE,4,3,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"targeted",TRUE,4,3,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"testthat",TRUE,6,3,"yes","cpp","c++17","ok",14816,"no","","",FALSE
+"torchvisionlib",TRUE,5,3,"yes","cpp","","missing_header",0,"no","missing_header","'torch/torch.h' file not found",FALSE
+"ZVCV",TRUE,4,3,"yes","cpp","c++17","ok",32170,"no","","",FALSE
+"autothresholdr",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"BayesFactor",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"BayesLN",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"bayesQRsurvey",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bdsmatrix",TRUE,3,2,"yes","c","c","ok",4543,"yes","","",FALSE
+"BeSS",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"BGVAR",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bigReg",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"biosensors.usc",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"blatent",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bpvars",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bsvars",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bsvarSIGNs",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bvartools",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"cccp",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"CircularDDM",TRUE,4,2,"yes","cpp","c++17","ok",29235,"no","","",FALSE
+"ClusterR",TRUE,3,2,"yes","cpp","","compile_error",0,"no","compile_error","ClusterRHeader.h:35:7: error: use of undeclared identifier 'Rcpp'",FALSE
+"cmpsR",TRUE,3,2,"yes","c","c","ok",4487,"yes","","",FALSE
+"coga",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"comat",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"cooltools",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ctmcd",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"decido",TRUE,7,2,"yes","cpp","","compile_error",0,"no","compile_error","decido.hpp:148:5: error: unknown type name 'IntegerVector'",FALSE
+"DiscreteDists",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"dmbc",TRUE,3,2,"yes","cpp","c++17","ok",29546,"no","","",FALSE
+"dspline",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"eddington",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"edina",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"edlibR",TRUE,3,2,"yes","c","","compile_error",0,"no","compile_error","edlib_external.h:13:5: error: use of undeclared identifier 'using'",FALSE
+"empichar",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ergm.multi",TRUE,6,2,"yes","c","c","ok",5221,"yes","","",FALSE
+"exdex",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"extraDistr",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"fastmatrix",TRUE,3,2,"yes","c","c","ok",13497,"yes","","",FALSE
+"float",TRUE,4,2,"yes","c","c","ok",2899,"no","","",FALSE
+"fourierin",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"fstcore",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"gastempt",TRUE,3,2,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"gibasa",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"gif",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"grainscape",TRUE,3,2,"yes","cpp","","compile_error",0,"no","compile_error","DataStruct.h:4:8: error: redefinition of 'Cell'",FALSE
+"gRc",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"gRim",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"grpCox",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"h3r",TRUE,3,2,"yes","c","c","ok",4579,"yes","","",FALSE
+"hpa",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"infocausality",TRUE,3,2,"yes","cpp","c++17","ok",12685,"no","","",FALSE
+"itp",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"JuliaCall",TRUE,4,2,"yes","cpp","c++17","ok",18165,"no","","",FALSE
+"LambertW",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"lamW",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"maotai",TRUE,4,2,"yes","cpp","c++17","ok",29225,"no","","",FALSE
+"mapdeck",TRUE,4,2,"yes","cpp","c++17","ok",18169,"no","","",FALSE
+"markovmix",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"MatchIt",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"medfate",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"mets",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"mev",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"miceadds",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"miniPCH",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"mnorm",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"multiRL",TRUE,3,2,"yes","cpp","c++17","ok",18142,"no","","",FALSE
+"mvtnorm",TRUE,3,2,"yes","c","c","ok",5105,"yes","","",FALSE
+"network",TRUE,3,2,"yes","c","c","ok",4599,"yes","","",FALSE
+"networkscaleup",TRUE,4,2,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"o2geosocial",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ODRF",TRUE,3,2,"yes","c","","compile_error",0,"no","compile_error","node_cuts.h:2:6: error: conflicting types for 'gini_split'",FALSE
+"openxlsx2",TRUE,5,2,"yes","cpp","c++17","ok",16507,"no","","",FALSE
+"pacotest",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"pak",TRUE,7,2,"yes","none","","not_installed",0,"no","not_installed","",FALSE
+"pbv",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"pcadapt",TRUE,4,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"Peptides",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"philentropy",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"PoissonBinomial",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"PoissonMultinomial",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"pomp",TRUE,3,2,"yes","c","","compile_error",0,"no","compile_error","pomp_defines.h:47:15: error: call to undeclared function 'allocArray'; ISO C99 and later do not support implicit function declarations [-Wimplicit-fun",FALSE
+"porridge",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"primes",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"RClickhouse",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'clickhouse/client.h' file not found",FALSE
+"RcppBessel",TRUE,3,2,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppInt64",TRUE,5,2,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"rcpptimer",TRUE,6,2,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"remstats",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"remulate",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rENA",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"representr",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"revdbayes",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ring",TRUE,6,2,"yes","cpp","c++17","ok",2819,"no","","",FALSE
+"rLifting",TRUE,4,2,"yes","cpp","c++17","ok",18210,"no","","",FALSE
+"rotations",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rrpack",TRUE,4,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rrum",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rstanarm",TRUE,4,2,"yes","cpp","","compile_error",0,"no","compile_error","CODOLS.hpp:12:1: error: use of undeclared identifier 'Eigen'",FALSE
+"rtestim",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"rTwig",TRUE,3,2,"yes","cpp","c++17","ok",18926,"no","","",FALSE
+"rucrdtw",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rust",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"sf",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"simcdm",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"smam",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"sparseLTSEigen",TRUE,3,2,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"SpatialGEV",TRUE,6,2,"yes","cpp","","compile_error",0,"no","compile_error","utils.hpp:10:19: error: expected namespace name",FALSE
+"StealLikeBayes",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"stringfish",TRUE,3,2,"yes","cpp","c++17","ok",18257,"no","","",FALSE
+"sumR",TRUE,3,2,"yes","c","c","ok",4588,"yes","","",FALSE
+"svycoxme",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"symmetry",TRUE,3,2,"yes","c","","compile_error",0,"no","compile_error","test_stats.h:4:1: error: unknown type name 'using'",FALSE
+"systemfonts",TRUE,3,2,"yes","cpp","","missing_header",0,"no","missing_header","'ft2build.h' file not found",FALSE
+"T4transport",TRUE,3,2,"yes","cpp","c++17","ok",12455,"no","","",FALSE
+"TauStar",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"tidylda",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"trajeR",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"tvdenoising",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"updog",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"Upsilon",TRUE,3,2,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"uuid",TRUE,3,2,"yes","c","c","ok",2741,"yes","","",FALSE
+"xts",TRUE,4,2,"yes","c","","compile_error",0,"no","compile_error","xtsAPI.h:45:29: error: initializer element is not a compile-time constant",FALSE
+"actuar",TRUE,2,1,"yes","c","c","ok",3452,"no","","",FALSE
+"ade4",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"AovBay",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"area",TRUE,3,1,"yes","c","","missing_header",0,"no","missing_header","'type_traits' file not found",FALSE
+"argus",TRUE,2,1,"yes","c","c","ok",2442,"no","","",FALSE
+"aster",TRUE,2,1,"yes","c","c","ok",2451,"no","","",FALSE
+"astronomyengine",TRUE,4,1,"yes","c","c","ok",3127,"no","","",FALSE
+"AV1R",TRUE,2,1,"yes","c","c","ok",2453,"yes","","",FALSE
+"baggr",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bakR",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"baldur",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bayes4psy",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bayesdfa",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bayesforecast",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"BayesGmed",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"BayesGrowth",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"BayesianPlatformDesignTimeTrend",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bayeslist",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bayeslm",TRUE,2,1,"yes","cpp","c++17","ok",33490,"no","","",FALSE
+"bayesm",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"BayesPET",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"BayesSenMC",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bayesZIB",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bbmix",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bclogit",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"beastt",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"BEDMatrix",TRUE,2,1,"yes","c","c","ok",2536,"yes","","",FALSE
+"BeeGUTS",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bellreg",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bennu",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"Bernadette",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bigrquerystorage",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cstdint' file not found",FALSE
+"BigVAR",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"BinaryReplicates",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"binspp",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"BINtools",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bistablehistory",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"blavaan",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"blockForest",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'../../src/globals.h' file not found",FALSE
+"bmgarch",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bmggum",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bmlm",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bmstdr",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"BPrinStratTTE",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"breathteststan",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bspline",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"bsynth",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"bws",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"CARME",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"CausalQueries",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"cbq",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"CDatanet",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"checkmate",TRUE,3,1,"yes","c","c","ok",4485,"yes","","",FALSE
+"CholWishart",TRUE,2,1,"yes","c","c","ok",2451,"yes","","",FALSE
+"chouca",TRUE,2,1,"yes","c","c","ok",2439,"no","","",FALSE
+"cinterpolate",TRUE,4,1,"yes","c","c","ok",2454,"no","","",FALSE
+"cleancall",TRUE,2,1,"yes","c","c","ok",2454,"yes","","",FALSE
+"cli",TRUE,3,1,"yes","c","c","ok",2466,"yes","","",FALSE
+"cloneRate",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"CNVRG",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"coala",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"colorfast",TRUE,2,1,"yes","c","c","ok",5364,"yes","","",FALSE
+"conStruct",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"CoxPlus",TRUE,2,1,"yes","cpp","c++17","ok",2576,"no","","",FALSE
+"cppcontainers",TRUE,2,1,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"crc32c",TRUE,2,1,"yes","c","c","ok",4485,"yes","","",FALSE
+"ctsem",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"data.table",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","datatableAPI.h:27:8: error: initializer element is not a compile-time constant",FALSE
+"dccpp",TRUE,2,1,"yes","c","c","ok",2439,"no","","",FALSE
+"dcortools",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"DCPO",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"dde",TRUE,4,1,"yes","c","c","ok",2452,"no","","",FALSE
+"densEstBayes",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"diffmatchpatch",TRUE,2,1,"yes","cpp","c++17","ok",13042,"no","","",FALSE
+"digest",TRUE,2,1,"yes","c","c","ok",2503,"no","","",FALSE
+"disbayes",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"distances",TRUE,2,1,"yes","c","c","ok",2465,"yes","","",FALSE
+"distops",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cstdlib' file not found",FALSE
+"diversityForest",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'../../src/globals.h' file not found",FALSE
+"dotCall64",TRUE,2,1,"yes","c","c","ok",4501,"yes","","",FALSE
+"dsp",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"dtwclust",TRUE,2,1,"yes","c","c","ok",2498,"no","","",FALSE
+"dynmix",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"echoice2",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"EcoEnsemble",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"edgemodelr",TRUE,2,1,"yes","cpp","c++17","ok",12764,"no","","",FALSE
+"eDNAjoint",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"eggCounts",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"EloSteepness",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"EMC2",TRUE,3,1,"yes","cpp","c++17","ok",18137,"no","","",FALSE
+"EMMIXgene",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","tkmeans.h:4:1: error: unknown type name 'arma'",FALSE
+"EpiNow2",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"EpiPvr",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"exdqlm",TRUE,3,1,"yes","c","c","ok",2519,"no","","",FALSE
+"expertsurv",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"expint",TRUE,2,1,"yes","c","c","ok",2443,"no","","",FALSE
+"factorstochvol",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"FastGaSP",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"fastGHQuad",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","fastGHQuad.h:11:1: error: unknown type name 'namespace'",FALSE
+"fastPLS",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"fcirt",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"fDMA",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"flexpolyline",TRUE,4,1,"yes","cpp","c++17","ok",9608,"no","","",FALSE
+"FlexReg",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"GCPM",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"geostan",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"GIGrvg",TRUE,2,1,"yes","c","c","ok",2448,"no","","",FALSE
+"glmmfields",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"glmmPen",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"Gmisc",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'vector' file not found",FALSE
+"greencrab.toolkit",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"GUD",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"h3lib",TRUE,2,1,"yes","c","c","ok",4572,"yes","","",FALSE
+"hbamr",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"HHBayes",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"historicalborrowlong",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"hmde",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"hsstan",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"hwep",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"imt",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"intervalpsych",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"jfa",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"jmotif",TRUE,2,1,"yes","cpp","c++17","ok",18981,"no","","",FALSE
+"keypress",TRUE,2,1,"yes","c","c","ok",4541,"yes","","",FALSE
+"kgrams",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'../../src/Dictionary.h' file not found",FALSE
+"KODAMA",TRUE,2,1,"yes","c","c","ok",2502,"no","","",FALSE
+"kvh",TRUE,2,1,"yes","cpp","c++17","ok",18172,"no","","",FALSE
+"later",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","later_api.h:37:1: error: unknown type name 'namespace'",FALSE
+"lgpr",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"libdeflate",TRUE,2,1,"yes","c","c","ok",2635,"no","","",FALSE
+"libgeos",TRUE,3,1,"yes","c","c","ok",4278,"no","","",FALSE
+"LMMELSM",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"lotri",TRUE,2,1,"yes","c","c","ok",2498,"yes","","",FALSE
+"lsoda",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"MADPop",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"magi",TRUE,2,1,"yes","c","","rcpp_dep",0,"no","rcpp_dep","'../../src/RcppTranslation.h' file not found",FALSE
+"markerpen",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"matchingR",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"MCMCprecision",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"md4r",TRUE,2,1,"yes","c","c","ok",2630,"no","","",FALSE
+"measr",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"metaBMA",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"MetaStan",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"miniLNM",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"MIRES",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"mixl",TRUE,9,1,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"mlts",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"mmapcharr",TRUE,3,1,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"morseTKTD",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"mrbayes",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"multbxxc",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"multinma",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"multinomineq",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","functions.h:1:1: error: unknown type name 'using'",FALSE
+"multipleDL",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"n1qn1",TRUE,2,1,"yes","c","c","ok",2542,"yes","","",FALSE
+"nanoarrow",TRUE,3,1,"yes","c","c","ok",4559,"yes","","",FALSE
+"ndjson",TRUE,2,1,"yes","cpp","c++17","ok",15247,"no","","",FALSE
+"nloptr",TRUE,2,1,"yes","cpp","c++17","ok",12394,"no","","",FALSE
+"OncoBayes2",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"ordinalForest",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'../../src/globals.h' file not found",FALSE
+"OSFD",TRUE,2,1,"yes","cpp","c++17","ok",18409,"no","","",FALSE
+"parTimeROC",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"pcaone",TRUE,2,1,"yes","cpp","c++17","ok",34403,"no","","",FALSE
+"pcFactorStan",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"pema",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"pEPA",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"phacking",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"phylopairs",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"polyCub",TRUE,2,1,"yes","c","c","ok",4220,"yes","","",FALSE
+"PoolTestR",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"PPRL",TRUE,2,1,"yes","cpp","c++17","ok",11857,"no","","",FALSE
+"ProbBreed",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"processx",TRUE,4,1,"yes","c","c","ok",4225,"yes","","",FALSE
+"progress",TRUE,2,1,"no","cpp","c++17","ok",13914,"no","","",FALSE
+"prophet",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"psBayesborrow",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"psrwe",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"publipha",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"pudu",TRUE,2,1,"no","cpp","","missing_header",0,"no","missing_header","'cpp11.hpp' file not found",FALSE
+"qs2",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","qs2_external.h:15:84: error: C does not support default arguments",FALSE
+"R2D2ordinal",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"ramcmc",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ranger",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'../../src/globals.h' file not found",FALSE
+"RApiDatetime",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","RApiDatetime.h:51:36: error: initializer element is not a compile-time constant",FALSE
+"RApiSerialize",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","RApiSerializeAPI.h:54:55: error: C does not support default arguments",FALSE
+"rater",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rayimage",TRUE,2,1,"yes","c","c","ok",2699,"no","","",FALSE
+"RBesT",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rbioacc",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rcbayes",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"RcppArray",TRUE,2,1,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppColors",TRUE,2,1,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppHungarian",TRUE,2,1,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"rcppmlpackexamples",TRUE,2,1,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppPlanc",TRUE,2,1,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"RcppTN",TRUE,2,1,"yes",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"remify",TRUE,3,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"repsim",TRUE,2,1,"yes","cpp","c++17","ok",25572,"no","","",FALSE
+"Rfssa",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"ribiosArg",TRUE,2,1,"yes","c","c","ok",4518,"yes","","",FALSE
+"Rlgt",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"RLumCarlo",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"rmBayes",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rmdcev",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rmsb",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"RoBTT",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"robustbase",TRUE,2,1,"yes","c","c","ok",4492,"yes","","",FALSE
+"RobustCalibration",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"RobustGaSP",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'iterator' file not found",FALSE
+"rPBK",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rpf",TRUE,2,1,"yes","c","c","ok",2512,"no","","",FALSE
+"rstanbdp",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rstanemax",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"rstantools",TRUE,13,1,"no","cpp","c++17","ok",2502,"no","","",FALSE
+"saeHB.TF.beta",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"sccore",TRUE,2,1,"yes","cpp","c++17","ok",18496,"no","","",FALSE
+"serofoi",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"serosv",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"shrinkTVP",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"SimInf",TRUE,2,1,"yes","c","c","ok",4547,"yes","","",FALSE
+"slasso",TRUE,2,1,"yes","c","c","ok",2541,"no","","",FALSE
+"SLGP",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"spaths",TRUE,2,1,"yes","cpp","","missing_header",0,"no","missing_header","'../../src/structs.h' file not found",FALSE
+"spatPomp",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","pomp_defines.h:47:15: error: call to undeclared function 'allocArray'; ISO C99 and later do not support implicit function declarations [-Wimplicit-fun",FALSE
+"spEDM",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"SPlit",TRUE,2,1,"yes","cpp","c++17","ok",18385,"no","","",FALSE
+"spsurv",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"ssMousetrack",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"StanMoMo",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"stochQN",TRUE,2,1,"yes","c","c","ok",2593,"no","","",FALSE
+"stringdist",TRUE,3,1,"yes","c","c","ok",2439,"no","","",FALSE
+"surveil",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"survextrap",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"survstan",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"svd",TRUE,2,1,"yes","c","c","ok",4500,"yes","","",FALSE
+"tEDM",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"textshaping",TRUE,2,1,"yes","cpp","c++17","ok",12142,"no","","",FALSE
+"thurstonianIRT",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"tibbletime",TRUE,2,1,"yes","c","","cxx_stdlib",0,"no","cxx_stdlib","'cmath' file not found",FALSE
+"Tinflex",TRUE,2,1,"yes","c","c","ok",2492,"no","","",FALSE
+"tipsae",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"trialr",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"TriDimRegression",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"truncnormbayes",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"tsnet",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"twinning",TRUE,2,1,"yes","cpp","c++17","ok",18409,"no","","",FALSE
+"ubms",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"unityForest",TRUE,2,1,"yes","c","","missing_header",0,"no","missing_header","'../../src/globals.h' file not found",FALSE
+"vctrs",TRUE,3,1,"yes","c","c","ok",2445,"no","","",FALSE
+"vinereg",TRUE,2,1,"yes","cpp","","bindgen_panic",0,"no","bindgen_panic","bindgen crashed on complex C++ templates",FALSE
+"VMDecomp",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","VMDheader.h:20:1: error: unknown type name 'namespace'",FALSE
+"walker",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"WhiteLabRt",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"winputall",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"xml2",TRUE,2,1,"yes","c","","compile_error",0,"no","compile_error","xml2_types.h:7:1: error: unknown type name 'template'",FALSE
+"YPBP",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"YPPE",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"zoid",TRUE,2,1,"yes","cpp","c++17","ok",2502,"no","","",FALSE
+"zoo",TRUE,2,1,"yes","c","c","ok",4484,"yes","","",FALSE
+"armspp",TRUE,2,0,"yes","none","","no_headers",0,"no","no_headers","",FALSE
+"makemyprior",TRUE,4,0,"no","none","","no_headers",0,"no","no_headers","",FALSE
+"multiSA",TRUE,3,0,"no","none","","no_headers",0,"no","no_headers","",FALSE
+"noweb",TRUE,2,0,"no","none","","no_headers",0,"no","no_headers","",FALSE
+"RcppCGAL",TRUE,2,0,"no",NA,NA,"excluded_rcpp",NA,NA,NA,NA,TRUE
+"recmap",TRUE,2,0,"yes","none","","no_headers",0,"no","no_headers","",FALSE
+"rswipl",TRUE,2,0,"yes","none","","no_headers",0,"no","no_headers","",FALSE
+"salmonMSE",TRUE,4,0,"no","none","","no_headers",0,"no","no_headers","",FALSE
+"zigg",TRUE,6,0,"yes","none","","no_headers",0,"no","no_headers","",FALSE

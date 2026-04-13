@@ -255,6 +255,11 @@ esac
 AC_SUBST([CDYLIB_PREFIX])
 AC_SUBST([CDYLIB_EXT])
 
+dnl ---- Native R package include paths (for bindgen C shim compilation) ----
+NATIVE_PKG_CPPFLAGS=""
+dnl {{native_pkg_cppflags}}
+AC_SUBST([NATIVE_PKG_CPPFLAGS])
+
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
