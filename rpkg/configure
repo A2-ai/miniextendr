@@ -594,6 +594,7 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
+NATIVE_PKG_CPPFLAGS
 CDYLIB_EXT
 CDYLIB_PREFIX
 TAR_FORCE_LOCAL
@@ -2507,6 +2508,19 @@ case "$host_os" in
   *)                        CDYLIB_PREFIX="lib"; CDYLIB_EXT="so" ;;
 esac
 
+
+
+NATIVE_PKG_CPPFLAGS=""
+
+CLI_INCLUDE=$("${R_HOME}/bin/Rscript" -e "cat(system.file('include', package='cli'))")
+if test -n "$CLI_INCLUDE" && test -d "$CLI_INCLUDE"; then
+  NATIVE_PKG_CPPFLAGS="$NATIVE_PKG_CPPFLAGS -I$CLI_INCLUDE"
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: cli include: $CLI_INCLUDE" >&5
+printf '%s\n' "$as_me: cli include: $CLI_INCLUDE" >&6;}
+else
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: WARNING: cli package not found — native CLI bindings will not compile" >&5
+printf '%s\n' "$as_me: WARNING: cli package not found — native CLI bindings will not compile" >&2;}
+fi
 
 
 

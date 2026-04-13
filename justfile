@@ -843,6 +843,34 @@ revendor-test:
 revendor-test-all:
     cargo test --manifest-path cargo-revendor/Cargo.toml -- --include-ignored --test-threads=1
 
+# ── Native R package bindgen corpus ─────────────────────────────────────────
+
+# Run bindgen corpus test (C-only mode, ~69 packages)
+bindgen-corpus:
+    bash dev/run_bindgen_corpus.sh
+
+# Run bindgen corpus test (C + C++ mode, ~308 packages)
+bindgen-corpus-v3:
+    bash dev/run_bindgen_corpus_v3.sh
+
+# Add all CRAN corpus packages (with inst/include) to rv, excluding Rcpp/cpp11 ecosystem
+bindgen-corpus-add-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PKGS=$(awk -F',' 'NR==1{for(i=1;i<=NF;i++){gsub(/"/,"",$i);if($i=="excluded_rcpp_ecosystem")col=i}} NR>1{gsub(/"/,"",$col);gsub(/"/,"",$1);if($col=="FALSE")print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
+    echo "Adding $(echo $PKGS | wc -w | tr -d ' ') packages to rv..."
+    rv add --no-sync $PKGS
+    echo "Run 'rv sync' to install them."
+
+# Remove all CRAN corpus packages from rv (keeps core dev deps)
+bindgen-corpus-remove-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PKGS=$(awk -F',' 'NR==1{for(i=1;i<=NF;i++){gsub(/"/,"",$i);if($i=="excluded_rcpp_ecosystem")col=i}} NR>1{gsub(/"/,"",$col);gsub(/"/,"",$1);if($col=="FALSE")print $1}' dev/cran_native_packages_full.csv | tr '\n' ' ')
+    echo "Removing $(echo $PKGS | wc -w | tr -d ' ') corpus packages from rv..."
+    rv remove --no-sync $PKGS
+    echo "Run 'rv sync' to clean the library."
+
 # ── Documentation site ──────────────────────────────────────────────────────
 
 # Build Zola site (output in site/public/)
