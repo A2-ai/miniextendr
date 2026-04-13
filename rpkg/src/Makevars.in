@@ -51,8 +51,8 @@ all: $(SHLIB) $(WRAPPERS_R)
 NNG_CPPFLAGS = -Inng/include -Inng/src -Imbedtls/include $(NNG_DEFINES)
 MBEDTLS_CPPFLAGS = -Imbedtls/include -Imbedtls/library
 
-# NNG source files (POSIX platform; Windows files self-guard to empty on Unix)
-NNG_SOURCES = \
+# NNG core source files (platform-independent)
+NNG_CORE_SOURCES = \
   nng/src/nng.c \
   nng/src/core/aio.c \
   nng/src/core/device.c \
@@ -79,32 +79,6 @@ NNG_SOURCES = \
   nng/src/core/tcp.c \
   nng/src/core/thread.c \
   nng/src/core/url.c \
-  nng/src/platform/posix/posix_alloc.c \
-  nng/src/platform/posix/posix_atomic.c \
-  nng/src/platform/posix/posix_clock.c \
-  nng/src/platform/posix/posix_debug.c \
-  nng/src/platform/posix/posix_file.c \
-  nng/src/platform/posix/posix_ipcconn.c \
-  nng/src/platform/posix/posix_ipcdial.c \
-  nng/src/platform/posix/posix_ipclisten.c \
-  nng/src/platform/posix/posix_peerid.c \
-  nng/src/platform/posix/posix_pipe.c \
-  nng/src/platform/posix/posix_pollq_epoll.c \
-  nng/src/platform/posix/posix_pollq_kqueue.c \
-  nng/src/platform/posix/posix_pollq_poll.c \
-  nng/src/platform/posix/posix_pollq_port.c \
-  nng/src/platform/posix/posix_rand_arc4random.c \
-  nng/src/platform/posix/posix_rand_getrandom.c \
-  nng/src/platform/posix/posix_rand_urandom.c \
-  nng/src/platform/posix/posix_resolv_gai.c \
-  nng/src/platform/posix/posix_sockaddr.c \
-  nng/src/platform/posix/posix_socketpair.c \
-  nng/src/platform/posix/posix_sockfd.c \
-  nng/src/platform/posix/posix_tcpconn.c \
-  nng/src/platform/posix/posix_tcpdial.c \
-  nng/src/platform/posix/posix_tcplisten.c \
-  nng/src/platform/posix/posix_thread.c \
-  nng/src/platform/posix/posix_udp.c \
   nng/src/sp/protocol.c \
   nng/src/sp/transport.c \
   nng/src/sp/protocol/bus0/bus.c \
@@ -144,6 +118,37 @@ NNG_SOURCES = \
   nng/src/supplemental/util/options.c \
   nng/src/supplemental/util/platform.c \
   nng/src/supplemental/websocket/websocket.c
+
+# NNG platform source files (POSIX; overridden by Makevars.win for Windows)
+NNG_PLATFORM_SOURCES = \
+  nng/src/platform/posix/posix_alloc.c \
+  nng/src/platform/posix/posix_atomic.c \
+  nng/src/platform/posix/posix_clock.c \
+  nng/src/platform/posix/posix_debug.c \
+  nng/src/platform/posix/posix_file.c \
+  nng/src/platform/posix/posix_ipcconn.c \
+  nng/src/platform/posix/posix_ipcdial.c \
+  nng/src/platform/posix/posix_ipclisten.c \
+  nng/src/platform/posix/posix_peerid.c \
+  nng/src/platform/posix/posix_pipe.c \
+  nng/src/platform/posix/posix_pollq_epoll.c \
+  nng/src/platform/posix/posix_pollq_kqueue.c \
+  nng/src/platform/posix/posix_pollq_poll.c \
+  nng/src/platform/posix/posix_pollq_port.c \
+  nng/src/platform/posix/posix_rand_arc4random.c \
+  nng/src/platform/posix/posix_rand_getrandom.c \
+  nng/src/platform/posix/posix_rand_urandom.c \
+  nng/src/platform/posix/posix_resolv_gai.c \
+  nng/src/platform/posix/posix_sockaddr.c \
+  nng/src/platform/posix/posix_socketpair.c \
+  nng/src/platform/posix/posix_sockfd.c \
+  nng/src/platform/posix/posix_tcpconn.c \
+  nng/src/platform/posix/posix_tcpdial.c \
+  nng/src/platform/posix/posix_tcplisten.c \
+  nng/src/platform/posix/posix_thread.c \
+  nng/src/platform/posix/posix_udp.c
+
+NNG_SOURCES = $(NNG_CORE_SOURCES) $(NNG_PLATFORM_SOURCES)
 
 # mbedtls source files (all in library/)
 MBEDTLS_SOURCES = \
