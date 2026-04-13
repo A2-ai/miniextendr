@@ -215,7 +215,7 @@ fn expand_struct(
         return syn::Error::new(
             item_struct.ident.span(),
             "#[miniextendr] no longer supports ALTREP (class/base attributes). \
-             Use #[derive(miniextendr_api::Altrep)] with #[altrep_derive_opts(class = \"...\")] instead.",
+             Use #[derive(miniextendr_api::Altrep)] with #[altrep(class = \"...\")] instead.",
         )
         .into_compile_error()
         .into();
