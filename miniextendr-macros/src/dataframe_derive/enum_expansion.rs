@@ -8,8 +8,9 @@ use quote::{format_ident, quote};
 use syn::{DeriveInput, Fields};
 
 use super::{
-    ColumnRegistry, DataFrameAttrs, EnumResolvedField, FieldTypeKind, VariantInfo, VariantShape,
-    classify_field_type, parse_field_attrs,
+    ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
+    EnumExpandedVecData, EnumResolvedField, EnumSingleFieldData, FieldTypeKind, VariantInfo,
+    VariantShape, classify_field_type, parse_field_attrs,
 };
 use std::collections::HashMap;
 
@@ -77,49 +78,57 @@ pub(super) fn derive_enum_dataframe(
                     let binding = format_ident!("__v_{}", rust_name);
 
                     if fa.as_list {
-                        resolved.push(EnumResolvedField::Single {
+                        resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: format_ident!("{}", col_name_str),
                             binding: binding.clone(),
                             rust_name: rust_name.clone(),
                             ty: f.ty.clone(),
-                        });
+                        })));
                     } else {
                         match classify_field_type(&f.ty) {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
-                                resolved.push(EnumResolvedField::ExpandedFixed {
-                                    base_name: col_name_str,
-                                    binding: binding.clone(),
-                                    rust_name: rust_name.clone(),
-                                    elem_ty: elem_ty.clone(),
-                                    len,
-                                });
+                                resolved.push(EnumResolvedField::ExpandedFixed(Box::new(
+                                    EnumExpandedFixedData {
+                                        base_name: col_name_str,
+                                        binding: binding.clone(),
+                                        rust_name: rust_name.clone(),
+                                        elem_ty: elem_ty.clone(),
+                                        len,
+                                    },
+                                )));
                             }
                             FieldTypeKind::VariableVec(elem_ty)
                             | FieldTypeKind::BoxedSlice(elem_ty)
                             | FieldTypeKind::BorrowedSlice(elem_ty) => {
                                 if let Some(width) = fa.width {
-                                    resolved.push(EnumResolvedField::ExpandedVec {
-                                        base_name: col_name_str,
-                                        binding: binding.clone(),
-                                        rust_name: rust_name.clone(),
-                                        elem_ty: elem_ty.clone(),
-                                        width,
-                                    });
+                                    resolved.push(EnumResolvedField::ExpandedVec(Box::new(
+                                        EnumExpandedVecData {
+                                            base_name: col_name_str,
+                                            binding: binding.clone(),
+                                            rust_name: rust_name.clone(),
+                                            elem_ty: elem_ty.clone(),
+                                            width,
+                                        },
+                                    )));
                                 } else if fa.expand {
-                                    resolved.push(EnumResolvedField::AutoExpandVec {
-                                        base_name: col_name_str,
-                                        binding: binding.clone(),
-                                        rust_name: rust_name.clone(),
-                                        elem_ty: elem_ty.clone(),
-                                        container_ty: f.ty.clone(),
-                                    });
+                                    resolved.push(EnumResolvedField::AutoExpandVec(Box::new(
+                                        EnumAutoExpandVecData {
+                                            base_name: col_name_str,
+                                            binding: binding.clone(),
+                                            rust_name: rust_name.clone(),
+                                            elem_ty: elem_ty.clone(),
+                                            container_ty: f.ty.clone(),
+                                        },
+                                    )));
                                 } else {
-                                    resolved.push(EnumResolvedField::Single {
-                                        col_name: format_ident!("{}", col_name_str),
-                                        binding: binding.clone(),
-                                        rust_name: rust_name.clone(),
-                                        ty: f.ty.clone(),
-                                    });
+                                    resolved.push(EnumResolvedField::Single(Box::new(
+                                        EnumSingleFieldData {
+                                            col_name: format_ident!("{}", col_name_str),
+                                            binding: binding.clone(),
+                                            rust_name: rust_name.clone(),
+                                            ty: f.ty.clone(),
+                                        },
+                                    )));
                                 }
                             }
                             FieldTypeKind::Scalar => {
@@ -135,12 +144,14 @@ pub(super) fn derive_enum_dataframe(
                                         "`expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[T]` fields",
                                     ));
                                 }
-                                resolved.push(EnumResolvedField::Single {
-                                    col_name: format_ident!("{}", col_name_str),
-                                    binding: binding.clone(),
-                                    rust_name: rust_name.clone(),
-                                    ty: f.ty.clone(),
-                                });
+                                resolved.push(EnumResolvedField::Single(Box::new(
+                                    EnumSingleFieldData {
+                                        col_name: format_ident!("{}", col_name_str),
+                                        binding: binding.clone(),
+                                        rust_name: rust_name.clone(),
+                                        ty: f.ty.clone(),
+                                    },
+                                )));
                             }
                         }
                     }
@@ -165,58 +176,68 @@ pub(super) fn derive_enum_dataframe(
 
                     // Tuple enum fields: same expansion logic
                     if fa.as_list {
-                        resolved.push(EnumResolvedField::Single {
+                        resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: format_ident!("{}", col_name_str),
                             binding,
                             rust_name,
                             ty: f.ty.clone(),
-                        });
+                        })));
                     } else {
                         match classify_field_type(&f.ty) {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
-                                resolved.push(EnumResolvedField::ExpandedFixed {
-                                    base_name: col_name_str,
-                                    binding,
-                                    rust_name,
-                                    elem_ty: elem_ty.clone(),
-                                    len,
-                                });
+                                resolved.push(EnumResolvedField::ExpandedFixed(Box::new(
+                                    EnumExpandedFixedData {
+                                        base_name: col_name_str,
+                                        binding,
+                                        rust_name,
+                                        elem_ty: elem_ty.clone(),
+                                        len,
+                                    },
+                                )));
                             }
                             FieldTypeKind::VariableVec(elem_ty)
                             | FieldTypeKind::BoxedSlice(elem_ty)
                             | FieldTypeKind::BorrowedSlice(elem_ty) => {
                                 if let Some(width) = fa.width {
-                                    resolved.push(EnumResolvedField::ExpandedVec {
-                                        base_name: col_name_str,
-                                        binding,
-                                        rust_name,
-                                        elem_ty: elem_ty.clone(),
-                                        width,
-                                    });
+                                    resolved.push(EnumResolvedField::ExpandedVec(Box::new(
+                                        EnumExpandedVecData {
+                                            base_name: col_name_str,
+                                            binding,
+                                            rust_name,
+                                            elem_ty: elem_ty.clone(),
+                                            width,
+                                        },
+                                    )));
                                 } else if fa.expand {
-                                    resolved.push(EnumResolvedField::AutoExpandVec {
-                                        base_name: col_name_str,
-                                        binding,
-                                        rust_name,
-                                        elem_ty: elem_ty.clone(),
-                                        container_ty: f.ty.clone(),
-                                    });
+                                    resolved.push(EnumResolvedField::AutoExpandVec(Box::new(
+                                        EnumAutoExpandVecData {
+                                            base_name: col_name_str,
+                                            binding,
+                                            rust_name,
+                                            elem_ty: elem_ty.clone(),
+                                            container_ty: f.ty.clone(),
+                                        },
+                                    )));
                                 } else {
-                                    resolved.push(EnumResolvedField::Single {
+                                    resolved.push(EnumResolvedField::Single(Box::new(
+                                        EnumSingleFieldData {
+                                            col_name: format_ident!("{}", col_name_str),
+                                            binding,
+                                            rust_name,
+                                            ty: f.ty.clone(),
+                                        },
+                                    )));
+                                }
+                            }
+                            FieldTypeKind::Scalar => {
+                                resolved.push(EnumResolvedField::Single(Box::new(
+                                    EnumSingleFieldData {
                                         col_name: format_ident!("{}", col_name_str),
                                         binding,
                                         rust_name,
                                         ty: f.ty.clone(),
-                                    });
-                                }
-                            }
-                            FieldTypeKind::Scalar => {
-                                resolved.push(EnumResolvedField::Single {
-                                    col_name: format_ident!("{}", col_name_str),
-                                    binding,
-                                    rust_name,
-                                    ty: f.ty.clone(),
-                                });
+                                    },
+                                )));
                             }
                         }
                     }
@@ -251,46 +272,36 @@ pub(super) fn derive_enum_dataframe(
         for erf in &vi.fields {
             // Use the rust_name span for error reporting
             let err_span = match erf {
-                EnumResolvedField::Single { rust_name, .. }
-                | EnumResolvedField::ExpandedFixed { rust_name, .. }
-                | EnumResolvedField::ExpandedVec { rust_name, .. }
-                | EnumResolvedField::AutoExpandVec { rust_name, .. } => rust_name.span(),
+                EnumResolvedField::Single(data) => data.rust_name.span(),
+                EnumResolvedField::ExpandedFixed(data) => data.rust_name.span(),
+                EnumResolvedField::ExpandedVec(data) => data.rust_name.span(),
+                EnumResolvedField::AutoExpandVec(data) => data.rust_name.span(),
             };
             match erf {
-                EnumResolvedField::Single { col_name, ty, .. } => {
+                EnumResolvedField::Single(data) => {
                     registry.register(
-                        &col_name.to_string(),
-                        ty,
+                        &data.col_name.to_string(),
+                        &data.ty,
                         variant_idx,
                         &vi.name,
                         err_span,
                     )?;
                 }
-                EnumResolvedField::ExpandedFixed {
-                    base_name,
-                    elem_ty,
-                    len,
-                    ..
-                } => {
-                    for i in 1..=*len {
-                        let name = format!("{}_{}", base_name, i);
-                        registry.register(&name, elem_ty, variant_idx, &vi.name, err_span)?;
+                EnumResolvedField::ExpandedFixed(data) => {
+                    for i in 1..=data.len {
+                        let name = format!("{}_{}", data.base_name, i);
+                        registry.register(&name, &data.elem_ty, variant_idx, &vi.name, err_span)?;
                     }
                 }
-                EnumResolvedField::ExpandedVec {
-                    base_name,
-                    elem_ty,
-                    width,
-                    ..
-                } => {
-                    for i in 1..=*width {
-                        let name = format!("{}_{}", base_name, i);
-                        registry.register(&name, elem_ty, variant_idx, &vi.name, err_span)?;
+                EnumResolvedField::ExpandedVec(data) => {
+                    for i in 1..=data.width {
+                        let name = format!("{}_{}", data.base_name, i);
+                        registry.register(&name, &data.elem_ty, variant_idx, &vi.name, err_span)?;
                     }
                 }
                 // AutoExpandVec: not registered in ColumnRegistry (width is dynamic).
                 // Collected separately below.
-                EnumResolvedField::AutoExpandVec { .. } => {}
+                EnumResolvedField::AutoExpandVec(..) => {}
             }
         }
     }
@@ -311,40 +322,34 @@ pub(super) fn derive_enum_dataframe(
 
     for (variant_idx, vi) in variant_infos.iter().enumerate() {
         for erf in &vi.fields {
-            if let EnumResolvedField::AutoExpandVec {
-                base_name,
-                elem_ty,
-                container_ty,
-                rust_name,
-                ..
-            } = erf
-            {
-                if let Some(&idx) = auto_expand_index.get(base_name) {
-                    let elem_match = auto_expand_cols[idx].elem_ty == *elem_ty;
-                    let container_match = auto_expand_cols[idx].container_ty == *container_ty;
+            if let EnumResolvedField::AutoExpandVec(auto_data) = erf {
+                if let Some(&idx) = auto_expand_index.get(&auto_data.base_name) {
+                    let elem_match = auto_expand_cols[idx].elem_ty == auto_data.elem_ty;
+                    let container_match =
+                        auto_expand_cols[idx].container_ty == auto_data.container_ty;
                     if !elem_match {
                         if coerce_to_string {
                             auto_expand_cols[idx].elem_ty = string_ty.clone();
                         } else {
                             return Err(syn::Error::new(
-                                rust_name.span(),
+                                auto_data.rust_name.span(),
                                 format!(
                                     "type conflict for auto-expand field `{}`: different element type \
                                      than a previous variant; \
                                      use `#[dataframe(conflicts = \"string\")]` to coerce",
-                                    base_name,
+                                    auto_data.base_name,
                                 ),
                             ));
                         }
                     }
                     if !container_match {
                         return Err(syn::Error::new(
-                            rust_name.span(),
+                            auto_data.rust_name.span(),
                             format!(
                                 "container type mismatch for auto-expand field `{}`: \
                                  all variants must use the same container type \
                                  (`Vec<T>`, `Box<[T]>`, or `&[T]`)",
-                                base_name,
+                                auto_data.base_name,
                             ),
                         ));
                     }
@@ -352,13 +357,13 @@ pub(super) fn derive_enum_dataframe(
                 } else {
                     let idx = auto_expand_cols.len();
                     auto_expand_cols.push(EnumAutoExpandCol {
-                        df_field: format_ident!("{}", base_name),
-                        base_name: base_name.clone(),
-                        elem_ty: elem_ty.clone(),
-                        container_ty: container_ty.clone(),
+                        df_field: format_ident!("{}", auto_data.base_name),
+                        base_name: auto_data.base_name.clone(),
+                        elem_ty: auto_data.elem_ty.clone(),
+                        container_ty: auto_data.container_ty.clone(),
                         present_in: vec![variant_idx],
                     });
-                    auto_expand_index.insert(base_name.clone(), idx);
+                    auto_expand_index.insert(auto_data.base_name.clone(), idx);
                 }
             }
         }
@@ -595,28 +600,31 @@ pub(super) fn derive_enum_dataframe(
 
                         for erf in &vi.fields {
                             match erf {
-                                EnumResolvedField::Single { col_name: fc, binding, .. }
-                                    if fc == col_name =>
+                                EnumResolvedField::Single(data)
+                                    if data.col_name == *col_name =>
                                 {
+                                    let binding = &data.binding;
                                     if col.string_coerced {
                                         return quote! { #col_name.push(Some(ToString::to_string(&#binding))); };
                                     } else {
                                         return quote! { #col_name.push(Some(#binding)); };
                                     }
                                 }
-                                EnumResolvedField::ExpandedFixed { base_name, binding, len, .. } => {
-                                    for i in 1..=*len {
-                                        let expanded_name = format!("{}_{}", base_name, i);
+                                EnumResolvedField::ExpandedFixed(data) => {
+                                    for i in 1..=data.len {
+                                        let expanded_name = format!("{}_{}", data.base_name, i);
                                         if expanded_name == col_name_str {
+                                            let binding = &data.binding;
                                             let idx = syn::Index::from(i - 1);
                                             return quote! { #col_name.push(Some(#binding[#idx])); };
                                         }
                                     }
                                 }
-                                EnumResolvedField::ExpandedVec { base_name, binding, width, .. } => {
-                                    for i in 1..=*width {
-                                        let expanded_name = format!("{}_{}", base_name, i);
+                                EnumResolvedField::ExpandedVec(data) => {
+                                    for i in 1..=data.width {
+                                        let expanded_name = format!("{}_{}", data.base_name, i);
                                         if expanded_name == col_name_str {
+                                            let binding = &data.binding;
                                             let get_idx = i - 1;
                                             return quote! { #col_name.push(#binding.get(#get_idx).cloned()); };
                                         }
@@ -641,11 +649,10 @@ pub(super) fn derive_enum_dataframe(
                     if ac.present_in.contains(&variant_idx) {
                         // Find the binding for this auto-expand field
                         for erf in &vi.fields {
-                            if let EnumResolvedField::AutoExpandVec {
-                                base_name, binding, ..
-                            } = erf
-                                && base_name == &ac.base_name
+                            if let EnumResolvedField::AutoExpandVec(data) = erf
+                                && data.base_name == ac.base_name
                             {
+                                let binding = &data.binding;
                                 return quote! { #ac_field.push(Some(#binding)); };
                             }
                         }
@@ -662,11 +669,17 @@ pub(super) fn derive_enum_dataframe(
                 VariantShape::Named => {
                     let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
                         let (rust_name, binding) = match erf {
-                            EnumResolvedField::Single { rust_name, binding, .. }
-                            | EnumResolvedField::ExpandedFixed { rust_name, binding, .. }
-                            | EnumResolvedField::ExpandedVec { rust_name, binding, .. }
-                            | EnumResolvedField::AutoExpandVec { rust_name, binding, .. } => {
-                                (rust_name, binding)
+                            EnumResolvedField::Single(data) => {
+                                (&data.rust_name, &data.binding)
+                            }
+                            EnumResolvedField::ExpandedFixed(data) => {
+                                (&data.rust_name, &data.binding)
+                            }
+                            EnumResolvedField::ExpandedVec(data) => {
+                                (&data.rust_name, &data.binding)
+                            }
+                            EnumResolvedField::AutoExpandVec(data) => {
+                                (&data.rust_name, &data.binding)
                             }
                         };
                         quote! { #rust_name: #binding }
@@ -686,10 +699,10 @@ pub(super) fn derive_enum_dataframe(
                 VariantShape::Tuple => {
                     let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
                         let binding = match erf {
-                            EnumResolvedField::Single { binding, .. }
-                            | EnumResolvedField::ExpandedFixed { binding, .. }
-                            | EnumResolvedField::ExpandedVec { binding, .. }
-                            | EnumResolvedField::AutoExpandVec { binding, .. } => binding,
+                            EnumResolvedField::Single(data) => &data.binding,
+                            EnumResolvedField::ExpandedFixed(data) => &data.binding,
+                            EnumResolvedField::ExpandedVec(data) => &data.binding,
+                            EnumResolvedField::AutoExpandVec(data) => &data.binding,
                         };
                         quote! { #binding }
                     }).collect();
@@ -831,28 +844,31 @@ pub(super) fn derive_enum_dataframe(
                             let col_name_str = col_name.to_string();
                             for erf in &vi.fields {
                                 match erf {
-                                    EnumResolvedField::Single { col_name: fc, binding, .. }
-                                        if fc == col_name =>
+                                    EnumResolvedField::Single(data)
+                                        if data.col_name == *col_name =>
                                     {
+                                        let binding = &data.binding;
                                         if col.string_coerced {
                                             return quote! { #w_name.write(__i, Some(ToString::to_string(&#binding))); };
                                         } else {
                                             return quote! { #w_name.write(__i, Some(#binding)); };
                                         }
                                     }
-                                    EnumResolvedField::ExpandedFixed { base_name, binding, len, .. } => {
-                                        for i in 1..=*len {
-                                            let expanded_name = format!("{}_{}", base_name, i);
+                                    EnumResolvedField::ExpandedFixed(data) => {
+                                        for i in 1..=data.len {
+                                            let expanded_name = format!("{}_{}", data.base_name, i);
                                             if expanded_name == col_name_str {
+                                                let binding = &data.binding;
                                                 let idx = syn::Index::from(i - 1);
                                                 return quote! { #w_name.write(__i, Some(#binding[#idx])); };
                                             }
                                         }
                                     }
-                                    EnumResolvedField::ExpandedVec { base_name, binding, width, .. } => {
-                                        for i in 1..=*width {
-                                            let expanded_name = format!("{}_{}", base_name, i);
+                                    EnumResolvedField::ExpandedVec(data) => {
+                                        for i in 1..=data.width {
+                                            let expanded_name = format!("{}_{}", data.base_name, i);
                                             if expanded_name == col_name_str {
+                                                let binding = &data.binding;
                                                 let get_idx = i - 1;
                                                 return quote! { #w_name.write(__i, #binding.get(#get_idx).cloned()); };
                                             }
@@ -875,11 +891,10 @@ pub(super) fn derive_enum_dataframe(
                         let w_name = format_ident!("__w_{}", ac.df_field);
                         if ac.present_in.contains(&variant_idx) {
                             for erf in &vi.fields {
-                                if let EnumResolvedField::AutoExpandVec {
-                                    base_name, binding, ..
-                                } = erf
-                                    && base_name == &ac.base_name
+                                if let EnumResolvedField::AutoExpandVec(data) = erf
+                                    && data.base_name == ac.base_name
                                 {
+                                    let binding = &data.binding;
                                     return quote! { #w_name.write(__i, Some(#binding)); };
                                 }
                             }
@@ -895,11 +910,17 @@ pub(super) fn derive_enum_dataframe(
                     VariantShape::Named => {
                         let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
                             let (rust_name, binding) = match erf {
-                                EnumResolvedField::Single { rust_name, binding, .. }
-                                | EnumResolvedField::ExpandedFixed { rust_name, binding, .. }
-                                | EnumResolvedField::ExpandedVec { rust_name, binding, .. }
-                                | EnumResolvedField::AutoExpandVec { rust_name, binding, .. } => {
-                                    (rust_name, binding)
+                                EnumResolvedField::Single(data) => {
+                                    (&data.rust_name, &data.binding)
+                                }
+                                EnumResolvedField::ExpandedFixed(data) => {
+                                    (&data.rust_name, &data.binding)
+                                }
+                                EnumResolvedField::ExpandedVec(data) => {
+                                    (&data.rust_name, &data.binding)
+                                }
+                                EnumResolvedField::AutoExpandVec(data) => {
+                                    (&data.rust_name, &data.binding)
                                 }
                             };
                             quote! { #rust_name: #binding }
@@ -918,10 +939,10 @@ pub(super) fn derive_enum_dataframe(
                     VariantShape::Tuple => {
                         let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
                             let binding = match erf {
-                                EnumResolvedField::Single { binding, .. }
-                                | EnumResolvedField::ExpandedFixed { binding, .. }
-                                | EnumResolvedField::ExpandedVec { binding, .. }
-                                | EnumResolvedField::AutoExpandVec { binding, .. } => binding,
+                                EnumResolvedField::Single(data) => &data.binding,
+                                EnumResolvedField::ExpandedFixed(data) => &data.binding,
+                                EnumResolvedField::ExpandedVec(data) => &data.binding,
+                                EnumResolvedField::AutoExpandVec(data) => &data.binding,
                             };
                             quote! { #binding }
                         }).collect();
