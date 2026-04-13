@@ -59,6 +59,7 @@ struct AltrepFamilyConfig<'a> {
 /// | `unsafe` | Flag | Set guard mode to `Unsafe` -- no panic protection on ALTREP callbacks. |
 /// | `rust_unwind` | Flag | Set guard mode to `RustUnwind` -- uses `catch_unwind` only (unsafe if callbacks call R APIs). |
 /// | `r_unwind` | Flag | Set guard mode to `RUnwind` (default) -- uses `with_r_unwind_protect` for safe R API calls. |
+/// | `class = "name"` | `String` | Override the ALTREP class name (default: struct name). |
 struct AltrepAttrs {
     /// Field name containing the vector length, set via `#[altrep(len = "field")]`.
     /// If `None`, auto-detection looks for fields named `len` or `length`.
@@ -81,6 +82,8 @@ struct AltrepAttrs {
     /// - `RustUnwind` -- `catch_unwind` only
     /// - `RUnwind` -- `with_r_unwind_protect` (default)
     guard: Option<syn::Ident>,
+    /// Override the ALTREP class name. Default: struct name.
+    class_name: Option<String>,
 }
 
 impl AltrepAttrs {
@@ -100,6 +103,7 @@ impl AltrepAttrs {
         let mut generate_lowlevel = true; // Default: generate
         let mut lowlevel_options = Vec::new();
         let mut guard = None;
+        let mut class_name = None;
 
         for attr in &input.attrs {
             if !attr.path().is_ident("altrep") {
@@ -121,6 +125,10 @@ impl AltrepAttrs {
                     elt_delegate = Some(syn::Ident::new(&field.value(), field.span()));
                 } else if meta.path.is_ident("no_lowlevel") {
                     generate_lowlevel = false;
+                } else if meta.path.is_ident("class") {
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let name: syn::LitStr = meta.input.parse()?;
+                    class_name = Some(name.value());
                 } else if meta.path.is_ident("dataptr") {
                     lowlevel_options.push(syn::Ident::new("dataptr", meta.path.span()));
                 } else if meta.path.is_ident("serialize") {
@@ -136,8 +144,9 @@ impl AltrepAttrs {
                 } else {
                     return Err(meta.error(
                         "unknown #[altrep(...)] attribute; expected one of: \
-                         `len`, `elt`, `elt_delegate`, `no_lowlevel`, `dataptr`, \
-                         `serialize`, `subset`, `unsafe`, `rust_unwind`, `r_unwind`",
+                         `len`, `elt`, `elt_delegate`, `no_lowlevel`, `class`, \
+                         `dataptr`, `serialize`, `subset`, `unsafe`, \
+                         `rust_unwind`, `r_unwind`",
                     ));
                 }
                 Ok(())
@@ -151,6 +160,7 @@ impl AltrepAttrs {
             generate_lowlevel,
             lowlevel_options,
             guard,
+            class_name,
         })
     }
 
@@ -447,10 +457,21 @@ fn derive_altrep_generic(
 
     let lowlevel_impl = attrs.generate_lowlevel(name, generics, family)?;
 
+    // Generate full registration (TypedExternal, AltrepClass, RegisterAltrep, IntoR,
+    // linkme entry, Ref/Mut).
+    let class_name = attrs
+        .class_name
+        .as_deref()
+        .unwrap_or(&name.to_string())
+        .to_string();
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(name, generics, &class_name)?;
+
     Ok(quote! {
         #altrep_len_impl
         #data_trait_impl
         #lowlevel_impl
+        #registration_impl
     })
 }
 
@@ -760,9 +781,20 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
+    // Generate full registration (TypedExternal, AltrepClass, RegisterAltrep, IntoR,
+    // linkme entry, Ref/Mut) — same as derive_altrep_generic.
+    let class_name = attrs
+        .class_name
+        .as_deref()
+        .unwrap_or(&name.to_string())
+        .to_string();
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(name, generics, &class_name)?;
+
     Ok(quote! {
         #altrep_len_impl
         #alt_list_impl
         #lowlevel_impl
+        #registration_impl
     })
 }
