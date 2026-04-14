@@ -72,7 +72,6 @@ encoding symbols are exported. See [Encoding](ENCODING.md).
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `MINIEXTENDR_LOCAL_PATH` | Path to local miniextendr monorepo for tests/scaffolding | Auto-detected |
-| `MINIEXTENDR_LOCAL` | Alternative name used in vendor operations | Empty |
 
 ## Bootstrap (Internal)
 

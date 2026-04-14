@@ -406,12 +406,28 @@ AC_CONFIG_COMMANDS([cargo-vendor],
   fi
 
   if test "$NOT_CRAN" = "true"; then
-    if test "$FORCE_VENDOR" = "1"; then
-      echo "configure: FORCE_VENDOR — running cargo revendor"
+    dnl Auto-detect monorepo root (walk up from package directory)
+    _monorepo_root=""
+    _probe="$abs_rpkg_dir"
+    for _i in 1 2 3 4 5; do
+      _probe="$(dirname "$_probe")"
+      if test "$_probe" = "/" || test "$_probe" = "."; then break; fi
+      if test -f "$_probe/miniextendr-api/Cargo.toml"; then
+        _monorepo_root="$_probe"
+        break
+      fi
+    done
+
+    if test "$FORCE_VENDOR" = "1" || test -n "$_monorepo_root"; then
+      if test -n "$_monorepo_root"; then
+        echo "configure: dev mode — syncing vendor/ from monorepo at $_monorepo_root"
+      else
+        echo "configure: FORCE_VENDOR — running cargo revendor"
+      fi
       if command -v cargo-revendor >/dev/null 2>&1; then
         _source_root=""
-        if test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
-          _source_root="--source-root $MINIEXTENDR_LOCAL"
+        if test -n "$_monorepo_root"; then
+          _source_root="--source-root $_monorepo_root"
         fi
         cargo revendor \
           --manifest-path src/rust/Cargo.toml \
@@ -419,23 +435,6 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           --strip-all \
           --source-marker \
           $_source_root -v || {
-          echo "configure: error: cargo revendor failed" >&2
-          exit 1
-        }
-      else
-        echo "configure: error: cargo-revendor not found" >&2
-        echo "configure:        Install: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
-        exit 1
-      fi
-    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
-      echo "configure: dev mode — syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      if command -v cargo-revendor >/dev/null 2>&1; then
-        cargo revendor \
-          --manifest-path src/rust/Cargo.toml \
-          --output "$VENDOR_OUT" \
-          --strip-all \
-          --source-marker \
-          --source-root "$MINIEXTENDR_LOCAL" -v || {
           echo "configure: error: cargo revendor failed" >&2
           exit 1
         }
@@ -458,7 +457,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     echo "configure: CRAN build — vendor ready"
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
 dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],

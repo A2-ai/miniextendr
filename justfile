@@ -334,7 +334,7 @@ expand *cargo_flags:
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true MINIEXTENDR_LOCAL="$(cd .. && pwd)" bash ./configure
+    NOT_CRAN=true bash ./configure
 
 # Configure in CRAN/offline mode
 #
