@@ -15,7 +15,7 @@
 #' @param quiet Logical. If `TRUE`, suppresses build output.
 #' @param features Character vector of cargo features to enable.
 #' @param use_local_crates Path to a local miniextendr repository for vendoring.
-#'   If `NULL` (default), auto-detects via `MINIEXTENDR_LOCAL` env var or
+#'   If `NULL` (default), auto-detects via installed package location or
 #'   parent directory scan.
 #' @return Invisibly returns a list with components:
 #'   - `functions`: character vector of exported function names
@@ -262,19 +262,11 @@ ensure_vendor_cache <- function(use_local_crates = NULL, quiet = FALSE) {
 
 #' Detect local miniextendr crates for inline builds
 #'
-#' Checks environment variable and parent directory scan.
+#' Checks installed package location and parent directory scan.
 #'
 #' @return Path to local miniextendr repo, or NULL
 #' @noRd
 detect_inline_local_crates <- function() {
-  # Check MINIEXTENDR_LOCAL env var
-  env_path <- Sys.getenv("MINIEXTENDR_LOCAL", unset = "")
-  if (nzchar(env_path) && dir.exists(env_path)) {
-    if (file.exists(file.path(env_path, "miniextendr-api", "Cargo.toml"))) {
-      return(normalizePath(env_path, mustWork = TRUE))
-    }
-  }
-
   # Check if minirextendr is installed from the monorepo
   pkg_path <- tryCatch(
     system.file(package = "minirextendr"),

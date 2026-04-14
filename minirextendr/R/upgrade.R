@@ -135,7 +135,6 @@ check_scaffolding_clean <- function() {
     "configure.ucrt",
     "tools/config.guess",
     "tools/config.sub",
-    "tools/vendor-crates.R",
     ".Rbuildignore",
     ".gitignore"
   )

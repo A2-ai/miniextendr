@@ -402,17 +402,6 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
         $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
       fi
-    elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL/miniextendr-api"; then
-      echo "configure: syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      "$R_HOME/bin/Rscript" -e "
-        if (requireNamespace('minirextendr', quietly = TRUE)) {
-          minirextendr::vendor_miniextendr(local_path = '$MINIEXTENDR_LOCAL')
-        } else {
-          message('configure: minirextendr not installed — cannot auto-sync vendor/')
-        }
-      " 2>&1 || {
-        echo "configure: warning: vendor sync failed, using existing vendor/" >&2
-      }
     elif test -f "$VENDOR_OUT/.vendor-source"; then
       _recorded="$(cat "$VENDOR_OUT/.vendor-source")"
       if test -d "$_recorded/miniextendr-api"; then
@@ -442,7 +431,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     echo "configure: CRAN build — vendor ready"
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" MINIEXTENDR_LOCAL="$MINIEXTENDR_LOCAL" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
 dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],

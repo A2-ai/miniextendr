@@ -869,7 +869,7 @@ jobs:
         working-directory: minirextendr
         env:
           MINIEXTENDR_LOCAL_PATH: ${{ github.workspace }}
-        run: Rscript -e "testthat::test_local()"
+        run: Rscript -e "testthat::set_max_fails(Inf); testthat::test_local()"
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2

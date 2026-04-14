@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-04-12 21:47:04
-+++ b/monorepo/rpkg/configure.ac	2026-04-12 21:47:04
+--- a/monorepo/rpkg/configure.ac	2026-04-14 19:03:57
++++ b/monorepo/rpkg/configure.ac	2026-04-14 19:04:30
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -66,8 +66,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-04-12 21:47:04
-+++ b/rpkg/configure.ac	2026-04-12 21:47:04
+--- a/rpkg/configure.ac	2026-04-14 19:03:57
++++ b/rpkg/configure.ac	2026-04-14 19:04:14
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])

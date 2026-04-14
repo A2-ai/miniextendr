@@ -277,11 +277,6 @@ scan_source_packages <- function(source_root) {
 }
 
 auto_source_root <- function(package_root) {
-  env_root <- Sys.getenv("MINIEXTENDR_LOCAL", unset = "")
-  if (nzchar(env_root) && dir.exists(env_root)) {
-    return(normalize_existing(env_root))
-  }
-
   recorded_source <- file.path(package_root, "vendor", ".vendor-source")
   if (file.exists(recorded_source)) {
     recorded <- trimws(readLines(recorded_source, warn = FALSE, n = 1))

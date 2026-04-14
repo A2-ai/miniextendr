@@ -41,8 +41,7 @@ miniextendr_status <- function(path = ".") {
       "configure.win",
       "configure.ucrt",
       "tools/config.guess",
-      "tools/config.sub",
-      "tools/vendor-crates.R"
+      "tools/config.sub"
     ),
     "Rust Project" = c(
       "src/rust/Cargo.toml",

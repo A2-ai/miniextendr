@@ -385,9 +385,8 @@ vendor_miniextendr_local <- function(local_path, dest) {
 #' vendor/ stays up-to-date with workspace crate changes during development.
 #'
 #' Detection order:
-#' 1. `MINIEXTENDR_LOCAL` environment variable (explicit path)
-#' 2. `.vendor-source` marker file in vendor/ (recorded by previous local vendor)
-#' 3. Auto-scan parent directories for a miniextendr workspace
+#' 1. `.vendor-source` marker file in vendor/ (recorded by previous local vendor)
+#' 2. Auto-scan parent directories for a miniextendr workspace
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if sync occurred, FALSE if no local source found.
@@ -416,24 +415,14 @@ vendor_sync <- function(path = ".") {
 #' Detect local miniextendr repository for vendor sync
 #'
 #' Checks multiple sources to find a local miniextendr monorepo:
-#' 1. `MINIEXTENDR_LOCAL` environment variable
-#' 2. `.vendor-source` marker file in vendor/
-#' 3. Walk up parent directories looking for miniextendr-api/Cargo.toml
+#' 1. `.vendor-source` marker file in vendor/
+#' 2. Walk up parent directories looking for miniextendr-api/Cargo.toml
 #'
 #' @param vendor_dir Path to vendor/ directory
 #' @return Normalized path to miniextendr repo root, or NULL if not found
 #' @noRd
 detect_miniextendr_local <- function(vendor_dir) {
-  # 1. Explicit env var (highest priority)
-  env_path <- Sys.getenv("MINIEXTENDR_LOCAL", unset = "")
-  if (nzchar(env_path) && dir.exists(env_path)) {
-    api_toml <- file.path(env_path, "miniextendr-api", "Cargo.toml")
-    if (file.exists(api_toml)) {
-      return(normalizePath(env_path, mustWork = TRUE))
-    }
-  }
-
-  # 2. Recorded source from previous local vendor
+  # 1. Recorded source from previous local vendor
   source_file <- fs::path(vendor_dir, ".vendor-source")
   if (fs::file_exists(source_file)) {
     recorded <- trimws(readLines(source_file, n = 1, warn = FALSE))
