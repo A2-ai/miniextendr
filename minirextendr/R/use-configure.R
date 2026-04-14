@@ -91,11 +91,6 @@ use_miniextendr_config_scripts <- function(path = ".") {
     bullet_created(file.path("tools", script), "Copied")
   }
 
-  # vendor-crates.R: self-contained vendoring script for CRAN release prep
-  vendor_src <- template_path("vendor-crates.R", subdir = "tools")
-  fs::file_copy(vendor_src, usethis::proj_path("tools", "vendor-crates.R"), overwrite = TRUE)
-  bullet_created(file.path("tools", "vendor-crates.R"), "Copied")
-
   invisible(TRUE)
 }
 

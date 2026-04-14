@@ -288,12 +288,6 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
     bullet_created(file.path(rpkg_name, "tools", script), "Copied")
   }
 
-  copy_template(
-    "vendor-crates.R",
-    save_as = file.path(rpkg_name, "tools", "vendor-crates.R"),
-    subdir = "tools"
-  )
-
   invisible(TRUE)
 }
 
