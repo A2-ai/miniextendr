@@ -131,27 +131,6 @@ test_that("detect_miniextendr_local finds repo via .vendor-source", {
   expect_equal(result, normalizePath(fake_repo, mustWork = TRUE))
 })
 
-test_that("detect_miniextendr_local finds repo via MINIEXTENDR_LOCAL env var", {
-  tmp <- tempfile("detect-env-")
-  dir.create(tmp)
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-
-  # Create a fake miniextendr repo
-  fake_repo <- file.path(tmp, "miniextendr-repo")
-  dir.create(fake_repo)
-  api_dir <- file.path(fake_repo, "miniextendr-api")
-  dir.create(api_dir)
-  writeLines("", file.path(api_dir, "Cargo.toml"))
-
-  vendor_dir <- file.path(tmp, "project", "vendor")
-  dir.create(vendor_dir, recursive = TRUE)
-
-  withr::with_envvar(c(MINIEXTENDR_LOCAL = fake_repo), {
-    result <- detect_miniextendr_local(vendor_dir)
-  })
-  expect_equal(result, normalizePath(fake_repo, mustWork = TRUE))
-})
-
 test_that("detect_miniextendr_local returns NULL when no source found", {
   tmp <- tempfile("detect-none-")
   dir.create(tmp)
@@ -160,9 +139,7 @@ test_that("detect_miniextendr_local returns NULL when no source found", {
   vendor_dir <- file.path(tmp, "vendor")
   dir.create(vendor_dir)
 
-  withr::with_envvar(c(MINIEXTENDR_LOCAL = NA), {
-    result <- detect_miniextendr_local(vendor_dir)
-  })
+  result <- detect_miniextendr_local(vendor_dir)
   expect_null(result)
 })
 

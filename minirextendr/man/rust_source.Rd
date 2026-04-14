@@ -30,7 +30,7 @@ when the code and features are unchanged.}
 \item{features}{Character vector of cargo features to enable.}
 
 \item{use_local_crates}{Path to a local miniextendr repository for vendoring.
-If \code{NULL} (default), auto-detects via \code{MINIEXTENDR_LOCAL} env var or
+If \code{NULL} (default), auto-detects via installed package location or
 parent directory scan.}
 }
 \value{

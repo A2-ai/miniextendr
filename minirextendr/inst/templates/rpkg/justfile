@@ -118,9 +118,17 @@ dev: check test install
 reinstall: install
 
 # Vendor all dependencies for CRAN submission
-# Downloads external crates and compresses into inst/vendor.tar.xz
+# Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor
 vendor:
-    Rscript tools/vendor-crates.R pack
+    cargo revendor \
+      --manifest-path src/rust/Cargo.toml \
+      --output vendor \
+      --strip-all \
+      --freeze \
+      --compress inst/vendor.tar.xz \
+      --blank-md \
+      --source-marker \
+      -v
 
 # Prepare for CRAN submission: vendor deps, configure in CRAN mode, build, check
 cran-prep: vendor rbuild-cran rcheck-cran

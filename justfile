@@ -334,7 +334,7 @@ expand *cargo_flags:
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true MINIEXTENDR_LOCAL="$(cd .. && pwd)" bash ./configure
+    NOT_CRAN=true bash ./configure
 
 # Configure in CRAN/offline mode
 #
@@ -567,19 +567,39 @@ templates-sources:
     #   - monorepo/      : Rust workspace with embedded R package
     #
     # Only include files where rpkg is the source of truth.
-    # Only include files where rpkg is the source of truth.
     cat <<'EOF'
     # rel	src
     # === R Package Template (rpkg/) ===
-    rpkg/Makevars.in	rpkg/src/Makevars.in
-    rpkg/configure.ac	rpkg/configure.ac
+    rpkg/bootstrap.R	rpkg/bootstrap.R
     rpkg/build.rs	rpkg/src/rust/build.rs
+    rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
+    rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
+    rpkg/cleanup	rpkg/cleanup
+    rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
+    rpkg/cleanup.win	rpkg/cleanup.win
+    rpkg/configure.ac	rpkg/configure.ac
+    rpkg/configure.ucrt	rpkg/configure.ucrt
+    rpkg/configure.win	rpkg/configure.win
+    rpkg/Makevars.in	rpkg/src/Makevars.in
+    rpkg/Makevars.win	rpkg/src/Makevars.win
+    rpkg/stub.c	rpkg/src/stub.c
+    rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
-    # Monorepo root files are template-only (no rpkg source)
     # The embedded R package uses same sources as rpkg/ template
-    monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
-    monorepo/rpkg/configure.ac	rpkg/configure.ac
+    monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
+    monorepo/rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
+    monorepo/rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
+    monorepo/rpkg/cleanup	rpkg/cleanup
+    monorepo/rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
+    monorepo/rpkg/cleanup.win	rpkg/cleanup.win
+    monorepo/rpkg/configure.ac	rpkg/configure.ac
+    monorepo/rpkg/configure.ucrt	rpkg/configure.ucrt
+    monorepo/rpkg/configure.win	rpkg/configure.win
+    monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
+    monorepo/rpkg/Makevars.win	rpkg/src/Makevars.win
+    monorepo/rpkg/stub.c	rpkg/src/stub.c
+    monorepo/rpkg/win.def.in	rpkg/src/win.def.in
     EOF
 
 # Internal helper: populate an upstream snapshot into DEST.

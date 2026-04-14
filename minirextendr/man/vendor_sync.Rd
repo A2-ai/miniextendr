@@ -20,7 +20,6 @@ vendor/ stays up-to-date with workspace crate changes during development.
 \details{
 Detection order:
 \enumerate{
-\item \code{MINIEXTENDR_LOCAL} environment variable (explicit path)
 \item \code{.vendor-source} marker file in vendor/ (recorded by previous local vendor)
 \item Auto-scan parent directories for a miniextendr workspace
 }
