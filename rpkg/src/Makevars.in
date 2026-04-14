@@ -20,6 +20,7 @@ TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS = @NATIVE_PKG_CPPFLAGS@
 NNG_DEFINES = @NNG_DEFINES@
 NNG_LIBS = @NNG_LIBS@
+EXTRA_PKG_LIBS = @EXTRA_PKG_LIBS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # codegen-units = 1 in Cargo.toml ensures the user crate compiles into a single .o
@@ -119,34 +120,8 @@ NNG_CORE_SOURCES = \
   nng/src/supplemental/util/platform.c \
   nng/src/supplemental/websocket/websocket.c
 
-# NNG platform source files (POSIX; overridden by Makevars.win for Windows)
-NNG_PLATFORM_SOURCES = \
-  nng/src/platform/posix/posix_alloc.c \
-  nng/src/platform/posix/posix_atomic.c \
-  nng/src/platform/posix/posix_clock.c \
-  nng/src/platform/posix/posix_debug.c \
-  nng/src/platform/posix/posix_file.c \
-  nng/src/platform/posix/posix_ipcconn.c \
-  nng/src/platform/posix/posix_ipcdial.c \
-  nng/src/platform/posix/posix_ipclisten.c \
-  nng/src/platform/posix/posix_peerid.c \
-  nng/src/platform/posix/posix_pipe.c \
-  nng/src/platform/posix/posix_pollq_epoll.c \
-  nng/src/platform/posix/posix_pollq_kqueue.c \
-  nng/src/platform/posix/posix_pollq_poll.c \
-  nng/src/platform/posix/posix_pollq_port.c \
-  nng/src/platform/posix/posix_rand_arc4random.c \
-  nng/src/platform/posix/posix_rand_getrandom.c \
-  nng/src/platform/posix/posix_rand_urandom.c \
-  nng/src/platform/posix/posix_resolv_gai.c \
-  nng/src/platform/posix/posix_sockaddr.c \
-  nng/src/platform/posix/posix_socketpair.c \
-  nng/src/platform/posix/posix_sockfd.c \
-  nng/src/platform/posix/posix_tcpconn.c \
-  nng/src/platform/posix/posix_tcpdial.c \
-  nng/src/platform/posix/posix_tcplisten.c \
-  nng/src/platform/posix/posix_thread.c \
-  nng/src/platform/posix/posix_udp.c
+# NNG platform source files (set by configure based on host OS)
+NNG_PLATFORM_SOURCES = @NNG_PLATFORM_SOURCES@
 
 NNG_SOURCES = $(NNG_CORE_SOURCES) $(NNG_PLATFORM_SOURCES)
 
@@ -227,7 +202,7 @@ MBEDTLS_OBJECTS = $(MBEDTLS_SOURCES:.c=.o)
 LIBNNG = nng/libnng.a
 LIBMBEDTLS = mbedtls/libmbedtls_all.a
 
-PKG_LIBS = $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS)
+PKG_LIBS = $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS) $(EXTRA_PKG_LIBS)
 
 ## --- pattern rules for subdirectory C compilation ---------------------
 ## R's default suffix rules don't handle subdirectories; these pattern rules do.

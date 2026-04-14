@@ -295,26 +295,87 @@ NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_INIT=nng_tls_engine_init_mbed"
 NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_FINI=nng_tls_engine_fini_mbed"
 
 NNG_LIBS=""
+EXTRA_PKG_LIBS=""
+
+dnl NNG platform source files — POSIX vs Windows
+dnl These are substituted into Makevars.in so the generated Makevars has the
+dnl correct platform sources. (Makevars.win override doesn't work when
+dnl configure.win generates Makevars — R uses the generated Makevars directly.)
+NNG_POSIX_SOURCES="\
+  nng/src/platform/posix/posix_alloc.c \
+  nng/src/platform/posix/posix_atomic.c \
+  nng/src/platform/posix/posix_clock.c \
+  nng/src/platform/posix/posix_debug.c \
+  nng/src/platform/posix/posix_file.c \
+  nng/src/platform/posix/posix_ipcconn.c \
+  nng/src/platform/posix/posix_ipcdial.c \
+  nng/src/platform/posix/posix_ipclisten.c \
+  nng/src/platform/posix/posix_peerid.c \
+  nng/src/platform/posix/posix_pipe.c \
+  nng/src/platform/posix/posix_pollq_epoll.c \
+  nng/src/platform/posix/posix_pollq_kqueue.c \
+  nng/src/platform/posix/posix_pollq_poll.c \
+  nng/src/platform/posix/posix_pollq_port.c \
+  nng/src/platform/posix/posix_rand_arc4random.c \
+  nng/src/platform/posix/posix_rand_getrandom.c \
+  nng/src/platform/posix/posix_rand_urandom.c \
+  nng/src/platform/posix/posix_resolv_gai.c \
+  nng/src/platform/posix/posix_sockaddr.c \
+  nng/src/platform/posix/posix_socketpair.c \
+  nng/src/platform/posix/posix_sockfd.c \
+  nng/src/platform/posix/posix_tcpconn.c \
+  nng/src/platform/posix/posix_tcpdial.c \
+  nng/src/platform/posix/posix_tcplisten.c \
+  nng/src/platform/posix/posix_thread.c \
+  nng/src/platform/posix/posix_udp.c"
+
+NNG_WINDOWS_SOURCES="\
+  nng/src/platform/windows/win_clock.c \
+  nng/src/platform/windows/win_debug.c \
+  nng/src/platform/windows/win_file.c \
+  nng/src/platform/windows/win_io.c \
+  nng/src/platform/windows/win_ipcconn.c \
+  nng/src/platform/windows/win_ipcdial.c \
+  nng/src/platform/windows/win_ipclisten.c \
+  nng/src/platform/windows/win_pipe.c \
+  nng/src/platform/windows/win_rand.c \
+  nng/src/platform/windows/win_resolv.c \
+  nng/src/platform/windows/win_sockaddr.c \
+  nng/src/platform/windows/win_socketpair.c \
+  nng/src/platform/windows/win_tcp.c \
+  nng/src/platform/windows/win_tcpconn.c \
+  nng/src/platform/windows/win_tcpdial.c \
+  nng/src/platform/windows/win_tcplisten.c \
+  nng/src/platform/windows/win_thread.c \
+  nng/src/platform/windows/win_udp.c"
 
 case "$host_os" in
   darwin*)
     NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_DARWIN"
     NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_KQUEUE -DNNG_HAVE_ARC4RANDOM -DNNG_HAVE_STDATOMIC"
+    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
     ;;
   linux*)
     NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX"
     NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_EPOLL -DNNG_USE_EVENTFD -DNNG_HAVE_GETRANDOM -DNNG_HAVE_STDATOMIC"
+    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
     ;;
   *mingw*|*msys*|*cygwin*)
     NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_WINDOWS"
     NNG_LIBS="$NNG_LIBS -lbcrypt -liphlpapi -lws2_32"
+    NNG_PLATFORM_SOURCES="$NNG_WINDOWS_SOURCES"
+    dnl Windows-specific system libraries needed by Rust std and NNG
+    EXTRA_PKG_LIBS="-lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32 -lmswsock -liphlpapi"
     ;;
   *)
     NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_HAVE_STDATOMIC"
+    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
     ;;
 esac
 AC_SUBST([NNG_DEFINES])
 AC_SUBST([NNG_LIBS])
+AC_SUBST([NNG_PLATFORM_SOURCES])
+AC_SUBST([EXTRA_PKG_LIBS])
 
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 

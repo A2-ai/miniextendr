@@ -1,26 +1,27 @@
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-04-13 12:55:25
-+++ b/monorepo/rpkg/Makevars.in	2026-04-13 12:54:25
-@@ -18,6 +18,4 @@
- CDYLIB_EXT = @CDYLIB_EXT@
+--- a/monorepo/rpkg/Makevars.in	2026-04-14 08:22:44
++++ b/monorepo/rpkg/Makevars.in	2026-04-13 13:37:38
+@@ -19,7 +19,4 @@
  TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
+ NATIVE_PKG_CPPFLAGS = @NATIVE_PKG_CPPFLAGS@
 -NNG_DEFINES = @NNG_DEFINES@
 -NNG_LIBS = @NNG_LIBS@
+-EXTRA_PKG_LIBS = @EXTRA_PKG_LIBS@
  
  CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
-@@ -25,4 +23,5 @@
+@@ -27,4 +24,5 @@
  # inside the staticlib archive. The linker pulls it in (via R_init_<pkg>), which
  # brings all linkme distributed_slice entries along — no force_load needed.
 +PKG_LIBS = $(CARGO_AR)
+ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
  
- CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
-@@ -31,4 +30,5 @@
+@@ -34,4 +32,5 @@
  # cdylib for R wrapper generation (platform-specific extension)
  CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
 +## ----------------------------------------------------------------------
  
  # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
-@@ -42,206 +42,4 @@
+@@ -45,180 +44,4 @@
  #   3. R wrappers are generated from the cdylib
  all: $(SHLIB) $(WRAPPERS_R)
 -
@@ -99,34 +100,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -  nng/src/supplemental/util/platform.c \
 -  nng/src/supplemental/websocket/websocket.c
 -
--# NNG platform source files (POSIX; overridden by Makevars.win for Windows)
--NNG_PLATFORM_SOURCES = \
--  nng/src/platform/posix/posix_alloc.c \
--  nng/src/platform/posix/posix_atomic.c \
--  nng/src/platform/posix/posix_clock.c \
--  nng/src/platform/posix/posix_debug.c \
--  nng/src/platform/posix/posix_file.c \
--  nng/src/platform/posix/posix_ipcconn.c \
--  nng/src/platform/posix/posix_ipcdial.c \
--  nng/src/platform/posix/posix_ipclisten.c \
--  nng/src/platform/posix/posix_peerid.c \
--  nng/src/platform/posix/posix_pipe.c \
--  nng/src/platform/posix/posix_pollq_epoll.c \
--  nng/src/platform/posix/posix_pollq_kqueue.c \
--  nng/src/platform/posix/posix_pollq_poll.c \
--  nng/src/platform/posix/posix_pollq_port.c \
--  nng/src/platform/posix/posix_rand_arc4random.c \
--  nng/src/platform/posix/posix_rand_getrandom.c \
--  nng/src/platform/posix/posix_rand_urandom.c \
--  nng/src/platform/posix/posix_resolv_gai.c \
--  nng/src/platform/posix/posix_sockaddr.c \
--  nng/src/platform/posix/posix_socketpair.c \
--  nng/src/platform/posix/posix_sockfd.c \
--  nng/src/platform/posix/posix_tcpconn.c \
--  nng/src/platform/posix/posix_tcpdial.c \
--  nng/src/platform/posix/posix_tcplisten.c \
--  nng/src/platform/posix/posix_thread.c \
--  nng/src/platform/posix/posix_udp.c
+-# NNG platform source files (set by configure based on host OS)
+-NNG_PLATFORM_SOURCES = @NNG_PLATFORM_SOURCES@
 -
 -NNG_SOURCES = $(NNG_CORE_SOURCES) $(NNG_PLATFORM_SOURCES)
 -
@@ -207,7 +182,7 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -LIBNNG = nng/libnng.a
 -LIBMBEDTLS = mbedtls/libmbedtls_all.a
 -
--PKG_LIBS = $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS)
+-PKG_LIBS = $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS) $(EXTRA_PKG_LIBS)
 -
 -## --- pattern rules for subdirectory C compilation ---------------------
 -## R's default suffix rules don't handle subdirectories; these pattern rules do.
@@ -227,49 +202,46 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
 -## ----------------------------------------------------------------------
  	@# Dev mode: touch Cargo.toml so pkgbuild always thinks sources changed
  	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-@@ -267,5 +65,5 @@
+@@ -244,5 +67,5 @@
  FORCE_CARGO:
  
 -$(SHLIB): $(OBJECTS) $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS)
 +$(SHLIB): $(OBJECTS) $(CARGO_AR)
  
  # Build the Rust static library
-@@ -278,5 +76,5 @@
- VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
- 
--$(CARGO_AR): FORCE_CARGO $(LIBNNG) $(LIBMBEDTLS)
-+$(CARGO_AR): FORCE_CARGO
+@@ -257,5 +80,5 @@
+ # OBJECTS are passed to cargo as link-args so the Rust crate can reference
+ # symbols from C shim files (bindgen-generated static inline wrappers).
+-$(CARGO_AR): FORCE_CARGO $(OBJECTS) $(LIBNNG) $(LIBMBEDTLS)
++$(CARGO_AR): FORCE_CARGO $(OBJECTS)
  	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
  	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
-@@ -287,5 +85,5 @@
- 	TARGET_OPT=""; \
+@@ -268,5 +91,5 @@
+ 	for obj in $(OBJECTS); do LINK_ARGS="$$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
  	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
--	RUSTFLAGS="$(ENV_RUSTFLAGS) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)" \
-+	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+-	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)" \
++	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
  	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
  	  --lib --profile $(CARGO_PROFILE) \
-@@ -317,11 +115,11 @@
+@@ -298,10 +121,9 @@
  # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
  # Vendor extraction is handled by $(CARGO_AR) which builds first.
--$(CARGO_CDYLIB): FORCE_CARGO $(LIBNNG) $(LIBMBEDTLS) | $(CARGO_AR)
-+$(CARGO_CDYLIB): FORCE_CARGO | $(CARGO_AR)
+-$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) $(LIBNNG) $(LIBMBEDTLS) | $(CARGO_AR)
++$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
  	@set -e; \
  	TARGET_OPT=""; \
--	CDYLIB_LINK_ARGS="-C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)"; \
-+	CDYLIB_LINK_ARGS=""; \
+ 	CDYLIB_LINK_ARGS=""; \
+ 	for obj in $(OBJECTS); do CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
+-	CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)"; \
  	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
  	if [ "$(CDYLIB_EXT)" = "dll" ]; then \
--	  CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
-+	  CDYLIB_LINK_ARGS="-C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
- 	fi; \
- 	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-@@ -334,3 +132,2 @@
+@@ -317,3 +139,2 @@
  
  clean:
 -	rm -f $(NNG_OBJECTS) $(MBEDTLS_OBJECTS) $(LIBNNG) $(LIBMBEDTLS)
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-04-13 12:54:29
-+++ b/monorepo/rpkg/configure.ac	2026-04-13 12:54:25
+--- a/monorepo/rpkg/configure.ac	2026-04-14 08:22:19
++++ b/monorepo/rpkg/configure.ac	2026-04-13 13:37:38
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -310,8 +282,23 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -  fi
  fi
  
-@@ -260,46 +256,4 @@
- AC_SUBST([CDYLIB_EXT])
+@@ -261,121 +257,8 @@
+ 
+ dnl ---- Native R package include paths (for bindgen C shim compilation) ----
+-dnl Packages listed in LinkingTo: need their include/ paths for compiling
+-dnl the C shim files generated by bindgen (static inline wrapper functions).
+ NATIVE_PKG_CPPFLAGS=""
+-
+-dnl cli — progress bar C API
+-CLI_INCLUDE=$("${R_HOME}/bin/Rscript" -e "cat(system.file('include', package='cli'))")
+-if test -n "$CLI_INCLUDE" && test -d "$CLI_INCLUDE"; then
+-  NATIVE_PKG_CPPFLAGS="$NATIVE_PKG_CPPFLAGS -I$CLI_INCLUDE"
+-  AC_MSG_NOTICE([cli include: $CLI_INCLUDE])
+-else
+-  AC_MSG_WARN([cli package not found — native CLI bindings will not compile])
+-fi
++dnl {{native_pkg_cppflags}}
+ AC_SUBST([NATIVE_PKG_CPPFLAGS])
  
 -dnl ---- NNG/mbedtls platform detection ----
 -dnl NNG and mbedtls are compiled from bundled sources in src/nng/ and src/mbedtls/.
@@ -334,36 +321,97 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_FINI=nng_tls_engine_fini_mbed"
 -
 -NNG_LIBS=""
+-EXTRA_PKG_LIBS=""
+-
+-dnl NNG platform source files — POSIX vs Windows
+-dnl These are substituted into Makevars.in so the generated Makevars has the
+-dnl correct platform sources. (Makevars.win override doesn't work when
+-dnl configure.win generates Makevars — R uses the generated Makevars directly.)
+-NNG_POSIX_SOURCES="\
+-  nng/src/platform/posix/posix_alloc.c \
+-  nng/src/platform/posix/posix_atomic.c \
+-  nng/src/platform/posix/posix_clock.c \
+-  nng/src/platform/posix/posix_debug.c \
+-  nng/src/platform/posix/posix_file.c \
+-  nng/src/platform/posix/posix_ipcconn.c \
+-  nng/src/platform/posix/posix_ipcdial.c \
+-  nng/src/platform/posix/posix_ipclisten.c \
+-  nng/src/platform/posix/posix_peerid.c \
+-  nng/src/platform/posix/posix_pipe.c \
+-  nng/src/platform/posix/posix_pollq_epoll.c \
+-  nng/src/platform/posix/posix_pollq_kqueue.c \
+-  nng/src/platform/posix/posix_pollq_poll.c \
+-  nng/src/platform/posix/posix_pollq_port.c \
+-  nng/src/platform/posix/posix_rand_arc4random.c \
+-  nng/src/platform/posix/posix_rand_getrandom.c \
+-  nng/src/platform/posix/posix_rand_urandom.c \
+-  nng/src/platform/posix/posix_resolv_gai.c \
+-  nng/src/platform/posix/posix_sockaddr.c \
+-  nng/src/platform/posix/posix_socketpair.c \
+-  nng/src/platform/posix/posix_sockfd.c \
+-  nng/src/platform/posix/posix_tcpconn.c \
+-  nng/src/platform/posix/posix_tcpdial.c \
+-  nng/src/platform/posix/posix_tcplisten.c \
+-  nng/src/platform/posix/posix_thread.c \
+-  nng/src/platform/posix/posix_udp.c"
+-
+-NNG_WINDOWS_SOURCES="\
+-  nng/src/platform/windows/win_clock.c \
+-  nng/src/platform/windows/win_debug.c \
+-  nng/src/platform/windows/win_file.c \
+-  nng/src/platform/windows/win_io.c \
+-  nng/src/platform/windows/win_ipcconn.c \
+-  nng/src/platform/windows/win_ipcdial.c \
+-  nng/src/platform/windows/win_ipclisten.c \
+-  nng/src/platform/windows/win_pipe.c \
+-  nng/src/platform/windows/win_rand.c \
+-  nng/src/platform/windows/win_resolv.c \
+-  nng/src/platform/windows/win_sockaddr.c \
+-  nng/src/platform/windows/win_socketpair.c \
+-  nng/src/platform/windows/win_tcp.c \
+-  nng/src/platform/windows/win_tcpconn.c \
+-  nng/src/platform/windows/win_tcpdial.c \
+-  nng/src/platform/windows/win_tcplisten.c \
+-  nng/src/platform/windows/win_thread.c \
+-  nng/src/platform/windows/win_udp.c"
 -
 -case "$host_os" in
 -  darwin*)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_DARWIN"
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_KQUEUE -DNNG_HAVE_ARC4RANDOM -DNNG_HAVE_STDATOMIC"
+-    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
 -    ;;
 -  linux*)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX"
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_EPOLL -DNNG_USE_EVENTFD -DNNG_HAVE_GETRANDOM -DNNG_HAVE_STDATOMIC"
+-    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
 -    ;;
 -  *mingw*|*msys*|*cygwin*)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_WINDOWS"
 -    NNG_LIBS="$NNG_LIBS -lbcrypt -liphlpapi -lws2_32"
+-    NNG_PLATFORM_SOURCES="$NNG_WINDOWS_SOURCES"
+-    dnl Windows-specific system libraries needed by Rust std and NNG
+-    EXTRA_PKG_LIBS="-lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32 -lmswsock -liphlpapi"
 -    ;;
 -  *)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_HAVE_STDATOMIC"
+-    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
 -    ;;
 -esac
 -AC_SUBST([NNG_DEFINES])
 -AC_SUBST([NNG_LIBS])
+-AC_SUBST([NNG_PLATFORM_SOURCES])
+-AC_SUBST([EXTRA_PKG_LIBS])
 -
  AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-@@ -331,4 +285,5 @@
+@@ -407,4 +290,5 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -353,15 +308,9 @@
+@@ -429,15 +313,9 @@
  
    if test "$NOT_CRAN" = "true"; then
 -    dnl In dev mode, write a minimal cargo config that uses vendor/ as source.
@@ -385,28 +433,29 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
    elif test -f "$RPKG_CFG"; then
      dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-04-13 12:55:25
-+++ b/rpkg/Makevars.in	2026-04-13 12:54:25
-@@ -18,6 +18,4 @@
- CDYLIB_EXT = @CDYLIB_EXT@
+--- a/rpkg/Makevars.in	2026-04-14 08:22:44
++++ b/rpkg/Makevars.in	2026-04-13 13:37:38
+@@ -19,7 +19,4 @@
  TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
+ NATIVE_PKG_CPPFLAGS = @NATIVE_PKG_CPPFLAGS@
 -NNG_DEFINES = @NNG_DEFINES@
 -NNG_LIBS = @NNG_LIBS@
+-EXTRA_PKG_LIBS = @EXTRA_PKG_LIBS@
  
  CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
-@@ -25,4 +23,5 @@
+@@ -27,4 +24,5 @@
  # inside the staticlib archive. The linker pulls it in (via R_init_<pkg>), which
  # brings all linkme distributed_slice entries along — no force_load needed.
 +PKG_LIBS = $(CARGO_AR)
+ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
  
- CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
-@@ -31,4 +30,5 @@
+@@ -34,4 +32,5 @@
  # cdylib for R wrapper generation (platform-specific extension)
  CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
 +## ----------------------------------------------------------------------
  
  # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
-@@ -42,206 +42,4 @@
+@@ -45,180 +44,4 @@
  #   3. R wrappers are generated from the cdylib
  all: $(SHLIB) $(WRAPPERS_R)
 -
@@ -485,34 +534,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -  nng/src/supplemental/util/platform.c \
 -  nng/src/supplemental/websocket/websocket.c
 -
--# NNG platform source files (POSIX; overridden by Makevars.win for Windows)
--NNG_PLATFORM_SOURCES = \
--  nng/src/platform/posix/posix_alloc.c \
--  nng/src/platform/posix/posix_atomic.c \
--  nng/src/platform/posix/posix_clock.c \
--  nng/src/platform/posix/posix_debug.c \
--  nng/src/platform/posix/posix_file.c \
--  nng/src/platform/posix/posix_ipcconn.c \
--  nng/src/platform/posix/posix_ipcdial.c \
--  nng/src/platform/posix/posix_ipclisten.c \
--  nng/src/platform/posix/posix_peerid.c \
--  nng/src/platform/posix/posix_pipe.c \
--  nng/src/platform/posix/posix_pollq_epoll.c \
--  nng/src/platform/posix/posix_pollq_kqueue.c \
--  nng/src/platform/posix/posix_pollq_poll.c \
--  nng/src/platform/posix/posix_pollq_port.c \
--  nng/src/platform/posix/posix_rand_arc4random.c \
--  nng/src/platform/posix/posix_rand_getrandom.c \
--  nng/src/platform/posix/posix_rand_urandom.c \
--  nng/src/platform/posix/posix_resolv_gai.c \
--  nng/src/platform/posix/posix_sockaddr.c \
--  nng/src/platform/posix/posix_socketpair.c \
--  nng/src/platform/posix/posix_sockfd.c \
--  nng/src/platform/posix/posix_tcpconn.c \
--  nng/src/platform/posix/posix_tcpdial.c \
--  nng/src/platform/posix/posix_tcplisten.c \
--  nng/src/platform/posix/posix_thread.c \
--  nng/src/platform/posix/posix_udp.c
+-# NNG platform source files (set by configure based on host OS)
+-NNG_PLATFORM_SOURCES = @NNG_PLATFORM_SOURCES@
 -
 -NNG_SOURCES = $(NNG_CORE_SOURCES) $(NNG_PLATFORM_SOURCES)
 -
@@ -593,7 +616,7 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -LIBNNG = nng/libnng.a
 -LIBMBEDTLS = mbedtls/libmbedtls_all.a
 -
--PKG_LIBS = $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS)
+-PKG_LIBS = $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS) $(NNG_LIBS) $(EXTRA_PKG_LIBS)
 -
 -## --- pattern rules for subdirectory C compilation ---------------------
 -## R's default suffix rules don't handle subdirectories; these pattern rules do.
@@ -613,49 +636,46 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
 -## ----------------------------------------------------------------------
  	@# Dev mode: touch Cargo.toml so pkgbuild always thinks sources changed
  	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-@@ -267,5 +65,5 @@
+@@ -244,5 +67,5 @@
  FORCE_CARGO:
  
 -$(SHLIB): $(OBJECTS) $(CARGO_AR) $(LIBNNG) $(LIBMBEDTLS)
 +$(SHLIB): $(OBJECTS) $(CARGO_AR)
  
  # Build the Rust static library
-@@ -278,5 +76,5 @@
- VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
- 
--$(CARGO_AR): FORCE_CARGO $(LIBNNG) $(LIBMBEDTLS)
-+$(CARGO_AR): FORCE_CARGO
+@@ -257,5 +80,5 @@
+ # OBJECTS are passed to cargo as link-args so the Rust crate can reference
+ # symbols from C shim files (bindgen-generated static inline wrappers).
+-$(CARGO_AR): FORCE_CARGO $(OBJECTS) $(LIBNNG) $(LIBMBEDTLS)
++$(CARGO_AR): FORCE_CARGO $(OBJECTS)
  	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
  	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
-@@ -287,5 +85,5 @@
- 	TARGET_OPT=""; \
+@@ -268,5 +91,5 @@
+ 	for obj in $(OBJECTS); do LINK_ARGS="$$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
  	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
--	RUSTFLAGS="$(ENV_RUSTFLAGS) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)" \
-+	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+-	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)" \
++	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
  	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
  	  --lib --profile $(CARGO_PROFILE) \
-@@ -317,11 +115,11 @@
+@@ -298,10 +121,9 @@
  # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
  # Vendor extraction is handled by $(CARGO_AR) which builds first.
--$(CARGO_CDYLIB): FORCE_CARGO $(LIBNNG) $(LIBMBEDTLS) | $(CARGO_AR)
-+$(CARGO_CDYLIB): FORCE_CARGO | $(CARGO_AR)
+-$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) $(LIBNNG) $(LIBMBEDTLS) | $(CARGO_AR)
++$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
  	@set -e; \
  	TARGET_OPT=""; \
--	CDYLIB_LINK_ARGS="-C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)"; \
-+	CDYLIB_LINK_ARGS=""; \
+ 	CDYLIB_LINK_ARGS=""; \
+ 	for obj in $(OBJECTS); do CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
+-	CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBNNG) -C link-arg=$(ABS_RPKG_SRCDIR)/$(LIBMBEDTLS)"; \
  	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
  	if [ "$(CDYLIB_EXT)" = "dll" ]; then \
--	  CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
-+	  CDYLIB_LINK_ARGS="-C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
- 	fi; \
- 	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-@@ -334,3 +132,2 @@
+@@ -317,3 +139,2 @@
  
  clean:
 -	rm -f $(NNG_OBJECTS) $(MBEDTLS_OBJECTS) $(LIBNNG) $(LIBMBEDTLS)
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-04-13 12:54:29
-+++ b/rpkg/configure.ac	2026-04-13 12:54:25
+--- a/rpkg/configure.ac	2026-04-14 08:22:19
++++ b/rpkg/configure.ac	2026-04-13 13:37:38
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -696,8 +716,26 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -  fi
  fi
  
-@@ -260,46 +256,4 @@
- AC_SUBST([CDYLIB_EXT])
+@@ -261,121 +257,11 @@
+ 
+ dnl ---- Native R package include paths (for bindgen C shim compilation) ----
+-dnl Packages listed in LinkingTo: need their include/ paths for compiling
+-dnl the C shim files generated by bindgen (static inline wrapper functions).
++dnl Populated by minirextendr::use_native_package(). Each native package
++dnl adds -I<path> for its inst/include/ headers so the C compiler can
++dnl find them when compiling bindgen-generated static inline wrappers.
+ NATIVE_PKG_CPPFLAGS=""
+-
+-dnl cli — progress bar C API
+-CLI_INCLUDE=$("${R_HOME}/bin/Rscript" -e "cat(system.file('include', package='cli'))")
+-if test -n "$CLI_INCLUDE" && test -d "$CLI_INCLUDE"; then
+-  NATIVE_PKG_CPPFLAGS="$NATIVE_PKG_CPPFLAGS -I$CLI_INCLUDE"
+-  AC_MSG_NOTICE([cli include: $CLI_INCLUDE])
+-else
+-  AC_MSG_WARN([cli package not found — native CLI bindings will not compile])
+-fi
++dnl {{native_pkg_cppflags}}
+ AC_SUBST([NATIVE_PKG_CPPFLAGS])
  
 -dnl ---- NNG/mbedtls platform detection ----
 -dnl NNG and mbedtls are compiled from bundled sources in src/nng/ and src/mbedtls/.
@@ -720,36 +758,97 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -NNG_DEFINES="$NNG_DEFINES -DNNG_TLS_ENGINE_FINI=nng_tls_engine_fini_mbed"
 -
 -NNG_LIBS=""
+-EXTRA_PKG_LIBS=""
+-
+-dnl NNG platform source files — POSIX vs Windows
+-dnl These are substituted into Makevars.in so the generated Makevars has the
+-dnl correct platform sources. (Makevars.win override doesn't work when
+-dnl configure.win generates Makevars — R uses the generated Makevars directly.)
+-NNG_POSIX_SOURCES="\
+-  nng/src/platform/posix/posix_alloc.c \
+-  nng/src/platform/posix/posix_atomic.c \
+-  nng/src/platform/posix/posix_clock.c \
+-  nng/src/platform/posix/posix_debug.c \
+-  nng/src/platform/posix/posix_file.c \
+-  nng/src/platform/posix/posix_ipcconn.c \
+-  nng/src/platform/posix/posix_ipcdial.c \
+-  nng/src/platform/posix/posix_ipclisten.c \
+-  nng/src/platform/posix/posix_peerid.c \
+-  nng/src/platform/posix/posix_pipe.c \
+-  nng/src/platform/posix/posix_pollq_epoll.c \
+-  nng/src/platform/posix/posix_pollq_kqueue.c \
+-  nng/src/platform/posix/posix_pollq_poll.c \
+-  nng/src/platform/posix/posix_pollq_port.c \
+-  nng/src/platform/posix/posix_rand_arc4random.c \
+-  nng/src/platform/posix/posix_rand_getrandom.c \
+-  nng/src/platform/posix/posix_rand_urandom.c \
+-  nng/src/platform/posix/posix_resolv_gai.c \
+-  nng/src/platform/posix/posix_sockaddr.c \
+-  nng/src/platform/posix/posix_socketpair.c \
+-  nng/src/platform/posix/posix_sockfd.c \
+-  nng/src/platform/posix/posix_tcpconn.c \
+-  nng/src/platform/posix/posix_tcpdial.c \
+-  nng/src/platform/posix/posix_tcplisten.c \
+-  nng/src/platform/posix/posix_thread.c \
+-  nng/src/platform/posix/posix_udp.c"
+-
+-NNG_WINDOWS_SOURCES="\
+-  nng/src/platform/windows/win_clock.c \
+-  nng/src/platform/windows/win_debug.c \
+-  nng/src/platform/windows/win_file.c \
+-  nng/src/platform/windows/win_io.c \
+-  nng/src/platform/windows/win_ipcconn.c \
+-  nng/src/platform/windows/win_ipcdial.c \
+-  nng/src/platform/windows/win_ipclisten.c \
+-  nng/src/platform/windows/win_pipe.c \
+-  nng/src/platform/windows/win_rand.c \
+-  nng/src/platform/windows/win_resolv.c \
+-  nng/src/platform/windows/win_sockaddr.c \
+-  nng/src/platform/windows/win_socketpair.c \
+-  nng/src/platform/windows/win_tcp.c \
+-  nng/src/platform/windows/win_tcpconn.c \
+-  nng/src/platform/windows/win_tcpdial.c \
+-  nng/src/platform/windows/win_tcplisten.c \
+-  nng/src/platform/windows/win_thread.c \
+-  nng/src/platform/windows/win_udp.c"
 -
 -case "$host_os" in
 -  darwin*)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_DARWIN"
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_KQUEUE -DNNG_HAVE_ARC4RANDOM -DNNG_HAVE_STDATOMIC"
+-    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
 -    ;;
 -  linux*)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX"
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_HAVE_EPOLL -DNNG_USE_EVENTFD -DNNG_HAVE_GETRANDOM -DNNG_HAVE_STDATOMIC"
+-    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
 -    ;;
 -  *mingw*|*msys*|*cygwin*)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_WINDOWS"
 -    NNG_LIBS="$NNG_LIBS -lbcrypt -liphlpapi -lws2_32"
+-    NNG_PLATFORM_SOURCES="$NNG_WINDOWS_SOURCES"
+-    dnl Windows-specific system libraries needed by Rust std and NNG
+-    EXTRA_PKG_LIBS="-lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32 -lmswsock -liphlpapi"
 -    ;;
 -  *)
 -    NNG_DEFINES="$NNG_DEFINES -DNNG_PLATFORM_POSIX -DNNG_HAVE_STDATOMIC"
+-    NNG_PLATFORM_SOURCES="$NNG_POSIX_SOURCES"
 -    ;;
 -esac
 -AC_SUBST([NNG_DEFINES])
 -AC_SUBST([NNG_LIBS])
+-AC_SUBST([NNG_PLATFORM_SOURCES])
+-AC_SUBST([EXTRA_PKG_LIBS])
 -
  AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-@@ -331,4 +285,5 @@
+@@ -407,4 +293,5 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -353,15 +308,9 @@
+@@ -429,15 +316,9 @@
  
    if test "$NOT_CRAN" = "true"; then
 -    dnl In dev mode, write a minimal cargo config that uses vendor/ as source.
