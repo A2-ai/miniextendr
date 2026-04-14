@@ -432,14 +432,19 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       fi
     elif test -n "$MINIEXTENDR_LOCAL" && test -d "$MINIEXTENDR_LOCAL"; then
       echo "configure: dev mode — syncing vendor/ from MINIEXTENDR_LOCAL=$MINIEXTENDR_LOCAL"
-      if test -f "$abs_rpkg_dir/tools/vendor-crates.R"; then
-        "$R_HOME/bin/Rscript" "$abs_rpkg_dir/tools/vendor-crates.R" \
-          sync --path "$abs_rpkg_dir" --source-root "$MINIEXTENDR_LOCAL" 2>&1 || {
-          echo "configure: error: vendor-crates.R sync failed" >&2
+      if command -v cargo-revendor >/dev/null 2>&1; then
+        cargo revendor \
+          --manifest-path src/rust/Cargo.toml \
+          --output "$VENDOR_OUT" \
+          --strip-all \
+          --source-marker \
+          --source-root "$MINIEXTENDR_LOCAL" -v || {
+          echo "configure: error: cargo revendor failed" >&2
           exit 1
         }
       else
-        echo "configure: error: tools/vendor-crates.R not found" >&2
+        echo "configure: error: cargo-revendor not found" >&2
+        echo "configure:        Install: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
         exit 1
       fi
     else
