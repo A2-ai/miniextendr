@@ -21,11 +21,8 @@ pub fn run_cargo_vendor(
     // Add [patch.crates-io] to workspace root Cargo.toml so cargo vendor
     // can resolve the dependency graph even with unpublished local crates.
     // NOTE: [patch] only works in Cargo.toml, NOT in .cargo/config.toml.
-    let ws_root = crate::find_workspace_root(
-        manifest_path
-            .parent()
-            .context("manifest has no parent")?,
-    )?;
+    let ws_root =
+        crate::find_workspace_root(manifest_path.parent().context("manifest has no parent")?)?;
     let ws_manifest = ws_root.join("Cargo.toml");
     let ws_original = std::fs::read_to_string(&ws_manifest)?;
 
@@ -644,7 +641,10 @@ pub fn freeze_manifest(
     std::fs::write(manifest_path, doc.to_string())?;
 
     if v.info() {
-        eprintln!("  Frozen: {} now resolves from vendor/ only", manifest_path.display());
+        eprintln!(
+            "  Frozen: {} now resolves from vendor/ only",
+            manifest_path.display()
+        );
     }
 
     Ok(())
@@ -686,7 +686,9 @@ fn rewrite_dep_to_vendor(dep: &mut toml_edit::Item, name: &str, vendor_rel: &str
 
 /// Compute relative path from base to target
 fn pathdiff(target: &Path, base: &Path) -> String {
-    let target = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+    let target = target
+        .canonicalize()
+        .unwrap_or_else(|_| target.to_path_buf());
     let base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
 
     let target_parts: Vec<_> = target.components().collect();
@@ -807,4 +809,3 @@ pub fn compress_vendor(
 
     Ok(())
 }
-

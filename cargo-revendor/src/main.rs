@@ -206,7 +206,7 @@ fn main() -> Result<()> {
 
     // Step 1: Load cargo metadata to discover dependencies
     let meta = metadata::load_metadata(&manifest_path)?;
-    let (local_pkgs, _external_pkgs) = metadata::partition_packages(&meta, &manifest_path)?;
+    let (mut local_pkgs, _external_pkgs) = metadata::partition_packages(&meta, &manifest_path)?;
 
     // Also discover ALL workspace members from the source workspace root
     let all_workspace_members = if let Some(ref source_root) = cli.source_root {
@@ -217,6 +217,30 @@ fn main() -> Result<()> {
     } else {
         Vec::new()
     };
+
+    // Fix paths in local_pkgs: when .cargo/config.toml has source replacement
+    // (e.g., [source.vendored-sources] directory = "vendor"), cargo metadata
+    // resolves local workspace crate paths to the vendor directory instead of the
+    // real workspace source. Detect this and replace with the real workspace path.
+    let canonical_output = output.canonicalize().unwrap_or_else(|_| output.clone());
+    for pkg in &mut local_pkgs {
+        let canonical_pkg = pkg.path.canonicalize().unwrap_or_else(|_| pkg.path.clone());
+        if canonical_pkg.starts_with(&canonical_output) {
+            // This path is inside the output vendor directory — find the real source
+            if let Some(ws_pkg) = all_workspace_members.iter().find(|ws| ws.name == pkg.name) {
+                if v.debug() {
+                    eprintln!(
+                        "  Fixed {}: {} -> {}",
+                        pkg.name,
+                        pkg.path.display(),
+                        ws_pkg.path.display()
+                    );
+                }
+                pkg.path = ws_pkg.path.clone();
+                pkg.manifest_path = ws_pkg.manifest_path.clone();
+            }
+        }
+    }
 
     let patch_pkgs = merge_packages(&local_pkgs, &all_workspace_members);
 
