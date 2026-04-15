@@ -14,5 +14,7 @@ Invisibly returns TRUE if valid, otherwise shows warnings/errors
 }
 \description{
 Checks that the miniextendr setup is valid and ready to build.
+For a comprehensive diagnostic, use \code{\link[=miniextendr_doctor]{miniextendr_doctor()}} instead.
 For running \verb{R CMD check}, see \code{\link[=miniextendr_check]{miniextendr_check()}}.
 }
+\keyword{internal}

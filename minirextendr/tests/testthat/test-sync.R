@@ -6,7 +6,7 @@
 
 test_that("compute_source_hash returns empty string for empty project", {
   tmp <- withr::local_tempdir()
-  hash <- compute_source_hash(tmp)
+  hash <- minirextendr:::compute_source_hash(tmp)
   expect_equal(hash, "")
 })
 
@@ -17,8 +17,8 @@ test_that("compute_source_hash returns consistent hash", {
   writeLines("fn main() {}", file.path(rust_dir, "lib.rs"))
   writeLines('[package]\nname = "test"', file.path(rust_dir, "Cargo.toml"))
 
-  h1 <- compute_source_hash(tmp)
-  h2 <- compute_source_hash(tmp)
+  h1 <- minirextendr:::compute_source_hash(tmp)
+  h2 <- minirextendr:::compute_source_hash(tmp)
   expect_identical(h1, h2)
   expect_true(nchar(h1) > 0)
 })
@@ -29,10 +29,10 @@ test_that("compute_source_hash changes when source changes", {
   dir.create(rust_dir, recursive = TRUE)
   writeLines("fn main() {}", file.path(rust_dir, "lib.rs"))
 
-  h1 <- compute_source_hash(tmp)
+  h1 <- minirextendr:::compute_source_hash(tmp)
 
   writeLines("fn main() { println!(\"hello\"); }", file.path(rust_dir, "lib.rs"))
-  h2 <- compute_source_hash(tmp)
+  h2 <- minirextendr:::compute_source_hash(tmp)
 
   expect_false(identical(h1, h2))
 })
@@ -43,14 +43,14 @@ test_that("compute_source_hash changes when source changes", {
 
 test_that("read_render_state returns NULL for missing state", {
   tmp <- withr::local_tempdir()
-  expect_null(read_render_state(tmp))
+  expect_null(minirextendr:::read_render_state(tmp))
 })
 
 test_that("write/read_render_state round-trips", {
   tmp <- withr::local_tempdir()
-  write_render_state("abc123", "install", tmp)
+  minirextendr:::write_render_state("abc123", "install", tmp)
 
-  state <- read_render_state(tmp)
+  state <- minirextendr:::read_render_state(tmp)
   expect_equal(state$hash, "abc123")
   expect_equal(state$stage_run, "install")
   expect_s3_class(state$timestamp, "POSIXct")
@@ -62,7 +62,7 @@ test_that("read_render_state handles corrupted file", {
   dir.create(dirname(state_file), recursive = TRUE)
   writeLines("not an RDS file", state_file)
 
-  expect_null(read_render_state(tmp))
+  expect_null(minirextendr:::read_render_state(tmp))
   # Corrupted file should be removed
 
   expect_false(file.exists(state_file))
@@ -124,8 +124,8 @@ test_that("miniextendr_sync mode='if_stale' skips when hash matches", {
   usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
 
   # Write saved state with current hash
-  current_hash <- compute_source_hash(tmp)
-  write_render_state(current_hash, "install", tmp)
+  current_hash <- minirextendr:::compute_source_hash(tmp)
+  minirextendr:::write_render_state(current_hash, "install", tmp)
 
   result <- miniextendr_sync(path = tmp, mode = "if_stale", quiet = TRUE)
   expect_true(result$fresh)
@@ -138,7 +138,7 @@ test_that("miniextendr_sync mode='if_stale' rebuilds when hash differs", {
   usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
 
   # Write saved state with stale hash
-  write_render_state("stale-hash-value", "install", tmp)
+  minirextendr:::write_render_state("stale-hash-value", "install", tmp)
 
   # Should attempt rebuild because hash differs
   # (will error because there's no real Rust project)
@@ -169,10 +169,10 @@ test_that("miniextendr_knitr_setup requires knitr", {
   expect_true(is.function(miniextendr_knitr_setup))
 })
 
-test_that("eng_miniextendr is a valid engine function", {
-  expect_true(is.function(eng_miniextendr))
+test_that("minirextendr:::eng_miniextendr is a valid engine function", {
+  expect_true(is.function(minirextendr:::eng_miniextendr))
   # Engine functions take a single 'options' argument
-  expect_equal(names(formals(eng_miniextendr)), "options")
+  expect_equal(names(formals(minirextendr:::eng_miniextendr)), "options")
 })
 
 # =============================================================================

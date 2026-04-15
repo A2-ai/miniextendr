@@ -86,7 +86,7 @@ use_configure_feature_detection <- function(path = ".") {
 #'   - A string containing an R expression that returns TRUE/FALSE
 #'     (e.g., `'requireNamespace("vctrs", quietly = TRUE)'`)
 #' @param cargo_spec Optional Cargo feature specification. If provided, also
-#'   adds the feature to `[features]` in `Cargo.toml` via [add_cargo_feature()].
+#'   adds the feature to `[features]` in `Cargo.toml` via `add_cargo_feature()`.
 #'   For example, `"miniextendr-api/vctrs"`.
 #' @param optional_dep If `TRUE`, also runs `cargo add <feature> --optional` to
 #'   add the crate as an optional dependency (which auto-creates a Cargo feature
@@ -208,6 +208,7 @@ remove_feature_rule <- function(feature, path = ".") {
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns a character vector of newly added feature names
 #'   (empty if everything was already in sync).
+#' @keywords internal
 #' @export
 #'
 #' @examples

@@ -24,3 +24,4 @@ Detection order:
 \item Auto-scan parent directories for a miniextendr workspace
 }
 }
+\keyword{internal}

@@ -145,7 +145,7 @@ Make both `#[miniextendr]` and derive paths available for every feature.
 
 == Low Priority / Nice to Have
 
-- [x] `miniextendr.yml` config file support — `mx_config()` + `mx_config_defaults()`
+- [x] `miniextendr.yml` config file support — `miniextendr_config()` + `miniextendr_config_defaults()`
   - Reads YAML with fallback to defaults; warns on unknown keys / parse errors
   - Template scaffolded by `use_miniextendr_config()`; yaml package optional
 - [x] `lifecycle` package for deprecation warnings — `@importFrom` tag injection

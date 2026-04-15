@@ -81,12 +81,13 @@ miniextendr_configure <- function(path = ".") {
   invisible(TRUE)
 }
 
-#' Full miniextendr build workflow
+#' Full R package build workflow
 #'
-#' Runs the complete build: autoconf -> configure -> install
-#' (compiles Rust + generates R wrappers via cdylib) -> roxygen2.
-#' R wrappers are auto-generated during installation by the cdylib
-#' build step, so only a single install pass is needed.
+#' Runs the complete R package build pipeline:
+#' autoconf -> configure -> R CMD INSTALL (compiles Rust + generates
+#' R wrappers via cdylib) -> roxygen2. This is the high-level workflow
+#' for building the entire package; for compiling just the Rust crate,
+#' use [cargo_build()] instead.
 #'
 #' @param path Path to the R package root, or `NULL` to use the active project.
 #' @param install Whether to run `R CMD INSTALL` step. If `FALSE`, only
@@ -142,9 +143,14 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
 
 #' Prepare vendor tarball for CRAN submission
 #'
-#' Vendors all dependencies and compresses them into `inst/vendor.tar.xz`
-#' for offline CRAN builds. This calls [vendor_crates_io()] internally,
-#' then strips Cargo.lock checksums and compresses.
+#' High-level workflow that vendors all external crate dependencies and
+#' compresses them into `inst/vendor.tar.xz` for offline CRAN builds.
+#' Calls [vendor_crates_io()] internally, then strips Cargo.lock
+#' checksums and compresses.
+#'
+#' For vendoring the miniextendr workspace crates themselves, see
+#' [vendor_miniextendr()]. For syncing vendor/ from a local checkout,
+#' see [vendor_sync()].
 #'
 #' Run this before `R CMD build` when preparing a CRAN submission.
 #'

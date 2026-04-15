@@ -2,7 +2,7 @@
 % Please edit documentation in R/workflow.R
 \name{miniextendr_build}
 \alias{miniextendr_build}
-\title{Full miniextendr build workflow}
+\title{Full R package build workflow}
 \usage{
 miniextendr_build(path = ".", install = TRUE, not_cran = TRUE)
 }
@@ -19,8 +19,9 @@ for configure and install steps.}
 Invisibly returns TRUE on success
 }
 \description{
-Runs the complete build: autoconf -> configure -> install
-(compiles Rust + generates R wrappers via cdylib) -> roxygen2.
-R wrappers are auto-generated during installation by the cdylib
-build step, so only a single install pass is needed.
+Runs the complete R package build pipeline:
+autoconf -> configure -> R CMD INSTALL (compiles Rust + generates
+R wrappers via cdylib) -> roxygen2. This is the high-level workflow
+for building the entire package; for compiling just the Rust crate,
+use \code{\link[=cargo_build]{cargo_build()}} instead.
 }

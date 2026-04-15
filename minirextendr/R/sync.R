@@ -58,7 +58,7 @@ compute_source_hash <- function(path = usethis::proj_get()) {
   # Compute MD5 of each file, then hash the combined result
   sums <- tools::md5sum(existing)
   # Include build knobs from config
-  config <- tryCatch(mx_config(path), error = function(e) mx_config_defaults())
+  config <- tryCatch(miniextendr_config(path), error = function(e) miniextendr_config_defaults())
   knobs <- paste(
     config$features, config$strict, config$coerce,
     config$rust_version, collapse = "|"

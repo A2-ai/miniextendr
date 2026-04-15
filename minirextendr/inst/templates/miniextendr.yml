@@ -1,5 +1,5 @@
 # miniextendr project configuration
-# See ?mx_config for all options
+# See ?miniextendr_config for all options
 
 class_system: env
 strict: false

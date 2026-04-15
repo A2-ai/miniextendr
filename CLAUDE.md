@@ -57,6 +57,7 @@ just r-cmd-check 2>&1 > /tmp/rcmdcheck.log
 just devtools-test 2>&1 > /tmp/devtools-test.log
 just vendor 2>&1 > /tmp/vendor.log
 just devtools-check 2>&1 > /tmp/devtools-check.log
+just minirextendr-test 2>&1 > /tmp/minirextendr-test.log
 ```
 
 After the command finishes, use the **Read tool** to read the log file. Start by reading the whole file (or the tail end for very long logs), and if you need more context, read earlier sections. **Do NOT use `tail` or `head`** — use the Read tool so you see the complete output and can go back for more.

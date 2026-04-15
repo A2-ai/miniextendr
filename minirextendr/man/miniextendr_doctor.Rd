@@ -13,7 +13,12 @@ miniextendr_doctor(path = ".")
 Invisibly returns a list with \code{pass}, \code{warn}, and \code{fail} entries.
 }
 \description{
-Checks the health of a miniextendr project, including toolchain
-availability, vendored crate status, generated file freshness,
-and common configuration mistakes.
+The primary diagnostic function for miniextendr projects. Checks the
+health of a miniextendr project, including toolchain availability,
+vendored crate status, generated file freshness, and common
+configuration mistakes.
+}
+\details{
+For more targeted checks, see \code{\link[=miniextendr_status]{miniextendr_status()}} (file presence)
+and \code{\link[=miniextendr_validate]{miniextendr_validate()}} (configuration correctness).
 }
