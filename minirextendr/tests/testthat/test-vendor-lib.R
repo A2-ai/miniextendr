@@ -93,7 +93,7 @@ test_that("add_cargo_dependency adds to [dependencies]", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  result <- add_cargo_dependency("dvs", "*")
+  result <- minirextendr:::add_cargo_dependency("dvs", "*")
 
   cargo <- readLines(file.path(tmp, "src", "rust", "Cargo.toml"), warn = FALSE)
   expect_true(any(grepl('^dvs = "\\*"', cargo)))
@@ -104,8 +104,8 @@ test_that("add_cargo_dependency is idempotent", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_cargo_dependency("dvs", "*")
-  result <- add_cargo_dependency("dvs", "*")
+  minirextendr:::add_cargo_dependency("dvs", "*")
+  result <- minirextendr:::add_cargo_dependency("dvs", "*")
 
   cargo <- readLines(file.path(tmp, "src", "rust", "Cargo.toml"), warn = FALSE)
   matches <- grep('^dvs = "\\*"', cargo)
@@ -117,7 +117,7 @@ test_that("add_cargo_dependency inserts before next section", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_cargo_dependency("dvs", "0.1.0")
+  minirextendr:::add_cargo_dependency("dvs", "0.1.0")
 
   cargo <- readLines(file.path(tmp, "src", "rust", "Cargo.toml"), warn = FALSE)
   dep_line <- grep('^dvs = "0.1.0"', cargo)
@@ -136,7 +136,7 @@ test_that("add_cargo_patch creates [patch.crates-io] if missing", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  result <- add_cargo_patch("dvs", "../../../dvs")
+  result <- minirextendr:::add_cargo_patch("dvs", "../../../dvs")
 
   cargo <- readLines(file.path(tmp, "src", "rust", "Cargo.toml"), warn = FALSE)
   expect_true(any(grepl("^\\[patch\\.crates-io\\]", cargo)))
@@ -154,7 +154,7 @@ test_that("add_cargo_patch adds to existing [patch.crates-io]", {
   lines <- c(lines, "", "[patch.crates-io]", 'other-crate = { path = "../other" }')
   writeLines(lines, cargo_path)
 
-  add_cargo_patch("dvs", "../../../dvs")
+  minirextendr:::add_cargo_patch("dvs", "../../../dvs")
 
   cargo <- readLines(cargo_path, warn = FALSE)
   expect_true(any(grepl('^dvs = \\{ path = "\\.\\./\\.\\./\\.\\./dvs" \\}', cargo)))
@@ -165,8 +165,8 @@ test_that("add_cargo_patch is idempotent", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_cargo_patch("dvs", "../../../dvs")
-  result <- add_cargo_patch("dvs", "../../../dvs")
+  minirextendr:::add_cargo_patch("dvs", "../../../dvs")
+  result <- minirextendr:::add_cargo_patch("dvs", "../../../dvs")
 
   cargo <- readLines(file.path(tmp, "src", "rust", "Cargo.toml"), warn = FALSE)
   matches <- grep('^dvs = \\{ path = ', cargo)
@@ -182,7 +182,7 @@ test_that("add_vendor_lib_to_configure_ac inserts VENDOR_LIB variable", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
+  minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
 
   conf <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
   expect_true(any(grepl('VENDOR_LIB=.*dvs-lib\\.tar\\.gz', conf)))
@@ -193,7 +193,7 @@ test_that("add_vendor_lib_to_configure_ac inserts vendor-lib block", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
+  minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
 
   conf <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
   expect_true(any(grepl("AC_CONFIG_COMMANDS\\(\\[vendor-lib-dvs\\]", conf)))
@@ -205,7 +205,7 @@ test_that("add_vendor_lib_to_configure_ac vendor-lib block is before post-vendor
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
+  minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
 
   conf <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
   vendor_lib_line <- grep("AC_CONFIG_COMMANDS\\(\\[vendor-lib-dvs\\]", conf)
@@ -220,7 +220,7 @@ test_that("add_vendor_lib_to_configure_ac updates dev-cargo-config", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
+  minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
 
   conf <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
   # Should have the vendor-lib-only check
@@ -233,8 +233,8 @@ test_that("add_vendor_lib_to_configure_ac is idempotent", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
-  result <- add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
+  minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
+  result <- minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
 
   expect_false(result)
 

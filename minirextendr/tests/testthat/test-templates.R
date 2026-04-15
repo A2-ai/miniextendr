@@ -244,12 +244,12 @@ test_that("use_template works with rpkg template type", {
   usethis::proj_set(tmp, force = TRUE)
   writeLines("Package: testpkg\nTitle: Test\nVersion: 0.0.1\n", file.path(tmp, "DESCRIPTION"))
 
-  set_template_type("rpkg")
+  minirextendr:::set_template_type("rpkg")
   data <- list(package = "testpkg", package_rs = "testpkg", Package = "Testpkg", year = "2025")
-  ensure_dir(usethis::proj_path("src", "rust"))
-  use_template("lib.rs", save_as = "src/rust/lib.rs", data = data)
-  use_template("build.rs", save_as = "src/rust/build.rs")
-  use_template("Makevars.in", save_as = "src/Makevars.in")
+  minirextendr:::ensure_dir(usethis::proj_path("src", "rust"))
+  minirextendr:::use_template("lib.rs", save_as = "src/rust/lib.rs", data = data)
+  minirextendr:::use_template("build.rs", save_as = "src/rust/build.rs")
+  minirextendr:::use_template("Makevars.in", save_as = "src/Makevars.in")
 
   expect_true(file.exists(file.path(tmp, "src", "rust", "lib.rs")))
   expect_true(file.exists(file.path(tmp, "src", "rust", "build.rs")))
@@ -265,10 +265,10 @@ test_that("use_template performs mustache substitution correctly", {
   usethis::proj_set(tmp, force = TRUE)
   writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
 
-  set_template_type("rpkg")
+  minirextendr:::set_template_type("rpkg")
   data <- list(package = "specialPkg", package_rs = "special_pkg")
-  ensure_dir(usethis::proj_path("src", "rust"))
-  use_template("lib.rs", save_as = "src/rust/lib.rs", data = data)
+  minirextendr:::ensure_dir(usethis::proj_path("src", "rust"))
+  minirextendr:::use_template("lib.rs", save_as = "src/rust/lib.rs", data = data)
 
   content <- paste(readLines(file.path(tmp, "src", "rust", "lib.rs")), collapse = "\n")
   expect_true(grepl("#\\[miniextendr\\]", content))
@@ -373,7 +373,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   # Reconfigure with FORCE_VENDOR to vendor itertools
   suppressMessages({
     config_env <- c(devtools::r_env_vars(), c("FORCE_VENDOR" = "1"))
-    result <- run_with_logging(
+    result <- minirextendr:::run_with_logging(
       "bash", args = c("./configure"),
       log_prefix = "configure-vendor", wd = pkg_path, env = config_env
     )

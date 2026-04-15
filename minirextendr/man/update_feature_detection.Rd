@@ -15,8 +15,8 @@ update_feature_detection(path = ".", overwrite = TRUE)
 Invisibly returns list of generated file paths
 }
 \description{
-Re-scans Cargo.toml and regenerates feature detection code. Use this after
-adding new features to keep the detection code in sync.
+Re-scans Cargo.toml and regenerates feature detection code.
+Equivalent to calling \code{use_feature_detection(overwrite = TRUE)}.
 }
 \examples{
 \dontrun{
@@ -24,3 +24,4 @@ adding new features to keep the detection code in sync.
 update_feature_detection()
 }
 }
+\keyword{internal}

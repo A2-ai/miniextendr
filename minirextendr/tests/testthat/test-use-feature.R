@@ -29,7 +29,7 @@ test_that("detect_cargo_features extracts features from Cargo.toml", {
     'miniextendr-api = "0.1"'
   ), file.path(cargo_dir, "Cargo.toml"))
 
-  features <- detect_cargo_features()
+  features <- minirextendr:::detect_cargo_features()
   expect_type(features, "character")
   expect_true("vctrs" %in% features)
   expect_true("rayon" %in% features)
@@ -55,7 +55,7 @@ test_that("detect_cargo_features returns empty for no features section", {
     '[dependencies]'
   ), file.path(cargo_dir, "Cargo.toml"))
 
-  features <- detect_cargo_features()
+  features <- minirextendr:::detect_cargo_features()
   expect_equal(features, character())
 })
 
@@ -67,7 +67,7 @@ test_that("detect_cargo_features warns on missing Cargo.toml", {
   usethis::proj_set(tmp, force = TRUE)
   writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
 
-  expect_warning(detect_cargo_features(), "not found")
+  expect_warning(minirextendr:::detect_cargo_features(), "not found")
 })
 
 # =============================================================================
@@ -75,7 +75,7 @@ test_that("detect_cargo_features warns on missing Cargo.toml", {
 # =============================================================================
 
 test_that("generate_feature_detection_rust produces valid structure", {
-  code <- generate_feature_detection_rust("testpkg", c("rayon", "serde"))
+  code <- minirextendr:::generate_feature_detection_rust("testpkg", c("rayon", "serde"))
 
   # Should contain the function name
   expect_true(grepl("testpkg_enabled_features", code))
@@ -87,7 +87,7 @@ test_that("generate_feature_detection_rust produces valid structure", {
 })
 
 test_that("generate_feature_detection_r produces valid R code", {
-  code <- generate_feature_detection_r("testpkg")
+  code <- minirextendr:::generate_feature_detection_r("testpkg")
 
   # Should be parseable R
   expect_silent(parse(text = code))
@@ -97,14 +97,14 @@ test_that("generate_feature_detection_r produces valid R code", {
 })
 
 test_that("generate_feature_detection_rust handles package name with dots", {
-  code <- generate_feature_detection_rust("my.pkg", c("vctrs"))
+  code <- minirextendr:::generate_feature_detection_rust("my.pkg", c("vctrs"))
 
   # Dots should be converted to underscores in Rust identifiers
   expect_true(grepl("my_pkg_enabled_features", code))
 })
 
 test_that("generate_feature_detection_rust handles empty features", {
-  code <- generate_feature_detection_rust("testpkg", character())
+  code <- minirextendr:::generate_feature_detection_rust("testpkg", character())
 
   # Should still produce valid code
   expect_true(grepl("testpkg_enabled_features", code))

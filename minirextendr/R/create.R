@@ -154,18 +154,6 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
     usethis::use_git()
   }
 
-  # Set up Git LFS for vendor.tar.xz if available
-  if (has_git_lfs()) {
-    tryCatch(
-      use_git_lfs(path, patterns = file.path(rpkg_name, "inst/vendor.tar.xz")),
-      error = function(e) {
-        cli::cli_alert_info("Tip: run {.code minirextendr::use_git_lfs()} to track vendor.tar.xz with Git LFS")
-      }
-    )
-  } else {
-    cli::cli_alert_info("Tip: install {.url https://git-lfs.com} and run {.code minirextendr::use_git_lfs()} to avoid bloating git with vendor.tar.xz")
-  }
-
   # Git hooks
   cli::cli_h2("Installing git hooks")
   tryCatch(

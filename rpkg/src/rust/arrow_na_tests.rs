@@ -330,7 +330,7 @@ pub fn arrow_na_string_all_null_altrep(n: i32) -> SEXP {
 ///
 /// This fixture takes the SEXP, converts to Float64Array (scanning for NAs),
 /// then reads element values and null status from the Arrow side.
-/// Returns: [null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...]
+/// Returns: `[null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...]`
 /// @param x SEXP (numeric vector)
 #[miniextendr]
 pub fn arrow_na_f64_inspect_arrow(x: SEXP) -> Vec<f64> {

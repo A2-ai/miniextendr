@@ -14,5 +14,7 @@ Invisibly returns a list with present and missing files
 }
 \description{
 Displays which miniextendr files are present and which are missing
-in the current project.
+in the current project. For a comprehensive diagnostic, use
+\code{\link[=miniextendr_doctor]{miniextendr_doctor()}} instead.
 }
+\keyword{internal}

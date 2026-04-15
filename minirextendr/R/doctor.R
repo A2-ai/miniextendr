@@ -2,9 +2,13 @@
 
 #' Run comprehensive miniextendr project diagnostics
 #'
-#' Checks the health of a miniextendr project, including toolchain
-#' availability, vendored crate status, generated file freshness,
-#' and common configuration mistakes.
+#' The primary diagnostic function for miniextendr projects. Checks the
+#' health of a miniextendr project, including toolchain availability,
+#' vendored crate status, generated file freshness, and common
+#' configuration mistakes.
+#'
+#' For more targeted checks, see [miniextendr_status()] (file presence)
+#' and [miniextendr_validate()] (configuration correctness).
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns a list with `pass`, `warn`, and `fail` entries.
@@ -126,25 +130,6 @@ miniextendr_doctor <- function(path = ".") {
     } else {
       cli::cli_alert_danger("NAMESPACE missing useDynLib directive")
       results$fail <- c(results$fail, "NAMESPACE missing useDynLib")
-    }
-  }
-
-  # ── Git LFS ──
-  cli::cli_h2("Git LFS")
-
-  vendor_tarball <- tryCatch(usethis::proj_path("inst/vendor.tar.xz"), error = function(e) NULL)
-  if (!is.null(vendor_tarball) && file.exists(vendor_tarball)) {
-    if (has_git_lfs_tracking(usethis::proj_get())) {
-      cli::cli_alert_success("inst/vendor.tar.xz tracked by Git LFS")
-      results$pass <- c(results$pass, "vendor.tar.xz LFS tracked")
-    } else if (has_git_lfs()) {
-      cli::cli_alert_warning("inst/vendor.tar.xz not tracked by Git LFS (large binary)")
-      cli::cli_alert_info("Run {.code minirextendr::use_git_lfs()} to set up tracking")
-      results$warn <- c(results$warn, "vendor.tar.xz not LFS tracked")
-    } else {
-      cli::cli_alert_warning("Git LFS not installed — vendor.tar.xz will bloat the repository")
-      cli::cli_alert_info("Install from {.url https://git-lfs.com}, then run {.code minirextendr::use_git_lfs()}")
-      results$warn <- c(results$warn, "Git LFS not installed")
     }
   }
 

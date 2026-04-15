@@ -12,7 +12,7 @@ test_that("use_miniextendr default version is 'main'", {
 })
 
 # =============================================================================
-# P2: add_crate_to_workspace() handles one-line members arrays
+# P2: minirextendr:::add_crate_to_workspace() handles one-line members arrays
 # =============================================================================
 
 test_that("add_crate_to_workspace handles one-line members array", {
@@ -29,7 +29,7 @@ test_that("add_crate_to_workspace handles one-line members array", {
     'serde = "1"'
   ), tmp)
 
-  result <- add_crate_to_workspace(tmp, "new-crate")
+  result <- minirextendr:::add_crate_to_workspace(tmp, "new-crate")
   expect_true(result)
 
   content <- readLines(tmp)
@@ -51,7 +51,7 @@ test_that("add_crate_to_workspace handles one-line array with multiple members",
     'members = ["crate-a", "crate-b", "crate-c"]'
   ), tmp)
 
-  result <- add_crate_to_workspace(tmp, "crate-d")
+  result <- minirextendr:::add_crate_to_workspace(tmp, "crate-d")
   expect_true(result)
 
   content <- readLines(tmp)
@@ -73,7 +73,7 @@ test_that("add_crate_to_workspace handles empty one-line array", {
     'members = []'
   ), tmp)
 
-  result <- add_crate_to_workspace(tmp, "first-crate")
+  result <- minirextendr:::add_crate_to_workspace(tmp, "first-crate")
   expect_true(result)
 
   content <- readLines(tmp)
@@ -92,7 +92,7 @@ test_that("add_crate_to_workspace handles multiline members array", {
     ']'
   ), tmp)
 
-  result <- add_crate_to_workspace(tmp, "crate-c")
+  result <- minirextendr:::add_crate_to_workspace(tmp, "crate-c")
   expect_true(result)
 
   content <- readLines(tmp)
@@ -111,7 +111,7 @@ test_that("add_crate_to_workspace detects duplicate", {
     'members = ["already-here"]'
   ), tmp)
 
-  result <- suppressMessages(add_crate_to_workspace(tmp, "already-here"))
+  result <- suppressMessages(minirextendr:::add_crate_to_workspace(tmp, "already-here"))
   expect_false(result)
 })
 

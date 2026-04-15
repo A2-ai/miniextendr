@@ -10,9 +10,9 @@
 #' @param path Path to the project root (default: current directory).
 #' @return A list of configuration values.
 #' @export
-mx_config <- function(path = ".") {
+miniextendr_config <- function(path = ".") {
   config_path <- file.path(path, "miniextendr.yml")
-  defaults <- mx_config_defaults()
+  defaults <- miniextendr_config_defaults()
 
   if (!file.exists(config_path)) {
     return(defaults)
@@ -21,7 +21,7 @@ mx_config <- function(path = ".") {
   if (!requireNamespace("yaml", quietly = TRUE)) {
     cli::cli_warn(
       "{.pkg yaml} package not installed; using default config.",
-      class = "mx_config_no_yaml"
+      class = "miniextendr_config_no_yaml"
     )
     return(defaults)
   }
@@ -32,7 +32,7 @@ mx_config <- function(path = ".") {
       cli::cli_warn(
         c("Failed to parse {.path miniextendr.yml}: {conditionMessage(e)}",
           "i" = "Using default config."),
-        class = "mx_config_parse_error"
+        class = "miniextendr_config_parse_error"
       )
       NULL
     }
@@ -47,7 +47,7 @@ mx_config <- function(path = ".") {
   if (length(unknown) > 0) {
     cli::cli_warn(
       "Unknown key{?s} in {.path miniextendr.yml}: {.val {unknown}}.",
-      class = "mx_config_unknown_keys"
+      class = "miniextendr_config_unknown_keys"
     )
   }
 
@@ -98,7 +98,7 @@ use_miniextendr_config <- function(path = ".") {
 #'     \item{vendor}{Whether to vendor dependencies for CRAN (logical).}
 #'   }
 #' @export
-mx_config_defaults <- function() {
+miniextendr_config_defaults <- function() {
   list(
     class_system = "env",
     strict = FALSE,

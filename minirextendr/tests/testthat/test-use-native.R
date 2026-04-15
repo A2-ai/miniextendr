@@ -1,43 +1,43 @@
 # Tests for native R package integration (use-native.R)
 
 test_that("warn_known_bad_package errors on Rcpp ecosystem", {
-  expect_error(warn_known_bad_package("Rcpp"), "Rcpp/cpp11 ecosystem")
-  expect_error(warn_known_bad_package("RcppArmadillo"), "Rcpp/cpp11 ecosystem")
-  expect_error(warn_known_bad_package("cpp11"), "Rcpp/cpp11 ecosystem")
+  expect_error(minirextendr:::warn_known_bad_package("Rcpp"), "Rcpp/cpp11 ecosystem")
+  expect_error(minirextendr:::warn_known_bad_package("RcppArmadillo"), "Rcpp/cpp11 ecosystem")
+  expect_error(minirextendr:::warn_known_bad_package("cpp11"), "Rcpp/cpp11 ecosystem")
 })
 
 test_that("warn_known_bad_package errors on no-header packages", {
 
-  expect_error(warn_known_bad_package("noweb"), "no header files")
-  expect_error(warn_known_bad_package("zigg"), "no header files")
+  expect_error(minirextendr:::warn_known_bad_package("noweb"), "no header files")
+  expect_error(minirextendr:::warn_known_bad_package("zigg"), "no header files")
 })
 
 test_that("warn_known_bad_package warns on system-lib packages", {
-  expect_warning(warn_known_bad_package("sf"), "system libraries")
-  expect_warning(warn_known_bad_package("HighFive"), "system libraries")
+  expect_warning(minirextendr:::warn_known_bad_package("sf"), "system libraries")
+  expect_warning(minirextendr:::warn_known_bad_package("HighFive"), "system libraries")
 })
 
 test_that("warn_known_bad_package is silent for good packages", {
-  expect_silent(warn_known_bad_package("cli"))
-  expect_silent(warn_known_bad_package("nanoarrow"))
-  expect_silent(warn_known_bad_package("vctrs"))
+  expect_silent(minirextendr:::warn_known_bad_package("cli"))
+  expect_silent(minirextendr:::warn_known_bad_package("nanoarrow"))
+  expect_silent(minirextendr:::warn_known_bad_package("vctrs"))
 })
 
 test_that("discover_native_package finds installed packages", {
   skip_if_not_installed("cli")
-  info <- discover_native_package("cli")
+  info <- minirextendr:::discover_native_package("cli")
   expect_true(info$has_include)
   expect_true(dir.exists(info$include_path))
 })
 
 test_that("discover_native_package returns empty for missing packages", {
-  info <- discover_native_package("nonexistent_pkg_1234567890")
+  info <- minirextendr:::discover_native_package("nonexistent_pkg_1234567890")
   expect_false(info$has_include)
 })
 
 test_that("detect_header_mode returns c for pure C packages", {
   skip_if_not_installed("cli")
-  mode <- detect_header_mode(system.file("include", package = "cli"))
+  mode <- minirextendr:::detect_header_mode(system.file("include", package = "cli"))
   expect_equal(mode, "c")
 })
 
@@ -49,7 +49,7 @@ test_that("resolve_blocklist_files adds boost for BH-dependent packages", {
 
 test_that("assert_bindgen_installed errors when bindgen missing", {
   withr::local_envvar(PATH = "")
-  expect_error(assert_bindgen_installed(), "bindgen.*not installed")
+  expect_error(minirextendr:::assert_bindgen_installed(), "bindgen.*not installed")
 })
 
 test_that("check_native_package succeeds for cli", {
@@ -75,7 +75,7 @@ test_that("C→C++ fallback works for packages with C++ includes in .h files", {
 test_that("resolve_include_paths is recursive", {
   skip_if_not_installed("svines")
   skip_if_not_installed("RcppEigen")
-  info <- discover_native_package("svines")
+  info <- minirextendr:::discover_native_package("svines")
   paths <- resolve_include_paths("svines", info$include_path)
   # svines → rvinecopulib → Eigen. RcppEigen should be in the resolved paths.
   eigen_found <- any(grepl("RcppEigen", paths))
@@ -95,12 +95,12 @@ test_that("add_native_to_configure_ac appends detection block", {
   writeLines("Package: testpkg", file.path(tmp, "DESCRIPTION"))
   withr::local_dir(tmp)
   usethis::local_project(tmp, quiet = TRUE, force = TRUE, setwd = FALSE)
-  add_native_to_configure_ac("cli")
+  minirextendr:::add_native_to_configure_ac("cli")
   lines <- readLines(file.path(tmp, "configure.ac"))
   expect_true(any(grepl("dnl native: cli", lines)))
   expect_true(any(grepl("CLI_INCLUDE", lines)))
   # Second call should be idempotent
-  add_native_to_configure_ac("cli")
+  minirextendr:::add_native_to_configure_ac("cli")
   lines2 <- readLines(file.path(tmp, "configure.ac"))
   expect_equal(sum(grepl("dnl native: cli", lines2)), 1)
 })

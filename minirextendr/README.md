@@ -89,12 +89,11 @@ miniextendr-macros-core = { path = "../path/to/miniextendr-macros-core" }
 miniextendr-lint = { path = "../path/to/miniextendr-lint" }
 ```
 
-## Status and validation
+## Diagnostics
 
 ```r
-miniextendr_status()
-miniextendr_check_rust()
-miniextendr_check()
+miniextendr_doctor()       # Comprehensive project health check
+miniextendr_check()        # Full R CMD check workflow
 ```
 
 ## Vendoring
@@ -110,12 +109,6 @@ Prepare an offline/CRAN tarball of vendored dependencies:
 
 ```r
 miniextendr_vendor()
-```
-
-Vendor external crates.io dependencies:
-
-```r
-vendor_crates_io()
 ```
 
 Downloaded archives are cached to avoid repeated downloads:

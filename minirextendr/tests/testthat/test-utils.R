@@ -1,55 +1,55 @@
 # Tests for utility functions
 
 test_that("to_rust_name converts package names correctly", {
-  expect_equal(to_rust_name("my.package"), "my_package")
-  expect_equal(to_rust_name("my-package"), "my_package")
-  expect_equal(to_rust_name("mypackage"), "mypackage")
-  expect_equal(to_rust_name("my.cool-pkg"), "my_cool_pkg")
+  expect_equal(minirextendr:::to_rust_name("my.package"), "my_package")
+  expect_equal(minirextendr:::to_rust_name("my-package"), "my_package")
+  expect_equal(minirextendr:::to_rust_name("mypackage"), "mypackage")
+  expect_equal(minirextendr:::to_rust_name("my.cool-pkg"), "my_cool_pkg")
 })
 
 test_that("template_path returns valid paths for rpkg template type", {
   skip_if_not_installed("minirextendr")
 
-  set_template_type("rpkg")
+  minirextendr:::set_template_type("rpkg")
 
   # Should not error for known templates
-  expect_true(file.exists(template_path("configure.ac")))
-  expect_true(file.exists(template_path("lib.rs")))
-  expect_true(file.exists(template_path("bootstrap.R")))
-  expect_true(file.exists(template_path("Makevars.in")))
+  expect_true(file.exists(minirextendr:::template_path("configure.ac")))
+  expect_true(file.exists(minirextendr:::template_path("lib.rs")))
+  expect_true(file.exists(minirextendr:::template_path("bootstrap.R")))
+  expect_true(file.exists(minirextendr:::template_path("Makevars.in")))
 })
 
 test_that("template_path returns valid paths for monorepo template type", {
   skip_if_not_installed("minirextendr")
 
-  set_template_type("monorepo")
-  on.exit(set_template_type("rpkg"))
+  minirextendr:::set_template_type("monorepo")
+  on.exit(minirextendr:::set_template_type("rpkg"))
 
   # Root templates
-  expect_true(file.exists(template_path("Cargo.toml.tmpl")))
-  expect_true(file.exists(template_path("justfile")))
+  expect_true(file.exists(minirextendr:::template_path("Cargo.toml.tmpl")))
+  expect_true(file.exists(minirextendr:::template_path("justfile")))
 
   # Nested rpkg templates
-  expect_true(file.exists(template_path("lib.rs", subdir = "rpkg")))
-  expect_true(file.exists(template_path("configure.ac", subdir = "rpkg")))
-  expect_true(file.exists(template_path("Makevars.in", subdir = "rpkg")))
+  expect_true(file.exists(minirextendr:::template_path("lib.rs", subdir = "rpkg")))
+  expect_true(file.exists(minirextendr:::template_path("configure.ac", subdir = "rpkg")))
+  expect_true(file.exists(minirextendr:::template_path("Makevars.in", subdir = "rpkg")))
 
   # my-crate templates
-  expect_true(file.exists(template_path("Cargo.toml.tmpl", subdir = "my-crate")))
-  expect_true(file.exists(template_path("lib.rs", subdir = "my-crate/src")))
+  expect_true(file.exists(minirextendr:::template_path("Cargo.toml.tmpl", subdir = "my-crate")))
+  expect_true(file.exists(minirextendr:::template_path("lib.rs", subdir = "my-crate/src")))
 })
 
 test_that("set_template_type and get_template_type work", {
-  old_type <- get_template_type()
-  on.exit(set_template_type(old_type))
+  old_type <- minirextendr:::get_template_type()
+  on.exit(minirextendr:::set_template_type(old_type))
 
-  set_template_type("rpkg")
-  expect_equal(get_template_type(), "rpkg")
+  minirextendr:::set_template_type("rpkg")
+  expect_equal(minirextendr:::get_template_type(), "rpkg")
 
-  set_template_type("monorepo")
-  expect_equal(get_template_type(), "monorepo")
+  minirextendr:::set_template_type("monorepo")
+  expect_equal(minirextendr:::get_template_type(), "monorepo")
 
-  expect_error(set_template_type("invalid"), "should be one of")
+  expect_error(minirextendr:::set_template_type("invalid"), "should be one of")
 })
 
 test_that("detect_project_type identifies monorepo from any Cargo.toml", {
@@ -63,7 +63,7 @@ test_that("detect_project_type identifies monorepo from any Cargo.toml", {
   writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
 
   usethis::proj_set(tmp, force = TRUE)
-  expect_equal(detect_project_type(tmp), "monorepo")
+  expect_equal(minirextendr:::detect_project_type(tmp), "monorepo")
 })
 
 test_that("detect_project_type identifies monorepo from workspace Cargo.toml", {
@@ -77,7 +77,7 @@ test_that("detect_project_type identifies monorepo from workspace Cargo.toml", {
   writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
 
   usethis::proj_set(tmp, force = TRUE)
-  expect_equal(detect_project_type(tmp), "monorepo")
+  expect_equal(minirextendr:::detect_project_type(tmp), "monorepo")
 })
 
 test_that("detect_project_type identifies standalone rpkg", {
@@ -91,7 +91,7 @@ test_that("detect_project_type identifies standalone rpkg", {
   writeLines(desc_content, file.path(tmp, "DESCRIPTION"))
 
   usethis::proj_set(tmp, force = TRUE)
-  expect_equal(detect_project_type(tmp), "rpkg")
+  expect_equal(minirextendr:::detect_project_type(tmp), "rpkg")
 })
 
 test_that("detect_project_type identifies rpkg inside monorepo (simple crate)", {
@@ -111,7 +111,7 @@ test_that("detect_project_type identifies rpkg inside monorepo (simple crate)", 
 
   # When in rpkg/ subdirectory, should detect as monorepo
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
-  expect_equal(detect_project_type(file.path(tmp, "rpkg")), "monorepo")
+  expect_equal(minirextendr:::detect_project_type(file.path(tmp, "rpkg")), "monorepo")
 })
 
 test_that("detect_project_type identifies rpkg inside monorepo (workspace)", {
@@ -131,7 +131,7 @@ test_that("detect_project_type identifies rpkg inside monorepo (workspace)", {
 
   # When in rpkg/ subdirectory, should detect as monorepo
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
-  expect_equal(detect_project_type(file.path(tmp, "rpkg")), "monorepo")
+  expect_equal(minirextendr:::detect_project_type(file.path(tmp, "rpkg")), "monorepo")
 })
 
 test_that("is_in_rust_project returns TRUE for any Cargo.toml", {
@@ -144,7 +144,7 @@ test_that("is_in_rust_project returns TRUE for any Cargo.toml", {
   cargo_content <- "[package]\nname = \"my-crate\"\nversion = \"0.1.0\"\n"
   writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
 
-  expect_true(is_in_rust_project(tmp))
+  expect_true(minirextendr:::is_in_rust_project(tmp))
 })
 
 test_that("is_in_rust_project returns FALSE for standalone rpkg", {
@@ -157,7 +157,7 @@ test_that("is_in_rust_project returns FALSE for standalone rpkg", {
   desc_content <- "Package: testpkg\nTitle: Test\nVersion: 0.1.0\n"
   writeLines(desc_content, file.path(tmp, "DESCRIPTION"))
 
-  expect_false(is_in_rust_project(tmp))
+  expect_false(minirextendr:::is_in_rust_project(tmp))
 })
 
 test_that("is_in_rust_workspace returns TRUE only for workspace Cargo.toml", {
@@ -170,7 +170,7 @@ test_that("is_in_rust_workspace returns TRUE only for workspace Cargo.toml", {
   cargo_content <- "[workspace]\nmembers = []\n"
   writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
 
-  expect_true(is_in_rust_workspace(tmp))
+  expect_true(minirextendr:::is_in_rust_workspace(tmp))
 })
 
 test_that("is_in_rust_workspace returns FALSE for simple crate", {
@@ -184,5 +184,5 @@ test_that("is_in_rust_workspace returns FALSE for simple crate", {
   writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
 
   # Has Cargo.toml but not a workspace
-  expect_false(is_in_rust_workspace(tmp))
+  expect_false(minirextendr:::is_in_rust_workspace(tmp))
 })
