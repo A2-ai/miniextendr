@@ -1547,6 +1547,12 @@ pub fn miniextendr(
             ));
             // match.arg validation — with several.ok when requested
             if parsed.has_several_ok(rust_name) {
+                // R's match.arg returns choices[1] when arg is NULL, even with several.ok=TRUE.
+                // For several_ok, NULL should mean "all choices" — replace before match.arg.
+                lines.push(format!(
+                    "if (is.null({param})) {param} <- .__mx_choices_{param}",
+                    param = r_param,
+                ));
                 lines.push(format!(
                     "{param} <- base::match.arg({param}, .__mx_choices_{param}, several.ok = TRUE)",
                     param = r_param,
