@@ -119,6 +119,88 @@ pub fn extract_crate_archive(
     Ok(())
 }
 
+/// Strip relative path dependencies (`path = "../..."`) from all vendored crate manifests.
+///
+/// When `cargo vendor` vendors crates from a git workspace, the vendored Cargo.toml
+/// files retain intra-workspace path deps (e.g., `path = "../sibling-crate"`). During
+/// offline builds with cargo source replacement, these path deps cause cargo to resolve
+/// siblings as path sources instead of through the directory source, which conflicts
+/// with Cargo.lock entries that record them as git (or registry) sources. Stripping the
+/// path keys forces cargo to resolve by name from the replaced source.
+///
+/// This runs BEFORE `rewrite_local_path_deps`, which adds back correct path deps
+/// for local/workspace crates only.
+pub fn strip_vendor_path_deps(vendor_dir: &Path, v: crate::Verbosity) -> Result<()> {
+    for entry in std::fs::read_dir(vendor_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+
+        let cargo_toml = entry.path().join("Cargo.toml");
+        if !cargo_toml.exists() {
+            continue;
+        }
+
+        let content = std::fs::read_to_string(&cargo_toml)?;
+        let mut doc: toml_edit::DocumentMut = content
+            .parse()
+            .with_context(|| format!("failed to parse {}", cargo_toml.display()))?;
+
+        let mut changed = false;
+
+        for section in &["dependencies", "build-dependencies"] {
+            if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
+                for (_name, dep) in table.iter_mut() {
+                    if remove_relative_path(dep) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if changed {
+            std::fs::write(&cargo_toml, doc.to_string())?;
+            if v.debug() {
+                eprintln!(
+                    "  Stripped path deps from {}/Cargo.toml",
+                    entry.file_name().to_string_lossy()
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Remove `path = "../..."` from a dependency entry (returns true if changed)
+fn remove_relative_path(dep: &mut toml_edit::Item) -> bool {
+    match dep {
+        toml_edit::Item::Value(toml_edit::Value::InlineTable(table)) => {
+            if table
+                .get("path")
+                .and_then(|v| v.as_str())
+                .is_some_and(|p| p.starts_with("../"))
+            {
+                table.remove("path");
+                return true;
+            }
+        }
+        toml_edit::Item::Table(table) => {
+            if table
+                .get("path")
+                .and_then(|v| v.as_str())
+                .is_some_and(|p| p.starts_with("../"))
+            {
+                table.remove("path");
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
+}
+
 /// Rewrite inter-crate path dependencies so local crates reference each other in vendor/
 pub fn rewrite_local_path_deps(
     vendor_dir: &Path,
@@ -607,7 +689,23 @@ pub fn freeze_manifest(
         }
     }
 
-    // Step 2: Remove all [patch.*] sections
+    // Step 2: Collect all crate names from existing [patch.*] sections,
+    // then remove those sections. We need the names to re-add them as
+    // vendor path deps (unpublished git crates aren't on crates.io).
+    let mut patched_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (key, val) in doc.as_table().iter() {
+        if key.starts_with("patch") {
+            if let Some(patch_table) = val.as_table() {
+                for (_registry, registry_val) in patch_table.iter() {
+                    if let Some(registry_table) = registry_val.as_table() {
+                        for (crate_name, _) in registry_table.iter() {
+                            patched_names.insert(crate_name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
     let keys_to_remove: Vec<String> = doc
         .as_table()
         .iter()
@@ -618,15 +716,21 @@ pub fn freeze_manifest(
         doc.remove(key);
     }
 
-    // Step 3: Add [patch.crates-io] for transitive local deps in vendor/
+    // Step 3: Add [patch.crates-io] for all vendored crates that were
+    // previously patched OR are local workspace deps. This ensures
+    // unpublished crates (from git sources) remain available in the
+    // crates-io namespace when resolved from vendored-sources.
     let mut patch_table = toml_edit::Table::new();
     for pkg in local_pkgs {
-        if vendor_dir.join(&pkg.name).exists() {
-            let rel = format!("{}/{}", vendor_rel, pkg.name);
+        patched_names.insert(pkg.name.clone());
+    }
+    for name in &patched_names {
+        if vendor_dir.join(name).exists() {
+            let rel = format!("{}/{}", vendor_rel, name);
             let mut inline = toml_edit::InlineTable::new();
             inline.insert("path", toml_edit::value(&rel).into_value().unwrap());
             patch_table.insert(
-                &pkg.name,
+                name,
                 toml_edit::Item::Value(toml_edit::Value::InlineTable(inline)),
             );
         }
@@ -719,11 +823,40 @@ fn pathdiff(target: &Path, base: &Path) -> String {
 }
 
 /// Regenerate Cargo.lock from vendored sources (offline)
-pub fn regenerate_lockfile(manifest_path: &Path, v: crate::Verbosity) -> Result<()> {
+///
+/// Creates a temporary `.cargo/config.toml` with source replacement pointing
+/// to `vendor_dir`, runs `cargo generate-lockfile --offline`, then removes
+/// the temporary config (it would conflict with the configure-generated one).
+pub fn regenerate_lockfile(
+    manifest_path: &Path,
+    vendor_dir: &Path,
+    v: crate::Verbosity,
+) -> Result<()> {
     let lockfile = manifest_path.with_file_name("Cargo.lock");
     if lockfile.exists() {
         std::fs::remove_file(&lockfile)?;
     }
+
+    // Write temporary .cargo/config.toml so cargo can resolve vendored sources
+    let cargo_dir = manifest_path.with_file_name(".cargo");
+    std::fs::create_dir_all(&cargo_dir)?;
+    let config_path = cargo_dir.join("config.toml");
+    let had_config = config_path.exists();
+    let old_config = if had_config {
+        Some(std::fs::read_to_string(&config_path)?)
+    } else {
+        None
+    };
+
+    let vendor_path = vendor_dir
+        .canonicalize()
+        .unwrap_or_else(|_| vendor_dir.to_path_buf());
+    let config_content = format!(
+        "[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n\
+         [source.vendored-sources]\ndirectory = \"{}\"\n",
+        crate::path_to_toml(&vendor_path)
+    );
+    std::fs::write(&config_path, &config_content)?;
 
     let output = std::process::Command::new("cargo")
         .arg("generate-lockfile")
@@ -732,6 +865,14 @@ pub fn regenerate_lockfile(manifest_path: &Path, v: crate::Verbosity) -> Result<
         .arg("--offline")
         .output()
         .context("failed to run cargo generate-lockfile")?;
+
+    // Restore or remove the temporary config
+    if let Some(old) = old_config {
+        std::fs::write(&config_path, old)?;
+    } else {
+        let _ = std::fs::remove_file(&config_path);
+        let _ = std::fs::remove_dir(&cargo_dir);
+    }
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -780,16 +921,30 @@ pub fn compress_vendor(
         .to_string_lossy();
     let parent_dir = vendor_dir.parent().context("vendor dir has no parent")?;
 
-    let output = std::process::Command::new("tar")
-        .arg("-cJf")
+    // Suppress macOS xattr metadata that causes warnings on Linux GNU tar.
+    // COPYFILE_DISABLE=1 prevents ._* AppleDouble files, but macOS bsdtar
+    // still writes xattr PAX headers (LIBARCHIVE.xattr.*). The --no-xattrs
+    // flag (supported by both bsdtar and GNU tar) prevents those too.
+    let mut cmd = std::process::Command::new("tar");
+    cmd.env("COPYFILE_DISABLE", "1");
+    // Detect if tar supports --no-xattrs (bsdtar on macOS and GNU tar do)
+    let has_no_xattrs = std::process::Command::new("tar")
+        .arg("--no-xattrs")
+        .arg("-cf")
+        .arg("/dev/null")
+        .arg("--files-from")
+        .arg("/dev/null")
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if has_no_xattrs {
+        cmd.arg("--no-xattrs");
+    }
+    cmd.arg("-cJf")
         .arg(tarball_path)
-        // Suppress macOS xattr metadata (causes warnings on Linux GNU tar)
-        .env("COPYFILE_DISABLE", "1")
         .arg("-C")
         .arg(parent_dir)
-        .arg(vendor_name.as_ref())
-        .output()
-        .context("failed to run tar")?;
+        .arg(vendor_name.as_ref());
+    let output = cmd.output().context("failed to run tar")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -808,4 +963,81 @@ pub fn compress_vendor(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Verbosity;
+
+    #[test]
+    fn strip_vendor_path_deps_removes_relative_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let vendor = dir.path().join("vendor");
+        std::fs::create_dir_all(vendor.join("crate-a")).unwrap();
+        std::fs::create_dir_all(vendor.join("crate-b")).unwrap();
+
+        // crate-a has a relative path dep to crate-b
+        std::fs::write(
+            vendor.join("crate-a/Cargo.toml"),
+            r#"[package]
+name = "crate-a"
+version = "0.1.0"
+
+[dependencies.crate-b]
+version = "*"
+path = "../crate-b"
+"#,
+        )
+        .unwrap();
+
+        // crate-b has no path deps
+        std::fs::write(
+            vendor.join("crate-b/Cargo.toml"),
+            r#"[package]
+name = "crate-b"
+version = "0.1.0"
+"#,
+        )
+        .unwrap();
+
+        strip_vendor_path_deps(&vendor, Verbosity(0)).unwrap();
+
+        let result = std::fs::read_to_string(vendor.join("crate-a/Cargo.toml")).unwrap();
+        assert!(result.contains("crate-b"));
+        assert!(result.contains("version"));
+        assert!(!result.contains("path"));
+    }
+
+    #[test]
+    fn strip_vendor_path_deps_keeps_internal_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let vendor = dir.path().join("vendor");
+        std::fs::create_dir_all(vendor.join("mycrate")).unwrap();
+
+        // path = "src/lib.rs" should NOT be stripped (it's internal, not ../...)
+        std::fs::write(
+            vendor.join("mycrate/Cargo.toml"),
+            r#"[package]
+name = "mycrate"
+version = "0.1.0"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies.sibling]
+version = "*"
+path = "../sibling"
+"#,
+        )
+        .unwrap();
+
+        strip_vendor_path_deps(&vendor, Verbosity(0)).unwrap();
+
+        let result = std::fs::read_to_string(vendor.join("mycrate/Cargo.toml")).unwrap();
+        // [lib] path is preserved (not a relative ../ path, and not in dependencies)
+        assert!(result.contains("src/lib.rs"));
+        // dependency path is stripped
+        assert!(!result.contains("../sibling"));
+    }
 }
