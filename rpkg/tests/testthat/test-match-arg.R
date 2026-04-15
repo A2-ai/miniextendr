@@ -110,3 +110,55 @@ test_that("choices: mixed with regular params", {
   # mode defaults to first choice
   expect_equal(choices_mixed(42L, verbose = TRUE), "n=42, mode=fast, verbose=true")
 })
+
+# ============================================================================
+# several_ok tests — multi-value match.arg
+# ============================================================================
+
+test_that("several_ok: default returns all choices", {
+  expect_equal(choices_multi_color(), "red, green, blue")
+})
+
+test_that("several_ok: subset selection", {
+  expect_equal(choices_multi_color(c("red", "blue")), "red, blue")
+})
+
+test_that("several_ok: single value still works", {
+  expect_equal(choices_multi_color("green"), "green")
+})
+
+test_that("several_ok: invalid value errors", {
+  expect_error(choices_multi_color("purple"), "should be one of")
+})
+
+test_that("several_ok: mixed with regular params", {
+  expect_equal(choices_multi_metrics(1L, c("mean", "sd")), "n=1, metrics=mean+sd")
+  # metrics defaults to all choices
+  expect_equal(choices_multi_metrics(1L), "n=1, metrics=mean+median+sd+var")
+})
+
+# ============================================================================
+# match_arg + several_ok tests — enum-based multi-value
+# ============================================================================
+
+test_that("match_arg several_ok: default returns all variants", {
+  expect_equal(match_arg_multi_mode(), "Fast, Safe, Debug")
+})
+
+test_that("match_arg several_ok: subset selection", {
+  expect_equal(match_arg_multi_mode(c("Fast", "Debug")), "Fast, Debug")
+})
+
+test_that("match_arg several_ok: single value", {
+  expect_equal(match_arg_multi_mode("Safe"), "Safe")
+})
+
+test_that("match_arg several_ok: invalid value errors", {
+  expect_error(match_arg_multi_mode("Invalid"), "should be one of")
+})
+
+test_that("match_arg several_ok: mixed with regular params", {
+  expect_equal(match_arg_multi_priority(1L, c("lo", "hi")), "n=1, priorities=lo+hi")
+  # priorities defaults to all choices
+  expect_equal(match_arg_multi_priority(1L), "n=1, priorities=lo+med+hi")
+})

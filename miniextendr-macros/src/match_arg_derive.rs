@@ -249,6 +249,7 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
                 self.to_choice().into_sexp()
             }
         }
+
     })
 }
 

@@ -1,0 +1,5 @@
+error: several_ok requires choices() or match_arg on parameter `x`; several_ok enables multi-value match.arg which needs a choice list
+ --> tests/ui/several_ok_without_choices.rs:6:49
+  |
+6 | fn bad_several_ok(#[miniextendr(several_ok)] x: Vec<String>) {}
+  |                                                 ^^^
