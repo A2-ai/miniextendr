@@ -28,6 +28,8 @@ pub struct RustConversionBuilder {
     /// When true, conversion failures return tagged error SEXP instead of panicking.
     /// Only used on the main-thread error_in_r path (not worker thread).
     error_in_r: bool,
+    /// Parameter names with `match_arg + several_ok` — use `match_arg_vec_from_sexp` instead of `TryFromSexp`.
+    match_arg_several_ok_params: Vec<String>,
 }
 
 impl RustConversionBuilder {
@@ -38,6 +40,7 @@ impl RustConversionBuilder {
             coerce_params: Vec::new(),
             strict: false,
             error_in_r: false,
+            match_arg_several_ok_params: Vec::new(),
         }
     }
 
@@ -69,6 +72,13 @@ impl RustConversionBuilder {
     /// `no_error_in_r` path, panics are needed for `with_r_unwind_protect` to catch.
     pub fn with_error_in_r(mut self) -> Self {
         self.error_in_r = true;
+        self
+    }
+
+    /// Mark a parameter as `match_arg + several_ok` — uses `match_arg_vec_from_sexp`
+    /// instead of `TryFromSexp` for converting STRSXP → `Vec<EnumType>`.
+    pub fn with_match_arg_several_ok(mut self, param_name: String) -> Self {
+        self.match_arg_several_ok_params.push(param_name);
         self
     }
 
@@ -283,6 +293,25 @@ impl RustConversionBuilder {
                     let stmt = quote_spanned! {span=>
                         let #ident: #ty = #strict_expr;
                     };
+                    return (vec![stmt], vec![]);
+                }
+
+                // match_arg + several_ok: use match_arg_vec_from_sexp for Vec<EnumType>
+                if self
+                    .match_arg_several_ok_params
+                    .contains(&param_name.to_string())
+                    && let Some(inner_ty) = crate::extract_vec_inner_type(ty)
+                {
+                    let error_msg = format!(
+                        "failed to convert parameter '{}' to Vec<{}>: invalid choice",
+                        param_name,
+                        quote!(#inner_ty)
+                    );
+                    let span = ty.span();
+                    let try_expr = quote_spanned! {span=>
+                        ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
+                    };
+                    let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
                     return (vec![stmt], vec![]);
                 }
 

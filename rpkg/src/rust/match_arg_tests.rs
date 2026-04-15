@@ -171,3 +171,31 @@ pub fn choices_multi_metrics(
     format!("n={}, metrics={}", n, metrics.join("+"))
 }
 // endregion
+
+// region: Test functions using #[miniextendr(match_arg, several_ok)] on enum Vec
+
+/// Select multiple modes (enum-based several_ok).
+///
+/// @param modes One or more Mode values.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_multi_mode(
+    #[miniextendr(match_arg, several_ok)] modes: Vec<Mode>,
+) -> String {
+    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+}
+
+/// Select multiple priorities with a regular param.
+///
+/// @param n Count.
+/// @param priorities One or more Priority values.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_multi_priority(
+    n: i32,
+    #[miniextendr(match_arg, several_ok)] priorities: Vec<Priority>,
+) -> String {
+    let ps: Vec<&str> = priorities.iter().map(|p| p.to_choice()).collect();
+    format!("n={}, priorities={}", n, ps.join("+"))
+}
+// endregion

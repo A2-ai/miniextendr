@@ -1,4 +1,4 @@
-//! Test: several_ok without choices() should error
+//! Test: several_ok without choices() or match_arg should error
 
 use miniextendr_macros::miniextendr;
 

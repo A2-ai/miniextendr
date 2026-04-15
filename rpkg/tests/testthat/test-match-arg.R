@@ -136,3 +136,29 @@ test_that("several_ok: mixed with regular params", {
   # metrics defaults to all choices
   expect_equal(choices_multi_metrics(1L), "n=1, metrics=mean+median+sd+var")
 })
+
+# ============================================================================
+# match_arg + several_ok tests — enum-based multi-value
+# ============================================================================
+
+test_that("match_arg several_ok: default returns all variants", {
+  expect_equal(match_arg_multi_mode(), "Fast, Safe, Debug")
+})
+
+test_that("match_arg several_ok: subset selection", {
+  expect_equal(match_arg_multi_mode(c("Fast", "Debug")), "Fast, Debug")
+})
+
+test_that("match_arg several_ok: single value", {
+  expect_equal(match_arg_multi_mode("Safe"), "Safe")
+})
+
+test_that("match_arg several_ok: invalid value errors", {
+  expect_error(match_arg_multi_mode("Invalid"), "should be one of")
+})
+
+test_that("match_arg several_ok: mixed with regular params", {
+  expect_equal(match_arg_multi_priority(1L, c("lo", "hi")), "n=1, priorities=lo+hi")
+  # priorities defaults to all choices
+  expect_equal(match_arg_multi_priority(1L), "n=1, priorities=lo+med+hi")
+})

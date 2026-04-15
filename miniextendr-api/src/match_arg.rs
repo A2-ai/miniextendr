@@ -125,10 +125,9 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
     }
 }
 
-/// Extract a string from an R SEXP (STRSXP or factor) and match it against
-/// the choices of a `MatchArg` type.
+/// Extract a single string from an R SEXP and match it against a `MatchArg` type.
 ///
-/// This is used by the generated `TryFromSexp` implementation.
+/// Used by the generated `TryFromSexp for T` implementation (single-value `match.arg`).
 pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
     let actual_type = sexp.type_of();
 
@@ -217,5 +216,51 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
                 choices: <T as MatchArg>::CHOICES,
             })
         }
+    }
+}
+
+/// Extract multiple strings from an R SEXP (STRSXP) and match each against
+/// the choices of a `MatchArg` type.
+///
+/// Used by the generated `TryFromSexp for Vec<T>` implementation
+/// (`match.arg` with `several.ok = TRUE`).
+///
+/// NULL input returns all variants (matching R's `match.arg` default with `several.ok = TRUE`).
+pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchArgError> {
+    let actual_type = sexp.type_of();
+
+    match actual_type {
+        SEXPTYPE::STRSXP => {
+            let len = sexp.len();
+            let mut result = Vec::with_capacity(len);
+            for i in 0..len {
+                let charsxp = sexp.string_elt(i as ffi::R_xlen_t);
+                if charsxp == SEXP::na_string() {
+                    return Err(MatchArgError::IsNa);
+                }
+                let c_str = unsafe { ffi::Rf_translateCharUTF8(charsxp) };
+                let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
+                let s = rust_str.to_str().unwrap_or("");
+                let val = T::from_choice(s).ok_or_else(|| MatchArgError::NoMatch {
+                    input: s.to_string(),
+                    choices: <T as MatchArg>::CHOICES,
+                })?;
+                result.push(val);
+            }
+            Ok(result)
+        }
+        SEXPTYPE::NILSXP => {
+            // NULL → all choices (match.arg default with several.ok = TRUE)
+            <T as MatchArg>::CHOICES
+                .iter()
+                .map(|c| {
+                    T::from_choice(c).ok_or_else(|| MatchArgError::NoMatch {
+                        input: c.to_string(),
+                        choices: <T as MatchArg>::CHOICES,
+                    })
+                })
+                .collect()
+        }
+        _ => Err(MatchArgError::InvalidType(actual_type)),
     }
 }

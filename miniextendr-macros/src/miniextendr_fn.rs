@@ -233,12 +233,12 @@ pub(crate) fn validate_per_param_attr_conflicts(
             ),
         ));
     }
-    if attr.has_several_ok && attr.choices.is_none() {
+    if attr.has_several_ok && attr.choices.is_none() && !attr.has_match_arg {
         return Err(syn::Error::new(
             span,
             format!(
-                "several_ok requires choices() on parameter `{}`; \
-                 several_ok enables multi-value match.arg which needs an explicit choice list",
+                "several_ok requires choices() or match_arg on parameter `{}`; \
+                 several_ok enables multi-value match.arg which needs a choice list",
                 param_name
             ),
         ));
