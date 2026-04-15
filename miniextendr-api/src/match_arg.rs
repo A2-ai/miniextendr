@@ -28,6 +28,7 @@
 //! matching.
 
 use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
+use crate::from_r::charsxp_to_str;
 
 /// Trait for enum types that support `match.arg`-style string conversion.
 ///
@@ -142,9 +143,8 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
             if charsxp == SEXP::na_string() {
                 return Err(MatchArgError::IsNa);
             }
-            let c_str = unsafe { ffi::Rf_translateCharUTF8(charsxp) };
-            let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-            rust_str.to_str().unwrap_or("").to_string()
+            // UTF-8 locale asserted at package init — R_CHAR is safe
+            unsafe { charsxp_to_str(charsxp) }
         }
         // Accept factors: extract the level label
         SEXPTYPE::INTSXP => {
@@ -171,9 +171,7 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
                 });
             }
             let charsxp = levels.string_elt(level_idx);
-            let c_str = unsafe { ffi::Rf_translateCharUTF8(charsxp) };
-            let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-            rust_str.to_str().unwrap_or("").to_string()
+            unsafe { charsxp_to_str(charsxp) }
         }
         SEXPTYPE::NILSXP => {
             // NULL → use first choice (match.arg default behavior)
@@ -187,35 +185,33 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
         _ => return Err(MatchArgError::InvalidType(actual_type)),
     };
 
+    match_choice::<T>(input)
+}
+
+/// Match a string against the choices of a `MatchArg` type (exact or partial).
+fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
     // Exact match
-    if let Some(val) = T::from_choice(&input) {
+    if let Some(val) = T::from_choice(input) {
         return Ok(val);
     }
 
     // Unique partial match (like R's match.arg)
     let mut matches: Vec<(usize, &'static str)> = Vec::new();
     for (i, choice) in <T as MatchArg>::CHOICES.iter().enumerate() {
-        if choice.starts_with(&input) {
+        if choice.starts_with(input) {
             matches.push((i, choice));
         }
     }
 
     match matches.len() {
         1 => T::from_choice(matches[0].1).ok_or(MatchArgError::NoMatch {
-            input,
+            input: input.to_string(),
             choices: <T as MatchArg>::CHOICES,
         }),
-        0 => Err(MatchArgError::NoMatch {
-            input,
+        _ => Err(MatchArgError::NoMatch {
+            input: input.to_string(),
             choices: <T as MatchArg>::CHOICES,
         }),
-        _ => {
-            // Ambiguous — report as no match (R's match.arg would say "ambiguous")
-            Err(MatchArgError::NoMatch {
-                input,
-                choices: <T as MatchArg>::CHOICES,
-            })
-        }
     }
 }
 
@@ -238,14 +234,8 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
                 if charsxp == SEXP::na_string() {
                     return Err(MatchArgError::IsNa);
                 }
-                let c_str = unsafe { ffi::Rf_translateCharUTF8(charsxp) };
-                let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-                let s = rust_str.to_str().unwrap_or("");
-                let val = T::from_choice(s).ok_or_else(|| MatchArgError::NoMatch {
-                    input: s.to_string(),
-                    choices: <T as MatchArg>::CHOICES,
-                })?;
-                result.push(val);
+                let s = unsafe { charsxp_to_str(charsxp) };
+                result.push(match_choice::<T>(s)?);
             }
             Ok(result)
         }
@@ -253,12 +243,7 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
             // NULL → all choices (match.arg default with several.ok = TRUE)
             <T as MatchArg>::CHOICES
                 .iter()
-                .map(|c| {
-                    T::from_choice(c).ok_or_else(|| MatchArgError::NoMatch {
-                        input: c.to_string(),
-                        choices: <T as MatchArg>::CHOICES,
-                    })
-                })
+                .map(|c| match_choice::<T>(c))
                 .collect()
         }
         _ => Err(MatchArgError::InvalidType(actual_type)),
