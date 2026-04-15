@@ -291,6 +291,11 @@ fn main() -> Result<()> {
         vec![]
     };
 
+    // Step 5.5: Strip relative path deps from all vendored crates
+    // (cargo vendor preserves intra-workspace path deps from git sources;
+    // these conflict with source replacement during offline builds)
+    vendor::strip_vendor_path_deps(&vendor_staging, v)?;
+
     // Step 6: Rewrite inter-crate path deps for local crates
     vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, v)?;
 
@@ -334,7 +339,7 @@ fn main() -> Result<()> {
     // Step 12: Freeze — rewrite manifest so all sources resolve from vendor/
     if cli.freeze {
         vendor::freeze_manifest(&manifest_path, &output, &local_pkgs, v)?;
-        vendor::regenerate_lockfile(&manifest_path, v)?;
+        vendor::regenerate_lockfile(&manifest_path, &output, v)?;
     }
 
     // Step 13: Compress to tarball (relative paths resolve from CWD)
