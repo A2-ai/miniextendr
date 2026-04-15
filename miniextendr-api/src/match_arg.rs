@@ -218,10 +218,13 @@ fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
 /// Extract multiple strings from an R SEXP (STRSXP) and match each against
 /// the choices of a `MatchArg` type.
 ///
-/// Used by the generated `TryFromSexp for Vec<T>` implementation
+/// Used by the generated C wrapper for `match_arg + several_ok` parameters
 /// (`match.arg` with `several.ok = TRUE`).
 ///
 /// NULL input returns all variants (matching R's `match.arg` default with `several.ok = TRUE`).
+///
+/// Note: factors (INTSXP) are not handled here — the R wrapper coerces factors
+/// to character before the `.Call()` boundary.
 pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchArgError> {
     let actual_type = sexp.type_of();
 

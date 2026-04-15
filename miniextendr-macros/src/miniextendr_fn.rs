@@ -292,7 +292,7 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// Choices for string parameters: `#[miniextendr(choices("a", "b", "c"))]`.
     pub choices: Option<Vec<String>>,
     /// Whether `several_ok` was present, enabling multi-value `match.arg(several.ok = TRUE)`.
-    /// Only valid with `choices(...)`.
+    /// Only valid with `choices(...)` or `match_arg`.
     pub has_several_ok: bool,
 }
 
