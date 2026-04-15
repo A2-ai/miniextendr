@@ -110,3 +110,29 @@ test_that("choices: mixed with regular params", {
   # mode defaults to first choice
   expect_equal(choices_mixed(42L, verbose = TRUE), "n=42, mode=fast, verbose=true")
 })
+
+# ============================================================================
+# several_ok tests — multi-value match.arg
+# ============================================================================
+
+test_that("several_ok: default returns all choices", {
+  expect_equal(choices_multi_color(), "red, green, blue")
+})
+
+test_that("several_ok: subset selection", {
+  expect_equal(choices_multi_color(c("red", "blue")), "red, blue")
+})
+
+test_that("several_ok: single value still works", {
+  expect_equal(choices_multi_color("green"), "green")
+})
+
+test_that("several_ok: invalid value errors", {
+  expect_error(choices_multi_color("purple"), "should be one of")
+})
+
+test_that("several_ok: mixed with regular params", {
+  expect_equal(choices_multi_metrics(1L, c("mean", "sd")), "n=1, metrics=mean+sd")
+  # metrics defaults to all choices
+  expect_equal(choices_multi_metrics(1L), "n=1, metrics=mean+median+sd+var")
+})
