@@ -1415,7 +1415,17 @@ pub fn miniextendr(
                 if !has_user_param {
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
-                    roxygen_tags.push(format!("@param {} One of {}.", r_name, quoted.join(", ")));
+                    let prefix = if parsed.has_several_ok(&rust_name) {
+                        "One or more of"
+                    } else {
+                        "One of"
+                    };
+                    roxygen_tags.push(format!(
+                        "@param {} {} {}.",
+                        r_name,
+                        prefix,
+                        quoted.join(", ")
+                    ));
                 }
             }
         }
@@ -1532,6 +1542,7 @@ pub fn miniextendr(
 
     // Generate idiomatic match.arg prelude for choices params
     // These use the simpler pattern: `param <- match.arg(param)` (no C helper call needed)
+    // With `several_ok`, emit `match.arg(param, several.ok = TRUE)` for multi-value selection
     let choices_prelude = {
         let mut lines = Vec::new();
         for arg in inputs.iter() {
@@ -1542,7 +1553,13 @@ pub fn miniextendr(
                 if parsed.choices_for_param(&rust_name).is_some() {
                     let r_name =
                         r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-                    lines.push(format!("{r_name} <- match.arg({r_name})"));
+                    if parsed.has_several_ok(&rust_name) {
+                        lines.push(format!(
+                            "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
+                        ));
+                    } else {
+                        lines.push(format!("{r_name} <- match.arg({r_name})"));
+                    }
                 }
             }
         }

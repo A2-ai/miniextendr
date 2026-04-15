@@ -144,3 +144,30 @@ pub fn choices_mixed(
     format!("n={}, mode={}, verbose={}", n, mode, verbose)
 }
 // endregion
+
+// region: Test functions using #[miniextendr(choices(...), several_ok)]
+
+/// Select multiple colors.
+///
+/// @param colors One or more colors.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn choices_multi_color(
+    #[miniextendr(choices("red", "green", "blue"), several_ok)] colors: Vec<String>,
+) -> String {
+    colors.join(", ")
+}
+
+/// Select metrics with several.ok.
+///
+/// @param n Count.
+/// @param metrics One or more metrics.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn choices_multi_metrics(
+    n: i32,
+    #[miniextendr(choices("mean", "median", "sd", "var"), several_ok)] metrics: Vec<String>,
+) -> String {
+    format!("n={}, metrics={}", n, metrics.join("+"))
+}
+// endregion
