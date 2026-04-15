@@ -56,29 +56,29 @@ choices_color(color = c("red", "green", "blue"))
 
 choices_mixed(n, mode = c("fast", "safe"), verbose)
 
-match_arg_mixed(x, mode = NULL)
+match_arg_mixed(x, mode = c("Fast", "Safe", "Debug"))
 
-match_arg_set_mode(mode = NULL)
+match_arg_set_mode(mode = c("Fast", "Safe", "Debug"))
 
 choices_correlation(x, y, method = c("pearson", "kendall", "spearman"))
 
 choices_multi_color(colors = c("red", "green", "blue"))
 
-match_arg_multi_mode(modes = NULL)
+match_arg_multi_mode(modes = c("Fast", "Safe", "Debug"))
 
-match_arg_set_status(status = NULL)
+match_arg_set_status(status = c("in_progress", "completed", "not_started"))
 
 choices_multi_metrics(n, metrics = c("mean", "median", "sd", "var"))
 
-match_arg_return_mode(mode = NULL)
+match_arg_return_mode(mode = c("Fast", "Safe", "Debug"))
 
 match_arg_mode_choices()
 
-match_arg_set_priority(priority = NULL)
+match_arg_set_priority(priority = c("lo", "med", "hi"))
 
 match_arg_with_default(mode = "Safe")
 
-match_arg_multi_priority(n, priorities = NULL)
+match_arg_multi_priority(n, priorities = c("lo", "med", "hi"))
 
 match_arg_status_choices()
 
