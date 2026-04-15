@@ -9,7 +9,7 @@
 
 #' Add a feature to Cargo.toml
 #'
-#' Adds a feature line to the [features] section of src/rust/Cargo.toml.
+#' Adds a feature line to the `[features]` section of src/rust/Cargo.toml.
 #'
 #' @param feature_name Name of the feature (e.g., "vctrs")
 #' @param feature_spec Feature specification (e.g., "miniextendr-api/vctrs")
@@ -336,12 +336,13 @@ use_feature_detection <- function(path = ".",
 
 #' Update feature detection to match Cargo.toml
 #'
-#' Re-scans Cargo.toml and regenerates feature detection code. Use this after
-#' adding new features to keep the detection code in sync.
+#' Re-scans Cargo.toml and regenerates feature detection code.
+#' Equivalent to calling `use_feature_detection(overwrite = TRUE)`.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param overwrite Logical, whether to overwrite existing files (default TRUE)
 #' @return Invisibly returns list of generated file paths
+#' @keywords internal
 #' @export
 #'
 #' @examples
@@ -355,7 +356,7 @@ update_feature_detection <- function(path = ".", overwrite = TRUE) {
 
 #' Detect features from Cargo.toml
 #'
-#' Parses the [features] section of src/rust/Cargo.toml to extract feature names.
+#' Parses the `[features]` section of src/rust/Cargo.toml to extract feature names.
 #'
 #' @return Character vector of feature names
 #' @noRd

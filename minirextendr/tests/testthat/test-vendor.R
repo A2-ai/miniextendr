@@ -55,7 +55,7 @@ test_that("download_miniextendr_archive validates version parameter", {
 
   # Invalid version should error
   expect_error(
-    download_miniextendr_archive("definitely-not-a-real-version-12345", tempfile()),
+    minirextendr:::download_miniextendr_archive("definitely-not-a-real-version-12345", tempfile()),
     "Failed to download"
   )
 })
@@ -70,7 +70,7 @@ test_that("patch_cargo_toml handles empty file", {
 
   writeLines(character(), tmp)
   # Should not error on empty file
-  expect_silent(patch_cargo_toml(tmp, "test-crate"))
+  expect_silent(minirextendr:::patch_cargo_toml(tmp, "test-crate"))
 
   # File should still be empty
   expect_equal(readLines(tmp), character())
@@ -90,7 +90,7 @@ test_that("patch_cargo_toml handles file with no workspace entries", {
     'serde = "1.0"'
   )
   writeLines(content, tmp)
-  expect_silent(patch_cargo_toml(tmp, "test-crate"))
+  expect_silent(minirextendr:::patch_cargo_toml(tmp, "test-crate"))
 
   result <- readLines(tmp)
   # Content should be unchanged
@@ -113,7 +113,7 @@ test_that("patch_cargo_toml replaces known workspace entries", {
     'miniextendr-macros = { workspace = true }'
   )
   writeLines(content, tmp)
-  patch_cargo_toml(tmp, "miniextendr-api")
+  minirextendr:::patch_cargo_toml(tmp, "miniextendr-api")
 
   result <- readLines(tmp)
   expect_true(any(grepl('edition = "2024"', result)))
@@ -139,7 +139,7 @@ test_that("patch_cargo_toml warns on unhandled workspace entries", {
   writeLines(content, tmp)
 
   # edition.workspace is handled, but unknown-crate workspace = true is not
-  expect_warning(patch_cargo_toml(tmp, "test-crate"), "Unhandled workspace")
+  expect_warning(minirextendr:::patch_cargo_toml(tmp, "test-crate"), "Unhandled workspace")
 })
 
 # -----------------------------------------------------------------------------
@@ -159,7 +159,7 @@ test_that("vendor_miniextendr_local fails on missing crate directory", {
   # Should fail because other required crates are missing
   # suppressWarnings: rlang::warn fires for each missing crate before the final error
   expect_error(
-    suppressWarnings(suppressMessages(vendor_miniextendr_local(tmp_src, tmp_dest))),
+    suppressWarnings(suppressMessages(minirextendr:::vendor_miniextendr_local(tmp_src, tmp_dest))),
     "Failed to vendor"
   )
 })

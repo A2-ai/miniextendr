@@ -274,13 +274,13 @@ warnings because vendored crates are resolved differently via `[patch]` in the w
 `miniextendr.yml` in the package root for project-level settings:
 
 ```r
-mx_config(path = ".")              # Read current config (returns named list)
-mx_config_defaults()               # Show all defaults with descriptions
+miniextendr_config(path = ".")              # Read current config (returns named list)
+miniextendr_config_defaults()               # Show all defaults with descriptions
 ```
 
-`mx_config()` merges project-level `miniextendr.yml` with built-in defaults.
+`miniextendr_config()` merges project-level `miniextendr.yml` with built-in defaults.
 Settings include feature flags, class system choices, and build options.
-`mx_config_defaults()` lists every available setting with its default value.
+`miniextendr_config_defaults()` lists every available setting with its default value.
 
 ## knitr / Rmarkdown / Quarto Integration
 
@@ -349,7 +349,7 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_vendor_lib` |
 | **Vendoring** | `vendor_miniextendr`, `vendor_crates_io`, `vendor_sync`, `miniextendr_vendor`, `miniextendr_available_versions` |
 | **Diagnostics** | `has_miniextendr`, `miniextendr_status`, `miniextendr_validate`, `miniextendr_doctor`, `miniextendr_check_rust` |
-| **Configuration** | `mx_config`, `mx_config_defaults` |
+| **Configuration** | `miniextendr_config`, `miniextendr_config_defaults` |
 | **knitr/render** | `miniextendr_knitr_setup`, `miniextendr_html_document`, `miniextendr_pdf_document`, `miniextendr_word_document`, `miniextendr_quarto_pre_render`, `use_miniextendr_knitr`, `use_miniextendr_rmarkdown`, `use_miniextendr_quarto` |
 | **Cache** | `miniextendr_cache_info`, `miniextendr_clear_cache` |
 | **Upgrade** | `upgrade_miniextendr_package` |

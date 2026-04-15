@@ -13,10 +13,12 @@ has_miniextendr <- function(path = ".") {
 #' Show miniextendr setup status
 #'
 #' Displays which miniextendr files are present and which are missing
-#' in the current project.
+#' in the current project. For a comprehensive diagnostic, use
+#' [miniextendr_doctor()] instead.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns a list with present and missing files
+#' @keywords internal
 #' @export
 miniextendr_status <- function(path = ".") {
   with_project(path)
@@ -140,10 +142,12 @@ miniextendr_status <- function(path = ".") {
 #' Validate miniextendr configuration
 #'
 #' Checks that the miniextendr setup is valid and ready to build.
+#' For a comprehensive diagnostic, use [miniextendr_doctor()] instead.
 #' For running `R CMD check`, see [miniextendr_check()].
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if valid, otherwise shows warnings/errors
+#' @keywords internal
 #' @export
 miniextendr_validate <- function(path = ".") {
   with_project(path)

@@ -153,7 +153,7 @@ find_rust_root <- function(path = usethis::proj_get()) {
 
 #' Check if project is inside a Cargo workspace
 #'
-#' Looks for a Cargo.toml with [workspace] in the current directory or parent.
+#' Looks for a Cargo.toml with `[workspace]` in the current directory or parent.
 #' A workspace allows multiple crates to share dependencies.
 #'
 #' @param path Path to check

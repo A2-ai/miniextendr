@@ -1,5 +1,5 @@
-test_that("mx_config_defaults() returns expected structure", {
-  defaults <- mx_config_defaults()
+test_that("miniextendr_config_defaults() returns expected structure", {
+  defaults <- miniextendr_config_defaults()
 
   expect_type(defaults, "list")
   expect_named(defaults, c("class_system", "strict", "coerce", "features",
@@ -12,13 +12,13 @@ test_that("mx_config_defaults() returns expected structure", {
   expect_true(defaults$vendor)
 })
 
-test_that("mx_config() returns defaults when no file exists", {
+test_that("miniextendr_config() returns defaults when no file exists", {
   tmp <- withr::local_tempdir()
-  config <- mx_config(path = tmp)
-  expect_equal(config, mx_config_defaults())
+  config <- miniextendr_config(path = tmp)
+  expect_equal(config, miniextendr_config_defaults())
 })
 
-test_that("mx_config() merges user overrides over defaults", {
+test_that("miniextendr_config() merges user overrides over defaults", {
   skip_if_not_installed("yaml")
 
   tmp <- withr::local_tempdir()
@@ -27,7 +27,7 @@ test_that("mx_config() merges user overrides over defaults", {
     file.path(tmp, "miniextendr.yml")
   )
 
-  config <- mx_config(path = tmp)
+  config <- miniextendr_config(path = tmp)
   expect_equal(config$class_system, "r6")
   expect_true(config$strict)
   # Unspecified keys keep defaults
@@ -36,7 +36,7 @@ test_that("mx_config() merges user overrides over defaults", {
   expect_equal(config$rust_version, "stable")
 })
 
-test_that("mx_config() warns on unknown keys", {
+test_that("miniextendr_config() warns on unknown keys", {
   skip_if_not_installed("yaml")
 
   tmp <- withr::local_tempdir()
@@ -46,14 +46,14 @@ test_that("mx_config() warns on unknown keys", {
   )
 
   expect_warning(
-    config <- mx_config(path = tmp),
-    class = "mx_config_unknown_keys"
+    config <- miniextendr_config(path = tmp),
+    class = "miniextendr_config_unknown_keys"
   )
   # Known keys still applied
   expect_equal(config$class_system, "s3")
 })
 
-test_that("mx_config() handles features as character vector", {
+test_that("miniextendr_config() handles features as character vector", {
   skip_if_not_installed("yaml")
 
   tmp <- withr::local_tempdir()
@@ -62,19 +62,19 @@ test_that("mx_config() handles features as character vector", {
     file.path(tmp, "miniextendr.yml")
   )
 
-  config <- mx_config(path = tmp)
+  config <- miniextendr_config(path = tmp)
   expect_equal(config$features, c("rayon", "serde"))
 })
 
-test_that("mx_config() handles malformed yaml gracefully", {
+test_that("miniextendr_config() handles malformed yaml gracefully", {
   skip_if_not_installed("yaml")
 
   tmp <- withr::local_tempdir()
   writeLines("{{{{invalid yaml", file.path(tmp, "miniextendr.yml"))
 
   expect_warning(
-    config <- mx_config(path = tmp),
-    class = "mx_config_parse_error"
+    config <- miniextendr_config(path = tmp),
+    class = "miniextendr_config_parse_error"
   )
-  expect_equal(config, mx_config_defaults())
+  expect_equal(config, miniextendr_config_defaults())
 })

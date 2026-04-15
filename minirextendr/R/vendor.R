@@ -390,6 +390,7 @@ vendor_miniextendr_local <- function(local_path, dest) {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if sync occurred, FALSE if no local source found.
+#' @keywords internal
 #' @export
 vendor_sync <- function(path = ".") {
   with_project(path)
@@ -453,10 +454,14 @@ detect_miniextendr_local <- function(vendor_dir) {
 #'
 #' Runs `cargo vendor` to download all external crates.io dependencies
 #' (like proc-macro2, syn, quote) for offline/CRAN builds. This is separate
-#' from `vendor_miniextendr()` which downloads the miniextendr crates.
+#' from [vendor_miniextendr()] which vendors the miniextendr workspace crates.
+#'
+#' Most users should use [miniextendr_vendor()] instead, which calls this
+#' function as part of the full CRAN vendor workflow.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE on success
+#' @keywords internal
 #' @export
 vendor_crates_io <- function(path = ".") {
   with_project(path)
@@ -709,7 +714,7 @@ check_path_deps <- function(path = ".") {
   data.frame(crate = crates, path = paths, stringsAsFactors = FALSE)
 }
 
-#' Add [patch] entries to Cargo.toml for vendored crates
+#' Add `[patch]` entries to Cargo.toml for vendored crates
 #'
 #' After vendoring miniextendr crates to vendor/, adds a
 #' `[patch."https://github.com/CGMossa/miniextendr"]` section to

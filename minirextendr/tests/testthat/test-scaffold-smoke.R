@@ -31,7 +31,7 @@ test_that("check_path_deps detects path deps in [dependencies]", {
     'miniextendr-api = { path = "../../vendor/miniextendr-api" }'
   ), file.path(cargo_dir, "Cargo.toml"))
 
-  result <- check_path_deps(tmp)
+  result <- minirextendr:::check_path_deps(tmp)
 
   expect_s3_class(result, "data.frame")
   expect_equal(nrow(result), 3)
@@ -65,7 +65,7 @@ test_that("check_path_deps returns empty data frame when no path deps", {
     'serde = "1.0"'
   ), file.path(cargo_dir, "Cargo.toml"))
 
-  result <- check_path_deps(tmp)
+  result <- minirextendr:::check_path_deps(tmp)
   expect_equal(nrow(result), 0)
   expect_equal(names(result), c("crate", "path"))
 })
@@ -75,7 +75,7 @@ test_that("check_path_deps returns empty data frame when no Cargo.toml", {
   dir.create(tmp)
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  result <- check_path_deps(tmp)
+  result <- minirextendr:::check_path_deps(tmp)
   expect_equal(nrow(result), 0)
 })
 
@@ -102,7 +102,7 @@ test_that("check_path_deps ignores path deps in [patch.*] sections", {
     'miniextendr-api = { path = "../../vendor/miniextendr-api" }'
   ), file.path(cargo_dir, "Cargo.toml"))
 
-  result <- check_path_deps(tmp)
+  result <- minirextendr:::check_path_deps(tmp)
   expect_equal(nrow(result), 0)
 })
 
@@ -127,7 +127,7 @@ test_that("detect_miniextendr_local finds repo via .vendor-source", {
   dir.create(vendor_dir, recursive = TRUE)
   writeLines(fake_repo, file.path(vendor_dir, ".vendor-source"))
 
-  result <- detect_miniextendr_local(vendor_dir)
+  result <- minirextendr:::detect_miniextendr_local(vendor_dir)
   expect_equal(result, normalizePath(fake_repo, mustWork = TRUE))
 })
 
@@ -139,7 +139,7 @@ test_that("detect_miniextendr_local returns NULL when no source found", {
   vendor_dir <- file.path(tmp, "vendor")
   dir.create(vendor_dir)
 
-  result <- detect_miniextendr_local(vendor_dir)
+  result <- minirextendr:::detect_miniextendr_local(vendor_dir)
   expect_null(result)
 })
 

@@ -15,5 +15,10 @@ Invisibly returns TRUE on success
 \description{
 Runs \verb{cargo vendor} to download all external crates.io dependencies
 (like proc-macro2, syn, quote) for offline/CRAN builds. This is separate
-from \code{vendor_miniextendr()} which downloads the miniextendr crates.
+from \code{\link[=vendor_miniextendr]{vendor_miniextendr()}} which vendors the miniextendr workspace crates.
 }
+\details{
+Most users should use \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} instead, which calls this
+function as part of the full CRAN vendor workflow.
+}
+\keyword{internal}

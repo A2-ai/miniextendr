@@ -8,6 +8,7 @@
 #'
 #' @param path Path to the R package root. Defaults to `"."`.
 #' @return Invisibly returns `TRUE` on success.
+#' @keywords internal
 #' @export
 miniextendr_check_rust <- function(path = ".") {
   path <- normalizePath(path, mustWork = TRUE)

@@ -6,7 +6,7 @@
 # - CRAN mode: `cargo package` bundles the crate as a tarball that configure
 #   extracts at build time
 
-#' Add a dependency to [dependencies] in Cargo.toml
+#' Add a dependency to `[dependencies]` in Cargo.toml
 #'
 #' @param crate Crate name
 #' @param version Version spec (e.g., "*", "0.1.0")
@@ -47,9 +47,9 @@ add_cargo_dependency <- function(crate, version) {
   invisible(TRUE)
 }
 
-#' Add a crate to [patch.crates-io] in Cargo.toml
+#' Add a crate to `[patch.crates-io]` in Cargo.toml
 #'
-#' Creates the [patch.crates-io] section if it doesn't exist.
+#' Creates the `[patch.crates-io]` section if it doesn't exist.
 #'
 #' @param crate Crate name
 #' @param dev_path Relative path from R package root to the crate

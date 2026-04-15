@@ -4,12 +4,12 @@
 # ---- validate_rust_input ----
 
 test_that("validate_rust_input requires exactly one of file/code", {
-  expect_error(validate_rust_input(NULL, NULL), "One of `file` or `code`")
-  expect_error(validate_rust_input("a.rs", "code"), "Only one of")
+  expect_error(minirextendr:::validate_rust_input(NULL, NULL), "One of `file` or `code`")
+  expect_error(minirextendr:::validate_rust_input("a.rs", "code"), "Only one of")
 })
 
 test_that("validate_rust_input returns code string directly", {
-  result <- validate_rust_input(NULL, "fn main() {}")
+  result <- minirextendr:::validate_rust_input(NULL, "fn main() {}")
   expect_equal(result, "fn main() {}")
 })
 
@@ -18,44 +18,44 @@ test_that("validate_rust_input reads file contents", {
   on.exit(unlink(tmp))
   writeLines(c("fn main() {", "    println!(\"hello\");", "}"), tmp)
 
-  result <- validate_rust_input(tmp, NULL)
+  result <- minirextendr:::validate_rust_input(tmp, NULL)
   expect_true(grepl("fn main", result))
   expect_true(grepl("println", result))
 })
 
 test_that("validate_rust_input errors for missing file", {
-  expect_error(validate_rust_input("/no/such/file.rs", NULL), "File not found")
+  expect_error(minirextendr:::validate_rust_input("/no/such/file.rs", NULL), "File not found")
 })
 
 # ---- compute_inline_hash ----
 
 test_that("compute_inline_hash is deterministic", {
-  h1 <- compute_inline_hash("fn add(x: i32) -> i32 { x + 1 }")
-  h2 <- compute_inline_hash("fn add(x: i32) -> i32 { x + 1 }")
+  h1 <- minirextendr:::compute_inline_hash("fn add(x: i32) -> i32 { x + 1 }")
+  h2 <- minirextendr:::compute_inline_hash("fn add(x: i32) -> i32 { x + 1 }")
   expect_equal(h1, h2)
 })
 
 test_that("compute_inline_hash differs for different code", {
-  h1 <- compute_inline_hash("fn add(x: i32) -> i32 { x + 1 }")
-  h2 <- compute_inline_hash("fn sub(x: i32) -> i32 { x - 1 }")
+  h1 <- minirextendr:::compute_inline_hash("fn add(x: i32) -> i32 { x + 1 }")
+  h2 <- minirextendr:::compute_inline_hash("fn sub(x: i32) -> i32 { x - 1 }")
   expect_false(identical(unname(h1), unname(h2)))
 })
 
 test_that("compute_inline_hash differs for different features", {
-  h1 <- compute_inline_hash("fn f() {}", features = character())
-  h2 <- compute_inline_hash("fn f() {}", features = "rayon")
+  h1 <- minirextendr:::compute_inline_hash("fn f() {}", features = character())
+  h2 <- minirextendr:::compute_inline_hash("fn f() {}", features = "rayon")
   expect_false(identical(unname(h1), unname(h2)))
 })
 
 test_that("compute_inline_hash normalizes feature order", {
-  h1 <- compute_inline_hash("fn f() {}", features = c("a", "b"))
-  h2 <- compute_inline_hash("fn f() {}", features = c("b", "a"))
+  h1 <- minirextendr:::compute_inline_hash("fn f() {}", features = c("a", "b"))
+  h2 <- minirextendr:::compute_inline_hash("fn f() {}", features = c("b", "a"))
   expect_equal(h1, h2)
 })
 
 test_that("compute_inline_hash trims whitespace", {
-  h1 <- compute_inline_hash("fn f() {}")
-  h2 <- compute_inline_hash("  fn f() {}  ")
+  h1 <- minirextendr:::compute_inline_hash("fn f() {}")
+  h2 <- minirextendr:::compute_inline_hash("  fn f() {}  ")
   expect_equal(h1, h2)
 })
 
@@ -67,13 +67,13 @@ pub fn add(a: f64, b: f64) -> f64 { a + b }
 pub fn hello(name: &str) -> String { format!("Hello, {}!", name) }
 fn private_fn() {}
 '
-  result <- extract_pub_fn_names(code)
+  result <- minirextendr:::extract_pub_fn_names(code)
   expect_equal(result, c("add", "hello"))
 })
 
 test_that("extract_pub_fn_names returns empty for no pub fn", {
   code <- 'fn private() {}'
-  expect_equal(extract_pub_fn_names(code), character())
+  expect_equal(minirextendr:::extract_pub_fn_names(code), character())
 })
 
 # ---- extract_impl_names ----
@@ -85,19 +85,19 @@ impl Counter {
     pub fn new() -> Self { Counter { value: 0 } }
 }
 '
-  result <- extract_impl_names(code)
+  result <- minirextendr:::extract_impl_names(code)
   expect_equal(result, "Counter")
 })
 
 test_that("extract_impl_names returns empty for no impl blocks", {
   code <- 'pub fn add(x: i32) -> i32 { x + 1 }'
-  expect_equal(extract_impl_names(code), character())
+  expect_equal(minirextendr:::extract_impl_names(code), character())
 })
 
 # ---- inline_cache_dir ----
 
 test_that("inline_cache_dir returns a path under minirextendr cache", {
-  dir <- inline_cache_dir()
+  dir <- minirextendr:::inline_cache_dir()
   expect_true(grepl("minirextendr", dir))
   expect_true(grepl("rust_source", dir))
 })
@@ -122,7 +122,7 @@ pub fn add_one(x: i32) -> i32 { x + 1 }
   pkg_name <- "mxinlineabcdef12"
   pkg_rs <- "mxinlineabcdef12"
 
-  scaffold_inline_package(code, hash, character(), pkg_name, pkg_rs,
+  minirextendr:::scaffold_inline_package(code, hash, character(), pkg_name, pkg_rs,
                            tmp, quiet = TRUE)
 
   pkg_dir <- fs::path(tmp, hash, "pkg")
@@ -176,7 +176,7 @@ use miniextendr_api::miniextendr;
 #[miniextendr]
 pub fn f() -> i32 { 1 }
 '
-  scaffold_inline_package(code, "hash123", c("rayon"), "mxtest", "mxtest",
+  minirextendr:::scaffold_inline_package(code, "hash123", c("rayon"), "mxtest", "mxtest",
                            tmp, quiet = TRUE)
 
   cargo <- paste(readLines(fs::path(tmp, "hash123", "pkg", "src", "rust", "Cargo.toml")),

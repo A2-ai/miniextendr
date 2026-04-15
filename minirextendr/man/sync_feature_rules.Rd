@@ -31,3 +31,4 @@ sync_feature_rules()
 #> i 2 features added, 15 already had rules
 }
 }
+\keyword{internal}

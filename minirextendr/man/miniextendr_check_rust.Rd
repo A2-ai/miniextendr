@@ -17,3 +17,4 @@ Runs \verb{cargo check} in the package's \verb{src/rust/} directory. Accepts an
 explicit path, making it easy to use from scripts and CI (unlike
 \code{\link[=cargo_check]{cargo_check()}} which uses usethis project detection).
 }
+\keyword{internal}

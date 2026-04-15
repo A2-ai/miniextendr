@@ -23,7 +23,7 @@ add_feature_rule(
 }}
 
 \item{cargo_spec}{Optional Cargo feature specification. If provided, also
-adds the feature to \verb{[features]} in \code{Cargo.toml} via \code{\link[=add_cargo_feature]{add_cargo_feature()}}.
+adds the feature to \verb{[features]} in \code{Cargo.toml} via \code{add_cargo_feature()}.
 For example, \code{"miniextendr-api/vctrs"}.}
 
 \item{optional_dep}{If \code{TRUE}, also runs \verb{cargo add <feature> --optional} to
