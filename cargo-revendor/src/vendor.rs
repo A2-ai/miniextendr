@@ -921,16 +921,30 @@ pub fn compress_vendor(
         .to_string_lossy();
     let parent_dir = vendor_dir.parent().context("vendor dir has no parent")?;
 
-    let output = std::process::Command::new("tar")
-        .arg("-cJf")
+    // Suppress macOS xattr metadata that causes warnings on Linux GNU tar.
+    // COPYFILE_DISABLE=1 prevents ._* AppleDouble files, but macOS bsdtar
+    // still writes xattr PAX headers (LIBARCHIVE.xattr.*). The --no-xattrs
+    // flag (supported by both bsdtar and GNU tar) prevents those too.
+    let mut cmd = std::process::Command::new("tar");
+    cmd.env("COPYFILE_DISABLE", "1");
+    // Detect if tar supports --no-xattrs (bsdtar on macOS and GNU tar do)
+    let has_no_xattrs = std::process::Command::new("tar")
+        .arg("--no-xattrs")
+        .arg("-cf")
+        .arg("/dev/null")
+        .arg("--files-from")
+        .arg("/dev/null")
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if has_no_xattrs {
+        cmd.arg("--no-xattrs");
+    }
+    cmd.arg("-cJf")
         .arg(tarball_path)
-        // Suppress macOS xattr metadata (causes warnings on Linux GNU tar)
-        .env("COPYFILE_DISABLE", "1")
         .arg("-C")
         .arg(parent_dir)
-        .arg(vendor_name.as_ref())
-        .output()
-        .context("failed to run tar")?;
+        .arg(vendor_name.as_ref());
+    let output = cmd.output().context("failed to run tar")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
