@@ -495,23 +495,10 @@ AC_CONFIG_COMMANDS([post-vendor],
 ],
 [ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"])
 
-dnl 5) Create vendor.tar.xz from vendor/ if it doesn't exist yet
-dnl    This ensures R CMD build produces a tarball with vendored sources
-dnl    without requiring a manual `just vendor` step.
-AC_CONFIG_COMMANDS([vendor-tarball],
-[
-  _tarball="$abs_rpkg_dir/inst/vendor.tar.xz"
-  if test ! -f "$_tarball"; then
-    if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      mkdir -p "$abs_rpkg_dir/inst"
-      dnl Exclude Makefiles from vendored crates — R CMD check warns about
-      dnl GNU extensions (+=, :=, $(shell), etc.) in Makefiles. These are
-      dnl crate build helpers, not used by the R package build.
-      tar $TAR_FORCE_LOCAL -cJf "$_tarball" -C "$abs_rpkg_dir" --exclude='*/Makefile' vendor
-      echo "configure: created inst/vendor.tar.xz"
-    fi
-  fi
-],
-[abs_rpkg_dir="$abs_top_srcdir" VENDOR_OUT="$VENDOR_OUT" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
+dnl NOTE: vendor.tar.xz is NOT created by configure. It is the canonical
+dnl offline artifact produced by `just vendor` (cargo revendor --compress).
+dnl A previous repack step here silently created stale tarballs that could
+dnl disagree with Cargo.lock, and also embedded macOS xattr metadata that
+dnl caused warnings on Linux. See #157, #158.
 
 AC_OUTPUT
