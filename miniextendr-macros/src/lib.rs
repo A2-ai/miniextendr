@@ -1307,16 +1307,25 @@ pub fn miniextendr(
     }
     // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
     let mut merged_defaults = parsed.param_defaults().clone();
-    // Add NULL default for match_arg params that don't already have an explicit default
+    // Add default for match_arg params that don't already have an explicit default.
+    // Use a placeholder that gets replaced at write time with the actual choices
+    // from the enum's MatchArg::CHOICES (resolved when the cdylib is loaded).
+    let mut match_arg_placeholders: Vec<(String, String)> = Vec::new(); // (placeholder, rust_param)
     for match_arg_param in parsed.match_arg_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
             match_arg_param,
             proc_macro2::Span::call_site(),
         ))
         .to_string();
-        merged_defaults
-            .entry(r_name)
-            .or_insert_with(|| "NULL".to_string());
+        if !merged_defaults.contains_key(&r_name) {
+            let placeholder = format!(
+                ".__MX_MATCH_ARG_CHOICES_{}_{}__",
+                c_ident.to_string().trim_start_matches("C_"),
+                r_name
+            );
+            merged_defaults.insert(r_name.clone(), placeholder.clone());
+            match_arg_placeholders.push((placeholder, match_arg_param.clone()));
+        }
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
     for (param_name, choices) in parsed.choices_params() {
@@ -1547,12 +1556,6 @@ pub fn miniextendr(
             ));
             // match.arg validation — with several.ok when requested
             if parsed.has_several_ok(rust_name) {
-                // R's match.arg returns choices[1] when arg is NULL, even with several.ok=TRUE.
-                // For several_ok, NULL should mean "all choices" — replace before match.arg.
-                lines.push(format!(
-                    "if (is.null({param})) {param} <- .__mx_choices_{param}",
-                    param = r_param,
-                ));
                 lines.push(format!(
                     "{param} <- base::match.arg({param}, .__mx_choices_{param}, several.ok = TRUE)",
                     param = r_param,
@@ -1802,6 +1805,48 @@ pub fn miniextendr(
         })
         .collect();
 
+    // Generate MX_MATCH_ARG_CHOICES entries for placeholder → choices replacement
+    let match_arg_choices_entries: Vec<proc_macro2::TokenStream> = match_arg_placeholders
+        .iter()
+        .filter_map(|(placeholder, rust_param)| {
+            // Find the type for this param from match_arg_param_info
+            let (_, _, param_ty) = match_arg_param_info
+                .iter()
+                .find(|(_, rn, _)| rn == rust_param)?;
+            // For several_ok, extract inner type from Vec<Mode>
+            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_param) {
+                extract_vec_inner_type(param_ty).unwrap_or(param_ty)
+            } else {
+                param_ty
+            };
+            let entry_ident = syn::Ident::new(
+                &format!(
+                    "match_arg_choices_entry_{}",
+                    placeholder.trim_matches('_').replace('.', "_")
+                ),
+                proc_macro2::Span::call_site(),
+            );
+            Some(quote::quote! {
+                #(#cfg_attrs)*
+                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+                #[allow(non_upper_case_globals)]
+                #[allow(non_snake_case)]
+                static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
+                    ::miniextendr_api::registry::MatchArgChoicesEntry {
+                        placeholder: #placeholder,
+                        choices_str: || {
+                            <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
+                                .iter()
+                                .map(|c| format!("\"{}\"", c))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        },
+                    };
+            })
+        })
+        .collect();
+
     // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
         "See [`{}`] for C wrapper, [`{}`] for R wrapper.",
@@ -1872,6 +1917,9 @@ pub fn miniextendr(
         // match_arg choices helpers (C wrappers + R_CallMethodDef entries)
         // Each helper's call_method_def self-registers via distributed_slice
         #(#match_arg_helpers)*
+
+        // match_arg choices entries for R wrapper default replacement
+        #(#match_arg_choices_entries)*
 
         // doc-lint warnings (if any)
         #doc_lint_warnings
