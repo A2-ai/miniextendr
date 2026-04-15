@@ -174,7 +174,7 @@ arrow_na_string_double_roundtrip(v)
 \item{rb}{data.frame}
 }
 \description{
-This fixture takes the SEXP, converts to Float64Array (scanning for NAs), then reads element values and null status from the Arrow side. Returns: \link{null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...}
+This fixture takes the SEXP, converts to Float64Array (scanning for NAs), then reads element values and null status from the Arrow side. Returns: \verb{[null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...]}
 
 This demonstrates the stale bitmap problem: Arrow's bitmap says "all valid" but the R buffer now contains an NA sentinel.
 }
