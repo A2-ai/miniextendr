@@ -260,13 +260,24 @@ pub(crate) fn r_wrapper_raw_literal(s: &str) -> proc_macro2::TokenStream {
 }
 
 /// Returns the first generic type argument from a path segment.
-fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
+pub(crate) fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     nth_type_argument(seg, 0)
 }
 
 /// Returns the second generic type argument from a path segment.
 fn second_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     nth_type_argument(seg, 1)
+}
+
+/// Extract the inner type `T` from `Vec<T>`. Returns `None` if not a `Vec`.
+pub(crate) fn extract_vec_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    if let syn::Type::Path(tp) = ty {
+        let seg = tp.path.segments.last()?;
+        if seg.ident == "Vec" {
+            return first_type_argument(seg);
+        }
+    }
+    None
 }
 
 /// Returns the `n`-th generic type argument from a path segment.
@@ -811,7 +822,10 @@ pub fn miniextendr(
         {
             let param_name = pat_ident.ident.to_string();
             if parsed.has_coerce_attr(&param_name) {
-                conversion_builder = conversion_builder.with_coerce_param(param_name);
+                conversion_builder = conversion_builder.with_coerce_param(param_name.clone());
+            }
+            if parsed.has_match_arg_attr(&param_name) && parsed.has_several_ok(&param_name) {
+                conversion_builder = conversion_builder.with_match_arg_several_ok(param_name);
             }
         }
     }
@@ -1415,7 +1429,17 @@ pub fn miniextendr(
                 if !has_user_param {
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
-                    roxygen_tags.push(format!("@param {} One of {}.", r_name, quoted.join(", ")));
+                    let prefix = if parsed.has_several_ok(&rust_name) {
+                        "One or more of"
+                    } else {
+                        "One of"
+                    };
+                    roxygen_tags.push(format!(
+                        "@param {} {} {}.",
+                        r_name,
+                        prefix,
+                        quoted.join(", ")
+                    ));
                 }
             }
         }
@@ -1482,8 +1506,8 @@ pub fn miniextendr(
         String::new()
     };
     // Generate match.arg prelude for parameters with #[miniextendr(match_arg)]
-    // Collect (r_param_name, rust_type) for each match_arg param
-    let match_arg_param_info: Vec<(String, &syn::Type)> = inputs
+    // Collect (r_param_name, rust_name, rust_type) for each match_arg param
+    let match_arg_param_info: Vec<(String, String, &syn::Type)> = inputs
         .iter()
         .filter_map(|arg| {
             if let syn::FnArg::Typed(pt) = arg
@@ -1493,7 +1517,7 @@ pub fn miniextendr(
                 if parsed.has_match_arg_attr(&rust_name) {
                     let r_name =
                         r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-                    return Some((r_name, pt.ty.as_ref()));
+                    return Some((r_name, rust_name, pt.ty.as_ref()));
                 }
             }
             None
@@ -1504,7 +1528,7 @@ pub fn miniextendr(
         String::new()
     } else {
         let mut lines = Vec::new();
-        for (r_param, _) in &match_arg_param_info {
+        for (r_param, rust_name, _) in &match_arg_param_info {
             // choices helper call
             let choices_c_name = format!(
                 "C_{}__match_arg_choices__{}",
@@ -1521,17 +1545,31 @@ pub fn miniextendr(
                 "{param} <- if (is.factor({param})) as.character({param}) else {param}",
                 param = r_param,
             ));
-            // match.arg validation
-            lines.push(format!(
-                "{param} <- base::match.arg({param}, .__mx_choices_{param})",
-                param = r_param,
-            ));
+            // match.arg validation — with several.ok when requested
+            if parsed.has_several_ok(rust_name) {
+                // R's match.arg returns choices[1] when arg is NULL, even with several.ok=TRUE.
+                // For several_ok, NULL should mean "all choices" — replace before match.arg.
+                lines.push(format!(
+                    "if (is.null({param})) {param} <- .__mx_choices_{param}",
+                    param = r_param,
+                ));
+                lines.push(format!(
+                    "{param} <- base::match.arg({param}, .__mx_choices_{param}, several.ok = TRUE)",
+                    param = r_param,
+                ));
+            } else {
+                lines.push(format!(
+                    "{param} <- base::match.arg({param}, .__mx_choices_{param})",
+                    param = r_param,
+                ));
+            }
         }
         lines.join("\n  ")
     };
 
     // Generate idiomatic match.arg prelude for choices params
     // These use the simpler pattern: `param <- match.arg(param)` (no C helper call needed)
+    // With `several_ok`, emit `match.arg(param, several.ok = TRUE)` for multi-value selection
     let choices_prelude = {
         let mut lines = Vec::new();
         for arg in inputs.iter() {
@@ -1542,7 +1580,13 @@ pub fn miniextendr(
                 if parsed.choices_for_param(&rust_name).is_some() {
                     let r_name =
                         r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-                    lines.push(format!("{r_name} <- match.arg({r_name})"));
+                    if parsed.has_several_ok(&rust_name) {
+                        lines.push(format!(
+                            "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
+                        ));
+                    } else {
+                        lines.push(format!("{r_name} <- match.arg({r_name})"));
+                    }
                 }
             }
         }
@@ -1703,7 +1747,13 @@ pub fn miniextendr(
     let mut match_arg_helper_def_idents: Vec<syn::Ident> = Vec::new();
     let match_arg_helpers: Vec<proc_macro2::TokenStream> = match_arg_param_info
         .iter()
-        .map(|(r_param, param_ty)| {
+        .map(|(r_param, rust_name, param_ty)| {
+            // For several_ok, the param type is Vec<Mode> — extract inner Mode for choices_sexp
+            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_name) {
+                extract_vec_inner_type(param_ty).unwrap_or(param_ty)
+            } else {
+                param_ty
+            };
             let helper_fn_name = format!(
                 "C_{}__match_arg_choices__{}",
                 c_ident.to_string().trim_start_matches("C_"),
@@ -1728,7 +1778,7 @@ pub fn miniextendr(
                 pub extern "C-unwind" fn #helper_fn_ident(
                     __miniextendr_call: ::miniextendr_api::ffi::SEXP,
                 ) -> ::miniextendr_api::ffi::SEXP {
-                    ::miniextendr_api::choices_sexp::<#param_ty>()
+                    ::miniextendr_api::choices_sexp::<#choices_ty>()
                 }
 
                 #(#cfg_attrs)*

@@ -933,7 +933,9 @@ pub use raw_conversions::{
 /// strings with partial matching, like R's `match.arg()`.
 /// Use `#[derive(MatchArg)]` on C-style enums to auto-generate the implementation.
 pub mod match_arg;
-pub use match_arg::{MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp};
+pub use match_arg::{
+    MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp, match_arg_vec_from_sexp,
+};
 
 /// Factor support for enum ↔ R factor conversions.
 ///
