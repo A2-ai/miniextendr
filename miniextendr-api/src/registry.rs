@@ -38,6 +38,14 @@ pub static MX_ALTREP_REGISTRATIONS: [fn()];
 /// `(concrete_tag, trait_tag)` to the trait's vtable pointer.
 #[distributed_slice]
 pub static MX_TRAIT_DISPATCH: [TraitDispatchEntry];
+
+/// Match-arg choices entries for R wrapper post-processing.
+///
+/// Each `#[miniextendr]` function with `match_arg` params emits an entry.
+/// During `write_r_wrappers_to_file`, the placeholder in the R formal default
+/// is replaced with the actual choices from the enum's `MatchArg::CHOICES`.
+#[distributed_slice]
+pub static MX_MATCH_ARG_CHOICES: [MatchArgChoicesEntry];
 // endregion
 
 // region: Entry Types
@@ -75,6 +83,18 @@ pub struct RWrapperEntry {
 
 // SAFETY: All fields are immutable and valid for 'static lifetime.
 unsafe impl Sync for RWrapperEntry {}
+
+/// Entry for replacing match_arg placeholder defaults with actual choices.
+pub struct MatchArgChoicesEntry {
+    /// Placeholder string in the R formal default, e.g. `".__MX_MATCH_ARG_CHOICES_mode__"`.
+    pub placeholder: &'static str,
+    /// Function that returns the choices as a comma-separated quoted string,
+    /// e.g. `"\"Fast\", \"Safe\", \"Debug\""`.
+    pub choices_str: fn() -> String,
+}
+
+// SAFETY: function pointer and &'static str are Send+Sync.
+unsafe impl Sync for MatchArgChoicesEntry {}
 
 /// Trait dispatch entry mapping (concrete_tag, trait_tag) → vtable.
 #[repr(C)]
@@ -427,6 +447,12 @@ pub fn write_r_wrappers_to_file(path: &str) {
     }
 
     content.push_str("# nocov end\n# nolint end\n");
+
+    // Replace match_arg choices placeholders with actual enum choices
+    for entry in MX_MATCH_ARG_CHOICES.iter() {
+        let replacement = format!("c({})", (entry.choices_str)());
+        content = content.replace(entry.placeholder, &replacement);
+    }
 
     // Only write if content changed (avoids unnecessary NAMESPACE/man regeneration)
     let existing = std::fs::read_to_string(path).unwrap_or_default();
