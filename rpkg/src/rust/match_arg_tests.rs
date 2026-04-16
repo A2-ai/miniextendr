@@ -172,6 +172,22 @@ pub fn choices_multi_metrics(
 }
 // endregion
 
+// region: Test functions returning Vec<MatchArgEnum>
+
+/// Return a Vec of Mode values as an R character vector.
+///
+/// Exercises `IntoR for Vec<Mode>` emitted by `#[derive(MatchArg)]`.
+///
+/// @param modes One or more Mode values (several.ok input).
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_return_modes(
+    #[miniextendr(match_arg, several_ok)] modes: Vec<Mode>,
+) -> Vec<Mode> {
+    modes
+}
+// endregion
+
 // region: Test functions using #[miniextendr(match_arg, several_ok)] on enum Vec
 
 /// Select multiple modes (enum-based several_ok).

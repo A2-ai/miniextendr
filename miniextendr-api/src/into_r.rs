@@ -282,28 +282,43 @@ pub(crate) use large_integers::{str_to_charsxp, str_to_charsxp_unchecked};
 
 // region: Vector conversions
 
-impl<T> IntoR for Vec<T>
-where
-    T: crate::ffi::RNativeType,
-{
-    type Error = std::convert::Infallible;
-    #[inline]
-    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { vec_to_sexp(&self) })
-    }
-    #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
-    }
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { vec_to_sexp(&self) }
-    }
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { vec_to_sexp_unchecked(&self) }
-    }
+// Concrete IntoR impls for Vec<T> where T: RNativeType.
+//
+// These are written as concrete impls rather than a blanket
+// `impl<T: RNativeType> IntoR for Vec<T>` to avoid a coherence conflict
+// with `impl<T: MatchArg> IntoR for Vec<T>` in match_arg.rs.
+// Both blankets would target `Vec<_>` for the same foreign trait, and the
+// Rust coherence checker (E0119) rejects them even when the bounds are
+// disjoint in practice, because negative trait bounds are not stable.
+macro_rules! impl_into_r_vec_native {
+    ($t:ty) => {
+        impl IntoR for Vec<$t> {
+            type Error = std::convert::Infallible;
+            #[inline]
+            fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
+                Ok(unsafe { vec_to_sexp(&self) })
+            }
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
+                Ok(unsafe { self.into_sexp_unchecked() })
+            }
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe { vec_to_sexp(&self) }
+            }
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                unsafe { vec_to_sexp_unchecked(&self) }
+            }
+        }
+    };
 }
+
+impl_into_r_vec_native!(i32);
+impl_into_r_vec_native!(f64);
+impl_into_r_vec_native!(u8);
+impl_into_r_vec_native!(crate::ffi::RLogical);
+impl_into_r_vec_native!(crate::ffi::Rcomplex);
 
 impl<T> IntoR for &[T]
 where
@@ -2064,7 +2079,10 @@ fn vec_of_into_r_to_list<T: IntoR>(items: Vec<T>) -> crate::ffi::SEXP {
 
 /// Convert `Vec<HashSet<T>>` to R list of vectors (for RNativeType elements).
 /// Each HashSet becomes an R vector (unordered).
-impl<T: crate::ffi::RNativeType> IntoR for Vec<std::collections::HashSet<T>> {
+impl<T: crate::ffi::RNativeType> IntoR for Vec<std::collections::HashSet<T>>
+where
+    Vec<T>: IntoR,
+{
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
         Ok(self.into_sexp())
@@ -2080,7 +2098,10 @@ impl<T: crate::ffi::RNativeType> IntoR for Vec<std::collections::HashSet<T>> {
 
 /// Convert `Vec<BTreeSet<T>>` to R list of vectors (for RNativeType elements).
 /// Each BTreeSet becomes an R vector (sorted).
-impl<T: crate::ffi::RNativeType> IntoR for Vec<std::collections::BTreeSet<T>> {
+impl<T: crate::ffi::RNativeType> IntoR for Vec<std::collections::BTreeSet<T>>
+where
+    Vec<T>: IntoR,
+{
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
         Ok(self.into_sexp())
