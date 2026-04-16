@@ -64,8 +64,9 @@ impl TryFromSexp for Cow<'static, str> {
 
 /// Convert R character vector to `Vec<Cow<'static, str>>` — zero-copy per element.
 ///
-/// Each element borrows directly from R's CHARSXP data when UTF-8 (the common case).
-/// Non-UTF-8 elements fall back to `Rf_translateCharUTF8` (copies only those).
+/// Each element borrows directly from R's CHARSXP data. UTF-8 validity is asserted
+/// at package init via `miniextendr_assert_utf8_locale()`, so no per-string
+/// encoding translation is needed.
 ///
 /// # NA Handling
 ///
@@ -167,8 +168,6 @@ impl TryFromSexp for Vec<String> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::Rf_translateCharUTF8;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -186,15 +185,7 @@ impl TryFromSexp for Vec<String> {
             let s = if charsxp == SEXP::na_string() {
                 String::new()
             } else {
-                let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-                if c_str.is_null() {
-                    String::new()
-                } else {
-                    unsafe { std::ffi::CStr::from_ptr(c_str) }
-                        .to_str()
-                        .unwrap_or("")
-                        .to_owned()
-                }
+                unsafe { charsxp_to_str(charsxp) }.to_owned()
             };
             result.push(s);
         }

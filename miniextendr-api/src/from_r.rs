@@ -10,7 +10,7 @@
 //! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
 //! | CPLXSXP | `Rcomplex` | `COMPLEX()` / `DATAPTR_RO` |
-//! | STRSXP | `&str`, `String` | `)` + `R_CHAR()` / `Rf_translateCharUTF8()` |
+//! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` (UTF-8 locale asserted at init) |
 //!
 //! # Submodules
 //!
