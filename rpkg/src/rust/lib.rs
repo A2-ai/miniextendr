@@ -604,32 +604,23 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for LazyIntSeqData {
 // Implement serialization support
 impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
     fn serialized_state(&self) -> SEXP {
-        // Store start, step, len in an integer vector
-        // Note: We don't serialize the materialized buffer - it will be recomputed on demand
-        unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SEXPTYPE, SexpExt};
-            let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
-            state.set_integer_elt(0, self.start);
-            state.set_integer_elt(1, self.step);
-            state.set_integer_elt(2, self.len as i32);
-            state
-        }
+        // Store start, step, len in an integer vector.
+        // We don't serialize the materialized buffer — it will be recomputed on demand.
+        vec![self.start, self.step, self.len as i32].into_sexp()
     }
 
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn unserialize(state: SEXP) -> Option<Self> {
-        {
-            use miniextendr_api::ffi::SexpExt;
-            let start = state.integer_elt(0);
-            let step = state.integer_elt(1);
-            let len = state.integer_elt(2) as usize;
-            Some(LazyIntSeqData {
-                start,
-                step,
-                len,
-                materialized: None, // Fresh start - not materialized
-            })
+        use miniextendr_api::TryFromSexp;
+        let v: Vec<i32> = TryFromSexp::try_from_sexp(state).ok()?;
+        if v.len() != 3 {
+            return None;
         }
+        Some(LazyIntSeqData {
+            start: v[0],
+            step: v[1],
+            len: v[2] as usize,
+            materialized: None,
+        })
     }
 }
 
