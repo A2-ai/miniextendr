@@ -285,6 +285,28 @@ CI runs a newer toolchain than local, so lints added in recent Rust releases
 (`collapsible_match`, `manual_checked_ops`, etc.) may fire on CI even when
 `just clippy` is green locally. Reproduce both invocations before every push.
 
+### sccache and `[profile.dev]` incremental
+
+Debug builds suffer sccache misses because Cargo's incremental compilation
+writes per-invocation unique hashes into crate metadata, which then poisons
+the sccache cache key. CI uses sccache (`RUSTC_WRAPPER=sccache`,
+`CARGO_INCREMENTAL=0` at the workflow level) and has cache miss rates near
+50% on workspace crates — each CI run re-compiles hundreds of crates from
+scratch.
+
+If a workspace's `Cargo.toml` sets `[profile.dev] incremental = false`,
+sccache hit rate jumps to near-100% for dev/debug builds because rustc
+outputs become deterministic across invocations.
+
+Trade-off: you lose Cargo's local incremental compilation for edit-compile
+loops on the same crate. Usually worth it if you switch branches or `cargo
+clean` often (which is how agent worktrees and CI runners operate); less
+worth it if you mostly rebuild the same crate repeatedly without changing
+dependencies.
+
+Currently not set project-wide — flag it in the PR description if adding
+or removing it so reviewers know the sccache impact.
+
 ### Before Opening a PR
 
 **Every PR must regenerate `rpkg/inst/vendor.tar.xz` as the last step** before
