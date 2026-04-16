@@ -23,6 +23,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **Windows paths in TOML**: Use forward slashes. `canonicalize()` adds `\\?\` prefix on Windows — strip it with `strip_prefix(r"\\?\")` before writing to TOML/config files.
 - **macOS tar xattrs**: Set `COPYFILE_DISABLE=1` when creating tarballs on macOS to prevent Apple xattr metadata that causes warnings on Linux/Windows GNU tar.
 - **Pointer provenance**: When caching a `*mut T` for later reads AND writes, derive it from a mutable path (`&mut T`, `Box::into_raw`, `downcast_mut`, `ptr::from_mut`). Never derive a write-capable `cached_ptr` from `&T` / `downcast_ref` / `as_ref` — shared-reference provenance makes later writes UB under Stacked Borrows.
+- **Use `just` recipes, not raw `cargo`**: Always invoke `just check`, `just clippy`, `just test`, `just fmt`, `just vendor`, `just lint` etc. instead of calling `cargo check/clippy/test/fmt` directly. The recipes iterate across every manifest in the multi-crate workspace (workspace root, `rpkg/src/rust`, both `tests/cross-package/*` packages) with the correct `[patch.crates-io]` overrides — raw `cargo --workspace` from the root only sees the top-level manifest and silently skips the others. If a recipe doesn't exist for what you need, say so and fall back — don't invent a shortcut.
 
 ## Adding a New Conversion Type (e.g., `Box<[T]>`)
 
