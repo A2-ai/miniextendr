@@ -346,6 +346,12 @@ configure-cran:
 
 # Vendor dependencies for CRAN release preparation.
 # Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor
+#
+# --force bypasses cargo-revendor's cache (#150): source-only edits to workspace
+# crates leave Cargo.lock untouched, so without --force the cache check skips
+# re-vendoring and ships a stale tarball. Once #150's fix lands on main and is
+# installed, --force becomes harmless (re-runs the full vendor when cache is
+# valid but produces identical output).
 vendor:
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
@@ -355,6 +361,7 @@ vendor:
       --compress rpkg/inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
+      --force \
       -v
 
 # Load and test rpkg with devtools
