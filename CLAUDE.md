@@ -267,6 +267,24 @@ just check              # Verify compilation
 
 The pre-commit hook (`.githooks/pre-commit`) blocks commits where `*-wrappers.R` is staged without a matching `NAMESPACE` update — run `just devtools-document` then re-stage. Enable it once per clone with `git config core.hooksPath .githooks`.
 
+### Reproducing CI's clippy before opening a PR
+
+`just clippy` runs the workspace on default features and does NOT match CI.
+Two CI jobs fail PRs independently:
+
+- **`clippy_default`**: `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- **`clippy_all`**: same command plus the non-conflicting feature set:
+  ```
+  --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,default-strict,default-coerce,default-r6,default-worker
+  ```
+  `--all-features` cannot be used because `default-r6` and `default-s7` are
+  mutually exclusive.
+
+Both must be clean with zero warnings (CI uses `-D warnings`) before pushing.
+CI runs a newer toolchain than local, so lints added in recent Rust releases
+(`collapsible_match`, `manual_checked_ops`, etc.) may fire on CI even when
+`just clippy` is green locally. Reproduce both invocations before every push.
+
 ### Before Opening a PR
 
 **Every PR must regenerate `rpkg/inst/vendor.tar.xz` as the last step** before
