@@ -368,33 +368,28 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
 fn collect_items_recursive(items: &[Item], data: &mut FileData) {
     for item in items {
         match item {
-            Item::Fn(item_fn) => {
-                if has_miniextendr_attr(&item_fn.attrs) {
-                    let line = item_fn.sig.ident.span().start().line;
-                    let name = item_fn.sig.ident.to_string();
+            Item::Fn(item_fn) if has_miniextendr_attr(&item_fn.attrs) => {
+                let line = item_fn.sig.ident.span().start().line;
+                let name = item_fn.sig.ident.to_string();
 
-                    data.miniextendr_items.push(LintItem::new(
-                        LintKind::Function,
-                        name.clone(),
-                        line,
-                    ));
+                data.miniextendr_items
+                    .push(LintItem::new(LintKind::Function, name.clone(), line));
 
-                    // Track visibility
-                    let is_pub = matches!(item_fn.vis, syn::Visibility::Public(_));
-                    data.fn_visibility.insert(name.clone(), is_pub);
+                // Track visibility
+                let is_pub = matches!(item_fn.vis, syn::Visibility::Public(_));
+                data.fn_visibility.insert(name.clone(), is_pub);
 
-                    // Track export control
-                    let attrs = parse_miniextendr_impl_attrs(&item_fn.attrs);
-                    if attrs.internal || attrs.noexport {
-                        data.export_control
-                            .insert(name.clone(), (attrs.internal, attrs.noexport, line));
-                    }
+                // Track export control
+                let attrs = parse_miniextendr_impl_attrs(&item_fn.attrs);
+                if attrs.internal || attrs.noexport {
+                    data.export_control
+                        .insert(name.clone(), (attrs.internal, attrs.noexport, line));
+                }
 
-                    // Track doc-comment roxygen tags
-                    let doc_tags = extract_roxygen_tags(&item_fn.attrs);
-                    if !doc_tags.is_empty() {
-                        data.fn_doc_tags.insert(name, doc_tags);
-                    }
+                // Track doc-comment roxygen tags
+                let doc_tags = extract_roxygen_tags(&item_fn.attrs);
+                if !doc_tags.is_empty() {
+                    data.fn_doc_tags.insert(name, doc_tags);
                 }
             }
             Item::Struct(item_struct) => {
