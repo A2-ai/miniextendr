@@ -242,6 +242,26 @@ just clippy             # Check for warnings
 just check              # Verify compilation
 ```
 
+### Before Opening a PR
+
+**Every PR must regenerate `rpkg/inst/vendor.tar.xz` as the last step** before
+pushing. Any change that touches a workspace crate (`miniextendr-api`,
+`miniextendr-macros`, `miniextendr-macros-core`, `miniextendr-lint`) makes the
+committed `inst/vendor.tar.xz` stale — CRAN-mode builds and CI offline
+installs compile against the tarball, not the workspace.
+
+```bash
+just vendor   # cargo revendor: sync workspace crates, strip, freeze, compress
+git add rpkg/vendor rpkg/inst/vendor.tar.xz rpkg/src/rust/Cargo.toml rpkg/src/rust/Cargo.lock
+```
+
+The pre-commit hook (`.githooks/pre-commit`) runs `cargo revendor` automatically
+when staged `.rs` files belong to a workspace crate, so in practice a normal
+`git commit` produces the updated tarball for you. Still verify after pushing
+that the final commit of the branch contains the regenerated tarball — merging
+a branch whose last commit predates a workspace-crate change will ship a stale
+tarball to main.
+
 ## R Packages in This Repo
 
 ### rpkg (Example Package)
