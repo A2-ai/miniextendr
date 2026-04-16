@@ -728,7 +728,8 @@ When touching files that use other section patterns (`// =====` banners, `// ─
 - **Sequential merging**: When multiple worktrees need merging, do them one at a time: rebase worktree-1 onto main, merge it, then rebase worktree-2 onto the now-updated main, merge it, and so on. Each rebase must see the previous merge's commits on main, otherwise the merge silently overwrites them.
 - **Never copy entire files** from a worktree to main — rebase + merge is the correct workflow. Copying whole files overwrites unrelated changes made on main since the worktree branched.
 - If the agent didn't commit, commit its work in the worktree first, then rebase + merge.
-- Never delete a worktree until its changes have been verified as merged into main.
+- Never delete a worktree until its changes have been verified as pushed to remote or merged into main.
+- **Clean up worktrees after PR push**: as soon as an agent's branch is pushed (to origin, with `-u` or `--force-with-lease`), delete its worktree with `git worktree remove -f -f .claude/worktrees/<name>` then `git worktree prune`. Each worktree keeps a full `target/` directory — leaving them around fills the disk fast (a single agent can accumulate 2–3 GB of build artifacts). If an agent is still running (its branch hasn't been pushed yet), leave its worktree in place until it reports done.
 
 ## Plans
 
