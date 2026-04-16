@@ -2,6 +2,28 @@
 
 A Rust-R interoperability framework for building R packages with Rust backends.
 
+## Compact Instructions
+
+Between **200k and 400k tokens** of conversation context, proactively run
+`/compact` to compress earlier turns before the auto-compaction threshold
+forces it. The window is deliberately wide: compact sooner (closer to 200k)
+when the recent work is exploration that can be summarized aggressively;
+compact later (closer to 400k) when you are mid-refactor and the recent
+turns contain load-bearing detail that a summary would lose.
+
+When you do compact, preserve:
+
+- The user's current goal and any active PRs / branches you are iterating on.
+- File paths and line numbers for any in-progress edits that haven't been
+  committed yet.
+- Unresolved review comments, test failures, or blockers.
+- Any session-specific feedback the user has given that isn't yet in
+  `CLAUDE.md` or memory.
+
+Discard: tool-output dumps, file contents you've already edited to their
+final form, search results, and anything already captured in a commit message
+or a memory file.
+
 ## Principles
 
 - **No backwards compatibility**: This is an unreleased project. Remove deprecated code, don't shim around it.
