@@ -736,7 +736,7 @@ unsafe extern "C-unwind" fn read_trampoline<T: RConnectionImpl>(
         let slice = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), total_bytes) };
         let bytes_read = state.read(slice);
         // Return number of items read
-        if size > 0 { bytes_read / size } else { 0 }
+        bytes_read.checked_div(size).unwrap_or(0)
     })
 }
 
@@ -759,7 +759,7 @@ unsafe extern "C-unwind" fn write_trampoline<T: RConnectionImpl>(
         let slice = unsafe { std::slice::from_raw_parts(buf.cast::<u8>(), total_bytes) };
         let bytes_written = state.write(slice);
         // Return number of items written
-        if size > 0 { bytes_written / size } else { 0 }
+        bytes_written.checked_div(size).unwrap_or(0)
     })
 }
 

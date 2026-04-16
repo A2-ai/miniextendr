@@ -257,7 +257,7 @@ impl IntoR for Vec<OffsetDateTime> {
             let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            for (slot, dt) in dst.iter_mut().zip(self.into_iter()) {
+            for (slot, dt) in dst.iter_mut().zip(self) {
                 let duration = dt - UNIX_EPOCH;
                 *slot = duration.whole_seconds() as f64
                     + (duration.subsec_nanoseconds() as f64 / 1_000_000_000.0);
@@ -324,7 +324,7 @@ impl IntoR for Vec<Option<OffsetDateTime>> {
             let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            for (slot, opt) in dst.iter_mut().zip(self.into_iter()) {
+            for (slot, opt) in dst.iter_mut().zip(self) {
                 *slot = match opt {
                     Some(dt) => {
                         let duration = dt - UNIX_EPOCH;
@@ -528,7 +528,7 @@ impl IntoR for Vec<Date> {
             let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            for (slot, d) in dst.iter_mut().zip(self.into_iter()) {
+            for (slot, d) in dst.iter_mut().zip(self) {
                 *slot = (d - UNIX_EPOCH_DATE).whole_days() as f64;
             }
 
@@ -590,7 +590,7 @@ impl IntoR for Vec<Option<Date>> {
             let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             Rf_protect(vec);
 
-            for (slot, opt) in dst.iter_mut().zip(self.into_iter()) {
+            for (slot, opt) in dst.iter_mut().zip(self) {
                 *slot = match opt {
                     Some(d) => (d - UNIX_EPOCH_DATE).whole_days() as f64,
                     None => f64::NAN,
