@@ -243,6 +243,8 @@ just clippy             # Check for warnings
 just check              # Verify compilation
 ```
 
+The pre-commit hook (`.githooks/pre-commit`) blocks commits where `*-wrappers.R` is staged without a matching `NAMESPACE` update — run `just devtools-document` then re-stage. Enable it once per clone with `git config core.hooksPath .githooks`.
+
 ### Before Opening a PR
 
 **Every PR must regenerate `rpkg/inst/vendor.tar.xz` as the last step** before
