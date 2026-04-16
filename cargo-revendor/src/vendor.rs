@@ -694,13 +694,13 @@ pub fn freeze_manifest(
     // vendor path deps (unpublished git crates aren't on crates.io).
     let mut patched_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (key, val) in doc.as_table().iter() {
-        if key.starts_with("patch") {
-            if let Some(patch_table) = val.as_table() {
-                for (_registry, registry_val) in patch_table.iter() {
-                    if let Some(registry_table) = registry_val.as_table() {
-                        for (crate_name, _) in registry_table.iter() {
-                            patched_names.insert(crate_name.to_string());
-                        }
+        if key.starts_with("patch")
+            && let Some(patch_table) = val.as_table()
+        {
+            for (_registry, registry_val) in patch_table.iter() {
+                if let Some(registry_table) = registry_val.as_table() {
+                    for (crate_name, _) in registry_table.iter() {
+                        patched_names.insert(crate_name.to_string());
                     }
                 }
             }
