@@ -233,3 +233,39 @@ pub fn match_arg_multi_priority(
     format!("n={}, priorities={}", n, ps.join("+"))
 }
 // endregion
+
+// region: Test functions for container variants (Box<[T]>, &[T], [T; N])
+
+/// Select multiple modes via boxed slice (several_ok, Box of Mode).
+///
+/// @param modes One or more Mode values.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_multi_mode_boxed(
+    #[miniextendr(match_arg, several_ok)] modes: Box<[Mode]>,
+) -> String {
+    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+}
+
+/// Select multiple modes via borrowed slice (several_ok, slice of Mode).
+///
+/// @param modes One or more Mode values.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_multi_mode_slice(
+    #[miniextendr(match_arg, several_ok)] modes: &[Mode],
+) -> String {
+    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+}
+
+/// Select exactly two modes via a fixed-size array (several_ok, \[Mode; 2\]).
+///
+/// @param modes Exactly two Mode values.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_multi_mode_array(
+    #[miniextendr(match_arg, several_ok)] modes: [Mode; 2],
+) -> String {
+    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+}
+// endregion

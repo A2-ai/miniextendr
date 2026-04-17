@@ -206,6 +206,7 @@ impl RustConversionBuilder {
 
             // Reference types: &T, &mut T
             syn::Type::Reference(r) => {
+                let param_name = ident.to_string();
                 let is_dots = matches!(
                     r.elem.as_ref(),
                     syn::Type::Path(tp)
@@ -218,6 +219,66 @@ impl RustConversionBuilder {
                     r.elem.as_ref(),
                     syn::Type::Path(tp) if tp.path.is_ident("str")
                 );
+
+                // &[T] / &mut [T] with match_arg + several_ok:
+                // two-phase: pre-call Vec<T>, in-call borrow
+                if is_slice
+                    && self
+                        .match_arg_several_ok_params
+                        .contains(&param_name.to_string())
+                    && let Some((crate::SeveralOkContainer::BorrowedSlice, inner_ty)) =
+                        crate::classify_several_ok_container(ty)
+                {
+                    let is_mut = r.mutability.is_some();
+                    let storage_ident = quote::format_ident!("__storage_{}", ident);
+                    let error_msg = format!(
+                        "failed to convert parameter '{}' to &{}[{}]: invalid choice",
+                        param_name,
+                        if is_mut { "mut " } else { "" },
+                        quote::quote!(#inner_ty)
+                    );
+                    let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
+                    let span = ty.span();
+                    let try_expr = quote_spanned! {span=>
+                        ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
+                    };
+                    // Emit owned Vec<T> binding.
+                    // For &mut [T] the storage binding needs `mut`.
+                    let owned_stmt = if is_mut {
+                        // Need `let mut storage_ident: vec_ty = try_expr.expect(...)`.
+                        // Inline the mutation variant here.
+                        if self.error_in_r {
+                            let em = &error_msg;
+                            quote_spanned! {span=>
+                                let mut #storage_ident: #vec_ty = match #try_expr {
+                                    Ok(v) => v,
+                                    Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                                        &format!("{}: {e}", #em),
+                                        "conversion",
+                                        Some(__miniextendr_call),
+                                    ),
+                                };
+                            }
+                        } else {
+                            let em = &error_msg;
+                            quote_spanned! {span=>
+                                let mut #storage_ident: #vec_ty = #try_expr.expect(#em);
+                            }
+                        }
+                    } else {
+                        self.conversion_stmt(try_expr, &error_msg, &storage_ident, &vec_ty, span)
+                    };
+                    let borrow_stmt = if is_mut {
+                        quote_spanned! {span=>
+                            let #ident: #ty = &mut #storage_ident;
+                        }
+                    } else {
+                        quote_spanned! {span=>
+                            let #ident: #ty = &#storage_ident;
+                        }
+                    };
+                    return (vec![owned_stmt], vec![borrow_stmt]);
+                }
 
                 if is_dots {
                     // &Dots: create wrapper with storage (main thread only - requires SEXP)
@@ -296,23 +357,95 @@ impl RustConversionBuilder {
                     return (vec![stmt], vec![]);
                 }
 
-                // match_arg + several_ok: use match_arg_vec_from_sexp for Vec<EnumType>
+                // match_arg + several_ok: use match_arg_vec_from_sexp for container types
                 if self
                     .match_arg_several_ok_params
                     .contains(&param_name.to_string())
-                    && let Some(inner_ty) = crate::extract_vec_inner_type(ty)
+                    && let Some((container, inner_ty)) = crate::classify_several_ok_container(ty)
                 {
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to Vec<{}>: invalid choice",
-                        param_name,
-                        quote!(#inner_ty)
-                    );
                     let span = ty.span();
-                    let try_expr = quote_spanned! {span=>
-                        ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
-                    };
-                    let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
-                    return (vec![stmt], vec![]);
+                    match container {
+                        crate::SeveralOkContainer::Vec => {
+                            let error_msg = format!(
+                                "failed to convert parameter '{}' to Vec<{}>: invalid choice",
+                                param_name,
+                                quote!(#inner_ty)
+                            );
+                            let try_expr = quote_spanned! {span=>
+                                ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
+                            };
+                            let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
+                            return (vec![stmt], vec![]);
+                        }
+                        crate::SeveralOkContainer::BoxedSlice => {
+                            let error_msg = format!(
+                                "failed to convert parameter '{}' to Box<[{}]>: invalid choice",
+                                param_name,
+                                quote!(#inner_ty)
+                            );
+                            let try_expr = quote_spanned! {span=>
+                                ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
+                                    .map(|v| v.into_boxed_slice())
+                            };
+                            let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
+                            return (vec![stmt], vec![]);
+                        }
+                        crate::SeveralOkContainer::Array(n) => {
+                            let error_msg = format!(
+                                "failed to convert parameter '{}': invalid choice",
+                                param_name,
+                            );
+                            let param_name_lit = &param_name;
+                            let span = ty.span();
+                            // First extract the Vec via match_arg_vec_from_sexp (handles
+                            // match_arg validation + error reporting), then convert length-check
+                            // separately via a direct panic (caught by the framework).
+                            let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
+                            let vec_ident = quote::format_ident!("__vec_{}", ident);
+                            let try_expr = quote_spanned! {span=>
+                                ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
+                            };
+                            let vec_stmt = self
+                                .conversion_stmt(try_expr, &error_msg, &vec_ident, &vec_ty, span);
+                            // Length check + array conversion via panic (framework catches panics)
+                            let arr_stmt = quote_spanned! {span=>
+                                let #ident: #ty = {
+                                    if #vec_ident.len() != #n {
+                                        panic!(
+                                            "parameter `{}`: expected {} values for [_; {}], got {}",
+                                            #param_name_lit, #n, #n, #vec_ident.len()
+                                        );
+                                    }
+                                    <[#inner_ty; #n]>::try_from(#vec_ident)
+                                        .unwrap_or_else(|_| unreachable!())
+                                };
+                            };
+                            return (vec![vec_stmt, arr_stmt], vec![]);
+                        }
+                        crate::SeveralOkContainer::BorrowedSlice => {
+                            let storage_ident = quote::format_ident!("__storage_{}", ident);
+                            let error_msg = format!(
+                                "failed to convert parameter '{}' to &[{}]: invalid choice",
+                                param_name,
+                                quote!(#inner_ty)
+                            );
+                            let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
+                            let try_expr = quote_spanned! {span=>
+                                ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
+                            };
+                            let owned_stmt = self.conversion_stmt(
+                                try_expr,
+                                &error_msg,
+                                &storage_ident,
+                                &vec_ty,
+                                span,
+                            );
+                            let borrow_stmt = quote_spanned! {span=>
+                                let #ident: #ty = &#storage_ident;
+                            };
+                            return (vec![owned_stmt], vec![borrow_stmt]);
+                        }
+                    }
                 }
 
                 let should_coerce = self.should_coerce(&param_name);
