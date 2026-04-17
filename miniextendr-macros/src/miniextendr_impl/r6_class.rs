@@ -166,6 +166,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Missing param prelude for constructor
         let ctor_missing = ctx.missing_prelude();
 
+        let ctor_match_arg = ctx.match_arg_prelude();
+
         if has_self_returning_methods {
             let full_params = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -173,14 +175,20 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("    initialize = function({}) {{", full_params));
-            // Missing defaults + preconditions only when not using .ptr shortcut
-            if !ctor_missing.is_empty() || !ctor_preconditions.is_empty() {
+            // Missing defaults + preconditions + match.arg only when not using .ptr shortcut
+            if !ctor_missing.is_empty()
+                || !ctor_preconditions.is_empty()
+                || !ctor_match_arg.is_empty()
+            {
                 lines.push("      if (is.null(.ptr)) {".to_string());
                 for line in &ctor_missing {
                     lines.push(format!("        {}", line));
                 }
                 for check in &ctor_preconditions {
                     lines.push(format!("        {}", check));
+                }
+                for line in &ctor_match_arg {
+                    lines.push(format!("        {}", line));
                 }
                 lines.push("      }".to_string());
             }
@@ -213,6 +221,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
             for check in &ctor_preconditions {
                 lines.push(format!("      {}", check));
+            }
+            for line in &ctor_match_arg {
+                lines.push(format!("      {}", line));
             }
             lines.push(format!("      .val <- {}", ctx.static_call()));
             lines.extend(crate::method_return_builder::error_in_r_check_lines(
@@ -306,6 +317,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         for check in ctx.precondition_checks() {
             lines.push(format!("      {}", check));
         }
+        // Inject match.arg validation for match_arg/choices params
+        for line in ctx.match_arg_prelude() {
+            lines.push(format!("      {}", line));
+        }
         // Inject r_post_checks (user code after all checks, before .Call)
         if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
             for line in post.lines() {
@@ -351,6 +366,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
         // Inject missing param defaults
         for line in ctx.missing_prelude() {
+            lines.push(format!("      {}", line));
+        }
+        // Inject match.arg validation for match_arg/choices params
+        for line in ctx.match_arg_prelude() {
             lines.push(format!("      {}", line));
         }
         // Inject r_post_checks
@@ -564,6 +583,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
+        }
+        // Inject match.arg validation for match_arg/choices params
+        for line in ctx.match_arg_prelude() {
+            lines.push(format!("  {}", line));
         }
         // Inject r_post_checks
         if let Some(ref post) = ctx.method.method_attrs.r_post_checks {

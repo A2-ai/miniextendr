@@ -26,6 +26,60 @@
 
 use crate::miniextendr_impl::{ParsedImpl, ParsedMethod};
 
+/// Format the write-time match_arg placeholder for an impl method parameter.
+///
+/// The placeholder is substituted by `registry::write_r_wrappers_to_file` with the
+/// enum's `MatchArg::CHOICES` (via a matching `MX_MATCH_ARG_CHOICES` entry) when
+/// the cdylib runs to produce the final R wrapper file. The shape matches the
+/// standalone-fn placeholder convention — same prefix, same delimiters — so both
+/// surfaces resolve through the same registry pass.
+pub(crate) fn match_arg_placeholder(c_ident: &str, r_param: &str) -> String {
+    format!(
+        ".__MX_MATCH_ARG_CHOICES_{}_{}__",
+        c_ident.trim_start_matches("C_"),
+        r_param
+    )
+}
+
+/// Effective R-formal defaults for a method.
+///
+/// Layers defaults in priority order:
+/// 1. User-provided `#[miniextendr(defaults(param = "..."))]` (wins over generated defaults).
+/// 2. `#[miniextendr(choices("a", "b", ...))]` → `c("a", "b", ...)` formal default.
+/// 3. `#[miniextendr(match_arg)]` → a write-time placeholder that the cdylib
+///    resolves to the enum's `MatchArg::CHOICES` at package-load time.
+fn effective_r_defaults(
+    method: &ParsedMethod,
+    c_ident: &str,
+) -> std::collections::HashMap<String, String> {
+    let mut defaults = method.param_defaults.clone();
+    // choices(...) → formal default of c("a", "b", ...). Priority: lower than user defaults,
+    // higher than match_arg placeholder (which is the fallback for enum-driven validation).
+    for (rust_name, choices) in &method.method_attrs.per_param_choices {
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            rust_name,
+            proc_macro2::Span::call_site(),
+        ))
+        .to_string();
+        defaults.entry(r_name).or_insert_with(|| {
+            let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
+            format!("c({})", quoted.join(", "))
+        });
+    }
+    // match_arg → placeholder replaced at write time.
+    for rust_name in &method.method_attrs.per_param_match_arg {
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            rust_name,
+            proc_macro2::Span::call_site(),
+        ))
+        .to_string();
+        defaults
+            .entry(r_name.clone())
+            .or_insert_with(|| match_arg_placeholder(c_ident, &r_name));
+    }
+    defaults
+}
+
 /// Pre-computed context for a method, holding all data needed for R wrapper generation.
 ///
 /// This struct captures the common computations performed for every method across all
@@ -53,8 +107,9 @@ impl<'a> MethodContext<'a> {
     /// call arguments from the method's signature and default values.
     pub fn new(method: &'a ParsedMethod, type_ident: &syn::Ident, label: Option<&str>) -> Self {
         let c_ident = method.c_wrapper_ident(type_ident, label).to_string();
+        let effective_defaults = effective_r_defaults(method, &c_ident);
         let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &effective_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         Self {
             method,
@@ -62,6 +117,106 @@ impl<'a> MethodContext<'a> {
             params,
             args,
         }
+    }
+
+    /// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`
+    /// parameters via `base::match.arg()` before the `.Call()`.
+    ///
+    /// Returns an empty vector when the method declares none. Otherwise returns
+    /// one or more lines per annotated parameter:
+    ///
+    /// - `match_arg`: looks up the choice list via a generated C helper
+    ///   (`C_<Type>__<method>__match_arg_choices__<param>`), normalizes factors to
+    ///   character, then calls `base::match.arg(param, .__mx_choices_param[, several.ok = TRUE])`.
+    /// - `choices(...)`: simpler form — no C helper needed because the formal carries
+    ///   the literal `c("a", "b", ...)` default. Emits `param <- match.arg(param[, several.ok = TRUE])`.
+    ///
+    /// Callers should include these lines in the R wrapper body after parameter
+    /// defaulting but before the `.Call()`.
+    pub fn match_arg_prelude(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+
+        for rust_name in &self.method.method_attrs.per_param_match_arg {
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+                rust_name,
+                proc_macro2::Span::call_site(),
+            ))
+            .to_string();
+            let choices_c_name = format!(
+                "C_{}__match_arg_choices__{}",
+                self.c_ident.trim_start_matches("C_"),
+                r_name
+            );
+            lines.push(format!(
+                ".__mx_choices_{r_name} <- .Call({choices_c_name}, .call = match.call())"
+            ));
+            lines.push(format!(
+                "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
+            ));
+            if self
+                .method
+                .method_attrs
+                .per_param_several_ok
+                .contains(rust_name)
+            {
+                lines.push(format!(
+                    "{r_name} <- base::match.arg({r_name}, .__mx_choices_{r_name}, several.ok = TRUE)"
+                ));
+            } else {
+                lines.push(format!(
+                    "{r_name} <- base::match.arg({r_name}, .__mx_choices_{r_name})"
+                ));
+            }
+        }
+
+        for rust_name in self.method.method_attrs.per_param_choices.keys() {
+            // choices(...) params: formal carries `c("a", "b", ...)` as the default,
+            // so R's match.arg() finds the choice list on its own. No C helper.
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+                rust_name,
+                proc_macro2::Span::call_site(),
+            ))
+            .to_string();
+            if self
+                .method
+                .method_attrs
+                .per_param_several_ok
+                .contains(rust_name)
+            {
+                lines.push(format!(
+                    "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
+                ));
+            } else {
+                lines.push(format!("{r_name} <- match.arg({r_name})"));
+            }
+        }
+
+        lines
+    }
+
+    /// Rust-side parameter names that are validated by R's `match.arg()` and therefore
+    /// don't need `stopifnot()` preconditions generated for them.
+    fn match_arg_skip_set(&self) -> std::collections::HashSet<String> {
+        let mut s = std::collections::HashSet::new();
+        for rust_name in &self.method.method_attrs.per_param_match_arg {
+            s.insert(
+                crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+                    rust_name,
+                    proc_macro2::Span::call_site(),
+                ))
+                .to_string(),
+            );
+        }
+        for rust_name in self.method.method_attrs.per_param_choices.keys() {
+            s.insert(
+                crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+                    rust_name,
+                    proc_macro2::Span::call_site(),
+                ))
+                .to_string(),
+            );
+        }
+        s
     }
 
     /// Build the `.Call()` expression for a static/constructor call.
@@ -174,11 +329,13 @@ impl<'a> MethodContext<'a> {
     /// Returns static checks for known types. Custom types not in the static table
     /// are identified as fallback params but no R-side precheck is generated for them.
     ///
-    /// Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`).
+    /// Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`) and
+    /// any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
+    /// those already have a stronger runtime guarantee than `stopifnot(is.character(...))`.
     pub fn precondition_checks(&self) -> Vec<String> {
         crate::r_preconditions::build_precondition_checks(
             &self.method.sig.inputs,
-            &std::collections::HashSet::new(),
+            &self.match_arg_skip_set(),
         )
         .static_checks
     }

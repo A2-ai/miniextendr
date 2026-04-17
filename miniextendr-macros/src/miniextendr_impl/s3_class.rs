@@ -61,6 +61,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
         }
+        // Inject match.arg validation for match_arg/choices params
+        for line in ctx.match_arg_prelude() {
+            lines.push(format!("  {}", line));
+        }
         lines.push(format!("  .val <- {}", ctx.static_call()));
         lines.extend(crate::method_return_builder::error_in_r_check_lines("  "));
         lines.push(format!("  structure(.val, class = \"{}\")", class_name));
@@ -168,6 +172,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
         }
+        // Inject match.arg validation for match_arg/choices params
+        for line in ctx.match_arg_prelude() {
+            lines.push(format!("  {}", line));
+        }
         // Inject r_post_checks
         if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
             for line in post.lines() {
@@ -229,6 +237,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
+        }
+        // Inject match.arg validation for match_arg/choices params
+        for line in ctx.match_arg_prelude() {
+            lines.push(format!("  {}", line));
         }
         // Inject r_post_checks
         if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
