@@ -53,6 +53,14 @@
 //! | Array | vector (homogeneous) or list (heterogeneous) |
 //! | Table | named list |
 //! | Datetime | character(1) (ISO 8601 format) |
+//!
+//! # Precision Limits
+//!
+//! TOML integers are signed 64-bit (`i64`). R has no native 64-bit integer type;
+//! values outside the `i32` range fall back to `numeric` (f64). An f64 can represent
+//! integers exactly only in `[-2^53, 2^53]`. When a TOML integer value has
+//! `|i| > 2^53`, conversion **panics** (which becomes an R error via the framework)
+//! rather than producing a silently wrong numeric value.
 
 pub use toml::Value as TomlValue;
 
@@ -319,6 +327,22 @@ fn i64_fits_r_int(i: i64) -> bool {
     i > i64::from(i32::MIN) && i <= i64::from(i32::MAX)
 }
 
+/// Convert an i64 to f64, panicking if the value would lose precision.
+///
+/// R has no native 64-bit integer type; values outside the i32 range fall back to
+/// `REALSXP` (f64). An f64 can represent integers exactly only in `[-2^53, 2^53]`.
+/// Values with `|i| > 2^53` lose precision when cast to f64, producing silently
+/// wrong numeric values in R. This function panics instead of silently corrupting data.
+fn i64_precise_as_f64(i: i64) -> f64 {
+    const MAX: i64 = 1i64 << 53; // 9_007_199_254_740_992
+    assert!(
+        i.unsigned_abs() <= MAX as u64,
+        "TOML integer {i} is outside R's lossless integer range \
+         (-2^53..=2^53); cannot convert to numeric without precision loss"
+    );
+    i as f64
+}
+
 fn int_to_sexp(i: i64) -> SEXP {
     unsafe {
         if i64_fits_r_int(i) {
@@ -327,10 +351,9 @@ fn int_to_sexp(i: i64) -> SEXP {
             sexp.set_integer_elt(0, i32::try_from(i).expect("validated by i64_fits_r_int"));
             sexp
         } else {
-            // Value out of R integer range — store as double
+            // Value out of R integer range — store as double (panics if |i| > 2^53)
             let sexp = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-            #[allow(clippy::cast_precision_loss)]
-            sexp.set_real_elt(0, i as f64);
+            sexp.set_real_elt(0, i64_precise_as_f64(i));
             sexp
         }
     }
@@ -423,10 +446,7 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Integer(n) = v {
-                        #[allow(clippy::cast_precision_loss)]
-                        {
-                            dst[i] = *n as f64;
-                        }
+                        dst[i] = i64_precise_as_f64(*n);
                     }
                 }
                 return sexp;
@@ -747,6 +767,27 @@ mod tests {
         let keys = RTomlOps::table_keys(&value);
         assert!(keys.contains(&"alpha".to_string()));
         assert!(keys.contains(&"beta".to_string()));
+    }
+
+    #[test]
+    fn test_i64_precise_as_f64_boundary_positive() {
+        // 2^53 is exactly representable as f64
+        let result = i64_precise_as_f64(1i64 << 53);
+        assert_eq!(result, (1i64 << 53) as f64);
+    }
+
+    #[test]
+    fn test_i64_precise_as_f64_boundary_negative() {
+        // -(2^53) is exactly representable as f64
+        let result = i64_precise_as_f64(-(1i64 << 53));
+        assert_eq!(result, -(1i64 << 53) as f64);
+    }
+
+    #[test]
+    #[should_panic(expected = "outside R's lossless integer range")]
+    fn test_i64_precise_as_f64_overflow() {
+        // 2^53 + 1 would lose precision — must panic
+        let _ = i64_precise_as_f64((1i64 << 53) + 1);
     }
 }
 // endregion
