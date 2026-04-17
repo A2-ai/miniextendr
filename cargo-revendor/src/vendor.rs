@@ -689,7 +689,7 @@ pub fn freeze_manifest(
     // Step 2: Collect all crate names from existing [patch.*] sections,
     // then remove those sections. We need the names to re-add them as
     // vendor path deps (unpublished git crates aren't on crates.io).
-    let mut patched_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut patched_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for (key, val) in doc.as_table().iter() {
         if key.starts_with("patch")
             && let Some(patch_table) = val.as_table()
@@ -1004,6 +1004,42 @@ version = "0.1.0"
         assert!(result.contains("crate-b"));
         assert!(result.contains("version"));
         assert!(!result.contains("path"));
+    }
+
+    #[test]
+    fn freeze_manifest_patch_crates_io_is_alphabetical() {
+        let dir = tempfile::tempdir().unwrap();
+        let vendor = dir.path().join("vendor");
+        for name in ["miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-macros-core"] {
+            std::fs::create_dir_all(vendor.join(name)).unwrap();
+        }
+        let manifest = dir.path().join("Cargo.toml");
+        // Start with a [patch.crates-io] section whose keys are in non-sorted order
+        // — this exercises the old HashSet nondeterminism bug (#205).
+        std::fs::write(
+            &manifest,
+            r#"[package]
+name = "example"
+version = "0.1.0"
+
+[dependencies]
+
+[patch.crates-io]
+miniextendr-api = { path = "/tmp/a" }
+miniextendr-macros = { path = "/tmp/m" }
+miniextendr-lint = { path = "/tmp/l" }
+miniextendr-macros-core = { path = "/tmp/mc" }
+"#,
+        )
+        .unwrap();
+
+        freeze_manifest(&manifest, &vendor, &[], Verbosity(0)).unwrap();
+        let result = std::fs::read_to_string(&manifest).unwrap();
+        let api = result.find("miniextendr-api =").unwrap();
+        let lint = result.find("miniextendr-lint =").unwrap();
+        let macros = result.find("miniextendr-macros =").unwrap();
+        let macros_core = result.find("miniextendr-macros-core =").unwrap();
+        assert!(api < lint && lint < macros && macros < macros_core, "patch.crates-io entries not alphabetical: {}", result);
     }
 
     #[test]
