@@ -537,9 +537,9 @@ add_native_to_configure_ac <- function(pkg) {
     "fi"
   )
 
-  # Find the insertion point: after the {{native_pkg_cppflags}} marker
-  # or before AC_SUBST([NATIVE_PKG_CPPFLAGS])
-  marker_idx <- grep("native_pkg_cppflags", lines)
+  # Find the insertion point: after the MINIREXTENDR: native-pkg-cppflags
+  # insertion marker, or otherwise before AC_SUBST([NATIVE_PKG_CPPFLAGS]).
+  marker_idx <- grep("MINIREXTENDR: native-pkg-cppflags", lines, fixed = TRUE)
   subst_idx <- grep("AC_SUBST.*NATIVE_PKG_CPPFLAGS", lines)
 
   if (length(marker_idx) > 0) {

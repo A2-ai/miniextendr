@@ -28,7 +28,7 @@
 //! matching.
 
 use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::charsxp_to_str;
+use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
 /// Trait for enum types that support `match.arg`-style string conversion.
@@ -149,64 +149,66 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
     }
 }
 
+/// Map a `SexpError` from a string `TryFromSexp` conversion into a `MatchArgError`.
+///
+/// Only `Type` and `Length` are produced by the `&str`/`Option<&str>`/
+/// `Vec<Option<&str>>` conversions we delegate to — other variants are
+/// unreachable in this context.
+fn sexp_err_to_match_arg_err(e: SexpError) -> MatchArgError {
+    match e {
+        SexpError::Type(t) => MatchArgError::InvalidType(t.actual),
+        SexpError::Length(l) => MatchArgError::InvalidLength(l.actual),
+        other => unreachable!("unexpected SexpError from string conversion: {other}"),
+    }
+}
+
+/// Extract a single choice from a factor SEXP (INTSXP with `levels` attribute).
+fn factor_elt_to_choice<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
+    let len = sexp.len();
+    if len != 1 {
+        return Err(MatchArgError::InvalidLength(len));
+    }
+    let idx = sexp.integer_elt(0);
+    if idx == i32::MIN {
+        // NA_integer_
+        return Err(MatchArgError::IsNa);
+    }
+    let levels = sexp.get_levels();
+    // R factor indices are 1-based.
+    let level_idx = (idx - 1) as ffi::R_xlen_t;
+    if level_idx < 0 || level_idx >= levels.len() as ffi::R_xlen_t {
+        return Err(MatchArgError::NoMatch {
+            input: format!("<factor index {}>", idx),
+            choices: <T as MatchArg>::CHOICES,
+        });
+    }
+    let charsxp = levels.string_elt(level_idx);
+    // UTF-8 locale asserted at package init — charsxp_to_str is safe.
+    match_choice::<T>(unsafe { charsxp_to_str(charsxp) })
+}
+
 /// Extract a single string from an R SEXP and match it against a `MatchArg` type.
 ///
 /// Used by the generated `TryFromSexp for T` implementation (single-value `match.arg`).
 pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
-    let actual_type = sexp.type_of();
+    // NIL → default (first choice), matching `base::match.arg()`.
+    if sexp.type_of() == SEXPTYPE::NILSXP {
+        return T::from_choice(<T as MatchArg>::CHOICES[0]).ok_or_else(|| MatchArgError::NoMatch {
+            input: String::new(),
+            choices: <T as MatchArg>::CHOICES,
+        });
+    }
 
-    // Extract the string value
-    let input = match actual_type {
-        SEXPTYPE::STRSXP => {
-            let len = sexp.len();
-            if len != 1 {
-                return Err(MatchArgError::InvalidLength(len));
-            }
-            let charsxp = sexp.string_elt(0);
-            if charsxp == SEXP::na_string() {
-                return Err(MatchArgError::IsNa);
-            }
-            // UTF-8 locale asserted at package init — R_CHAR is safe
-            unsafe { charsxp_to_str(charsxp) }
-        }
-        // Accept factors: extract the level label
-        SEXPTYPE::INTSXP => {
-            // Check if it's a factor (has "levels" attribute)
-            let levels = sexp.get_levels();
-            if levels.is_nil() || levels.type_of() != SEXPTYPE::STRSXP {
-                return Err(MatchArgError::InvalidType(actual_type));
-            }
-            let len = sexp.len();
-            if len != 1 {
-                return Err(MatchArgError::InvalidLength(len));
-            }
-            let idx = unsafe { *ffi::INTEGER(sexp) };
-            if idx == i32::MIN {
-                // NA_integer_
-                return Err(MatchArgError::IsNa);
-            }
-            // R factor indices are 1-based
-            let level_idx = (idx - 1) as ffi::R_xlen_t;
-            if level_idx < 0 || level_idx >= levels.len() as ffi::R_xlen_t {
-                return Err(MatchArgError::NoMatch {
-                    input: format!("<factor index {}>", idx),
-                    choices: <T as MatchArg>::CHOICES,
-                });
-            }
-            let charsxp = levels.string_elt(level_idx);
-            unsafe { charsxp_to_str(charsxp) }
-        }
-        SEXPTYPE::NILSXP => {
-            // NULL → use first choice (match.arg default behavior)
-            return T::from_choice(<T as MatchArg>::CHOICES[0]).ok_or_else(|| {
-                MatchArgError::NoMatch {
-                    input: String::new(),
-                    choices: <T as MatchArg>::CHOICES,
-                }
-            });
-        }
-        _ => return Err(MatchArgError::InvalidType(actual_type)),
-    };
+    // Factors (INTSXP with STRSXP levels attribute): extract the level label.
+    if sexp.is_factor() {
+        return factor_elt_to_choice::<T>(sexp);
+    }
+
+    // STRSXP length-1 path — delegate type/length checks to Option<&str>.
+    // NIL was handled above, so `None` here means NA_character_.
+    let input = <Option<&'static str> as TryFromSexp>::try_from_sexp(sexp)
+        .map_err(sexp_err_to_match_arg_err)?
+        .ok_or(MatchArgError::IsNa)?;
 
     match_choice::<T>(input)
 }
@@ -297,31 +299,21 @@ impl<T: MatchArg> IntoR for Vec<T> {
 /// Note: factors (INTSXP) are not handled here — the R wrapper coerces factors
 /// to character before the `.Call()` boundary.
 pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchArgError> {
-    let actual_type = sexp.type_of();
-
-    match actual_type {
-        SEXPTYPE::STRSXP => {
-            let len = sexp.len();
-            let mut result = Vec::with_capacity(len);
-            for i in 0..len {
-                let charsxp = sexp.string_elt(i as ffi::R_xlen_t);
-                if charsxp == SEXP::na_string() {
-                    return Err(MatchArgError::IsNa);
-                }
-                let s = unsafe { charsxp_to_str(charsxp) };
-                result.push(match_choice::<T>(s)?);
-            }
-            Ok(result)
-        }
-        SEXPTYPE::NILSXP => {
-            // NULL → all choices (match.arg default with several.ok = TRUE)
-            <T as MatchArg>::CHOICES
-                .iter()
-                .map(|c| match_choice::<T>(c))
-                .collect()
-        }
-        _ => Err(MatchArgError::InvalidType(actual_type)),
+    // NIL → all choices (match.arg default with several.ok = TRUE).
+    if sexp.type_of() == SEXPTYPE::NILSXP {
+        return <T as MatchArg>::CHOICES
+            .iter()
+            .map(|c| match_choice::<T>(c))
+            .collect();
     }
+
+    // STRSXP path — delegate type check + per-element NA handling
+    // to Vec<Option<&str>>. `None` means NA_character_ (IsNa error).
+    <Vec<Option<&'static str>> as TryFromSexp>::try_from_sexp(sexp)
+        .map_err(sexp_err_to_match_arg_err)?
+        .into_iter()
+        .map(|opt| opt.ok_or(MatchArgError::IsNa).and_then(match_choice::<T>))
+        .collect()
 }
 
 #[cfg(test)]

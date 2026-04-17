@@ -1,4 +1,4 @@
-AC_INIT([{{package}}], [1.0])
+AC_INIT([{{package}}], [0.1.0])
 
 dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
 dnl This avoids the CRAN NOTE about non-standard top-level files
@@ -70,6 +70,8 @@ if test -z "${CARGO_FEATURES+x}"; then
       AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
     fi
   else
+    AC_MSG_NOTICE([tools/detect-features.R not found — building with no extra cargo features])
+    AC_MSG_NOTICE([  If your crate uses optional dependencies, set CARGO_FEATURES explicitly])
     CARGO_FEATURES=""
   fi
 fi
@@ -260,7 +262,7 @@ dnl Populated by minirextendr::use_native_package(). Each native package
 dnl adds -I<path> for its inst/include/ headers so the C compiler can
 dnl find them when compiling bindgen-generated static inline wrappers.
 NATIVE_PKG_CPPFLAGS=""
-dnl {{native_pkg_cppflags}}
+dnl MINIREXTENDR: native-pkg-cppflags insertion marker
 AC_SUBST([NATIVE_PKG_CPPFLAGS])
 
 AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
