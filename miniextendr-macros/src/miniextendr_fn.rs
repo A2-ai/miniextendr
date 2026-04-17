@@ -145,6 +145,38 @@ pub(crate) fn is_missing_type(ty: &syn::Type) -> bool {
     type_ends_with(ty, "Missing")
 }
 
+/// Check if a type is a vector-like type that `several_ok` can populate.
+///
+/// Accepts `Vec<T>`, `Box<[T]>`, and `&[T]` / `&mut [T]`. Rejects scalar types
+/// (like `Mode`, `String`, `&str`) so `several_ok` — which produces a
+/// multi-element R character vector via `match.arg(..., several.ok = TRUE)` —
+/// fails at compile time instead of deserialization time.
+pub(crate) fn is_vector_like_type(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(tp) => {
+            let Some(seg) = tp.path.segments.last() else {
+                return false;
+            };
+            if seg.ident == "Vec" {
+                return true;
+            }
+            if seg.ident == "Box" {
+                let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                    return false;
+                };
+                return matches!(
+                    args.args.first(),
+                    Some(syn::GenericArgument::Type(syn::Type::Slice(_)))
+                );
+            }
+            false
+        }
+        syn::Type::Reference(r) => matches!(&*r.elem, syn::Type::Slice(_)),
+        syn::Type::Slice(_) => true,
+        _ => false,
+    }
+}
+
 /// Extract the inner type `T` from `Missing<T>`, if the type is `Missing<T>`.
 ///
 /// Returns `None` if the type is not `Missing<T>` or has no generic argument.
@@ -242,6 +274,23 @@ pub(crate) fn validate_per_param_attr_conflicts(
                 param_name
             ),
         ));
+    }
+    if attr.has_several_ok
+        && let Some(ty) = ty
+    {
+        // Unwrap Missing<T> so several_ok is allowed on optional vector params.
+        let check_ty = get_missing_inner_type(ty).unwrap_or(ty);
+        if !is_vector_like_type(check_ty) {
+            return Err(syn::Error::new(
+                span,
+                format!(
+                    "several_ok requires a vector type on parameter `{}`; \
+                     several_ok enables multi-value match.arg which returns a character vector. \
+                     Use `Vec<T>`, `Box<[T]>`, or `&[T]` instead of a scalar type",
+                    param_name
+                ),
+            ));
+        }
     }
     if is_dots && attr.default_value.is_some() {
         return Err(syn::Error::new(
