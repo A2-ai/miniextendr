@@ -113,6 +113,24 @@ pub fn match_arg_priority_choices() -> Vec<&'static str> {
 pub fn match_arg_return_mode(#[miniextendr(match_arg)] mode: Mode) -> Mode {
     mode
 }
+
+/// Auto-doc fixture: no user @param for mode — auto-injected from enum choices.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_auto_doc_mode(#[miniextendr(match_arg)] mode: Mode) -> String {
+    format!("{:?}", mode)
+}
+
+/// Auto-doc fixture: no user @param for modes — auto-injected as several_ok.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_auto_doc_modes(
+    #[miniextendr(match_arg, several_ok)] modes: Vec<Mode>,
+) -> String {
+    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+}
 // endregion
 
 // region: Test functions using #[miniextendr(choices(...))] for string parameters
