@@ -176,29 +176,26 @@ pub fn strip_vendor_path_deps(vendor_dir: &Path, v: crate::Verbosity) -> Result<
 /// Remove `path = "../..."` from a dependency entry (returns true if changed)
 fn remove_relative_path(dep: &mut toml_edit::Item) -> bool {
     match dep {
-        toml_edit::Item::Value(toml_edit::Value::InlineTable(table)) => {
+        toml_edit::Item::Value(toml_edit::Value::InlineTable(table))
             if table
                 .get("path")
                 .and_then(|v| v.as_str())
-                .is_some_and(|p| p.starts_with("../"))
-            {
-                table.remove("path");
-                return true;
-            }
+                .is_some_and(|p| p.starts_with("../")) =>
+        {
+            table.remove("path");
+            true
         }
-        toml_edit::Item::Table(table) => {
+        toml_edit::Item::Table(table)
             if table
                 .get("path")
                 .and_then(|v| v.as_str())
-                .is_some_and(|p| p.starts_with("../"))
-            {
-                table.remove("path");
-                return true;
-            }
+                .is_some_and(|p| p.starts_with("../")) =>
+        {
+            table.remove("path");
+            true
         }
-        _ => {}
+        _ => false,
     }
-    false
 }
 
 /// Rewrite inter-crate path dependencies so local crates reference each other in vendor/
