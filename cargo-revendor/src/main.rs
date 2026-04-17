@@ -177,32 +177,7 @@ fn main() -> Result<()> {
         std::env::current_dir()?.join(&cli.output)
     };
 
-    // Step 0: Check cache — skip if Cargo.lock unchanged
     let lockfile = manifest_path.with_file_name("Cargo.lock");
-    if !cli.force && cache::is_cached(&lockfile, &output)? {
-        if v.info() {
-            eprintln!("cargo-revendor: vendor/ is up to date (Cargo.lock unchanged)");
-        }
-        if cli.json {
-            let count = std::fs::read_dir(&output)
-                .map(|d| {
-                    d.filter_map(|e| e.ok())
-                        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                        .count()
-                })
-                .unwrap_or(0);
-            let json = JsonOutput {
-                vendor_dir: output.display().to_string(),
-                local_crates: vec![],
-                external_crates: count,
-                total_crates: count,
-                cached: true,
-                stripped: vec![],
-            };
-            println!("{}", serde_json::to_string_pretty(&json)?);
-        }
-        return Ok(());
-    }
 
     // Step 1: Load cargo metadata to discover dependencies
     let meta = metadata::load_metadata(&manifest_path)?;
@@ -260,6 +235,38 @@ fn main() -> Result<()> {
                 patch_pkgs.len() - local_pkgs.len()
             );
         }
+    }
+
+    // Local crate source trees participate in the cache key — pure source
+    // edits to workspace crates leave Cargo.lock untouched (#150), so hashing
+    // only the lockfile would silently serve a stale vendor/ copy.
+    let local_crate_paths: Vec<std::path::PathBuf> =
+        local_pkgs.iter().map(|p| p.path.clone()).collect();
+
+    // Step 0: Check cache — skip if all inputs are unchanged
+    if !cli.force && cache::is_cached(&lockfile, &output, &local_crate_paths)? {
+        if v.info() {
+            eprintln!("cargo-revendor: vendor/ is up to date (inputs unchanged)");
+        }
+        if cli.json {
+            let count = std::fs::read_dir(&output)
+                .map(|d| {
+                    d.filter_map(|e| e.ok())
+                        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                        .count()
+                })
+                .unwrap_or(0);
+            let json = JsonOutput {
+                vendor_dir: output.display().to_string(),
+                local_crates: local_pkgs.iter().map(|p| p.name.clone()).collect(),
+                external_crates: count.saturating_sub(local_pkgs.len()),
+                total_crates: count,
+                cached: true,
+                stripped: vec![],
+            };
+            println!("{}", serde_json::to_string_pretty(&json)?);
+        }
+        return Ok(());
     }
 
     // Step 2: Package local crates via `cargo package`
@@ -353,7 +360,7 @@ fn main() -> Result<()> {
     }
 
     // Step 14: Save cache
-    cache::save_cache(&lockfile, &output)?;
+    cache::save_cache(&lockfile, &output, &local_crate_paths)?;
 
     // Count total crates
     let total = std::fs::read_dir(&output)

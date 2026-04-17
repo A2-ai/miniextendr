@@ -160,22 +160,18 @@ fn add_versions_to_path_deps(
 fn ensure_version(dep: &mut toml_edit::Item) -> bool {
     match dep {
         // path-only inline table: { path = "../foo" } → { version = "*", path = "../foo" }
-        toml_edit::Item::Value(toml_edit::Value::InlineTable(table)) => {
-            if table.contains_key("path") && !table.contains_key("version") {
-                table.insert("version", toml_edit::value("*").into_value().unwrap());
-                true
-            } else {
-                false
-            }
+        toml_edit::Item::Value(toml_edit::Value::InlineTable(table))
+            if table.contains_key("path") && !table.contains_key("version") =>
+        {
+            table.insert("version", toml_edit::value("*").into_value().unwrap());
+            true
         }
         // path-only table section: [dependencies.foo] path = "../foo"
-        toml_edit::Item::Table(table) => {
-            if table.contains_key("path") && !table.contains_key("version") {
-                table.insert("version", toml_edit::value("*"));
-                true
-            } else {
-                false
-            }
+        toml_edit::Item::Table(table)
+            if table.contains_key("path") && !table.contains_key("version") =>
+        {
+            table.insert("version", toml_edit::value("*"));
+            true
         }
         _ => false,
     }
