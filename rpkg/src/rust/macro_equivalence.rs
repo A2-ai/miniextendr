@@ -148,7 +148,6 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for MxDerivedIntsData {
     }
 }
 
-
 /// Test creating an ALTREP integer vector via derive(Altrep).
 #[miniextendr]
 pub fn mx_derived_ints() -> MxDerivedIntsData {
