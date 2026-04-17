@@ -29,7 +29,8 @@ fn class_ref_or_verbatim(name: &str) -> String {
 
 /// Map a Rust return type to an S7 class name.
 ///
-/// Returns `None` if the type doesn't map to a specific S7 class (uses class_any).
+/// Returns `None` if the type doesn't map to any S7 class — the caller
+/// then omits the `class = …` constraint (so S7 uses `class_any`).
 ///
 /// # S7 Class Mapping
 ///
@@ -45,6 +46,20 @@ fn class_ref_or_verbatim(name: &str) -> String {
 /// | `Vec<bool>` | `class_logical` |
 /// | `Vec<String>` | `class_character` |
 /// | `Option<T>` | `NULL | class_T` (union) |
+/// | `SomeUserType` (bare ident) | `.__MX_CLASS_REF_SomeUserType__` |
+///
+/// For bare user-defined path types the macro emits the same
+/// `.__MX_CLASS_REF_<Type>__` placeholder used for parent-class and
+/// `convert_from`/`convert_to` references (see [`#154`]). The resolver in
+/// [`miniextendr_api::registry::write_r_wrappers_to_file`] swaps the
+/// placeholder for the R-visible class name recorded in `MX_CLASS_NAMES`
+/// — so `class = "Override"` on an S7 impl block is honored, and child
+/// class properties tighten from `class_any` to the real class.
+///
+/// Unresolved types fall through the existing CLASS_REF mechanism:
+/// the bare Rust name is emitted with a compile-time warning. If the
+/// user returns a type that isn't a registered class at all, they'll
+/// see that warning + a `object '…' not found` at R load time.
 pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
     match ty {
         syn::Type::Path(type_path) => {
@@ -89,6 +104,22 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
                         return rust_type_to_s7_class(inner);
                     }
                     None
+                }
+
+                // Bare, un-generic single-segment identifier — reuse the
+                // CLASS_REF write-time placeholder so the resolver swaps
+                // in the registered R-visible class name (honoring any
+                // `class = "Override"` on the referenced impl block).
+                // Paths with `::`, generics, or a lowercase leading char
+                // are rejected to avoid matching crate-local aliases,
+                // primitives, or type parameters — those fall through
+                // to `None` and the caller omits the `class =` entirely.
+                _ if type_path.path.segments.len() == 1
+                    && matches!(seg.arguments, syn::PathArguments::None)
+                    && is_bare_identifier(&ident)
+                    && ident.chars().next().is_some_and(|c| c.is_ascii_uppercase()) =>
+                {
+                    Some(class_ref_or_verbatim(&ident))
                 }
 
                 _ => None,
