@@ -1,4 +1,4 @@
-error: several_ok requires a vector type on parameter `x`; several_ok enables multi-value match.arg which returns a character vector. Use `Vec<T>`, `Box<[T]>`, or `&[T]` instead of a scalar type
+error: several_ok requires a vector type on parameter `x`; several_ok enables multi-value match.arg which returns a character vector. Use `Vec<T>`, `Box<[T]>`, `&[T]`, or `[T; N]` instead of a scalar type
  --> tests/ui/several_ok_on_scalar_type.rs:6:75
   |
 6 | fn bad_several_ok_scalar(#[miniextendr(choices("a", "b"), several_ok)] x: String) {}
