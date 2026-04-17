@@ -126,10 +126,12 @@ pub fn match_arg_auto_doc_mode(#[miniextendr(match_arg)] mode: Mode) -> String {
 ///
 /// @export
 #[miniextendr_api::miniextendr]
-pub fn match_arg_auto_doc_modes(
-    #[miniextendr(match_arg, several_ok)] modes: Vec<Mode>,
-) -> String {
-    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+pub fn match_arg_auto_doc_modes(#[miniextendr(match_arg, several_ok)] modes: Vec<Mode>) -> String {
+    modes
+        .iter()
+        .map(|m| format!("{:?}", m))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 // endregion
 
@@ -199,9 +201,7 @@ pub fn choices_multi_metrics(
 /// @param modes One or more Mode values (several.ok input).
 /// @export
 #[miniextendr_api::miniextendr]
-pub fn match_arg_return_modes(
-    #[miniextendr(match_arg, several_ok)] modes: Vec<Mode>,
-) -> Vec<Mode> {
+pub fn match_arg_return_modes(#[miniextendr(match_arg, several_ok)] modes: Vec<Mode>) -> Vec<Mode> {
     modes
 }
 // endregion
@@ -213,10 +213,12 @@ pub fn match_arg_return_modes(
 /// @param modes One or more Mode values.
 /// @export
 #[miniextendr_api::miniextendr]
-pub fn match_arg_multi_mode(
-    #[miniextendr(match_arg, several_ok)] modes: Vec<Mode>,
-) -> String {
-    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+pub fn match_arg_multi_mode(#[miniextendr(match_arg, several_ok)] modes: Vec<Mode>) -> String {
+    modes
+        .iter()
+        .map(|m| format!("{:?}", m))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Select multiple priorities with a regular param.
@@ -241,10 +243,15 @@ pub fn match_arg_multi_priority(
 /// @param modes One or more Mode values.
 /// @export
 #[miniextendr_api::miniextendr]
+#[allow(clippy::boxed_local)] // Box<[T]> is an intentional several_ok container shape
 pub fn match_arg_multi_mode_boxed(
     #[miniextendr(match_arg, several_ok)] modes: Box<[Mode]>,
 ) -> String {
-    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+    modes
+        .iter()
+        .map(|m| format!("{:?}", m))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Select multiple modes via borrowed slice (several_ok, slice of Mode).
@@ -252,10 +259,12 @@ pub fn match_arg_multi_mode_boxed(
 /// @param modes One or more Mode values.
 /// @export
 #[miniextendr_api::miniextendr]
-pub fn match_arg_multi_mode_slice(
-    #[miniextendr(match_arg, several_ok)] modes: &[Mode],
-) -> String {
-    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+pub fn match_arg_multi_mode_slice(#[miniextendr(match_arg, several_ok)] modes: &[Mode]) -> String {
+    modes
+        .iter()
+        .map(|m| format!("{:?}", m))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Select exactly two modes via a fixed-size array (several_ok, \[Mode; 2\]).
@@ -266,6 +275,10 @@ pub fn match_arg_multi_mode_slice(
 pub fn match_arg_multi_mode_array(
     #[miniextendr(match_arg, several_ok)] modes: [Mode; 2],
 ) -> String {
-    modes.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>().join(", ")
+    modes
+        .iter()
+        .map(|m| format!("{:?}", m))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 // endregion

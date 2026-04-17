@@ -88,7 +88,7 @@ test_that("add_native_to_configure_ac appends detection block", {
   # Create a minimal configure.ac
   writeLines(c(
     'NATIVE_PKG_CPPFLAGS=""',
-    'dnl {{native_pkg_cppflags}}',
+    'dnl MINIREXTENDR: native-pkg-cppflags insertion marker',
     'AC_SUBST([NATIVE_PKG_CPPFLAGS])',
     'AC_CONFIG_SRCDIR([src/rust/lib.rs])'
   ), file.path(tmp, "configure.ac"))

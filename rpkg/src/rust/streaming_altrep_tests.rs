@@ -29,7 +29,6 @@ impl AltIntegerData for StreamingIntRangeData {
     }
 }
 
-
 /// Create a streaming integer ALTREP `1..=n`.
 #[miniextendr]
 pub fn streaming_int_range(n: i32) -> StreamingIntRangeData {
@@ -72,7 +71,6 @@ impl AltRealData for StreamingRealSquaresData {
         self.inner.elt(i)
     }
 }
-
 
 /// Create a streaming real ALTREP `1^2, 2^2, ..., n^2`.
 #[miniextendr]

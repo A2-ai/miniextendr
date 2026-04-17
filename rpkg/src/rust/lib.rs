@@ -319,7 +319,6 @@ impl miniextendr_api::altrep_data::AltrepSerialize for ConstantIntData {
     }
 }
 
-
 /// Create a constant-value integer ALTREP vector (10 elements, all 42).
 /// @rdname constant_altrep
 /// @return An ALTREP integer vector.
@@ -370,7 +369,6 @@ impl AltRealData for ConstantRealData {
     }
 }
 
-
 /// Create a constant-value real ALTREP vector (10 elements, all pi).
 /// @rdname constant_altrep
 /// @return An ALTREP real vector.
@@ -408,7 +406,6 @@ impl AltRealData for ArithSeqData {
         Some(true)
     }
 }
-
 
 #[miniextendr]
 pub fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
@@ -623,7 +620,6 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
         })
     }
 }
-
 
 /// Create a lazy integer sequence ALTREP (like R's `seq()`).
 ///
@@ -984,7 +980,6 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
     }
 }
 
-
 // endregion
 
 // region: LazyString: Lazily-generated strings
@@ -1013,7 +1008,6 @@ impl AltStringData for LazyStringData {
         Some(false)
     } // We return None which is like NA
 }
-
 
 /// Create a lazy string ALTREP that computes elements on demand.
 /// @rdname lazy_string_altrep
@@ -1055,7 +1049,6 @@ impl AltRawData for RepeatingRawData {
         }
     }
 }
-
 
 /// Create a repeating raw byte pattern ALTREP vector.
 /// @rdname lazy_string_altrep
@@ -1112,7 +1105,6 @@ impl AltComplexData for UnitCircleData {
     }
 }
 
-
 /// Create a complex ALTREP of n points on the unit circle (e^(i*2*pi*k/n)).
 /// @rdname altrep_special
 /// @param n Number of points on the unit circle.
@@ -1153,7 +1145,6 @@ impl AltListData for IntegerSequenceListData {
         seq.into_sexp()
     }
 }
-
 
 /// Create a list ALTREP where each element is an integer sequence.
 ///
@@ -1251,7 +1242,6 @@ impl miniextendr_api::altrep_data::AltrepSerialize for StringVecData {
             .map(|data| Self { data })
     }
 }
-
 
 // endregion
 
@@ -1387,7 +1377,6 @@ impl miniextendr_api::altrep_data::AltrepSerialize for BoxedIntsData {
     }
 }
 
-
 /// Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`).
 /// @rdname altrep_special
 /// @param n Number of elements (generates 1..=n).
@@ -1438,7 +1427,6 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for StaticIntsData {
         Some(self.data.as_ptr())
     }
 }
-
 
 /// Create an ALTREP integer vector backed by a static slice (`&'static [i32]`).
 /// @rdname altrep_special
@@ -1497,7 +1485,6 @@ impl AltStringData for StaticStringsData {
     }
 }
 
-
 /// Create an ALTREP string vector backed by a static string slice.
 /// @rdname altrep_special
 /// @return An ALTREP string vector with 4 static entries.
@@ -1543,7 +1530,6 @@ impl AltListData for ListData {
         self.list.vector_elt(i as miniextendr_api::ffi::R_xlen_t)
     }
 }
-
 
 // endregion
 
@@ -1832,7 +1818,6 @@ impl miniextendr_api::altrep_data::AltIntegerData for SparseIntIterData {
     }
 }
 
-
 /// Create a sparse integer iterator ALTREP that skips elements.
 ///
 /// Elements are computed on-demand using Iterator::nth(). Once an element
@@ -1900,7 +1885,6 @@ impl miniextendr_api::altrep_data::AltRealData for SparseRealIterData {
     }
 }
 
-
 /// Create a sparse real iterator ALTREP with arithmetic progression.
 /// @rdname sparse_altrep
 /// @param from Start value.
@@ -1943,7 +1927,6 @@ impl miniextendr_api::altrep_data::AltLogicalData for SparseLogicalIterData {
         self.inner.get_region(start, len, buf)
     }
 }
-
 
 /// Create a sparse logical iterator ALTREP (alternating TRUE/FALSE).
 /// @rdname sparse_altrep
@@ -1989,7 +1972,6 @@ impl miniextendr_api::altrep_data::AltRawData for SparseRawIterData {
         self.inner.get_region(start, len, buf)
     }
 }
-
 
 /// Create a sparse raw iterator ALTREP (cycling bytes 0..255).
 /// @rdname sparse_altrep
