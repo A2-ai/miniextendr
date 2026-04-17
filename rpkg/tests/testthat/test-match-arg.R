@@ -164,6 +164,62 @@ test_that("match_arg several_ok: mixed with regular params", {
 })
 
 # ============================================================================
+# Container variant tests — Box<[T]>, &[T], [T; N]
+# ============================================================================
+
+test_that("match_arg several_ok Box<[T]>: default returns all variants", {
+  expect_equal(match_arg_multi_mode_boxed(), "Fast, Safe, Debug")
+})
+
+test_that("match_arg several_ok Box<[T]>: subset selection", {
+  expect_equal(match_arg_multi_mode_boxed(c("Fast", "Debug")), "Fast, Debug")
+})
+
+test_that("match_arg several_ok Box<[T]>: single value", {
+  expect_equal(match_arg_multi_mode_boxed("Safe"), "Safe")
+})
+
+test_that("match_arg several_ok Box<[T]>: invalid value errors", {
+  expect_error(match_arg_multi_mode_boxed("Invalid"), "should be one of")
+})
+
+test_that("match_arg several_ok &[T]: default returns all variants", {
+  expect_equal(match_arg_multi_mode_slice(), "Fast, Safe, Debug")
+})
+
+test_that("match_arg several_ok &[T]: subset selection", {
+  expect_equal(match_arg_multi_mode_slice(c("Safe", "Debug")), "Safe, Debug")
+})
+
+test_that("match_arg several_ok &[T]: single value", {
+  expect_equal(match_arg_multi_mode_slice("Fast"), "Fast")
+})
+
+test_that("match_arg several_ok &[T]: invalid value errors", {
+  expect_error(match_arg_multi_mode_slice("Bad"), "should be one of")
+})
+
+test_that("match_arg several_ok [T; N]: exact length works", {
+  expect_equal(match_arg_multi_mode_array(c("Fast", "Debug")), "Fast, Debug")
+  expect_equal(match_arg_multi_mode_array(c("Safe", "Fast")), "Safe, Fast")
+})
+
+test_that("match_arg several_ok [T; N]: wrong length panics with clear message", {
+  # Too few values
+  expect_error(match_arg_multi_mode_array("Fast"), "expected 2 values")
+  # Too many values
+  expect_error(match_arg_multi_mode_array(c("Fast", "Safe", "Debug")), "expected 2 values")
+})
+
+test_that("match_arg several_ok [T; N]: all-invalid value errors from match.arg", {
+  # When all values are invalid, match.arg errors with "should be one of"
+  expect_error(match_arg_multi_mode_array(c("Foo", "Bar")), "should be one of")
+  # When one value is invalid, match.arg silently drops it and Rust
+  # panics on length mismatch (2-element array, only 1 valid match)
+  expect_error(match_arg_multi_mode_array(c("Fast", "Invalid")), "expected 2 values")
+})
+
+# ============================================================================
 # IntoR for Vec<MatchArgEnum> — round-trip return test (#148)
 # ============================================================================
 
