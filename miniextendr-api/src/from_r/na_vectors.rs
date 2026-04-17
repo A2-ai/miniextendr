@@ -8,7 +8,8 @@
 use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{
-    SexpError, SexpNaError, SexpTypeError, TryFromSexp, coerce_value, is_na_real, r_slice,
+    SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value, is_na_real,
+    r_slice,
 };
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
@@ -258,8 +259,6 @@ impl TryFromSexp for Vec<Option<String>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::Rf_translateCharUTF8;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -278,18 +277,7 @@ impl TryFromSexp for Vec<Option<String>> {
             if charsxp == SEXP::na_string() {
                 result.push(None);
             } else {
-                let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-                if c_str.is_null() {
-                    result.push(Some(String::new()));
-                } else {
-                    let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-                    result.push(Some(rust_str.to_str().map(|s| s.to_owned()).map_err(
-                        |_| SexpTypeError {
-                            expected: SEXPTYPE::STRSXP,
-                            actual: SEXPTYPE::STRSXP,
-                        },
-                    )?));
-                }
+                result.push(Some(unsafe { charsxp_to_str(charsxp) }.to_owned()));
             }
         }
 

@@ -230,6 +230,7 @@ impl AltrepSexp {
     ///
     /// Must be called on the R main thread. The SEXP must be STRSXP.
     pub unsafe fn materialize_strings(&self) -> Vec<Option<String>> {
+        use crate::from_r::charsxp_to_str;
         let n = unsafe { ffi::Rf_xlength(self.sexp) } as usize;
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
@@ -237,11 +238,7 @@ impl AltrepSexp {
             if elt == SEXP::na_string() {
                 out.push(None);
             } else {
-                let cstr = unsafe { ffi::Rf_translateCharUTF8(elt) };
-                let s = unsafe { std::ffi::CStr::from_ptr(cstr) }
-                    .to_string_lossy()
-                    .into_owned();
-                out.push(Some(s));
+                out.push(Some(unsafe { charsxp_to_str(elt) }.to_owned()));
             }
         }
         out

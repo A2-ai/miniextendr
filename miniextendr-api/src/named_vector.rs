@@ -232,7 +232,7 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
 ///
 /// Errors on: missing names attribute, NA names, empty names, duplicate names.
 fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
-    use ffi::Rf_translateCharUTF8;
+    use crate::from_r::charsxp_to_str;
 
     let names = sexp.get_names();
     let len = sexp.len();
@@ -256,16 +256,7 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
             ));
         }
 
-        let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-        if c_str.is_null() {
-            return Err(SexpError::InvalidValue(
-                "NamedVector does not allow NA names".to_string(),
-            ));
-        }
-
-        let name = unsafe { std::ffi::CStr::from_ptr(c_str) }
-            .to_str()
-            .unwrap_or("");
+        let name = unsafe { charsxp_to_str(charsxp) };
 
         // Reject empty names
         if name.is_empty() {

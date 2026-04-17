@@ -62,10 +62,10 @@ pub fn has_class(x: SEXP, class_name: String) -> bool {
     }
     let len = class_attr.len();
     for i in 0..len {
-        if let Some(name) = class_attr.string_elt_str(i as miniextendr_api::ffi::R_xlen_t) {
-            if name == class_name {
-                return true;
-            }
+        if let Some(name) = class_attr.string_elt_str(i as miniextendr_api::ffi::R_xlen_t)
+            && name == class_name
+        {
+            return true;
         }
     }
     false

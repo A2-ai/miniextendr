@@ -100,7 +100,7 @@ impl TryFromSexp for Vec<Uuid> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::Rf_translateCharUTF8;
+        use crate::from_r::charsxp_to_str;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -125,17 +125,9 @@ impl TryFromSexp for Vec<Uuid> {
                 )));
             }
 
-            let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-            let s = if c_str.is_null() {
-                String::new()
-            } else {
-                unsafe { std::ffi::CStr::from_ptr(c_str) }
-                    .to_str()
-                    .map_err(|_| SexpError::InvalidValue(format!("invalid UTF-8 at index {}", i)))?
-                    .to_owned()
-            };
+            let s = unsafe { charsxp_to_str(charsxp) };
 
-            let uuid = Uuid::parse_str(&s).map_err(|e| {
+            let uuid = Uuid::parse_str(s).map_err(|e| {
                 SexpError::InvalidValue(format!("invalid UUID at index {}: {}", i, e))
             })?;
             result.push(uuid);
