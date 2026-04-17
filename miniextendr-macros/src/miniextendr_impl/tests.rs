@@ -231,7 +231,11 @@ fn r6_wrapper_inherit() {
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
     let wrapper = generate_r6_r_wrapper(&parsed);
 
-    assert!(wrapper.contains("Child <- R6::R6Class(\"Child\", inherit = ParentClass,"));
+    // inherit = uses a placeholder; resolver replaces at cdylib write time
+    assert!(
+        wrapper
+            .contains("Child <- R6::R6Class(\"Child\", inherit = .__MX_CLASS_REF_ParentClass__,")
+    );
 }
 
 #[test]
@@ -1423,10 +1427,11 @@ fn s7_convert_from() {
     let parsed = parse_impl(ClassSystem::S7, impl_code);
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // Should generate S7::method(convert, list(Point2D, Point3D))
+    // Should generate S7::method(convert, list(.__MX_CLASS_REF_Point2D__, Point3D))
+    // from_type is a cross-reference → placeholder; resolver replaces at cdylib write time.
     assert!(
-        wrapper.contains("S7::method(convert, list(Point2D, Point3D))"),
-        "Expected convert method registration, got:\n{}",
+        wrapper.contains("S7::method(convert, list(.__MX_CLASS_REF_Point2D__, Point3D))"),
+        "Expected placeholder for cross-ref in convert method, got:\n{}",
         wrapper
     );
     // The method should call the C wrapper with from@.ptr
@@ -1452,10 +1457,11 @@ fn s7_convert_to() {
     let parsed = parse_impl(ClassSystem::S7, impl_code);
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // Should generate S7::method(convert, list(Point3D, Point2D))
+    // Should generate S7::method(convert, list(Point3D, .__MX_CLASS_REF_Point2D__))
+    // to_type is a cross-reference → placeholder; resolver replaces at cdylib write time.
     assert!(
-        wrapper.contains("S7::method(convert, list(Point3D, Point2D))"),
-        "Expected convert method registration, got:\n{}",
+        wrapper.contains("S7::method(convert, list(Point3D, .__MX_CLASS_REF_Point2D__))"),
+        "Expected placeholder for cross-ref in convert method, got:\n{}",
         wrapper
     );
     // The method should call the C wrapper with from@.ptr
@@ -1483,15 +1489,15 @@ fn s7_convert_bidirectional() {
     let parsed = parse_impl(ClassSystem::S7, impl_code);
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // Should have both convert methods
+    // Both cross-references use placeholders; resolver replaces at cdylib write time.
     assert!(
-        wrapper.contains("S7::method(convert, list(Fahrenheit, Celsius))"),
-        "Expected convert from Fahrenheit, got:\n{}",
+        wrapper.contains("S7::method(convert, list(.__MX_CLASS_REF_Fahrenheit__, Celsius))"),
+        "Expected placeholder for Fahrenheit in convert_from, got:\n{}",
         wrapper
     );
     assert!(
-        wrapper.contains("S7::method(convert, list(Celsius, Fahrenheit))"),
-        "Expected convert to Fahrenheit, got:\n{}",
+        wrapper.contains("S7::method(convert, list(Celsius, .__MX_CLASS_REF_Fahrenheit__))"),
+        "Expected placeholder for Fahrenheit in convert_to, got:\n{}",
         wrapper
     );
 }
@@ -1535,7 +1541,10 @@ fn s7_wrapper_parent() {
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    assert!(wrapper.contains("Circle <- S7::new_class(\"Circle\", parent = Shape,"));
+    // parent = uses a placeholder; resolver replaces at cdylib write time
+    assert!(
+        wrapper.contains("Circle <- S7::new_class(\"Circle\", parent = .__MX_CLASS_REF_Shape__,")
+    );
 }
 
 #[test]

@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 1822
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Child R6 Class
@@ -9,7 +10,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @importFrom R6 R6Class
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
 #' @export
-Child <- R6::R6Class("Child", inherit = ParentClass,
+Child <- R6::R6Class("Child", inherit = .__MX_CLASS_REF_ParentClass__,
   public = list(
     # Child::new (1:1)
     #' @description Create a new `Child`.

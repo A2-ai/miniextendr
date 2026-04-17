@@ -2,6 +2,31 @@
 
 use super::{ParsedImpl, ParsedMethod};
 
+/// Check whether `s` is a bare R identifier (only `[A-Za-z_][A-Za-z0-9_]*`).
+///
+/// When `true`, a `.__MX_CLASS_REF_<s>__` placeholder is emitted so the
+/// resolver can look up the actual R class name at cdylib write time.
+/// When `false` (e.g. `"S7::class_any"` or a namespaced path), the string
+/// is emitted verbatim.
+fn is_bare_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Return either a placeholder `.__MX_CLASS_REF_<name>__` (when `name` is a bare
+/// identifier) or `name` verbatim (for namespaced / non-identifier strings).
+fn class_ref_or_verbatim(name: &str) -> String {
+    if is_bare_identifier(name) {
+        format!(".__MX_CLASS_REF_{name}__")
+    } else {
+        name.to_string()
+    }
+}
+
 /// Map a Rust return type to an S7 class name.
 ///
 /// Returns `None` if the type doesn't map to a specific S7 class (uses class_any).
@@ -323,9 +348,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // S7::new_class — optionally include parent and abstract
     if let Some(ref parent) = parsed_impl.s7_parent {
+        // Use a placeholder so the resolver can look up the actual R class name
+        // at cdylib write time (handles `class = "Override"` on the parent).
+        let parent_ref = class_ref_or_verbatim(parent);
         lines.push(format!(
             "{} <- S7::new_class(\"{}\", parent = {},",
-            class_name, class_name, parent
+            class_name, class_name, parent_ref
         ));
     } else {
         lines.push(format!(
@@ -852,10 +880,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_error_in_r(method.method_attrs.error_in_r)
                 .build_s7_inline();
 
-            // Use imported `convert` - requires `@importFrom S7 convert` in package
+            // Use imported `convert` - requires `@importFrom S7 convert` in package.
+            // from_type is a cross-reference → placeholder so the resolver can look it up.
+            let from_type_ref = class_ref_or_verbatim(from_type);
             lines.push(format!(
                 "S7::method(convert, list({}, {})) <- function(from, to) {}",
-                from_type, class_name, return_expr
+                from_type_ref, class_name, return_expr
             ));
             lines.push(String::new());
         }
@@ -879,18 +909,23 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // The convert_to method is an instance method where self is mapped to from@.ptr
             let call = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
 
+            // to_type is a cross-reference → placeholder for resolver.
+            // We also pass the placeholder to MethodReturnBuilder so the
+            // emitted `ToType(.ptr = <result>)` uses the resolved name.
+            let to_type_ref = class_ref_or_verbatim(to_type);
+
             // Force ReturnSelf strategy for convert methods since they return S7 class types
             // that need to be wrapped: ToType(.ptr = <result>)
             let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(crate::ReturnStrategy::ReturnSelf)
-                .with_class_name(to_type.clone())
+                .with_class_name(to_type_ref.clone())
                 .with_error_in_r(method.method_attrs.error_in_r)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package
             lines.push(format!(
                 "S7::method(convert, list({}, {})) <- function(from, to) {}",
-                class_name, to_type, return_expr
+                class_name, to_type_ref, return_expr
             ));
             lines.push(String::new());
         }
