@@ -17,6 +17,12 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Incremental compilation writes per-invocation unique hashes into crate
+  # metadata, which poisons sccache's cache key. Disabling it makes rustc
+  # output deterministic so sccache hit rate approaches 100% on fresh CI
+  # runners. Not set in [profile.*] because local dev loops do benefit from
+  # incremental builds.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   # ===========================================================================
