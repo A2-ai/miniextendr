@@ -117,6 +117,11 @@ fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
 /// - `impl TryFromSexp` -- converts R character scalar to enum variant via `match_arg_from_sexp`
 /// - `impl IntoR` -- converts enum variant to R character scalar via `to_choice().into_sexp()`
 ///
+/// `impl IntoR for Vec<Self>` is provided automatically by the blanket
+/// `impl<T: MatchArg> IntoR for Vec<T>` in `miniextendr-api::match_arg`,
+/// so returning `Vec<EnumName>` from a `#[miniextendr]` function works
+/// without any extra code in the user's crate.
+///
 /// Validates:
 /// - Only enums are accepted (not structs or unions)
 /// - Generic enums are rejected
@@ -250,6 +255,7 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
+
     })
 }
 
@@ -340,6 +346,28 @@ mod tests {
 
         let result = derive_match_arg(input);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_into_r_impl_present() {
+        // The derive emits IntoR for the scalar EnumName.
+        // Vec<EnumName> IntoR is covered by the blanket impl<T: MatchArg> IntoR for Vec<T>
+        // in miniextendr-api — it is NOT emitted by the derive.
+        let input: DeriveInput = syn::parse_quote! {
+            enum Mode {
+                Fast,
+                Safe,
+                Debug,
+            }
+        };
+
+        let result = derive_match_arg(input).unwrap();
+        let code = result.to_string();
+        // Scalar IntoR impl must be present
+        assert!(code.contains("IntoR for Mode"));
+        // Vec<Mode> IntoR must NOT be emitted by the derive (covered by blanket in miniextendr-api)
+        assert!(!code.contains("IntoR for :: std :: vec :: Vec < Mode >"));
+        assert!(!code.contains("match_arg_vec_into_sexp"));
     }
 
     #[test]

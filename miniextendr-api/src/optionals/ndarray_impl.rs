@@ -326,12 +326,12 @@ impl<T: RNativeType + Clone> IntoR for Array0<T> {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        // Extract the single element and convert to R scalar via Vec
-        Ok(vec![self.into_scalar()].into_sexp())
+        // Extract the single element and convert to R scalar via slice
+        Ok([self.into_scalar()].into_sexp())
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        Ok(unsafe { vec![self.into_scalar()].into_sexp_unchecked() })
+        Ok(unsafe { [self.into_scalar()].into_sexp_unchecked() })
     }
 }
 // endregion

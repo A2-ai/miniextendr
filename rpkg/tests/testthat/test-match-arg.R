@@ -162,3 +162,26 @@ test_that("match_arg several_ok: mixed with regular params", {
   # priorities defaults to all choices
   expect_equal(match_arg_multi_priority(1L), "n=1, priorities=lo+med+hi")
 })
+
+# ============================================================================
+# IntoR for Vec<MatchArgEnum> — round-trip return test (#148)
+# ============================================================================
+
+test_that("Vec<Mode> round-trips to R character vector", {
+  # Default (NULL → all variants)
+  result <- match_arg_return_modes()
+  expect_type(result, "character")
+  expect_equal(result, c("Fast", "Safe", "Debug"))
+})
+
+test_that("Vec<Mode> subset round-trips to R character vector", {
+  result <- match_arg_return_modes(c("Safe", "Debug"))
+  expect_type(result, "character")
+  expect_equal(result, c("Safe", "Debug"))
+})
+
+test_that("Vec<Mode> single value round-trips to R character vector", {
+  result <- match_arg_return_modes("Fast")
+  expect_type(result, "character")
+  expect_equal(result, "Fast")
+})

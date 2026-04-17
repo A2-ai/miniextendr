@@ -29,6 +29,7 @@
 
 use crate::ffi::{self, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::charsxp_to_str;
+use crate::into_r::IntoR;
 
 /// Trait for enum types that support `match.arg`-style string conversion.
 ///
@@ -234,6 +235,54 @@ fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
             input: input.to_string(),
             choices: <T as MatchArg>::CHOICES,
         }),
+    }
+}
+
+/// Convert a `Vec<T: MatchArg>` to an R character vector (STRSXP).
+///
+/// Each element is written as its canonical choice string via [`MatchArg::to_choice`].
+/// Empty choice strings are stored as `R_BlankString` (parity with [`choices_sexp`]).
+///
+/// Called by the `impl IntoR for Vec<T>` block emitted by `#[derive(MatchArg)]`.
+pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
+    unsafe {
+        let n = values.len();
+        let vec = ffi::Rf_allocVector(SEXPTYPE::STRSXP, n as ffi::R_xlen_t);
+        ffi::Rf_protect(vec);
+        for (i, v) in values.into_iter().enumerate() {
+            let s = v.to_choice();
+            let charsxp = if s.is_empty() {
+                SEXP::blank_string()
+            } else {
+                SEXP::charsxp(s)
+            };
+            vec.set_string_elt(i as ffi::R_xlen_t, charsxp);
+        }
+        ffi::Rf_unprotect(1);
+        vec
+    }
+}
+
+/// Blanket [`IntoR`] for any vector of `MatchArg` values.
+///
+/// Converts to an R character vector (STRSXP) via [`match_arg_vec_into_sexp`].
+/// This blanket impl lives in `miniextendr-api` (not in a derive macro) because
+/// `impl<T: MatchArg> IntoR for Vec<T>` in the user's crate would conflict
+/// with `impl<T: RNativeType> IntoR for Vec<T>` (E0119: coherence); stable
+/// Rust has no negative trait bounds to prove the two constraints are disjoint.
+impl<T: MatchArg> IntoR for Vec<T> {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+
+    fn into_sexp(self) -> SEXP {
+        match_arg_vec_into_sexp(self)
     }
 }
 

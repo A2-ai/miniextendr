@@ -935,6 +935,7 @@ pub use raw_conversions::{
 pub mod match_arg;
 pub use match_arg::{
     MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp, match_arg_vec_from_sexp,
+    match_arg_vec_into_sexp,
 };
 
 /// Factor support for enum ↔ R factor conversions.
