@@ -233,8 +233,6 @@ impl TryFromSexp for String {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::Rf_translateCharUTF8;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -253,34 +251,17 @@ impl TryFromSexp for String {
             .into());
         }
 
-        // Get the CHARSXP at index 0
         let charsxp = sexp.string_elt(0);
 
-        // Check for NA_STRING
         if charsxp == SEXP::na_string() {
             return Ok(String::new());
         }
 
-        // Translate to UTF-8 in an R-managed buffer, then copy to an owned Rust String.
-        let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-        if c_str.is_null() {
-            return Ok(String::new());
-        }
-
-        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str.to_str().map(|s| s.to_owned()).map_err(|_| {
-            SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual: SEXPTYPE::STRSXP,
-            }
-            .into()
-        })
+        Ok(unsafe { charsxp_to_str(charsxp) }.to_owned())
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::Rf_translateCharUTF8_unchecked;
-
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
@@ -299,28 +280,13 @@ impl TryFromSexp for String {
             .into());
         }
 
-        // Get the CHARSXP at index 0
         let charsxp = unsafe { sexp.string_elt_unchecked(0) };
 
-        // Check for NA_STRING
         if charsxp == SEXP::na_string() {
             return Ok(String::new());
         }
 
-        // Translate to UTF-8 in an R-managed buffer, then copy to an owned Rust String.
-        let c_str = unsafe { Rf_translateCharUTF8_unchecked(charsxp) };
-        if c_str.is_null() {
-            return Ok(String::new());
-        }
-
-        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str.to_str().map(|s| s.to_owned()).map_err(|_| {
-            SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual: SEXPTYPE::STRSXP,
-            }
-            .into()
-        })
+        Ok(unsafe { charsxp_to_str_unchecked(charsxp) }.to_owned())
     }
 }
 
@@ -339,8 +305,6 @@ impl TryFromSexp for Option<String> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::Rf_translateCharUTF8;
-
         let actual = sexp.type_of();
         // NULL -> None
         if actual == SEXPTYPE::NILSXP {
@@ -370,19 +334,7 @@ impl TryFromSexp for Option<String> {
             return Ok(None);
         }
 
-        let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-        if c_str.is_null() {
-            return Ok(Some(String::new()));
-        }
-
-        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str.to_str().map(|s| Some(s.to_owned())).map_err(|_| {
-            SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual: SEXPTYPE::STRSXP,
-            }
-            .into()
-        })
+        Ok(Some(unsafe { charsxp_to_str(charsxp) }.to_owned()))
     }
 
     #[inline]

@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ffi::{RLogical, SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 
 macro_rules! impl_map_try_from_sexp {
     ($(#[$meta:meta])* $map_ty:ident, $create:expr) => {
@@ -70,8 +70,6 @@ where
     M: Extend<(String, V)>,
     F: FnOnce(usize) -> M,
 {
-    use crate::ffi::Rf_translateCharUTF8;
-
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
         return Err(SexpTypeError {
@@ -97,15 +95,7 @@ where
             if charsxp == SEXP::na_string() {
                 String::new()
             } else {
-                let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
-                if c_str.is_null() {
-                    String::new()
-                } else {
-                    unsafe { std::ffi::CStr::from_ptr(c_str) }
-                        .to_str()
-                        .unwrap_or("")
-                        .to_owned()
-                }
+                unsafe { charsxp_to_str(charsxp) }.to_owned()
             }
         } else {
             // Use index as key if no names
