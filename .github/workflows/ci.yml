@@ -576,9 +576,13 @@ jobs:
             echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
           fi
 
-          # Create empty libgcc stubs for Rust linking (Rust std expects these)
+          # Create empty libgcc stubs for Rust linking (Rust std expects these).
+          # Use `ar crs` to produce valid empty archives (with the !<arch> magic
+          # header) rather than zero-byte files — ld.bfd tolerates empty files,
+          # but ld.lld rejects them as "unknown file type".
           mkdir -p libgcc_mock
-          touch libgcc_mock/libgcc_eh.a libgcc_mock/libgcc_s.a
+          ar crs libgcc_mock/libgcc_eh.a
+          ar crs libgcc_mock/libgcc_s.a
 
           # Configure Cargo for Windows GNU target
           mkdir -p .cargo
