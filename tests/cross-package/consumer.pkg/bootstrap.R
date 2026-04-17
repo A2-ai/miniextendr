@@ -1,11 +1,24 @@
 # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
-# Sets NOT_CRAN=true so configure runs in dev mode during devtools workflows.
+# Runs ./configure so that Makevars and other generated files exist
+# before R CMD build creates the source tarball.
 
-env <- c(NOT_CRAN = "true")
-env_strings <- paste0(names(env), "=", env)
+# Default to dev mode if NOT_CRAN is not set.
+# bootstrap.R only runs during R CMD build (Config/build/bootstrap: TRUE),
+# never on CRAN install, so defaulting to true is safe.
+if (!nzchar(Sys.getenv("NOT_CRAN"))) {
+  Sys.setenv(NOT_CRAN = "true")
+}
+# Prevent accidental inheritance of release-prep mode.
+if (!nzchar(Sys.getenv("PREPARE_CRAN"))) {
+  Sys.setenv(PREPARE_CRAN = "false")
+}
 
 if (.Platform$OS.type == "windows") {
-  system2("bash", c("-l", "-c", "./configure.win"), env = env_strings)
+  if (file.exists("configure.ucrt")) {
+    system("sh configure.ucrt")
+  } else if (file.exists("configure.win")) {
+    system("sh configure.win")
+  }
 } else {
-  system2("./configure", env = env_strings)
+  system2("bash", "./configure")
 }

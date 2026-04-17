@@ -355,26 +355,6 @@ vendor_miniextendr_local <- function(local_path, dest) {
 
   cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")
 
-  # If vendor-crates.R is available, rebuild vendor/ with cargo-package resolution.
-  # This replaces the regex-patched copies with properly resolved crates.
-  vendor_script <- file.path(dirname(dest), "tools", "vendor-crates.R")
-  if (file.exists(vendor_script)) {
-    pkg_root <- dirname(dest)
-    tryCatch({
-      result <- system2("Rscript", c(vendor_script, "sync",
-        "--path", pkg_root, "--source-root", local_path),
-        stdout = TRUE, stderr = TRUE)
-      status <- attr(result, "status")
-      if (is.null(status) || status == 0L) {
-        cli::cli_alert_success("Rebuilt vendor/ with cargo-package resolution")
-      } else {
-        cli::cli_alert_warning("vendor-crates.R sync exited with status {status}, using patched copies")
-      }
-    }, error = function(e) {
-      cli::cli_alert_warning("vendor-crates.R sync failed, using patched copies: {conditionMessage(e)}")
-    })
-  }
-
   invisible(TRUE)
 }
 

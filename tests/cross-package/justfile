@@ -32,7 +32,7 @@ document-producer: configure-producer
     fi
     Rscript -e "
       lib <- dyn.load('${CDYLIB}')
-      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'producer.pkg/R/producer-pkg-wrappers.R')
+      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'producer.pkg/R/producer.pkg-wrappers.R')
       dyn.unload('${CDYLIB}')
     "
     # Install first so roxygen2 can use load_installed (needed for R6 source refs)
@@ -57,7 +57,7 @@ document-consumer: document-producer configure-consumer
     fi
     Rscript -e "
       lib <- dyn.load('${CDYLIB}')
-      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'consumer.pkg/R/consumer-pkg-wrappers.R')
+      .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), 'consumer.pkg/R/consumer.pkg-wrappers.R')
       dyn.unload('${CDYLIB}')
     "
     # Install first so roxygen2 can use load_installed (needed for R6 source refs)

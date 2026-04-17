@@ -10,13 +10,31 @@
  * - Function signatures are stable
  * - ABI version is tracked for compatibility checking
  *
- * USAGE:
+ * USAGE FOR CONSUMER PACKAGES:
  *
- * Each package includes mx_abi.rs (from miniextendr-api) in its Rust staticlib.
- * The functions mx_wrap/mx_get/mx_query are linked directly — no
- * R_GetCCallable indirection needed. miniextendr_init!() calls
- * mx_abi_register() automatically to initialize the tag symbol and
- * register C-callables for cross-package interop.
+ * 1. Add to DESCRIPTION file:
+ *      LinkingTo: consumer.pkg
+ *      Imports: consumer.pkg
+ *
+ *    LinkingTo makes this header available via:
+ *      #include <mx_abi.h>
+ *
+ *    Imports ensures the package is loaded first (so C-callables are registered).
+ *
+ * 2. In R_init_<yourpkg>(), load C-callables:
+ *
+ *      typedef SEXP (*mx_wrap_fn)(mx_erased*);
+ *      static mx_wrap_fn p_mx_wrap = NULL;
+ *
+ *      void R_init_yourpkg(DllInfo *dll) {
+ *          p_mx_wrap = (mx_wrap_fn) R_GetCCallable("consumer.pkg", "mx_wrap");
+ *          // ... similarly for mx_get, mx_query
+ *      }
+ *
+ * 3. Use via function pointers:
+ *      SEXP result = p_mx_wrap(my_erased_ptr);
+ *
+ * See R-exts section 5.4.3 "Linking to native routines in other packages" for details.
  *
  * THREAD SAFETY:
  * All functions must be called from R's main thread only.
@@ -182,7 +200,7 @@ struct mx_erased {
  * ============================================================================
  *
  * These functions are registered with R_RegisterCCallable and can be
- * obtained via R_GetCCallable("miniextendr", "mx_*").
+ * obtained via R_GetCCallable("consumer.pkg", "mx_*").
  *
  * NOTE: Function bodies are defined in mx_abi.rs (miniextendr-api).
  */
@@ -235,7 +253,7 @@ const void *mx_query(SEXP sexp, mx_tag tag);
 /**
  * Register the mx_* C-callables with R.
  *
- * Must be called from R_init_<pkg>() in the miniextendr base package.
+ * Must be called from R_init_<pkg>() in the package.
  * Other packages load these via R_GetCCallable.
  */
 void mx_abi_register(void);
