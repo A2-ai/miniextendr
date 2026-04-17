@@ -83,11 +83,18 @@ miniextendr-lint = { version = "*", path = "../../vendor/miniextendr-lint" }
 # the linker only pulls archive members that resolve undefined symbols, so with
 # multiple .o files, distributed_slice entries in unreferenced .o files get dropped.
 # With a single .o, pulling in R_init_<pkg> brings everything along.
+#
+# incremental = false: Cargo's incremental compilation writes per-invocation unique
+# hashes into crate metadata, which poisons sccache's cache key. Disabling it lets
+# sccache hit rate approach 100% on fresh CI runners (which don't benefit from local
+# incremental caches anyway).
 [profile.dev]
 codegen-units = 1
+incremental = false
 
 [profile.release]
 codegen-units = 1
+incremental = false
 
 [patch]
 
