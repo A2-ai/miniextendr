@@ -55,6 +55,15 @@ pub static MX_MATCH_ARG_CHOICES: [MatchArgChoicesEntry];
 /// is replaced with e.g. `One of "Fast", "Safe", "Debug".`
 #[distributed_slice]
 pub static MX_MATCH_ARG_PARAM_DOCS: [MatchArgParamDocEntry];
+
+/// Class name entries mapping Rust type names to R-visible class names.
+///
+/// Each `#[miniextendr]` impl block emits an entry. During
+/// `write_r_wrappers_to_file`, `.__MX_CLASS_REF_<RustName>__` placeholders
+/// in generated R wrapper strings are replaced with the registered R class name
+/// (which may differ when `class = "Override"` is set on the impl block).
+#[distributed_slice]
+pub static MX_CLASS_NAMES: [ClassNameEntry];
 // endregion
 
 // region: Entry Types
@@ -121,6 +130,24 @@ pub struct MatchArgParamDocEntry {
 
 // SAFETY: function pointer, bool, and &'static str are Send+Sync.
 unsafe impl Sync for MatchArgParamDocEntry {}
+
+/// Entry mapping a Rust type name to its R-visible class name and class system.
+///
+/// Emitted by every `#[miniextendr(env|r6|s3|s4|s7|vctrs)]` impl block.
+/// Used by the resolver in `write_r_wrappers_to_file` to replace
+/// `.__MX_CLASS_REF_<RustName>__` placeholders with the actual R class name.
+pub struct ClassNameEntry {
+    /// Rust type identifier, e.g. `"S7Shape"`.
+    pub rust_type: &'static str,
+    /// R-visible class name. Equals `rust_type` unless `class = "Override"` was
+    /// set on the impl block, in which case it is the override string.
+    pub r_class_name: &'static str,
+    /// Class system tag: `"env"` | `"r6"` | `"s3"` | `"s4"` | `"s7"` | `"vctrs"`.
+    pub class_system: &'static str,
+}
+
+// SAFETY: All fields are &'static str — immutable and valid for program lifetime.
+unsafe impl Sync for ClassNameEntry {}
 
 /// Trait dispatch entry mapping (concrete_tag, trait_tag) → vtable.
 #[repr(C)]
@@ -397,12 +424,17 @@ fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
         return;
     }
 
-    // Build name → position-in-s7_info map
-    let name_to_pos: HashMap<&str, usize> = s7_info
-        .iter()
-        .enumerate()
-        .map(|(pos, (_, name, _))| (name.as_str(), pos))
-        .collect();
+    // Build name → position-in-s7_info map.
+    // Also map placeholder .__MX_CLASS_REF_<Name>__ to the same position, since
+    // the placeholder carries the Rust type name which equals the R class name
+    // (before any `class = "Override"` resolution — good enough for ordering).
+    let mut name_to_pos: HashMap<String, usize> = HashMap::new();
+    for (pos, (_, name, _)) in s7_info.iter().enumerate() {
+        name_to_pos.insert(name.clone(), pos);
+        // Also register the placeholder form so a child class that references
+        // `parent = .__MX_CLASS_REF_ParentName__` can still be sorted correctly.
+        name_to_pos.insert(format!(".__MX_CLASS_REF_{name}__"), pos);
+    }
 
     // Topological sort: repeatedly emit classes whose parent is already placed
     let n = s7_info.len();
@@ -492,6 +524,52 @@ pub fn write_r_wrappers_to_file(path: &str) {
         content = content.replace(entry.placeholder, &replacement);
     }
 
+    // Replace .__MX_CLASS_REF_<RustName>__ placeholders with actual R class names.
+    //
+    // Build a lookup from rust_type → ClassNameEntry, then do a linear scan over
+    // the content for each placeholder. We avoid pulling in a regex dependency
+    // by scanning for the sentinel prefix directly.
+    {
+        use std::collections::HashMap;
+        let class_index: HashMap<&'static str, &ClassNameEntry> =
+            MX_CLASS_NAMES.iter().map(|e| (e.rust_type, e)).collect();
+
+        // The placeholder format is: .__MX_CLASS_REF_<RustName>__
+        const PREFIX: &str = ".__MX_CLASS_REF_";
+        const SUFFIX: &str = "__";
+
+        let mut result = String::with_capacity(content.len());
+        let mut remaining = content.as_str();
+        while let Some(start) = remaining.find(PREFIX) {
+            result.push_str(&remaining[..start]);
+            remaining = &remaining[start + PREFIX.len()..];
+            // Find the closing __
+            if let Some(end) = remaining.find(SUFFIX) {
+                let rust_name = &remaining[..end];
+                remaining = &remaining[end + SUFFIX.len()..];
+                match class_index.get(rust_name) {
+                    Some(entry) => {
+                        result.push_str(entry.r_class_name);
+                    }
+                    None => {
+                        // Unresolved: fall back to the bare Rust name with a warning.
+                        eprintln!(
+                            "miniextendr: unresolved class reference `{rust_name}` \
+                             in R wrapper — is the class defined in a reachable crate?"
+                        );
+                        result.push_str(rust_name);
+                    }
+                }
+            } else {
+                // Malformed placeholder (no closing __): emit as-is and stop scanning.
+                result.push_str(PREFIX);
+                break;
+            }
+        }
+        result.push_str(remaining);
+        content = result;
+    }
+
     // Only write if content changed (avoids unnecessary NAMESPACE/man regeneration)
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     if existing == content {
@@ -541,6 +619,126 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(
         write_r_wrappers_to_file(path);
 
         SEXP::nil()
+    }
+}
+// endregion
+
+// region: Unit tests for class-ref placeholder resolution
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run the class-ref placeholder resolver over `content` using `entries` as the registry.
+    ///
+    /// This mirrors the logic in `write_r_wrappers_to_file` but operates on a caller-supplied
+    /// slice so it can be called from unit tests without a live distributed_slice.
+    fn resolve_class_refs(content: &str, entries: &[ClassNameEntry]) -> String {
+        use std::collections::HashMap;
+        let class_index: HashMap<&str, &ClassNameEntry> =
+            entries.iter().map(|e| (e.rust_type, e)).collect();
+
+        const PREFIX: &str = ".__MX_CLASS_REF_";
+        const SUFFIX: &str = "__";
+
+        let mut result = String::with_capacity(content.len());
+        let mut remaining = content;
+        while let Some(start) = remaining.find(PREFIX) {
+            result.push_str(&remaining[..start]);
+            remaining = &remaining[start + PREFIX.len()..];
+            if let Some(end) = remaining.find(SUFFIX) {
+                let rust_name = &remaining[..end];
+                remaining = &remaining[end + SUFFIX.len()..];
+                match class_index.get(rust_name) {
+                    Some(entry) => result.push_str(entry.r_class_name),
+                    None => result.push_str(rust_name),
+                }
+            } else {
+                result.push_str(PREFIX);
+                break;
+            }
+        }
+        result.push_str(remaining);
+        result
+    }
+
+    #[test]
+    fn test_class_ref_resolver_with_override() {
+        // S7Shape is registered with r_class_name = "Shape" (override)
+        let entries = [
+            ClassNameEntry {
+                rust_type: "S7Shape",
+                r_class_name: "Shape",
+                class_system: "s7",
+            },
+            ClassNameEntry {
+                rust_type: "S7Circle",
+                r_class_name: "S7Circle",
+                class_system: "s7",
+            },
+        ];
+
+        let input = r#"S7Circle <- S7::new_class("S7Circle", parent = .__MX_CLASS_REF_S7Shape__, properties = list())"#;
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(
+            output,
+            r#"S7Circle <- S7::new_class("S7Circle", parent = Shape, properties = list())"#
+        );
+    }
+
+    #[test]
+    fn test_class_ref_resolver_multiple_placeholders() {
+        let entries = [
+            ClassNameEntry {
+                rust_type: "Point2D",
+                r_class_name: "Point2D",
+                class_system: "s7",
+            },
+            ClassNameEntry {
+                rust_type: "Point3D",
+                r_class_name: "Point3D",
+                class_system: "s7",
+            },
+        ];
+
+        let input = "S7::method(convert, list(.__MX_CLASS_REF_Point2D__, Point3D)) <- function(from, to) {}";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(
+            output,
+            "S7::method(convert, list(Point2D, Point3D)) <- function(from, to) {}"
+        );
+    }
+
+    #[test]
+    fn test_class_ref_resolver_unresolved_falls_back_to_rust_name() {
+        let entries: [ClassNameEntry; 0] = [];
+        let input = "parent = .__MX_CLASS_REF_UnknownClass__";
+        let output = resolve_class_refs(input, &entries);
+        // Falls back to the bare Rust name
+        assert_eq!(output, "parent = UnknownClass");
+    }
+
+    #[test]
+    fn test_class_ref_resolver_verbatim_passthrough() {
+        // Strings that are NOT bare identifiers should not have been wrapped in
+        // a placeholder, so they pass through the resolver unchanged.
+        let entries: [ClassNameEntry; 0] = [];
+        let input = "parent = S7::class_any";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(output, "parent = S7::class_any");
+    }
+
+    #[test]
+    fn test_is_bare_identifier_via_resolver() {
+        // A placeholder for a bare identifier should be resolved.
+        let entries = [ClassNameEntry {
+            rust_type: "MyClass",
+            r_class_name: "MyClass",
+            class_system: "r6",
+        }];
+        let input = "inherit = .__MX_CLASS_REF_MyClass__";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(output, "inherit = MyClass");
     }
 }
 // endregion

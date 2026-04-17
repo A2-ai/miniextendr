@@ -369,3 +369,54 @@ impl S7GoldenRetriever {
     }
 }
 // endregion
+
+// region: S7 class = "Override" — class name override resolution test
+
+/// Geometric shape with a `class = "Shape"` override.
+///
+/// The Rust type is `S7OverrideShape` but the R-visible class name is `Shape`.
+/// A child class that references `s7(parent = "S7OverrideShape")` must emit
+/// `parent = Shape` (not `parent = S7OverrideShape`) after placeholder resolution.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7OverrideShape {
+    kind: String,
+}
+
+/// S7 shape class with overridden R class name `Shape`.
+#[miniextendr(s7, class = "Shape", internal)]
+impl S7OverrideShape {
+    /// @param kind Character kind of the shape.
+    pub fn new(kind: String) -> Self {
+        S7OverrideShape { kind }
+    }
+
+    /// Returns the kind of shape.
+    pub fn shape_kind(&self) -> String {
+        self.kind.clone()
+    }
+}
+
+/// A child class whose parent is `S7OverrideShape` (R class name `Shape`).
+///
+/// The generated wrapper must say `parent = Shape`, not `parent = S7OverrideShape`,
+/// because the placeholder `.__MX_CLASS_REF_S7OverrideShape__` is resolved to
+/// `Shape` via the `MX_CLASS_NAMES` entry emitted by the parent's `#[miniextendr]`.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7OverrideCircle {
+    radius: f64,
+}
+
+/// S7 circle child class with overridden parent name resolution.
+#[miniextendr(s7(parent = "S7OverrideShape"), internal)]
+impl S7OverrideCircle {
+    /// @param radius Numeric radius of the circle.
+    pub fn new(radius: f64) -> Self {
+        S7OverrideCircle { radius }
+    }
+
+    /// Returns the radius.
+    pub fn override_radius(&self) -> f64 {
+        self.radius
+    }
+}
+// endregion

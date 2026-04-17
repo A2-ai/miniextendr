@@ -2,6 +2,27 @@
 
 use super::ParsedImpl;
 
+/// Return either a `.__MX_CLASS_REF_<name>__` placeholder (for bare identifiers)
+/// or `name` verbatim (for namespaced / non-identifier strings).
+///
+/// Mirrors the function in `s7_class.rs`. Inline here to avoid a cross-module dep.
+fn class_ref_or_verbatim(name: &str) -> String {
+    let is_bare = {
+        let mut chars = name.chars();
+        match chars.next() {
+            Some(c) if c.is_ascii_alphabetic() || c == '_' => {
+                chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+            }
+            _ => false,
+        }
+    };
+    if is_bare {
+        format!(".__MX_CLASS_REF_{name}__")
+    } else {
+        name.to_string()
+    }
+}
+
 /// Generates the complete R wrapper string for an R6-style class.
 ///
 /// Produces an `R6::R6Class(...)` definition that includes:
@@ -64,11 +85,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .to_string(),
         );
     }
-    // R6Class definition — optionally include inherit
+    // R6Class definition — optionally include inherit.
+    // Use a placeholder so the resolver can look up the actual R class name
+    // at cdylib write time (handles `class = "Override"` on the parent).
     if let Some(ref parent) = parsed_impl.r6_inherit {
+        let parent_ref = class_ref_or_verbatim(parent);
         lines.push(format!(
             "{} <- R6::R6Class(\"{}\", inherit = {},",
-            class_name, class_name, parent
+            class_name, class_name, parent_ref
         ));
     } else {
         lines.push(format!("{} <- R6::R6Class(\"{}\",", class_name, class_name));
