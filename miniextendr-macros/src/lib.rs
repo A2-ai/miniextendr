@@ -1838,7 +1838,10 @@ pub fn miniextendr(
                         choices_str: || {
                             <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
                                 .iter()
-                                .map(|c| format!("\"{}\"", c))
+                                .map(|c| format!(
+                                    "\"{}\"",
+                                    ::miniextendr_api::match_arg::escape_r_string(c)
+                                ))
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         },

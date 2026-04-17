@@ -103,6 +103,28 @@ impl From<MatchArgError> for crate::from_r::SexpError {
     }
 }
 
+/// Escape a Rust `&str` for embedding inside an R double-quoted string literal.
+///
+/// Handles `\`, `"`, newline, carriage return, and tab — the characters R
+/// recognises as escape sequences inside `"..."`. Used when formatting
+/// `MatchArg::CHOICES` into the default of a generated R wrapper formal, so
+/// that a choice like `say "hi"` or `c:\path` cannot produce syntactically
+/// invalid R code.
+pub fn escape_r_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str(r"\\"),
+            '"' => out.push_str(r#"\""#),
+            '\n' => out.push_str(r"\n"),
+            '\r' => out.push_str(r"\r"),
+            '\t' => out.push_str(r"\t"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Build an R character vector (STRSXP) from the choices of a `MatchArg` type.
 ///
 /// This is called by generated choices-helper C wrappers to provide the
@@ -250,5 +272,30 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
                 .collect()
         }
         _ => Err(MatchArgError::InvalidType(actual_type)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_r_string;
+
+    #[test]
+    fn escapes_backslash_and_quote() {
+        assert_eq!(escape_r_string(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(escape_r_string(r"c:\path"), r"c:\\path");
+    }
+
+    #[test]
+    fn escapes_control_characters() {
+        assert_eq!(escape_r_string("line1\nline2"), r"line1\nline2");
+        assert_eq!(escape_r_string("tab\there"), r"tab\there");
+        assert_eq!(escape_r_string("cr\rlf"), r"cr\rlf");
+    }
+
+    #[test]
+    fn passes_through_plain_strings() {
+        assert_eq!(escape_r_string("Fast"), "Fast");
+        assert_eq!(escape_r_string("it's"), "it's");
+        assert_eq!(escape_r_string(""), "");
     }
 }
