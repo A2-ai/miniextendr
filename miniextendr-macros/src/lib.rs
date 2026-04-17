@@ -3035,6 +3035,7 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         syn::parse_macro_input!(input as syn::Ident)
     };
     let fn_name = syn::Ident::new(&format!("R_init_{}", pkg_name), pkg_name.span());
+    let unload_name = syn::Ident::new(&format!("R_unload_{}", pkg_name), pkg_name.span());
 
     // Build a byte string literal with NUL terminator for the package name.
     let mut name_bytes = pkg_name.to_string().into_bytes();
@@ -3051,6 +3052,16 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
                 let pkg_name = ::std::ffi::CStr::from_bytes_with_nul_unchecked(#byte_lit);
                 ::miniextendr_api::init::package_init(dll, pkg_name);
             }
+        }
+
+        /// R_unload_<pkg> entry point — R calls this on `detach(unload=TRUE)` /
+        /// `dyn.unload()`. Signals the miniextendr worker thread (if enabled)
+        /// to exit cleanly. See `#103`.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C-unwind" fn #unload_name(
+            _dll: *mut ::miniextendr_api::ffi::DllInfo,
+        ) {
+            ::miniextendr_api::worker::miniextendr_runtime_shutdown();
         }
 
         /// Linker anchor: stub.c references this symbol to force the linker to pull

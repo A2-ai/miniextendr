@@ -18416,7 +18416,7 @@ match_arg_status_choices <- function() {
   .val
 }
 
-# Generated from Rust fn `match_arg_multi_mode_array` (match_arg_tests.rs:275:8)
+# Generated from Rust fn `match_arg_multi_mode_array` (match_arg_tests.rs:274:8)
 #' @title Select exactly two modes via a fixed-size array (several_ok, \[Mode; 2\])
 #' @param modes Exactly two Mode values.
 #' @rdname match_arg_tests
@@ -18436,7 +18436,7 @@ match_arg_multi_mode_array <- function(modes = c("Fast", "Safe", "Debug")) {
   .val
 }
 
-# Generated from Rust fn `match_arg_multi_mode_boxed` (match_arg_tests.rs:247:8)
+# Generated from Rust fn `match_arg_multi_mode_boxed` (match_arg_tests.rs:246:8)
 #' @title Select multiple modes via boxed slice (several_ok, Box of Mode)
 #' @param modes One or more Mode values.
 #' @rdname match_arg_tests
@@ -18456,7 +18456,7 @@ match_arg_multi_mode_boxed <- function(modes = c("Fast", "Safe", "Debug")) {
   .val
 }
 
-# Generated from Rust fn `match_arg_multi_mode_slice` (match_arg_tests.rs:262:8)
+# Generated from Rust fn `match_arg_multi_mode_slice` (match_arg_tests.rs:261:8)
 #' @title Select multiple modes via borrowed slice (several_ok, slice of Mode)
 #' @param modes One or more Mode values.
 #' @rdname match_arg_tests
