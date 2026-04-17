@@ -117,6 +117,13 @@ parse_tree_packages <- function(lines) {
     path <- NA_character_
     if (grepl(" \\([^()]*[/\\\\][^()]*\\)$", line)) {
       path <- sub("^.* \\(([^()]*[/\\\\][^()]*)\\)$", "\\1", line)
+      # cargo tree emits git/registry sources in the same (…) slot as local
+      # paths (e.g. "foo v0.1.0 (https://github.com/x/y#deadbeef)"). Those
+      # are not filesystem paths — reject them so downstream callers don't
+      # try to feed a URL to --manifest-path.
+      if (grepl("^https?://", path) || grepl("^git[+@]", path)) {
+        path <- NA_character_
+      }
     }
 
     data.frame(
