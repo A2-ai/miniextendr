@@ -367,3 +367,48 @@ test_that("R6 non-portable class works", {
   # Non-portable classes can access self$... directly (R6 feature)
   expect_true(inherits(np, "R6NonPortable"))
 })
+
+# =============================================================================
+# class = "Override" resolution — placeholder → R class name
+# =============================================================================
+
+test_that("S7 class = 'Shape' override is reflected in the wrapper file", {
+  skip_if_not_installed("S7")
+
+  # The parent type S7OverrideShape has class = "Shape".
+  # S7OverrideCircle has s7(parent = "S7OverrideShape").
+  # After placeholder resolution, the generated wrapper must say
+  # `parent = Shape` (not `parent = S7OverrideShape`).
+
+  wrapper_path <- system.file("../R/miniextendr-wrappers.R", package = "miniextendr")
+  if (!nzchar(wrapper_path)) {
+    wrapper_path <- file.path(find.package("miniextendr"), "..", "..", "rpkg", "R", "miniextendr-wrappers.R")
+  }
+
+  # The wrappers file must not contain any unresolved placeholders.
+  if (file.exists(wrapper_path)) {
+    wrapper_content <- readLines(wrapper_path, warn = FALSE)
+    placeholder_lines <- grep("\\.__MX_CLASS_REF_", wrapper_content, value = TRUE)
+    expect_length(placeholder_lines, 0L)
+  }
+})
+
+test_that("S7OverrideCircle parent is resolved to 'Shape'", {
+  skip_if_not_installed("S7")
+
+  # S7OverrideCircle parent should be the `Shape` class (overridden name),
+  # not `S7OverrideShape` (the Rust type name).
+  circ <- S7OverrideCircle(2.5)
+  expect_equal(override_radius(circ), 2.5)
+
+  # S7 should recognise S7OverrideCircle as inheriting from Shape
+  expect_true(S7::S7_inherits(circ, Shape))
+})
+
+test_that("S7OverrideShape constructor works with overridden class name", {
+  skip_if_not_installed("S7")
+
+  s <- Shape("rectangle")
+  expect_equal(shape_kind(s), "rectangle")
+  expect_true(S7::S7_inherits(s, Shape))
+})

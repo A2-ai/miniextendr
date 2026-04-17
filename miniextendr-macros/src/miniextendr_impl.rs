@@ -2781,6 +2781,19 @@ pub fn expand_impl(
 
     let param_warnings = &parsed.param_warnings;
 
+    // Build MX_CLASS_NAMES entry for cross-reference resolution.
+    // r_class_name is the R-visible name (may differ from type_ident when
+    // `class = "Override"` was set on the impl block).
+    let r_class_name_str = parsed.class_name();
+    let class_system_str = parsed.class_system.to_ident().to_string();
+    let class_names_const = syn::Ident::new(
+        &format!(
+            "__mx_class_name_entry_{}",
+            type_ident.to_string().to_lowercase()
+        ),
+        type_ident.span(),
+    );
+
     let expanded = quote! {
         // Original impl block with doc link to R wrapper
         #[doc = #r_wrapper_doc]
@@ -2824,6 +2837,20 @@ pub fn expand_impl(
                     ")",
                     #r_wrapper_str
                 ),
+            };
+
+        // Class name registration for cross-reference placeholder resolution.
+        // Maps the Rust type name to the R-visible class name at link time.
+        #(#cfg_attrs)*
+        #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CLASS_NAMES)]
+        #[linkme(crate = ::miniextendr_api::linkme)]
+        #[allow(non_upper_case_globals)]
+        #[allow(non_snake_case)]
+        static #class_names_const: ::miniextendr_api::registry::ClassNameEntry =
+            ::miniextendr_api::registry::ClassNameEntry {
+                rust_type: stringify!(#type_ident),
+                r_class_name: #r_class_name_str,
+                class_system: #class_system_str,
             };
     };
 
