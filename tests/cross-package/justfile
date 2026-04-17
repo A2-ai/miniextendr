@@ -36,8 +36,9 @@ document-producer: configure-producer
       dyn.unload('${CDYLIB}')
     "
     # Install first so roxygen2 can use load_installed (needed for R6 source refs)
-    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
-    cd producer.pkg && Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
+    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
+    # Already in producer.pkg from previous line (bash shebang runs in one shell)
+    Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
 
 # Document consumer.pkg
 document-consumer: document-producer configure-consumer
@@ -61,8 +62,9 @@ document-consumer: document-producer configure-consumer
       dyn.unload('${CDYLIB}')
     "
     # Install first so roxygen2 can use load_installed (needed for R6 source refs)
-    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
-    cd consumer.pkg && Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
+    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
+    # Already in consumer.pkg from previous line (bash shebang runs in one shell)
+    Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
 
 # Configure both packages
 configure-all: configure-producer configure-consumer
@@ -75,7 +77,7 @@ configure-producer:
 
 # Build and install producer.pkg
 build-producer: configure-producer
-    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
+    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
 
 # Configure consumer.pkg
 configure-consumer:
@@ -85,7 +87,7 @@ configure-consumer:
 
 # Build and install consumer.pkg (must be built after producer)
 build-consumer: build-producer configure-consumer
-    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
+    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
 
 # Test producer.pkg (uses installed package, not load_all)
 test-producer: configure-producer

@@ -212,7 +212,11 @@ script_path <- function(name) {
 #' Use a minirextendr template
 #'
 #' Uses usethis' templating machinery to render and write a template from
-#' the current template type directory.
+#' the current template type directory. Always overwrites existing files —
+#' both initial scaffolding (in empty directories) and upgrade paths rely
+#' on the template being the source of truth. usethis::use_template() skips
+#' silently in non-interactive mode when the target exists; deleting first
+#' makes the behavior predictable.
 #'
 #' @param template Name of template file (relative to template type directory)
 #' @param save_as Path to save the file (relative to project root)
@@ -231,6 +235,10 @@ use_template <- function(template, save_as = template, data = list(),
 
   target_path <- usethis::proj_path(save_as)
   ensure_dir(dirname(target_path))
+
+  if (fs::file_exists(target_path)) {
+    fs::file_delete(target_path)
+  }
 
   new <- usethis::use_template(
     template = template_rel,

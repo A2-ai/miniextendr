@@ -100,7 +100,14 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     type_ident, ctx.method.ident
                 ));
                 if should_export {
-                    lines.push("#' @export".to_string());
+                    // Explicit name on @export: the generic is wrapped in
+                    // `if (!exists(...))`, which roxygen2 can't introspect, and the
+                    // @name tag above is the class-qualified form (to dedupe aliases
+                    // when several classes share a generic). Without an explicit
+                    // target on @export, roxygen2 attaches the export to the next
+                    // parseable function (the S3 method), producing a bogus
+                    // `export(generic.Class)` instead of `export(generic)`.
+                    lines.push(format!("#' @export {}", generic_name));
                 }
             }
             lines.push(format!(
