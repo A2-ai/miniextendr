@@ -1311,12 +1311,15 @@ pub fn miniextendr(
     // Use a placeholder that gets replaced at write time with the actual choices
     // from the enum's MatchArg::CHOICES (resolved when the cdylib is loaded).
     let mut match_arg_placeholders: Vec<(String, String)> = Vec::new(); // (placeholder, rust_param)
+    // (r_name, rust_param) pairs — used later to build @param doc placeholders
+    let mut match_arg_r_names: Vec<(String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
             match_arg_param,
             proc_macro2::Span::call_site(),
         ))
         .to_string();
+        match_arg_r_names.push((r_name.clone(), match_arg_param.clone()));
         if !merged_defaults.contains_key(&r_name) {
             let placeholder = format!(
                 ".__MX_MATCH_ARG_CHOICES_{}_{}__",
@@ -1451,6 +1454,26 @@ pub fn miniextendr(
                     ));
                 }
             }
+        }
+    }
+
+    // Auto-generate @param tags for match_arg params (unless user already wrote one).
+    // Emits a placeholder that gets replaced at write time with the actual choices,
+    // e.g. `One of "Fast", "Safe", "Debug".`
+    // Collect (doc_placeholder, rust_param) for MX_MATCH_ARG_PARAM_DOCS entries.
+    let mut match_arg_param_doc_placeholders: Vec<(String, String)> = Vec::new();
+    for (r_name, rust_param) in &match_arg_r_names {
+        let has_user_param = roxygen_tags
+            .iter()
+            .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
+        if !has_user_param {
+            let doc_placeholder = format!(
+                ".__MX_MATCH_ARG_PARAM_DOC_{}_{}__",
+                c_ident.to_string().trim_start_matches("C_"),
+                r_name
+            );
+            roxygen_tags.push(format!("@param {r_name} {doc_placeholder}"));
+            match_arg_param_doc_placeholders.push((doc_placeholder, rust_param.clone()));
         }
     }
 
@@ -1850,6 +1873,51 @@ pub fn miniextendr(
         })
         .collect();
 
+    // Generate MX_MATCH_ARG_PARAM_DOCS entries for @param doc placeholder → choice description
+    let match_arg_param_doc_entries: Vec<proc_macro2::TokenStream> =
+        match_arg_param_doc_placeholders
+            .iter()
+            .filter_map(|(doc_placeholder, rust_param)| {
+                // Find the type for this param from match_arg_param_info
+                let (_, _, param_ty) = match_arg_param_info
+                    .iter()
+                    .find(|(_, rn, _)| rn == rust_param)?;
+                // For several_ok, extract inner type from Vec<Mode>
+                let choices_ty: &syn::Type = if parsed.has_several_ok(rust_param) {
+                    extract_vec_inner_type(param_ty).unwrap_or(param_ty)
+                } else {
+                    param_ty
+                };
+                let several_ok_lit = parsed.has_several_ok(rust_param);
+                let entry_ident = syn::Ident::new(
+                    &format!(
+                        "match_arg_param_doc_entry_{}",
+                        doc_placeholder.trim_matches('_').replace('.', "_")
+                    ),
+                    proc_macro2::Span::call_site(),
+                );
+                Some(quote::quote! {
+                    #(#cfg_attrs)*
+                    #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_PARAM_DOCS)]
+                    #[linkme(crate = ::miniextendr_api::linkme)]
+                    #[allow(non_upper_case_globals)]
+                    #[allow(non_snake_case)]
+                    static #entry_ident: ::miniextendr_api::registry::MatchArgParamDocEntry =
+                        ::miniextendr_api::registry::MatchArgParamDocEntry {
+                            placeholder: #doc_placeholder,
+                            several_ok: #several_ok_lit,
+                            choices_str: || {
+                                <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
+                                    .iter()
+                                    .map(|c| format!("\"{}\"", c))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            },
+                        };
+                })
+            })
+            .collect();
+
     // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
         "See [`{}`] for C wrapper, [`{}`] for R wrapper.",
@@ -1923,6 +1991,9 @@ pub fn miniextendr(
 
         // match_arg choices entries for R wrapper default replacement
         #(#match_arg_choices_entries)*
+
+        // match_arg @param doc entries for R wrapper roxygen doc replacement
+        #(#match_arg_param_doc_entries)*
 
         // doc-lint warnings (if any)
         #doc_lint_warnings

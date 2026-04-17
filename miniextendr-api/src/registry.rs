@@ -46,6 +46,15 @@ pub static MX_TRAIT_DISPATCH: [TraitDispatchEntry];
 /// is replaced with the actual choices from the enum's `MatchArg::CHOICES`.
 #[distributed_slice]
 pub static MX_MATCH_ARG_CHOICES: [MatchArgChoicesEntry];
+
+/// Match-arg `@param` doc entries for R wrapper post-processing.
+///
+/// Each `#[miniextendr]` function with `match_arg` params that has no
+/// user-written `@param` doc emits an entry here. During
+/// `write_r_wrappers_to_file`, the placeholder in the `@param` roxygen tag
+/// is replaced with e.g. `One of "Fast", "Safe", "Debug".`
+#[distributed_slice]
+pub static MX_MATCH_ARG_PARAM_DOCS: [MatchArgParamDocEntry];
 // endregion
 
 // region: Entry Types
@@ -95,6 +104,23 @@ pub struct MatchArgChoicesEntry {
 
 // SAFETY: function pointer and &'static str are Send+Sync.
 unsafe impl Sync for MatchArgChoicesEntry {}
+
+/// Entry for replacing match_arg `@param` doc placeholders with human-readable
+/// choice descriptions.
+pub struct MatchArgParamDocEntry {
+    /// Placeholder string in the `@param` roxygen tag, e.g.
+    /// `".__MX_MATCH_ARG_PARAM_DOC_match_arg_set_mode_mode__"`.
+    pub placeholder: &'static str,
+    /// `true` for `several_ok` params (emits "One or more of …");
+    /// `false` for plain `match_arg` (emits "One of …").
+    pub several_ok: bool,
+    /// Function that returns the choices as a comma-separated quoted string,
+    /// e.g. `"\"Fast\", \"Safe\", \"Debug\""`.
+    pub choices_str: fn() -> String,
+}
+
+// SAFETY: function pointer, bool, and &'static str are Send+Sync.
+unsafe impl Sync for MatchArgParamDocEntry {}
 
 /// Trait dispatch entry mapping (concrete_tag, trait_tag) → vtable.
 #[repr(C)]
@@ -451,6 +477,18 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // Replace match_arg choices placeholders with actual enum choices
     for entry in MX_MATCH_ARG_CHOICES.iter() {
         let replacement = format!("c({})", (entry.choices_str)());
+        content = content.replace(entry.placeholder, &replacement);
+    }
+
+    // Replace match_arg @param doc placeholders with human-readable choice descriptions
+    for entry in MX_MATCH_ARG_PARAM_DOCS.iter() {
+        let choices = (entry.choices_str)();
+        let prefix = if entry.several_ok {
+            "One or more of"
+        } else {
+            "One of"
+        };
+        let replacement = format!("{prefix} {choices}.");
         content = content.replace(entry.placeholder, &replacement);
     }
 
