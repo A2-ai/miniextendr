@@ -264,6 +264,74 @@ fn test_find_tag_value() {
     assert_eq!(find_tag_value(&tags, "return"), None);
 }
 
+// region: strip_method_tags — impl-block roxygen tag filtering
+
+#[test]
+fn strip_method_tags_drops_param_return_examples_export() {
+    let tags: Vec<String> = [
+        "@param x an input",
+        "@return something",
+        "@returns another thing",
+        "@examples f()",
+        "@export",
+        "@title Keep me",
+        "@name keep_me",
+        "@description Keep this too",
+    ]
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
+
+    let span = proc_macro2::Span::call_site();
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", span);
+    assert_eq!(
+        kept,
+        vec![
+            "@title Keep me".to_string(),
+            "@name keep_me".to_string(),
+            "@description Keep this too".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn strip_method_tags_preserves_export_variants() {
+    // @exportClass / @exportMethod / @exportPattern are valid on class-level
+    // docs (S4). Only the bare @export tag should be stripped.
+    let tags: Vec<String> = [
+        "@export",
+        "@exportClass MyS4Class",
+        "@exportMethod show",
+        "@exportPattern ^foo",
+    ]
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
+
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", proc_macro2::Span::call_site());
+    assert_eq!(
+        kept,
+        vec![
+            "@exportClass MyS4Class".to_string(),
+            "@exportMethod show".to_string(),
+            "@exportPattern ^foo".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn strip_method_tags_leaves_prose_untouched() {
+    let tags: Vec<String> = ["This is prose.", "@title A title", "More prose"]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", proc_macro2::Span::call_site());
+    assert_eq!(kept, tags);
+}
+
+// endregion
+
 #[test]
 fn test_normalize_for_comparison() {
     // Basic normalization

@@ -2111,7 +2111,7 @@ impl ParsedImpl {
             .cloned()
             .collect();
         let raw_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs);
-        let (doc_tags, param_warnings) = crate::roxygen::strip_param_tags(
+        let (doc_tags, param_warnings) = crate::roxygen::strip_method_tags(
             &raw_doc_tags,
             &type_ident.to_string(),
             item_impl.impl_token.span,

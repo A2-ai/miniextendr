@@ -484,15 +484,38 @@ pub(crate) fn doc_conflict_warnings(
     proc_macro2::TokenStream::new()
 }
 
-/// Filter out `@param` tags from impl-block roxygen tags and emit compile warnings.
+/// Roxygen tags that only make sense on individual methods, not on impl blocks.
 ///
-/// `@param` on an impl block is meaningless — parameters belong on individual methods.
-/// When users put `@param` on impl blocks, the tags end up in the class-level Rd file
-/// where R CMD check warns about "documented arguments not in \\usage".
+/// - `@param` — impl blocks have no parameters.
+/// - `@return` / `@returns` — impl blocks have no return value.
+/// - `@examples` — examples belong on the method that is being demonstrated.
+/// - `@export` — redundant: export for class-level docs is handled by
+///   [`ClassDocBuilder`], which emits `@export` based on the impl block's
+///   `internal` / `noexport` attrs, not on user-supplied roxygen.
+const METHOD_ONLY_TAGS: &[&str] = &["param", "return", "returns", "examples", "export"];
+
+/// Extract the tag name from a roxygen line (everything between `@` and the
+/// first whitespace character). Returns `None` for lines that don't start with
+/// a tag.
+fn roxygen_tag_name(tag: &str) -> Option<&str> {
+    let rest = tag.trim_start().strip_prefix('@')?;
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    Some(&rest[..end])
+}
+
+/// Filter out method-specific roxygen tags from impl-block-level docs and emit
+/// compile warnings for each stripped tag.
 ///
-/// Returns the filtered tags and a TokenStream of deprecation warnings for each
-/// stripped `@param` tag. The caller should append the warnings to its output.
-pub(crate) fn strip_param_tags(
+/// Method-specific tags (`@param`, `@return`, `@returns`, `@examples`,
+/// `@export`) on an impl block are meaningless — they belong on individual
+/// methods, or (for `@export`) are emitted by [`ClassDocBuilder`]. When users
+/// put them on impl blocks, the tags leak into the class-level Rd file where
+/// R CMD check warns about "documented arguments not in \\usage" and similar.
+///
+/// Returns the filtered tags and a TokenStream of deprecation warnings for
+/// each stripped tag. The caller should append the warnings to its output so
+/// the user sees them at compile time.
+pub(crate) fn strip_method_tags(
     tags: &[String],
     type_name: &str,
     span: proc_macro2::Span,
@@ -504,31 +527,32 @@ pub(crate) fn strip_param_tags(
     let mut warning_id: usize = 0;
 
     for tag in tags {
-        if tag
-            .trim_start()
-            .strip_prefix('@')
-            .is_some_and(|rest| rest.starts_with("param"))
-        {
-            let msg = format!(
-                "miniextendr: @param on impl block `{}` has no effect — move it to the method. Tag: {}",
-                type_name,
-                tag.trim()
-            );
-            let ident = quote::format_ident!(
-                "_MINIEXTENDR_IMPL_PARAM_WARN_{}_{}",
-                type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
-                warning_id
-            );
-            warning_id += 1;
-            warnings.extend(quote_spanned! { span =>
-                #[deprecated(note = #msg)]
-                #[doc(hidden)]
-                #[allow(dead_code)]
-                const #ident: () = ();
-            });
-        } else {
+        let Some(name) = roxygen_tag_name(tag) else {
             filtered.push(tag.clone());
+            continue;
+        };
+        if !METHOD_ONLY_TAGS.contains(&name) {
+            filtered.push(tag.clone());
+            continue;
         }
+        let msg = format!(
+            "miniextendr: @{} on impl block `{}` has no effect — move it to the method. Tag: {}",
+            name,
+            type_name,
+            tag.trim()
+        );
+        let ident = quote::format_ident!(
+            "_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}_{}",
+            type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
+            warning_id
+        );
+        warning_id += 1;
+        warnings.extend(quote_spanned! { span =>
+            #[deprecated(note = #msg)]
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            const #ident: () = ();
+        });
     }
 
     (filtered, warnings)
