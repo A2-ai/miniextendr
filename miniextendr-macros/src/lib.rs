@@ -1180,7 +1180,7 @@ pub fn miniextendr(
         arg_builder = arg_builder.with_dots(named_dots.clone().map(|id| id.to_string()));
     }
     // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
-    let mut merged_defaults = parsed.param_defaults().clone();
+    let mut merged_defaults = parsed.param_defaults();
     // Add default for match_arg params that don't already have an explicit default.
     // Use a placeholder that gets replaced at write time with the actual choices
     // from the enum's MatchArg::CHOICES (resolved when the cdylib is loaded).
@@ -1464,8 +1464,9 @@ pub fn miniextendr(
 
     // Generate R-side precondition checks (stopifnot + fallback precheck calls)
     // Skip both match_arg and choices params (already validated by match.arg)
-    let mut skip_params = parsed.match_arg_params().clone();
-    for param_name in parsed.choices_params().keys() {
+    let mut skip_params: std::collections::HashSet<String> =
+        parsed.match_arg_params().cloned().collect();
+    for (param_name, _) in parsed.choices_params() {
         skip_params.insert(r_wrapper_builder::normalize_r_arg_string(param_name));
     }
     let precondition_output = r_preconditions::build_precondition_checks(inputs, &skip_params);
@@ -1477,7 +1478,7 @@ pub fn miniextendr(
 
     // Generate Missing<T> prelude: `if (missing(param)) param <- quote(expr=)`
     let missing_prelude = {
-        let lines = r_wrapper_builder::build_missing_prelude(inputs, parsed.param_defaults());
+        let lines = r_wrapper_builder::build_missing_prelude(inputs, &parsed.param_defaults());
         if lines.is_empty() {
             String::new()
         } else {
