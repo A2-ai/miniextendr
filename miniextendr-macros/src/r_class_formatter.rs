@@ -41,6 +41,41 @@ pub(crate) fn match_arg_placeholder(c_ident: &str, r_param: &str) -> String {
     )
 }
 
+/// Format the write-time `@param` doc placeholder for an impl-method match_arg param.
+///
+/// The cdylib write pass rewrites this to a rendered choice description via a
+/// matching `MX_MATCH_ARG_PARAM_DOCS` entry. Shape mirrors the standalone-fn
+/// convention in `lib.rs` (#210).
+pub(crate) fn match_arg_param_doc_placeholder(c_ident: &str, r_param: &str) -> String {
+    format!(
+        ".__MX_MATCH_ARG_PARAM_DOC_{}_{}__",
+        c_ident.trim_start_matches("C_"),
+        r_param
+    )
+}
+
+/// Build the R-param-name → @param placeholder map for a method's match_arg and
+/// choices params. Pass to `MethodDocBuilder::with_match_arg_doc_placeholders`
+/// in each class generator.
+pub(crate) fn match_arg_doc_placeholder_map(
+    c_ident: &str,
+    method: &ParsedMethod,
+) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    for rust_name in &method.method_attrs.per_param_match_arg {
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            rust_name,
+            proc_macro2::Span::call_site(),
+        ))
+        .to_string();
+        out.insert(
+            r_name.clone(),
+            match_arg_param_doc_placeholder(c_ident, &r_name),
+        );
+    }
+    out
+}
+
 /// Effective R-formal defaults for a method.
 ///
 /// Layers defaults in priority order:
@@ -117,6 +152,14 @@ impl<'a> MethodContext<'a> {
             params,
             args,
         }
+    }
+
+    /// Build the R-param-name → @param placeholder map for this method's
+    /// match_arg params. Pass to `MethodDocBuilder::with_match_arg_doc_placeholders`
+    /// so the cdylib write pass rewrites the placeholders into rendered choice
+    /// descriptions (#210).
+    pub fn match_arg_doc_placeholders(&self) -> std::collections::HashMap<String, String> {
+        match_arg_doc_placeholder_map(&self.c_ident, self.method)
     }
 
     /// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`
@@ -514,6 +557,12 @@ pub struct MethodDocBuilder<'a> {
     /// or `S7::method()` assignment, which roxygen2 doesn't parse for `\usage` entries.
     /// Including `@param` tags would create "Documented arguments not in \\usage" warnings.
     suppress_params: bool,
+    /// Map of R-param-name → write-time doc placeholder for match_arg parameters.
+    ///
+    /// When the auto-generated `@param` line would otherwise say `(undocumented)`,
+    /// a match_arg'd param emits the placeholder instead, which the cdylib's
+    /// write-time pass replaces with a rendered choice description (#210).
+    match_arg_doc_placeholders: Option<&'a std::collections::HashMap<String, String>>,
 }
 
 impl<'a> MethodDocBuilder<'a> {
@@ -540,7 +589,20 @@ impl<'a> MethodDocBuilder<'a> {
             params_as_details: false,
             r_params: None,
             suppress_params: false,
+            match_arg_doc_placeholders: None,
         }
+    }
+
+    /// Supply a map from R-param-name to a write-time doc placeholder for
+    /// match_arg'd params. When the auto-generated `@param` line would otherwise
+    /// say `(undocumented)`, the placeholder is emitted instead and the cdylib
+    /// write pass rewrites it to a rendered choice description. See #210.
+    pub fn with_match_arg_doc_placeholders(
+        mut self,
+        placeholders: &'a std::collections::HashMap<String, String>,
+    ) -> Self {
+        self.match_arg_doc_placeholders = Some(placeholders);
+        self
     }
 
     /// Set a prefix for the @name tag (e.g., "$" for "Class$method").
@@ -667,7 +729,14 @@ impl<'a> MethodDocBuilder<'a> {
                     .iter()
                     .any(|t| t.starts_with(&format!("@param {}", param_name)));
                 if !already_documented {
-                    lines.push(format!("#' @param {} (undocumented)", param_name));
+                    // match_arg'd params get a placeholder the cdylib write-pass
+                    // replaces with the rendered choice description (#210).
+                    let body = self
+                        .match_arg_doc_placeholders
+                        .and_then(|m| m.get(param_name))
+                        .map(|s| s.as_str())
+                        .unwrap_or("(undocumented)");
+                    lines.push(format!("#' @param {} {}", param_name, body));
                 }
             }
         }

@@ -32,7 +32,7 @@ Create a new \code{R6MatchArgCounter}.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{mode}}{(no documentation available)}
+\item{\code{mode}}{One of "Fast", "Safe", "Debug".}
 
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
@@ -61,7 +61,7 @@ Method \code{record}.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{mode}}{(no documentation available)}
+\item{\code{mode}}{One of "Fast", "Safe", "Debug".}
 }
 \if{html}{\out{</div>}}
 }

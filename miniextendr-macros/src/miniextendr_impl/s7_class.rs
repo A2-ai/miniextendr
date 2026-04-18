@@ -343,6 +343,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Skip if class has @noRd
     if !class_has_no_rd {
         if let Some(ctx) = parsed_impl.constructor_context() {
+            let mx_doc = ctx.match_arg_doc_placeholders();
             for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
                 let param_name = param.split('=').next().unwrap_or(param).trim();
                 if param_name == ".ptr" || param_name == "..." {
@@ -363,6 +364,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     .find(|t| t.starts_with(&format!("@param {}", param_name)));
                 if let Some(tag) = ctor_tag {
                     lines.push(format!("#' {}", tag));
+                } else if let Some(placeholder) = mx_doc.get(param_name) {
+                    // match_arg'd constructor param — placeholder rewritten at
+                    // cdylib write time to rendered choice description (#210).
+                    lines.push(format!("#' @param {} {}", param_name, placeholder));
                 } else {
                     lines.push(format!("#' @param {} (undocumented)", param_name));
                 }
@@ -832,9 +837,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
+            let mx_doc = ctx.match_arg_doc_placeholders();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
+                    .with_match_arg_doc_placeholders(&mx_doc)
                     .with_r_name(fn_name.clone());
             lines.extend(method_doc.build());
         }
