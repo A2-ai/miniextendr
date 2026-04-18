@@ -441,6 +441,23 @@ pub struct ParsedMethod {
     pub param_defaults: std::collections::HashMap<String, String>,
 }
 
+/// R6-specific per-method markers, separated from [`MethodAttrs`] so the
+/// `r6` parser branch and R6 class generator own a self-contained bag.
+///
+/// The older `active` / `private` / `finalize` / `deep_clone` bool fields
+/// also drive R6 output but remain on `MethodAttrs` because they're read by
+/// cross-cutting accessor methods (`ParsedMethod::is_active` etc.).
+#[derive(Debug, Default)]
+pub struct R6MethodAttrs {
+    /// R6 active-binding *setter* (paired with an `active` getter by `prop`).
+    pub setter: bool,
+    /// R6 active-binding property name (defaults to the method name).
+    pub prop: Option<String>,
+    /// Span of the `r6(active)` marker — used for error reporting when the
+    /// marker is misused in a non-R6 class generator.
+    pub active_span: Option<proc_macro2::Span>,
+}
+
 /// S7-specific per-method markers, separated from [`MethodAttrs`] so the S7
 /// class generator has a self-contained bag of its own state (property
 /// getters/setters, generic-dispatch controls, convert() wiring) and the other
@@ -493,27 +510,11 @@ pub struct MethodAttrs {
     pub private: bool,
     /// Mark as active binding getter (R6)
     pub active: bool,
-    /// R6 active binding setter marker.
-    ///
-    /// Use `#[miniextendr(r6(setter, prop = "name"))]` to mark a method as an R6 active
-    /// binding setter. The property name must match a getter to create a combined binding.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(r6(active))]  // or r6(active, prop = "len")
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    ///
-    /// #[miniextendr(r6(setter, prop = "length"))]
-    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
-    /// // Generates combined active binding:
-    /// // length = function(value) { if (missing(value)) get_length() else set_length(value) }
-    /// ```
-    pub r6_setter: bool,
-    /// R6 property name for active bindings (defaults to method name).
-    ///
-    /// When specified via `#[miniextendr(r6(active, prop = "name"))]`, overrides the
-    /// default property name which is derived from the method name.
-    pub r6_prop: Option<String>,
+    /// R6-specific method markers (active-binding setter / prop / active_span).
+    /// The cross-cutting R6 booleans (`active`, `private`, `finalize`,
+    /// `deep_clone`) stay on `MethodAttrs` because `ParsedMethod`'s accessor
+    /// methods (`is_active`, `is_private`, `is_finalizer`) read them directly.
+    pub r6: R6MethodAttrs,
     /// Generate as `as.<class>()` S3 method (e.g., "data.frame", "list", "character").
     ///
     /// When set, generates an S3 method for R's `as.<class>()` generic:
@@ -596,8 +597,6 @@ pub struct MethodAttrs {
     pub per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     /// Span of `match_arg(...)` / `choices(...)` for error reporting.
     pub match_arg_span: Option<proc_macro2::Span>,
-    /// Span of `active` for error reporting.
-    pub active_span: Option<proc_macro2::Span>,
     /// S7-specific method markers. Only consumed by the S7 class generator;
     /// all other generators ignore this field.
     pub s7: S7MethodAttrs,
@@ -1135,7 +1134,7 @@ impl ParsedMethod {
         // #[...(active)] is only meaningful for R6
         if attrs.active && class_system != ClassSystem::R6 {
             return Err(syn::Error::new(
-                attrs.active_span.unwrap_or(span),
+                attrs.r6.active_span.unwrap_or(span),
                 "#[r6(active)] is only valid for R6 class systems",
             ));
         }
@@ -1220,10 +1219,10 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("active") {
                             use syn::spanned::Spanned;
                             method_attrs.active = true;
-                            method_attrs.active_span = Some(inner.path.span());
+                            method_attrs.r6.active_span = Some(inner.path.span());
                         } else if inner.path.is_ident("setter") {
                             // Active binding setter: works for both R6 and S7
-                            method_attrs.r6_setter = true;
+                            method_attrs.r6.setter = true;
                             method_attrs.s7.setter = true;
                         } else if inner.path.is_ident("worker") {
                             worker = Some(true);
@@ -1271,7 +1270,7 @@ impl ParsedMethod {
                             let prop_value = value.value();
                             // Set both S7 and R6 prop - the class system will use the appropriate one
                             method_attrs.s7.prop = Some(prop_value.clone());
-                            method_attrs.r6_prop = Some(prop_value);
+                            method_attrs.r6.prop = Some(prop_value);
                         } else if inner.path.is_ident("default") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -2226,7 +2225,7 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_active()
-                && !m.method_attrs.r6_setter // Exclude setters
+                && !m.method_attrs.r6.setter // Exclude setters
         })
     }
 
@@ -2234,14 +2233,14 @@ impl ParsedImpl {
     pub fn active_setter_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods
             .iter()
-            .filter(|m| m.should_include() && m.env.is_instance() && m.method_attrs.r6_setter)
+            .filter(|m| m.should_include() && m.env.is_instance() && m.method_attrs.r6.setter)
     }
 
     /// Find the setter method for a given property name.
     pub fn find_setter_for_prop(&self, prop_name: &str) -> Option<&ParsedMethod> {
         self.active_setter_methods().find(|m| {
             // Match by explicit prop name or by method name with "set_" prefix removed
-            if let Some(ref explicit_prop) = m.method_attrs.r6_prop {
+            if let Some(ref explicit_prop) = m.method_attrs.r6.prop {
                 explicit_prop == prop_name
             } else {
                 // Try to match by stripping "set_" prefix from method name
