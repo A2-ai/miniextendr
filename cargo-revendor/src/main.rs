@@ -11,6 +11,7 @@
 //! - JSON output for machine consumption
 
 mod cache;
+mod manifest_guard;
 mod metadata;
 mod package;
 mod verify;
