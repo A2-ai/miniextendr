@@ -175,13 +175,16 @@ fn get_typeof_name(sexp: SEXP) -> &'static str {
 
 /// Repair NA names by replacing them with empty strings.
 ///
-/// Returns a new names SEXP with NA values replaced by "", or the original
-/// if no NA values were found.
+/// Returns `(repaired_sexp, Some(guard))` when a rebuild was necessary so the
+/// caller can keep the allocation rooted until `set_names` (or equivalent) has
+/// transferred ownership to a parent SEXP.  Returns `(original_names, None)`
+/// when no NA values were found and no allocation was made.
 ///
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid STRSXP.
-unsafe fn repair_na_names(names: SEXP) -> SEXP {
+#[must_use]
+unsafe fn repair_na_names(names: SEXP) -> (SEXP, Option<OwnedProtect>) {
     let n = unsafe { Rf_xlength(names) };
     let mut has_na = false;
 
@@ -194,7 +197,7 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
     }
 
     if !has_na {
-        return names;
+        return (names, None);
     }
 
     // Second pass: create repaired copy
@@ -209,8 +212,10 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
         repaired.get().set_string_elt(i, new_elem);
     }
 
-    // Return the SEXP - guard drops and unprotects
-    repaired.get()
+    // Return the SEXP and the guard. The caller must keep the guard alive until
+    // the repaired SEXP has been rooted into its parent (via set_names, etc.).
+    let sexp = repaired.get();
+    (sexp, Some(repaired))
 }
 // endregion
 
@@ -286,13 +291,16 @@ pub fn new_vctr(
     let class_sexp = unsafe { build_class_vector(&class_parts) };
     data.set_class(class_sexp.get());
 
-    // Repair NA names if present
+    // Repair NA names if present.
+    // _guard keeps the repaired allocation rooted until set_names transfers
+    // ownership; it drops (unprotects) immediately after.
     let names = data.get_names();
     if names != SEXP::nil() {
-        let repaired = unsafe { repair_na_names(names) };
+        let (repaired, _guard) = unsafe { repair_na_names(names) };
         if repaired != names {
             data.set_names(repaired);
         }
+        // _guard drops here, after set_names has rooted the SEXP
     }
 
     // Set additional attributes

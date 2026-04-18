@@ -269,6 +269,11 @@ pub struct ArenaState<M> {
     pub len: usize,
     /// Free list for slot reuse
     pub free_list: Vec<usize>,
+    /// Monotonic write cursor: next index to hand out on the fresh-slot path.
+    /// Distinct from `len` (live count) — after release cycles `len` can be
+    /// lower than the highest index ever handed out, so using `len` as the
+    /// cursor can return an index that is already on the free-list.
+    pub next_slot: usize,
 }
 
 impl<M: MapStorage> ArenaState<M> {
@@ -304,6 +309,7 @@ impl<M: MapStorage> ArenaState<M> {
             capacity: 0,
             len: 0,
             free_list: Vec::new(),
+            next_slot: 0,
         }
     }
 
@@ -332,6 +338,7 @@ impl<M: MapStorage> ArenaState<M> {
             self.backing = backing;
             self.capacity = capacity;
             self.len = 0;
+            self.next_slot = 0;
             self.free_list = Vec::with_capacity(capacity);
         }
     }
@@ -346,6 +353,7 @@ impl<M: MapStorage> ArenaState<M> {
             backing: SEXP(std::ptr::null_mut()),
             capacity: 0,
             len: 0,
+            next_slot: 0,
             free_list: Vec::with_capacity(capacity),
         };
         unsafe { state.init_backing(capacity) };
@@ -499,11 +507,13 @@ impl<M: MapStorage> ArenaState<M> {
             return index;
         }
 
-        if self.len >= self.capacity {
+        if self.next_slot >= self.capacity {
             unsafe { self.grow() };
         }
 
-        self.len
+        let idx = self.next_slot;
+        self.next_slot += 1;
+        idx
     }
 
     unsafe fn grow(&mut self) {
@@ -551,6 +561,7 @@ impl<M: MapStorage> ArenaState<M> {
         self.map_mut().clear();
         self.free_list.clear();
         self.len = 0;
+        self.next_slot = 0;
     }
 
     unsafe fn release_backing(&mut self) {

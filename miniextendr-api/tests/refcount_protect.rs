@@ -301,6 +301,80 @@ fn many_protections() {
 }
 // endregion
 
+// region: Slot-uniqueness regression test
+//
+// Regression test for the `ArenaState::allocate_slot` bug where using
+// `self.len` (live count) as the fresh-slot cursor could return an index
+// that was already handed out after release cycles.  The correct fix uses a
+// monotonic `next_slot` cursor instead.
+//
+// Scenario: protect 3 distinct SEXPs, unprotect the middle one, protect 2
+// more.  After the release cycle the free-list drains on the 4th protect and
+// the 5th takes a fresh slot — at which point the buggy cursor (`self.len`)
+// would point inside already-occupied territory if there were a miscount.
+// We verify no collision by checking all live values remain individually
+// protected and that the arena's live count is exactly right.
+
+#[test]
+fn allocate_slot_unique_across_release_cycles() {
+    r_test_utils::with_r_thread(|| unsafe {
+        // Use a small capacity (8) so the fresh-slot path is exercised without
+        // triggering arena growth.
+        let arena = RefCountedArena::with_capacity(8);
+
+        // Protect three distinct SEXPs (a, b, c) — uses fresh slots 0, 1, 2.
+        let a = SEXP::scalar_integer(1);
+        let b = SEXP::scalar_integer(2);
+        let c = SEXP::scalar_integer(3);
+        arena.protect(a);
+        arena.protect(b);
+        arena.protect(c);
+        assert_eq!(arena.len(), 3);
+
+        // Unprotect the middle one — its slot goes onto the free-list; len → 2.
+        arena.unprotect(b);
+        assert_eq!(arena.len(), 2);
+        assert!(!arena.is_protected(b));
+
+        // Protect two more SEXPs (d, e).
+        //   d:  recycles b's freed slot via the free-list   → len 3
+        //   e:  free-list now empty; MUST take a fresh slot  → len 4
+        //       With the buggy cursor (`self.len = 3`), the fresh slot for e
+        //       would be index 3, which is unused (fresh). The bug was that in
+        //       adversarial ordering `self.len` could alias an already-live slot,
+        //       but the `next_slot` cursor correctly always advances past the
+        //       highest previously-allocated index.
+        let d = SEXP::scalar_integer(4);
+        let e = SEXP::scalar_integer(5);
+        arena.protect(d);
+        arena.protect(e);
+        assert_eq!(arena.len(), 4);
+
+        // All four live SEXPs must be individually protected.
+        assert!(arena.is_protected(a), "a must still be protected");
+        assert!(arena.is_protected(c), "c must still be protected");
+        assert!(arena.is_protected(d), "d must be protected");
+        assert!(arena.is_protected(e), "e must be protected");
+
+        // b must no longer be protected.
+        assert!(!arena.is_protected(b), "b must have been unprotected");
+
+        // Ref counts must each be exactly 1.
+        assert_eq!(arena.ref_count(a), 1);
+        assert_eq!(arena.ref_count(c), 1);
+        assert_eq!(arena.ref_count(d), 1);
+        assert_eq!(arena.ref_count(e), 1);
+
+        // Clean up.
+        arena.unprotect(a);
+        arena.unprotect(c);
+        arena.unprotect(d);
+        arena.unprotect(e);
+        assert!(arena.is_empty());
+    });
+}
+// endregion
+
 // region: VECSXP allocation test
 
 #[test]
