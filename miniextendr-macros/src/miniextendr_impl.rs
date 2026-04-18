@@ -542,22 +542,19 @@ pub struct MethodAttrs {
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
     pub defaults_span: Option<proc_macro2::Span>,
-    /// Parameter names marked scalar `match_arg` via
-    /// `#[miniextendr(match_arg(param1, param2))]` on the method.
+    /// Per-parameter `match_arg` / `several_ok` / `choices` state for this
+    /// method, keyed by the Rust parameter name.
     ///
-    /// Method-level (not parameter-level) because Rust's parser rejects attribute
-    /// macros on fn parameters inside impl items — `#[miniextendr(...)]` on a
-    /// method parameter gets classified as an attribute-macro invocation and
-    /// "expected non-macro attribute, found attribute macro". Standalone functions
-    /// get a pass because the outer `#[miniextendr]` on the fn itself defers inner-token
-    /// resolution; an impl block has `#[miniextendr(r6)]` on the block, not on each method.
-    pub per_param_match_arg: std::collections::HashSet<String>,
-    /// Parameter names with both `match_arg` and `several_ok` semantics, from
-    /// `#[miniextendr(match_arg_several_ok(param))]`. Implies `match_arg`.
-    pub per_param_several_ok: std::collections::HashSet<String>,
-    /// Explicit string choice lists from `#[miniextendr(choices(param = "a, b, c"))]`
-    /// or `#[miniextendr(choices_several_ok(param = "a, b"))]`.
-    pub per_param_choices: std::collections::HashMap<String, Vec<String>>,
+    /// Method-level (not parameter-level) because Rust's parser rejects
+    /// attribute macros on fn parameters inside impl items. Standalone
+    /// functions take the per-param syntax directly; impl methods spell the
+    /// same data through `#[miniextendr(match_arg(p1, p2))]`,
+    /// `#[miniextendr(match_arg_several_ok(p))]`, and
+    /// `#[miniextendr(choices(p = "a, b"))]` on the method attribute.
+    ///
+    /// Uses the shared [`ParamAttrs`](crate::miniextendr_fn::ParamAttrs)
+    /// struct — the `coerce` / `default` fields are unused on the impl path.
+    pub per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     /// Span of `match_arg(...)` / `choices(...)` for error reporting.
     pub match_arg_span: Option<proc_macro2::Span>,
     /// Span of `active` for error reporting.
@@ -1518,7 +1515,11 @@ impl ParsedMethod {
                             .get_ident()
                             .ok_or_else(|| inner.error("expected parameter name"))?
                             .to_string();
-                        method_attrs.per_param_match_arg.insert(name);
+                        method_attrs
+                            .per_param
+                            .entry(name)
+                            .or_default()
+                            .match_arg = true;
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("match_arg_several_ok") {
@@ -1532,8 +1533,9 @@ impl ParsedMethod {
                             .get_ident()
                             .ok_or_else(|| inner.error("expected parameter name"))?
                             .to_string();
-                        method_attrs.per_param_match_arg.insert(name.clone());
-                        method_attrs.per_param_several_ok.insert(name);
+                        let entry = method_attrs.per_param.entry(name).or_default();
+                        entry.match_arg = true;
+                        entry.several_ok = true;
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("choices") {
@@ -1549,7 +1551,7 @@ impl ParsedMethod {
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
                         let choices = Self::split_choice_list(&value.value());
-                        method_attrs.per_param_choices.insert(name, choices);
+                        method_attrs.per_param.entry(name).or_default().choices = Some(choices);
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("choices_several_ok") {
@@ -1565,8 +1567,9 @@ impl ParsedMethod {
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
                         let choices = Self::split_choice_list(&value.value());
-                        method_attrs.per_param_choices.insert(name.clone(), choices);
-                        method_attrs.per_param_several_ok.insert(name);
+                        let entry = method_attrs.per_param.entry(name).or_default();
+                        entry.choices = Some(choices);
+                        entry.several_ok = true;
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("unsafe") {
@@ -1902,11 +1905,13 @@ impl ParsedMethod {
                 _ => None,
             })
             .collect();
-        for annotated in method_attrs
-            .per_param_match_arg
-            .iter()
-            .chain(method_attrs.per_param_choices.keys())
-        {
+        for annotated in method_attrs.per_param.iter().filter_map(|(name, a)| {
+            if a.match_arg || a.choices.is_some() {
+                Some(name)
+            } else {
+                None
+            }
+        }) {
             if !sig_param_names.contains(annotated) {
                 return Err(syn::Error::new(
                     method_attrs
@@ -2602,8 +2607,8 @@ pub fn generate_method_c_wrapper(
     // in `match_arg_vec_from_sexp` for the Vec/slice/array/Box<[_]> conversion path.
     // Scalar match_arg doesn't need this — R's match.arg() validated the choice and
     // `TryFromSexp for EnumType` (auto-generated by `#[derive(MatchArg)]`) decodes it.
-    for rust_name in &method.method_attrs.per_param_match_arg {
-        if method.method_attrs.per_param_several_ok.contains(rust_name) {
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if attrs.match_arg && attrs.several_ok {
             builder = builder.match_arg_several_ok(rust_name.clone());
         }
     }
@@ -2633,8 +2638,11 @@ fn generate_method_match_arg_helpers(
     parsed_impl: &ParsedImpl,
     method: &ParsedMethod,
 ) -> TokenStream {
-    if method.method_attrs.per_param_match_arg.is_empty()
-        && method.method_attrs.per_param_choices.is_empty()
+    if !method
+        .method_attrs
+        .per_param
+        .values()
+        .any(|a| a.match_arg || a.choices.is_some())
     {
         return TokenStream::new();
     }
@@ -2646,14 +2654,17 @@ fn generate_method_match_arg_helpers(
 
     let mut out = TokenStream::new();
 
-    for rust_name in &method.method_attrs.per_param_match_arg {
+    for (rust_name, attrs) in method.method_attrs.per_param.iter() {
+        if !attrs.match_arg {
+            continue;
+        }
         // Find the parameter type from the (already-normalized) signature.
         let Some(param_ty) = find_param_type(&method.sig.inputs, rust_name) else {
             continue;
         };
         // For several_ok, unwrap the container (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode])
         // so the helper returns the inner enum's CHOICES, not the container type.
-        let several_ok = method.method_attrs.per_param_several_ok.contains(rust_name);
+        let several_ok = attrs.several_ok;
         let choices_ty = if several_ok {
             crate::classify_several_ok_container(param_ty)
                 .map(|(_, inner)| inner.clone())

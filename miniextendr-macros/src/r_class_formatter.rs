@@ -60,7 +60,10 @@ pub(crate) fn match_arg_doc_placeholder_map(
     method: &ParsedMethod,
 ) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
-    for rust_name in &method.method_attrs.per_param_match_arg {
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if !attrs.match_arg {
+            continue;
+        }
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         out.insert(
             r_name.clone(),
@@ -84,15 +87,20 @@ fn effective_r_defaults(
     let mut defaults = method.param_defaults.clone();
     // choices(...) → formal default of c("a", "b", ...). Priority: lower than user defaults,
     // higher than match_arg placeholder (which is the fallback for enum-driven validation).
-    for (rust_name, choices) in &method.method_attrs.per_param_choices {
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-        defaults.entry(r_name).or_insert_with(|| {
-            let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
-            format!("c({})", quoted.join(", "))
-        });
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if let Some(choices) = attrs.choices.as_ref() {
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+            defaults.entry(r_name).or_insert_with(|| {
+                let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
+                format!("c({})", quoted.join(", "))
+            });
+        }
     }
     // match_arg → placeholder replaced at write time.
-    for rust_name in &method.method_attrs.per_param_match_arg {
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if !attrs.match_arg {
+            continue;
+        }
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         defaults
             .entry(r_name.clone())
@@ -165,7 +173,10 @@ impl<'a> MethodContext<'a> {
     pub fn match_arg_prelude(&self) -> Vec<String> {
         let mut lines = Vec::new();
 
-        for rust_name in &self.method.method_attrs.per_param_match_arg {
+        for (rust_name, attrs) in &self.method.method_attrs.per_param {
+            if !attrs.match_arg {
+                continue;
+            }
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
             let choices_c_name =
                 crate::match_arg_keys::choices_helper_c_name(&self.c_ident, &r_name);
@@ -175,12 +186,7 @@ impl<'a> MethodContext<'a> {
             lines.push(format!(
                 "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
             ));
-            if self
-                .method
-                .method_attrs
-                .per_param_several_ok
-                .contains(rust_name)
-            {
+            if attrs.several_ok {
                 lines.push(format!(
                     "{r_name} <- base::match.arg({r_name}, .__mx_choices_{r_name}, several.ok = TRUE)"
                 ));
@@ -191,16 +197,14 @@ impl<'a> MethodContext<'a> {
             }
         }
 
-        for rust_name in self.method.method_attrs.per_param_choices.keys() {
+        for (rust_name, attrs) in &self.method.method_attrs.per_param {
+            if attrs.choices.is_none() {
+                continue;
+            }
             // choices(...) params: formal carries `c("a", "b", ...)` as the default,
             // so R's match.arg() finds the choice list on its own. No C helper.
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-            if self
-                .method
-                .method_attrs
-                .per_param_several_ok
-                .contains(rust_name)
-            {
+            if attrs.several_ok {
                 lines.push(format!(
                     "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
                 ));
@@ -216,11 +220,10 @@ impl<'a> MethodContext<'a> {
     /// don't need `stopifnot()` preconditions generated for them.
     fn match_arg_skip_set(&self) -> std::collections::HashSet<String> {
         let mut s = std::collections::HashSet::new();
-        for rust_name in &self.method.method_attrs.per_param_match_arg {
-            s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
-        }
-        for rust_name in self.method.method_attrs.per_param_choices.keys() {
-            s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
+        for (rust_name, attrs) in &self.method.method_attrs.per_param {
+            if attrs.match_arg || attrs.choices.is_some() {
+                s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
+            }
         }
         s
     }
