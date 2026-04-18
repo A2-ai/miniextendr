@@ -17,6 +17,12 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # CARGO_INCREMENTAL=0 — sccache can't cache rustc outputs when Cargo's
+  # incremental compilation embeds per-invocation unique hashes into crate
+  # metadata. With incremental off, rustc outputs are deterministic and
+  # sccache hit rates jump from ~50% to near-100% across workspace crates.
+  # See CLAUDE.md "sccache and [profile.dev] incremental" for details.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   # ===========================================================================
@@ -158,6 +164,79 @@ jobs:
         run: just lint-sync-check
 
   # ===========================================================================
+  # Rust lint (rustfmt + clippy) — runs independently of R CMD check
+  # ===========================================================================
+  rust-lint:
+    name: Rust lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-lint
+          cache-on-failure: true
+
+      - name: Rustfmt
+        id: rustfmt
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (default features)
+        id: clippy_default
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Clippy (all features)
+        id: clippy_all
+        continue-on-error: true
+        # NOTE: Can't use --all-features because default-r6/default-s7 are
+        # mutually exclusive. List all non-conflicting features explicitly instead.
+        run: >-
+          cargo clippy --workspace --all-targets --locked
+          --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,default-strict,default-coerce,default-r6,default-worker
+          -- -D warnings
+
+      - name: Fail if any Rust check failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+
+          rustfmt="${{ steps.rustfmt.outcome }}"
+          clippy_default="${{ steps.clippy_default.outcome }}"
+          clippy_all="${{ steps.clippy_all.outcome }}"
+
+          echo "rustfmt:         $rustfmt"
+          echo "clippy_default:  $clippy_default"
+          echo "clippy_all:      $clippy_all"
+
+          if [[ "$rustfmt" != "success" ]]; then failed=1; fi
+          if [[ "$clippy_default" != "success" ]]; then failed=1; fi
+          if [[ "$clippy_all" != "success" ]]; then failed=1; fi
+
+          if [[ "$failed" -ne 0 ]]; then
+            echo "::error::One or more Rust checks failed (see logs above)"
+            exit 1
+          fi
+
+  # ===========================================================================
   # Change detection (path-based gating)
   # ===========================================================================
   changes:
@@ -269,8 +348,6 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
 
       - uses: mozilla-actions/sccache-action@v0.0.9
 
@@ -293,34 +370,6 @@ jobs:
           just configure
           just vendor
 
-      # ---------------------------------------------------------------------
-      # Rust checks (Linux only, run once on R=release)
-      # - run all checks even if some fail
-      # - fail the job afterwards if any of them failed
-      # ---------------------------------------------------------------------
-      - name: Rustfmt
-        id: rustfmt
-        if: matrix.r == 'release'
-        continue-on-error: true
-        run: cargo fmt --all -- --check
-
-      - name: Clippy (default features)
-        id: clippy_default
-        if: matrix.r == 'release'
-        continue-on-error: true
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-      - name: Clippy (all features)
-        id: clippy_all
-        if: matrix.r == 'release'
-        continue-on-error: true
-        # NOTE: Can't use --all-features because default-r6/default-s7 are
-        # mutually exclusive. List all non-conflicting features explicitly instead.
-        run: >-
-          cargo clippy --workspace --all-targets --locked
-          --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,default-strict,default-coerce,default-r6,default-worker
-          -- -D warnings
-
       # NOTE: Cargo tests are disabled due to stack overflow issues on Linux CI.
       # The R package functionality is already tested via R CMD check below.
       # To re-enable, uncomment and fix the stack overflow issue.
@@ -339,30 +388,6 @@ jobs:
           check-dir: '"check"'
         env:
           NOT_CRAN: false
-
-      - name: Fail if Rust checks failed
-        if: always() && matrix.r == 'release'
-        shell: bash
-        run: |
-          set -euo pipefail
-          failed=0
-
-          rustfmt="${{ steps.rustfmt.outcome }}"
-          clippy_default="${{ steps.clippy_default.outcome }}"
-          clippy_all="${{ steps.clippy_all.outcome }}"
-
-          echo "rustfmt:         $rustfmt"
-          echo "clippy_default:  $clippy_default"
-          echo "clippy_all:      $clippy_all"
-
-          if [[ "$rustfmt" != "success" ]]; then failed=1; fi
-          if [[ "$clippy_default" != "success" ]]; then failed=1; fi
-          if [[ "$clippy_all" != "success" ]]; then failed=1; fi
-
-          if [[ "$failed" -ne 0 ]]; then
-            echo "::error::One or more Rust checks failed (see logs above)"
-            exit 1
-          fi
 
       - name: Print failed tests
         if: always()
@@ -647,17 +672,11 @@ jobs:
   # R Package: Test suite (Linux only)
   # ===========================================================================
   r-tests:
-    name: R tests / ${{ matrix.os }}
-    runs-on: ${{ matrix.runner }}
+    name: R tests / Linux
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: changes
     if: needs.changes.outputs.r == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: Linux
-            runner: ubuntu-latest
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -1012,6 +1031,7 @@ jobs:
       - generated-files-check
       - version-check
       - sync-checks
+      - rust-lint
       - changes
       - r-check-linux
       - r-check-macos
@@ -1029,6 +1049,7 @@ jobs:
             "${{ needs.generated-files-check.result }}"
             "${{ needs.version-check.result }}"
             "${{ needs.sync-checks.result }}"
+            "${{ needs.rust-lint.result }}"
             "${{ needs.changes.result }}"
             "${{ needs.r-check-linux.result }}"
             "${{ needs.r-check-macos.result }}"
