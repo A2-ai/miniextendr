@@ -7093,7 +7093,7 @@ EnvMatchArgCounter$reset <- function(modes = c("Fast", "Safe", "Debug")) {
 `[[.EnvMatchArgCounter` <- `$.EnvMatchArgCounter`
 
 # Generated from Rust impl `VctrsMatchArgScale` (match_arg_impl_tests.rs:189:6)
-# VctrsMatchArgScale::new (191:12)
+# VctrsMatchArgScale::new (193:12)
 #' @title VctrsMatchArgScale vctrs S3 Class
 #' @name VctrsMatchArgScale
 #' @rdname VctrsMatchArgScale
