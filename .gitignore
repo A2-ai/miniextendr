@@ -29,3 +29,7 @@ dvs_reviews/
 
 # Zola site build output
 site/public/
+
+# Agent worktrees
+.claude/worktrees/
+.claude/scheduled_tasks.lock

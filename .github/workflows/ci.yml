@@ -17,6 +17,12 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Incremental compilation writes per-invocation unique hashes into crate
+  # metadata, which poisons sccache's cache key. Disabling it makes rustc
+  # output deterministic so sccache hit rate approaches 100% on fresh CI
+  # runners. Not set in [profile.*] because local dev loops do benefit from
+  # incremental builds.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   # ===========================================================================
@@ -523,6 +529,10 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
       SCCACHE_GHA_ENABLED: "true"
       CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
+      # Dev profile: R CMD check doesn't benefit from optimized rustc output, and
+      # MinGW linking is the dominant cost on Windows. Dev profile is ~3-5x faster
+      # to compile/link than release and keeps codegen-units = 1 (linkme requirement).
+      CARGO_PROFILE: dev
 
     steps:
       - uses: actions/checkout@v6
@@ -575,9 +585,13 @@ jobs:
             echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
           fi
 
-          # Create empty libgcc stubs for Rust linking (Rust std expects these)
+          # Create empty libgcc stubs for Rust linking (Rust std expects these).
+          # Use `ar crs` to produce valid empty archives (with the !<arch> magic
+          # header) rather than zero-byte files — ld.bfd tolerates empty files,
+          # but ld.lld rejects them as "unknown file type".
           mkdir -p libgcc_mock
-          touch libgcc_mock/libgcc_eh.a libgcc_mock/libgcc_s.a
+          ar crs libgcc_mock/libgcc_eh.a
+          ar crs libgcc_mock/libgcc_s.a
 
           # Configure Cargo for Windows GNU target
           mkdir -p .cargo
@@ -585,13 +599,16 @@ jobs:
           cat > .cargo/config.toml <<TOML
           [target.x86_64-pc-windows-gnu]
           linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+          # lld is dramatically faster than MinGW's bfd linker. rustup's
+          # bundled rust-lld (shipped with the toolchain) satisfies -fuse-ld=lld.
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
           [env]
           LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
           TOML
 
       - name: Install just
-        run: cargo install just
+        uses: taiki-e/install-action@just
 
       - name: Install cargo-revendor
         run: cargo install --path cargo-revendor
