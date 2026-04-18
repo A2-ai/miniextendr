@@ -882,11 +882,11 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for ConstantLogicalData {
 /// @return An ALTREP logical vector.
 /// @export
 #[miniextendr]
-pub fn constant_logical(value: i32, n: i32) -> SEXP {
+pub fn constant_logical(value: Option<i32>, n: i32) -> SEXP {
     let logical_value = match value {
-        0 => Logical::False,
-        i if i == i32::MIN => Logical::Na,
-        _ => Logical::True,
+        None => Logical::Na,
+        Some(0) => Logical::False,
+        Some(_) => Logical::True,
     };
     let data = ConstantLogicalData {
         value: logical_value,
