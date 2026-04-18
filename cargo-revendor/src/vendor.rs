@@ -611,6 +611,88 @@ fn find_single_subdir(dir: &Path) -> Result<PathBuf> {
     Ok(entries.remove(0).path())
 }
 
+/// Walk `dependencies`, `build-dependencies`, `dev-dependencies`, and every
+/// `[target.<cfg>.*-dependencies]` table in `manifest_content`, collecting
+/// every `git = "..."` URL. Returns a sorted deduplicated set so the
+/// generated `.cargo/config.toml` emits deterministic output.
+///
+/// Handles all valid shapes:
+/// - inline-table deps: `foo = { git = "...", rev = "..." }`
+/// - table-form deps:   `[dependencies.foo]\ngit = "..."`
+/// - target-gated:      `[target.'cfg(unix)'.dependencies]\nfoo = { git = "..." }`
+/// - scheme variants:   https, http, ssh, git+https are all preserved as-is
+///
+/// Returns `Ok(empty)` on parse errors so this helper can't break an
+/// otherwise-valid cargo-revendor run — the old line-regex was also
+/// failure-tolerant.
+pub(crate) fn collect_git_urls(
+    manifest_content: &str,
+) -> Result<std::collections::BTreeSet<String>> {
+    let mut urls = std::collections::BTreeSet::new();
+
+    let doc: toml_edit::DocumentMut = match manifest_content.parse() {
+        Ok(d) => d,
+        // Malformed Cargo.toml — let the caller's other code paths surface
+        // the real error. Empty set is the safe fallback here.
+        Err(_) => return Ok(urls),
+    };
+
+    // Top-level dep tables.
+    for tbl_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(item) = doc.get(tbl_name)
+            && let Some(tbl) = item.as_table_like()
+        {
+            collect_git_from_dep_table(tbl, &mut urls);
+        }
+    }
+
+    // Target-gated dep tables: `[target.<cfg>.dependencies]` etc.
+    if let Some(target_item) = doc.get("target")
+        && let Some(target_tbl) = target_item.as_table_like()
+    {
+        for (_cfg, cfg_item) in target_tbl.iter() {
+            let Some(cfg_tbl) = cfg_item.as_table_like() else {
+                continue;
+            };
+            for tbl_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                if let Some(item) = cfg_tbl.get(tbl_name)
+                    && let Some(tbl) = item.as_table_like()
+                {
+                    collect_git_from_dep_table(tbl, &mut urls);
+                }
+            }
+        }
+    }
+
+    Ok(urls)
+}
+
+/// Iterate over each dep entry in a dep table (inline or sub-table form) and
+/// push any `git = "..."` value into `out`.
+fn collect_git_from_dep_table(
+    tbl: &dyn toml_edit::TableLike,
+    out: &mut std::collections::BTreeSet<String>,
+) {
+    for (_name, item) in tbl.iter() {
+        let git_url = match item {
+            // `foo = { git = "...", ... }` (inline table)
+            toml_edit::Item::Value(toml_edit::Value::InlineTable(inline)) => inline
+                .get("git")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            // `[dependencies.foo]\ngit = "..."` (sub-table form)
+            toml_edit::Item::Table(sub) => {
+                sub.get("git").and_then(|i| i.as_str()).map(String::from)
+            }
+            // `foo = "1.0"` (bare version string) — no git URL
+            _ => None,
+        };
+        if let Some(url) = git_url {
+            out.insert(url);
+        }
+    }
+}
+
 /// Generate a .cargo/config.toml for source replacement.
 ///
 /// Returns the config content as a string. Also writes it to
@@ -627,18 +709,14 @@ pub fn generate_cargo_config(
     let mut config = String::new();
     config.push_str("[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n");
 
-    // Add git source replacements for any git deps in Cargo.toml
+    // Add git source replacements for any git deps in Cargo.toml.
+    // Uses structural toml_edit parsing rather than line-regex scanning so
+    // all valid shapes are covered: `git="..."` (no spaces), http/ssh/git+
+    // schemes, inline-table with trailing `rev`/`branch`/`tag` fields, and
+    // the `[dependencies.foo]` table form. Mirrors upstream cargo's
+    // ops/vendor.rs which uses toml_edit traversal rather than regex.
     let manifest_content = std::fs::read_to_string(manifest_path)?;
-    let mut git_urls: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for line in manifest_content.lines() {
-        // Match: git = "https://..."
-        if let Some(start) = line.find("git = \"https://") {
-            let url_start = start + 7; // skip `git = "`
-            if let Some(end) = line[url_start..].find('"') {
-                git_urls.insert(line[url_start..url_start + end].to_string());
-            }
-        }
-    }
+    let git_urls = collect_git_urls(&manifest_content)?;
     for url in &git_urls {
         config.push_str(&format!(
             "[source.\"git+{}\"]\ngit = \"{}\"\nreplace-with = \"vendored-sources\"\n\n",
@@ -1046,6 +1124,119 @@ pub fn compress_vendor(
 mod tests {
     use super::*;
     use crate::Verbosity;
+
+    // region: collect_git_urls (#256)
+    //
+    // These cover the problematic shapes called out in the review: the old
+    // line-regex in generate_cargo_config missed `git=\"...\"` (no spaces),
+    // non-https schemes, and inline tables with trailing fields. Each test
+    // asserts the structural walker handles one of those shapes correctly.
+
+    #[test]
+    fn git_inline_table_with_spaces() {
+        let toml = r#"[dependencies]
+foo = { git = "https://github.com/bar/foo", rev = "abc123" }
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert_eq!(urls.len(), 1);
+        assert!(urls.contains("https://github.com/bar/foo"));
+    }
+
+    #[test]
+    fn git_inline_table_no_spaces() {
+        // The old line-regex required `git = \"` literally; this shape
+        // broke it. toml_edit accepts either.
+        let toml = r#"[dependencies]
+foo={git="https://github.com/bar/foo"}
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert!(urls.contains("https://github.com/bar/foo"));
+    }
+
+    #[test]
+    fn git_non_https_schemes_preserved() {
+        let toml = r#"[dependencies]
+a = { git = "ssh://git@github.com/bar/a" }
+b = { git = "http://example.com/bar/b" }
+c = { git = "git+https://gitlab.com/bar/c" }
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert!(urls.contains("ssh://git@github.com/bar/a"));
+        assert!(urls.contains("http://example.com/bar/b"));
+        assert!(urls.contains("git+https://gitlab.com/bar/c"));
+    }
+
+    #[test]
+    fn git_table_form_dependency() {
+        let toml = r#"[dependencies.foo]
+git = "https://github.com/bar/foo"
+branch = "main"
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert!(urls.contains("https://github.com/bar/foo"));
+    }
+
+    #[test]
+    fn git_target_gated_dependency() {
+        let toml = r#"[target.'cfg(windows)'.dependencies]
+foo = { git = "https://github.com/bar/foo-win" }
+
+[target.'cfg(unix)'.build-dependencies]
+bar = { git = "https://github.com/baz/bar-unix" }
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert!(urls.contains("https://github.com/bar/foo-win"));
+        assert!(urls.contains("https://github.com/baz/bar-unix"));
+    }
+
+    #[test]
+    fn git_across_multiple_dep_tables() {
+        let toml = r#"[dependencies]
+a = { git = "https://github.com/a/a" }
+
+[dev-dependencies]
+b = { git = "https://github.com/b/b" }
+
+[build-dependencies]
+c = { git = "https://github.com/c/c" }
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert_eq!(urls.len(), 3);
+    }
+
+    #[test]
+    fn no_git_deps_returns_empty() {
+        let toml = r#"[dependencies]
+serde = "1"
+anyhow = { version = "1", default-features = false }
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn duplicate_git_urls_deduplicated() {
+        // Two deps from the same git URL collapse to one entry.
+        let toml = r#"[dependencies]
+foo = { git = "https://github.com/x/repo" }
+bar = { git = "https://github.com/x/repo" }
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert_eq!(urls.len(), 1);
+    }
+
+    #[test]
+    fn malformed_toml_returns_empty_safely() {
+        // Parse error shouldn't panic — caller's other paths will surface
+        // the real error.
+        let toml = r#"[dependencies
+this-is = "broken"
+"#;
+        let urls = collect_git_urls(toml).unwrap();
+        assert!(urls.is_empty());
+    }
+
+    // endregion
 
     #[test]
     fn strip_vendor_path_deps_removes_relative_paths() {
