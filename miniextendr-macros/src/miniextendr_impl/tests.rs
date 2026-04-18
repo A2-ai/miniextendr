@@ -1108,10 +1108,17 @@ fn s7_type_mapping_result() {
 fn s7_type_mapping_unknown() {
     use super::rust_type_to_s7_class;
 
-    // Unknown types return None (will use class_any)
+    // Bare PascalCase types emit the quiet-fallback CLASS_REF placeholder
+    // (#203). The cdylib resolver substitutes it with the registered R class
+    // name for S7 types, or `S7::class_any` for unregistered / non-S7 ones.
     let ty: syn::Type = syn::parse_quote!(MyCustomType);
-    assert_eq!(rust_type_to_s7_class(&ty), None);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some(".__MX_CLASS_REF_OR_ANY_MyCustomType__".to_string())
+    );
 
+    // Generic types (path with args) still return None so the caller omits
+    // the `class =` entirely — S7 defaults to class_any in that case too.
     let ty: syn::Type = syn::parse_quote!(ExternalPtr<Foo>);
     assert_eq!(rust_type_to_s7_class(&ty), None);
 }
