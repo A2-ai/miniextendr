@@ -20,7 +20,11 @@ ra-target/
 src/rust/ra_target/
 src/rust/target/
 
-# Vendor compression stamp file
+# Vendor tarball — generated in CI and at CRAN release time; never tracked.
+# Merge conflicts on this binary caused constant PR churn, and every
+# in-flight PR that touched a workspace crate had to regen it. CI jobs that
+# test CRAN-mode builds run `just vendor` before `R CMD check`.
+inst/vendor.tar.xz
 inst/.vendor.tar.xz.cksum
 
 # Intermediary files from configure.ac

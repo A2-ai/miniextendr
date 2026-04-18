@@ -154,9 +154,6 @@ jobs:
       - name: Check vendor sync
         run: just vendor-sync-check
 
-      - name: Verify Cargo.lock ↔ vendor/ ↔ vendor.tar.xz consistency
-        run: just vendor-verify
-
       - name: Check templates sync
         run: just templates-check
 
@@ -306,7 +303,6 @@ jobs:
               - '**/configure.ac'
               - '**/configure'
               - '**/*.in'
-              - '**/vendor.tar.xz'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '**/Cargo.toml'
