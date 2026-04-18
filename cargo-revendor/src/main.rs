@@ -13,6 +13,7 @@
 mod cache;
 mod metadata;
 mod package;
+mod verify;
 
 /// Convert a path to a TOML-safe string (forward slashes, no \\?\ prefix)
 pub fn path_to_toml(path: &std::path::Path) -> String {
@@ -122,6 +123,15 @@ struct Cli {
     /// Write .vendor-source marker file recording provenance
     #[arg(long)]
     source_marker: bool,
+
+    /// Verify-only: check Cargo.lock against the already-populated vendor/
+    /// directory (and, if --compress is given, the tarball against vendor/)
+    /// without re-vendoring. Exits non-zero if any drift is detected.
+    ///
+    /// Use in CI or pre-release checks to guarantee the committed
+    /// vendor.tar.xz matches Cargo.lock.
+    #[arg(long)]
+    verify: bool,
 }
 
 impl Cli {
@@ -163,7 +173,7 @@ fn main() -> Result<()> {
         .canonicalize()
         .with_context(|| format!("manifest not found: {}", cli.manifest_path.display()))?;
 
-    if v.info() {
+    if v.info() && !cli.verify {
         eprintln!(
             "cargo-revendor: vendoring deps from {}",
             manifest_path.display()
@@ -178,6 +188,11 @@ fn main() -> Result<()> {
     };
 
     let lockfile = manifest_path.with_file_name("Cargo.lock");
+
+    // Verify-only: don't vendor; just assert existing artifacts are in sync.
+    if cli.verify {
+        return run_verify(&lockfile, &output, cli.compress.as_deref(), v);
+    }
 
     // Step 1: Load cargo metadata to discover dependencies
     let meta = metadata::load_metadata(&manifest_path)?;
@@ -388,6 +403,43 @@ fn main() -> Result<()> {
             total - packaged.len(),
             output.display()
         );
+    }
+
+    Ok(())
+}
+
+/// Verify that Cargo.lock, vendor/, and (optionally) the tarball agree.
+fn run_verify(
+    lockfile: &std::path::Path,
+    vendor_dir: &std::path::Path,
+    tarball: Option<&std::path::Path>,
+    v: Verbosity,
+) -> Result<()> {
+    if v.info() {
+        eprintln!("cargo-revendor: verifying Cargo.lock ↔ {}", vendor_dir.display());
+    }
+    verify::verify_lock_matches_vendor(lockfile, vendor_dir)?;
+    if v.info() {
+        eprintln!("  Cargo.lock ↔ vendor/: OK");
+    }
+
+    if let Some(tarball) = tarball {
+        let tarball_abs = if tarball.is_absolute() {
+            tarball.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(tarball)
+        };
+        if v.info() {
+            eprintln!(
+                "cargo-revendor: verifying {} ↔ {}",
+                tarball_abs.display(),
+                vendor_dir.display()
+            );
+        }
+        verify::verify_tarball_matches_vendor(&tarball_abs, vendor_dir)?;
+        if v.info() {
+            eprintln!("  tarball ↔ vendor/: OK");
+        }
     }
 
     Ok(())
