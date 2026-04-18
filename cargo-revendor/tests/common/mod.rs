@@ -233,43 +233,123 @@ pub fn create_local_git_crate(name: &str, cargo_toml: &str, lib_rs: &str) -> Loc
 
 // region: vendor assertions
 
-/// Assert that `vendor/<name>/` exists and contains a `Cargo.toml`.
+/// Resolve `vendor/<name>/` or `vendor/<name>-<version>/` to an actual path.
+///
+/// Since cargo-revendor PR #239 flipped `--versioned-dirs` to default, crate
+/// directories live at `vendor/<name>-<version>/`. Tests shouldn't hardcode
+/// either shape — use this helper to probe in order:
+///
+/// 1. Exact `vendor/<name>-<version>/` if `version` is provided.
+/// 2. Any `vendor/<name>-*/` glob match (versioned default).
+/// 3. Flat `vendor/<name>/` fallback (the `--flat-dirs` opt-out path).
+///
+/// Panics with a helpful message if none exists. Mirrors the probe-then-fall-
+/// back pattern in `cargo-revendor/src/verify.rs` (`verify_lock_matches_vendor`)
+/// and `minirextendr/R/vendor.R` (`add_vendor_patches`).
+pub fn vendor_dir_for(vendor: &Path, name: &str, version: Option<&str>) -> PathBuf {
+    if let Some(v) = version {
+        let versioned = vendor.join(format!("{name}-{v}"));
+        if versioned.is_dir() {
+            return versioned;
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(vendor) {
+        let prefix = format!("{name}-");
+        let mut matches: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_dir()
+                    && p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with(&prefix))
+            })
+            .collect();
+        if matches.len() == 1 {
+            return matches.pop().unwrap();
+        }
+        if matches.len() > 1 {
+            panic!(
+                "vendor_dir_for({name}): ambiguous — multiple versioned matches in {}: {matches:?}",
+                vendor.display()
+            );
+        }
+    }
+    let flat = vendor.join(name);
+    if flat.is_dir() {
+        return flat;
+    }
+    panic!(
+        "vendor_dir_for({name}): no matching directory in {}",
+        vendor.display()
+    );
+}
+
+/// Does either `vendor/<name>/` or `vendor/<name>-*/` exist?
+///
+/// Use this instead of `vendor.join(name).exists()` in assertions that only
+/// care whether the crate was vendored, not about its exact directory shape.
+pub fn vendor_has(vendor: &Path, name: &str) -> bool {
+    if vendor.join(name).is_dir() {
+        return true;
+    }
+    let prefix = format!("{name}-");
+    std::fs::read_dir(vendor)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .any(|e| {
+                    e.file_name()
+                        .to_str()
+                        .is_some_and(|n| n.starts_with(&prefix))
+                })
+        })
+        .unwrap_or(false)
+}
+
+/// Assert that `vendor/<name>/` or `vendor/<name>-*/` exists and contains a
+/// `Cargo.toml`.
 pub fn assert_vendor_has(vendor: &Path, name: &str) {
-    let crate_dir = vendor.join(name);
+    let crate_dir = vendor_dir_for(vendor, name, None);
     assert!(
         crate_dir.exists(),
-        "expected vendor/{} to exist at {}",
+        "expected vendor/{} (or versioned equivalent) to exist at {}",
         name,
         vendor.display()
     );
     assert!(
         crate_dir.join("Cargo.toml").exists(),
-        "expected vendor/{}/Cargo.toml",
-        name
+        "expected {}/Cargo.toml",
+        crate_dir.display()
     );
 }
 
-/// Assert that `vendor/<name>/` does NOT exist (matched crate was excluded).
+/// Assert that neither `vendor/<name>/` nor `vendor/<name>-*/` exists (matched
+/// crate was excluded).
 pub fn assert_vendor_missing(vendor: &Path, name: &str) {
     assert!(
-        !vendor.join(name).exists(),
-        "vendor/{} should not exist",
+        !vendor_has(vendor, name),
+        "vendor/{} (or versioned equivalent) should not exist",
         name
     );
 }
 
 /// Read a vendored crate's Cargo.toml as a string (panics on missing file).
 pub fn read_vendor_toml(vendor: &Path, name: &str) -> String {
-    std::fs::read_to_string(vendor.join(name).join("Cargo.toml"))
-        .unwrap_or_else(|_| panic!("failed to read vendor/{}/Cargo.toml", name))
+    let crate_dir = vendor_dir_for(vendor, name, None);
+    std::fs::read_to_string(crate_dir.join("Cargo.toml"))
+        .unwrap_or_else(|_| panic!("failed to read {}/Cargo.toml", crate_dir.display()))
 }
 
 /// Assert a vendored crate's `.cargo-checksum.json` is the empty-files form
 /// (`{"files":{}}`) — what cargo expects from a vendored-sources tree.
 pub fn assert_empty_checksum(vendor: &Path, name: &str) {
-    let cksum = vendor.join(name).join(".cargo-checksum.json");
+    let crate_dir = vendor_dir_for(vendor, name, None);
+    let cksum = crate_dir.join(".cargo-checksum.json");
     let content = std::fs::read_to_string(&cksum)
-        .unwrap_or_else(|_| panic!("no .cargo-checksum.json in vendor/{}", name));
+        .unwrap_or_else(|_| panic!("no .cargo-checksum.json in {}", crate_dir.display()));
     assert_eq!(content, "{\"files\":{}}");
 }
 

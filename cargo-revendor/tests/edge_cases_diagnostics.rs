@@ -10,7 +10,9 @@
 
 mod common;
 
-use common::{create_simple_crate, create_workspace, read_vendor_toml, revendor_cmd};
+use common::{
+    create_simple_crate, create_workspace, read_vendor_toml, revendor_cmd, vendor_has,
+};
 
 // region: Edge cases (E1-E5)
 
@@ -75,7 +77,7 @@ path = "lib.rs"
     // or may not land in vendor/ depending on whether dev-deps are resolved
     // in the minimal lockfile. What we care about: the vendored helper (if
     // present) has [dev-dependencies] stripped.
-    if vendor.join("helper").exists() {
+    if vendor_has(&vendor, "helper") {
         let toml = read_vendor_toml(&vendor, "helper");
         assert!(
             !toml.contains("[dev-dependencies]"),
@@ -124,11 +126,11 @@ once_cell = "1"
     // cargo vendor materializes deps for all target triples, not just the
     // host — both cfg-if (unix) and once_cell (windows) should be present.
     assert!(
-        vendor.join("cfg-if").exists(),
+        vendor_has(&vendor, "cfg-if"),
         "expected unix cfg-gated dep to vendor"
     );
     assert!(
-        vendor.join("once_cell").exists(),
+        vendor_has(&vendor, "once_cell"),
         "expected windows cfg-gated dep to vendor"
     );
 }
@@ -168,7 +170,7 @@ my_alias = { package = "cfg-if", version = "1" }
 
     // The renamed dep is stored under the real crate name in vendor/.
     assert!(
-        vendor.join("cfg-if").exists(),
+        vendor_has(&vendor, "cfg-if"),
         "renamed dep should land under its real package name"
     );
 
