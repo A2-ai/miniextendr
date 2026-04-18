@@ -203,28 +203,34 @@ jobs:
       - name: Rustfmt
         id: rustfmt
         continue-on-error: true
-        run: cargo fmt --all -- --check
+        run: cargo fmt --all -- --check 2>&1 | tee "$RUNNER_TEMP/rustfmt.log"
+        shell: bash
 
       - name: Clippy (default features)
         id: clippy_default
         continue-on-error: true
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_default.log"
+        shell: bash
 
       - name: Clippy (all features)
         id: clippy_all
         continue-on-error: true
-        # NOTE: Can't use --all-features because default-r6/default-s7 are
-        # mutually exclusive. List all non-conflicting features explicitly instead.
+        # NOTE: Can't use `--features full` — the `full` feature in
+        # miniextendr-api omits the forwarding features we want checked
+        # (default-r6/-strict/-coerce/-worker, nonapi, connections) and adds
+        # heavy deps (arrow, datafusion, log) we don't need here. Keep the
+        # explicit list so CI signal matches what rpkg actually enables.
         run: >-
           cargo clippy --workspace --all-targets --locked
           --features rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,connections,nonapi,default-strict,default-coerce,default-r6,default-worker
-          -- -D warnings
+          -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_all.log"
+        shell: bash
 
       - name: Fail if any Rust check failed
         if: always()
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           failed=0
 
           rustfmt="${{ steps.rustfmt.outcome }}"
@@ -234,13 +240,28 @@ jobs:
           echo "rustfmt:         $rustfmt"
           echo "clippy_default:  $clippy_default"
           echo "clippy_all:      $clippy_all"
+          echo
 
-          if [[ "$rustfmt" != "success" ]]; then failed=1; fi
-          if [[ "$clippy_default" != "success" ]]; then failed=1; fi
-          if [[ "$clippy_all" != "success" ]]; then failed=1; fi
+          dump_failed() {
+            local name="$1" outcome="$2" log="$RUNNER_TEMP/$1.log"
+            if [[ "$outcome" != "success" ]]; then
+              echo "::group::$name failure output"
+              if [[ -f "$log" ]]; then
+                cat "$log"
+              else
+                echo "(no log captured for $name)"
+              fi
+              echo "::endgroup::"
+              failed=1
+            fi
+          }
+
+          dump_failed rustfmt         "$rustfmt"
+          dump_failed clippy_default  "$clippy_default"
+          dump_failed clippy_all      "$clippy_all"
 
           if [[ "$failed" -ne 0 ]]; then
-            echo "::error::One or more Rust checks failed (see logs above)"
+            echo "::error::One or more Rust checks failed (output dumped above)"
             exit 1
           fi
 
