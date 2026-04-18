@@ -209,10 +209,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
         let attrs = &method.method_attrs;
 
-        if attrs.s7_getter || attrs.s7_setter || attrs.s7_validate {
+        if attrs.s7.getter || attrs.s7.setter || attrs.s7.validate {
             let method_ident = method.ident.to_string();
             let prop_name = attrs
-                .s7_prop
+                .s7
+                .prop
                 .clone()
                 .unwrap_or_else(|| method_ident.clone());
 
@@ -230,30 +231,30 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 deprecated: None,
             });
 
-            if attrs.s7_getter {
+            if attrs.s7.getter {
                 entry.getter_method_ident = Some(method_ident.clone());
                 // Extract S7 class type from getter's return type
                 if let syn::ReturnType::Type(_, ret_type) = &method.sig.output {
                     entry.class_type = rust_type_to_s7_class(ret_type);
                 }
                 // Capture property attributes from getter
-                if let Some(ref default) = attrs.s7_default {
+                if let Some(ref default) = attrs.s7.default {
                     entry.default_value = Some(default.clone());
                 }
-                if attrs.s7_required {
+                if attrs.s7.required {
                     entry.required = true;
                 }
-                if attrs.s7_frozen {
+                if attrs.s7.frozen {
                     entry.frozen = true;
                 }
-                if let Some(ref msg) = attrs.s7_deprecated {
+                if let Some(ref msg) = attrs.s7.deprecated {
                     entry.deprecated = Some(msg.clone());
                 }
             }
-            if attrs.s7_setter {
+            if attrs.s7.setter {
                 entry.setter_method_ident = Some(method_ident.clone());
             }
-            if attrs.s7_validate {
+            if attrs.s7.validate {
                 entry.validator_method_ident = Some(method_ident);
             }
         }
@@ -282,7 +283,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Check if any methods use S7 convert (convert_from or convert_to)
     let has_convert_methods = parsed_impl.methods.iter().any(|m| {
         m.should_include()
-            && (m.method_attrs.s7_convert_from.is_some() || m.method_attrs.s7_convert_to.is_some())
+            && (m.method_attrs.s7.convert_from.is_some() || m.method_attrs.s7.convert_to.is_some())
     });
     if has_convert_methods {
         import_parts.push("convert");
@@ -591,7 +592,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // For fallback methods (class_any), check class before using @ to extract
         // the pointer. Non-S7 objects can't have @.ptr — error in R rather than
         // passing a wrong type to Rust (which would segfault).
-        let self_expr = if method_attrs.s7_fallback {
+        let self_expr = if method_attrs.s7.fallback {
             "if (inherits(x, \"S7_object\")) x@.ptr else stop(paste0(\"expected an S7 object, got \", class(x)[[1]]))"
         } else {
             "x@.ptr"
@@ -599,7 +600,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let call = ctx.instance_call(self_expr);
 
         // Determine dispatch class (fallback -> class_any, normal -> class_name)
-        let method_class = if method_attrs.s7_fallback {
+        let method_class = if method_attrs.s7.fallback {
             "S7::class_any".to_string()
         } else {
             class_name.clone()
@@ -709,7 +710,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
 
             // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")
-            let dispatch_args = if let Some(ref dispatch) = method_attrs.s7_dispatch {
+            let dispatch_args = if let Some(ref dispatch) = method_attrs.s7.dispatch {
                 // Multiple dispatch: "x,y" -> c("x", "y")
                 let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
                 if args.len() == 1 {
@@ -728,9 +729,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             };
 
             // Determine function signature (with or without ...)
-            let generic_sig = if method_attrs.s7_no_dots {
+            let generic_sig = if method_attrs.s7.no_dots {
                 // no_dots: strict generic without ...
-                if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                if let Some(ref dispatch) = method_attrs.s7.dispatch {
                     let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
                     format!("function({}) S7::S7_dispatch()", args.join(", "))
                 } else {
@@ -738,7 +739,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
             } else {
                 // Default: include ... for extra args
-                if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                if let Some(ref dispatch) = method_attrs.s7.dispatch {
                     let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
                     format!("function({}, ...) S7::S7_dispatch()", args.join(", "))
                 } else {
@@ -763,7 +764,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .build_s7_inline();
 
             // Use matching formals for method (with or without ...)
-            let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
+            let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7.no_dots);
 
             // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, match_arg, r_post_checks
             let what = format!("{}.{}", generic_name, class_name);
@@ -909,7 +910,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Handle convert_from (static method pattern)
         // S7 convert signature is function(from, to) - one parameter for the source object
-        if let Some(ref from_type) = attrs.s7_convert_from {
+        if let Some(ref from_type) = attrs.s7.convert_from {
             let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
 
             // Documentation for convert method (skip if class has @noRd)
@@ -946,7 +947,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Handle convert_to (instance method pattern)
         // S7 convert signature is function(from, to) - self becomes from
-        if let Some(ref to_type) = attrs.s7_convert_to {
+        if let Some(ref to_type) = attrs.s7.convert_to {
             let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
 
             // Documentation for convert method (skip if class has @noRd)
