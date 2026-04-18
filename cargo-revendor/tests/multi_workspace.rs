@@ -372,6 +372,61 @@ autocfg = "=1.5.0"
     assert_autocfg_version_present(&shared_vendor, "1.5.0");
 }
 
+/// **#215** — `--versioned-dirs` forces every crate into
+/// `vendor/<name>-<version>/` instead of flattening single-version crates
+/// to `vendor/<name>/`. Regression test for the opt-in flag.
+#[test]
+#[ignore] // network
+fn versioned_dirs_flag_forces_versioned_layout() {
+    let proj = common::create_simple_crate(
+        r#"[package]
+name = "vd-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+cfg-if = "1"
+"#,
+        "",
+    );
+
+    let vendor = proj.root().join("vendor");
+    revendor_cmd()
+        .arg("revendor")
+        .arg("--manifest-path")
+        .arg(proj.root().join("Cargo.toml"))
+        .arg("--output")
+        .arg(&vendor)
+        .arg("--versioned-dirs")
+        .assert()
+        .success();
+
+    // Without --versioned-dirs, cargo vendor would flatten cfg-if (only one
+    // version in the graph) to `vendor/cfg-if/`. With the flag, the dir is
+    // `vendor/cfg-if-<version>/`.
+    let flat = vendor.join("cfg-if");
+    let entries: Vec<String> = std::fs::read_dir(&vendor)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        !flat.exists(),
+        "--versioned-dirs should prevent the flat `cfg-if/` slot, saw:\n{entries:#?}"
+    );
+    let versioned = entries
+        .iter()
+        .find(|e| e.starts_with("cfg-if-"))
+        .unwrap_or_else(|| panic!("no cfg-if-<version>/ found in vendor, saw:\n{entries:#?}"));
+    assert!(versioned.starts_with("cfg-if-1."));
+}
+
 /// **M3c** — `--verify` against a shared-sync vendor checks both primary
 /// and sync'd Cargo.lock. Hand-corrupt one of the sync'd lockfiles → the
 /// verify step should flag it.

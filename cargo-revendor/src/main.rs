@@ -144,6 +144,21 @@ struct Cli {
     /// Cargo.lock is also checked by --verify. See #229.
     #[arg(long)]
     sync: Vec<PathBuf>,
+
+    /// Use versioned directory names (`vendor/<name>-<version>/`) for
+    /// EVERY vendored crate — including crates that appear only once.
+    /// Without this flag, `cargo vendor` flattens single-version crates
+    /// to `vendor/<name>/` and only uses versioned names when multiple
+    /// versions of the same crate are locked. That creates drift:
+    /// a `vendor/rand/` that silently holds one of several versions, and
+    /// a regeneration can swap which version lives in the flat slot
+    /// without changing the filename.
+    ///
+    /// Opt-in today because adopting it requires updating downstream
+    /// hardcoded paths (rpkg's Cargo.toml freeze target, minirextendr's
+    /// status probe). See #215.
+    #[arg(long)]
+    versioned_dirs: bool,
 }
 
 impl Cli {
@@ -336,6 +351,7 @@ fn main() -> Result<()> {
         &vendor_staging,
         &patch_pkgs,
         &sync_manifests,
+        cli.versioned_dirs,
         v,
     )?;
 
