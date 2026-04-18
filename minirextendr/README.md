@@ -85,7 +85,6 @@ crates instead of git sources, add a `[patch."https://..."]` section to your
 [patch."https://github.com/CGMossa/miniextendr"]
 miniextendr-api = { path = "../path/to/miniextendr-api" }
 miniextendr-macros = { path = "../path/to/miniextendr-macros" }
-miniextendr-macros-core = { path = "../path/to/miniextendr-macros-core" }
 miniextendr-lint = { path = "../path/to/miniextendr-lint" }
 ```
 

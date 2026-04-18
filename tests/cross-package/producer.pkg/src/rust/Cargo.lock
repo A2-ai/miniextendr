@@ -81,16 +81,6 @@ dependencies = [
 name = "miniextendr-macros"
 version = "0.1.0"
 dependencies = [
- "miniextendr-macros-core",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "miniextendr-macros-core"
-version = "0.1.0"
-dependencies = [
  "proc-macro2",
  "quote",
  "syn",

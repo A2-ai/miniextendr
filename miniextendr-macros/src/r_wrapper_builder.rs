@@ -45,15 +45,23 @@
 /// Note: We strip underscores rather than prefixing "unused" because R callers
 /// (like vctrs) may use named arguments that must match the original name.
 pub fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
-    let arg_name = rust_ident.to_string();
-    let normalized = arg_name.trim_start_matches('_');
-    // Handle edge case of just underscores
-    let normalized = if normalized.is_empty() {
-        "arg"
+    syn::Ident::new(
+        &normalize_r_arg_string(&rust_ident.to_string()),
+        rust_ident.span(),
+    )
+}
+
+/// String form of [`normalize_r_arg_ident`] that skips the `syn::Ident` round-trip.
+///
+/// Most callers feed the result into `format!`/`HashMap` keys and immediately
+/// `.to_string()` the returned ident — this avoids that allocation pair.
+pub fn normalize_r_arg_string(name: &str) -> String {
+    let normalized = name.trim_start_matches('_');
+    if normalized.is_empty() {
+        "arg".to_string()
     } else {
-        normalized
-    };
-    syn::Ident::new(normalized, rust_ident.span())
+        normalized.to_string()
+    }
 }
 
 /// Builder for R function formal parameters and call arguments.

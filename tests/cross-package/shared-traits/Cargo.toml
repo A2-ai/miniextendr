@@ -17,4 +17,3 @@ miniextendr-api = { path = "../../../miniextendr-api" , version = "*" }
 [patch.crates-io]
 miniextendr-api = { path = "../../../miniextendr-api" }
 miniextendr-macros = { path = "../../../miniextendr-macros" }
-miniextendr-macros-core = { path = "../../../miniextendr-macros-core" }

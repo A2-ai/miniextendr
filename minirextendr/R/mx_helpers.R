@@ -70,7 +70,7 @@ miniextendr_dev_link <- function(path = ".", monorepo_path) {
   }
 
   # Validate monorepo has the expected crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core",
+  crates <- c("miniextendr-api", "miniextendr-macros",
               "miniextendr-lint", "miniextendr-engine")
   missing <- crates[!dir.exists(file.path(monorepo_path, crates))]
   if (length(missing) > 0) {
@@ -106,7 +106,6 @@ miniextendr_dev_link <- function(path = ".", monorepo_path) {
     "[patch.crates-io]",
     sprintf('miniextendr-api = { path = "%s/miniextendr-api" }', rel_path),
     sprintf('miniextendr-macros = { path = "%s/miniextendr-macros" }', rel_path),
-    sprintf('miniextendr-macros-core = { path = "%s/miniextendr-macros-core" }', rel_path),
     sprintf('miniextendr-lint = { path = "%s/miniextendr-lint" }', rel_path),
     sprintf('miniextendr-engine = { path = "%s/miniextendr-engine" }', rel_path)
   )

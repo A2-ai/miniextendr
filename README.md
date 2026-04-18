@@ -12,8 +12,6 @@ used to scaffold standalone packages and monorepos.
   routing, ALTREP, class systems, trait ABI, and macro re-exports.
 - `miniextendr-macros/` - Proc macros such as `#[miniextendr]`,
   `#[r_ffi_checked]`, `ExternalPtr`, and `RNativeType`.
-- `miniextendr-macros-core/` - Shared parsing/generation support used by the
-  proc-macro crate.
 - `miniextendr-engine/` - Standalone R embedding engine for Rust-only binaries
   and integration tests.
 - `miniextendr-cli/` - CLI for scaffolding, workflow, vendoring, and cargo

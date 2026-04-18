@@ -362,7 +362,7 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 // region: Test 8: Main thread functions (via attribute)
 
 /// Test calling R API directly from a main_thread-attributed function.
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn test_main_thread_r_api() -> i32 {
     // This runs on main thread, can call R API directly
     let sexp = miniextendr_api::ffi::SEXP::scalar_integer(42);
@@ -370,7 +370,7 @@ pub fn test_main_thread_r_api() -> i32 {
 }
 
 /// Test that Rf_error from a main_thread function propagates as an R error.
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn test_main_thread_r_error() -> i32 {
     unsafe {
         miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error from main_thread fn".as_ptr()) // mxl::allow(MXL300)
@@ -378,7 +378,7 @@ pub fn test_main_thread_r_error() -> i32 {
 }
 
 /// Test that RAII destructors run when Rf_error occurs in a main_thread function.
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn test_main_thread_r_error_with_drops() -> i32 {
     let _resource = SimpleDropMsg("main_thread_r_error: resource");
     unsafe {

@@ -122,14 +122,6 @@ fn miniextendr_attr_rejects_option_arguments() {
 }
 
 #[test]
-fn miniextendr_attr_rejects_unknown_unsafe_options() {
-    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(unsafe(oops)))
-        .err()
-        .unwrap();
-    assert!(err.to_string().contains("unknown `unsafe(...)` option"));
-}
-
-#[test]
 fn miniextendr_attr_accepts_multiple_flags() {
     let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(coerce, invisible))
         .expect("should parse multiple flags");

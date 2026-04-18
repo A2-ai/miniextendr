@@ -38,8 +38,6 @@ pub enum ThreadStrategy {
     WorkerThread,
 }
 
-impl ThreadStrategy {}
-
 /// Strategy for converting a Rust return value into an R `SEXP`.
 ///
 /// Determined automatically by [`detect_return_handling`] from the function's return type,

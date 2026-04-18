@@ -30,7 +30,6 @@ miniextendr-lint = { path = "../../../../../miniextendr-lint" }
 [patch.crates-io]
 miniextendr-api = { path = "../../../../../miniextendr-api" }
 miniextendr-macros = { path = "../../../../../miniextendr-macros" }
-miniextendr-macros-core = { path = "../../../../../miniextendr-macros-core" }
 miniextendr-lint = { path = "../../../../../miniextendr-lint" }
 
 # codegen-units = 1 ensures the entire user crate compiles into a single .o file
