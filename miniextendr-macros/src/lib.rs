@@ -371,6 +371,73 @@ fn validate_extern_signature(
     Ok(())
 }
 
+/// Emit the `extern "C-unwind"` helper + `R_CallMethodDef` registration for
+/// each standalone-fn `match_arg` param.
+///
+/// Each helper returns the enum's `CHOICES` wrapped in a STRSXP so the R
+/// wrapper's prelude can call `match.arg(x, .Call(helper, ...))`. Factored
+/// out of the `miniextendr` fn body so the entry point doesn't own the
+/// `quote!` scaffolding.
+fn build_match_arg_helpers(
+    match_arg_param_info: &[(String, String, &syn::Type)],
+    parsed: &miniextendr_fn::MiniextendrFunctionParsed,
+    c_ident_str: &str,
+    cfg_attrs: &[syn::Attribute],
+) -> Vec<proc_macro2::TokenStream> {
+    match_arg_param_info
+        .iter()
+        .map(|(r_param, rust_name, param_ty)| {
+            // For several_ok, the param type is e.g. Vec<Mode>/Box<[Mode]>/[Mode; N]/&[Mode]
+            // — extract inner Mode for choices_sexp.
+            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_name) {
+                classify_several_ok_container(param_ty)
+                    .map(|(_, t)| t)
+                    .unwrap_or(param_ty)
+            } else {
+                param_ty
+            };
+            let helper_fn_name = crate::match_arg_keys::choices_helper_c_name(c_ident_str, r_param);
+            let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
+            let helper_def_ident =
+                crate::match_arg_keys::choices_helper_def_ident(c_ident_str, r_param);
+            let helper_c_name = syn::LitCStr::new(
+                std::ffi::CString::new(helper_fn_name.clone())
+                    .expect("valid C string")
+                    .as_c_str(),
+                proc_macro2::Span::call_site(),
+            );
+            quote::quote! {
+                #(#cfg_attrs)*
+                #[allow(non_snake_case)]
+                #[unsafe(no_mangle)]
+                pub extern "C-unwind" fn #helper_fn_ident(
+                    __miniextendr_call: ::miniextendr_api::ffi::SEXP,
+                ) -> ::miniextendr_api::ffi::SEXP {
+                    ::miniextendr_api::choices_sexp::<#choices_ty>()
+                }
+
+                #(#cfg_attrs)*
+                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+                #[allow(non_upper_case_globals)]
+                #[allow(non_snake_case)]
+                static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+                    ::miniextendr_api::ffi::R_CallMethodDef {
+                        name: #helper_c_name.as_ptr(),
+                        fun: Some(std::mem::transmute::<
+                            unsafe extern "C-unwind" fn(
+                                ::miniextendr_api::ffi::SEXP,
+                            ) -> ::miniextendr_api::ffi::SEXP,
+                            unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
+                        >(#helper_fn_ident)),
+                        numArgs: 1i32,
+                    }
+                };
+            }
+        })
+        .collect()
+}
+
 /// Export Rust items to R.
 ///
 /// `#[miniextendr]` can be applied to:
@@ -1600,106 +1667,48 @@ pub fn miniextendr(
     let original_item = original_item;
 
     // Generate match_arg choices helper C wrappers and R_CallMethodDef entries
-    let mut match_arg_helper_def_idents: Vec<syn::Ident> = Vec::new();
-    let match_arg_helpers: Vec<proc_macro2::TokenStream> = match_arg_param_info
-        .iter()
-        .map(|(r_param, rust_name, param_ty)| {
-            // For several_ok, the param type is e.g. Vec<Mode>/Box<[Mode]>/[Mode; N]/&[Mode]
-            // — extract inner Mode for choices_sexp
-            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_name) {
-                classify_several_ok_container(param_ty)
-                    .map(|(_, t)| t)
-                    .unwrap_or(param_ty)
-            } else {
-                param_ty
-            };
-            let helper_fn_name =
-                crate::match_arg_keys::choices_helper_c_name(&c_ident.to_string(), r_param);
-            let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
-            let helper_def_ident =
-                crate::match_arg_keys::choices_helper_def_ident(&c_ident.to_string(), r_param);
-            match_arg_helper_def_idents.push(helper_def_ident.clone());
-            let helper_c_name = syn::LitCStr::new(
-                std::ffi::CString::new(helper_fn_name.clone())
-                    .expect("valid C string")
-                    .as_c_str(),
-                proc_macro2::Span::call_site(),
-            );
-            quote::quote! {
-                #(#cfg_attrs)*
-                #[allow(non_snake_case)]
-                #[unsafe(no_mangle)]
-                pub extern "C-unwind" fn #helper_fn_ident(
-                    __miniextendr_call: ::miniextendr_api::ffi::SEXP,
-                ) -> ::miniextendr_api::ffi::SEXP {
-                    ::miniextendr_api::choices_sexp::<#choices_ty>()
-                }
-
-                #(#cfg_attrs)*
-                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
-                #[allow(non_upper_case_globals)]
-                #[allow(non_snake_case)]
-                static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
-                    ::miniextendr_api::ffi::R_CallMethodDef {
-                        name: #helper_c_name.as_ptr(),
-                        fun: Some(std::mem::transmute::<
-                            unsafe extern "C-unwind" fn(
-                                ::miniextendr_api::ffi::SEXP,
-                            ) -> ::miniextendr_api::ffi::SEXP,
-                            unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
-                        >(#helper_fn_ident)),
-                        numArgs: 1i32,
-                    }
-                };
-            }
-        })
-        .collect();
+    let match_arg_helpers = build_match_arg_helpers(
+        &match_arg_param_info,
+        &parsed,
+        &c_ident.to_string(),
+        &cfg_attrs,
+    );
 
     // Generate MX_MATCH_ARG_CHOICES entries for placeholder → choices replacement
+    // Resolve the `MatchArg`-bound type used in the choices_str closure: for
+    // `several_ok` params that's the inner element of the container, otherwise
+    // it's the param type directly.
+    let choices_ty_for = |rust_param: &str| -> Option<&syn::Type> {
+        let (_, _, param_ty) = match_arg_param_info
+            .iter()
+            .find(|(_, rn, _)| rn == rust_param)?;
+        let ty: &syn::Type = if parsed.has_several_ok(rust_param) {
+            classify_several_ok_container(param_ty)
+                .map(|(_, t)| t)
+                .unwrap_or(param_ty)
+        } else {
+            param_ty
+        };
+        Some(ty)
+    };
+
     let match_arg_choices_entries: Vec<proc_macro2::TokenStream> = match_arg_placeholders
         .iter()
         .filter_map(|(placeholder, rust_param)| {
-            // Find the type for this param from match_arg_param_info
-            let (_, _, param_ty) = match_arg_param_info
-                .iter()
-                .find(|(_, rn, _)| rn == rust_param)?;
-            // For several_ok, extract inner type from the container (Vec<Mode>, Box<[Mode]>, etc.)
-            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_param) {
-                classify_several_ok_container(param_ty)
-                    .map(|(_, t)| t)
-                    .unwrap_or(param_ty)
-            } else {
-                param_ty
-            };
+            let choices_ty = choices_ty_for(rust_param)?;
             let entry_ident = syn::Ident::new(
                 &format!(
                     "match_arg_choices_entry_{}",
-                    placeholder.trim_matches('_').replace('.', "_")
+                    crate::match_arg_keys::placeholder_ident_suffix(placeholder)
                 ),
                 proc_macro2::Span::call_site(),
             );
-            Some(quote::quote! {
-                #(#cfg_attrs)*
-                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
-                #[allow(non_upper_case_globals)]
-                #[allow(non_snake_case)]
-                static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
-                    ::miniextendr_api::registry::MatchArgChoicesEntry {
-                        placeholder: #placeholder,
-                        choices_str: || {
-                            <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                                .iter()
-                                .map(|c| format!(
-                                    "\"{}\"",
-                                    ::miniextendr_api::match_arg::escape_r_string(c)
-                                ))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        },
-                    };
-            })
+            Some(crate::match_arg_keys::choices_entry_tokens(
+                &cfg_attrs,
+                &entry_ident,
+                placeholder,
+                choices_ty,
+            ))
         })
         .collect();
 
@@ -1708,46 +1717,22 @@ pub fn miniextendr(
         match_arg_param_doc_placeholders
             .iter()
             .filter_map(|(doc_placeholder, rust_param)| {
-                // Find the type for this param from match_arg_param_info
-                let (_, _, param_ty) = match_arg_param_info
-                    .iter()
-                    .find(|(_, rn, _)| rn == rust_param)?;
-                // For several_ok, extract inner type from the container
-                // (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode])
-                let choices_ty: &syn::Type = if parsed.has_several_ok(rust_param) {
-                    classify_several_ok_container(param_ty)
-                        .map(|(_, t)| t)
-                        .unwrap_or(param_ty)
-                } else {
-                    param_ty
-                };
+                let choices_ty = choices_ty_for(rust_param)?;
                 let several_ok_lit = parsed.has_several_ok(rust_param);
                 let entry_ident = syn::Ident::new(
                     &format!(
                         "match_arg_param_doc_entry_{}",
-                        doc_placeholder.trim_matches('_').replace('.', "_")
+                        crate::match_arg_keys::placeholder_ident_suffix(doc_placeholder)
                     ),
                     proc_macro2::Span::call_site(),
                 );
-                Some(quote::quote! {
-                    #(#cfg_attrs)*
-                    #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_PARAM_DOCS)]
-                    #[linkme(crate = ::miniextendr_api::linkme)]
-                    #[allow(non_upper_case_globals)]
-                    #[allow(non_snake_case)]
-                    static #entry_ident: ::miniextendr_api::registry::MatchArgParamDocEntry =
-                        ::miniextendr_api::registry::MatchArgParamDocEntry {
-                            placeholder: #doc_placeholder,
-                            several_ok: #several_ok_lit,
-                            choices_str: || {
-                                <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                                    .iter()
-                                    .map(|c| format!("\"{}\"", c))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            },
-                        };
-                })
+                Some(crate::match_arg_keys::param_doc_entry_tokens(
+                    &cfg_attrs,
+                    &entry_ident,
+                    doc_placeholder,
+                    several_ok_lit,
+                    choices_ty,
+                ))
             })
             .collect();
 
