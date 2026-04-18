@@ -441,6 +441,45 @@ pub struct ParsedMethod {
     pub param_defaults: std::collections::HashMap<String, String>,
 }
 
+/// S7-specific per-method markers, separated from [`MethodAttrs`] so the S7
+/// class generator has a self-contained bag of its own state (property
+/// getters/setters, generic-dispatch controls, convert() wiring) and the other
+/// class generators don't have to look past them.
+///
+/// # Mapping from `s7(...)` attribute keys
+///
+/// | Attribute | Field |
+/// |-----------|-------|
+/// | `s7(getter)` | `getter: true` |
+/// | `s7(setter)` | `setter: true` |
+/// | `s7(prop = "name")` | `prop: Some("name")` |
+/// | `s7(default = "expr")` | `default: Some("expr")` |
+/// | `s7(validate)` | `validate: true` |
+/// | `s7(required)` | `required: true` |
+/// | `s7(frozen)` | `frozen: true` |
+/// | `s7(deprecated = "msg")` | `deprecated: Some("msg")` |
+/// | `s7(no_dots)` | `no_dots: true` |
+/// | `s7(dispatch = "x,y")` | `dispatch: Some("x,y")` |
+/// | `s7(fallback)` | `fallback: true` |
+/// | `s7(convert_from = "T")` | `convert_from: Some("T")` |
+/// | `s7(convert_to = "T")` | `convert_to: Some("T")` |
+#[derive(Debug, Default)]
+pub struct S7MethodAttrs {
+    pub getter: bool,
+    pub setter: bool,
+    pub prop: Option<String>,
+    pub default: Option<String>,
+    pub validate: bool,
+    pub required: bool,
+    pub frozen: bool,
+    pub deprecated: Option<String>,
+    pub no_dots: bool,
+    pub dispatch: Option<String>,
+    pub fallback: bool,
+    pub convert_from: Option<String>,
+    pub convert_to: Option<String>,
+}
+
 /// Per-method attributes for class system customization.
 #[derive(Debug, Default)]
 pub struct MethodAttrs {
@@ -559,170 +598,9 @@ pub struct MethodAttrs {
     pub match_arg_span: Option<proc_macro2::Span>,
     /// Span of `active` for error reporting.
     pub active_span: Option<proc_macro2::Span>,
-    /// S7 property getter marker.
-    ///
-    /// Use `#[miniextendr(s7(getter))]` or `#[miniextendr(s7(getter, prop = "name"))]` to mark
-    /// a method as an S7 property getter. The generated S7 class will include a computed
-    /// property with this getter.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter))]
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    /// // Generates: length = new_property(getter = function(self) ...)
-    /// ```
-    pub s7_getter: bool,
-    /// S7 property setter marker.
-    ///
-    /// Use `#[miniextendr(s7(setter, prop = "name"))]` to mark a method as an S7 property
-    /// setter. The property name must match a getter to create a dynamic property.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, prop = "len"))]
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    ///
-    /// #[miniextendr(s7(setter, prop = "len"))]
-    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
-    /// // Generates: len = new_property(getter = ..., setter = ...)
-    /// ```
-    pub s7_setter: bool,
-    /// S7 property name (defaults to method name).
-    ///
-    /// When specified via `#[miniextendr(s7(getter, prop = "name"))]`, overrides the
-    /// default property name which is derived from the method name.
-    pub s7_prop: Option<String>,
-    /// S7 property default value (R expression).
-    ///
-    /// Use `#[miniextendr(s7(getter, default = "0.0"))]` to set a default value.
-    /// The value is an R expression that will be used as the `default` parameter
-    /// in `new_property()`.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, default = "0.0"))]
-    /// fn score(&self) -> f64 { self.score }
-    /// // Generates: score = new_property(class = class_double, default = 0.0, getter = ...)
-    /// ```
-    pub s7_default: Option<String>,
-    /// S7 property validator marker.
-    ///
-    /// Use `#[miniextendr(s7(validate, prop = "name"))]` to mark a method as a property
-    /// validator. The method should take a value and return `Result<(), String>` or
-    /// return nothing and panic on invalid input.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(validate, prop = "score"))]
-    /// fn validate_score(value: f64) -> Result<(), String> {
-    ///     if value < 0.0 || value > 100.0 {
-    ///         Err("score must be between 0 and 100".into())
-    ///     } else {
-    ///         Ok(())
-    ///     }
-    /// }
-    /// ```
-    pub s7_validate: bool,
-    /// S7 property required marker.
-    ///
-    /// Use `#[miniextendr(s7(getter, required))]` to mark a property as required.
-    /// This generates `default = quote(stop("@name is required"))` in R.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, required))]
-    /// fn id(&self) -> String { self.id.clone() }
-    /// // Generates: id = new_property(default = quote(stop("@id is required")), ...)
-    /// ```
-    pub s7_required: bool,
-    /// S7 property frozen marker.
-    ///
-    /// Use `#[miniextendr(s7(getter, frozen))]` to mark a property that can only
-    /// be set once. After the initial value is set, attempts to change it will error.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, frozen))]
-    /// fn created_at(&self) -> f64 { self.created_at }
-    /// ```
-    pub s7_frozen: bool,
-    /// S7 property deprecated marker.
-    ///
-    /// Use `#[miniextendr(s7(getter, deprecated = "message"))]` to mark a property
-    /// as deprecated. Getter and setter will emit deprecation warnings.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, deprecated = "Use 'value' instead"))]
-    /// fn old_value(&self) -> i32 { self.value }
-    /// ```
-    pub s7_deprecated: Option<String>,
-    // region: S7 Phase 3: Generic dispatch control
-    /// S7 no_dots marker - removes `...` from generic signature.
-    ///
-    /// Use for strict generics like `length()` that don't accept extra args.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(no_dots))]
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    /// // Generates: new_generic("length", "x", function(x) S7_dispatch())
-    /// // Instead of: new_generic("length", "x", function(x, ...) S7_dispatch())
-    /// ```
-    pub s7_no_dots: bool,
-    /// S7 multiple dispatch - specifies dispatch arguments.
-    ///
-    /// Use `#[miniextendr(s7(dispatch = "x,y"))]` to enable double dispatch.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(dispatch = "x,y"))]
-    /// fn compare(&self, other: &OtherType) -> i32 { ... }
-    /// // Generates: new_generic("compare", c("x", "y"), function(x, y, ...) S7_dispatch())
-    /// ```
-    pub s7_dispatch: Option<String>,
-    /// S7 fallback marker - register method for class_any.
-    ///
-    /// Use for fallback implementations that handle any type.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(fallback))]
-    /// fn describe(&self) -> String { "unknown".to_string() }
-    /// // Registers method for S7::class_any
-    /// ```
-    pub s7_fallback: bool,
-    // endregion
-    // region: S7 Phase 4: Conversion support
-    /// S7 convert_from - marks a method that converts FROM another type.
-    ///
-    /// Use `#[miniextendr(s7(convert_from = "OtherType"))]` on a static method
-    /// that takes OtherType and returns Self. This generates an S7 convert() method.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(convert_from = "Point2D"))]
-    /// fn from_2d(p: &Point2D) -> Self {
-    ///     Point3D { x: p.x, y: p.y, z: 0.0 }
-    /// }
-    /// // Generates: S7::method(convert, list(Point2D, Point3D)) <- function(from, to) ...
-    /// ```
-    pub s7_convert_from: Option<String>,
-    /// S7 convert_to - marks a method that converts TO another type.
-    ///
-    /// Use `#[miniextendr(s7(convert_to = "OtherType"))]` on an instance method
-    /// that returns OtherType. This generates an S7 convert() method.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(convert_to = "Point2D"))]
-    /// fn to_2d(&self) -> Point2D {
-    ///     Point2D { x: self.x, y: self.y }
-    /// }
-    /// // Generates: S7::method(convert, list(Point3D, Point2D)) <- function(from, to) ...
-    /// ```
-    pub s7_convert_to: Option<String>,
-    // endregion
+    /// S7-specific method markers. Only consumed by the S7 class generator;
+    /// all other generators ignore this field.
+    pub s7: S7MethodAttrs,
     // region: Lifecycle support
     /// Lifecycle specification for deprecation/experimental status on methods.
     ///
@@ -1265,7 +1143,7 @@ impl ParsedMethod {
         // convert_from and convert_to are mutually exclusive on the same method
         // - convert_from expects a static method (no &self, takes source type)
         // - convert_to expects an instance method (&self, returns target type)
-        if attrs.s7_convert_from.is_some() && attrs.s7_convert_to.is_some() {
+        if attrs.s7.convert_from.is_some() && attrs.s7.convert_to.is_some() {
             return Err(syn::Error::new(
                 span,
                 "cannot specify both `convert_from` and `convert_to` on the same method; \
@@ -1346,7 +1224,7 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("setter") {
                             // Active binding setter: works for both R6 and S7
                             method_attrs.r6_setter = true;
-                            method_attrs.s7_setter = true;
+                            method_attrs.s7.setter = true;
                         } else if inner.path.is_ident("worker") {
                             worker = Some(true);
                         } else if inner.path.is_ident("no_worker") {
@@ -1384,44 +1262,44 @@ impl ParsedMethod {
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.class = Some(value.value());
                         } else if inner.path.is_ident("getter") {
-                            method_attrs.s7_getter = true;
+                            method_attrs.s7.getter = true;
                         } else if inner.path.is_ident("validate") {
-                            method_attrs.s7_validate = true;
+                            method_attrs.s7.validate = true;
                         } else if inner.path.is_ident("prop") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             let prop_value = value.value();
                             // Set both S7 and R6 prop - the class system will use the appropriate one
-                            method_attrs.s7_prop = Some(prop_value.clone());
+                            method_attrs.s7.prop = Some(prop_value.clone());
                             method_attrs.r6_prop = Some(prop_value);
                         } else if inner.path.is_ident("default") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_default = Some(value.value());
+                            method_attrs.s7.default = Some(value.value());
                         } else if inner.path.is_ident("required") {
-                            method_attrs.s7_required = true;
+                            method_attrs.s7.required = true;
                         } else if inner.path.is_ident("frozen") {
-                            method_attrs.s7_frozen = true;
+                            method_attrs.s7.frozen = true;
                         } else if inner.path.is_ident("deprecated") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_deprecated = Some(value.value());
+                            method_attrs.s7.deprecated = Some(value.value());
                         } else if inner.path.is_ident("no_dots") {
-                            method_attrs.s7_no_dots = true;
+                            method_attrs.s7.no_dots = true;
                         } else if inner.path.is_ident("dispatch") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_dispatch = Some(value.value());
+                            method_attrs.s7.dispatch = Some(value.value());
                         } else if inner.path.is_ident("fallback") {
-                            method_attrs.s7_fallback = true;
+                            method_attrs.s7.fallback = true;
                         } else if inner.path.is_ident("convert_from") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_convert_from = Some(value.value());
+                            method_attrs.s7.convert_from = Some(value.value());
                         } else if inner.path.is_ident("convert_to") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_convert_to = Some(value.value());
+                            method_attrs.s7.convert_to = Some(value.value());
                         } else if inner.path.is_ident("deep_clone") {
                             method_attrs.deep_clone = true;
                         } else if inner.path.is_ident("r_name") {
