@@ -66,6 +66,16 @@ use_miniextendr_configure_win <- function(path = ".") {
   with_project(path)
   use_template("configure.win")
   use_template("configure.ucrt")
+
+  # R expects configure.win / configure.ucrt to be executable; use_template
+  # writes with default mode 644 so we restore 755 here (same pattern as cleanup).
+  for (script in c("configure.win", "configure.ucrt")) {
+    script_path <- usethis::proj_path(script)
+    if (fs::file_exists(script_path)) {
+      fs::file_chmod(script_path, "755")
+    }
+  }
+
   invisible(TRUE)
 }
 

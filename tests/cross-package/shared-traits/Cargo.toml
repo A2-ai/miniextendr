@@ -11,7 +11,7 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-miniextendr-api = { path = "../../../miniextendr-api" }
+miniextendr-api = { path = "../../../miniextendr-api" , version = "*" }
 
 # Redirect transitive crates.io lookups to local workspace crates.
 [patch.crates-io]
