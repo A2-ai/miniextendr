@@ -72,11 +72,11 @@ full = [
 ]
 
 [dependencies]
-miniextendr-api = "*"
+miniextendr-api = { version = "*", path = "../../vendor/miniextendr-api-0.1.0" }
 log = { version = "0.4", optional = true }
 
 [build-dependencies]
-miniextendr-lint = "*"
+miniextendr-lint = { version = "*", path = "../../vendor/miniextendr-lint-0.1.0" }
 
 # codegen-units = 1 ensures the entire user crate compiles into a single .o file
 # inside the staticlib archive. This is required for linkme's distributed_slice:
