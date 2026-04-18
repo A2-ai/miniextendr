@@ -18,6 +18,7 @@ pub fn run_cargo_vendor(
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
     sync_manifests: &[PathBuf],
+    versioned_dirs: bool,
     v: crate::Verbosity,
 ) -> Result<()> {
     if v.info() {
@@ -27,6 +28,9 @@ pub fn run_cargo_vendor(
             for m in sync_manifests {
                 eprintln!("      --sync {}", m.display());
             }
+        }
+        if versioned_dirs {
+            eprintln!("    layout: --versioned-dirs");
         }
     }
 
@@ -54,6 +58,9 @@ pub fn run_cargo_vendor(
 
     let mut cmd = Command::new("cargo");
     cmd.arg("vendor").arg("--manifest-path").arg(manifest_path);
+    if versioned_dirs {
+        cmd.arg("--versioned-dirs");
+    }
     for m in sync_manifests {
         cmd.arg("--sync").arg(m);
     }
