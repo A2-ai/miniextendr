@@ -84,10 +84,9 @@ autocfg = "=1.5.0"
         .assert()
         .success();
 
-    // Multi-version layout: without `--versioned-dirs` (not yet wired up;
-    // see #215), cargo vendor flattens one version to `vendor/<name>/` and
-    // puts other versions in `vendor/<name>-<version>/`. Check that BOTH
-    // versions are materialized regardless of which slot holds which.
+    // Multi-version layout: with versioned-dirs (the default since #239),
+    // every crate lands in `vendor/<name>-<version>/`. Check that BOTH
+    // versions are materialized.
     assert_autocfg_version_present(&vendor, "0.1.7");
     assert_autocfg_version_present(&vendor, "1.5.0");
 
@@ -372,15 +371,66 @@ autocfg = "=1.5.0"
     assert_autocfg_version_present(&shared_vendor, "1.5.0");
 }
 
-/// **#215** — `--versioned-dirs` forces every crate into
-/// `vendor/<name>-<version>/` instead of flattening single-version crates
-/// to `vendor/<name>/`. Regression test for the opt-in flag.
+/// **#239** — versioned-dirs is now the default layout, so every crate
+/// lands in `vendor/<name>-<version>/` without any flag. Regression test for
+/// the default-on behavior (previously required `--versioned-dirs`).
 #[test]
 #[ignore] // network
-fn versioned_dirs_flag_forces_versioned_layout() {
+fn versioned_dirs_default_produces_versioned_layout() {
     let proj = common::create_simple_crate(
         r#"[package]
 name = "vd-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+cfg-if = "1"
+"#,
+        "",
+    );
+
+    let vendor = proj.root().join("vendor");
+    // No --flat-dirs flag — versioned layout is the default.
+    revendor_cmd()
+        .arg("revendor")
+        .arg("--manifest-path")
+        .arg(proj.root().join("Cargo.toml"))
+        .arg("--output")
+        .arg(&vendor)
+        .assert()
+        .success();
+
+    // The default now produces `vendor/cfg-if-<version>/` (not `vendor/cfg-if/`).
+    let flat = vendor.join("cfg-if");
+    let entries: Vec<String> = std::fs::read_dir(&vendor)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        !flat.exists(),
+        "default layout should produce versioned `cfg-if-<ver>/`, not flat `cfg-if/`, saw:\n{entries:#?}"
+    );
+    let versioned = entries
+        .iter()
+        .find(|e| e.starts_with("cfg-if-"))
+        .unwrap_or_else(|| panic!("no cfg-if-<version>/ found in vendor, saw:\n{entries:#?}"));
+    assert!(versioned.starts_with("cfg-if-1."));
+}
+
+/// **#239** — `--flat-dirs` reverts to the old cargo vendor flat layout.
+#[test]
+#[ignore] // network
+fn flat_dirs_flag_produces_flat_layout() {
+    let proj = common::create_simple_crate(
+        r#"[package]
+name = "flat-test"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -403,13 +453,11 @@ cfg-if = "1"
         .arg(proj.root().join("Cargo.toml"))
         .arg("--output")
         .arg(&vendor)
-        .arg("--versioned-dirs")
+        .arg("--flat-dirs")
         .assert()
         .success();
 
-    // Without --versioned-dirs, cargo vendor would flatten cfg-if (only one
-    // version in the graph) to `vendor/cfg-if/`. With the flag, the dir is
-    // `vendor/cfg-if-<version>/`.
+    // With --flat-dirs, cargo vendor flattens single-version crates to `vendor/<name>/`.
     let flat = vendor.join("cfg-if");
     let entries: Vec<String> = std::fs::read_dir(&vendor)
         .unwrap()
@@ -417,14 +465,9 @@ cfg-if = "1"
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     assert!(
-        !flat.exists(),
-        "--versioned-dirs should prevent the flat `cfg-if/` slot, saw:\n{entries:#?}"
+        flat.exists(),
+        "--flat-dirs should produce flat `cfg-if/`, saw:\n{entries:#?}"
     );
-    let versioned = entries
-        .iter()
-        .find(|e| e.starts_with("cfg-if-"))
-        .unwrap_or_else(|| panic!("no cfg-if-<version>/ found in vendor, saw:\n{entries:#?}"));
-    assert!(versioned.starts_with("cfg-if-1."));
 }
 
 /// **M3c** — `--verify` against a shared-sync vendor checks both primary
