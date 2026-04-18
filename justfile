@@ -787,14 +787,25 @@ vendor-sync-check:
     drift_found=0
 
     for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
-      if [[ ! -d "$vendor_dir/$crate" ]]; then
-        echo "WARNING: $vendor_dir/$crate not found (run 'just configure' first)"
+      # Accept both flat (vendor/<name>/) and versioned (vendor/<name>-<version>/) layouts
+      crate_dir=""
+      if [[ -d "$vendor_dir/$crate" ]]; then
+        crate_dir="$vendor_dir/$crate"
+      else
+        versioned=$(find "$vendor_dir" -maxdepth 1 -type d -name "${crate}-[0-9]*" | head -1)
+        if [[ -n "$versioned" ]]; then
+          crate_dir="$versioned"
+        fi
+      fi
+
+      if [[ -z "$crate_dir" ]]; then
+        echo "WARNING: $vendor_dir/$crate (or versioned) not found (run 'just configure' first)"
         continue
       fi
 
       # Compare src directories (the actual code)
-      if ! diff -rq "$crate/src" "$vendor_dir/$crate/src" >/dev/null 2>&1; then
-        echo "DRIFT: $crate/src differs from $vendor_dir/$crate/src"
+      if ! diff -rq "$crate/src" "$crate_dir/src" >/dev/null 2>&1; then
+        echo "DRIFT: $crate/src differs from $crate_dir/src"
         drift_found=1
       fi
     done
@@ -820,9 +831,20 @@ vendor-sync-diff:
     vendor_dir="rpkg/vendor"
 
     for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
+      # Accept both flat (vendor/<name>/) and versioned (vendor/<name>-<version>/) layouts
+      crate_dir=""
       if [[ -d "$vendor_dir/$crate" ]]; then
+        crate_dir="$vendor_dir/$crate"
+      else
+        versioned=$(find "$vendor_dir" -maxdepth 1 -type d -name "${crate}-[0-9]*" | head -1)
+        if [[ -n "$versioned" ]]; then
+          crate_dir="$versioned"
+        fi
+      fi
+
+      if [[ -n "$crate_dir" ]]; then
         echo "=== $crate ==="
-        diff -ruN "$crate/src" "$vendor_dir/$crate/src" || true
+        diff -ruN "$crate/src" "$crate_dir/src" || true
         echo ""
       fi
     done

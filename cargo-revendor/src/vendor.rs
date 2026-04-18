@@ -78,15 +78,23 @@ pub fn run_cargo_vendor(
     Ok(())
 }
 
-/// Extract a .crate archive into the vendor directory
-/// Extract a .crate archive OR copy a directory into the vendor directory
+/// Extract a .crate archive OR copy a directory into the vendor directory.
+///
+/// If `versioned_dirs` is true and `pkg_version` is provided, the destination
+/// directory is named `vendor/<name>-<version>/` instead of `vendor/<name>/`.
 pub fn extract_crate_archive(
     crate_path: &Path,
     vendor_dir: &Path,
     pkg_name: &str,
+    pkg_version: Option<&str>,
     v: crate::Verbosity,
 ) -> Result<()> {
-    let dest = vendor_dir.join(pkg_name);
+    let dir_name = if let Some(ver) = pkg_version {
+        format!("{}-{}", pkg_name, ver)
+    } else {
+        pkg_name.to_string()
+    };
+    let dest = vendor_dir.join(&dir_name);
 
     // Remove any existing directory (cargo vendor may have put a placeholder)
     if dest.exists() {
@@ -99,7 +107,7 @@ pub fn extract_crate_archive(
         // Resolve workspace inheritance in the copied Cargo.toml
         resolve_workspace_inheritance(&dest, crate_path, v)?;
         if v.info() {
-            eprintln!("  Copied {} to vendor/{}", pkg_name, pkg_name);
+            eprintln!("  Copied {} to vendor/{}", pkg_name, dir_name);
         }
         return Ok(());
     }
@@ -121,7 +129,7 @@ pub fn extract_crate_archive(
     // Find the extracted directory (name-version/)
     let extracted = find_single_subdir(&extract_tmp)?;
 
-    // Move to final destination (just the crate name, no version)
+    // Move to final destination (versioned or flat name)
     std::fs::rename(&extracted, &dest).with_context(|| {
         format!(
             "failed to move {} to {}",
@@ -134,7 +142,7 @@ pub fn extract_crate_archive(
     let _ = std::fs::remove_dir_all(&extract_tmp);
 
     if v.info() {
-        eprintln!("  Extracted {} to vendor/{}", pkg_name, pkg_name);
+        eprintln!("  Extracted {} to vendor/{}", pkg_name, dir_name);
     }
 
     Ok(())
@@ -223,11 +231,9 @@ fn remove_relative_path(dep: &mut toml_edit::Item) -> bool {
 pub fn rewrite_local_path_deps(
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
+    versioned_dirs: bool,
     v: crate::Verbosity,
 ) -> Result<()> {
-    let local_names: std::collections::HashSet<&str> =
-        local_pkgs.iter().map(|p| p.name.as_str()).collect();
-
     for entry in std::fs::read_dir(vendor_dir)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
@@ -249,16 +255,21 @@ pub fn rewrite_local_path_deps(
         // Check [dependencies], [build-dependencies], [dev-dependencies]
         for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
             if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
-                for name in local_names.iter() {
-                    if let Some(dep) = table.get_mut(name)
-                        && add_path_to_dep(dep, name)
+                for pkg in local_pkgs.iter() {
+                    let dir_name = if versioned_dirs {
+                        format!("{}-{}", pkg.name, pkg.version)
+                    } else {
+                        pkg.name.clone()
+                    };
+                    if let Some(dep) = table.get_mut(&pkg.name)
+                        && add_path_to_dep(dep, &dir_name)
                     {
                         changed = true;
                         if v.info() {
                             eprintln!(
                                 "  Rewrote {}.{} in {}/Cargo.toml",
                                 section,
-                                name,
+                                pkg.name,
                                 entry.file_name().to_string_lossy()
                             );
                         }
@@ -681,6 +692,7 @@ pub fn freeze_manifest(
     manifest_path: &Path,
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
+    versioned_dirs: bool,
     v: crate::Verbosity,
 ) -> Result<()> {
     let content = std::fs::read_to_string(manifest_path)?;
@@ -694,14 +706,12 @@ pub fn freeze_manifest(
     );
 
     // Step 1: Rewrite git/version deps to vendor/ path deps
-    let local_names: std::collections::HashSet<&str> =
-        local_pkgs.iter().map(|p| p.name.as_str()).collect();
-
     for section in &["dependencies", "build-dependencies"] {
         if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
-            for name in local_names.iter() {
-                if let Some(dep) = table.get_mut(name) {
-                    rewrite_dep_to_vendor(dep, name, &vendor_rel);
+            for pkg in local_pkgs.iter() {
+                if let Some(dep) = table.get_mut(&pkg.name) {
+                    let dir_name = vendor_dir_name_for_pkg(vendor_dir, &pkg.name, &pkg.version, versioned_dirs);
+                    rewrite_dep_to_vendor(dep, &dir_name, &vendor_rel);
                 }
             }
         }
@@ -738,13 +748,19 @@ pub fn freeze_manifest(
     // previously patched OR are local workspace deps. This ensures
     // unpublished crates (from git sources) remain available in the
     // crates-io namespace when resolved from vendored-sources.
+    //
+    // Build a map of name -> version for local pkgs so we can resolve versioned dirs.
+    let local_versions: std::collections::HashMap<&str, &str> =
+        local_pkgs.iter().map(|p| (p.name.as_str(), p.version.as_str())).collect();
     let mut patch_table = toml_edit::Table::new();
     for pkg in local_pkgs {
         patched_names.insert(pkg.name.clone());
     }
     for name in &patched_names {
-        if vendor_dir.join(name).exists() {
-            let rel = format!("{}/{}", vendor_rel, name);
+        let version = local_versions.get(name.as_str()).copied().unwrap_or("");
+        let dir_name = vendor_dir_name_for_pkg(vendor_dir, name, version, versioned_dirs);
+        if vendor_dir.join(&dir_name).exists() {
+            let rel = format!("{}/{}", vendor_rel, dir_name);
             let mut inline = toml_edit::InlineTable::new();
             inline.insert("path", toml_edit::value(&rel).into_value().unwrap());
             patch_table.insert(
@@ -806,6 +822,23 @@ fn rewrite_dep_to_vendor(dep: &mut toml_edit::Item, name: &str, vendor_rel: &str
     }
 }
 
+/// Return the directory name for a vendored crate, probing for versioned first.
+///
+/// With `versioned_dirs = true`: prefers `<name>-<version>` if that dir exists,
+/// or if neither dir exists yet (build-time, use the versioned name). Falls back
+/// to flat `<name>` only if the flat dir exists and the versioned one does not.
+///
+/// With `versioned_dirs = false`: always returns `<name>`.
+fn vendor_dir_name_for_pkg(vendor_dir: &Path, name: &str, version: &str, versioned_dirs: bool) -> String {
+    if versioned_dirs && !version.is_empty() {
+        let versioned = format!("{}-{}", name, version);
+        if vendor_dir.join(&versioned).exists() || !vendor_dir.join(name).exists() {
+            return versioned;
+        }
+    }
+    name.to_string()
+}
+
 /// Compute relative path from base to target
 fn pathdiff(target: &Path, base: &Path) -> String {
     let target = target
@@ -840,68 +873,88 @@ fn pathdiff(target: &Path, base: &Path) -> String {
     rel
 }
 
-/// Regenerate Cargo.lock from vendored sources (offline)
+/// Regenerate Cargo.lock from vendored sources (freeze-consistent copy).
 ///
-/// Creates a temporary `.cargo/config.toml` with source replacement pointing
-/// to `vendor_dir`, runs `cargo generate-lockfile --offline`, then removes
-/// the temporary config (it would conflict with the configure-generated one).
+/// The vendor/ directory contains a stripped Cargo.lock produced by
+/// `strip_lock_checksums` during the same vendoring run. Copying it directly
+/// to the manifest's Cargo.lock is the most reliable approach: it is exactly
+/// consistent with what was vendored, avoiding version-drift that can occur
+/// when `cargo generate-lockfile --offline` resolves from the local index
+/// cache (which may have been updated by a subsequent `cargo vendor` run).
 pub fn regenerate_lockfile(
     manifest_path: &Path,
     vendor_dir: &Path,
     v: crate::Verbosity,
 ) -> Result<()> {
     let lockfile = manifest_path.with_file_name("Cargo.lock");
-    if lockfile.exists() {
-        std::fs::remove_file(&lockfile)?;
-    }
+    let vendor_lock = vendor_dir.join("Cargo.lock");
 
-    // Write temporary .cargo/config.toml so cargo can resolve vendored sources
-    let cargo_dir = manifest_path.with_file_name(".cargo");
-    std::fs::create_dir_all(&cargo_dir)?;
-    let config_path = cargo_dir.join("config.toml");
-    let had_config = config_path.exists();
-    let old_config = if had_config {
-        Some(std::fs::read_to_string(&config_path)?)
+    if vendor_lock.exists() {
+        // Copy the vendor-stripped lockfile directly — it matches exactly what
+        // was vendored, without risk of version drift from the local index cache.
+        std::fs::copy(&vendor_lock, &lockfile).with_context(|| {
+            format!(
+                "failed to copy {} to {}",
+                vendor_lock.display(),
+                lockfile.display()
+            )
+        })?;
+        if v.info() {
+            eprintln!("  CRAN mode: copied Cargo.lock from vendored sources (freeze-consistent)");
+        }
     } else {
-        None
-    };
+        // Fallback: vendor/Cargo.lock was not written (old workflow).
+        // Generate from scratch using the vendored source replacement.
+        if lockfile.exists() {
+            std::fs::remove_file(&lockfile)?;
+        }
 
-    let vendor_path = vendor_dir
-        .canonicalize()
-        .unwrap_or_else(|_| vendor_dir.to_path_buf());
-    let config_content = format!(
-        "[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n\
-         [source.vendored-sources]\ndirectory = \"{}\"\n",
-        crate::path_to_toml(&vendor_path)
-    );
-    std::fs::write(&config_path, &config_content)?;
+        let cargo_dir = manifest_path.with_file_name(".cargo");
+        std::fs::create_dir_all(&cargo_dir)?;
+        let config_path = cargo_dir.join("config.toml");
+        let had_config = config_path.exists();
+        let old_config = if had_config {
+            Some(std::fs::read_to_string(&config_path)?)
+        } else {
+            None
+        };
 
-    let output = std::process::Command::new("cargo")
-        .arg("generate-lockfile")
-        .arg("--manifest-path")
-        .arg(manifest_path)
-        .arg("--offline")
-        .output()
-        .context("failed to run cargo generate-lockfile")?;
-
-    // Restore or remove the temporary config
-    if let Some(old) = old_config {
-        std::fs::write(&config_path, old)?;
-    } else {
-        let _ = std::fs::remove_file(&config_path);
-        let _ = std::fs::remove_dir(&cargo_dir);
-    }
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!(
-            "cargo generate-lockfile --offline failed:\n{}",
-            stderr.trim()
+        let vendor_path = vendor_dir
+            .canonicalize()
+            .unwrap_or_else(|_| vendor_dir.to_path_buf());
+        let config_content = format!(
+            "[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n\
+             [source.vendored-sources]\ndirectory = \"{}\"\n",
+            crate::path_to_toml(&vendor_path)
         );
-    }
+        std::fs::write(&config_path, &config_content)?;
 
-    if v.info() {
-        eprintln!("  CRAN mode: regenerated Cargo.lock from vendored sources");
+        let output = std::process::Command::new("cargo")
+            .arg("generate-lockfile")
+            .arg("--manifest-path")
+            .arg(manifest_path)
+            .arg("--offline")
+            .output()
+            .context("failed to run cargo generate-lockfile")?;
+
+        if let Some(old) = old_config {
+            std::fs::write(&config_path, old)?;
+        } else {
+            let _ = std::fs::remove_file(&config_path);
+            let _ = std::fs::remove_dir(&cargo_dir);
+        }
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "cargo generate-lockfile --offline failed:\n{}",
+                stderr.trim()
+            );
+        }
+
+        if v.info() {
+            eprintln!("  CRAN mode: regenerated Cargo.lock from vendored sources");
+        }
     }
 
     Ok(())
@@ -1054,7 +1107,7 @@ miniextendr-macros-core = { path = "/tmp/mc" }
         )
         .unwrap();
 
-        freeze_manifest(&manifest, &vendor, &[], Verbosity(0)).unwrap();
+        freeze_manifest(&manifest, &vendor, &[], false, Verbosity(0)).unwrap();
         let result = std::fs::read_to_string(&manifest).unwrap();
         let api = result.find("miniextendr-api =").unwrap();
         let lint = result.find("miniextendr-lint =").unwrap();
