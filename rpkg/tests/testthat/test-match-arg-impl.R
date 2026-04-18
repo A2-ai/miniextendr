@@ -108,8 +108,32 @@ test_that("S3 instance method with match_arg validates", {
 
 # endregion
 
-# vctrs support for match_arg is deferred — the vctrs constructor expects the
-# `.data` to be vector-shaped, so a straightforward struct-returning ctor
-# doesn't fit the fixture pattern used for the other class systems. The
-# R-wrapper match.arg prelude is shared code though, so S3/S7/R6/env coverage
-# exercises the same emission path.
+# region: S4 — scalar match_arg on constructor + instance method (#209)
+
+test_that("S4 constructor default picks first choice", {
+  h <- S4MatchArgHolder()
+  expect_equal(s4_mode_current(h), "Fast")
+})
+
+test_that("S4 constructor accepts exact + partial match", {
+  expect_equal(s4_mode_current(S4MatchArgHolder("Safe")), "Safe")
+  expect_equal(s4_mode_current(S4MatchArgHolder("D")), "Debug")
+})
+
+test_that("S4 instance setter validates match_arg", {
+  h <- S4MatchArgHolder("Fast")
+  expect_equal(s4_mode_set(h, "Debug"), "Debug")
+  expect_equal(s4_mode_current(h), "Debug")
+})
+
+test_that("S4 constructor rejects non-choice", {
+  expect_error(S4MatchArgHolder("Bogus"), "should be one of")
+})
+
+# endregion
+
+# vctrs support for match_arg is deferred (#208) — the vctrs constructor
+# expects the `.data` to be vector-shaped, so a straightforward struct-returning
+# ctor doesn't fit the fixture pattern used for the other class systems. The
+# R-wrapper match.arg prelude is shared code though, so S3/S7/R6/env/S4
+# coverage exercises the same emission path.
