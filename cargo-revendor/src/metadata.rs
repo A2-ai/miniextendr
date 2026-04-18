@@ -1,6 +1,6 @@
 //! Cargo metadata loading and dependency analysis
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use cargo_metadata::{Metadata, MetadataCommand};
 use std::path::{Path, PathBuf};
 
@@ -140,6 +140,78 @@ pub fn partition_packages(
     Ok((local, external))
 }
 
+/// Error out when two different sources resolve to the same (name, version).
+///
+/// Mirrors upstream cargo/src/cargo/ops/vendor.rs's duplicate-source check:
+/// two git repos that happen to publish the same crate name + version would
+/// otherwise silently last-write-wins during extraction, making the vendored
+/// contents depend on dep-graph iteration order. Upstream hard-errors; we do
+/// too.
+///
+/// Common legitimate case this does NOT flag: the SAME (name, version) from
+/// the SAME source appearing multiple times in `meta.packages` (cargo can
+/// emit dupes when a package is reached via different dep paths). Only
+/// DIFFERENT sources for the same (name, version) key are errors.
+pub fn check_duplicate_sources(meta: &Metadata) -> Result<()> {
+    // Build (name, version, Option<source>) tuples and delegate to the
+    // pure helper. Keeps the cargo_metadata dependency contained to this
+    // shim and makes the core logic unit-testable with plain tuples.
+    let triples: Vec<(String, String, Option<String>)> = meta
+        .packages
+        .iter()
+        .map(|p| {
+            (
+                p.name.clone(),
+                p.version.to_string(),
+                p.source.as_ref().map(|s| s.to_string()),
+            )
+        })
+        .collect();
+    check_duplicate_sources_impl(&triples)
+}
+
+/// Core dedup logic, factored out of [`check_duplicate_sources`] so it can
+/// be unit-tested without constructing a `cargo_metadata::Metadata` fixture.
+///
+/// Each triple is `(name, version, source)` where `None` source means a
+/// local path dep (skipped — workspace semantics prevent in-workspace
+/// duplicates of the same name+version).
+fn check_duplicate_sources_impl(
+    pkgs: &[(String, String, Option<String>)],
+) -> Result<()> {
+    use std::collections::BTreeMap;
+
+    let mut seen: BTreeMap<(String, String), String> = BTreeMap::new();
+
+    for (name, version, source) in pkgs {
+        let Some(source_str) = source else {
+            continue;
+        };
+
+        match seen.get(&(name.clone(), version.clone())) {
+            None => {
+                seen.insert((name.clone(), version.clone()), source_str.clone());
+            }
+            Some(prev) if prev == source_str => {
+                // Same source — legitimate duplicate, skip.
+            }
+            Some(prev) => {
+                bail!(
+                    "duplicate crate `{} v{}` from different sources:\n  - {}\n  - {}\n\
+                     cargo-revendor refuses to silently last-write-wins when two sources\n\
+                     disagree. Pick one in your Cargo.toml / Cargo.lock.",
+                    name,
+                    version,
+                    prev,
+                    source_str
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Recursively collect all dependency package IDs
 fn collect_deps(
     resolve: &cargo_metadata::Resolve,
@@ -153,5 +225,85 @@ fn collect_deps(
         for dep in &node.deps {
             collect_deps(resolve, &dep.pkg, visited);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pkg(name: &str, version: &str, source: Option<&str>) -> (String, String, Option<String>) {
+        (name.to_string(), version.to_string(), source.map(String::from))
+    }
+
+    #[test]
+    fn no_duplicates_passes() {
+        let pkgs = vec![
+            pkg("a", "1.0.0", Some("registry+https://crates.io")),
+            pkg("b", "2.0.0", Some("registry+https://crates.io")),
+        ];
+        check_duplicate_sources_impl(&pkgs).unwrap();
+    }
+
+    #[test]
+    fn same_source_duplicate_is_ok() {
+        // cargo metadata can emit the same pkg twice if reached via
+        // multiple dep paths. Not an error.
+        let pkgs = vec![
+            pkg("a", "1.0.0", Some("registry+https://crates.io")),
+            pkg("a", "1.0.0", Some("registry+https://crates.io")),
+        ];
+        check_duplicate_sources_impl(&pkgs).unwrap();
+    }
+
+    #[test]
+    fn different_sources_same_name_version_errors() {
+        let pkgs = vec![
+            pkg("foo", "1.2.3", Some("git+https://github.com/a/foo")),
+            pkg("foo", "1.2.3", Some("git+https://github.com/b/foo")),
+        ];
+        let err = check_duplicate_sources_impl(&pkgs).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("duplicate crate"));
+        assert!(msg.contains("foo v1.2.3"));
+        assert!(msg.contains("github.com/a/foo"));
+        assert!(msg.contains("github.com/b/foo"));
+    }
+
+    #[test]
+    fn same_name_different_versions_is_fine() {
+        // Common: two versions of a transitive dep coexist. That's handled
+        // by vendor/<name>-<version>/ layout; duplicates here are a
+        // different concern.
+        let pkgs = vec![
+            pkg("foo", "1.0.0", Some("registry+https://crates.io")),
+            pkg("foo", "2.0.0", Some("registry+https://crates.io")),
+        ];
+        check_duplicate_sources_impl(&pkgs).unwrap();
+    }
+
+    #[test]
+    fn local_path_deps_not_checked() {
+        // source: None = local path dep. Two local deps with the same
+        // (name, version) would be a workspace-level problem, detected
+        // elsewhere. Don't double-report here.
+        let pkgs = vec![
+            pkg("local", "0.1.0", None),
+            pkg("local", "0.1.0", None),
+        ];
+        check_duplicate_sources_impl(&pkgs).unwrap();
+    }
+
+    #[test]
+    fn registry_vs_git_for_same_version_errors() {
+        // Realistic scenario: a crate pinned to a git source but also
+        // appearing as a registry dep (e.g., via an inherited dep). This
+        // should error — upstream cargo does.
+        let pkgs = vec![
+            pkg("serde", "1.0.0", Some("registry+https://crates.io")),
+            pkg("serde", "1.0.0", Some("git+https://github.com/serde-rs/serde")),
+        ];
+        let err = check_duplicate_sources_impl(&pkgs).unwrap_err();
+        assert!(err.to_string().contains("serde v1.0.0"));
     }
 }

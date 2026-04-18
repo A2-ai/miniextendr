@@ -243,6 +243,13 @@ fn main() -> Result<()> {
 
     // Step 1: Load cargo metadata to discover dependencies
     let meta = metadata::load_metadata(&manifest_path)?;
+
+    // Mirror upstream cargo's duplicate-source check: error out if two
+    // different git sources resolve to the same crate name+version. Without
+    // this, cargo-revendor silently last-write-wins during extraction, so
+    // the vendored contents depend on dep-graph iteration order.
+    metadata::check_duplicate_sources(&meta)?;
+
     let (mut local_pkgs, _external_pkgs) = metadata::partition_packages(&meta, &manifest_path)?;
 
     // Also discover ALL workspace members from the source workspace root
