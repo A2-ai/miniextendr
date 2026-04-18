@@ -12,7 +12,7 @@
 mod common;
 
 use common::{
-    create_simple_crate, diff_trees, extract_tarball, revendor_cmd, TreeDiff,
+    create_simple_crate, diff_trees, extract_tarball, revendor_cmd, vendor_dir_for, TreeDiff,
 };
 
 // region: --verify end-to-end (V1-V5)
@@ -123,7 +123,7 @@ fn verify_catches_stale_tarball() {
         .success();
 
     // Modify a vendored file after the tarball was built.
-    let target = vendor.join("cfg-if").join("Cargo.toml");
+    let target = vendor_dir_for(&vendor, "cfg-if", None).join("Cargo.toml");
     let content = std::fs::read_to_string(&target).unwrap();
     std::fs::write(&target, format!("{content}\n# drift\n")).unwrap();
 
