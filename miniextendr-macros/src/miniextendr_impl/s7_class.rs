@@ -522,6 +522,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(ctx) = parsed_impl.constructor_context() {
         let ctor_preconditions = ctx.precondition_checks();
         let ctor_missing = ctx.missing_prelude();
+        let ctor_match_arg = ctx.match_arg_prelude();
         if has_self_returning_methods {
             let params_with_ptr = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -529,14 +530,20 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("  constructor = function({}) {{", params_with_ptr));
-            // Missing defaults + preconditions only when not using .ptr shortcut
-            if !ctor_missing.is_empty() || !ctor_preconditions.is_empty() {
+            // Missing defaults + preconditions + match.arg only when not using .ptr shortcut
+            if !ctor_missing.is_empty()
+                || !ctor_preconditions.is_empty()
+                || !ctor_match_arg.is_empty()
+            {
                 lines.push("    if (is.null(.ptr)) {".to_string());
                 for line in &ctor_missing {
                     lines.push(format!("      {}", line));
                 }
                 for check in &ctor_preconditions {
                     lines.push(format!("      {}", check));
+                }
+                for line in &ctor_match_arg {
+                    lines.push(format!("      {}", line));
                 }
                 lines.push("    }".to_string());
             }
@@ -557,6 +564,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
             for check in &ctor_preconditions {
                 lines.push(format!("    {}", check));
+            }
+            for line in &ctor_match_arg {
+                lines.push(format!("    {}", line));
             }
             lines.push(format!("    .val <- {}", ctx.static_call()));
             lines.extend(crate::method_return_builder::error_in_r_check_lines("    "));
@@ -640,19 +650,21 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_inline();
 
-            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, r_post_checks
+            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, match_arg, r_post_checks
             let what = format!("{}.{}", generic_name, class_name);
             let r_entry = &ctx.method.method_attrs.r_entry;
             let r_on_exit = &ctx.method.method_attrs.r_on_exit;
             let missing = ctx.missing_prelude();
             let lifecycle = ctx.method.lifecycle_prelude(&what);
             let preconditions = ctx.precondition_checks();
+            let match_arg_lines = ctx.match_arg_prelude();
             let r_post_checks = &ctx.method.method_attrs.r_post_checks;
             if r_entry.is_some()
                 || r_on_exit.is_some()
                 || !missing.is_empty()
                 || lifecycle.is_some()
                 || !preconditions.is_empty()
+                || !match_arg_lines.is_empty()
                 || r_post_checks.is_some()
             {
                 lines.push(format!(
@@ -674,6 +686,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
                 for check in &preconditions {
                     lines.push(format!("  {check}"));
+                }
+                for line in &match_arg_lines {
+                    lines.push(format!("  {line}"));
                 }
                 if let Some(post) = r_post_checks {
                     for line in post.lines() {
@@ -753,19 +768,21 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
 
-            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, r_post_checks
+            // Inject r_entry, on.exit, missing param defaults, lifecycle prelude, precondition checks, match_arg, r_post_checks
             let what = format!("{}.{}", generic_name, class_name);
             let r_entry = &ctx.method.method_attrs.r_entry;
             let r_on_exit = &ctx.method.method_attrs.r_on_exit;
             let missing = ctx.missing_prelude();
             let lifecycle = ctx.method.lifecycle_prelude(&what);
             let preconditions = ctx.precondition_checks();
+            let match_arg_lines = ctx.match_arg_prelude();
             let r_post_checks = &ctx.method.method_attrs.r_post_checks;
             if r_entry.is_some()
                 || r_on_exit.is_some()
                 || !missing.is_empty()
                 || lifecycle.is_some()
                 || !preconditions.is_empty()
+                || !match_arg_lines.is_empty()
                 || r_post_checks.is_some()
             {
                 lines.push(format!(
@@ -787,6 +804,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
                 for check in &preconditions {
                     lines.push(format!("  {check}"));
+                }
+                for line in &match_arg_lines {
+                    lines.push(format!("  {line}"));
                 }
                 if let Some(post) = r_post_checks {
                     for line in post.lines() {
@@ -846,6 +866,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject precondition checks
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
+        }
+        // Inject match.arg validation for match_arg/choices params
+        for line in ctx.match_arg_prelude() {
+            lines.push(format!("  {}", line));
         }
         // Inject r_post_checks
         if let Some(ref post) = ctx.method.method_attrs.r_post_checks {

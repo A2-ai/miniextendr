@@ -385,6 +385,13 @@ devtools-install: devtools-document
 install_deps:
     Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7","vctrs"), repos = "https://cloud.r-project.org")'
 
+# Install Rust dev tools used for day-to-day iteration.
+# cargo-limit: provides `cargo lcheck`/`lclippy`/`ltest`/`lbuild` that surface the first
+# few errors/warnings without dumping thousands of lines of "noise" into the terminal.
+# Prefer these aliases in CLI one-offs; CI still runs full `cargo clippy ... -D warnings`.
+dev-tools-install:
+    cargo install cargo-limit
+
 # Install minirextendr dependencies (for scaffolding helper package)
 minirextendr-install-deps:
     Rscript -e 'install.packages(c("cli","curl","desc","fs","gh","glue","rappdirs","rlang","rprojroot","usethis","withr","devtools","roxygen2","testthat"), repos = "https://cloud.r-project.org")'
