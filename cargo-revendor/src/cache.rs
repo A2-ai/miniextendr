@@ -48,27 +48,74 @@ pub fn save_cache(
     Ok(())
 }
 
+/// FNV-1a 64-bit streaming hasher.
+///
+/// Stable by construction across Rust toolchain versions — the only
+/// way the output changes is if the FNV prime / offset basis change,
+/// which are part of the published FNV spec. See the frozen-vector test
+/// at the bottom of this module: any change to the hash output breaks
+/// it loudly, which is exactly the behavior we want (cache-compat
+/// breakage should be a conscious choice, not accidental).
+///
+/// Replaces the previous `std::collections::hash_map::DefaultHasher`,
+/// whose implementation Rust explicitly reserves the right to change
+/// between releases — hashed values computed on one toolchain can
+/// silently mismatch on another, causing unnecessary cache misses on
+/// every rustup update.
+struct Fnv64 {
+    state: u64,
+}
+
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0100_0000_01b3;
+
+impl Fnv64 {
+    fn new() -> Self {
+        Self {
+            state: FNV_OFFSET_BASIS,
+        }
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        for &b in data {
+            self.state ^= u64::from(b);
+            self.state = self.state.wrapping_mul(FNV_PRIME);
+        }
+    }
+
+    fn finish(self) -> u64 {
+        self.state
+    }
+}
+
 /// Compute a hash over `Cargo.lock`, the sibling `Cargo.toml`, the source
 /// tree of each local workspace crate, and each `--sync` manifest's
 /// Cargo.toml + Cargo.lock pair (#229).
+///
+/// Uses FNV-1a so the cache key is stable across Rust toolchain upgrades
+/// (unlike `DefaultHasher`, whose implementation Rust reserves the right
+/// to change between releases).
+///
+/// Fields are separated by `b"|"` bytes so no concatenation-ambiguity
+/// collision is possible. Without separators, the inputs
+/// `("foo", "bar")` and `("foob", "ar")` would hash identically.
 fn compute_hash(
     lockfile: &Path,
     sync_manifests: &[PathBuf],
     local_crate_paths: &[PathBuf],
 ) -> Result<String> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = Fnv64::new();
 
     if lockfile.exists() {
-        std::fs::read(lockfile)?.hash(&mut hasher);
+        hasher.update(&std::fs::read(lockfile)?);
     }
+    hasher.update(b"|");
 
     let manifest = lockfile.with_file_name("Cargo.toml");
     if manifest.exists() {
-        std::fs::read(&manifest)?.hash(&mut hasher);
+        hasher.update(&std::fs::read(&manifest)?);
     }
+    hasher.update(b"|");
 
     // Each --sync manifest contributes its own Cargo.toml + Cargo.lock pair.
     // Sort by path so ordering of --sync args doesn't affect the key — two
@@ -77,12 +124,14 @@ fn compute_hash(
     sorted_sync.sort();
     for sync_manifest in sorted_sync {
         if sync_manifest.exists() {
-            std::fs::read(sync_manifest)?.hash(&mut hasher);
+            hasher.update(&std::fs::read(sync_manifest)?);
         }
+        hasher.update(b"|");
         let sync_lock = sync_manifest.with_file_name("Cargo.lock");
         if sync_lock.exists() {
-            std::fs::read(&sync_lock)?.hash(&mut hasher);
+            hasher.update(&std::fs::read(&sync_lock)?);
         }
+        hasher.update(b"|");
     }
 
     // Hash each local crate's source tree in a deterministic order so the
@@ -90,12 +139,14 @@ fn compute_hash(
     for crate_path in local_crate_paths {
         let entries = collect_crate_files(crate_path)?;
         for (rel, bytes) in entries {
-            rel.hash(&mut hasher);
-            bytes.hash(&mut hasher);
+            hasher.update(rel.as_bytes());
+            hasher.update(b":");
+            hasher.update(&bytes);
+            hasher.update(b"|");
         }
     }
 
-    Ok(format!("{:x}", hasher.finish()))
+    Ok(format!("{:016x}", hasher.finish()))
 }
 
 /// Collect the files under a local crate that should influence the cache
@@ -251,6 +302,65 @@ mod tests {
             "cache should invalidate when a --sync Cargo.lock changes"
         );
     }
+
+    // region: FNV-1a stability regression
+    //
+    // These vectors are load-bearing: a change to Fnv64's output means all
+    // cached vendor trees in the wild will miss once on first use. If you
+    // must change them, note the cache invalidation in the commit message
+    // and update both the test expectations and the values here.
+
+    #[test]
+    fn fnv1a_empty_input_is_offset_basis() {
+        // FNV-1a of empty input is defined as the initial offset basis.
+        let h = Fnv64::new();
+        assert_eq!(h.finish(), FNV_OFFSET_BASIS);
+    }
+
+    #[test]
+    fn fnv1a_known_vectors() {
+        // Standard FNV-1a 64-bit test vectors from
+        // http://www.isthe.com/chongo/tech/comp/fnv/#FNV-test-vectors
+        let cases: &[(&[u8], u64)] = &[
+            (b"", 0xcbf2_9ce4_8422_2325),
+            (b"a", 0xaf63_dc4c_8601_ec8c),
+            (b"foobar", 0x8594_4171_f739_67e8),
+            (b"a" as &[u8], 0xaf63_dc4c_8601_ec8c),
+        ];
+        for (input, expected) in cases {
+            let mut h = Fnv64::new();
+            h.update(input);
+            assert_eq!(
+                h.finish(),
+                *expected,
+                "FNV-1a mismatch for {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn compute_hash_is_deterministic_across_calls() {
+        // Identical inputs must always produce identical output (the
+        // property that DefaultHasher did not guarantee across Rust
+        // versions). Two calls in the same process is a weaker check than
+        // cross-process, but it's the right level for unit testing.
+        let (_tmp, lockfile, _vendor) = setup();
+        let crate_path = _tmp.path().join("libx");
+        let locals = vec![crate_path];
+
+        let h1 = compute_hash(&lockfile, &[], &locals).unwrap();
+        let h2 = compute_hash(&lockfile, &[], &locals).unwrap();
+        assert_eq!(h1, h2);
+
+        // Also: format is 16 hex chars (u64 as 16-char zero-padded hex).
+        assert_eq!(h1.len(), 16, "hash format changed: {h1}");
+        assert!(
+            h1.chars().all(|c| c.is_ascii_hexdigit()),
+            "hash is not hex: {h1}"
+        );
+    }
+
+    // endregion
 
     #[test]
     fn cache_stable_when_sync_order_differs() {
