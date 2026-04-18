@@ -2287,7 +2287,27 @@ impl ParsedImpl {
     pub fn constructor(&self) -> Option<&ParsedMethod> {
         self.methods
             .iter()
-            .find(|m| m.should_include() && m.is_constructor())
+            .find(|m| m.should_include() && self.is_method_constructor(m))
+    }
+
+    /// Class-system-aware constructor detection.
+    ///
+    /// The default `ParsedMethod::is_constructor` requires the method to return
+    /// `Self`. For vctrs impls that's too strict: the canonical vctrs
+    /// constructor pattern returns the underlying vector payload (e.g.
+    /// `Vec<f64>`) which `vctrs::new_vctr()` then wraps — returning `Self`
+    /// would produce an `ExternalPtr` that `new_vctr` can't accept as `.data`.
+    fn is_method_constructor(&self, m: &ParsedMethod) -> bool {
+        if m.method_attrs.constructor {
+            return true;
+        }
+        if m.env != ReceiverKind::None || m.ident != "new" {
+            return false;
+        }
+        match self.class_system {
+            ClassSystem::Vctrs => true,
+            _ => m.returns_self(),
+        }
     }
 
     /// Get public instance methods (have env, not private, not active).
@@ -2360,7 +2380,7 @@ impl ParsedImpl {
         self.methods.iter().filter(|m| {
             m.should_include()
                 && m.env == ReceiverKind::None
-                && !m.is_constructor()
+                && !self.is_method_constructor(m)
                 && !m.is_finalizer()
         })
     }
