@@ -1,148 +1,18 @@
-//! Integration tests for cargo-revendor
+//! Integration tests for cargo-revendor.
 //!
 //! Tests marked `#[ignore]` require network access (they run `cargo vendor`).
-//! Run them with: `cargo test -p cargo-revendor -- --ignored`
+//! Run them with: `cargo test -p cargo-revendor -- --ignored`.
+//!
+//! Shared harness lives in `common/mod.rs` (imported below). Split-out test
+//! files in `tests/*.rs` should do the same so all binaries share the same
+//! helpers. See issue #226 for the extraction rationale.
 
-use assert_cmd::Command;
-use std::path::{Path, PathBuf};
-use tempfile::TempDir;
+mod common;
 
-// region: Test harness
-
-/// A temporary Cargo project for testing
-struct TestProject {
-    _dir: TempDir,
-    root: PathBuf,
-}
-
-impl TestProject {
-    fn root(&self) -> &Path {
-        &self.root
-    }
-}
-
-/// Get a Command for running cargo-revendor
-fn revendor_cmd() -> Command {
-    Command::cargo_bin("cargo-revendor").expect("binary not found")
-}
-
-/// Create a simple single-crate project
-fn create_simple_crate(cargo_toml: &str, lib_rs: &str) -> TestProject {
-    let dir = TempDir::new().unwrap();
-    let root = dir.path().join("project");
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("Cargo.toml"), cargo_toml).unwrap();
-    std::fs::write(root.join("lib.rs"), lib_rs).unwrap();
-    git_init(&root);
-    TestProject { _dir: dir, root }
-}
-
-/// Create a workspace with the given members
-/// members: &[(name, cargo_toml, lib_rs)]
-fn create_workspace(root_toml: &str, members: &[(&str, &str, &str)]) -> TestProject {
-    let dir = TempDir::new().unwrap();
-    let root = dir.path().join("workspace");
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("Cargo.toml"), root_toml).unwrap();
-    for (name, toml, rs) in members {
-        let member_dir = root.join(name);
-        std::fs::create_dir_all(&member_dir).unwrap();
-        std::fs::write(member_dir.join("Cargo.toml"), toml).unwrap();
-        std::fs::write(member_dir.join("lib.rs"), rs).unwrap();
-    }
-    git_init(&root);
-    TestProject { _dir: dir, root }
-}
-
-/// Create a monorepo: workspace root + rpkg subdirectory with own [workspace]
-fn create_monorepo(
-    ws_toml: &str,
-    ws_members: &[(&str, &str, &str)],
-    rpkg_toml: &str,
-    rpkg_rs: &str,
-) -> TestProject {
-    let dir = TempDir::new().unwrap();
-    let root = dir.path().join("monorepo");
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("Cargo.toml"), ws_toml).unwrap();
-    for (name, toml, rs) in ws_members {
-        let member_dir = root.join(name);
-        std::fs::create_dir_all(&member_dir).unwrap();
-        std::fs::write(member_dir.join("Cargo.toml"), toml).unwrap();
-        std::fs::write(member_dir.join("lib.rs"), rs).unwrap();
-    }
-    // rpkg in a subdirectory with its own workspace
-    let rpkg_dir = root.join("rpkg").join("src").join("rust");
-    std::fs::create_dir_all(&rpkg_dir).unwrap();
-    std::fs::write(rpkg_dir.join("Cargo.toml"), rpkg_toml).unwrap();
-    std::fs::write(rpkg_dir.join("lib.rs"), rpkg_rs).unwrap();
-    git_init(&root);
-    TestProject { _dir: dir, root }
-}
-
-/// Initialize a git repo (cargo package requires it)
-fn git_init(dir: &Path) {
-    std::process::Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(dir)
-        .output()
-        .expect("git init failed");
-    std::process::Command::new("git")
-        .args(["add", "."])
-        .current_dir(dir)
-        .output()
-        .expect("git add failed");
-    std::process::Command::new("git")
-        .args(["commit", "-q", "-m", "init", "--allow-empty"])
-        .current_dir(dir)
-        .env("GIT_AUTHOR_NAME", "test")
-        .env("GIT_AUTHOR_EMAIL", "test@test.com")
-        .env("GIT_COMMITTER_NAME", "test")
-        .env("GIT_COMMITTER_EMAIL", "test@test.com")
-        .output()
-        .expect("git commit failed");
-}
-
-/// Assert that vendor dir contains a crate
-fn assert_vendor_has(vendor: &Path, name: &str) {
-    let crate_dir = vendor.join(name);
-    assert!(
-        crate_dir.exists(),
-        "expected vendor/{} to exist at {}",
-        name,
-        vendor.display()
-    );
-    assert!(
-        crate_dir.join("Cargo.toml").exists(),
-        "expected vendor/{}/Cargo.toml",
-        name
-    );
-}
-
-/// Assert that vendor dir does NOT contain a crate
-fn assert_vendor_missing(vendor: &Path, name: &str) {
-    assert!(
-        !vendor.join(name).exists(),
-        "vendor/{} should not exist",
-        name
-    );
-}
-
-/// Read vendored Cargo.toml as string
-fn read_vendor_toml(vendor: &Path, name: &str) -> String {
-    std::fs::read_to_string(vendor.join(name).join("Cargo.toml"))
-        .unwrap_or_else(|_| panic!("failed to read vendor/{}/Cargo.toml", name))
-}
-
-/// Assert checksum file is empty
-fn assert_empty_checksum(vendor: &Path, name: &str) {
-    let cksum = vendor.join(name).join(".cargo-checksum.json");
-    let content = std::fs::read_to_string(&cksum)
-        .unwrap_or_else(|_| panic!("no .cargo-checksum.json in vendor/{}", name));
-    assert_eq!(content, "{\"files\":{}}");
-}
-
-// endregion
+use common::{
+    assert_empty_checksum, assert_vendor_has, assert_vendor_missing, create_monorepo,
+    create_simple_crate, create_workspace, git_init, read_vendor_toml, revendor_cmd,
+};
 
 // =============================================================================
 // Error cases (offline)
