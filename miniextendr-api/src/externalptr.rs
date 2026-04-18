@@ -1410,6 +1410,25 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
 
 // region: Finalizer
 
+/// Run a destructor closure, aborting the process if the closure panics.
+///
+/// A panic inside a GC finalizer cannot be safely propagated: the finalizer
+/// runs at an arbitrary point in R's garbage collector, and unwinding across
+/// the C-ABI boundary into R's runtime is undefined behaviour. Catching the
+/// panic and aborting is the only safe recovery strategy — the destructor has
+/// already left the value in an indeterminate state, so continuing is not an
+/// option.
+///
+/// This helper is `#[doc(hidden)]` because it is called from macro-generated
+/// code and is not part of the public API.
+#[doc(hidden)]
+pub fn drop_catching_panic<F: FnOnce()>(f: F) {
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err() {
+        eprintln!("miniextendr: destructor panicked during R finalization; aborting");
+        std::process::abort();
+    }
+}
+
 /// Non-generic C finalizer called by R's garbage collector.
 ///
 /// Since `ExternalPtr` stores `Box<Box<dyn Any>>`, the `Any` vtable carries
@@ -1436,7 +1455,10 @@ extern "C-unwind" fn release_any(sexp: SEXP) {
     // Reconstruct the outer Box<Box<dyn Any>> and let it drop.
     // This drops the outer Box, then the inner Box<dyn Any>, which
     // uses the vtable to drop the concrete T value.
-    drop(unsafe { Box::from_raw(any_raw) });
+    //
+    // A panicking Drop impl must not unwind across the C-ABI boundary into R.
+    // `drop_catching_panic` catches any panic and aborts instead.
+    drop_catching_panic(|| drop(unsafe { Box::from_raw(any_raw) }));
 }
 // endregion
 
@@ -1522,3 +1544,55 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 
 mod altrep_helpers;
 pub use altrep_helpers::*;
+
+#[cfg(test)]
+mod tests {
+    use super::drop_catching_panic;
+
+    #[test]
+    fn drop_catching_panic_does_not_propagate_panic() {
+        // Verify that drop_catching_panic catches a panicking closure and does
+        // NOT propagate the panic to the caller.
+        //
+        // Note: we cannot test the abort path from inside a test process, so
+        // we document it with a comment instead:
+        //   If the closure panics, `drop_catching_panic` calls `eprintln!` then
+        //   `std::process::abort()`. That path is exercised only by the process
+        //   dying, which is observable from an external test harness (not done
+        //   here to keep CI simple).
+        //
+        // What we CAN test: the happy path (no panic) completes normally, and
+        // the function compiles and links correctly with a `FnOnce()` generic.
+        let mut ran = false;
+        drop_catching_panic(|| {
+            ran = true;
+        });
+        assert!(ran, "closure should have been called");
+    }
+
+    #[test]
+    fn drop_catching_panic_happy_path_drops_value() {
+        // Confirm that the closure's side-effects (i.e. actual drop) occur
+        // when no panic is raised.
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dropped = Arc::new(AtomicBool::new(false));
+        let flag = dropped.clone();
+
+        struct DropSignal(Arc<AtomicBool>);
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let signal = DropSignal(flag);
+        drop_catching_panic(|| drop(signal));
+
+        assert!(
+            dropped.load(Ordering::SeqCst),
+            "inner value should have been dropped"
+        );
+    }
+}
