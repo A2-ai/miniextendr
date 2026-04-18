@@ -2682,9 +2682,32 @@ fn generate_method_match_arg_helpers(
         let entry_ident = syn::Ident::new(
             &format!(
                 "match_arg_choices_entry_{}",
-                placeholder.trim_matches('_').replace('.', "_")
+                crate::match_arg_keys::placeholder_ident_suffix(&placeholder)
             ),
             proc_macro2::Span::call_site(),
+        );
+        let doc_placeholder =
+            crate::r_class_formatter::match_arg_param_doc_placeholder(&c_ident_str, &r_name);
+        let doc_entry_ident = syn::Ident::new(
+            &format!(
+                "match_arg_param_doc_entry_{}",
+                crate::match_arg_keys::placeholder_ident_suffix(&doc_placeholder)
+            ),
+            proc_macro2::Span::call_site(),
+        );
+
+        let choices_entry_tokens = crate::match_arg_keys::choices_entry_tokens(
+            cfg_attrs,
+            &entry_ident,
+            &placeholder,
+            &choices_ty,
+        );
+        let param_doc_entry_tokens = crate::match_arg_keys::param_doc_entry_tokens(
+            cfg_attrs,
+            &doc_entry_ident,
+            &doc_placeholder,
+            several_ok,
+            &choices_ty,
         );
 
         out.extend(quote! {
@@ -2715,58 +2738,8 @@ fn generate_method_match_arg_helpers(
                 }
             };
 
-            #(#cfg_attrs)*
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES)]
-            #[linkme(crate = ::miniextendr_api::linkme)]
-            #[allow(non_upper_case_globals)]
-            #[allow(non_snake_case)]
-            static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
-                ::miniextendr_api::registry::MatchArgChoicesEntry {
-                    placeholder: #placeholder,
-                    choices_str: || {
-                        <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                            .iter()
-                            .map(|c| format!(
-                                "\"{}\"",
-                                ::miniextendr_api::match_arg::escape_r_string(c)
-                            ))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    },
-                };
-        });
-
-        // Per-param @param doc placeholder entry (#210). The cdylib write pass
-        // substitutes the placeholder in the generated R wrapper's roxygen block
-        // with a rendered `One of "A", "B".` (or multi-choice equivalent) line.
-        let doc_placeholder =
-            crate::r_class_formatter::match_arg_param_doc_placeholder(&c_ident_str, &r_name);
-        let doc_entry_ident = syn::Ident::new(
-            &format!(
-                "match_arg_param_doc_entry_{}",
-                doc_placeholder.trim_matches('_').replace('.', "_")
-            ),
-            proc_macro2::Span::call_site(),
-        );
-        let several_ok_lit = several_ok;
-        out.extend(quote! {
-            #(#cfg_attrs)*
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_PARAM_DOCS)]
-            #[linkme(crate = ::miniextendr_api::linkme)]
-            #[allow(non_upper_case_globals)]
-            #[allow(non_snake_case)]
-            static #doc_entry_ident: ::miniextendr_api::registry::MatchArgParamDocEntry =
-                ::miniextendr_api::registry::MatchArgParamDocEntry {
-                    placeholder: #doc_placeholder,
-                    several_ok: #several_ok_lit,
-                    choices_str: || {
-                        <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                            .iter()
-                            .map(|c| format!("\"{}\"", c))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    },
-                };
+            #choices_entry_tokens
+            #param_doc_entry_tokens
         });
     }
 
