@@ -23,14 +23,16 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
+    steps:
+      - uses: actions/checkout@v6
+
       # miniextendr-api/build.rs calls `R RHOME` to resolve libR for linking.
       # Rustdoc-only builds don't link — build.rs just has to not panic. The
       # valid-directory check passes with any existing path, so $RUNNER_TEMP
-      # is enough. Same pattern used by dvs2's CI workflow.
-      R_HOME: ${{ runner.temp }}
-    steps:
-      - uses: actions/checkout@v6
+      # is enough. Must be set from a step (the `runner` context is NOT
+      # available in job-level `env:`). Same pattern used by dvs2's CI.
+      - name: Set dummy R_HOME
+        run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@nightly
 
