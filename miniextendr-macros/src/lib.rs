@@ -438,6 +438,223 @@ fn build_match_arg_helpers(
         .collect()
 }
 
+/// All the state a standalone-fn C wrapper needs at emission time.
+///
+/// Bundles what used to be ~20 free locals in the `miniextendr` entry point
+/// so `build_fn_c_wrapper` can be a plain free function instead of a closure
+/// over half the enclosing scope.
+struct FnCWrapperInputs<'a> {
+    abi: Option<&'a syn::Abi>,
+    use_main_thread: bool,
+    rng: bool,
+    error_in_r: bool,
+    rust_ident: &'a syn::Ident,
+    c_ident: &'a syn::Ident,
+    r_wrapper_const_ident: &'a syn::Ident,
+    vis: &'a syn::Visibility,
+    generics: &'a syn::Generics,
+    c_wrapper_inputs: &'a [syn::FnArg],
+    call_param_ident: &'a syn::Ident,
+    rust_inputs: &'a [syn::Ident],
+    rust_result_ident: &'a syn::Ident,
+    pre_call_statements: &'a [proc_macro2::TokenStream],
+    closure_statements: &'a [proc_macro2::TokenStream],
+    pre_closure_stmts: &'a [proc_macro2::TokenStream],
+    in_closure_stmts: &'a [proc_macro2::TokenStream],
+    post_call_statements: &'a [proc_macro2::TokenStream],
+    return_expression: &'a proc_macro2::TokenStream,
+    rng_get: &'a proc_macro2::TokenStream,
+    rng_put: &'a proc_macro2::TokenStream,
+    unwind_protect_fn: &'a proc_macro2::TokenStream,
+    source_loc_doc: &'a str,
+}
+
+/// Emit the `extern "C-unwind"` C wrapper for a standalone `#[miniextendr]` fn.
+///
+/// Four variants (main / worker × rng / no-rng) diverge in small ways —
+/// panic handlers, catch_unwind wrapping, which blocks run on which thread.
+/// The original fn body open-coded all four; this helper concentrates the
+/// choice so the entry point can hand off after configuring `FnCWrapperInputs`.
+///
+/// Returns an empty TokenStream when `abi` is `Some(_)`, matching the old
+/// behavior — the user wrote the C symbol themselves, we just register it.
+fn build_fn_c_wrapper(ctx: &FnCWrapperInputs<'_>) -> proc_macro2::TokenStream {
+    if ctx.abi.is_some() {
+        return proc_macro2::TokenStream::new();
+    }
+
+    let FnCWrapperInputs {
+        rust_ident,
+        c_ident,
+        r_wrapper_const_ident,
+        vis,
+        generics,
+        c_wrapper_inputs,
+        call_param_ident,
+        rust_inputs,
+        rust_result_ident,
+        pre_call_statements,
+        closure_statements,
+        pre_closure_stmts,
+        in_closure_stmts,
+        post_call_statements,
+        return_expression,
+        rng_get,
+        rng_put,
+        unwind_protect_fn,
+        source_loc_doc,
+        ..
+    } = ctx;
+
+    if ctx.use_main_thread {
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{rust_ident}`] (main thread). See [`{r_wrapper_const_ident}`] for R wrapper.",
+        );
+        if ctx.rng {
+            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
+            // rng always implies error_in_r (validated at parse time), so we always return
+            // a tagged error value on panic instead of resume_unwind.
+            let rng_panic_handler = quote::quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    "panic",
+                    Some(#call_param_ident),
+                )
+            };
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #rng_get
+                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                        #(#pre_call_statements)*
+                        #unwind_protect_fn(
+                            || {
+                                #(#closure_statements)*
+                                let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                                #(#post_call_statements)*
+                                #return_expression
+                            },
+                            Some(#call_param_ident),
+                        )
+                    }));
+                    #rng_put
+                    match __result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => { #rng_panic_handler },
+                    }
+                }
+            }
+        } else {
+            // Non-RNG variant: direct call to with_r_unwind_protect
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #(#pre_call_statements)*
+
+                    #unwind_protect_fn(
+                        || {
+                            #(#closure_statements)*
+                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                            #(#post_call_statements)*
+                            #return_expression
+                        },
+                        Some(#call_param_ident),
+                    )
+                }
+            }
+        }
+    } else {
+        // Pure Rust functions: use worker thread strategy.
+        // Emit a compile-time check that the `worker-thread` feature is enabled.
+        let feature_msg = format!(
+            "`#[miniextendr(worker)]` on `{rust_ident}` requires the `worker-thread` cargo feature. \
+             Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
+        );
+        let worker_feature_check = quote::quote! {
+            #[cfg(not(any(feature = "worker-thread", feature = "default-worker")))]
+            compile_error!(#feature_msg);
+        };
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{rust_ident}`] (worker thread). See [`{r_wrapper_const_ident}`] for R wrapper.",
+        );
+        let worker_panic_handler = if ctx.error_in_r {
+            quote::quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    "panic",
+                    Some(#call_param_ident),
+                )
+            }
+        } else {
+            quote::quote! {
+                ::miniextendr_api::worker::panic_message_to_r_error(
+                    ::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    None,
+                )
+            }
+        };
+        let worker_result_err_arm = if ctx.error_in_r {
+            quote::quote! {
+                Err(__panic_msg) => {
+                    ::miniextendr_api::error_value::make_rust_error_value(
+                        &__panic_msg, "panic", Some(#call_param_ident),
+                    )
+                }
+            }
+        } else {
+            quote::quote! {
+                Err(__panic_msg) => {
+                    ::miniextendr_api::worker::panic_message_to_r_error(__panic_msg, None)
+                }
+            }
+        };
+        quote::quote! {
+            #worker_feature_check
+
+            #[doc = #c_wrapper_doc]
+            #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+            #[doc = #source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[unsafe(no_mangle)]
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                #rng_get
+                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    #(#pre_call_statements)*
+                    #(#pre_closure_stmts)*
+
+                    match ::miniextendr_api::worker::run_on_worker(move || {
+                        #(#in_closure_stmts)*
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                        #(#post_call_statements)*
+                        #rust_result_ident
+                    }) {
+                        Ok(#rust_result_ident) => {
+                            #unwind_protect_fn(
+                                move || #return_expression,
+                                None,
+                            )
+                        }
+                        #worker_result_err_arm
+                    }
+                }));
+                #rng_put
+                match __miniextendr_panic_result {
+                    Ok(sexp) => sexp,
+                    Err(payload) => { #worker_panic_handler },
+                }
+            }
+        }
+    }
+}
+
 /// Export Rust items to R.
 ///
 /// `#[miniextendr]` can be applied to:
@@ -1049,196 +1266,32 @@ pub fn miniextendr(
         quote::quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
     };
 
-    let c_wrapper = if abi.is_some() {
-        proc_macro2::TokenStream::new()
-    } else if use_main_thread {
-        // SEXP-returning or Dots-taking functions: use with_r_unwind_protect on main thread
-        let c_wrapper_doc = format!(
-            "C wrapper for [`{}`] (main thread). See [`{}`] for R wrapper.",
-            rust_ident, r_wrapper_generator
-        );
-        if rng {
-            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
-            // rng always implies error_in_r (validated at parse time), so we always return
-            // a tagged error value on panic instead of resume_unwind.
-            let rng_panic_handler = quote::quote! {
-                ::miniextendr_api::error_value::make_rust_error_value(
-                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                    "panic",
-                    Some(#call_param_ident),
-                )
-            };
-            quote::quote! {
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #rng_get
-                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-                        #(#pre_call_statements)*
-                        #unwind_protect_fn(
-                            || {
-                                #(#closure_statements)*
-                                let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                                #(#post_call_statements)*
-                                #return_expression
-                            },
-                            Some(#call_param_ident),
-                        )
-                    }));
-                    #rng_put
-                    match __result {
-                        Ok(sexp) => sexp,
-                        Err(payload) => { #rng_panic_handler },
-                    }
-                }
-            }
-        } else {
-            // Non-RNG variant: direct call to with_r_unwind_protect
-            quote::quote! {
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #(#pre_call_statements)*
-
-                    #unwind_protect_fn(
-                        || {
-                            #(#closure_statements)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            #return_expression
-                        },
-                        Some(#call_param_ident),
-                    )
-                }
-            }
-        }
-    } else {
-        // Pure Rust functions: use worker thread strategy.
-        // Emit a compile-time check that the `worker-thread` feature is enabled.
-        // Without it, `run_on_worker` is a stub that runs inline (silent degradation).
-        // Check both `worker-thread` (direct) and `default-worker` (implies worker-thread
-        // via miniextendr-api, but the user crate may only have the latter in its features).
-        let worker_feature_check = {
-            let fn_name = rust_ident.to_string();
-            let msg = format!(
-                "`#[miniextendr(worker)]` on `{fn_name}` requires the `worker-thread` cargo feature. \
-                 Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
-            );
-            quote::quote! {
-                #[cfg(not(any(feature = "worker-thread", feature = "default-worker")))]
-                compile_error!(#msg);
-            }
-        };
-        let c_wrapper_doc = format!(
-            "C wrapper for [`{}`] (worker thread). See [`{}`] for R wrapper.",
-            rust_ident, r_wrapper_generator
-        );
-        let worker_panic_handler = if error_in_r {
-            quote::quote! {
-                ::miniextendr_api::error_value::make_rust_error_value(
-                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                    "panic",
-                    Some(#call_param_ident),
-                )
-            }
-        } else {
-            quote::quote! {
-                ::miniextendr_api::worker::panic_message_to_r_error(
-                    ::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                    None,
-                )
-            }
-        };
-        if error_in_r {
-            // error_in_r: run_on_worker returns Result; Err → tagged error value
-            quote::quote! {
-                #worker_feature_check
-
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #rng_get
-                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
-                        #(#pre_call_statements)*
-                        #(#pre_closure_stmts)*
-
-                        match ::miniextendr_api::worker::run_on_worker(move || {
-                            #(#in_closure_stmts)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            #rust_result_ident
-                        }) {
-                            Ok(#rust_result_ident) => {
-                                #unwind_protect_fn(
-                                    move || #return_expression,
-                                    None,
-                                )
-                            }
-                            Err(__panic_msg) => {
-                                ::miniextendr_api::error_value::make_rust_error_value(
-                                    &__panic_msg, "panic", Some(#call_param_ident),
-                                )
-                            }
-                        }
-                    }));
-                    #rng_put
-                    match __miniextendr_panic_result {
-                        Ok(sexp) => sexp,
-                        Err(payload) => { #worker_panic_handler },
-                    }
-                }
-            }
-        } else {
-            // run_on_worker returns Result; Err → R error via Rf_error
-            quote::quote! {
-                #worker_feature_check
-
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #rng_get
-                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
-                        #(#pre_call_statements)*
-                        #(#pre_closure_stmts)*
-
-                        match ::miniextendr_api::worker::run_on_worker(move || {
-                            #(#in_closure_stmts)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            #rust_result_ident
-                        }) {
-                            Ok(#rust_result_ident) => {
-                                #unwind_protect_fn(
-                                    move || #return_expression,
-                                    None,
-                                )
-                            }
-                            Err(__panic_msg) => {
-                                ::miniextendr_api::worker::panic_message_to_r_error(__panic_msg, None)
-                            }
-                        }
-                    }));
-                    #rng_put
-                    match __miniextendr_panic_result {
-                        Ok(sexp) => sexp,
-                        Err(payload) => { #worker_panic_handler },
-                    }
-                }
-            }
-        }
-    };
+    let c_wrapper_inputs_vec: Vec<syn::FnArg> = c_wrapper_inputs.clone();
+    let c_wrapper = build_fn_c_wrapper(&FnCWrapperInputs {
+        abi,
+        use_main_thread,
+        rng,
+        error_in_r,
+        rust_ident,
+        c_ident: &c_ident,
+        r_wrapper_const_ident: &r_wrapper_generator,
+        vis,
+        generics,
+        c_wrapper_inputs: &c_wrapper_inputs_vec,
+        call_param_ident: &call_param_ident,
+        rust_inputs: &rust_inputs,
+        rust_result_ident: &rust_result_ident,
+        pre_call_statements: &pre_call_statements,
+        closure_statements: &closure_statements,
+        pre_closure_stmts: &pre_closure_stmts,
+        in_closure_stmts: &in_closure_stmts,
+        post_call_statements: &post_call_statements,
+        return_expression: &return_expression,
+        rng_get: &rng_get,
+        rng_put: &rng_put,
+        unwind_protect_fn: &unwind_protect_fn,
+        source_loc_doc: &source_loc_doc,
+    });
 
     // region: R wrappers generation in `fn`
     // Build R formal parameters and call arguments using shared builder
