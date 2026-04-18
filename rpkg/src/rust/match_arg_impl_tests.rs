@@ -173,8 +173,30 @@ impl S4MatchArgHolder {
 
 // endregion
 
-// vctrs intentionally omitted (#208): vctrs constructors expect the `.data`
-// argument to be vector-shaped, so a straightforward struct-returning ctor
-// doesn't fit the fixture pattern used above. The match.arg prelude is shared
-// code emitted by the same `MethodContext::match_arg_prelude()` path, so
-// r6/env/s7/s3/s4 coverage exercises the same codegen surface.
+// region: vctrs — scalar match_arg on constructor returning vector data (#208)
+
+/// Marker struct for the `impl` block. Vctrs classes don't need to carry
+/// Rust state — the vector payload returned by `new` is wrapped directly by
+/// `vctrs::new_vctr` at the R layer.
+pub struct VctrsMatchArgScale;
+
+/// vctrs fixture where the constructor takes a match_arg'd `ImplMode` scalar
+/// and returns the numeric payload that `vctrs::new_vctr()` wraps. Exercises
+/// the same `MethodContext::match_arg_prelude()` path as the other class
+/// systems through the vctrs codegen branch that emits
+/// `new_<name>(...)` + `vctrs::new_vctr(data, class = "…")`.
+#[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "mode"))]
+impl VctrsMatchArgScale {
+    // Vctrs ctors return vector payload (not Self) — vctrs::new_vctr wraps it.
+    #[allow(clippy::new_ret_no_self)]
+    #[miniextendr(match_arg(mode))]
+    pub fn new(mode: ImplMode) -> Vec<f64> {
+        match mode {
+            ImplMode::Fast => vec![0.01, 0.1, 1.0],
+            ImplMode::Safe => vec![1.0, 2.0, 3.0],
+            ImplMode::Debug => vec![-1.0, 0.0, 1.0],
+        }
+    }
+}
+
+// endregion
