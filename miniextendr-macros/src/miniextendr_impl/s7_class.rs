@@ -1,31 +1,7 @@
 //! S7-class R wrapper generator.
 
 use super::{ParsedImpl, ParsedMethod};
-
-/// Check whether `s` is a bare R identifier (only `[A-Za-z_][A-Za-z0-9_]*`).
-///
-/// When `true`, a `.__MX_CLASS_REF_<s>__` placeholder is emitted so the
-/// resolver can look up the actual R class name at cdylib write time.
-/// When `false` (e.g. `"S7::class_any"` or a namespaced path), the string
-/// is emitted verbatim.
-fn is_bare_identifier(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-/// Return either a placeholder `.__MX_CLASS_REF_<name>__` (when `name` is a bare
-/// identifier) or `name` verbatim (for namespaced / non-identifier strings).
-fn class_ref_or_verbatim(name: &str) -> String {
-    if is_bare_identifier(name) {
-        format!(".__MX_CLASS_REF_{name}__")
-    } else {
-        name.to_string()
-    }
-}
+use crate::r_class_formatter::{class_ref_or_verbatim, is_bare_identifier};
 
 /// S7-property variant of [`class_ref_or_verbatim`] that asks the resolver to
 /// fall back silently to `S7::class_any` on miss (unregistered type, or a

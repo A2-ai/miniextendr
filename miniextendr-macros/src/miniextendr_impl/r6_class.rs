@@ -1,27 +1,7 @@
 //! R6-class R wrapper generator.
 
 use super::ParsedImpl;
-
-/// Return either a `.__MX_CLASS_REF_<name>__` placeholder (for bare identifiers)
-/// or `name` verbatim (for namespaced / non-identifier strings).
-///
-/// Mirrors the function in `s7_class.rs`. Inline here to avoid a cross-module dep.
-fn class_ref_or_verbatim(name: &str) -> String {
-    let is_bare = {
-        let mut chars = name.chars();
-        match chars.next() {
-            Some(c) if c.is_ascii_alphabetic() || c == '_' => {
-                chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-            }
-            _ => false,
-        }
-    };
-    if is_bare {
-        format!(".__MX_CLASS_REF_{name}__")
-    } else {
-        name.to_string()
-    }
-}
+use crate::r_class_formatter::class_ref_or_verbatim;
 
 /// Generates the complete R wrapper string for an R6-style class.
 ///

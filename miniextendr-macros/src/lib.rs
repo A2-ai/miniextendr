@@ -128,39 +128,15 @@
 //!
 //! ## Thread Strategy
 //!
-//! By default, `#[miniextendr]` functions run on a **worker thread** for clean panic handling.
-//! The macro automatically switches to **main thread** when it detects:
+//! By default, `#[miniextendr]` functions run on R's main thread. Opt into
+//! worker-thread execution with `#[miniextendr(worker)]` (requires the
+//! `worker-thread` feature on `miniextendr-api`). A worker opt-in is ignored
+//! when the signature requires main-thread execution (returns/takes `SEXP`,
+//! uses variadic dots, or sets `check_interrupt`).
 //!
-//! - Function takes or returns `SEXP`
-//! - Function uses variadic dots (`...`)
-//! - `check_interrupt` attribute is set
-//!
-//! ### When to use `#[miniextendr(unsafe(main_thread))]`
-//!
-//! Only use this attribute when your function calls R API **directly** using
-//! `_unchecked` variants (bypassing `with_r_thread`) and the macro can't auto-detect it.
-//! This is rare:
-//!
-//! ```rust,ignore
-//! // NEEDED: Calls _unchecked R API, but signature doesn't show it
-//! #[miniextendr(unsafe(main_thread))]
-//! fn call_r_api_internally() -> i32 {
-//!     // _unchecked variants assume we're on main thread
-//!     unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42); }
-//!     42
-//! }
-//!
-//! // NOT NEEDED: Macro auto-detects SEXP return
-//! #[miniextendr]
-//! fn returns_sexp() -> SEXP { /* ... */ }
-//!
-//! // NOT NEEDED: ExternalPtr is Send, can cross thread boundary
-//! #[miniextendr]
-//! fn returns_extptr() -> ExternalPtr<MyType> { /* ... */ }
-//! ```
-//!
-//! **Note**: `ExternalPtr<T>` is `Send` - it can be returned from worker thread functions.
-//! All R API operations on ExternalPtr are serialized through `with_r_thread`.
+//! **Note**: `ExternalPtr<T>` is `Send` — it can be returned from worker
+//! thread functions. All R API operations on `ExternalPtr` are serialized
+//! through `with_r_thread`.
 //!
 //! ## Class Systems
 //!
@@ -179,6 +155,7 @@
 mod altrep;
 mod c_wrapper_builder;
 mod list_macro;
+mod match_arg_keys;
 mod miniextendr_fn;
 mod typed_list;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
@@ -217,6 +194,7 @@ mod struct_enum_dispatch;
 // vctrs support
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
+mod vctrs_generics;
 
 pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
@@ -361,47 +339,6 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
-/// Known vctrs S3 generics that need `@importFrom vctrs` for roxygen registration.
-///
-/// This list includes all generics exported by vctrs that users might implement
-/// S3 methods for when creating custom vector types.
-const VCTRS_GENERICS: &[&str] = &[
-    // Core proxy/restore (required for most custom types)
-    "vec_proxy",
-    "vec_restore",
-    // Type coercion (required for vec_c, vec_rbind, etc.)
-    "vec_ptype2",
-    "vec_cast",
-    // Equality/comparison/ordering proxies
-    "vec_proxy_equal",
-    "vec_proxy_compare",
-    "vec_proxy_order",
-    // Printing/formatting
-    "vec_ptype_abbr",
-    "vec_ptype_full",
-    "obj_print_data",
-    "obj_print_footer",
-    "obj_print_header",
-    // str() output
-    "obj_str_data",
-    "obj_str_footer",
-    "obj_str_header",
-    // Arithmetic (for numeric-like types)
-    "vec_arith",
-    "vec_math",
-    // Other
-    "vec_ptype_finalise",
-    "vec_cbind_frame_ptype",
-    // List-of conversion
-    "as_list_of",
-];
-
-/// Check if a generic name is a vctrs generic that needs `@importFrom vctrs`.
-#[inline]
-fn is_vctrs_generic(generic: &str) -> bool {
-    VCTRS_GENERICS.contains(&generic)
-}
-
 /// Export Rust items to R.
 ///
 /// `#[miniextendr]` can be applied to:
@@ -456,7 +393,7 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// ## Attributes
 ///
-/// - `#[miniextendr(unsafe(main_thread))]` — run on R's main thread (bypass worker)
+/// - `#[miniextendr(worker)]` — opt into worker-thread execution
 /// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` — control return visibility
 /// - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
@@ -676,7 +613,6 @@ pub fn miniextendr(
     }
 
     let MiniextendrFnAttrs {
-        force_main_thread,
         force_worker,
         force_invisible,
         check_interrupt,
@@ -984,9 +920,6 @@ pub fn miniextendr(
     let requires_main_thread = returns_sexp || has_sexp_inputs || has_dots || check_interrupt;
     let use_main_thread = !force_worker || requires_main_thread;
 
-    // Suppress unused variable warnings — force_main_thread is now the default,
-    // and force_worker is consumed in use_main_thread above.
-    let _ = (force_main_thread, force_worker);
     // RNG state management tokens
     let (rng_get, rng_put) = if rng {
         (
@@ -1368,29 +1301,18 @@ pub fn miniextendr(
     // (r_name, rust_param) pairs — used later to build @param doc placeholders
     let mut match_arg_r_names: Vec<(String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            match_arg_param,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+        let r_name = r_wrapper_builder::normalize_r_arg_string(match_arg_param);
         match_arg_r_names.push((r_name.clone(), match_arg_param.clone()));
         if !merged_defaults.contains_key(&r_name) {
-            let placeholder = format!(
-                ".__MX_MATCH_ARG_CHOICES_{}_{}__",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_name
-            );
+            let placeholder =
+                crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
             merged_defaults.insert(r_name.clone(), placeholder.clone());
             match_arg_placeholders.push((placeholder, match_arg_param.clone()));
         }
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
     for (param_name, choices) in parsed.choices_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            param_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+        let r_name = r_wrapper_builder::normalize_r_arg_string(param_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
         merged_defaults
             .entry(r_name)
@@ -1441,7 +1363,7 @@ pub fn miniextendr(
         let class = s3_class.as_ref().expect("s3_class validated at parse time");
         r_wrapper_ident_str = format!("{}.{}", generic, class);
         // Add @importFrom for vctrs generics so roxygen registers the dependency
-        let import_comment = if is_vctrs_generic(&generic) {
+        let import_comment = if crate::vctrs_generics::is_vctrs_generic(&generic) {
             format!("#' @importFrom vctrs {}\n", generic)
         } else {
             String::new()
@@ -1521,11 +1443,8 @@ pub fn miniextendr(
             .iter()
             .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
         if !has_user_param {
-            let doc_placeholder = format!(
-                ".__MX_MATCH_ARG_PARAM_DOC_{}_{}__",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_name
-            );
+            let doc_placeholder =
+                crate::match_arg_keys::param_doc_placeholder(&c_ident.to_string(), r_name);
             roxygen_tags.push(format!("@param {r_name} {doc_placeholder}"));
             match_arg_param_doc_placeholders.push((doc_placeholder, rust_param.clone()));
         }
@@ -1616,11 +1535,8 @@ pub fn miniextendr(
         let mut lines = Vec::new();
         for (r_param, rust_name, _) in &match_arg_param_info {
             // choices helper call
-            let choices_c_name = format!(
-                "C_{}__match_arg_choices__{}",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_param
-            );
+            let choices_c_name =
+                crate::match_arg_keys::choices_helper_c_name(&c_ident.to_string(), r_param);
             lines.push(format!(
                 ".__mx_choices_{param} <- .Call({choices_c}, .call = match.call())",
                 param = r_param,
@@ -1686,12 +1602,7 @@ pub fn miniextendr(
     // Skip both match_arg and choices params (already validated by match.arg)
     let mut skip_params = parsed.match_arg_params().clone();
     for param_name in parsed.choices_params().keys() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            param_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
-        skip_params.insert(r_name);
+        skip_params.insert(r_wrapper_builder::normalize_r_arg_string(param_name));
     }
     let precondition_output = r_preconditions::build_precondition_checks(inputs, &skip_params);
     let precondition_prelude = if precondition_output.static_checks.is_empty() {
@@ -1837,16 +1748,11 @@ pub fn miniextendr(
             } else {
                 param_ty
             };
-            let helper_fn_name = format!(
-                "C_{}__match_arg_choices__{}",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_param
-            );
+            let helper_fn_name =
+                crate::match_arg_keys::choices_helper_c_name(&c_ident.to_string(), r_param);
             let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
-            let helper_def_ident = syn::Ident::new(
-                &format!("call_method_def_{}", helper_fn_name),
-                proc_macro2::Span::call_site(),
-            );
+            let helper_def_ident =
+                crate::match_arg_keys::choices_helper_def_ident(&c_ident.to_string(), r_param);
             match_arg_helper_def_idents.push(helper_def_ident.clone());
             let helper_c_name = syn::LitCStr::new(
                 std::ffi::CString::new(helper_fn_name.clone())

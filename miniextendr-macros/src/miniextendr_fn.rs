@@ -1046,8 +1046,7 @@ impl MiniextendrFunctionParsed {
 ///
 /// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
 /// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
-/// - `unsafe(main_thread)`: force execution on R's main thread (unsafe: panics will leak resources)
-/// - `worker`: explicitly request worker thread execution (default for most functions)
+/// - `worker`: opt into worker-thread execution (default is main thread)
 /// - `coerce`: enable automatic coercion for supported parameter types
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
 /// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
@@ -1058,8 +1057,6 @@ impl MiniextendrFunctionParsed {
 /// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
 #[derive(Default)]
 pub(crate) struct MiniextendrFnAttrs {
-    /// Force execution on R's main thread (set by `unsafe(main_thread)`).
-    pub(crate) force_main_thread: bool,
     /// Force execution on worker thread (set by `worker`).
     pub(crate) force_worker: bool,
     /// Override visibility; `Some(true)` makes the wrapper return invisibly, `Some(false)` forces visibility.
@@ -1188,7 +1185,7 @@ pub(crate) enum ReturnPref {
 /// Supports three syntactic forms for each option:
 /// - **Bare identifier**: `#[miniextendr(invisible)]`
 /// - **Name-value**: `#[miniextendr(prefer = "list")]` or `#[miniextendr(invisible = true)]`
-/// - **Nested list**: `#[miniextendr(unsafe(main_thread))]`, `#[miniextendr(s3(generic = "...", class = "..."))]`
+/// - **Nested list**: `#[miniextendr(s3(generic = "...", class = "..."))]`
 ///
 /// Options with negated forms (`no_worker`, `no_coerce`, `no_strict`, `no_error_in_r`)
 /// explicitly disable the corresponding flag, which is useful for overriding
@@ -1209,7 +1206,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         use syn::spanned::Spanned;
         // Use Option<bool> for fields that support feature defaults.
         // None = not explicitly set → resolve from cfg!(feature = "...") at end.
-        let mut force_main_thread: Option<bool> = None;
         let mut force_worker: Option<bool> = None;
         let mut force_invisible: Option<bool> = None;
         let mut check_interrupt = false;
@@ -1236,7 +1232,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         if input.is_empty() {
             return Ok(Self {
-                force_main_thread: force_main_thread.unwrap_or(true),
                 force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
                 force_invisible,
                 check_interrupt,
@@ -1318,7 +1313,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
                             ));
                         }
                     }
@@ -1381,9 +1376,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                     ident,
                                     format!(
                                         "unknown `#[miniextendr]` option `{}`; expected one of: \
-                                         invisible, visible, check_interrupt, unsafe(main_thread), \
-                                         worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, \
-                                         error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
+                                         invisible, visible, check_interrupt, worker, no_worker, \
+                                         coerce, no_coerce, rng, unwrap_in_r, error_in_r, \
+                                         no_error_in_r, strict, no_strict, internal, noexport, export",
                                         ident,
                                     ),
                                 ));
@@ -1616,29 +1611,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         ));
                     }
                 }
-                // Nested: unsafe(main_thread)
                 syn::Meta::List(list) => {
-                    if list.path.is_ident("unsafe") {
-                        let nested = list.parse_args_with(
-                            syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
-                        )?;
-                        if nested.is_empty() {
-                            return Err(syn::Error::new_spanned(
-                                list,
-                                "`unsafe(...)` must specify an option: currently only `unsafe(main_thread)` is supported",
-                            ));
-                        }
-                        for ident in nested {
-                            if ident == "main_thread" {
-                                force_main_thread = Some(true);
-                            } else {
-                                return Err(syn::Error::new_spanned(
-                                    ident,
-                                    "unknown `unsafe(...)` option; only `main_thread` is supported",
-                                ));
-                            }
-                        }
-                    } else if list.path.is_ident("defaults") {
+                    if list.path.is_ident("defaults") {
                         // Ignore defaults(...) - it's handled by impl method parsing
                         // This allows #[miniextendr(defaults(...))] on impl methods
                     } else if list.path.is_ident("lifecycle") {
@@ -1761,7 +1735,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                     format!(
                                         "unknown `#[miniextendr]` option `{opt_name}`. Boolean flags should be \
                                          written as `option` (alone) or `option = true/false`. \
-                                         Nested options: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
+                                         Nested options: `s3(...)`, `lifecycle(...)`, `defaults(...)`",
                                     ),
                                 ));
                             }
@@ -1784,7 +1758,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         return Err(syn::Error::new_spanned(
                             list,
                             "unrecognized nested option. \
-                             Nested options are: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
+                             Nested options are: `s3(...)`, `lifecycle(...)`, `defaults(...)`",
                         ));
                     }
                 }
@@ -1845,7 +1819,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         }
 
         Ok(Self {
-            force_main_thread: force_main_thread.unwrap_or(true),
             force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
             force_invisible,
             check_interrupt,
