@@ -121,6 +121,19 @@ struct Cli {
     #[arg(long)]
     freeze: bool,
 
+    /// Fail fast on any external `git = "..."` dependency that `--freeze`
+    /// cannot rewrite to a vendor path. Requires `--freeze`.
+    ///
+    /// Without this flag, external git deps remain as `git =` entries in
+    /// the frozen manifest and rely on `.cargo/config.toml` source
+    /// replacement (which `cargo revendor` writes to
+    /// `vendor/.cargo-config.toml`) for offline builds. With this flag,
+    /// cargo-revendor exits non-zero if the frozen manifest would still
+    /// contain `git =` entries — useful for CI guards that must guarantee
+    /// the manifest alone is buildable offline.
+    #[arg(long, requires = "freeze")]
+    strict_freeze: bool,
+
     /// Write .vendor-source marker file recording provenance
     #[arg(long)]
     source_marker: bool,
@@ -427,7 +440,14 @@ fn main() -> Result<()> {
 
     // Step 12: Freeze — rewrite manifest so all sources resolve from vendor/
     if cli.freeze {
-        vendor::freeze_manifest(&manifest_path, &output, &local_pkgs, versioned_dirs, v)?;
+        vendor::freeze_manifest(
+            &manifest_path,
+            &output,
+            &local_pkgs,
+            versioned_dirs,
+            cli.strict_freeze,
+            v,
+        )?;
         vendor::regenerate_lockfile(&manifest_path, &output, v)?;
     }
 

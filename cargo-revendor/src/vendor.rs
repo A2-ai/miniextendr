@@ -693,6 +693,66 @@ fn collect_git_from_dep_table(
     }
 }
 
+/// Walk all dep tables in `doc` and collect `(name, git_url)` pairs for
+/// every remaining `git = "..."` entry. Used by `freeze_manifest` after
+/// local-pkg rewrites to surface deps that `--freeze` didn't resolve.
+///
+/// Covers `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`,
+/// and every `[target.<cfg>.*-dependencies]` table. Unlike `collect_git_urls`
+/// (which deduplicates URLs for `.cargo/config.toml` emission), this
+/// preserves the (name, url) pairing so the caller can report WHICH deps
+/// remain unresolved.
+pub(crate) fn collect_remaining_git_deps(doc: &toml_edit::DocumentMut) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+
+    for tbl_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(item) = doc.get(tbl_name)
+            && let Some(tbl) = item.as_table_like()
+        {
+            collect_git_pairs(tbl, &mut out);
+        }
+    }
+
+    if let Some(target_item) = doc.get("target")
+        && let Some(target_tbl) = target_item.as_table_like()
+    {
+        for (_cfg, cfg_item) in target_tbl.iter() {
+            let Some(cfg_tbl) = cfg_item.as_table_like() else {
+                continue;
+            };
+            for tbl_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                if let Some(item) = cfg_tbl.get(tbl_name)
+                    && let Some(tbl) = item.as_table_like()
+                {
+                    collect_git_pairs(tbl, &mut out);
+                }
+            }
+        }
+    }
+
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn collect_git_pairs(tbl: &dyn toml_edit::TableLike, out: &mut Vec<(String, String)>) {
+    for (name, item) in tbl.iter() {
+        let git_url = match item {
+            toml_edit::Item::Value(toml_edit::Value::InlineTable(inline)) => inline
+                .get("git")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            toml_edit::Item::Table(sub) => {
+                sub.get("git").and_then(|i| i.as_str()).map(String::from)
+            }
+            _ => None,
+        };
+        if let Some(url) = git_url {
+            out.push((name.to_string(), url));
+        }
+    }
+}
+
 /// Generate a .cargo/config.toml for source replacement.
 ///
 /// Returns the config content as a string. Also writes it to
@@ -777,6 +837,7 @@ pub fn freeze_manifest(
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
     versioned_dirs: bool,
+    strict: bool,
     v: crate::Verbosity,
 ) -> Result<()> {
     let content = std::fs::read_to_string(manifest_path)?;
@@ -798,6 +859,43 @@ pub fn freeze_manifest(
                     rewrite_dep_to_vendor(dep, &dir_name, &vendor_rel);
                 }
             }
+        }
+    }
+
+    // After rewriting local-pkg deps, detect any remaining external `git = "..."`
+    // entries. These can't be resolved from `vendor/` by the frozen manifest
+    // alone; they rely on `.cargo/config.toml` source replacement for offline
+    // builds. `--strict-freeze` converts this into a hard error; otherwise
+    // just warn at -v so users can spot the issue.
+    let remaining_git = collect_remaining_git_deps(&doc);
+    if !remaining_git.is_empty() {
+        if strict {
+            let list = remaining_git
+                .iter()
+                .map(|(name, url)| format!("  - {name} (git = \"{url}\")"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            bail!(
+                "--strict-freeze: {} external git dep(s) remain after freeze:\n{}\n\
+                 The frozen manifest alone cannot resolve these offline — cargo\n\
+                 will still try to hit the git URL unless `.cargo/config.toml`\n\
+                 source replacement is also set up. Vendor these git deps as\n\
+                 workspace/path entries, or drop --strict-freeze.",
+                remaining_git.len(),
+                list
+            );
+        } else if v.info() {
+            eprintln!(
+                "  warning: {} external git dep(s) remain after freeze:",
+                remaining_git.len()
+            );
+            for (name, url) in &remaining_git {
+                eprintln!("    - {name} (git = \"{url}\")");
+            }
+            eprintln!(
+                "    Offline builds rely on vendor/.cargo-config.toml source replacement for these.\n\
+                 Pass --strict-freeze to turn this into a hard error."
+            );
         }
     }
 
@@ -1238,6 +1336,121 @@ this-is = "broken"
 
     // endregion
 
+    // region: --strict-freeze (#252)
+    //
+    // freeze_manifest rewrites local_pkgs deps to vendor paths but leaves
+    // external `git = "..."` deps alone. --strict-freeze turns any residual
+    // git dep into an error instead of a silent trust-the-config-replacement.
+
+    #[test]
+    fn collect_remaining_git_deps_finds_inline_table() {
+        let toml = r#"[dependencies]
+local = { path = "../local" }
+external = { git = "https://example.com/ext" }
+"#;
+        let doc: toml_edit::DocumentMut = toml.parse().unwrap();
+        let deps = collect_remaining_git_deps(&doc);
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].0, "external");
+        assert_eq!(deps[0].1, "https://example.com/ext");
+    }
+
+    #[test]
+    fn collect_remaining_git_deps_finds_target_gated() {
+        let toml = r#"[target.'cfg(unix)'.dependencies]
+foo = { git = "https://example.com/unix-foo" }
+
+[target.'cfg(windows)'.build-dependencies]
+bar = { git = "https://example.com/win-bar" }
+"#;
+        let doc: toml_edit::DocumentMut = toml.parse().unwrap();
+        let deps = collect_remaining_git_deps(&doc);
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|(n, _)| n == "foo"));
+        assert!(deps.iter().any(|(n, _)| n == "bar"));
+    }
+
+    #[test]
+    fn collect_remaining_git_deps_ignores_path_and_version() {
+        let toml = r#"[dependencies]
+from_path = { path = "../x" }
+from_crates_io = "1.0"
+from_crates_io_inline = { version = "1.0", default-features = false }
+"#;
+        let doc: toml_edit::DocumentMut = toml.parse().unwrap();
+        assert!(collect_remaining_git_deps(&doc).is_empty());
+    }
+
+    #[test]
+    fn collect_remaining_git_deps_handles_table_form() {
+        let toml = r#"[dependencies.foo]
+git = "https://example.com/foo"
+rev = "abc"
+"#;
+        let doc: toml_edit::DocumentMut = toml.parse().unwrap();
+        let deps = collect_remaining_git_deps(&doc);
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].0, "foo");
+    }
+
+    #[test]
+    fn freeze_manifest_strict_errors_on_external_git() {
+        // Full-flow test: build a fixture with an external git dep,
+        // freeze with strict=true, assert error.
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = dir.path().join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            r#"[package]
+name = "x"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+external = { git = "https://example.com/ext" }
+"#,
+        )
+        .unwrap();
+        let vendor = dir.path().join("vendor");
+        std::fs::create_dir_all(&vendor).unwrap();
+
+        let err = freeze_manifest(&manifest, &vendor, &[], false, /* strict */ true, Verbosity(0))
+            .unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("--strict-freeze") && msg.contains("external"),
+            "expected strict-freeze error naming the dep, got:\n{msg}"
+        );
+    }
+
+    #[test]
+    fn freeze_manifest_non_strict_succeeds_on_external_git() {
+        // Same fixture but strict=false: freeze proceeds, leaving the
+        // external git dep in place. The verified property here is that
+        // the error path doesn't fire.
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = dir.path().join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            r#"[package]
+name = "x"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+external = { git = "https://example.com/ext" }
+"#,
+        )
+        .unwrap();
+        let vendor = dir.path().join("vendor");
+        std::fs::create_dir_all(&vendor).unwrap();
+
+        freeze_manifest(&manifest, &vendor, &[], false, /* strict */ false, Verbosity(0))
+            .unwrap();
+    }
+
+    // endregion
+
     #[test]
     fn strip_vendor_path_deps_removes_relative_paths() {
         let dir = tempfile::tempdir().unwrap();
@@ -1304,7 +1517,7 @@ miniextendr-macros-core = { path = "/tmp/mc" }
         )
         .unwrap();
 
-        freeze_manifest(&manifest, &vendor, &[], false, Verbosity(0)).unwrap();
+        freeze_manifest(&manifest, &vendor, &[], false, false, Verbosity(0)).unwrap();
         let result = std::fs::read_to_string(&manifest).unwrap();
         let api = result.find("miniextendr-api =").unwrap();
         let lint = result.find("miniextendr-lint =").unwrap();
