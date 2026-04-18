@@ -27,6 +27,18 @@ fn class_ref_or_verbatim(name: &str) -> String {
     }
 }
 
+/// S7-property variant of [`class_ref_or_verbatim`] that asks the resolver to
+/// fall back silently to `S7::class_any` on miss (unregistered type, or a
+/// registered-but-non-S7 class). Prevents the load-time `object not found`
+/// noise called out in #203.
+fn class_ref_or_any_or_verbatim(name: &str) -> String {
+    if is_bare_identifier(name) {
+        format!(".__MX_CLASS_REF_OR_ANY_{name}__")
+    } else {
+        name.to_string()
+    }
+}
+
 /// Map a Rust return type to an S7 class name.
 ///
 /// Returns `None` if the type doesn't map to any S7 class — the caller
@@ -119,7 +131,11 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
                     && is_bare_identifier(&ident)
                     && ident.chars().next().is_some_and(|c| c.is_ascii_uppercase()) =>
                 {
-                    Some(class_ref_or_verbatim(&ident))
+                    // S7 property class constraint: use the OR_ANY variant so
+                    // an unregistered type (or a registered-but-non-S7 class)
+                    // falls back silently to `class_any`, restoring pre-#154
+                    // behavior for those edge cases (#203).
+                    Some(class_ref_or_any_or_verbatim(&ident))
                 }
 
                 _ => None,
