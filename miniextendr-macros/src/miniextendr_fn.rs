@@ -1036,6 +1036,39 @@ impl MiniextendrFunctionParsed {
 
 // region: Attribute parsing
 
+/// Parse the value of a `name = "..."` meta item as a string literal.
+///
+/// Returns a compile error spanning the offending token when the RHS is not a
+/// `&str` literal. `field` is used in the diagnostic (e.g. `"c_symbol"`).
+fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
+    match &nv.value {
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(lit),
+            ..
+        }) => Ok(lit.value()),
+        syn::Expr::Lit(expr_lit) => Err(syn::Error::new_spanned(
+            &expr_lit.lit,
+            format!("{field} expects a string literal"),
+        )),
+        other => Err(syn::Error::new_spanned(
+            other,
+            format!("{field} expects a string literal"),
+        )),
+    }
+}
+
+/// Comma-separated list of all fn-level boolean flags, for error messages.
+///
+/// Kept as a single constant so the three "unknown option" error paths (Path,
+/// NameValue bool, parenthesized bool) all read from the same list and can't
+/// drift.
+const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
+     rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, \
+     internal, noexport, export";
+
+/// Comma-separated list of fn-level nested options, for error messages.
+const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...)`";
+
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
 /// This is intentionally a small, "data-only" struct that:
@@ -1230,36 +1263,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut r_post_checks = None;
         let mut r_on_exit = None;
 
-        if input.is_empty() {
-            return Ok(Self {
-                force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
-                force_invisible,
-                check_interrupt,
-                coerce_all: coerce_all.unwrap_or(cfg!(feature = "default-coerce")),
-                rng,
-                unwrap_in_r,
-                return_pref,
-                s3_generic,
-                s3_class,
-                dots_spec,
-                dots_span,
-                lifecycle,
-                strict: strict.unwrap_or(cfg!(feature = "default-strict")),
-                error_in_r: error_in_r.unwrap_or(true),
-                internal,
-                noexport,
-                export,
-                doc,
-                c_symbol,
-                r_name,
-                r_entry,
-                r_post_checks,
-                r_on_exit,
-            });
-        }
-
-        let metas =
-            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
+        // Empty input (`#[miniextendr]`) → skip the parse loop and fall through
+        // to the single Ok(Self {...}) at the bottom; every local is already
+        // seeded with its default value above.
+        let metas = if input.is_empty() {
+            syn::punctuated::Punctuated::new()
+        } else {
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?
+        };
 
         for meta in metas {
             match meta {
@@ -1313,7 +1324,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
+                                format!(
+                                    "unknown `#[miniextendr]` option; expected one of: {FN_BOOL_FLAGS_HELP}"
+                                ),
                             ));
                         }
                     }
@@ -1375,11 +1388,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 return Err(syn::Error::new_spanned(
                                     ident,
                                     format!(
-                                        "unknown `#[miniextendr]` option `{}`; expected one of: \
-                                         invisible, visible, check_interrupt, worker, no_worker, \
-                                         coerce, no_coerce, rng, unwrap_in_r, error_in_r, \
-                                         no_error_in_r, strict, no_strict, internal, noexport, export",
-                                        ident,
+                                        "unknown `#[miniextendr]` option `{ident}`; expected one of: \
+                                         {FN_BOOL_FLAGS_HELP}"
                                     ),
                                 ));
                             }
@@ -1388,36 +1398,19 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     }
 
                     if nv.path.is_ident("prefer") {
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    let v = lit.value();
-                                    return_pref = match v.as_str() {
-                                        "list" => ReturnPref::List,
-                                        "externalptr" => ReturnPref::ExternalPtr,
-                                        "vector" | "native" => ReturnPref::Native,
-                                        "auto" => ReturnPref::Auto,
-                                        _ => {
-                                            return Err(syn::Error::new_spanned(
-                                                lit,
-                                                "prefer must be one of: auto, list, externalptr, vector/native",
-                                            ));
-                                        }
-                                    };
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "prefer expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
+                        let v = parse_lit_str(&nv, "prefer")?;
+                        return_pref = match v.as_str() {
+                            "list" => ReturnPref::List,
+                            "externalptr" => ReturnPref::ExternalPtr,
+                            "vector" | "native" => ReturnPref::Native,
+                            "auto" => ReturnPref::Auto,
+                            _ => {
                                 return Err(syn::Error::new_spanned(
-                                    other,
-                                    "prefer expects a string literal",
+                                    &nv.value,
+                                    "prefer must be one of: auto, list, externalptr, vector/native",
                                 ));
                             }
-                        }
+                        };
                     } else if nv.path.is_ident("dots") {
                         // dots = typed_list!(...) - capture the macro invocation
                         // Store span for error reporting
@@ -1446,152 +1439,45 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             lifecycle = Some(spec);
                         }
                     } else if nv.path.is_ident("doc") {
-                        // doc = "custom roxygen documentation"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    doc = Some(lit.value());
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "doc expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "doc expects a string literal",
-                                ));
-                            }
-                        }
+                        doc = Some(parse_lit_str(&nv, "doc")?);
                     } else if nv.path.is_ident("c_symbol") {
-                        // c_symbol = "custom_C_name"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    let val = lit.value();
-                                    if val.is_empty()
-                                        || (!val.starts_with(|c: char| c.is_ascii_alphabetic())
-                                            && !val.starts_with('_'))
-                                    {
-                                        return Err(syn::Error::new_spanned(
-                                            lit,
-                                            "c_symbol must be a valid C identifier",
-                                        ));
-                                    }
-                                    if !val.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                                        return Err(syn::Error::new_spanned(
-                                            lit,
-                                            "c_symbol must be a valid C identifier (alphanumeric and underscore only)",
-                                        ));
-                                    }
-                                    c_symbol = Some(val);
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "c_symbol expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "c_symbol expects a string literal",
-                                ));
-                            }
+                        let val = parse_lit_str(&nv, "c_symbol")?;
+                        if val.is_empty()
+                            || (!val.starts_with(|c: char| c.is_ascii_alphabetic())
+                                && !val.starts_with('_'))
+                        {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "c_symbol must be a valid C identifier",
+                            ));
                         }
+                        if !val.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "c_symbol must be a valid C identifier (alphanumeric and underscore only)",
+                            ));
+                        }
+                        c_symbol = Some(val);
                     } else if nv.path.is_ident("r_name") {
-                        // r_name = "custom.r.name"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    let val = lit.value();
-                                    if val.is_empty() {
-                                        return Err(syn::Error::new_spanned(
-                                            lit,
-                                            "r_name must not be empty",
-                                        ));
-                                    }
-                                    r_name = Some(val);
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_name expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_name expects a string literal",
-                                ));
-                            }
+                        let val = parse_lit_str(&nv, "r_name")?;
+                        if val.is_empty() {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "r_name must not be empty",
+                            ));
                         }
+                        r_name = Some(val);
                     } else if nv.path.is_ident("r_entry") {
-                        // r_entry = "x <- as.integer(x)"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    r_entry = Some(lit.value());
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_entry expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_entry expects a string literal",
-                                ));
-                            }
-                        }
+                        r_entry = Some(parse_lit_str(&nv, "r_entry")?);
                     } else if nv.path.is_ident("r_post_checks") {
-                        // r_post_checks = "message('validated')"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    r_post_checks = Some(lit.value());
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_post_checks expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_post_checks expects a string literal",
-                                ));
-                            }
-                        }
+                        r_post_checks = Some(parse_lit_str(&nv, "r_post_checks")?);
                     } else if nv.path.is_ident("r_on_exit") {
                         // Short form: r_on_exit = "expr" → on.exit(expr, add = TRUE)
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    r_on_exit = Some(ROnExit {
-                                        expr: lit.value(),
-                                        add: true,
-                                        after: true,
-                                    });
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_on_exit expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_on_exit expects a string literal",
-                                ));
-                            }
-                        }
+                        r_on_exit = Some(ROnExit {
+                            expr: parse_lit_str(&nv, "r_on_exit")?,
+                            add: true,
+                            after: true,
+                        });
                     } else {
                         let key_name = nv
                             .path
@@ -1681,84 +1567,23 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         })?;
                         r_on_exit = Some(ROnExit { expr, add, after });
                     } else if let Some(ident) = list.path.get_ident() {
-                        // Try parsing as boolean: option(true) / option(false)
-                        if let Ok(lit_bool) = list.parse_args::<syn::LitBool>() {
-                            let val = lit_bool.value;
-                            if ident == "invisible" {
-                                force_invisible = Some(val);
-                            } else if ident == "visible" {
-                                force_invisible = Some(!val);
-                            } else if ident == "check_interrupt" {
-                                check_interrupt = val;
-                            } else if ident == "worker" {
-                                force_worker = Some(val);
-                            } else if ident == "no_worker" {
-                                force_worker = Some(!val);
-                            } else if ident == "coerce" {
-                                coerce_all = Some(val);
-                            } else if ident == "no_coerce" {
-                                coerce_all = Some(!val);
-                            } else if ident == "rng" {
-                                rng = val;
-                            } else if ident == "unwrap_in_r" {
-                                if val && error_in_r == Some(true) {
-                                    return Err(syn::Error::new_spanned(
-                                        ident,
-                                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                    ));
-                                }
-                                unwrap_in_r = val;
-                            } else if ident == "strict" {
-                                strict = Some(val);
-                            } else if ident == "no_strict" {
-                                strict = Some(!val);
-                            } else if ident == "error_in_r" {
-                                if val && unwrap_in_r {
-                                    return Err(syn::Error::new_spanned(
-                                        ident,
-                                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                    ));
-                                }
-                                error_in_r = Some(val);
-                            } else if ident == "no_error_in_r" {
-                                error_in_r = Some(!val);
-                            } else if ident == "internal" {
-                                internal = val;
-                            } else if ident == "noexport" {
-                                noexport = val;
-                            } else if ident == "export" {
-                                export = val;
-                            } else {
-                                let opt_name = ident.to_string();
-                                return Err(syn::Error::new_spanned(
-                                    &list,
-                                    format!(
-                                        "unknown `#[miniextendr]` option `{opt_name}`. Boolean flags should be \
-                                         written as `option` (alone) or `option = true/false`. \
-                                         Nested options: `s3(...)`, `lifecycle(...)`, `defaults(...)`",
-                                    ),
-                                ));
-                            }
-                        } else {
-                            let opt_name = list
-                                .path
-                                .get_ident()
-                                .map(|i| i.to_string())
-                                .unwrap_or_default();
-                            return Err(syn::Error::new_spanned(
-                                &list,
-                                format!(
-                                    "`{opt_name}` does not accept parenthesized arguments. \
-                                     Use `{opt_name}` alone or `{opt_name} = true/false`.",
-                                ),
-                            ));
-                        }
+                        // Bool-flag parenthesized form (e.g. `strict(true)`) is not
+                        // supported — write `strict` alone or `strict = true` instead.
+                        let opt_name = ident.to_string();
+                        return Err(syn::Error::new_spanned(
+                            &list,
+                            format!(
+                                "`{opt_name}` does not accept parenthesized arguments. \
+                                 Use `{opt_name}` alone or `{opt_name} = true/false`.",
+                            ),
+                        ));
                     } else {
                         // path(something) where path is not a single ident
                         return Err(syn::Error::new_spanned(
                             list,
-                            "unrecognized nested option. \
-                             Nested options are: `s3(...)`, `lifecycle(...)`, `defaults(...)`",
+                            format!(
+                                "unrecognized nested option. Nested options are: {FN_NESTED_OPTIONS_HELP}"
+                            ),
                         ));
                     }
                 }
