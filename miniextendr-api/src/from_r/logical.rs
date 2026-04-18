@@ -153,11 +153,12 @@ impl TryFromSexp for Option<i32> {
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-        if value == crate::altrep_traits::NA_INTEGER {
-            Ok(None)
-        } else {
-            Ok(Some(value))
+        // The i32 TryFromSexp impl now returns SexpNaError for NA_integer_.
+        // Treat that as None here; propagate all other errors.
+        match TryFromSexp::try_from_sexp(sexp) {
+            Ok(value) => Ok(Some(value)),
+            Err(SexpError::Na(_)) => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
@@ -167,11 +168,10 @@ impl TryFromSexp for Option<i32> {
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        if value == crate::altrep_traits::NA_INTEGER {
-            Ok(None)
-        } else {
-            Ok(Some(value))
+        match unsafe { TryFromSexp::try_from_sexp_unchecked(sexp) } {
+            Ok(value) => Ok(Some(value)),
+            Err(SexpError::Na(_)) => Ok(None),
+            Err(e) => Err(e),
         }
     }
 }
