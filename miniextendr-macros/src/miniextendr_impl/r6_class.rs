@@ -447,7 +447,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let prop_name = ctx
                 .method
                 .method_attrs
-                .r6_prop
+                .r6
+                .prop
                 .clone()
                 .unwrap_or_else(|| ctx.method.r_method_name());
 
