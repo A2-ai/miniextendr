@@ -534,7 +534,15 @@ pub fn write_r_wrappers_to_file(path: &str) {
         let class_index: HashMap<&'static str, &ClassNameEntry> =
             MX_CLASS_NAMES.iter().map(|e| (e.rust_type, e)).collect();
 
-        // The placeholder format is: .__MX_CLASS_REF_<RustName>__
+        // Two placeholder forms:
+        //   .__MX_CLASS_REF_<RustName>__         → loud fallback on miss
+        //     (used by R6 `inherit =`, S7 parent class, convert_from / convert_to)
+        //   .__MX_CLASS_REF_OR_ANY_<RustName>__  → silent `S7::class_any` on miss
+        //     (used by S7 property class constraints — #203: a getter returning
+        //     `SEXP`, `PathBuf`, or an R6/S3/S4 type shouldn't break load-time
+        //     with "object '…' not found"; the property just falls back to the
+        //     permissive class_any it had pre-#154.)
+        const OR_ANY_PREFIX: &str = ".__MX_CLASS_REF_OR_ANY_";
         const PREFIX: &str = ".__MX_CLASS_REF_";
         const SUFFIX: &str = "__";
 
@@ -542,17 +550,42 @@ pub fn write_r_wrappers_to_file(path: &str) {
         let mut remaining = content.as_str();
         while let Some(start) = remaining.find(PREFIX) {
             result.push_str(&remaining[..start]);
-            remaining = &remaining[start + PREFIX.len()..];
+            // Does this occurrence have the OR_ANY form?
+            let rest_from_prefix = &remaining[start..];
+            let (quiet_fallback, header_len) = if rest_from_prefix.starts_with(OR_ANY_PREFIX) {
+                (true, OR_ANY_PREFIX.len())
+            } else {
+                (false, PREFIX.len())
+            };
+            remaining = &rest_from_prefix[header_len..];
             // Find the closing __
             if let Some(end) = remaining.find(SUFFIX) {
                 let rust_name = &remaining[..end];
                 remaining = &remaining[end + SUFFIX.len()..];
                 match class_index.get(rust_name) {
+                    Some(entry) if quiet_fallback => {
+                        // S7 property resolved to an S7 class → use the
+                        // registered name. Registered-but-non-S7 types
+                        // (R6 / S3 / S4 / Env / Vctrs) fall through to
+                        // class_any because S7 can't use them as class
+                        // constraints.
+                        if entry.class_system == "s7" {
+                            result.push_str(entry.r_class_name);
+                        } else {
+                            result.push_str("S7::class_any");
+                        }
+                    }
                     Some(entry) => {
                         result.push_str(entry.r_class_name);
                     }
+                    None if quiet_fallback => {
+                        // Unresolved S7 property type → silent class_any,
+                        // matching pre-#154 behavior.
+                        result.push_str("S7::class_any");
+                    }
                     None => {
-                        // Unresolved: fall back to the bare Rust name with a warning.
+                        // Unresolved non-property CLASS_REF: fall back to the
+                        // bare Rust name with a warning.
                         eprintln!(
                             "miniextendr: unresolved class reference `{rust_name}` \
                              in R wrapper — is the class defined in a reachable crate?"
@@ -638,6 +671,7 @@ mod tests {
         let class_index: HashMap<&str, &ClassNameEntry> =
             entries.iter().map(|e| (e.rust_type, e)).collect();
 
+        const OR_ANY_PREFIX: &str = ".__MX_CLASS_REF_OR_ANY_";
         const PREFIX: &str = ".__MX_CLASS_REF_";
         const SUFFIX: &str = "__";
 
@@ -645,12 +679,26 @@ mod tests {
         let mut remaining = content;
         while let Some(start) = remaining.find(PREFIX) {
             result.push_str(&remaining[..start]);
-            remaining = &remaining[start + PREFIX.len()..];
+            let rest_from_prefix = &remaining[start..];
+            let (quiet_fallback, header_len) = if rest_from_prefix.starts_with(OR_ANY_PREFIX) {
+                (true, OR_ANY_PREFIX.len())
+            } else {
+                (false, PREFIX.len())
+            };
+            remaining = &rest_from_prefix[header_len..];
             if let Some(end) = remaining.find(SUFFIX) {
                 let rust_name = &remaining[..end];
                 remaining = &remaining[end + SUFFIX.len()..];
                 match class_index.get(rust_name) {
+                    Some(entry) if quiet_fallback => {
+                        if entry.class_system == "s7" {
+                            result.push_str(entry.r_class_name);
+                        } else {
+                            result.push_str("S7::class_any");
+                        }
+                    }
                     Some(entry) => result.push_str(entry.r_class_name),
+                    None if quiet_fallback => result.push_str("S7::class_any"),
                     None => result.push_str(rust_name),
                 }
             } else {
@@ -739,6 +787,74 @@ mod tests {
         let input = "inherit = .__MX_CLASS_REF_MyClass__";
         let output = resolve_class_refs(input, &entries);
         assert_eq!(output, "inherit = MyClass");
+    }
+
+    // #203 — OR_ANY variant: S7 property class constraints should fall back
+    // silently to S7::class_any when the type isn't a registered S7 class.
+
+    #[test]
+    fn or_any_resolves_registered_s7_class() {
+        let entries = [ClassNameEntry {
+            rust_type: "S7PropInner",
+            r_class_name: "S7PropInner",
+            class_system: "s7",
+        }];
+        let input = "class = .__MX_CLASS_REF_OR_ANY_S7PropInner__";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(output, "class = S7PropInner");
+    }
+
+    #[test]
+    fn or_any_unregistered_type_falls_back_to_class_any_silently() {
+        // No entry for SEXP, PathBuf, Json, etc.
+        let entries: [ClassNameEntry; 0] = [];
+        let input = "class = .__MX_CLASS_REF_OR_ANY_SEXP__";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(output, "class = S7::class_any");
+    }
+
+    #[test]
+    fn or_any_registered_non_s7_type_falls_back_to_class_any() {
+        // A type registered as an R6 class can't serve as an S7 class
+        // constraint — S7 would error at load time. Quiet fallback avoids
+        // that footgun.
+        let entries = [ClassNameEntry {
+            rust_type: "R6Counter",
+            r_class_name: "R6Counter",
+            class_system: "r6",
+        }];
+        let input = "class = .__MX_CLASS_REF_OR_ANY_R6Counter__";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(output, "class = S7::class_any");
+    }
+
+    #[test]
+    fn loud_class_ref_still_emits_bare_name_when_unresolved() {
+        // The existing CLASS_REF variant (without OR_ANY) keeps its loud
+        // behavior: bare Rust name + compile-time warning. Regression test
+        // for that path alongside the OR_ANY introduction.
+        let entries: [ClassNameEntry; 0] = [];
+        let input = "parent = .__MX_CLASS_REF_UnknownClass__";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(output, "parent = UnknownClass");
+    }
+
+    #[test]
+    fn mixed_placeholders_resolve_independently() {
+        // A single wrapper can mix both variants — `inherit = parent` (loud)
+        // and `class = prop_type` (quiet). Verify each takes its own path.
+        let entries = [
+            ClassNameEntry {
+                rust_type: "Parent",
+                r_class_name: "Parent",
+                class_system: "s7",
+            },
+            // PropInner deliberately missing → should resolve to class_any.
+        ];
+        let input =
+            "inherit = .__MX_CLASS_REF_Parent__, class = .__MX_CLASS_REF_OR_ANY_PropInner__";
+        let output = resolve_class_refs(input, &entries);
+        assert_eq!(output, "inherit = Parent, class = S7::class_any");
     }
 }
 // endregion
