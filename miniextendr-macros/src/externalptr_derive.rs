@@ -1189,7 +1189,11 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
                 return;
             }
             let wrapper = ptr.cast::<#wrapper_name>();
-            unsafe { drop(Box::from_raw(wrapper)); }
+            // A panicking Drop impl must not unwind across the C-ABI boundary.
+            // `drop_catching_panic` catches any panic and aborts instead.
+            ::miniextendr_api::externalptr::drop_catching_panic(|| {
+                unsafe { drop(Box::from_raw(wrapper)); }
+            });
         }
 
         #[doc(hidden)]
