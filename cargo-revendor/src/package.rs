@@ -41,6 +41,18 @@ pub fn package_local_crates(
 
         let target_dir = staging_dir.join("package-target");
 
+        // Find workspace root — needed before guards so we know which manifest
+        // to snapshot.
+        let ws_root = crate::find_workspace_root(&pkg.path)?;
+        let ws_manifest = ws_root.join("Cargo.toml");
+
+        // Snapshot both the inner crate manifest and the workspace manifest.
+        // The guards restore both on drop (scope exits at the end of this
+        // iteration, or earlier via `?` / panic unwind).
+        let _inner_guard =
+            crate::manifest_guard::ManifestGuard::snapshot(&pkg.manifest_path)?;
+        let _ws_guard = crate::manifest_guard::ManifestGuard::snapshot(&ws_manifest)?;
+
         // Temporarily rewrite Cargo.toml to add version = "*" to path-only deps
         // (cargo package rejects path deps without a version)
         let manifest_content = std::fs::read_to_string(&pkg.manifest_path)?;
@@ -52,12 +64,8 @@ pub fn package_local_crates(
             }
         }
 
-        // Find workspace root (where .cargo/config.toml will be placed)
-        // cargo resolves config from CWD upward, so we put it at the workspace root
-        let ws_root = crate::find_workspace_root(&pkg.path)?;
         // Add [patch.crates-io] to workspace root Cargo.toml
         // (cargo ignores [patch] in .cargo/config.toml — only Cargo.toml works)
-        let ws_manifest = ws_root.join("Cargo.toml");
         let ws_manifest_original = std::fs::read_to_string(&ws_manifest)?;
         if !ws_manifest_original.contains("[patch.crates-io]") {
             let patched_ws = format!("{}\n{}", ws_manifest_original, patch_config);
@@ -82,13 +90,8 @@ pub fn package_local_crates(
             .output()
             .with_context(|| format!("failed to run cargo package for {}", pkg.name))?;
 
-        // Restore original Cargo.toml if we patched it
-        if patched != manifest_content {
-            std::fs::write(&pkg.manifest_path, &manifest_content)?;
-        }
-
-        // Restore original workspace Cargo.toml
-        std::fs::write(&ws_manifest, &ws_manifest_original)?;
+        // Guards (_inner_guard, _ws_guard) restore both manifests on drop —
+        // no explicit restore needed. Drops run at end of this iteration.
 
         if !output.status.success() {
             // Fallback: cargo package failed (likely unpublished deps).

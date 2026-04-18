@@ -42,6 +42,12 @@ pub fn run_cargo_vendor(
     let ws_root =
         crate::find_workspace_root(manifest_path.parent().context("manifest has no parent")?)?;
     let ws_manifest = ws_root.join("Cargo.toml");
+
+    // ManifestGuard restores the manifest unconditionally on drop (Ok, Err,
+    // or panic unwind), closing the window where SIGINT / panic between the
+    // patch write and the explicit restore below would leave the user's
+    // Cargo.toml pointing at paths that don't yet exist.
+    let _guard = crate::manifest_guard::ManifestGuard::snapshot(&ws_manifest)?;
     let ws_original = std::fs::read_to_string(&ws_manifest)?;
 
     if !local_pkgs.is_empty() && !ws_original.contains("[patch.crates-io]") {
@@ -67,8 +73,8 @@ pub fn run_cargo_vendor(
     cmd.arg(vendor_dir);
     let output = cmd.output().context("failed to run cargo vendor")?;
 
-    // Restore original workspace Cargo.toml
-    std::fs::write(&ws_manifest, &ws_original)?;
+    // Guard restores on drop — no explicit restore needed. Drop order: guard
+    // restores after this function returns (either normally or via ?/panic).
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
