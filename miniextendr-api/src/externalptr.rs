@@ -1410,23 +1410,60 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
 
 // region: Finalizer
 
+/// Guard that aborts the process if dropped while a panic is in progress.
+///
+/// Used by [`drop_catching_panic`] to implement panic-safe destructor calls
+/// without `catch_unwind`. When `f()` completes normally, the guard is
+/// dropped with `std::thread::panicking() == false` and becomes a no-op.
+/// If `f()` panics, the guard's destructor runs during stack unwinding
+/// (when `std::thread::panicking() == true`) and calls `process::abort()`.
+///
+/// This approach avoids `catch_unwind`, which registers LLVM unwind landing
+/// pads. Inside R's GC finalizer walk, any interaction with the unwinding
+/// machinery — especially on the first call that lazily initialises exception
+/// handling state — can trigger an allocator call that re-enters R's GC and
+/// produces a "recursive gc invocation" hard crash.
+#[must_use]
+struct AbortIfUnwinding;
+
+impl Drop for AbortIfUnwinding {
+    #[cold]
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            // A panic propagated through a finalizer — abort immediately.
+            // The value being dropped is in an indeterminate state; continuing
+            // is not safe.
+            eprintln!("miniextendr: destructor panicked during R finalization; aborting");
+            std::process::abort();
+        }
+    }
+}
+
 /// Run a destructor closure, aborting the process if the closure panics.
 ///
 /// A panic inside a GC finalizer cannot be safely propagated: the finalizer
 /// runs at an arbitrary point in R's garbage collector, and unwinding across
-/// the C-ABI boundary into R's runtime is undefined behaviour. Catching the
-/// panic and aborting is the only safe recovery strategy — the destructor has
-/// already left the value in an indeterminate state, so continuing is not an
-/// option.
+/// the C-ABI boundary into R's runtime is undefined behaviour. Aborting is
+/// the only safe recovery strategy — the destructor has already left the
+/// value in an indeterminate state, so continuing is not an option.
+///
+/// ## Implementation note
+///
+/// This function deliberately avoids `std::panic::catch_unwind`. On the first
+/// call from within R's GC finalizer, `catch_unwind` may lazily initialise
+/// LLVM exception-handling state, which can allocate. Any allocation during a
+/// GC finalizer re-enters the GC and triggers the fatal "recursive gc
+/// invocation" crash. Instead, this function uses a drop-guard whose `Drop`
+/// impl calls `std::thread::panicking()` — a cheap, allocation-free TLS read.
 ///
 /// This helper is `#[doc(hidden)]` because it is called from macro-generated
 /// code and is not part of the public API.
 #[doc(hidden)]
+#[inline]
 pub fn drop_catching_panic<F: FnOnce()>(f: F) {
-    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err() {
-        eprintln!("miniextendr: destructor panicked during R finalization; aborting");
-        std::process::abort();
-    }
+    let _guard = AbortIfUnwinding;
+    f();
+    // guard dropped here with panicking() == false → no-op
 }
 
 /// Non-generic C finalizer called by R's garbage collector.
