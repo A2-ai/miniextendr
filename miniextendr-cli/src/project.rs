@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 pub const MINIEXTENDR_CRATES: &[&str] = &[
     "miniextendr-api",
     "miniextendr-macros",
-    "miniextendr-macros-core",
     "miniextendr-lint",
     "miniextendr-engine",
 ];

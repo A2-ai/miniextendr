@@ -198,7 +198,8 @@ mod struct_enum_dispatch;
 mod vctrs_derive;
 mod vctrs_generics;
 
-pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
+mod naming;
+pub(crate) use naming::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
 // Feature default mutual exclusivity guards
 #[cfg(all(feature = "default-r6", feature = "default-s7"))]

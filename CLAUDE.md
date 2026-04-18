@@ -107,8 +107,7 @@ R CMD check rpkg          # Checks include compilation
 ```sh
 miniextendr/
 ├── miniextendr-api/      # Runtime library (FFI, ExternalPtr, ALTREP, worker thread)
-├── miniextendr-macros/   # Proc macros (#[miniextendr], derives)
-├── miniextendr-macros-core/ # Shared naming helpers (used by macros)
+├── miniextendr-macros/   # Proc macros (#[miniextendr], derives; naming helpers in src/naming.rs)
 ├── miniextendr-bench/    # Benchmarks (separate workspace member)
 ├── miniextendr-lint/     # Static analysis tool
 ├── miniextendr-engine/   # Code generation engine
@@ -313,7 +312,7 @@ or removing it so reviewers know the sccache impact.
 
 **Every PR must regenerate `rpkg/inst/vendor.tar.xz` as the last step** before
 pushing. Any change that touches a workspace crate (`miniextendr-api`,
-`miniextendr-macros`, `miniextendr-macros-core`, `miniextendr-lint`) makes the
+`miniextendr-macros`, `miniextendr-lint`) makes the
 committed `inst/vendor.tar.xz` stale — CRAN-mode builds and CI offline
 installs compile against the tarball, not the workspace.
 
