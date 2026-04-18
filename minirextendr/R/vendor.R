@@ -87,7 +87,7 @@ download_miniextendr_archive <- function(version, dest_path) {
 
 #' Download and vendor miniextendr crates
 #'
-#' Downloads miniextendr-api, miniextendr-macros, miniextendr-macros-core,
+#' Downloads miniextendr-api, miniextendr-macros,
 #' miniextendr-lint, and miniextendr-engine from GitHub and vendors them
 #' into vendor/. Also
 #' patches Cargo.toml files to remove workspace inheritance.
@@ -163,7 +163,7 @@ vendor_miniextendr <- function(path = ".",
   ensure_dir(dest)
 
   # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core", "miniextendr-lint", "miniextendr-engine")
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
   failed_crates <- character()
 
   for (crate in crates) {
@@ -240,8 +240,6 @@ patch_cargo_toml <- function(path, crate_name) {
   dep_replacements <- list(
     'miniextendr-macros = \\{ workspace = true \\}' =
       'miniextendr-macros = { version = "0.1.0", path = "../miniextendr-macros" }',
-    'miniextendr-macros-core = \\{ workspace = true \\}' =
-      'miniextendr-macros-core = { version = "0.1.0", path = "../miniextendr-macros-core" }',
     'miniextendr-engine = \\{ workspace = true \\}' =
       'miniextendr-engine = { version = "0.1.0", path = "../miniextendr-engine" }',
     'proc-macro2 = \\{ workspace = true \\}' =
@@ -304,7 +302,7 @@ vendor_miniextendr_local <- function(local_path, dest) {
   ensure_dir(dest)
 
   # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core", "miniextendr-lint", "miniextendr-engine")
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
   failed_crates <- character()
 
   for (crate in crates) {
@@ -721,8 +719,7 @@ add_vendor_patches <- function(vendor_dir) {
   # Only patch crates that are actual dependencies (not miniextendr-engine,
 
   # which is only a dev-dependency of miniextendr-api)
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core",
-              "miniextendr-lint")
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint")
 
   patch_lines <- c(
     "",

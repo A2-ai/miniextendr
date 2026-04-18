@@ -493,16 +493,25 @@ pub(crate) struct MiniextendrFunctionParsed {
     has_dots: bool,
     /// If dots were named (e.g., `my_dots: ...`), the identifier.
     named_dots: Option<syn::Ident>,
-    /// Parameter names that had `#[miniextendr(coerce)]` attribute.
-    per_param_coerce: std::collections::HashSet<String>,
-    /// Parameter names that had `#[miniextendr(match_arg)]` attribute.
-    per_param_match_arg: std::collections::HashSet<String>,
-    /// Parameter names with `#[miniextendr(default = "...")]` and their default values.
-    per_param_defaults: std::collections::HashMap<String, String>,
-    /// Parameter names with `#[miniextendr(choices("a", "b", "c"))]` and their choices.
-    per_param_choices: std::collections::HashMap<String, Vec<String>>,
-    /// Parameter names with `#[miniextendr(several_ok)]` — multi-value match.arg.
-    per_param_several_ok: std::collections::HashSet<String>,
+    /// All per-parameter `#[miniextendr(...)]` options (coerce, match_arg,
+    /// default, choices, several_ok), keyed by the (possibly synthesized) Rust
+    /// parameter name. Replaces five parallel `HashSet` / `HashMap` fields.
+    per_param: std::collections::HashMap<String, ParamAttrs>,
+}
+
+/// Collapsed per-parameter attribute state for a single function parameter.
+///
+/// Built during parsing from `#[miniextendr(coerce | match_arg | several_ok |
+/// default = "…" | choices("…"))]` on the argument. Accessors on
+/// [`MiniextendrFunctionParsed`] query this struct rather than looking
+/// through multiple side-tables.
+#[derive(Default, Debug, Clone)]
+pub(crate) struct ParamAttrs {
+    pub coerce: bool,
+    pub match_arg: bool,
+    pub several_ok: bool,
+    pub choices: Option<Vec<String>>,
+    pub default: Option<String>,
 }
 
 /// Parses a Rust `fn` item from a token stream, performing all normalizations
@@ -570,18 +579,10 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         // Transform `_` wildcard patterns to synthetic identifiers, and consume
         // per-parameter `#[miniextendr(coerce)]`, `#[miniextendr(default = "...")]`,
         // and `#[miniextendr(choices(...))]` attributes.
-        let mut per_param_coerce: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut per_param_match_arg: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut per_param_defaults: std::collections::HashMap<String, String> =
+        let mut per_param: std::collections::HashMap<String, ParamAttrs> =
             std::collections::HashMap::new();
         let mut per_param_default_spans: std::collections::HashMap<String, proc_macro2::Span> =
             std::collections::HashMap::new();
-        let mut per_param_choices: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        let mut per_param_several_ok: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
         let mut unused_counter = 0usize;
         let mut pattern_destructures: Vec<(Box<syn::Pat>, syn::Ident)> = Vec::new();
         for arg in &mut item.sig.inputs {
@@ -610,28 +611,10 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             // Validate type-based constraints (Missing nesting, Missing<Dots>)
             validate_param_type(pat_type.ty.as_ref(), pat_type.ty.span())?;
 
-            let param_name_for_validation: String;
-            match pat_type.pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => {
-                    let param_name = pat_ident.ident.to_string();
-                    param_name_for_validation = param_name.clone();
-                    if had_coerce_attr {
-                        per_param_coerce.insert(param_name.clone());
-                    }
-                    if had_match_arg_attr {
-                        per_param_match_arg.insert(param_name.clone());
-                    }
-                    if let Some(choices) = had_choices.clone() {
-                        per_param_choices.insert(param_name.clone(), choices);
-                    }
-                    if had_several_ok {
-                        per_param_several_ok.insert(param_name.clone());
-                    }
-                    if let Some((default, span)) = default_with_span.clone() {
-                        per_param_defaults.insert(param_name.clone(), default);
-                        per_param_default_spans.insert(param_name, span);
-                    }
-                }
+            // Resolve the Rust parameter name — either the user's identifier,
+            // or a synthesized one for wildcard / destructuring patterns.
+            let param_name: String = match pat_type.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
                 syn::Pat::Wild(_) => {
                     let synthetic_name = format!("__unused{}", unused_counter);
                     unused_counter += 1;
@@ -643,23 +626,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                         ident: synthetic_ident,
                         subpat: None,
                     });
-                    param_name_for_validation = synthetic_name.clone();
-                    if had_coerce_attr {
-                        per_param_coerce.insert(synthetic_name.clone());
-                    }
-                    if had_match_arg_attr {
-                        per_param_match_arg.insert(synthetic_name.clone());
-                    }
-                    if let Some(choices) = had_choices.clone() {
-                        per_param_choices.insert(synthetic_name.clone(), choices);
-                    }
-                    if had_several_ok {
-                        per_param_several_ok.insert(synthetic_name.clone());
-                    }
-                    if let Some((default, span)) = default_with_span.clone() {
-                        per_param_defaults.insert(synthetic_name.clone(), default);
-                        per_param_default_spans.insert(synthetic_name, span);
-                    }
+                    synthetic_name
                 }
                 syn::Pat::Tuple(_) | syn::Pat::TupleStruct(_) | syn::Pat::Struct(_) => {
                     let synthetic_name = format!("__param_{}", unused_counter);
@@ -673,30 +640,41 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                         ident: synthetic_ident.clone(),
                         subpat: None,
                     });
-                    pattern_destructures.push((original_pat, synthetic_ident.clone()));
-                    param_name_for_validation = synthetic_name.clone();
-                    if had_coerce_attr {
-                        per_param_coerce.insert(synthetic_name.clone());
-                    }
-                    if had_match_arg_attr {
-                        per_param_match_arg.insert(synthetic_name.clone());
-                    }
-                    if let Some(choices) = had_choices.clone() {
-                        per_param_choices.insert(synthetic_name.clone(), choices);
-                    }
-                    if had_several_ok {
-                        per_param_several_ok.insert(synthetic_name.clone());
-                    }
-                    if let Some((default, span)) = default_with_span.clone() {
-                        per_param_defaults.insert(synthetic_name.clone(), default);
-                        per_param_default_spans.insert(synthetic_name, span);
-                    }
+                    pattern_destructures.push((original_pat, synthetic_ident));
+                    synthetic_name
                 }
                 _ => {
                     return Err(syn::Error::new(
                         pat_type.pat.span(),
                         "miniextendr parameters must be identifiers or destructuring patterns (tuple, struct)",
                     ));
+                }
+            };
+            let param_name_for_validation = param_name.clone();
+
+            // Record per-parameter attrs in one entry instead of five side-tables.
+            if had_coerce_attr
+                || had_match_arg_attr
+                || had_several_ok
+                || had_choices.is_some()
+                || default_with_span.is_some()
+            {
+                let entry = per_param.entry(param_name.clone()).or_default();
+                if had_coerce_attr {
+                    entry.coerce = true;
+                }
+                if had_match_arg_attr {
+                    entry.match_arg = true;
+                }
+                if had_several_ok {
+                    entry.several_ok = true;
+                }
+                if let Some(choices) = had_choices.clone() {
+                    entry.choices = Some(choices);
+                }
+                if let Some((default, span)) = default_with_span.clone() {
+                    entry.default = Some(default);
+                    per_param_default_spans.insert(param_name, span);
                 }
             }
 
@@ -768,10 +746,15 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             })
             .collect();
 
-        let mut invalid_params: Vec<String> = per_param_defaults
-            .keys()
-            .filter(|key| !param_names.contains(*key))
-            .cloned()
+        let mut invalid_params: Vec<String> = per_param
+            .iter()
+            .filter_map(|(name, attrs)| {
+                if attrs.default.is_some() && !param_names.contains(name) {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
             .collect();
         invalid_params.sort();
 
@@ -794,11 +777,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             item,
             has_dots,
             named_dots,
-            per_param_coerce,
-            per_param_match_arg,
-            per_param_defaults,
-            per_param_choices,
-            per_param_several_ok,
+            per_param,
         })
     }
 }
@@ -842,44 +821,49 @@ impl MiniextendrFunctionParsed {
 
     /// Check if a parameter name had `#[miniextendr(coerce)]` attribute.
     pub(crate) fn has_coerce_attr(&self, param_name: &str) -> bool {
-        self.per_param_coerce.contains(param_name)
+        self.per_param.get(param_name).is_some_and(|a| a.coerce)
     }
 
     /// Check if a parameter name had `#[miniextendr(match_arg)]` attribute.
     pub(crate) fn has_match_arg_attr(&self, param_name: &str) -> bool {
-        self.per_param_match_arg.contains(param_name)
+        self.per_param.get(param_name).is_some_and(|a| a.match_arg)
     }
 
-    /// Returns the set of parameter names annotated with `#[miniextendr(match_arg)]`.
-    ///
-    /// Used by the R wrapper generator to emit `match.arg()` calls for these parameters.
-    pub(crate) fn match_arg_params(&self) -> &std::collections::HashSet<String> {
-        &self.per_param_match_arg
+    /// Iterator over parameter names annotated with `#[miniextendr(match_arg)]`.
+    pub(crate) fn match_arg_params(&self) -> impl Iterator<Item = &String> {
+        self.per_param
+            .iter()
+            .filter_map(|(name, a)| if a.match_arg { Some(name) } else { None })
     }
 
     /// Get the choices for a parameter, if any.
     pub(crate) fn choices_for_param(&self, param_name: &str) -> Option<&[String]> {
-        self.per_param_choices.get(param_name).map(|v| v.as_slice())
+        self.per_param
+            .get(param_name)
+            .and_then(|a| a.choices.as_deref())
     }
 
-    /// Returns the full choices map (parameter name to list of allowed string values).
-    ///
-    /// Used by the R wrapper generator to emit `match.arg()` with an explicit choices vector.
-    pub(crate) fn choices_params(&self) -> &std::collections::HashMap<String, Vec<String>> {
-        &self.per_param_choices
+    /// Iterator over parameter names annotated with `#[miniextendr(choices(…))]`,
+    /// together with their choice lists.
+    pub(crate) fn choices_params(&self) -> impl Iterator<Item = (&String, &Vec<String>)> {
+        self.per_param
+            .iter()
+            .filter_map(|(name, a)| a.choices.as_ref().map(|c| (name, c)))
     }
 
     /// Check if a parameter has `several_ok` (multi-value match.arg).
     pub(crate) fn has_several_ok(&self, param_name: &str) -> bool {
-        self.per_param_several_ok.contains(param_name)
+        self.per_param.get(param_name).is_some_and(|a| a.several_ok)
     }
 
-    /// Returns all parameter defaults as a map from parameter name to default value string.
-    ///
-    /// The default value string is the raw R expression that will be placed in the
-    /// R wrapper's formals (e.g., `"NULL"`, `"TRUE"`, `"\"Safe\""`).
-    pub(crate) fn param_defaults(&self) -> &std::collections::HashMap<String, String> {
-        &self.per_param_defaults
+    /// Returns all parameter defaults as an owned map from parameter name to
+    /// default value string (the raw R expression used in the wrapper formals,
+    /// e.g. `"NULL"`, `"TRUE"`, `"\"Safe\""`).
+    pub(crate) fn param_defaults(&self) -> std::collections::HashMap<String, String> {
+        self.per_param
+            .iter()
+            .filter_map(|(name, a)| a.default.as_ref().map(|d| (name.clone(), d.clone())))
+            .collect()
     }
     // endregion
 
@@ -1036,6 +1020,39 @@ impl MiniextendrFunctionParsed {
 
 // region: Attribute parsing
 
+/// Parse the value of a `name = "..."` meta item as a string literal.
+///
+/// Returns a compile error spanning the offending token when the RHS is not a
+/// `&str` literal. `field` is used in the diagnostic (e.g. `"c_symbol"`).
+fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
+    match &nv.value {
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(lit),
+            ..
+        }) => Ok(lit.value()),
+        syn::Expr::Lit(expr_lit) => Err(syn::Error::new_spanned(
+            &expr_lit.lit,
+            format!("{field} expects a string literal"),
+        )),
+        other => Err(syn::Error::new_spanned(
+            other,
+            format!("{field} expects a string literal"),
+        )),
+    }
+}
+
+/// Comma-separated list of all fn-level boolean flags, for error messages.
+///
+/// Kept as a single constant so the three "unknown option" error paths (Path,
+/// NameValue bool, parenthesized bool) all read from the same list and can't
+/// drift.
+const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
+     rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, \
+     internal, noexport, export";
+
+/// Comma-separated list of fn-level nested options, for error messages.
+const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...)`";
+
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
 /// This is intentionally a small, "data-only" struct that:
@@ -1046,8 +1063,7 @@ impl MiniextendrFunctionParsed {
 ///
 /// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
 /// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
-/// - `unsafe(main_thread)`: force execution on R's main thread (unsafe: panics will leak resources)
-/// - `worker`: explicitly request worker thread execution (default for most functions)
+/// - `worker`: opt into worker-thread execution (default is main thread)
 /// - `coerce`: enable automatic coercion for supported parameter types
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
 /// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
@@ -1058,8 +1074,6 @@ impl MiniextendrFunctionParsed {
 /// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
 #[derive(Default)]
 pub(crate) struct MiniextendrFnAttrs {
-    /// Force execution on R's main thread (set by `unsafe(main_thread)`).
-    pub(crate) force_main_thread: bool,
     /// Force execution on worker thread (set by `worker`).
     pub(crate) force_worker: bool,
     /// Override visibility; `Some(true)` makes the wrapper return invisibly, `Some(false)` forces visibility.
@@ -1188,7 +1202,7 @@ pub(crate) enum ReturnPref {
 /// Supports three syntactic forms for each option:
 /// - **Bare identifier**: `#[miniextendr(invisible)]`
 /// - **Name-value**: `#[miniextendr(prefer = "list")]` or `#[miniextendr(invisible = true)]`
-/// - **Nested list**: `#[miniextendr(unsafe(main_thread))]`, `#[miniextendr(s3(generic = "...", class = "..."))]`
+/// - **Nested list**: `#[miniextendr(s3(generic = "...", class = "..."))]`
 ///
 /// Options with negated forms (`no_worker`, `no_coerce`, `no_strict`, `no_error_in_r`)
 /// explicitly disable the corresponding flag, which is useful for overriding
@@ -1209,7 +1223,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         use syn::spanned::Spanned;
         // Use Option<bool> for fields that support feature defaults.
         // None = not explicitly set → resolve from cfg!(feature = "...") at end.
-        let mut force_main_thread: Option<bool> = None;
         let mut force_worker: Option<bool> = None;
         let mut force_invisible: Option<bool> = None;
         let mut check_interrupt = false;
@@ -1234,37 +1247,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut r_post_checks = None;
         let mut r_on_exit = None;
 
-        if input.is_empty() {
-            return Ok(Self {
-                force_main_thread: force_main_thread.unwrap_or(true),
-                force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
-                force_invisible,
-                check_interrupt,
-                coerce_all: coerce_all.unwrap_or(cfg!(feature = "default-coerce")),
-                rng,
-                unwrap_in_r,
-                return_pref,
-                s3_generic,
-                s3_class,
-                dots_spec,
-                dots_span,
-                lifecycle,
-                strict: strict.unwrap_or(cfg!(feature = "default-strict")),
-                error_in_r: error_in_r.unwrap_or(true),
-                internal,
-                noexport,
-                export,
-                doc,
-                c_symbol,
-                r_name,
-                r_entry,
-                r_post_checks,
-                r_on_exit,
-            });
-        }
-
-        let metas =
-            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
+        // Empty input (`#[miniextendr]`) → skip the parse loop and fall through
+        // to the single Ok(Self {...}) at the bottom; every local is already
+        // seeded with its default value above.
+        let metas = if input.is_empty() {
+            syn::punctuated::Punctuated::new()
+        } else {
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?
+        };
 
         for meta in metas {
             match meta {
@@ -1318,7 +1308,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
+                                format!(
+                                    "unknown `#[miniextendr]` option; expected one of: {FN_BOOL_FLAGS_HELP}"
+                                ),
                             ));
                         }
                     }
@@ -1380,11 +1372,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 return Err(syn::Error::new_spanned(
                                     ident,
                                     format!(
-                                        "unknown `#[miniextendr]` option `{}`; expected one of: \
-                                         invisible, visible, check_interrupt, unsafe(main_thread), \
-                                         worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, \
-                                         error_in_r, no_error_in_r, strict, no_strict, internal, noexport, export",
-                                        ident,
+                                        "unknown `#[miniextendr]` option `{ident}`; expected one of: \
+                                         {FN_BOOL_FLAGS_HELP}"
                                     ),
                                 ));
                             }
@@ -1393,36 +1382,19 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     }
 
                     if nv.path.is_ident("prefer") {
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    let v = lit.value();
-                                    return_pref = match v.as_str() {
-                                        "list" => ReturnPref::List,
-                                        "externalptr" => ReturnPref::ExternalPtr,
-                                        "vector" | "native" => ReturnPref::Native,
-                                        "auto" => ReturnPref::Auto,
-                                        _ => {
-                                            return Err(syn::Error::new_spanned(
-                                                lit,
-                                                "prefer must be one of: auto, list, externalptr, vector/native",
-                                            ));
-                                        }
-                                    };
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "prefer expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
+                        let v = parse_lit_str(&nv, "prefer")?;
+                        return_pref = match v.as_str() {
+                            "list" => ReturnPref::List,
+                            "externalptr" => ReturnPref::ExternalPtr,
+                            "vector" | "native" => ReturnPref::Native,
+                            "auto" => ReturnPref::Auto,
+                            _ => {
                                 return Err(syn::Error::new_spanned(
-                                    other,
-                                    "prefer expects a string literal",
+                                    &nv.value,
+                                    "prefer must be one of: auto, list, externalptr, vector/native",
                                 ));
                             }
-                        }
+                        };
                     } else if nv.path.is_ident("dots") {
                         // dots = typed_list!(...) - capture the macro invocation
                         // Store span for error reporting
@@ -1451,152 +1423,45 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             lifecycle = Some(spec);
                         }
                     } else if nv.path.is_ident("doc") {
-                        // doc = "custom roxygen documentation"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    doc = Some(lit.value());
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "doc expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "doc expects a string literal",
-                                ));
-                            }
-                        }
+                        doc = Some(parse_lit_str(&nv, "doc")?);
                     } else if nv.path.is_ident("c_symbol") {
-                        // c_symbol = "custom_C_name"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    let val = lit.value();
-                                    if val.is_empty()
-                                        || (!val.starts_with(|c: char| c.is_ascii_alphabetic())
-                                            && !val.starts_with('_'))
-                                    {
-                                        return Err(syn::Error::new_spanned(
-                                            lit,
-                                            "c_symbol must be a valid C identifier",
-                                        ));
-                                    }
-                                    if !val.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                                        return Err(syn::Error::new_spanned(
-                                            lit,
-                                            "c_symbol must be a valid C identifier (alphanumeric and underscore only)",
-                                        ));
-                                    }
-                                    c_symbol = Some(val);
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "c_symbol expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "c_symbol expects a string literal",
-                                ));
-                            }
+                        let val = parse_lit_str(&nv, "c_symbol")?;
+                        if val.is_empty()
+                            || (!val.starts_with(|c: char| c.is_ascii_alphabetic())
+                                && !val.starts_with('_'))
+                        {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "c_symbol must be a valid C identifier",
+                            ));
                         }
+                        if !val.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "c_symbol must be a valid C identifier (alphanumeric and underscore only)",
+                            ));
+                        }
+                        c_symbol = Some(val);
                     } else if nv.path.is_ident("r_name") {
-                        // r_name = "custom.r.name"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    let val = lit.value();
-                                    if val.is_empty() {
-                                        return Err(syn::Error::new_spanned(
-                                            lit,
-                                            "r_name must not be empty",
-                                        ));
-                                    }
-                                    r_name = Some(val);
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_name expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_name expects a string literal",
-                                ));
-                            }
+                        let val = parse_lit_str(&nv, "r_name")?;
+                        if val.is_empty() {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "r_name must not be empty",
+                            ));
                         }
+                        r_name = Some(val);
                     } else if nv.path.is_ident("r_entry") {
-                        // r_entry = "x <- as.integer(x)"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    r_entry = Some(lit.value());
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_entry expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_entry expects a string literal",
-                                ));
-                            }
-                        }
+                        r_entry = Some(parse_lit_str(&nv, "r_entry")?);
                     } else if nv.path.is_ident("r_post_checks") {
-                        // r_post_checks = "message('validated')"
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    r_post_checks = Some(lit.value());
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_post_checks expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_post_checks expects a string literal",
-                                ));
-                            }
-                        }
+                        r_post_checks = Some(parse_lit_str(&nv, "r_post_checks")?);
                     } else if nv.path.is_ident("r_on_exit") {
                         // Short form: r_on_exit = "expr" → on.exit(expr, add = TRUE)
-                        match &nv.value {
-                            syn::Expr::Lit(expr_lit) => {
-                                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    r_on_exit = Some(ROnExit {
-                                        expr: lit.value(),
-                                        add: true,
-                                        after: true,
-                                    });
-                                } else {
-                                    return Err(syn::Error::new_spanned(
-                                        &expr_lit.lit,
-                                        "r_on_exit expects a string literal",
-                                    ));
-                                }
-                            }
-                            other => {
-                                return Err(syn::Error::new_spanned(
-                                    other,
-                                    "r_on_exit expects a string literal",
-                                ));
-                            }
-                        }
+                        r_on_exit = Some(ROnExit {
+                            expr: parse_lit_str(&nv, "r_on_exit")?,
+                            add: true,
+                            after: true,
+                        });
                     } else {
                         let key_name = nv
                             .path
@@ -1616,29 +1481,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         ));
                     }
                 }
-                // Nested: unsafe(main_thread)
                 syn::Meta::List(list) => {
-                    if list.path.is_ident("unsafe") {
-                        let nested = list.parse_args_with(
-                            syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
-                        )?;
-                        if nested.is_empty() {
-                            return Err(syn::Error::new_spanned(
-                                list,
-                                "`unsafe(...)` must specify an option: currently only `unsafe(main_thread)` is supported",
-                            ));
-                        }
-                        for ident in nested {
-                            if ident == "main_thread" {
-                                force_main_thread = Some(true);
-                            } else {
-                                return Err(syn::Error::new_spanned(
-                                    ident,
-                                    "unknown `unsafe(...)` option; only `main_thread` is supported",
-                                ));
-                            }
-                        }
-                    } else if list.path.is_ident("defaults") {
+                    if list.path.is_ident("defaults") {
                         // Ignore defaults(...) - it's handled by impl method parsing
                         // This allows #[miniextendr(defaults(...))] on impl methods
                     } else if list.path.is_ident("lifecycle") {
@@ -1707,84 +1551,23 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         })?;
                         r_on_exit = Some(ROnExit { expr, add, after });
                     } else if let Some(ident) = list.path.get_ident() {
-                        // Try parsing as boolean: option(true) / option(false)
-                        if let Ok(lit_bool) = list.parse_args::<syn::LitBool>() {
-                            let val = lit_bool.value;
-                            if ident == "invisible" {
-                                force_invisible = Some(val);
-                            } else if ident == "visible" {
-                                force_invisible = Some(!val);
-                            } else if ident == "check_interrupt" {
-                                check_interrupt = val;
-                            } else if ident == "worker" {
-                                force_worker = Some(val);
-                            } else if ident == "no_worker" {
-                                force_worker = Some(!val);
-                            } else if ident == "coerce" {
-                                coerce_all = Some(val);
-                            } else if ident == "no_coerce" {
-                                coerce_all = Some(!val);
-                            } else if ident == "rng" {
-                                rng = val;
-                            } else if ident == "unwrap_in_r" {
-                                if val && error_in_r == Some(true) {
-                                    return Err(syn::Error::new_spanned(
-                                        ident,
-                                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                    ));
-                                }
-                                unwrap_in_r = val;
-                            } else if ident == "strict" {
-                                strict = Some(val);
-                            } else if ident == "no_strict" {
-                                strict = Some(!val);
-                            } else if ident == "error_in_r" {
-                                if val && unwrap_in_r {
-                                    return Err(syn::Error::new_spanned(
-                                        ident,
-                                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
-                                    ));
-                                }
-                                error_in_r = Some(val);
-                            } else if ident == "no_error_in_r" {
-                                error_in_r = Some(!val);
-                            } else if ident == "internal" {
-                                internal = val;
-                            } else if ident == "noexport" {
-                                noexport = val;
-                            } else if ident == "export" {
-                                export = val;
-                            } else {
-                                let opt_name = ident.to_string();
-                                return Err(syn::Error::new_spanned(
-                                    &list,
-                                    format!(
-                                        "unknown `#[miniextendr]` option `{opt_name}`. Boolean flags should be \
-                                         written as `option` (alone) or `option = true/false`. \
-                                         Nested options: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
-                                    ),
-                                ));
-                            }
-                        } else {
-                            let opt_name = list
-                                .path
-                                .get_ident()
-                                .map(|i| i.to_string())
-                                .unwrap_or_default();
-                            return Err(syn::Error::new_spanned(
-                                &list,
-                                format!(
-                                    "`{opt_name}` does not accept parenthesized arguments. \
-                                     Use `{opt_name}` alone or `{opt_name} = true/false`.",
-                                ),
-                            ));
-                        }
+                        // Bool-flag parenthesized form (e.g. `strict(true)`) is not
+                        // supported — write `strict` alone or `strict = true` instead.
+                        let opt_name = ident.to_string();
+                        return Err(syn::Error::new_spanned(
+                            &list,
+                            format!(
+                                "`{opt_name}` does not accept parenthesized arguments. \
+                                 Use `{opt_name}` alone or `{opt_name} = true/false`.",
+                            ),
+                        ));
                     } else {
                         // path(something) where path is not a single ident
                         return Err(syn::Error::new_spanned(
                             list,
-                            "unrecognized nested option. \
-                             Nested options are: `unsafe(main_thread)`, `s3(...)`, `lifecycle(...)`, `defaults(...)`",
+                            format!(
+                                "unrecognized nested option. Nested options are: {FN_NESTED_OPTIONS_HELP}"
+                            ),
                         ));
                     }
                 }
@@ -1845,7 +1628,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         }
 
         Ok(Self {
-            force_main_thread: force_main_thread.unwrap_or(true),
             force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
             force_invisible,
             check_interrupt,

@@ -441,6 +441,62 @@ pub struct ParsedMethod {
     pub param_defaults: std::collections::HashMap<String, String>,
 }
 
+/// R6-specific per-method markers, separated from [`MethodAttrs`] so the
+/// `r6` parser branch and R6 class generator own a self-contained bag.
+///
+/// The older `active` / `private` / `finalize` / `deep_clone` bool fields
+/// also drive R6 output but remain on `MethodAttrs` because they're read by
+/// cross-cutting accessor methods (`ParsedMethod::is_active` etc.).
+#[derive(Debug, Default)]
+pub struct R6MethodAttrs {
+    /// R6 active-binding *setter* (paired with an `active` getter by `prop`).
+    pub setter: bool,
+    /// R6 active-binding property name (defaults to the method name).
+    pub prop: Option<String>,
+    /// Span of the `r6(active)` marker — used for error reporting when the
+    /// marker is misused in a non-R6 class generator.
+    pub active_span: Option<proc_macro2::Span>,
+}
+
+/// S7-specific per-method markers, separated from [`MethodAttrs`] so the S7
+/// class generator has a self-contained bag of its own state (property
+/// getters/setters, generic-dispatch controls, convert() wiring) and the other
+/// class generators don't have to look past them.
+///
+/// # Mapping from `s7(...)` attribute keys
+///
+/// | Attribute | Field |
+/// |-----------|-------|
+/// | `s7(getter)` | `getter: true` |
+/// | `s7(setter)` | `setter: true` |
+/// | `s7(prop = "name")` | `prop: Some("name")` |
+/// | `s7(default = "expr")` | `default: Some("expr")` |
+/// | `s7(validate)` | `validate: true` |
+/// | `s7(required)` | `required: true` |
+/// | `s7(frozen)` | `frozen: true` |
+/// | `s7(deprecated = "msg")` | `deprecated: Some("msg")` |
+/// | `s7(no_dots)` | `no_dots: true` |
+/// | `s7(dispatch = "x,y")` | `dispatch: Some("x,y")` |
+/// | `s7(fallback)` | `fallback: true` |
+/// | `s7(convert_from = "T")` | `convert_from: Some("T")` |
+/// | `s7(convert_to = "T")` | `convert_to: Some("T")` |
+#[derive(Debug, Default)]
+pub struct S7MethodAttrs {
+    pub getter: bool,
+    pub setter: bool,
+    pub prop: Option<String>,
+    pub default: Option<String>,
+    pub validate: bool,
+    pub required: bool,
+    pub frozen: bool,
+    pub deprecated: Option<String>,
+    pub no_dots: bool,
+    pub dispatch: Option<String>,
+    pub fallback: bool,
+    pub convert_from: Option<String>,
+    pub convert_to: Option<String>,
+}
+
 /// Per-method attributes for class system customization.
 #[derive(Debug, Default)]
 pub struct MethodAttrs {
@@ -454,27 +510,11 @@ pub struct MethodAttrs {
     pub private: bool,
     /// Mark as active binding getter (R6)
     pub active: bool,
-    /// R6 active binding setter marker.
-    ///
-    /// Use `#[miniextendr(r6(setter, prop = "name"))]` to mark a method as an R6 active
-    /// binding setter. The property name must match a getter to create a combined binding.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(r6(active))]  // or r6(active, prop = "len")
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    ///
-    /// #[miniextendr(r6(setter, prop = "length"))]
-    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
-    /// // Generates combined active binding:
-    /// // length = function(value) { if (missing(value)) get_length() else set_length(value) }
-    /// ```
-    pub r6_setter: bool,
-    /// R6 property name for active bindings (defaults to method name).
-    ///
-    /// When specified via `#[miniextendr(r6(active, prop = "name"))]`, overrides the
-    /// default property name which is derived from the method name.
-    pub r6_prop: Option<String>,
+    /// R6-specific method markers (active-binding setter / prop / active_span).
+    /// The cross-cutting R6 booleans (`active`, `private`, `finalize`,
+    /// `deep_clone`) stay on `MethodAttrs` because `ParsedMethod`'s accessor
+    /// methods (`is_active`, `is_private`, `is_finalizer`) read them directly.
+    pub r6: R6MethodAttrs,
     /// Generate as `as.<class>()` S3 method (e.g., "data.frame", "list", "character").
     ///
     /// When set, generates an S3 method for R's `as.<class>()` generic:
@@ -542,190 +582,24 @@ pub struct MethodAttrs {
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
     pub defaults_span: Option<proc_macro2::Span>,
-    /// Parameter names marked scalar `match_arg` via
-    /// `#[miniextendr(match_arg(param1, param2))]` on the method.
+    /// Per-parameter `match_arg` / `several_ok` / `choices` state for this
+    /// method, keyed by the Rust parameter name.
     ///
-    /// Method-level (not parameter-level) because Rust's parser rejects attribute
-    /// macros on fn parameters inside impl items — `#[miniextendr(...)]` on a
-    /// method parameter gets classified as an attribute-macro invocation and
-    /// "expected non-macro attribute, found attribute macro". Standalone functions
-    /// get a pass because the outer `#[miniextendr]` on the fn itself defers inner-token
-    /// resolution; an impl block has `#[miniextendr(r6)]` on the block, not on each method.
-    pub per_param_match_arg: std::collections::HashSet<String>,
-    /// Parameter names with both `match_arg` and `several_ok` semantics, from
-    /// `#[miniextendr(match_arg_several_ok(param))]`. Implies `match_arg`.
-    pub per_param_several_ok: std::collections::HashSet<String>,
-    /// Explicit string choice lists from `#[miniextendr(choices(param = "a, b, c"))]`
-    /// or `#[miniextendr(choices_several_ok(param = "a, b"))]`.
-    pub per_param_choices: std::collections::HashMap<String, Vec<String>>,
+    /// Method-level (not parameter-level) because Rust's parser rejects
+    /// attribute macros on fn parameters inside impl items. Standalone
+    /// functions take the per-param syntax directly; impl methods spell the
+    /// same data through `#[miniextendr(match_arg(p1, p2))]`,
+    /// `#[miniextendr(match_arg_several_ok(p))]`, and
+    /// `#[miniextendr(choices(p = "a, b"))]` on the method attribute.
+    ///
+    /// Uses the shared [`ParamAttrs`](crate::miniextendr_fn::ParamAttrs)
+    /// struct — the `coerce` / `default` fields are unused on the impl path.
+    pub per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     /// Span of `match_arg(...)` / `choices(...)` for error reporting.
     pub match_arg_span: Option<proc_macro2::Span>,
-    /// Span of `active` for error reporting.
-    pub active_span: Option<proc_macro2::Span>,
-    /// S7 property getter marker.
-    ///
-    /// Use `#[miniextendr(s7(getter))]` or `#[miniextendr(s7(getter, prop = "name"))]` to mark
-    /// a method as an S7 property getter. The generated S7 class will include a computed
-    /// property with this getter.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter))]
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    /// // Generates: length = new_property(getter = function(self) ...)
-    /// ```
-    pub s7_getter: bool,
-    /// S7 property setter marker.
-    ///
-    /// Use `#[miniextendr(s7(setter, prop = "name"))]` to mark a method as an S7 property
-    /// setter. The property name must match a getter to create a dynamic property.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, prop = "len"))]
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    ///
-    /// #[miniextendr(s7(setter, prop = "len"))]
-    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
-    /// // Generates: len = new_property(getter = ..., setter = ...)
-    /// ```
-    pub s7_setter: bool,
-    /// S7 property name (defaults to method name).
-    ///
-    /// When specified via `#[miniextendr(s7(getter, prop = "name"))]`, overrides the
-    /// default property name which is derived from the method name.
-    pub s7_prop: Option<String>,
-    /// S7 property default value (R expression).
-    ///
-    /// Use `#[miniextendr(s7(getter, default = "0.0"))]` to set a default value.
-    /// The value is an R expression that will be used as the `default` parameter
-    /// in `new_property()`.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, default = "0.0"))]
-    /// fn score(&self) -> f64 { self.score }
-    /// // Generates: score = new_property(class = class_double, default = 0.0, getter = ...)
-    /// ```
-    pub s7_default: Option<String>,
-    /// S7 property validator marker.
-    ///
-    /// Use `#[miniextendr(s7(validate, prop = "name"))]` to mark a method as a property
-    /// validator. The method should take a value and return `Result<(), String>` or
-    /// return nothing and panic on invalid input.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(validate, prop = "score"))]
-    /// fn validate_score(value: f64) -> Result<(), String> {
-    ///     if value < 0.0 || value > 100.0 {
-    ///         Err("score must be between 0 and 100".into())
-    ///     } else {
-    ///         Ok(())
-    ///     }
-    /// }
-    /// ```
-    pub s7_validate: bool,
-    /// S7 property required marker.
-    ///
-    /// Use `#[miniextendr(s7(getter, required))]` to mark a property as required.
-    /// This generates `default = quote(stop("@name is required"))` in R.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, required))]
-    /// fn id(&self) -> String { self.id.clone() }
-    /// // Generates: id = new_property(default = quote(stop("@id is required")), ...)
-    /// ```
-    pub s7_required: bool,
-    /// S7 property frozen marker.
-    ///
-    /// Use `#[miniextendr(s7(getter, frozen))]` to mark a property that can only
-    /// be set once. After the initial value is set, attempts to change it will error.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, frozen))]
-    /// fn created_at(&self) -> f64 { self.created_at }
-    /// ```
-    pub s7_frozen: bool,
-    /// S7 property deprecated marker.
-    ///
-    /// Use `#[miniextendr(s7(getter, deprecated = "message"))]` to mark a property
-    /// as deprecated. Getter and setter will emit deprecation warnings.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(getter, deprecated = "Use 'value' instead"))]
-    /// fn old_value(&self) -> i32 { self.value }
-    /// ```
-    pub s7_deprecated: Option<String>,
-    // region: S7 Phase 3: Generic dispatch control
-    /// S7 no_dots marker - removes `...` from generic signature.
-    ///
-    /// Use for strict generics like `length()` that don't accept extra args.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(no_dots))]
-    /// fn length(&self) -> i32 { self.data.len() as i32 }
-    /// // Generates: new_generic("length", "x", function(x) S7_dispatch())
-    /// // Instead of: new_generic("length", "x", function(x, ...) S7_dispatch())
-    /// ```
-    pub s7_no_dots: bool,
-    /// S7 multiple dispatch - specifies dispatch arguments.
-    ///
-    /// Use `#[miniextendr(s7(dispatch = "x,y"))]` to enable double dispatch.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(dispatch = "x,y"))]
-    /// fn compare(&self, other: &OtherType) -> i32 { ... }
-    /// // Generates: new_generic("compare", c("x", "y"), function(x, y, ...) S7_dispatch())
-    /// ```
-    pub s7_dispatch: Option<String>,
-    /// S7 fallback marker - register method for class_any.
-    ///
-    /// Use for fallback implementations that handle any type.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(fallback))]
-    /// fn describe(&self) -> String { "unknown".to_string() }
-    /// // Registers method for S7::class_any
-    /// ```
-    pub s7_fallback: bool,
-    // endregion
-    // region: S7 Phase 4: Conversion support
-    /// S7 convert_from - marks a method that converts FROM another type.
-    ///
-    /// Use `#[miniextendr(s7(convert_from = "OtherType"))]` on a static method
-    /// that takes OtherType and returns Self. This generates an S7 convert() method.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(convert_from = "Point2D"))]
-    /// fn from_2d(p: &Point2D) -> Self {
-    ///     Point3D { x: p.x, y: p.y, z: 0.0 }
-    /// }
-    /// // Generates: S7::method(convert, list(Point2D, Point3D)) <- function(from, to) ...
-    /// ```
-    pub s7_convert_from: Option<String>,
-    /// S7 convert_to - marks a method that converts TO another type.
-    ///
-    /// Use `#[miniextendr(s7(convert_to = "OtherType"))]` on an instance method
-    /// that returns OtherType. This generates an S7 convert() method.
-    ///
-    /// # Example
-    /// ```ignore
-    /// #[miniextendr(s7(convert_to = "Point2D"))]
-    /// fn to_2d(&self) -> Point2D {
-    ///     Point2D { x: self.x, y: self.y }
-    /// }
-    /// // Generates: S7::method(convert, list(Point3D, Point2D)) <- function(from, to) ...
-    /// ```
-    pub s7_convert_to: Option<String>,
-    // endregion
+    /// S7-specific method markers. Only consumed by the S7 class generator;
+    /// all other generators ignore this field.
+    pub s7: S7MethodAttrs,
     // region: Lifecycle support
     /// Lifecycle specification for deprecation/experimental status on methods.
     ///
@@ -1260,7 +1134,7 @@ impl ParsedMethod {
         // #[...(active)] is only meaningful for R6
         if attrs.active && class_system != ClassSystem::R6 {
             return Err(syn::Error::new(
-                attrs.active_span.unwrap_or(span),
+                attrs.r6.active_span.unwrap_or(span),
                 "#[r6(active)] is only valid for R6 class systems",
             ));
         }
@@ -1268,7 +1142,7 @@ impl ParsedMethod {
         // convert_from and convert_to are mutually exclusive on the same method
         // - convert_from expects a static method (no &self, takes source type)
         // - convert_to expects an instance method (&self, returns target type)
-        if attrs.s7_convert_from.is_some() && attrs.s7_convert_to.is_some() {
+        if attrs.s7.convert_from.is_some() && attrs.s7.convert_to.is_some() {
             return Err(syn::Error::new(
                 span,
                 "cannot specify both `convert_from` and `convert_to` on the same method; \
@@ -1345,11 +1219,11 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("active") {
                             use syn::spanned::Spanned;
                             method_attrs.active = true;
-                            method_attrs.active_span = Some(inner.path.span());
+                            method_attrs.r6.active_span = Some(inner.path.span());
                         } else if inner.path.is_ident("setter") {
                             // Active binding setter: works for both R6 and S7
-                            method_attrs.r6_setter = true;
-                            method_attrs.s7_setter = true;
+                            method_attrs.r6.setter = true;
+                            method_attrs.s7.setter = true;
                         } else if inner.path.is_ident("worker") {
                             worker = Some(true);
                         } else if inner.path.is_ident("no_worker") {
@@ -1387,44 +1261,44 @@ impl ParsedMethod {
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.class = Some(value.value());
                         } else if inner.path.is_ident("getter") {
-                            method_attrs.s7_getter = true;
+                            method_attrs.s7.getter = true;
                         } else if inner.path.is_ident("validate") {
-                            method_attrs.s7_validate = true;
+                            method_attrs.s7.validate = true;
                         } else if inner.path.is_ident("prop") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             let prop_value = value.value();
                             // Set both S7 and R6 prop - the class system will use the appropriate one
-                            method_attrs.s7_prop = Some(prop_value.clone());
-                            method_attrs.r6_prop = Some(prop_value);
+                            method_attrs.s7.prop = Some(prop_value.clone());
+                            method_attrs.r6.prop = Some(prop_value);
                         } else if inner.path.is_ident("default") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_default = Some(value.value());
+                            method_attrs.s7.default = Some(value.value());
                         } else if inner.path.is_ident("required") {
-                            method_attrs.s7_required = true;
+                            method_attrs.s7.required = true;
                         } else if inner.path.is_ident("frozen") {
-                            method_attrs.s7_frozen = true;
+                            method_attrs.s7.frozen = true;
                         } else if inner.path.is_ident("deprecated") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_deprecated = Some(value.value());
+                            method_attrs.s7.deprecated = Some(value.value());
                         } else if inner.path.is_ident("no_dots") {
-                            method_attrs.s7_no_dots = true;
+                            method_attrs.s7.no_dots = true;
                         } else if inner.path.is_ident("dispatch") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_dispatch = Some(value.value());
+                            method_attrs.s7.dispatch = Some(value.value());
                         } else if inner.path.is_ident("fallback") {
-                            method_attrs.s7_fallback = true;
+                            method_attrs.s7.fallback = true;
                         } else if inner.path.is_ident("convert_from") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_convert_from = Some(value.value());
+                            method_attrs.s7.convert_from = Some(value.value());
                         } else if inner.path.is_ident("convert_to") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_convert_to = Some(value.value());
+                            method_attrs.s7.convert_to = Some(value.value());
                         } else if inner.path.is_ident("deep_clone") {
                             method_attrs.deep_clone = true;
                         } else if inner.path.is_ident("r_name") {
@@ -1518,7 +1392,11 @@ impl ParsedMethod {
                             .get_ident()
                             .ok_or_else(|| inner.error("expected parameter name"))?
                             .to_string();
-                        method_attrs.per_param_match_arg.insert(name);
+                        method_attrs
+                            .per_param
+                            .entry(name)
+                            .or_default()
+                            .match_arg = true;
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("match_arg_several_ok") {
@@ -1532,8 +1410,9 @@ impl ParsedMethod {
                             .get_ident()
                             .ok_or_else(|| inner.error("expected parameter name"))?
                             .to_string();
-                        method_attrs.per_param_match_arg.insert(name.clone());
-                        method_attrs.per_param_several_ok.insert(name);
+                        let entry = method_attrs.per_param.entry(name).or_default();
+                        entry.match_arg = true;
+                        entry.several_ok = true;
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("choices") {
@@ -1549,7 +1428,7 @@ impl ParsedMethod {
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
                         let choices = Self::split_choice_list(&value.value());
-                        method_attrs.per_param_choices.insert(name, choices);
+                        method_attrs.per_param.entry(name).or_default().choices = Some(choices);
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("choices_several_ok") {
@@ -1565,8 +1444,9 @@ impl ParsedMethod {
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
                         let choices = Self::split_choice_list(&value.value());
-                        method_attrs.per_param_choices.insert(name.clone(), choices);
-                        method_attrs.per_param_several_ok.insert(name);
+                        let entry = method_attrs.per_param.entry(name).or_default();
+                        entry.choices = Some(choices);
+                        entry.several_ok = true;
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("unsafe") {
@@ -1902,11 +1782,13 @@ impl ParsedMethod {
                 _ => None,
             })
             .collect();
-        for annotated in method_attrs
-            .per_param_match_arg
-            .iter()
-            .chain(method_attrs.per_param_choices.keys())
-        {
+        for annotated in method_attrs.per_param.iter().filter_map(|(name, a)| {
+            if a.match_arg || a.choices.is_some() {
+                Some(name)
+            } else {
+                None
+            }
+        }) {
             if !sig_param_names.contains(annotated) {
                 return Err(syn::Error::new(
                     method_attrs
@@ -2343,7 +2225,7 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_active()
-                && !m.method_attrs.r6_setter // Exclude setters
+                && !m.method_attrs.r6.setter // Exclude setters
         })
     }
 
@@ -2351,14 +2233,14 @@ impl ParsedImpl {
     pub fn active_setter_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods
             .iter()
-            .filter(|m| m.should_include() && m.env.is_instance() && m.method_attrs.r6_setter)
+            .filter(|m| m.should_include() && m.env.is_instance() && m.method_attrs.r6.setter)
     }
 
     /// Find the setter method for a given property name.
     pub fn find_setter_for_prop(&self, prop_name: &str) -> Option<&ParsedMethod> {
         self.active_setter_methods().find(|m| {
             // Match by explicit prop name or by method name with "set_" prefix removed
-            if let Some(ref explicit_prop) = m.method_attrs.r6_prop {
+            if let Some(ref explicit_prop) = m.method_attrs.r6.prop {
                 explicit_prop == prop_name
             } else {
                 // Try to match by stripping "set_" prefix from method name
@@ -2602,8 +2484,8 @@ pub fn generate_method_c_wrapper(
     // in `match_arg_vec_from_sexp` for the Vec/slice/array/Box<[_]> conversion path.
     // Scalar match_arg doesn't need this — R's match.arg() validated the choice and
     // `TryFromSexp for EnumType` (auto-generated by `#[derive(MatchArg)]`) decodes it.
-    for rust_name in &method.method_attrs.per_param_match_arg {
-        if method.method_attrs.per_param_several_ok.contains(rust_name) {
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if attrs.match_arg && attrs.several_ok {
             builder = builder.match_arg_several_ok(rust_name.clone());
         }
     }
@@ -2633,8 +2515,11 @@ fn generate_method_match_arg_helpers(
     parsed_impl: &ParsedImpl,
     method: &ParsedMethod,
 ) -> TokenStream {
-    if method.method_attrs.per_param_match_arg.is_empty()
-        && method.method_attrs.per_param_choices.is_empty()
+    if !method
+        .method_attrs
+        .per_param
+        .values()
+        .any(|a| a.match_arg || a.choices.is_some())
     {
         return TokenStream::new();
     }
@@ -2646,14 +2531,17 @@ fn generate_method_match_arg_helpers(
 
     let mut out = TokenStream::new();
 
-    for rust_name in &method.method_attrs.per_param_match_arg {
+    for (rust_name, attrs) in method.method_attrs.per_param.iter() {
+        if !attrs.match_arg {
+            continue;
+        }
         // Find the parameter type from the (already-normalized) signature.
         let Some(param_ty) = find_param_type(&method.sig.inputs, rust_name) else {
             continue;
         };
         // For several_ok, unwrap the container (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode])
         // so the helper returns the inner enum's CHOICES, not the container type.
-        let several_ok = method.method_attrs.per_param_several_ok.contains(rust_name);
+        let several_ok = attrs.several_ok;
         let choices_ty = if several_ok {
             crate::classify_several_ok_container(param_ty)
                 .map(|(_, inner)| inner.clone())
@@ -2662,28 +2550,15 @@ fn generate_method_match_arg_helpers(
             param_ty.clone()
         };
 
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            rust_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
 
         // C helper fn that R calls via .__mx_choices_<param> <- .Call(C_...)
-        let helper_fn_name = format!(
-            "{}__match_arg_choices__{}",
-            c_ident_str.trim_start_matches("C_"),
-            r_name
-        );
-        let helper_fn_ident = syn::Ident::new(
-            &format!("C_{helper_fn_name}"),
-            proc_macro2::Span::call_site(),
-        );
-        let helper_def_ident = syn::Ident::new(
-            &format!("call_method_def_C_{helper_fn_name}"),
-            proc_macro2::Span::call_site(),
-        );
+        let helper_c_name_str = crate::match_arg_keys::choices_helper_c_name(&c_ident_str, &r_name);
+        let helper_fn_ident = syn::Ident::new(&helper_c_name_str, proc_macro2::Span::call_site());
+        let helper_def_ident =
+            crate::match_arg_keys::choices_helper_def_ident(&c_ident_str, &r_name);
         let helper_c_name = syn::LitCStr::new(
-            std::ffi::CString::new(format!("C_{helper_fn_name}"))
+            std::ffi::CString::new(helper_c_name_str.clone())
                 .expect("valid C string")
                 .as_c_str(),
             proc_macro2::Span::call_site(),
@@ -2695,9 +2570,32 @@ fn generate_method_match_arg_helpers(
         let entry_ident = syn::Ident::new(
             &format!(
                 "match_arg_choices_entry_{}",
-                placeholder.trim_matches('_').replace('.', "_")
+                crate::match_arg_keys::placeholder_ident_suffix(&placeholder)
             ),
             proc_macro2::Span::call_site(),
+        );
+        let doc_placeholder =
+            crate::r_class_formatter::match_arg_param_doc_placeholder(&c_ident_str, &r_name);
+        let doc_entry_ident = syn::Ident::new(
+            &format!(
+                "match_arg_param_doc_entry_{}",
+                crate::match_arg_keys::placeholder_ident_suffix(&doc_placeholder)
+            ),
+            proc_macro2::Span::call_site(),
+        );
+
+        let choices_entry_tokens = crate::match_arg_keys::choices_entry_tokens(
+            cfg_attrs,
+            &entry_ident,
+            &placeholder,
+            &choices_ty,
+        );
+        let param_doc_entry_tokens = crate::match_arg_keys::param_doc_entry_tokens(
+            cfg_attrs,
+            &doc_entry_ident,
+            &doc_placeholder,
+            several_ok,
+            &choices_ty,
         );
 
         out.extend(quote! {
@@ -2728,58 +2626,8 @@ fn generate_method_match_arg_helpers(
                 }
             };
 
-            #(#cfg_attrs)*
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES)]
-            #[linkme(crate = ::miniextendr_api::linkme)]
-            #[allow(non_upper_case_globals)]
-            #[allow(non_snake_case)]
-            static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
-                ::miniextendr_api::registry::MatchArgChoicesEntry {
-                    placeholder: #placeholder,
-                    choices_str: || {
-                        <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                            .iter()
-                            .map(|c| format!(
-                                "\"{}\"",
-                                ::miniextendr_api::match_arg::escape_r_string(c)
-                            ))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    },
-                };
-        });
-
-        // Per-param @param doc placeholder entry (#210). The cdylib write pass
-        // substitutes the placeholder in the generated R wrapper's roxygen block
-        // with a rendered `One of "A", "B".` (or multi-choice equivalent) line.
-        let doc_placeholder =
-            crate::r_class_formatter::match_arg_param_doc_placeholder(&c_ident_str, &r_name);
-        let doc_entry_ident = syn::Ident::new(
-            &format!(
-                "match_arg_param_doc_entry_{}",
-                doc_placeholder.trim_matches('_').replace('.', "_")
-            ),
-            proc_macro2::Span::call_site(),
-        );
-        let several_ok_lit = several_ok;
-        out.extend(quote! {
-            #(#cfg_attrs)*
-            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_PARAM_DOCS)]
-            #[linkme(crate = ::miniextendr_api::linkme)]
-            #[allow(non_upper_case_globals)]
-            #[allow(non_snake_case)]
-            static #doc_entry_ident: ::miniextendr_api::registry::MatchArgParamDocEntry =
-                ::miniextendr_api::registry::MatchArgParamDocEntry {
-                    placeholder: #doc_placeholder,
-                    several_ok: #several_ok_lit,
-                    choices_str: || {
-                        <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                            .iter()
-                            .map(|c| format!("\"{}\"", c))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    },
-                };
+            #choices_entry_tokens
+            #param_doc_entry_tokens
         });
     }
 

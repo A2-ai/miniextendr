@@ -964,7 +964,7 @@ fn s7_property_mirrors_s7_tests_rs() {
         if method.ident == "length" {
             eprintln!(
                 "length method attrs: s7_getter={}, s7_setter={}",
-                method.method_attrs.s7_getter, method.method_attrs.s7_setter
+                method.method_attrs.s7.getter, method.method_attrs.s7.setter
             );
             eprintln!("length return type: {:?}", method.sig.output);
         }

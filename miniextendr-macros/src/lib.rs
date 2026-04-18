@@ -128,39 +128,15 @@
 //!
 //! ## Thread Strategy
 //!
-//! By default, `#[miniextendr]` functions run on a **worker thread** for clean panic handling.
-//! The macro automatically switches to **main thread** when it detects:
+//! By default, `#[miniextendr]` functions run on R's main thread. Opt into
+//! worker-thread execution with `#[miniextendr(worker)]` (requires the
+//! `worker-thread` feature on `miniextendr-api`). A worker opt-in is ignored
+//! when the signature requires main-thread execution (returns/takes `SEXP`,
+//! uses variadic dots, or sets `check_interrupt`).
 //!
-//! - Function takes or returns `SEXP`
-//! - Function uses variadic dots (`...`)
-//! - `check_interrupt` attribute is set
-//!
-//! ### When to use `#[miniextendr(unsafe(main_thread))]`
-//!
-//! Only use this attribute when your function calls R API **directly** using
-//! `_unchecked` variants (bypassing `with_r_thread`) and the macro can't auto-detect it.
-//! This is rare:
-//!
-//! ```rust,ignore
-//! // NEEDED: Calls _unchecked R API, but signature doesn't show it
-//! #[miniextendr(unsafe(main_thread))]
-//! fn call_r_api_internally() -> i32 {
-//!     // _unchecked variants assume we're on main thread
-//!     unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42); }
-//!     42
-//! }
-//!
-//! // NOT NEEDED: Macro auto-detects SEXP return
-//! #[miniextendr]
-//! fn returns_sexp() -> SEXP { /* ... */ }
-//!
-//! // NOT NEEDED: ExternalPtr is Send, can cross thread boundary
-//! #[miniextendr]
-//! fn returns_extptr() -> ExternalPtr<MyType> { /* ... */ }
-//! ```
-//!
-//! **Note**: `ExternalPtr<T>` is `Send` - it can be returned from worker thread functions.
-//! All R API operations on ExternalPtr are serialized through `with_r_thread`.
+//! **Note**: `ExternalPtr<T>` is `Send` — it can be returned from worker
+//! thread functions. All R API operations on `ExternalPtr` are serialized
+//! through `with_r_thread`.
 //!
 //! ## Class Systems
 //!
@@ -179,8 +155,11 @@
 mod altrep;
 mod c_wrapper_builder;
 mod list_macro;
+mod match_arg_keys;
 mod miniextendr_fn;
+mod type_inspect;
 mod typed_list;
+mod util;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
 mod r_wrapper_builder;
@@ -217,8 +196,10 @@ mod struct_enum_dispatch;
 // vctrs support
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
+mod vctrs_generics;
 
-pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
+mod naming;
+pub(crate) use naming::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
 // Feature default mutual exclusivity guards
 #[cfg(all(feature = "default-r6", feature = "default-s7"))]
@@ -226,180 +207,452 @@ compile_error!("`default-r6` and `default-s7` are mutually exclusive");
 // Note: default-main-thread was removed — main thread is now the hardcoded default.
 // default-worker still opts into worker thread execution.
 
-// normalize_r_arg_ident is now provided by r_wrapper_builder module
+pub(crate) use type_inspect::{
+    SeveralOkContainer, classify_several_ok_container, first_type_argument, is_sexp_type,
+    second_type_argument,
+};
+pub(crate) use util::{extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc};
 
-/// Extract `#[cfg(...)]` attributes from a list of attributes.
+/// Validate the signature of an `extern "C-unwind"` fn exported via `#[miniextendr]`.
 ///
-/// These should be propagated to generated items so they are conditionally
-/// compiled along with the original function.
-fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
-    attrs
+/// R's `.Call` interface passes all arguments as `SEXP` and expects a `SEXP`
+/// return value. For `extern "C-unwind"` functions the user writes the C symbol
+/// directly, so the signature must satisfy those invariants statically —
+/// otherwise the generated registration produces UB at runtime.
+///
+/// Called before any codegen so we fail fast on an invalid extern signature
+/// rather than emitting a wrapper that would only matter after the error.
+fn validate_extern_signature(
+    abi: &syn::Abi,
+    attrs: &[syn::Attribute],
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    output: &syn::ReturnType,
+) -> syn::Result<()> {
+    use syn::spanned::Spanned;
+
+    // Reject `self` receivers up front — they are never valid for `.Call`
+    // exports, and a missing-return-type error would only hide the real
+    // problem (users write `fn foo(self)` to ask "can I export a method?").
+    for input in inputs.iter() {
+        if let syn::FnArg::Receiver(recv) = input {
+            return Err(syn::Error::new_spanned(
+                recv,
+                "self parameter not allowed in standalone functions; \
+                 use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead",
+            ));
+        }
+    }
+
+    // Require one of #[no_mangle] / #[unsafe(no_mangle)] / #[export_name].
+    let has_no_mangle = attrs.iter().any(|attr| {
+        attr.path().is_ident("no_mangle")
+            || attr
+                .parse_nested_meta(|meta| {
+                    if meta.path.is_ident("no_mangle") {
+                        Err(meta.error("found #[no_mangle]"))
+                    } else {
+                        Ok(())
+                    }
+                })
+                .is_err()
+    });
+    let has_export_name = attrs.iter().any(|attr| attr.path().is_ident("export_name"));
+    if !has_no_mangle && !has_export_name {
+        return Err(syn::Error::new(
+            attrs
+                .first()
+                .map(|attr| attr.span())
+                .unwrap_or_else(|| abi.span()),
+            "extern \"C-unwind\" functions need a visible C symbol for R's .Call interface. \
+             Add one of:\n  \
+             - `#[unsafe(no_mangle)]` (Rust 2024 edition)\n  \
+             - `#[no_mangle]` (Rust 2021 edition)\n  \
+             - `#[export_name = \"my_symbol\"]` (custom symbol name)",
+        ));
+    }
+
+    // Return type must be SEXP.
+    match output {
+        non_return_type @ syn::ReturnType::Default => {
+            return Err(syn::Error::new(
+                non_return_type.span(),
+                "extern \"C-unwind\" functions used with #[miniextendr] must return SEXP. \
+                 Add `-> miniextendr_api::ffi::SEXP` as the return type. \
+                 If you want automatic type conversion, remove `extern \"C-unwind\"` and let \
+                 the macro generate the C wrapper.",
+            ));
+        }
+        syn::ReturnType::Type(_rarrow, output_type) => match output_type.as_ref() {
+            syn::Type::Path(type_path) => {
+                if let Some(path_to_sexp) = type_path.path.segments.last().map(|x| &x.ident)
+                    && path_to_sexp != "SEXP"
+                {
+                    return Err(syn::Error::new(
+                        path_to_sexp.span(),
+                        format!(
+                            "extern \"C-unwind\" functions must return SEXP, found `{path_to_sexp}`. \
+                             R's .Call interface expects SEXP return values. \
+                             Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                             `extern \"C-unwind\"` to let the macro handle type conversion.",
+                        ),
+                    ));
+                }
+            }
+            _ => {
+                return Err(syn::Error::new(
+                    output_type.span(),
+                    "extern \"C-unwind\" functions must return SEXP. \
+                     R's .Call interface expects SEXP return values. \
+                     Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
+                     `extern \"C-unwind\"` to let the macro handle type conversion.",
+                ));
+            }
+        },
+    }
+
+    // Every input must be SEXP. Reject variadics and receivers.
+    for input in inputs.iter() {
+        match input {
+            syn::FnArg::Receiver(recv) => {
+                return Err(syn::Error::new_spanned(
+                    recv,
+                    "extern \"C-unwind\" functions cannot have a `self` parameter. \
+                     R's .Call interface only accepts SEXP arguments. \
+                     Use `#[miniextendr(env|r6|s3|s4|s7)]` on an impl block for methods.",
+                ));
+            }
+            syn::FnArg::Typed(pat_type) => {
+                if let syn::Pat::Rest(_) = pat_type.pat.as_ref() {
+                    return Err(syn::Error::new_spanned(
+                        pat_type,
+                        "extern functions cannot use variadic (...) - .Call passes fixed arguments",
+                    ));
+                }
+                let is_sexp = match pat_type.ty.as_ref() {
+                    syn::Type::Path(type_path) => type_path
+                        .path
+                        .segments
+                        .last()
+                        .is_some_and(|seg| seg.ident == "SEXP"),
+                    _ => false,
+                };
+                if !is_sexp {
+                    let is_dots_type = if let syn::Type::Reference(type_ref) = pat_type.ty.as_ref()
+                    {
+                        if let syn::Type::Path(inner) = type_ref.elem.as_ref() {
+                            inner
+                                .path
+                                .segments
+                                .last()
+                                .is_some_and(|seg| seg.ident == "Dots")
+                        } else {
+                            false
+                        }
+                    } else if let syn::Type::Path(type_path) = pat_type.ty.as_ref() {
+                        type_path
+                            .path
+                            .segments
+                            .last()
+                            .is_some_and(|seg| seg.ident == "Dots")
+                    } else {
+                        false
+                    };
+                    let msg = if is_dots_type {
+                        "extern functions cannot use Dots; use `...` syntax in non-extern #[miniextendr] functions instead"
+                    } else {
+                        "extern function parameters must be SEXP - .Call passes all arguments as SEXP"
+                    };
+                    return Err(syn::Error::new_spanned(&pat_type.ty, msg));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Emit the `extern "C-unwind"` helper + `R_CallMethodDef` registration for
+/// each standalone-fn `match_arg` param.
+///
+/// Each helper returns the enum's `CHOICES` wrapped in a STRSXP so the R
+/// wrapper's prelude can call `match.arg(x, .Call(helper, ...))`. Factored
+/// out of the `miniextendr` fn body so the entry point doesn't own the
+/// `quote!` scaffolding.
+fn build_match_arg_helpers(
+    match_arg_param_info: &[(String, String, &syn::Type)],
+    parsed: &miniextendr_fn::MiniextendrFunctionParsed,
+    c_ident_str: &str,
+    cfg_attrs: &[syn::Attribute],
+) -> Vec<proc_macro2::TokenStream> {
+    match_arg_param_info
         .iter()
-        .filter(|attr| attr.path().is_ident("cfg"))
-        .cloned()
+        .map(|(r_param, rust_name, param_ty)| {
+            // For several_ok, the param type is e.g. Vec<Mode>/Box<[Mode]>/[Mode; N]/&[Mode]
+            // — extract inner Mode for choices_sexp.
+            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_name) {
+                classify_several_ok_container(param_ty)
+                    .map(|(_, t)| t)
+                    .unwrap_or(param_ty)
+            } else {
+                param_ty
+            };
+            let helper_fn_name = crate::match_arg_keys::choices_helper_c_name(c_ident_str, r_param);
+            let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
+            let helper_def_ident =
+                crate::match_arg_keys::choices_helper_def_ident(c_ident_str, r_param);
+            let helper_c_name = syn::LitCStr::new(
+                std::ffi::CString::new(helper_fn_name.clone())
+                    .expect("valid C string")
+                    .as_c_str(),
+                proc_macro2::Span::call_site(),
+            );
+            quote::quote! {
+                #(#cfg_attrs)*
+                #[allow(non_snake_case)]
+                #[unsafe(no_mangle)]
+                pub extern "C-unwind" fn #helper_fn_ident(
+                    __miniextendr_call: ::miniextendr_api::ffi::SEXP,
+                ) -> ::miniextendr_api::ffi::SEXP {
+                    ::miniextendr_api::choices_sexp::<#choices_ty>()
+                }
+
+                #(#cfg_attrs)*
+                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
+                #[linkme(crate = ::miniextendr_api::linkme)]
+                #[allow(non_upper_case_globals)]
+                #[allow(non_snake_case)]
+                static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+                    ::miniextendr_api::ffi::R_CallMethodDef {
+                        name: #helper_c_name.as_ptr(),
+                        fun: Some(std::mem::transmute::<
+                            unsafe extern "C-unwind" fn(
+                                ::miniextendr_api::ffi::SEXP,
+                            ) -> ::miniextendr_api::ffi::SEXP,
+                            unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
+                        >(#helper_fn_ident)),
+                        numArgs: 1i32,
+                    }
+                };
+            }
+        })
         .collect()
 }
 
-/// Format a human-readable source location note from a syntax span.
+/// All the state a standalone-fn C wrapper needs at emission time.
 ///
-/// Column is reported as 1-based for consistency with editor displays.
-pub(crate) fn source_location_doc(span: proc_macro2::Span) -> String {
-    let start = span.start();
-    format!(
-        "Generated from source location line {}, column {}.",
-        start.line,
-        start.column + 1
-    )
+/// Bundles what used to be ~20 free locals in the `miniextendr` entry point
+/// so `build_fn_c_wrapper` can be a plain free function instead of a closure
+/// over half the enclosing scope.
+struct FnCWrapperInputs<'a> {
+    abi: Option<&'a syn::Abi>,
+    use_main_thread: bool,
+    rng: bool,
+    error_in_r: bool,
+    rust_ident: &'a syn::Ident,
+    c_ident: &'a syn::Ident,
+    r_wrapper_const_ident: &'a syn::Ident,
+    vis: &'a syn::Visibility,
+    generics: &'a syn::Generics,
+    c_wrapper_inputs: &'a [syn::FnArg],
+    call_param_ident: &'a syn::Ident,
+    rust_inputs: &'a [syn::Ident],
+    rust_result_ident: &'a syn::Ident,
+    pre_call_statements: &'a [proc_macro2::TokenStream],
+    closure_statements: &'a [proc_macro2::TokenStream],
+    pre_closure_stmts: &'a [proc_macro2::TokenStream],
+    in_closure_stmts: &'a [proc_macro2::TokenStream],
+    post_call_statements: &'a [proc_macro2::TokenStream],
+    return_expression: &'a proc_macro2::TokenStream,
+    rng_get: &'a proc_macro2::TokenStream,
+    rng_put: &'a proc_macro2::TokenStream,
+    unwind_protect_fn: &'a proc_macro2::TokenStream,
+    source_loc_doc: &'a str,
 }
 
-/// Build a `TokenStream` containing a raw string literal from an R wrapper string.
-pub(crate) fn r_wrapper_raw_literal(s: &str) -> proc_macro2::TokenStream {
-    use std::str::FromStr;
-    let raw = format!("r#\"\n{}\n\"#", s);
-    proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
-}
-
-/// Returns the first generic type argument from a path segment.
-pub(crate) fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
-    nth_type_argument(seg, 0)
-}
-
-/// Returns the second generic type argument from a path segment.
-fn second_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
-    nth_type_argument(seg, 1)
-}
-
-/// Container family for a `several_ok` parameter, returned by
-/// [`classify_several_ok_container`].
-#[derive(Debug, Clone)]
-pub(crate) enum SeveralOkContainer {
-    /// `Vec<T>`
-    Vec,
-    /// `Box<[T]>`
-    BoxedSlice,
-    /// `[T; N]` — the `usize` is the fixed array length N
-    Array(usize),
-    /// `&[T]` or `&mut [T]` — allocate `Vec<T>` then borrow
-    BorrowedSlice,
-}
-
-/// Classify a `several_ok` parameter type into one of the four container
-/// families and extract its inner element type `T`.
+/// Emit the `extern "C-unwind"` C wrapper for a standalone `#[miniextendr]` fn.
 ///
-/// Returns `Some((container, inner_ty))` or `None` if the type is not one of
-/// the four accepted container shapes.
-pub(crate) fn classify_several_ok_container(
-    ty: &syn::Type,
-) -> Option<(SeveralOkContainer, &syn::Type)> {
-    match ty {
-        // Vec<T>
-        syn::Type::Path(tp) => {
-            let seg = tp.path.segments.last()?;
-            if seg.ident == "Vec" {
-                let inner = first_type_argument(seg)?;
-                return Some((SeveralOkContainer::Vec, inner));
-            }
-            // Box<[T]>
-            if seg.ident == "Box"
-                && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
-            {
-                for arg in &ab.args {
-                    if let syn::GenericArgument::Type(syn::Type::Slice(s)) = arg {
-                        return Some((SeveralOkContainer::BoxedSlice, s.elem.as_ref()));
+/// Four variants (main / worker × rng / no-rng) diverge in small ways —
+/// panic handlers, catch_unwind wrapping, which blocks run on which thread.
+/// The original fn body open-coded all four; this helper concentrates the
+/// choice so the entry point can hand off after configuring `FnCWrapperInputs`.
+///
+/// Returns an empty TokenStream when `abi` is `Some(_)`, matching the old
+/// behavior — the user wrote the C symbol themselves, we just register it.
+fn build_fn_c_wrapper(ctx: &FnCWrapperInputs<'_>) -> proc_macro2::TokenStream {
+    if ctx.abi.is_some() {
+        return proc_macro2::TokenStream::new();
+    }
+
+    let FnCWrapperInputs {
+        rust_ident,
+        c_ident,
+        r_wrapper_const_ident,
+        vis,
+        generics,
+        c_wrapper_inputs,
+        call_param_ident,
+        rust_inputs,
+        rust_result_ident,
+        pre_call_statements,
+        closure_statements,
+        pre_closure_stmts,
+        in_closure_stmts,
+        post_call_statements,
+        return_expression,
+        rng_get,
+        rng_put,
+        unwind_protect_fn,
+        source_loc_doc,
+        ..
+    } = ctx;
+
+    if ctx.use_main_thread {
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{rust_ident}`] (main thread). See [`{r_wrapper_const_ident}`] for R wrapper.",
+        );
+        if ctx.rng {
+            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
+            // rng always implies error_in_r (validated at parse time), so we always return
+            // a tagged error value on panic instead of resume_unwind.
+            let rng_panic_handler = quote::quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    "panic",
+                    Some(#call_param_ident),
+                )
+            };
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #rng_get
+                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                        #(#pre_call_statements)*
+                        #unwind_protect_fn(
+                            || {
+                                #(#closure_statements)*
+                                let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                                #(#post_call_statements)*
+                                #return_expression
+                            },
+                            Some(#call_param_ident),
+                        )
+                    }));
+                    #rng_put
+                    match __result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => { #rng_panic_handler },
                     }
                 }
             }
-            None
-        }
-        // [T; N]
-        syn::Type::Array(arr) => {
-            if let syn::Expr::Lit(syn::ExprLit {
-                lit: syn::Lit::Int(n),
-                ..
-            }) = &arr.len
-            {
-                let n = n.base10_parse::<usize>().ok()?;
-                return Some((SeveralOkContainer::Array(n), arr.elem.as_ref()));
-            }
-            None
-        }
-        // &[T] or &mut [T]
-        syn::Type::Reference(r) => {
-            if let syn::Type::Slice(s) = r.elem.as_ref() {
-                return Some((SeveralOkContainer::BorrowedSlice, s.elem.as_ref()));
-            }
-            None
-        }
-        _ => None,
-    }
-}
+        } else {
+            // Non-RNG variant: direct call to with_r_unwind_protect
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #(#pre_call_statements)*
 
-/// Returns the `n`-th generic type argument from a path segment.
-fn nth_type_argument(seg: &syn::PathSegment, n: usize) -> Option<&syn::Type> {
-    if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
-        let mut count = 0;
-        for arg in ab.args.iter() {
-            if let syn::GenericArgument::Type(ty) = arg {
-                if count == n {
-                    return Some(ty);
+                    #unwind_protect_fn(
+                        || {
+                            #(#closure_statements)*
+                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                            #(#post_call_statements)*
+                            #return_expression
+                        },
+                        Some(#call_param_ident),
+                    )
                 }
-                count += 1;
+            }
+        }
+    } else {
+        // Pure Rust functions: use worker thread strategy.
+        // Emit a compile-time check that the `worker-thread` feature is enabled.
+        let feature_msg = format!(
+            "`#[miniextendr(worker)]` on `{rust_ident}` requires the `worker-thread` cargo feature. \
+             Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
+        );
+        let worker_feature_check = quote::quote! {
+            #[cfg(not(any(feature = "worker-thread", feature = "default-worker")))]
+            compile_error!(#feature_msg);
+        };
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{rust_ident}`] (worker thread). See [`{r_wrapper_const_ident}`] for R wrapper.",
+        );
+        let worker_panic_handler = if ctx.error_in_r {
+            quote::quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    "panic",
+                    Some(#call_param_ident),
+                )
+            }
+        } else {
+            quote::quote! {
+                ::miniextendr_api::worker::panic_message_to_r_error(
+                    ::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
+                    None,
+                )
+            }
+        };
+        let worker_result_err_arm = if ctx.error_in_r {
+            quote::quote! {
+                Err(__panic_msg) => {
+                    ::miniextendr_api::error_value::make_rust_error_value(
+                        &__panic_msg, "panic", Some(#call_param_ident),
+                    )
+                }
+            }
+        } else {
+            quote::quote! {
+                Err(__panic_msg) => {
+                    ::miniextendr_api::worker::panic_message_to_r_error(__panic_msg, None)
+                }
+            }
+        };
+        quote::quote! {
+            #worker_feature_check
+
+            #[doc = #c_wrapper_doc]
+            #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+            #[doc = #source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[unsafe(no_mangle)]
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                #rng_get
+                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    #(#pre_call_statements)*
+                    #(#pre_closure_stmts)*
+
+                    match ::miniextendr_api::worker::run_on_worker(move || {
+                        #(#in_closure_stmts)*
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                        #(#post_call_statements)*
+                        #rust_result_ident
+                    }) {
+                        Ok(#rust_result_ident) => {
+                            #unwind_protect_fn(
+                                move || #return_expression,
+                                None,
+                            )
+                        }
+                        #worker_result_err_arm
+                    }
+                }));
+                #rng_put
+                match __miniextendr_panic_result {
+                    Ok(sexp) => sexp,
+                    Err(payload) => { #worker_panic_handler },
+                }
             }
         }
     }
-    None
-}
-
-#[inline]
-/// Returns true if `ty` is syntactically `SEXP`.
-fn is_sexp_type(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(p) if p
-        .path
-        .segments
-        .last()
-        .map(|s| s.ident == "SEXP")
-        .unwrap_or(false))
-}
-
-/// Known vctrs S3 generics that need `@importFrom vctrs` for roxygen registration.
-///
-/// This list includes all generics exported by vctrs that users might implement
-/// S3 methods for when creating custom vector types.
-const VCTRS_GENERICS: &[&str] = &[
-    // Core proxy/restore (required for most custom types)
-    "vec_proxy",
-    "vec_restore",
-    // Type coercion (required for vec_c, vec_rbind, etc.)
-    "vec_ptype2",
-    "vec_cast",
-    // Equality/comparison/ordering proxies
-    "vec_proxy_equal",
-    "vec_proxy_compare",
-    "vec_proxy_order",
-    // Printing/formatting
-    "vec_ptype_abbr",
-    "vec_ptype_full",
-    "obj_print_data",
-    "obj_print_footer",
-    "obj_print_header",
-    // str() output
-    "obj_str_data",
-    "obj_str_footer",
-    "obj_str_header",
-    // Arithmetic (for numeric-like types)
-    "vec_arith",
-    "vec_math",
-    // Other
-    "vec_ptype_finalise",
-    "vec_cbind_frame_ptype",
-    // List-of conversion
-    "as_list_of",
-];
-
-/// Check if a generic name is a vctrs generic that needs `@importFrom vctrs`.
-#[inline]
-fn is_vctrs_generic(generic: &str) -> bool {
-    VCTRS_GENERICS.contains(&generic)
 }
 
 /// Export Rust items to R.
@@ -456,7 +709,7 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// ## Attributes
 ///
-/// - `#[miniextendr(unsafe(main_thread))]` — run on R's main thread (bypass worker)
+/// - `#[miniextendr(worker)]` — opt into worker-thread execution
 /// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` — control return visibility
 /// - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
@@ -676,7 +929,6 @@ pub fn miniextendr(
     }
 
     let MiniextendrFnAttrs {
-        force_main_thread,
         force_worker,
         force_invisible,
         check_interrupt,
@@ -751,6 +1003,14 @@ pub fn miniextendr(
     let generics = parsed.generics();
     let has_dots = parsed.has_dots();
     let named_dots = parsed.named_dots().cloned();
+
+    // Fail fast on invalid extern "C-unwind" signatures *before* any codegen,
+    // so we never emit a wrapper that would be discarded by the surfaced error.
+    if let Some(user_abi) = abi
+        && let Err(e) = validate_extern_signature(user_abi, attrs, inputs, output)
+    {
+        return e.into_compile_error().into();
+    }
 
     // Check for @title/@description conflicts with implicit values (doc-lint feature)
     // Skip when `doc` attribute overrides the roxygen — implicit docs are irrelevant then.
@@ -984,9 +1244,6 @@ pub fn miniextendr(
     let requires_main_thread = returns_sexp || has_sexp_inputs || has_dots || check_interrupt;
     let use_main_thread = !force_worker || requires_main_thread;
 
-    // Suppress unused variable warnings — force_main_thread is now the default,
-    // and force_worker is consumed in use_main_thread above.
-    let _ = (force_main_thread, force_worker);
     // RNG state management tokens
     let (rng_get, rng_put) = if rng {
         (
@@ -1009,349 +1266,32 @@ pub fn miniextendr(
         quote::quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
     };
 
-    let c_wrapper = if abi.is_some() {
-        proc_macro2::TokenStream::new()
-    } else if use_main_thread {
-        // SEXP-returning or Dots-taking functions: use with_r_unwind_protect on main thread
-        let c_wrapper_doc = format!(
-            "C wrapper for [`{}`] (main thread). See [`{}`] for R wrapper.",
-            rust_ident, r_wrapper_generator
-        );
-        if rng {
-            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
-            // rng always implies error_in_r (validated at parse time), so we always return
-            // a tagged error value on panic instead of resume_unwind.
-            let rng_panic_handler = quote::quote! {
-                ::miniextendr_api::error_value::make_rust_error_value(
-                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                    "panic",
-                    Some(#call_param_ident),
-                )
-            };
-            quote::quote! {
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #rng_get
-                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-                        #(#pre_call_statements)*
-                        #unwind_protect_fn(
-                            || {
-                                #(#closure_statements)*
-                                let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                                #(#post_call_statements)*
-                                #return_expression
-                            },
-                            Some(#call_param_ident),
-                        )
-                    }));
-                    #rng_put
-                    match __result {
-                        Ok(sexp) => sexp,
-                        Err(payload) => { #rng_panic_handler },
-                    }
-                }
-            }
-        } else {
-            // Non-RNG variant: direct call to with_r_unwind_protect
-            quote::quote! {
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #(#pre_call_statements)*
-
-                    #unwind_protect_fn(
-                        || {
-                            #(#closure_statements)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            #return_expression
-                        },
-                        Some(#call_param_ident),
-                    )
-                }
-            }
-        }
-    } else {
-        // Pure Rust functions: use worker thread strategy.
-        // Emit a compile-time check that the `worker-thread` feature is enabled.
-        // Without it, `run_on_worker` is a stub that runs inline (silent degradation).
-        // Check both `worker-thread` (direct) and `default-worker` (implies worker-thread
-        // via miniextendr-api, but the user crate may only have the latter in its features).
-        let worker_feature_check = {
-            let fn_name = rust_ident.to_string();
-            let msg = format!(
-                "`#[miniextendr(worker)]` on `{fn_name}` requires the `worker-thread` cargo feature. \
-                 Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
-            );
-            quote::quote! {
-                #[cfg(not(any(feature = "worker-thread", feature = "default-worker")))]
-                compile_error!(#msg);
-            }
-        };
-        let c_wrapper_doc = format!(
-            "C wrapper for [`{}`] (worker thread). See [`{}`] for R wrapper.",
-            rust_ident, r_wrapper_generator
-        );
-        let worker_panic_handler = if error_in_r {
-            quote::quote! {
-                ::miniextendr_api::error_value::make_rust_error_value(
-                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                    "panic",
-                    Some(#call_param_ident),
-                )
-            }
-        } else {
-            quote::quote! {
-                ::miniextendr_api::worker::panic_message_to_r_error(
-                    ::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                    None,
-                )
-            }
-        };
-        if error_in_r {
-            // error_in_r: run_on_worker returns Result; Err → tagged error value
-            quote::quote! {
-                #worker_feature_check
-
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #rng_get
-                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
-                        #(#pre_call_statements)*
-                        #(#pre_closure_stmts)*
-
-                        match ::miniextendr_api::worker::run_on_worker(move || {
-                            #(#in_closure_stmts)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            #rust_result_ident
-                        }) {
-                            Ok(#rust_result_ident) => {
-                                #unwind_protect_fn(
-                                    move || #return_expression,
-                                    None,
-                                )
-                            }
-                            Err(__panic_msg) => {
-                                ::miniextendr_api::error_value::make_rust_error_value(
-                                    &__panic_msg, "panic", Some(#call_param_ident),
-                                )
-                            }
-                        }
-                    }));
-                    #rng_put
-                    match __miniextendr_panic_result {
-                        Ok(sexp) => sexp,
-                        Err(payload) => { #worker_panic_handler },
-                    }
-                }
-            }
-        } else {
-            // run_on_worker returns Result; Err → R error via Rf_error
-            quote::quote! {
-                #worker_feature_check
-
-                #[doc = #c_wrapper_doc]
-                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                    #rng_get
-                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
-                        #(#pre_call_statements)*
-                        #(#pre_closure_stmts)*
-
-                        match ::miniextendr_api::worker::run_on_worker(move || {
-                            #(#in_closure_stmts)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            #rust_result_ident
-                        }) {
-                            Ok(#rust_result_ident) => {
-                                #unwind_protect_fn(
-                                    move || #return_expression,
-                                    None,
-                                )
-                            }
-                            Err(__panic_msg) => {
-                                ::miniextendr_api::worker::panic_message_to_r_error(__panic_msg, None)
-                            }
-                        }
-                    }));
-                    #rng_put
-                    match __miniextendr_panic_result {
-                        Ok(sexp) => sexp,
-                        Err(payload) => { #worker_panic_handler },
-                    }
-                }
-            }
-        }
-    };
-
-    // check the validity of the provided C-function!
-    if abi.is_some() {
-        // check that #[no_mangle] or #[unsafe(no_mangle)] or #[export_name] is present!
-        let has_no_mangle = attrs.iter().any(|attr| {
-            attr.path().is_ident("no_mangle")
-                || attr
-                    .parse_nested_meta(|meta| {
-                        if meta.path.is_ident("no_mangle") {
-                            Err(meta.error("found #[no_mangle]"))
-                        } else {
-                            Ok(())
-                        }
-                    })
-                    .is_err()
-        });
-
-        let has_export_name = attrs.iter().any(|attr| attr.path().is_ident("export_name"));
-
-        if !has_no_mangle && !has_export_name {
-            return syn::Error::new(
-                attrs
-                    .first()
-                    .map(|attr| attr.span())
-                    .unwrap_or_else(|| abi.span()),
-                "extern \"C-unwind\" functions need a visible C symbol for R's .Call interface. \
-                 Add one of:\n  \
-                 - `#[unsafe(no_mangle)]` (Rust 2024 edition)\n  \
-                 - `#[no_mangle]` (Rust 2021 edition)\n  \
-                 - `#[export_name = \"my_symbol\"]` (custom symbol name)",
-            )
-            .into_compile_error()
-            .into();
-        }
-
-        // Validate return type is SEXP for extern "C-unwind" functions
-        match output {
-            non_return_type @ syn::ReturnType::Default => {
-                return syn::Error::new(
-                    non_return_type.span(),
-                    "extern \"C-unwind\" functions used with #[miniextendr] must return SEXP. \
-                     Add `-> miniextendr_api::ffi::SEXP` as the return type. \
-                     If you want automatic type conversion, remove `extern \"C-unwind\"` and let \
-                     the macro generate the C wrapper.",
-                )
-                .into_compile_error()
-                .into();
-            }
-            syn::ReturnType::Type(_rarrow, output_type) => match output_type.as_ref() {
-                syn::Type::Path(type_path) => {
-                    if let Some(path_to_sexp) = type_path.path.segments.last().map(|x| &x.ident)
-                        && path_to_sexp != "SEXP"
-                    {
-                        return syn::Error::new(
-                            path_to_sexp.span(),
-                            format!(
-                                "extern \"C-unwind\" functions must return SEXP, found `{}`. \
-                                 R's .Call interface expects SEXP return values. \
-                                 Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
-                                 `extern \"C-unwind\"` to let the macro handle type conversion.",
-                                path_to_sexp,
-                            ),
-                        )
-                        .into_compile_error()
-                        .into();
-                    }
-                }
-                _ => {
-                    return syn::Error::new(
-                        output_type.span(),
-                        "extern \"C-unwind\" functions must return SEXP. \
-                         R's .Call interface expects SEXP return values. \
-                         Change the return type to `miniextendr_api::ffi::SEXP`, or remove \
-                         `extern \"C-unwind\"` to let the macro handle type conversion.",
-                    )
-                    .into_compile_error()
-                    .into();
-                }
-            },
-        }
-
-        // Validate all input types are SEXP for extern "C-unwind" functions.
-        // R's .Call interface passes all arguments as SEXP, so accepting other types is UB.
-        // Also reject variadic (...) signatures which are not valid for .Call.
-        for input in inputs.iter() {
-            match input {
-                syn::FnArg::Receiver(recv) => {
-                    return syn::Error::new_spanned(
-                        recv,
-                        "extern \"C-unwind\" functions cannot have a `self` parameter. \
-                         R's .Call interface only accepts SEXP arguments. \
-                         Use `#[miniextendr(env|r6|s3|s4|s7)]` on an impl block for methods.",
-                    )
-                    .into_compile_error()
-                    .into();
-                }
-                syn::FnArg::Typed(pat_type) => {
-                    // Check if this is a variadic pattern (...)
-                    if let syn::Pat::Rest(_) = pat_type.pat.as_ref() {
-                        return syn::Error::new_spanned(
-                            pat_type,
-                            "extern functions cannot use variadic (...) - .Call passes fixed arguments",
-                        )
-                        .into_compile_error()
-                        .into();
-                    }
-
-                    // Validate type is SEXP
-                    let is_sexp = match pat_type.ty.as_ref() {
-                        syn::Type::Path(type_path) => type_path
-                            .path
-                            .segments
-                            .last()
-                            .is_some_and(|seg| seg.ident == "SEXP"),
-                        _ => false,
-                    };
-
-                    if !is_sexp {
-                        // Check if the type looks like &Dots or Dots
-                        let is_dots_type =
-                            if let syn::Type::Reference(type_ref) = pat_type.ty.as_ref() {
-                                if let syn::Type::Path(inner) = type_ref.elem.as_ref() {
-                                    inner
-                                        .path
-                                        .segments
-                                        .last()
-                                        .is_some_and(|seg| seg.ident == "Dots")
-                                } else {
-                                    false
-                                }
-                            } else if let syn::Type::Path(type_path) = pat_type.ty.as_ref() {
-                                type_path
-                                    .path
-                                    .segments
-                                    .last()
-                                    .is_some_and(|seg| seg.ident == "Dots")
-                            } else {
-                                false
-                            };
-
-                        let msg = if is_dots_type {
-                            "extern functions cannot use Dots; use `...` syntax in non-extern #[miniextendr] functions instead"
-                        } else {
-                            "extern function parameters must be SEXP - .Call passes all arguments as SEXP"
-                        };
-                        return syn::Error::new_spanned(&pat_type.ty, msg)
-                            .into_compile_error()
-                            .into();
-                    }
-                }
-            }
-        }
-    }
+    let c_wrapper_inputs_vec: Vec<syn::FnArg> = c_wrapper_inputs.clone();
+    let c_wrapper = build_fn_c_wrapper(&FnCWrapperInputs {
+        abi,
+        use_main_thread,
+        rng,
+        error_in_r,
+        rust_ident,
+        c_ident: &c_ident,
+        r_wrapper_const_ident: &r_wrapper_generator,
+        vis,
+        generics,
+        c_wrapper_inputs: &c_wrapper_inputs_vec,
+        call_param_ident: &call_param_ident,
+        rust_inputs: &rust_inputs,
+        rust_result_ident: &rust_result_ident,
+        pre_call_statements: &pre_call_statements,
+        closure_statements: &closure_statements,
+        pre_closure_stmts: &pre_closure_stmts,
+        in_closure_stmts: &in_closure_stmts,
+        post_call_statements: &post_call_statements,
+        return_expression: &return_expression,
+        rng_get: &rng_get,
+        rng_put: &rng_put,
+        unwind_protect_fn: &unwind_protect_fn,
+        source_loc_doc: &source_loc_doc,
+    });
 
     // region: R wrappers generation in `fn`
     // Build R formal parameters and call arguments using shared builder
@@ -1360,7 +1300,7 @@ pub fn miniextendr(
         arg_builder = arg_builder.with_dots(named_dots.clone().map(|id| id.to_string()));
     }
     // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
-    let mut merged_defaults = parsed.param_defaults().clone();
+    let mut merged_defaults = parsed.param_defaults();
     // Add default for match_arg params that don't already have an explicit default.
     // Use a placeholder that gets replaced at write time with the actual choices
     // from the enum's MatchArg::CHOICES (resolved when the cdylib is loaded).
@@ -1368,29 +1308,18 @@ pub fn miniextendr(
     // (r_name, rust_param) pairs — used later to build @param doc placeholders
     let mut match_arg_r_names: Vec<(String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            match_arg_param,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+        let r_name = r_wrapper_builder::normalize_r_arg_string(match_arg_param);
         match_arg_r_names.push((r_name.clone(), match_arg_param.clone()));
         if !merged_defaults.contains_key(&r_name) {
-            let placeholder = format!(
-                ".__MX_MATCH_ARG_CHOICES_{}_{}__",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_name
-            );
+            let placeholder =
+                crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
             merged_defaults.insert(r_name.clone(), placeholder.clone());
             match_arg_placeholders.push((placeholder, match_arg_param.clone()));
         }
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
     for (param_name, choices) in parsed.choices_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            param_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+        let r_name = r_wrapper_builder::normalize_r_arg_string(param_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
         merged_defaults
             .entry(r_name)
@@ -1441,7 +1370,7 @@ pub fn miniextendr(
         let class = s3_class.as_ref().expect("s3_class validated at parse time");
         r_wrapper_ident_str = format!("{}.{}", generic, class);
         // Add @importFrom for vctrs generics so roxygen registers the dependency
-        let import_comment = if is_vctrs_generic(&generic) {
+        let import_comment = if crate::vctrs_generics::is_vctrs_generic(&generic) {
             format!("#' @importFrom vctrs {}\n", generic)
         } else {
             String::new()
@@ -1480,75 +1409,49 @@ pub fn miniextendr(
         crate::lifecycle::inject_lifecycle_badge(&mut roxygen_tags, spec);
     }
 
-    // Auto-generate @param tags for choices params (unless user already wrote one)
-    for arg in inputs.iter() {
-        if let syn::FnArg::Typed(pt) = arg
-            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-        {
-            let rust_name = pat_ident.ident.to_string();
-            if let Some(choices) = parsed.choices_for_param(&rust_name) {
-                let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-                // Only inject if user didn't already write @param for this param
-                let has_user_param = roxygen_tags
-                    .iter()
-                    .any(|t| t.trim_start().starts_with(&format!("@param {}", r_name)));
-                if !has_user_param {
-                    let quoted: Vec<String> =
-                        choices.iter().map(|c| format!("\"{}\"", c)).collect();
-                    let prefix = if parsed.has_several_ok(&rust_name) {
-                        "One or more of"
-                    } else {
-                        "One of"
-                    };
-                    roxygen_tags.push(format!(
-                        "@param {} {} {}.",
-                        r_name,
-                        prefix,
-                        quoted.join(", ")
-                    ));
-                }
-            }
-        }
-    }
-
-    // Auto-generate @param tags for match_arg params (unless user already wrote one).
-    // Emits a placeholder that gets replaced at write time with the actual choices,
-    // e.g. `One of "Fast", "Safe", "Debug".`
-    // Collect (doc_placeholder, rust_param) for MX_MATCH_ARG_PARAM_DOCS entries.
+    // Auto-generate @param tags for every non-dots parameter the user didn't
+    // already document. Priority, per param:
+    //   1. choices(...)      — quoted list, "One of ..." / "One or more of ..."
+    //   2. match_arg         — placeholder resolved at write time (#210)
+    //   3. everything else   — "(no documentation available)" fallback
+    //
+    // Collect (doc_placeholder, rust_param) as we go so the write-time resolver
+    // registry gets an MX_MATCH_ARG_PARAM_DOCS entry for every match_arg param.
     let mut match_arg_param_doc_placeholders: Vec<(String, String)> = Vec::new();
-    for (r_name, rust_param) in &match_arg_r_names {
-        let has_user_param = roxygen_tags
+    for arg in inputs.iter() {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        if parsed.is_dots_param(&pat_ident.ident) {
+            continue;
+        }
+        let rust_name = pat_ident.ident.to_string();
+        let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        let already_documented = roxygen_tags
             .iter()
             .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
-        if !has_user_param {
-            let doc_placeholder = format!(
-                ".__MX_MATCH_ARG_PARAM_DOC_{}_{}__",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_name
-            );
-            roxygen_tags.push(format!("@param {r_name} {doc_placeholder}"));
-            match_arg_param_doc_placeholders.push((doc_placeholder, rust_param.clone()));
+        if already_documented {
+            continue;
         }
-    }
 
-    // Auto-generate @param for any function parameter that doesn't have one yet.
-    // This prevents R CMD check warnings about undocumented arguments.
-    // Skip dots params (they become `...` in R formals, not a named param).
-    for arg in inputs.iter() {
-        if let syn::FnArg::Typed(pt) = arg
-            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-        {
-            // Skip dots parameters — they map to `...` in R, which can't have @param
-            if parsed.is_dots_param(&pat_ident.ident) {
-                continue;
-            }
-            let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-            let has_param = roxygen_tags
-                .iter()
-                .any(|t| t.trim_start().starts_with(&format!("@param {r_name}")));
-            if !has_param {
-                roxygen_tags.push(format!("@param {r_name} (no documentation available)"));
-            }
+        if let Some(choices) = parsed.choices_for_param(&rust_name) {
+            let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
+            let prefix = if parsed.has_several_ok(&rust_name) {
+                "One or more of"
+            } else {
+                "One of"
+            };
+            roxygen_tags.push(format!("@param {r_name} {prefix} {}.", quoted.join(", ")));
+        } else if parsed.has_match_arg_attr(&rust_name) {
+            let doc_placeholder =
+                crate::match_arg_keys::param_doc_placeholder(&c_ident.to_string(), &r_name);
+            roxygen_tags.push(format!("@param {r_name} {doc_placeholder}"));
+            match_arg_param_doc_placeholders.push((doc_placeholder, rust_name));
+        } else {
+            roxygen_tags.push(format!("@param {r_name} (no documentation available)"));
         }
     }
 
@@ -1616,11 +1519,8 @@ pub fn miniextendr(
         let mut lines = Vec::new();
         for (r_param, rust_name, _) in &match_arg_param_info {
             // choices helper call
-            let choices_c_name = format!(
-                "C_{}__match_arg_choices__{}",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_param
-            );
+            let choices_c_name =
+                crate::match_arg_keys::choices_helper_c_name(&c_ident.to_string(), r_param);
             lines.push(format!(
                 ".__mx_choices_{param} <- .Call({choices_c}, .call = match.call())",
                 param = r_param,
@@ -1684,14 +1584,10 @@ pub fn miniextendr(
 
     // Generate R-side precondition checks (stopifnot + fallback precheck calls)
     // Skip both match_arg and choices params (already validated by match.arg)
-    let mut skip_params = parsed.match_arg_params().clone();
-    for param_name in parsed.choices_params().keys() {
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            param_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
-        skip_params.insert(r_name);
+    let mut skip_params: std::collections::HashSet<String> =
+        parsed.match_arg_params().cloned().collect();
+    for (param_name, _) in parsed.choices_params() {
+        skip_params.insert(r_wrapper_builder::normalize_r_arg_string(param_name));
     }
     let precondition_output = r_preconditions::build_precondition_checks(inputs, &skip_params);
     let precondition_prelude = if precondition_output.static_checks.is_empty() {
@@ -1702,7 +1598,7 @@ pub fn miniextendr(
 
     // Generate Missing<T> prelude: `if (missing(param)) param <- quote(expr=)`
     let missing_prelude = {
-        let lines = r_wrapper_builder::build_missing_prelude(inputs, parsed.param_defaults());
+        let lines = r_wrapper_builder::build_missing_prelude(inputs, &parsed.param_defaults());
         if lines.is_empty() {
             String::new()
         } else {
@@ -1824,111 +1720,48 @@ pub fn miniextendr(
     let original_item = original_item;
 
     // Generate match_arg choices helper C wrappers and R_CallMethodDef entries
-    let mut match_arg_helper_def_idents: Vec<syn::Ident> = Vec::new();
-    let match_arg_helpers: Vec<proc_macro2::TokenStream> = match_arg_param_info
-        .iter()
-        .map(|(r_param, rust_name, param_ty)| {
-            // For several_ok, the param type is e.g. Vec<Mode>/Box<[Mode]>/[Mode; N]/&[Mode]
-            // — extract inner Mode for choices_sexp
-            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_name) {
-                classify_several_ok_container(param_ty)
-                    .map(|(_, t)| t)
-                    .unwrap_or(param_ty)
-            } else {
-                param_ty
-            };
-            let helper_fn_name = format!(
-                "C_{}__match_arg_choices__{}",
-                c_ident.to_string().trim_start_matches("C_"),
-                r_param
-            );
-            let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
-            let helper_def_ident = syn::Ident::new(
-                &format!("call_method_def_{}", helper_fn_name),
-                proc_macro2::Span::call_site(),
-            );
-            match_arg_helper_def_idents.push(helper_def_ident.clone());
-            let helper_c_name = syn::LitCStr::new(
-                std::ffi::CString::new(helper_fn_name.clone())
-                    .expect("valid C string")
-                    .as_c_str(),
-                proc_macro2::Span::call_site(),
-            );
-            quote::quote! {
-                #(#cfg_attrs)*
-                #[allow(non_snake_case)]
-                #[unsafe(no_mangle)]
-                pub extern "C-unwind" fn #helper_fn_ident(
-                    __miniextendr_call: ::miniextendr_api::ffi::SEXP,
-                ) -> ::miniextendr_api::ffi::SEXP {
-                    ::miniextendr_api::choices_sexp::<#choices_ty>()
-                }
-
-                #(#cfg_attrs)*
-                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
-                #[allow(non_upper_case_globals)]
-                #[allow(non_snake_case)]
-                static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
-                    ::miniextendr_api::ffi::R_CallMethodDef {
-                        name: #helper_c_name.as_ptr(),
-                        fun: Some(std::mem::transmute::<
-                            unsafe extern "C-unwind" fn(
-                                ::miniextendr_api::ffi::SEXP,
-                            ) -> ::miniextendr_api::ffi::SEXP,
-                            unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
-                        >(#helper_fn_ident)),
-                        numArgs: 1i32,
-                    }
-                };
-            }
-        })
-        .collect();
+    let match_arg_helpers = build_match_arg_helpers(
+        &match_arg_param_info,
+        &parsed,
+        &c_ident.to_string(),
+        &cfg_attrs,
+    );
 
     // Generate MX_MATCH_ARG_CHOICES entries for placeholder → choices replacement
+    // Resolve the `MatchArg`-bound type used in the choices_str closure: for
+    // `several_ok` params that's the inner element of the container, otherwise
+    // it's the param type directly.
+    let choices_ty_for = |rust_param: &str| -> Option<&syn::Type> {
+        let (_, _, param_ty) = match_arg_param_info
+            .iter()
+            .find(|(_, rn, _)| rn == rust_param)?;
+        let ty: &syn::Type = if parsed.has_several_ok(rust_param) {
+            classify_several_ok_container(param_ty)
+                .map(|(_, t)| t)
+                .unwrap_or(param_ty)
+        } else {
+            param_ty
+        };
+        Some(ty)
+    };
+
     let match_arg_choices_entries: Vec<proc_macro2::TokenStream> = match_arg_placeholders
         .iter()
         .filter_map(|(placeholder, rust_param)| {
-            // Find the type for this param from match_arg_param_info
-            let (_, _, param_ty) = match_arg_param_info
-                .iter()
-                .find(|(_, rn, _)| rn == rust_param)?;
-            // For several_ok, extract inner type from the container (Vec<Mode>, Box<[Mode]>, etc.)
-            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_param) {
-                classify_several_ok_container(param_ty)
-                    .map(|(_, t)| t)
-                    .unwrap_or(param_ty)
-            } else {
-                param_ty
-            };
+            let choices_ty = choices_ty_for(rust_param)?;
             let entry_ident = syn::Ident::new(
                 &format!(
                     "match_arg_choices_entry_{}",
-                    placeholder.trim_matches('_').replace('.', "_")
+                    crate::match_arg_keys::placeholder_ident_suffix(placeholder)
                 ),
                 proc_macro2::Span::call_site(),
             );
-            Some(quote::quote! {
-                #(#cfg_attrs)*
-                #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES)]
-                #[linkme(crate = ::miniextendr_api::linkme)]
-                #[allow(non_upper_case_globals)]
-                #[allow(non_snake_case)]
-                static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
-                    ::miniextendr_api::registry::MatchArgChoicesEntry {
-                        placeholder: #placeholder,
-                        choices_str: || {
-                            <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                                .iter()
-                                .map(|c| format!(
-                                    "\"{}\"",
-                                    ::miniextendr_api::match_arg::escape_r_string(c)
-                                ))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        },
-                    };
-            })
+            Some(crate::match_arg_keys::choices_entry_tokens(
+                &cfg_attrs,
+                &entry_ident,
+                placeholder,
+                choices_ty,
+            ))
         })
         .collect();
 
@@ -1937,46 +1770,22 @@ pub fn miniextendr(
         match_arg_param_doc_placeholders
             .iter()
             .filter_map(|(doc_placeholder, rust_param)| {
-                // Find the type for this param from match_arg_param_info
-                let (_, _, param_ty) = match_arg_param_info
-                    .iter()
-                    .find(|(_, rn, _)| rn == rust_param)?;
-                // For several_ok, extract inner type from the container
-                // (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode])
-                let choices_ty: &syn::Type = if parsed.has_several_ok(rust_param) {
-                    classify_several_ok_container(param_ty)
-                        .map(|(_, t)| t)
-                        .unwrap_or(param_ty)
-                } else {
-                    param_ty
-                };
+                let choices_ty = choices_ty_for(rust_param)?;
                 let several_ok_lit = parsed.has_several_ok(rust_param);
                 let entry_ident = syn::Ident::new(
                     &format!(
                         "match_arg_param_doc_entry_{}",
-                        doc_placeholder.trim_matches('_').replace('.', "_")
+                        crate::match_arg_keys::placeholder_ident_suffix(doc_placeholder)
                     ),
                     proc_macro2::Span::call_site(),
                 );
-                Some(quote::quote! {
-                    #(#cfg_attrs)*
-                    #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_PARAM_DOCS)]
-                    #[linkme(crate = ::miniextendr_api::linkme)]
-                    #[allow(non_upper_case_globals)]
-                    #[allow(non_snake_case)]
-                    static #entry_ident: ::miniextendr_api::registry::MatchArgParamDocEntry =
-                        ::miniextendr_api::registry::MatchArgParamDocEntry {
-                            placeholder: #doc_placeholder,
-                            several_ok: #several_ok_lit,
-                            choices_str: || {
-                                <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                                    .iter()
-                                    .map(|c| format!("\"{}\"", c))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            },
-                        };
-                })
+                Some(crate::match_arg_keys::param_doc_entry_tokens(
+                    &cfg_attrs,
+                    &entry_ident,
+                    doc_placeholder,
+                    several_ok_lit,
+                    choices_ty,
+                ))
             })
             .collect();
 
@@ -3023,14 +2832,37 @@ pub fn impl_typed_external(input: proc_macro::TokenStream) -> proc_macro::TokenS
 #[proc_macro]
 pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let pkg_name: syn::Ident = if input.is_empty() {
-        // Auto-detect from CARGO_CRATE_NAME (set by cargo during compilation)
-        let name = std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| {
-            panic!(
-                "CARGO_CRATE_NAME not set. Either pass the package name explicitly: \
-                 miniextendr_init!(mypkg), or ensure you're building with cargo."
-            )
-        });
-        syn::Ident::new(&name, proc_macro2::Span::call_site())
+        // Auto-detect from CARGO_CRATE_NAME (set by cargo during compilation).
+        // Cargo normalizes hyphens → underscores, so this is almost always a
+        // valid Rust/C identifier. Still parse through syn so malformed values
+        // surface as a compile error rather than an ICE.
+        let name = match std::env::var("CARGO_CRATE_NAME") {
+            Ok(n) => n,
+            Err(_) => {
+                return syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "CARGO_CRATE_NAME not set. Either pass the package name explicitly: \
+                     miniextendr_init!(mypkg), or ensure you're building with cargo.",
+                )
+                .into_compile_error()
+                .into();
+            }
+        };
+        match syn::parse_str::<syn::Ident>(&name) {
+            Ok(id) => id,
+            Err(_) => {
+                return syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    format!(
+                        "CARGO_CRATE_NAME `{name}` is not a valid C identifier; \
+                         R_init_<pkg> must match `[A-Za-z_][A-Za-z0-9_]*`. \
+                         Pass the name explicitly: miniextendr_init!(my_pkg)."
+                    ),
+                )
+                .into_compile_error()
+                .into();
+            }
+        }
     } else {
         syn::parse_macro_input!(input as syn::Ident)
     };

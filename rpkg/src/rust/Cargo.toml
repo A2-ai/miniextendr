@@ -72,11 +72,11 @@ full = [
 ]
 
 [dependencies]
-miniextendr-api = { version = "*", path = "../../vendor/miniextendr-api" }
+miniextendr-api = { version = "*", path = "../../vendor/miniextendr-api-0.1.0" }
 log = { version = "0.4", optional = true }
 
 [build-dependencies]
-miniextendr-lint = { version = "*", path = "../../vendor/miniextendr-lint" }
+miniextendr-lint = { version = "*", path = "../../vendor/miniextendr-lint-0.1.0" }
 
 # codegen-units = 1 ensures the entire user crate compiles into a single .o file
 # inside the staticlib archive. This is required for linkme's distributed_slice:
@@ -92,7 +92,6 @@ codegen-units = 1
 [patch]
 
 [patch.crates-io]
-miniextendr-api = { path = "../../vendor/miniextendr-api" }
-miniextendr-lint = { path = "../../vendor/miniextendr-lint" }
-miniextendr-macros = { path = "../../vendor/miniextendr-macros" }
-miniextendr-macros-core = { path = "../../vendor/miniextendr-macros-core" }
+miniextendr-api = { path = "../../vendor/miniextendr-api-0.1.0" }
+miniextendr-lint = { path = "../../vendor/miniextendr-lint-0.1.0" }
+miniextendr-macros = { path = "../../vendor/miniextendr-macros-0.1.0" }
