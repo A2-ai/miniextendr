@@ -2662,28 +2662,15 @@ fn generate_method_match_arg_helpers(
             param_ty.clone()
         };
 
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            rust_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
 
         // C helper fn that R calls via .__mx_choices_<param> <- .Call(C_...)
-        let helper_fn_name = format!(
-            "{}__match_arg_choices__{}",
-            c_ident_str.trim_start_matches("C_"),
-            r_name
-        );
-        let helper_fn_ident = syn::Ident::new(
-            &format!("C_{helper_fn_name}"),
-            proc_macro2::Span::call_site(),
-        );
-        let helper_def_ident = syn::Ident::new(
-            &format!("call_method_def_C_{helper_fn_name}"),
-            proc_macro2::Span::call_site(),
-        );
+        let helper_c_name_str = crate::match_arg_keys::choices_helper_c_name(&c_ident_str, &r_name);
+        let helper_fn_ident = syn::Ident::new(&helper_c_name_str, proc_macro2::Span::call_site());
+        let helper_def_ident =
+            crate::match_arg_keys::choices_helper_def_ident(&c_ident_str, &r_name);
         let helper_c_name = syn::LitCStr::new(
-            std::ffi::CString::new(format!("C_{helper_fn_name}"))
+            std::ffi::CString::new(helper_c_name_str.clone())
                 .expect("valid C string")
                 .as_c_str(),
             proc_macro2::Span::call_site(),
