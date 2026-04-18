@@ -1,5 +1,0 @@
-error: `unsafe(...)` must specify an option: currently only `unsafe(main_thread)` is supported
- --> tests/ui/unsafe_empty.rs:5:15
-  |
-5 | #[miniextendr(unsafe())]
-  |               ^^^^^^^^

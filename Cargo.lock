@@ -2197,20 +2197,10 @@ version = "0.1.0"
 dependencies = [
  "insta",
  "miniextendr-api",
- "miniextendr-macros-core",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
  "trybuild",
-]
-
-[[package]]
-name = "miniextendr-macros-core"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]

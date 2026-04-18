@@ -26,33 +26,31 @@
 
 use crate::miniextendr_impl::{ParsedImpl, ParsedMethod};
 
-/// Format the write-time match_arg placeholder for an impl method parameter.
-///
-/// The placeholder is substituted by `registry::write_r_wrappers_to_file` with the
-/// enum's `MatchArg::CHOICES` (via a matching `MX_MATCH_ARG_CHOICES` entry) when
-/// the cdylib runs to produce the final R wrapper file. The shape matches the
-/// standalone-fn placeholder convention — same prefix, same delimiters — so both
-/// surfaces resolve through the same registry pass.
-pub(crate) fn match_arg_placeholder(c_ident: &str, r_param: &str) -> String {
-    format!(
-        ".__MX_MATCH_ARG_CHOICES_{}_{}__",
-        c_ident.trim_start_matches("C_"),
-        r_param
-    )
+/// Check whether `s` is a bare R identifier (only `[A-Za-z_][A-Za-z0-9_]*`).
+pub(crate) fn is_bare_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Format the write-time `@param` doc placeholder for an impl-method match_arg param.
-///
-/// The cdylib write pass rewrites this to a rendered choice description via a
-/// matching `MX_MATCH_ARG_PARAM_DOCS` entry. Shape mirrors the standalone-fn
-/// convention in `lib.rs` (#210).
-pub(crate) fn match_arg_param_doc_placeholder(c_ident: &str, r_param: &str) -> String {
-    format!(
-        ".__MX_MATCH_ARG_PARAM_DOC_{}_{}__",
-        c_ident.trim_start_matches("C_"),
-        r_param
-    )
+/// Return a `.__MX_CLASS_REF_<name>__` placeholder (for bare identifiers) so the
+/// resolver can look up the actual R class name at cdylib write time, or `name`
+/// verbatim (for namespaced / non-identifier strings).
+pub(crate) fn class_ref_or_verbatim(name: &str) -> String {
+    if is_bare_identifier(name) {
+        format!(".__MX_CLASS_REF_{name}__")
+    } else {
+        name.to_string()
+    }
 }
+
+pub(crate) use crate::match_arg_keys::{
+    choices_placeholder as match_arg_placeholder,
+    param_doc_placeholder as match_arg_param_doc_placeholder,
+};
 
 /// Build the R-param-name → @param placeholder map for a method's match_arg and
 /// choices params. Pass to `MethodDocBuilder::with_match_arg_doc_placeholders`
@@ -62,12 +60,11 @@ pub(crate) fn match_arg_doc_placeholder_map(
     method: &ParsedMethod,
 ) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
-    for rust_name in &method.method_attrs.per_param_match_arg {
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            rust_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if !attrs.match_arg {
+            continue;
+        }
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         out.insert(
             r_name.clone(),
             match_arg_param_doc_placeholder(c_ident, &r_name),
@@ -90,24 +87,21 @@ fn effective_r_defaults(
     let mut defaults = method.param_defaults.clone();
     // choices(...) → formal default of c("a", "b", ...). Priority: lower than user defaults,
     // higher than match_arg placeholder (which is the fallback for enum-driven validation).
-    for (rust_name, choices) in &method.method_attrs.per_param_choices {
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            rust_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
-        defaults.entry(r_name).or_insert_with(|| {
-            let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
-            format!("c({})", quoted.join(", "))
-        });
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if let Some(choices) = attrs.choices.as_ref() {
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+            defaults.entry(r_name).or_insert_with(|| {
+                let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
+                format!("c({})", quoted.join(", "))
+            });
+        }
     }
     // match_arg → placeholder replaced at write time.
-    for rust_name in &method.method_attrs.per_param_match_arg {
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-            rust_name,
-            proc_macro2::Span::call_site(),
-        ))
-        .to_string();
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if !attrs.match_arg {
+            continue;
+        }
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         defaults
             .entry(r_name.clone())
             .or_insert_with(|| match_arg_placeholder(c_ident, &r_name));
@@ -179,29 +173,20 @@ impl<'a> MethodContext<'a> {
     pub fn match_arg_prelude(&self) -> Vec<String> {
         let mut lines = Vec::new();
 
-        for rust_name in &self.method.method_attrs.per_param_match_arg {
-            let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-                rust_name,
-                proc_macro2::Span::call_site(),
-            ))
-            .to_string();
-            let choices_c_name = format!(
-                "C_{}__match_arg_choices__{}",
-                self.c_ident.trim_start_matches("C_"),
-                r_name
-            );
+        for (rust_name, attrs) in &self.method.method_attrs.per_param {
+            if !attrs.match_arg {
+                continue;
+            }
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+            let choices_c_name =
+                crate::match_arg_keys::choices_helper_c_name(&self.c_ident, &r_name);
             lines.push(format!(
                 ".__mx_choices_{r_name} <- .Call({choices_c_name}, .call = match.call())"
             ));
             lines.push(format!(
                 "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
             ));
-            if self
-                .method
-                .method_attrs
-                .per_param_several_ok
-                .contains(rust_name)
-            {
+            if attrs.several_ok {
                 lines.push(format!(
                     "{r_name} <- base::match.arg({r_name}, .__mx_choices_{r_name}, several.ok = TRUE)"
                 ));
@@ -212,20 +197,14 @@ impl<'a> MethodContext<'a> {
             }
         }
 
-        for rust_name in self.method.method_attrs.per_param_choices.keys() {
+        for (rust_name, attrs) in &self.method.method_attrs.per_param {
+            if attrs.choices.is_none() {
+                continue;
+            }
             // choices(...) params: formal carries `c("a", "b", ...)` as the default,
             // so R's match.arg() finds the choice list on its own. No C helper.
-            let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-                rust_name,
-                proc_macro2::Span::call_site(),
-            ))
-            .to_string();
-            if self
-                .method
-                .method_attrs
-                .per_param_several_ok
-                .contains(rust_name)
-            {
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+            if attrs.several_ok {
                 lines.push(format!(
                     "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
                 ));
@@ -241,23 +220,10 @@ impl<'a> MethodContext<'a> {
     /// don't need `stopifnot()` preconditions generated for them.
     fn match_arg_skip_set(&self) -> std::collections::HashSet<String> {
         let mut s = std::collections::HashSet::new();
-        for rust_name in &self.method.method_attrs.per_param_match_arg {
-            s.insert(
-                crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-                    rust_name,
-                    proc_macro2::Span::call_site(),
-                ))
-                .to_string(),
-            );
-        }
-        for rust_name in self.method.method_attrs.per_param_choices.keys() {
-            s.insert(
-                crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
-                    rust_name,
-                    proc_macro2::Span::call_site(),
-                ))
-                .to_string(),
-            );
+        for (rust_name, attrs) in &self.method.method_attrs.per_param {
+            if attrs.match_arg || attrs.choices.is_some() {
+                s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
+            }
         }
         s
     }

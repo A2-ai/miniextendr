@@ -59,7 +59,6 @@ miniextendr_status <- function(path = ".") {
     "Vendored Crates" = c(
       "vendor/miniextendr-api",
       "vendor/miniextendr-macros",
-      "vendor/miniextendr-macros-core",
       "vendor/miniextendr-lint",
       "vendor/miniextendr-engine"
     ),
@@ -233,7 +232,7 @@ miniextendr_validate <- function(path = ".") {
 
   # Check vendored crates
   cli::cli_h2("Vendored crates")
-  required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core",
+  required_crates <- c("miniextendr-api", "miniextendr-macros",
                         "miniextendr-lint", "miniextendr-engine")
   missing_crates <- character()
   vendor_dir <- usethis::proj_path("vendor")

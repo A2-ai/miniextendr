@@ -17,7 +17,6 @@ The repository is not a single crate or a single R package. It is a workspace pl
 |---------|------|------------------|----------------|----------------|
 | `miniextendr-api` | Rust crate | Workspace member | Published | Main runtime crate for Rust-to-R interop |
 | `miniextendr-macros` | Rust crate | Workspace member | Published | Proc macros such as `#[miniextendr]` and derive macros |
-| `miniextendr-macros-core` | Rust crate | Workspace member | Internal only | Shared parser/generation support for macros and lint |
 | `miniextendr-engine` | Rust crate | Workspace member | Published | Standalone R embedding and initialization engine |
 | `miniextendr-cli` | Rust crate / binary | Workspace member | Internal for now | CLI for scaffolding and workflow commands |
 | `miniextendr-lint` | Rust crate | Workspace member | Internal only | Build-time source linter for `#[miniextendr]` usage |
@@ -52,15 +51,6 @@ This crate contains the procedural macros:
 - source-level defaults and macro-side feature behavior
 
 Downstream users usually access these macros through `miniextendr-api`, but contributors working on macro expansion logic will edit this crate directly.
-
-### `miniextendr-macros-core`
-
-This is shared implementation support for parsing and generation logic used by:
-
-- `miniextendr-macros`
-- `miniextendr-lint`
-
-It exists so macro parsing and lint parsing stay in sync. It is intentionally internal and not published.
 
 ### `miniextendr-engine`
 
@@ -183,7 +173,7 @@ Start with:
 You will usually touch:
 
 - `miniextendr-api` for runtime behavior
-- `miniextendr-macros` and `miniextendr-macros-core` for macro behavior
+- `miniextendr-macros` for macro behavior
 - `miniextendr-lint` for source diagnostics
 - `rpkg/` for end-to-end package validation
 

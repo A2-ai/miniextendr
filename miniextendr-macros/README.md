@@ -27,7 +27,7 @@ fn add(a: i32, b: i32) -> i32 {
 ```
 
 Common attributes:
-- `#[miniextendr(unsafe(main_thread))]` – run directly on R's main thread.
+- `#[miniextendr(worker)]` – opt into worker-thread execution (default is main thread).
 - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` – control visibility.
 - `#[miniextendr(check_interrupt)]` – call `R_CheckUserInterrupt()` up front.
 - `#[miniextendr(coerce)]` – enable coercion for non-native argument types.
@@ -50,8 +50,8 @@ thread when invoked from a non-main thread (requires a worker context).
 
 ## Notes
 
-- Attributes like `#[miniextendr(unsafe(main_thread))]` and
-  `#[miniextendr(coerce)]` control wrapper behavior and safety.
+- Attributes like `#[miniextendr(worker)]` and `#[miniextendr(coerce)]`
+  control wrapper behavior.
 - R wrapper generation is driven by doc comments and roxygen tags.
 - Impl‑block support covers S3/S4/S7/R6 methods plus env‑style dispatch.
 - Trait dispatch requires `#[miniextendr]` on both the trait definition and the
