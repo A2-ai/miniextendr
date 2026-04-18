@@ -364,6 +364,16 @@ vendor:
       --force \
       -v
 
+# Verify committed Cargo.lock, vendor/, and vendor.tar.xz agree (#157).
+# Runs in CI/pre-release to guarantee the offline build artifact is fresh.
+vendor-verify:
+    cargo run --manifest-path cargo-revendor/Cargo.toml --quiet -- \
+      --verify \
+      --manifest-path rpkg/src/rust/Cargo.toml \
+      --output rpkg/vendor \
+      --compress rpkg/inst/vendor.tar.xz \
+      -v
+
 # Load and test rpkg with devtools
 devtools-test FILTER="": devtools-document
     if [ -z "{{FILTER}}" ]; then \
