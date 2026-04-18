@@ -145,20 +145,17 @@ struct Cli {
     #[arg(long)]
     sync: Vec<PathBuf>,
 
-    /// Use versioned directory names (`vendor/<name>-<version>/`) for
-    /// EVERY vendored crate — including crates that appear only once.
-    /// Without this flag, `cargo vendor` flattens single-version crates
-    /// to `vendor/<name>/` and only uses versioned names when multiple
-    /// versions of the same crate are locked. That creates drift:
-    /// a `vendor/rand/` that silently holds one of several versions, and
-    /// a regeneration can swap which version lives in the flat slot
-    /// without changing the filename.
+    /// Use flat directory names (`vendor/<name>/`) for ALL vendored crates,
+    /// reverting to the old cargo vendor default layout.
     ///
-    /// Opt-in today because adopting it requires updating downstream
-    /// hardcoded paths (rpkg's Cargo.toml freeze target, minirextendr's
-    /// status probe). See #215.
+    /// By default (without this flag), `cargo revendor` uses versioned
+    /// directory names (`vendor/<name>-<version>/`) for every crate, ensuring
+    /// the layout is stable and unambiguous across regenerations.
+    ///
+    /// Use this flag only if you need compatibility with tools that hardcode
+    /// flat vendor paths.
     #[arg(long)]
-    versioned_dirs: bool,
+    flat_dirs: bool,
 }
 
 impl Cli {
@@ -194,6 +191,8 @@ struct JsonOutput {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let v = cli.verbosity();
+    // versioned_dirs is default-on; only disable when --flat-dirs is passed
+    let versioned_dirs = !cli.flat_dirs;
 
     let manifest_path = cli
         .manifest_path
@@ -351,13 +350,18 @@ fn main() -> Result<()> {
         &vendor_staging,
         &patch_pkgs,
         &sync_manifests,
-        cli.versioned_dirs,
+        versioned_dirs,
         v,
     )?;
 
     // Step 4: Extract packaged local crates into vendor staging
     for (pkg_name, crate_path) in &packaged {
-        vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, v)?;
+        let pkg_version = if versioned_dirs {
+            local_pkgs.iter().find(|p| &p.name == pkg_name).map(|p| p.version.as_str())
+        } else {
+            None
+        };
+        vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, pkg_version, v)?;
     }
 
     // Step 5: Strip directories (opt-in)
@@ -374,7 +378,7 @@ fn main() -> Result<()> {
     vendor::strip_vendor_path_deps(&vendor_staging, v)?;
 
     // Step 6: Rewrite inter-crate path deps for local crates
-    vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, v)?;
+    vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, versioned_dirs, v)?;
 
     // Step 7: Clear checksums
     vendor::clear_checksums(&vendor_staging)?;
@@ -415,7 +419,7 @@ fn main() -> Result<()> {
 
     // Step 12: Freeze — rewrite manifest so all sources resolve from vendor/
     if cli.freeze {
-        vendor::freeze_manifest(&manifest_path, &output, &local_pkgs, v)?;
+        vendor::freeze_manifest(&manifest_path, &output, &local_pkgs, versioned_dirs, v)?;
         vendor::regenerate_lockfile(&manifest_path, &output, v)?;
     }
 

@@ -381,8 +381,10 @@ test_that("rpkg scaffolding with external cargo dependency works", {
                 info = paste("configure with FORCE_VENDOR failed:", paste(result$output, collapse = "\n")))
   })
 
-  expect_true(dir.exists(file.path(pkg_path, "vendor", "itertools")),
-              info = "itertools was not vendored")
+  # Accept both flat (vendor/itertools/) and versioned (vendor/itertools-<ver>/) layouts
+  itertools_vendored <- dir.exists(file.path(pkg_path, "vendor", "itertools")) ||
+    length(list.files(file.path(pkg_path, "vendor"), pattern = "^itertools-[0-9]")) > 0
+  expect_true(itertools_vendored, info = "itertools was not vendored")
 
   lib_path <- install_to_templib(pkg_path, tmp)
   generate_r_wrappers(pkg_path)

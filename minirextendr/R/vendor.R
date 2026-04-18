@@ -729,10 +729,18 @@ add_vendor_patches <- function(vendor_dir) {
     '[patch."https://github.com/CGMossa/miniextendr"]'
   )
   for (crate in crates) {
-    if (dir.exists(file.path(vendor_dir, crate))) {
-      patch_lines <- c(patch_lines,
-        sprintf('%s = { path = "../../vendor/%s" }', crate, crate))
+    # Accept both versioned (vendor/<name>-<version>/) and flat (vendor/<name>/) layouts
+    versioned <- list.files(vendor_dir, pattern = paste0("^", crate, "-[0-9]"),
+                            full.names = FALSE)
+    if (length(versioned) > 0) {
+      dir_name <- versioned[[1]]
+    } else if (dir.exists(file.path(vendor_dir, crate))) {
+      dir_name <- crate
+    } else {
+      next
     }
+    patch_lines <- c(patch_lines,
+      sprintf('%s = { path = "../../vendor/%s" }', crate, dir_name))
   }
 
   writeLines(c(content, patch_lines), cargo_toml)
