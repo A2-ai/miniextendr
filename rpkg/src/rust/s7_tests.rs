@@ -419,4 +419,58 @@ impl S7OverrideCircle {
         self.radius
     }
 }
+
+// region: Cross-type S7 property class resolution (#154)
+//
+// `S7PropInner` is a plain S7 class. `S7PropOuter` has a getter returning
+// `S7PropInner`, exercising the `.__MX_S7_PROP_CLASS_<Type>__` placeholder
+// and its write-time resolution against `MX_CLASS_NAMES`. Before #154 the
+// getter's return type would have fallen through to `S7::class_any`; now
+// the property constraint pins to `S7PropInner`.
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7PropInner {
+    label: String,
+}
+
+/// Inner S7 class referenced by a property on [`S7PropOuter`].
+#[miniextendr(s7, internal)]
+impl S7PropInner {
+    /// @param label Character label of the inner class.
+    pub fn new(label: String) -> Self {
+        S7PropInner {
+            label: label.to_string(),
+        }
+    }
+
+    /// Returns the inner class label.
+    pub fn label(&self) -> String {
+        self.label.clone()
+    }
+}
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7PropOuter {
+    inner: String,
+}
+
+/// Outer S7 class with a getter returning another S7 class.
+#[miniextendr(s7, internal)]
+impl S7PropOuter {
+    /// @param inner_label Label used to reconstruct the inner class.
+    pub fn new(inner_label: String) -> Self {
+        S7PropOuter { inner: inner_label }
+    }
+
+    /// Getter whose return type is another S7 class. The generated
+    /// `S7::new_property(class = ...)` should resolve to `S7PropInner`
+    /// (not `S7::class_any`) via the `.__MX_S7_PROP_CLASS_S7PropInner__`
+    /// write-time placeholder (see `#154`).
+    #[miniextendr(s7(getter, prop = "inner"))]
+    pub fn inner_value(&self) -> S7PropInner {
+        S7PropInner {
+            label: self.inner.clone(),
+        }
+    }
+}
 // endregion
