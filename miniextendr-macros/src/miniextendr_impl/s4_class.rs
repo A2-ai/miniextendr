@@ -18,7 +18,9 @@ use super::ParsedImpl;
 /// Roxygen2 `@exportMethod`, `@importFrom methods`, and `@slot` tags are generated
 /// as appropriate.
 pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
-    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+    use crate::r_class_formatter::{
+        ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
+    };
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
@@ -117,22 +119,19 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!("s4_{}", method.ident)
         };
-        // S4 methods use empty defaults for consistency with setMethod
-        let params = crate::r_wrapper_builder::build_r_formals_from_sig(
-            &method.sig,
-            &std::collections::HashMap::new(),
-        );
+        // Build a MethodContext so S4 methods participate in the shared
+        // match_arg prelude + formal-default machinery (#209). The ctx's
+        // `params`/`instance_formals` carry the `c("a", "b")` default for
+        // match_arg'd params, and `match_arg_prelude()` emits the
+        // `base::match.arg()` validation block injected below.
+        let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call(), x@ptr)", c_ident)
         } else {
             format!(".Call({}, .call = match.call(), x@ptr, {})", c_ident, args)
         };
-        let full_params = if params.is_empty() {
-            "x, ...".to_string()
-        } else {
-            format!("x, {}, ...", params)
-        };
+        let full_params = ctx.instance_formals(true);
 
         // Documentation for the generic - skip if class has @noRd
         // Use class-qualified @name to avoid duplicate \alias{generic} warnings
@@ -186,12 +185,14 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             &std::collections::HashSet::new(),
         )
         .static_checks;
+        let match_arg_lines = ctx.match_arg_prelude();
         let r_post_checks = &method.method_attrs.r_post_checks;
         if r_entry.is_some()
             || r_on_exit.is_some()
             || !missing.is_empty()
             || lifecycle.is_some()
             || !preconditions.is_empty()
+            || !match_arg_lines.is_empty()
             || r_post_checks.is_some()
         {
             lines.push(format!(
@@ -214,6 +215,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
             for check in &preconditions {
                 lines.push(format!("  {}", check));
+            }
+            for line in &match_arg_lines {
+                lines.push(format!("  {}", line));
             }
             if let Some(post) = r_post_checks {
                 for line in post.lines() {

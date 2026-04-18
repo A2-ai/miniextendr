@@ -5,8 +5,8 @@
 //! macros on fn parameters inside impl items. The surface is instead
 //! method-level: `#[miniextendr(match_arg(p), choices(q = "a, b"))]`.
 //!
-//! These fixtures exercise the five commonly-used class-system generators
-//! (r6, env, s7, s3, vctrs) to confirm:
+//! These fixtures exercise the commonly-used class-system generators
+//! (r6, env, s7, s3, s4) to confirm:
 //! 1. The generated R wrapper calls `base::match.arg()` before `.Call()`.
 //! 2. The C wrapper wires `match_arg_several_ok_params` into the
 //!    `match_arg_vec_from_sexp` path for Vec-typed several_ok params.
@@ -143,8 +143,38 @@ impl S3MatchArgPoint {
 
 // endregion
 
-// vctrs intentionally omitted: vctrs constructors expect the `.data` argument
-// to be vector-shaped, so a straightforward struct-returning ctor doesn't fit
-// the fixture pattern used above. The match.arg prelude is shared code
-// emitted by the same `MethodContext::match_arg_prelude()` path, so r6/env/s7/s3
-// coverage exercises the same codegen surface.
+// region: S4 — scalar match_arg on constructor + instance method (#209)
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S4MatchArgHolder {
+    mode: ImplMode,
+}
+
+// Methods are deliberately NOT prefixed with `s4_`: the S4 generator prepends
+// the prefix itself (e.g. `mode_current` → generic `s4_mode_current`). Naming
+// the method `s4_mode_current` would double-prefix to `s4_s4_mode_current`.
+#[miniextendr(s4)]
+impl S4MatchArgHolder {
+    #[miniextendr(match_arg(mode))]
+    pub fn new(mode: ImplMode) -> Self {
+        Self { mode }
+    }
+
+    pub fn mode_current(&self) -> ImplMode {
+        self.mode
+    }
+
+    #[miniextendr(match_arg(mode))]
+    pub fn mode_set(&mut self, mode: ImplMode) -> ImplMode {
+        self.mode = mode;
+        self.mode
+    }
+}
+
+// endregion
+
+// vctrs intentionally omitted (#208): vctrs constructors expect the `.data`
+// argument to be vector-shaped, so a straightforward struct-returning ctor
+// doesn't fit the fixture pattern used above. The match.arg prelude is shared
+// code emitted by the same `MethodContext::match_arg_prelude()` path, so
+// r6/env/s7/s3/s4 coverage exercises the same codegen surface.
