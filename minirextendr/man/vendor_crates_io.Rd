@@ -13,12 +13,17 @@ vendor_crates_io(path = ".")
 Invisibly returns TRUE on success
 }
 \description{
-Runs \verb{cargo vendor} to download all external crates.io dependencies
-(like proc-macro2, syn, quote) for offline/CRAN builds. This is separate
-from \code{\link[=vendor_miniextendr]{vendor_miniextendr()}} which vendors the miniextendr workspace crates.
+Runs \verb{cargo revendor} to download all external crates.io dependencies
+(like proc-macro2, syn, quote) for offline/CRAN builds, including any
+workspace path deps that plain \verb{cargo vendor} silently skips. This is
+separate from \code{\link[=vendor_miniextendr]{vendor_miniextendr()}} which vendors the miniextendr
+workspace crates.
 }
 \details{
 Most users should use \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} instead, which calls this
 function as part of the full CRAN vendor workflow.
+
+\verb{cargo revendor} must be installed; see
+\url{https://github.com/A2-ai/miniextendr/tree/main/cargo-revendor}.
 }
 \keyword{internal}

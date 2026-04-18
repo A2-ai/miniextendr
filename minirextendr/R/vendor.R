@@ -432,12 +432,17 @@ detect_miniextendr_local <- function(vendor_dir) {
 
 #' Vendor external crates.io dependencies
 #'
-#' Runs `cargo vendor` to download all external crates.io dependencies
-#' (like proc-macro2, syn, quote) for offline/CRAN builds. This is separate
-#' from [vendor_miniextendr()] which vendors the miniextendr workspace crates.
+#' Runs `cargo revendor` to download all external crates.io dependencies
+#' (like proc-macro2, syn, quote) for offline/CRAN builds, including any
+#' workspace path deps that plain `cargo vendor` silently skips. This is
+#' separate from [vendor_miniextendr()] which vendors the miniextendr
+#' workspace crates.
 #'
 #' Most users should use [miniextendr_vendor()] instead, which calls this
 #' function as part of the full CRAN vendor workflow.
+#'
+#' `cargo revendor` must be installed; see
+#' <https://github.com/A2-ai/miniextendr/tree/main/cargo-revendor>.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE on success
@@ -446,6 +451,7 @@ detect_miniextendr_local <- function(vendor_dir) {
 vendor_crates_io <- function(path = ".") {
   with_project(path)
   check_rust()
+  check_cargo_revendor()
 
   cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")
   if (!fs::file_exists(cargo_toml)) {
@@ -457,21 +463,50 @@ vendor_crates_io <- function(path = ".") {
 
   vendor_dir <- usethis::proj_path("vendor")
 
-  cli::cli_alert("Running cargo vendor...")
+  cli::cli_alert("Running cargo revendor...")
 
   result <- run_with_logging(
     "cargo",
-    args = c("vendor", "--manifest-path", cargo_toml, vendor_dir),
-    log_prefix = "cargo-vendor",
+    args = c(
+      "revendor",
+      "--manifest-path", cargo_toml,
+      "--output", vendor_dir,
+      "--strip-all"
+    ),
+    log_prefix = "cargo-revendor",
     wd = usethis::proj_get()
   )
 
-  check_result(result, "cargo vendor")
+  check_result(result, "cargo revendor")
 
-  # Strip CRAN-unfriendly content from vendored crates
+  # Additional CRAN-targeted stripping beyond cargo-revendor's --strip-all:
+  # docs/, ci/, .circleci/, .github/, dotfiles that cargo-revendor preserves.
   strip_vendored_dir(vendor_dir)
 
   cli::cli_alert_success("External dependencies vendored")
+  invisible(TRUE)
+}
+
+#' Verify `cargo revendor` is installed
+#'
+#' Errors with install instructions if the `cargo-revendor` subcommand is
+#' missing. Called by [vendor_crates_io()].
+#'
+#' @keywords internal
+#' @noRd
+check_cargo_revendor <- function() {
+  probe <- suppressWarnings(tryCatch(
+    system2("cargo", c("revendor", "--help"), stdout = FALSE, stderr = FALSE),
+    error = function(e) 127L
+  ))
+  if (!identical(probe, 0L)) {
+    cli::cli_abort(c(
+      "{.code cargo revendor} is not installed",
+      "i" = "Install from the miniextendr repository:",
+      "*" = "{.code cargo install --path cargo-revendor}",
+      "i" = "Source: {.url https://github.com/A2-ai/miniextendr/tree/main/cargo-revendor}"
+    ))
+  }
   invisible(TRUE)
 }
 

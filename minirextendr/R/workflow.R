@@ -161,21 +161,24 @@ miniextendr_vendor <- function(path = ".") {
   with_project(path)
   cli::cli_h1("miniextendr vendor workflow")
 
-  # Check for path dependencies that won't be resolved by cargo vendor
+  # Inform the user about path dependencies. cargo revendor extracts these
+  # into vendor/ (unlike plain cargo vendor), but CRAN still requires that
+  # the source tree referenced by `path = ...` is reachable at build time
+  # — `use_vendor_lib()` handles the packaging side.
   path_deps <- check_path_deps()
   if (nrow(path_deps) > 0) {
-    cli::cli_alert_warning(
-      "Found path dependencies in Cargo.toml (these are NOT vendored by {.code cargo vendor}):"
+    cli::cli_alert_info(
+      "Found path dependencies in Cargo.toml (extracted by {.code cargo revendor}):"
     )
     for (i in seq_len(nrow(path_deps))) {
-      cli::cli_bullets(c("!" = "{.val {path_deps$crate[i]}} -> {.path {path_deps$path[i]}}"))
+      cli::cli_bullets(c("i" = "{.val {path_deps$crate[i]}} -> {.path {path_deps$path[i]}}"))
     }
     cli::cli_alert_info(
-      "Use {.code minirextendr::use_vendor_lib()} to configure these for CRAN builds"
+      "If these paths are outside the R package tree, use {.code minirextendr::use_vendor_lib()}"
     )
   }
 
-  # Step 1: cargo vendor + strip (delegates to vendor_crates_io)
+  # Step 1: cargo revendor + strip (delegates to vendor_crates_io)
   cli::cli_h2("Step 1: vendor all dependencies")
   vendor_crates_io()
 
@@ -208,11 +211,33 @@ miniextendr_vendor <- function(path = ".") {
     writeLines(character(), f)
   }
 
-  # Create xz-compressed tarball
-  tar_output <- system2(
-    "tar", c("-cJf", tarball, "-C", staging, "vendor"),
-    stdout = TRUE, stderr = TRUE
+  # Create xz-compressed tarball.
+  # Suppress macOS xattr metadata (AppleDouble `._*` files + LIBARCHIVE.xattr.*
+  # PAX headers) that trigger GNU tar warnings on CRAN Linux machines.
+  # COPYFILE_DISABLE=1 stops `._*` files; --no-xattrs stops PAX headers.
+  old_copyfile <- Sys.getenv("COPYFILE_DISABLE", unset = NA)
+  Sys.setenv(COPYFILE_DISABLE = "1")
+  on.exit(
+    if (is.na(old_copyfile)) Sys.unsetenv("COPYFILE_DISABLE")
+    else Sys.setenv(COPYFILE_DISABLE = old_copyfile),
+    add = TRUE
   )
+  tar_args <- c("-cJf", tarball, "-C", staging, "vendor")
+  has_no_xattrs <- identical(
+    suppressWarnings(tryCatch(
+      system2(
+        "tar",
+        c("--no-xattrs", "-cf", "/dev/null", "--files-from", "/dev/null"),
+        stdout = FALSE, stderr = FALSE
+      ),
+      error = function(e) 127L
+    )),
+    0L
+  )
+  if (has_no_xattrs) {
+    tar_args <- c("--no-xattrs", tar_args)
+  }
+  tar_output <- system2("tar", tar_args, stdout = TRUE, stderr = TRUE)
   if (!is.null(attr(tar_output, "status"))) {
     cli::cli_abort(c(
       "Failed to create vendor tarball",
