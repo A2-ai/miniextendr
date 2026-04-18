@@ -132,8 +132,26 @@ test_that("S4 constructor rejects non-choice", {
 
 # endregion
 
-# vctrs support for match_arg is deferred (#208) — the vctrs constructor
-# expects the `.data` to be vector-shaped, so a straightforward struct-returning
-# ctor doesn't fit the fixture pattern used for the other class systems. The
-# R-wrapper match.arg prelude is shared code though, so S3/S7/R6/env/S4
-# coverage exercises the same emission path.
+# region: vctrs — scalar match_arg on constructor (#208)
+
+test_that("vctrs constructor default picks first choice", {
+  v <- new_vctrsmatchargscale()
+  expect_s3_class(v, "VctrsMatchArgScale")
+  expect_s3_class(v, "vctrs_vctr")
+})
+
+test_that("vctrs constructor accepts exact + partial match", {
+  expect_s3_class(new_vctrsmatchargscale("Safe"), "VctrsMatchArgScale")
+  expect_s3_class(new_vctrsmatchargscale("D"), "VctrsMatchArgScale")
+})
+
+test_that("vctrs constructor rejects non-choice", {
+  expect_error(new_vctrsmatchargscale("Bogus"), "should be one of")
+})
+
+test_that("vctrs abbr appears in ptype_abbr", {
+  v <- new_vctrsmatchargscale("Safe")
+  expect_equal(vctrs::vec_ptype_abbr(v), "mode")
+})
+
+# endregion
