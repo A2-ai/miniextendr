@@ -78,7 +78,9 @@ jobs:
         run: cd site && zola build
 
       - name: Copy rustdoc into site
-        run: cp -r target/doc site/public/rustdoc
+        run: |
+          cp -r target/doc site/public/rustdoc
+          rm -f site/public/rustdoc/.lock
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
