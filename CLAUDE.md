@@ -308,25 +308,24 @@ dependencies.
 Currently not set project-wide — flag it in the PR description if adding
 or removing it so reviewers know the sccache impact.
 
-### Before Opening a PR
+### Vendor tarball is not tracked
 
-**Every PR must regenerate `rpkg/inst/vendor.tar.xz` as the last step** before
-pushing. Any change that touches a workspace crate (`miniextendr-api`,
-`miniextendr-macros`, `miniextendr-lint`) makes the
-committed `inst/vendor.tar.xz` stale — CRAN-mode builds and CI offline
-installs compile against the tarball, not the workspace.
+`rpkg/inst/vendor.tar.xz` is **not** committed to git. It is generated
+in CI (every R CMD check job runs `just vendor` first) and at CRAN
+release time. The file is gitignored.
 
-```bash
-just vendor   # cargo revendor: sync workspace crates, strip, freeze, compress
-git add rpkg/vendor rpkg/inst/vendor.tar.xz rpkg/src/rust/Cargo.toml rpkg/src/rust/Cargo.lock
-```
+This removes three problems the tracked tarball used to cause:
 
-The pre-commit hook (`.githooks/pre-commit`) runs `cargo revendor` automatically
-when staged `.rs` files belong to a workspace crate, so in practice a normal
-`git commit` produces the updated tarball for you. Still verify after pushing
-that the final commit of the branch contains the regenerated tarball — merging
-a branch whose last commit predates a workspace-crate change will ship a stale
-tarball to main.
+- Binary merge conflicts on every two-PR race that both touched a
+  workspace crate — git can't three-way-merge a 22 MB xz archive, so
+  GitHub's auto-merge always failed.
+- 22 MB per commit of history bloat for a purely-derived artifact.
+- Stale-tarball-on-main after a rebase — the PR's tarball reflects its
+  own branch state, not the post-rebase state, so main drifted silently.
+
+If you need the tarball locally (e.g. to test CRAN-mode builds), run
+`just vendor` — it's cheap, fully reproducible from `Cargo.lock` +
+workspace sources, and the result is identical to what CI produces.
 
 ## R Packages in This Repo
 

@@ -27,10 +27,10 @@ jobs:
       - uses: actions/checkout@v6
 
       # miniextendr-api/build.rs calls `R RHOME` to resolve libR for linking.
-      # Rustdoc-only builds don't link — build.rs just has to not panic. The
-      # valid-directory check passes with any existing path, so $RUNNER_TEMP
-      # is enough. Must be set from a step (the `runner` context is NOT
-      # available in job-level `env:`). Same pattern used by dvs2's CI.
+      # Rustdoc-only builds don't link — build.rs just has to not panic, and
+      # its `r_home` existence check accepts any valid directory. Dummy with
+      # $RUNNER_TEMP (same pattern as dvs2's CI). Must be set from a step —
+      # the `runner` context is not available in job-level `env:`.
       - name: Set dummy R_HOME
         run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
@@ -43,19 +43,26 @@ jobs:
         run: cargo doc --no-deps -Z rustdoc-map -p miniextendr-api -p miniextendr-macros -p miniextendr-lint
 
       # rpkg/src/rust/Cargo.toml [patch.crates-io] points at
-      # ../../vendor/miniextendr-api-0.1.0 etc. The vendor tarball is
-      # committed to the repo — unpack it so the patch paths resolve.
-      # No R / autoconf / cargo-revendor / just configure needed.
+      # ../../vendor/miniextendr-api-0.1.0 etc. Populate vendor/ so the
+      # patch paths resolve. `just vendor` calls `cargo revendor` directly;
+      # does NOT need autoconf or `just configure` (no Rscript, no Makevars).
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
       - name: Restore rpkg vendor directory cache
         id: rpkg-vendor-cache
         uses: actions/cache/restore@v5
         with:
           path: rpkg/vendor
-          key: ${{ runner.os }}-rpkg-vendor-${{ hashFiles('rpkg/inst/vendor.tar.xz') }}
+          key: ${{ runner.os }}-rpkg-vendor-${{ hashFiles('Cargo.lock', 'rpkg/src/rust/Cargo.lock', 'miniextendr-api/**/*.rs', 'miniextendr-macros/**/*.rs', 'miniextendr-lint/**/*.rs') }}
 
-      - name: Unpack rpkg vendor tarball
+      - name: Install just
         if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
-        run: tar -xJf rpkg/inst/vendor.tar.xz -C rpkg
+        uses: taiki-e/install-action@just
+
+      - name: Generate rpkg/vendor
+        if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
+        run: just vendor
 
       - name: Save rpkg vendor directory cache
         if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
