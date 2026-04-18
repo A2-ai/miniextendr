@@ -179,6 +179,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # miniextendr-api/build.rs calls `R RHOME` (or reads $R_HOME) to resolve
+      # libR's location, which only matters at link time. Lint steps (fmt +
+      # clippy) never link, so pointing R_HOME at an existing dummy directory
+      # satisfies build.rs's existence check without installing R. Saves ~1 min
+      # of setup-r time on every lint run.
+      - name: Set dummy R_HOME
+        run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
