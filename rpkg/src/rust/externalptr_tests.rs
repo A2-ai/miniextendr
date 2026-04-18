@@ -180,7 +180,7 @@ pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
 }
 
 /// Test creating and reading an ExternalPtr entirely on the main thread.
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn test_extptr_on_main_thread() -> i32 {
     use miniextendr_api::externalptr::ExternalPtr;
     let ptr = ExternalPtr::new(Counter { value: 99 });

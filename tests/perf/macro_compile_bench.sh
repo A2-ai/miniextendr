@@ -61,7 +61,6 @@ miniextendr-macros = { path = "$REPO_ROOT/miniextendr-macros" }
 [patch.crates-io]
 miniextendr-api = { path = "$REPO_ROOT/miniextendr-api" }
 miniextendr-macros = { path = "$REPO_ROOT/miniextendr-macros" }
-miniextendr-macros-core = { path = "$REPO_ROOT/miniextendr-macros-core" }
 miniextendr-lint = { path = "$REPO_ROOT/miniextendr-lint" }
 TOML
 
