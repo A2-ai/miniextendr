@@ -772,6 +772,7 @@ When touching files that use other section patterns (`// =====` banners, `// ─
 - If the agent didn't commit, commit its work in the worktree first, then rebase + merge.
 - Never delete a worktree until its changes have been verified as pushed to remote or merged into main.
 - **Clean up worktrees after PR push**: as soon as an agent's branch is pushed (to origin, with `-u` or `--force-with-lease`), delete its worktree with `git worktree remove -f -f .claude/worktrees/<name>` then `git worktree prune`. Each worktree keeps a full `target/` directory — leaving them around fills the disk fast (a single agent can accumulate 2–3 GB of build artifacts). If an agent is still running (its branch hasn't been pushed yet), leave its worktree in place until it reports done.
+- **Rebase conflicts: `--theirs` only on the vendor tarball.** Do NOT run `git rebase -X theirs` as a blanket strategy — it silently prefers the PR side on every textual conflict, which quietly drops main's changes to files the PR also touched (justfile, `rpkg/src/rust/Cargo.toml`, lockfiles, etc.). Instead, run a plain `git rebase origin/main`; when conflicts hit, use `git checkout --theirs rpkg/inst/vendor.tar.xz && git add rpkg/inst/vendor.tar.xz` for the binary only, and resolve every other conflict by hand. Regenerate the tarball with `just vendor` after the rebase finishes and amend it into the final vendor-refresh commit.
 
 ## Plans
 
