@@ -432,7 +432,10 @@ pub struct ParsedMethod {
     pub vis: syn::Visibility,
     /// Roxygen tag lines extracted from Rust doc comments
     pub doc_tags: Vec<String>,
-    /// Per-method attributes for class system overrides
+    /// Per-method attributes for class system overrides. Also carries the
+    /// `match_arg(...)` / `choices(...)` / `several_ok` parameter annotations
+    /// via its `per_param_match_arg` / `per_param_choices` / `per_param_several_ok`
+    /// fields — see [`MethodAttrs`] for the parsing surface.
     pub method_attrs: MethodAttrs,
     /// Parameter default values from `#[miniextendr(default = "...")]`
     pub param_defaults: std::collections::HashMap<String, String>,
@@ -539,6 +542,24 @@ pub struct MethodAttrs {
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
     pub defaults_span: Option<proc_macro2::Span>,
+    /// Parameter names marked scalar `match_arg` via
+    /// `#[miniextendr(match_arg(param1, param2))]` on the method.
+    ///
+    /// Method-level (not parameter-level) because Rust's parser rejects attribute
+    /// macros on fn parameters inside impl items — `#[miniextendr(...)]` on a
+    /// method parameter gets classified as an attribute-macro invocation and
+    /// "expected non-macro attribute, found attribute macro". Standalone functions
+    /// get a pass because the outer `#[miniextendr]` on the fn itself defers inner-token
+    /// resolution; an impl block has `#[miniextendr(r6)]` on the block, not on each method.
+    pub per_param_match_arg: std::collections::HashSet<String>,
+    /// Parameter names with both `match_arg` and `several_ok` semantics, from
+    /// `#[miniextendr(match_arg_several_ok(param))]`. Implies `match_arg`.
+    pub per_param_several_ok: std::collections::HashSet<String>,
+    /// Explicit string choice lists from `#[miniextendr(choices(param = "a, b, c"))]`
+    /// or `#[miniextendr(choices_several_ok(param = "a, b"))]`.
+    pub per_param_choices: std::collections::HashMap<String, Vec<String>>,
+    /// Span of `match_arg(...)` / `choices(...)` for error reporting.
+    pub match_arg_span: Option<proc_macro2::Span>,
     /// Span of `active` for error reporting.
     pub active_span: Option<proc_macro2::Span>,
     /// S7 property getter marker.
@@ -1270,6 +1291,16 @@ impl ParsedMethod {
         Ok(())
     }
 
+    /// Split a comma-separated choices list (as given to `choices(param = "a, b, c")`)
+    /// into individual trimmed entries. Surrounding double-quotes are tolerated so
+    /// users can spell the list either way: `"a, b"` or `"\"a\", \"b\""`.
+    fn split_choice_list(raw: &str) -> Vec<String> {
+        raw.split(',')
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
     /// Parse method attributes in #[miniextendr(class_system(...))] format.
     ///
     /// Supported formats:
@@ -1475,6 +1506,67 @@ impl ParsedMethod {
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
                         method_attrs.defaults.insert(param_name, value.value());
+                        Ok(())
+                    })?;
+                } else if meta.path.is_ident("match_arg") {
+                    // `match_arg(param1, param2, ...)` — scalar match_arg params.
+                    use syn::spanned::Spanned;
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    meta.parse_nested_meta(|inner| {
+                        let name = inner
+                            .path
+                            .get_ident()
+                            .ok_or_else(|| inner.error("expected parameter name"))?
+                            .to_string();
+                        method_attrs.per_param_match_arg.insert(name);
+                        Ok(())
+                    })?;
+                } else if meta.path.is_ident("match_arg_several_ok") {
+                    // `match_arg_several_ok(param1, param2, ...)` — match_arg + several_ok,
+                    // for Vec/slice/array/Box<[_]>-typed parameters.
+                    use syn::spanned::Spanned;
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    meta.parse_nested_meta(|inner| {
+                        let name = inner
+                            .path
+                            .get_ident()
+                            .ok_or_else(|| inner.error("expected parameter name"))?
+                            .to_string();
+                        method_attrs.per_param_match_arg.insert(name.clone());
+                        method_attrs.per_param_several_ok.insert(name);
+                        Ok(())
+                    })?;
+                } else if meta.path.is_ident("choices") {
+                    // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
+                    use syn::spanned::Spanned;
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    meta.parse_nested_meta(|inner| {
+                        let name = inner
+                            .path
+                            .get_ident()
+                            .ok_or_else(|| inner.error("expected parameter name"))?
+                            .to_string();
+                        let _: syn::Token![=] = inner.input.parse()?;
+                        let value: syn::LitStr = inner.input.parse()?;
+                        let choices = Self::split_choice_list(&value.value());
+                        method_attrs.per_param_choices.insert(name, choices);
+                        Ok(())
+                    })?;
+                } else if meta.path.is_ident("choices_several_ok") {
+                    // `choices_several_ok(param = "a, b, c")` — choices + several_ok.
+                    use syn::spanned::Spanned;
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    meta.parse_nested_meta(|inner| {
+                        let name = inner
+                            .path
+                            .get_ident()
+                            .ok_or_else(|| inner.error("expected parameter name"))?
+                            .to_string();
+                        let _: syn::Token![=] = inner.input.parse()?;
+                        let value: syn::LitStr = inner.input.parse()?;
+                        let choices = Self::split_choice_list(&value.value());
+                        method_attrs.per_param_choices.insert(name.clone(), choices);
+                        method_attrs.per_param_several_ok.insert(name);
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("unsafe") {
@@ -1792,6 +1884,38 @@ impl ParsedMethod {
         let env = Self::detect_env(&item.sig);
         let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
+        // match_arg / choices on impl methods: unlike standalone functions, Rust
+        // doesn't accept `#[miniextendr(...)]` on method parameters inside an impl
+        // (attribute macros aren't allowed there — "expected non-macro attribute").
+        // The surface is instead method-level: `#[miniextendr(match_arg(p), choices(q = "a, b"))]`.
+        // `parse_method_attrs` already filled the sets; validate that every named
+        // param exists on the signature so typos fail at compile time.
+        let sig_param_names: std::collections::HashSet<String> = item
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(pt) => match pt.pat.as_ref() {
+                    syn::Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        for annotated in method_attrs
+            .per_param_match_arg
+            .iter()
+            .chain(method_attrs.per_param_choices.keys())
+        {
+            if !sig_param_names.contains(annotated) {
+                return Err(syn::Error::new(
+                    method_attrs
+                        .match_arg_span
+                        .unwrap_or_else(|| item.sig.ident.span()),
+                    format!("match_arg/choices references non-existent parameter `{annotated}`"),
+                ));
+            }
+        }
         // Validate: no defaults on self parameter (any kind: &self, &mut self, self)
         if env != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
             return Err(syn::Error::new(
@@ -2454,7 +2578,175 @@ pub fn generate_method_c_wrapper(
         builder = builder.error_in_r();
     }
 
-    builder.build().generate()
+    // Forward match_arg + several_ok parameter names so `RustConversionBuilder` swaps
+    // in `match_arg_vec_from_sexp` for the Vec/slice/array/Box<[_]> conversion path.
+    // Scalar match_arg doesn't need this — R's match.arg() validated the choice and
+    // `TryFromSexp for EnumType` (auto-generated by `#[derive(MatchArg)]`) decodes it.
+    for rust_name in &method.method_attrs.per_param_match_arg {
+        if method.method_attrs.per_param_several_ok.contains(rust_name) {
+            builder = builder.match_arg_several_ok(rust_name.clone());
+        }
+    }
+
+    let c_wrapper_and_def = builder.build().generate();
+
+    // Emit one `__match_arg_choices__<param>` helper fn + linkme registrations for each
+    // match_arg-annotated parameter so the R wrapper can look up the enum's
+    // `MatchArg::CHOICES` at call time (C extern) and the package-load write step can
+    // substitute the placeholder default with the literal choices (distributed_slice).
+    let match_arg_helpers = generate_method_match_arg_helpers(parsed_impl, method);
+
+    quote! {
+        #c_wrapper_and_def
+        #match_arg_helpers
+    }
+}
+
+/// Generate `__match_arg_choices__<param>` helper C wrappers plus the two linkme
+/// registrations (`MX_CALL_DEFS` and `MX_MATCH_ARG_CHOICES`) per match_arg parameter.
+///
+/// Mirrors the standalone-fn emission in `lib.rs` so both surfaces resolve through the
+/// same runtime paths — `C_*__match_arg_choices__*` is called from R's prelude, and
+/// `MX_MATCH_ARG_CHOICES` drives write-time placeholder substitution when the cdylib
+/// emits the final R wrapper file.
+fn generate_method_match_arg_helpers(
+    parsed_impl: &ParsedImpl,
+    method: &ParsedMethod,
+) -> TokenStream {
+    if method.method_attrs.per_param_match_arg.is_empty()
+        && method.method_attrs.per_param_choices.is_empty()
+    {
+        return TokenStream::new();
+    }
+
+    let type_ident = &parsed_impl.type_ident;
+    let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
+    let c_ident_str = c_ident.to_string();
+    let cfg_attrs = &parsed_impl.cfg_attrs;
+
+    let mut out = TokenStream::new();
+
+    for rust_name in &method.method_attrs.per_param_match_arg {
+        // Find the parameter type from the (already-normalized) signature.
+        let Some(param_ty) = find_param_type(&method.sig.inputs, rust_name) else {
+            continue;
+        };
+        // For several_ok, unwrap the container (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode])
+        // so the helper returns the inner enum's CHOICES, not the container type.
+        let several_ok = method.method_attrs.per_param_several_ok.contains(rust_name);
+        let choices_ty = if several_ok {
+            crate::classify_several_ok_container(param_ty)
+                .map(|(_, inner)| inner.clone())
+                .unwrap_or_else(|| param_ty.clone())
+        } else {
+            param_ty.clone()
+        };
+
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&syn::Ident::new(
+            rust_name,
+            proc_macro2::Span::call_site(),
+        ))
+        .to_string();
+
+        // C helper fn that R calls via .__mx_choices_<param> <- .Call(C_...)
+        let helper_fn_name = format!(
+            "{}__match_arg_choices__{}",
+            c_ident_str.trim_start_matches("C_"),
+            r_name
+        );
+        let helper_fn_ident = syn::Ident::new(
+            &format!("C_{helper_fn_name}"),
+            proc_macro2::Span::call_site(),
+        );
+        let helper_def_ident = syn::Ident::new(
+            &format!("call_method_def_C_{helper_fn_name}"),
+            proc_macro2::Span::call_site(),
+        );
+        let helper_c_name = syn::LitCStr::new(
+            std::ffi::CString::new(format!("C_{helper_fn_name}"))
+                .expect("valid C string")
+                .as_c_str(),
+            proc_macro2::Span::call_site(),
+        );
+
+        // Placeholder that the write-time substitution pass replaces with the
+        // literal `c("a", "b", ...)` default. Shape matches the standalone-fn convention.
+        let placeholder = crate::r_class_formatter::match_arg_placeholder(&c_ident_str, &r_name);
+        let entry_ident = syn::Ident::new(
+            &format!(
+                "match_arg_choices_entry_{}",
+                placeholder.trim_matches('_').replace('.', "_")
+            ),
+            proc_macro2::Span::call_site(),
+        );
+
+        out.extend(quote! {
+            #(#cfg_attrs)*
+            #[allow(non_snake_case)]
+            #[unsafe(no_mangle)]
+            pub extern "C-unwind" fn #helper_fn_ident(
+                __miniextendr_call: ::miniextendr_api::ffi::SEXP,
+            ) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::choices_sexp::<#choices_ty>()
+            }
+
+            #(#cfg_attrs)*
+            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS)]
+            #[linkme(crate = ::miniextendr_api::linkme)]
+            #[allow(non_upper_case_globals)]
+            #[allow(non_snake_case)]
+            static #helper_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+                ::miniextendr_api::ffi::R_CallMethodDef {
+                    name: #helper_c_name.as_ptr(),
+                    fun: Some(::std::mem::transmute::<
+                        unsafe extern "C-unwind" fn(
+                            ::miniextendr_api::ffi::SEXP,
+                        ) -> ::miniextendr_api::ffi::SEXP,
+                        unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
+                    >(#helper_fn_ident)),
+                    numArgs: 1i32,
+                }
+            };
+
+            #(#cfg_attrs)*
+            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES)]
+            #[linkme(crate = ::miniextendr_api::linkme)]
+            #[allow(non_upper_case_globals)]
+            #[allow(non_snake_case)]
+            static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
+                ::miniextendr_api::registry::MatchArgChoicesEntry {
+                    placeholder: #placeholder,
+                    choices_str: || {
+                        <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
+                            .iter()
+                            .map(|c| format!(
+                                "\"{}\"",
+                                ::miniextendr_api::match_arg::escape_r_string(c)
+                            ))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    },
+                };
+        });
+    }
+
+    out
+}
+
+/// Find a parameter's Rust type from a stripped signature by identifier name.
+fn find_param_type<'a>(
+    inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    name: &str,
+) -> Option<&'a syn::Type> {
+    for arg in inputs {
+        if let syn::FnArg::Typed(pt) = arg
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            && pat_ident.ident == name
+        {
+            return Some(pt.ty.as_ref());
+        }
+    }
+    None
 }
 
 /// Check whether a function's return type is syntactically `Result<_, _>`.
