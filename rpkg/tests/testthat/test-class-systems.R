@@ -13,6 +13,26 @@ test_that("S3Counter S3 helpers exist through method names", {
   expect_equal(s3_add.S3Counter(c, 4L), 7L)
 })
 
+# Regression test for #213 — a prior bug had `#' @export` drift onto the
+# method block in s3_class.rs, emitting `export(s3_value.S3Counter)` without
+# the bare `export(s3_value)` generic. Inside the package's own tests the bare
+# call still worked (methods are in-namespace), but external callers of the
+# generic from a downstream package or a fresh R session would hit
+# "could not find function s3_value". Assert the generic is in the package's
+# exported names so the wrapper regeneration can never silently drop it again.
+test_that("S3 generics are exported from the package namespace (#213)", {
+  exports <- getNamespaceExports(asNamespace("miniextendr"))
+  for (generic in c("s3_value", "s3_inc", "s3_add")) {
+    expect_true(
+      generic %in% exports,
+      info = sprintf(
+        "bare S3 generic `%s` missing from NAMESPACE exports; expected it alongside `%s.S3Counter`",
+        generic, generic
+      )
+    )
+  }
+})
+
 test_that("S4Counter lifecycle works", {
   c <- S4Counter(2L)
   expect_equal(s4_value(c), 2L)
