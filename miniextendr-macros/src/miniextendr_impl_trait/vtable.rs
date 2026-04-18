@@ -144,7 +144,7 @@ pub(super) fn generate_vtable_static(
 
     // Check if impl block has @noRd doc comment (strip @param from class-level tags)
     let raw_impl_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
-    let (impl_doc_tags, param_warnings) = crate::roxygen::strip_param_tags(
+    let (impl_doc_tags, param_warnings) = crate::roxygen::strip_method_tags(
         &raw_impl_tags,
         &type_ident.to_string(),
         impl_item.impl_token.span,

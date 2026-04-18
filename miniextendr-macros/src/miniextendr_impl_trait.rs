@@ -280,7 +280,7 @@ pub fn expand_miniextendr_impl_trait(
     // TPIE: empty impl body → expand via macro_rules! helper from the trait definition
     if impl_item.items.is_empty() && !impl_attrs.blanket {
         let raw_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
-        let (doc_tags, param_warnings) = crate::roxygen::strip_param_tags(
+        let (doc_tags, param_warnings) = crate::roxygen::strip_method_tags(
             &raw_tags,
             &concrete_type.to_token_stream().to_string(),
             impl_item.impl_token.span,
