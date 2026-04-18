@@ -228,6 +228,27 @@ pub extern "C-unwind" fn miniextendr_runtime_shutdown() {
         worker_channel::shutdown();
     }
 }
+
+/// Test-only: block up to `timeout` for the worker thread to exit after
+/// `miniextendr_runtime_shutdown`. Returns `true` if the worker has joined,
+/// `false` on timeout. Covers #204 — asserts the cooperative shutdown path
+/// from #103 actually unblocks the `recv_timeout` loop within a bounded
+/// window (default poll interval is 250ms).
+///
+/// Not intended for production use. Without the `worker-thread` feature this
+/// always returns `true` since there is no worker to join.
+#[doc(hidden)]
+pub fn miniextendr_runtime_join_for_test(timeout: std::time::Duration) -> bool {
+    #[cfg(feature = "worker-thread")]
+    {
+        worker_channel::join_worker_with_timeout(timeout)
+    }
+    #[cfg(not(feature = "worker-thread"))]
+    {
+        let _ = timeout;
+        true
+    }
+}
 // endregion
 
 // region: pub(crate) internals
@@ -282,6 +303,12 @@ mod worker_channel {
     type AnyJob = Box<dyn FnOnce() + Send>;
 
     static JOB_TX: std::sync::OnceLock<SyncSender<AnyJob>> = std::sync::OnceLock::new();
+
+    /// Handle to the spawned worker thread, stored so tests can observe
+    /// shutdown completion (#204). Production code does not join —
+    /// the OS reaps the worker at process exit.
+    static WORKER_JOIN_HANDLE: std::sync::Mutex<Option<thread::JoinHandle<()>>> =
+        std::sync::Mutex::new(None);
 
     /// Cooperative shutdown signal for the worker thread (see `#103`).
     ///
@@ -582,12 +609,52 @@ mod worker_channel {
         // Capacity 0 (rendezvous): the main thread blocks until the worker picks
         // up the job, ensuring at most one job is in flight at a time.
         let (job_tx, job_rx) = mpsc::sync_channel::<AnyJob>(0);
-        thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("miniextendr-worker".into())
             .spawn(move || worker_loop(job_rx))
             .expect("failed to spawn worker thread");
 
+        *WORKER_JOIN_HANDLE.lock().unwrap() = Some(handle);
         JOB_TX.set(job_tx).expect("worker already initialized");
+    }
+
+    /// Block up to `timeout` for the worker thread to finish after
+    /// `miniextendr_runtime_shutdown` signals it to stop. Returns `true` if the
+    /// worker has exited, `false` on timeout (worker still alive).
+    ///
+    /// Polls `JoinHandle::is_finished` every 50ms rather than a blocking join,
+    /// so the test can report a specific failure ("did not exit in 2s") rather
+    /// than deadlocking. See #204.
+    pub(super) fn join_worker_with_timeout(timeout: Duration) -> bool {
+        let start = std::time::Instant::now();
+        loop {
+            // Observe the handle without permanently removing it; later polls
+            // need to see the same handle.
+            let already_joined = {
+                let guard = WORKER_JOIN_HANDLE.lock().unwrap();
+                guard.is_none()
+            };
+            if already_joined {
+                return true;
+            }
+
+            let is_finished = {
+                let guard = WORKER_JOIN_HANDLE.lock().unwrap();
+                guard.as_ref().map(|h| h.is_finished()).unwrap_or(true)
+            };
+            if is_finished {
+                // Take and join to release thread resources.
+                if let Some(h) = WORKER_JOIN_HANDLE.lock().unwrap().take() {
+                    let _ = h.join();
+                }
+                return true;
+            }
+
+            if start.elapsed() >= timeout {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     /// Worker thread body: poll `recv_timeout` and honor the shutdown flag.
