@@ -76,18 +76,26 @@ cargo revendor \
 
 ## `--freeze`
 
-Rewrites `Cargo.toml` so the manifest is self-contained: all sources resolve
-from `vendor/` alone, with no network, git, or workspace context needed.
-
+Rewrites `Cargo.toml` so workspace path deps resolve from `vendor/`.
 Specifically it:
 
-- rewrites `git = "https://..."` dependencies to vendor paths
+- rewrites `path = "..."` entries for local workspace crates to point at
+  `vendor/<name>-<version>/`
 - strips `[patch.*]` sections that reference external sources
 - adds `[patch.crates-io]` entries for local vendored dependencies
 - regenerates `Cargo.lock` from the frozen manifest with `--offline`
 
-After `--freeze`, `cargo build --offline` works with only the vendor
-directory.
+External `git = "..."` dependencies (deps that aren't workspace members)
+are **not** rewritten — they remain as `git =` entries in the frozen
+manifest and rely on cargo's source replacement
+(`vendor/.cargo-config.toml`, which cargo-revendor always writes) to
+resolve offline. Copy that file to `.cargo/config.toml` in the build
+directory, or point cargo at it via `CARGO_HOME`, for `cargo build
+--offline` to succeed.
+
+Pass `--strict-freeze` to fail fast if any external git dep remains after
+the freeze pass — useful for CI guards where the frozen manifest alone
+must be buildable offline.
 
 ## Caching
 
