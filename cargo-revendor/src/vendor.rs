@@ -5,15 +5,29 @@ use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Run `cargo vendor` for external (registry/git) dependencies
+/// Run `cargo vendor` for external (registry/git) dependencies.
+///
+/// `sync_manifests` mirrors `cargo vendor --sync <path>`: additional
+/// manifests whose dep graphs are unioned into the same output tree.
+/// Use case (#229): one R-package workspace plus a disjoint benchmarks
+/// workspace sharing one offline artifact; two packages pinning different
+/// versions of the same transitive dep both coexist in `vendor/` as
+/// separate dirs.
 pub fn run_cargo_vendor(
     manifest_path: &Path,
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
+    sync_manifests: &[PathBuf],
     v: crate::Verbosity,
 ) -> Result<()> {
     if v.info() {
         eprintln!("  Running cargo vendor...");
+        if !sync_manifests.is_empty() {
+            eprintln!("    syncing {} additional manifest(s)", sync_manifests.len());
+            for m in sync_manifests {
+                eprintln!("      --sync {}", m.display());
+            }
+        }
     }
 
     std::fs::create_dir_all(vendor_dir)?;
@@ -38,13 +52,13 @@ pub fn run_cargo_vendor(
         std::fs::write(&ws_manifest, format!("{}{}", ws_original, patch))?;
     }
 
-    let output = Command::new("cargo")
-        .arg("vendor")
-        .arg("--manifest-path")
-        .arg(manifest_path)
-        .arg(vendor_dir)
-        .output()
-        .context("failed to run cargo vendor")?;
+    let mut cmd = Command::new("cargo");
+    cmd.arg("vendor").arg("--manifest-path").arg(manifest_path);
+    for m in sync_manifests {
+        cmd.arg("--sync").arg(m);
+    }
+    cmd.arg(vendor_dir);
+    let output = cmd.output().context("failed to run cargo vendor")?;
 
     // Restore original workspace Cargo.toml
     std::fs::write(&ws_manifest, &ws_original)?;

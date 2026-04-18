@@ -132,6 +132,18 @@ struct Cli {
     /// vendor.tar.xz matches Cargo.lock.
     #[arg(long)]
     verify: bool,
+
+    /// Additional manifests to include in the vendor graph — mirrors
+    /// `cargo vendor --sync <extra.toml>`. Each path points at the
+    /// `Cargo.toml` of a disjoint workspace whose dep graph should be
+    /// unioned into a single shared `vendor/` tree.
+    ///
+    /// Use case: one R package (`rpkg/src/rust/Cargo.toml`) and a
+    /// separate benchmarks workspace (`miniextendr-bench/Cargo.toml`)
+    /// that want to share one offline artifact. Each --sync manifest's
+    /// Cargo.lock is also checked by --verify. See #229.
+    #[arg(long)]
+    sync: Vec<PathBuf>,
 }
 
 impl Cli {
@@ -189,9 +201,30 @@ fn main() -> Result<()> {
 
     let lockfile = manifest_path.with_file_name("Cargo.lock");
 
+    // Canonicalize each --sync manifest path once. Used by both the verify
+    // shortcut above and the vendor flow below (plus cache hashing).
+    let sync_manifests: Vec<std::path::PathBuf> = cli
+        .sync
+        .iter()
+        .map(|p| {
+            p.canonicalize()
+                .unwrap_or_else(|_| std::env::current_dir().unwrap().join(p))
+        })
+        .collect();
+
     // Verify-only: don't vendor; just assert existing artifacts are in sync.
     if cli.verify {
-        return run_verify(&lockfile, &output, cli.compress.as_deref(), v);
+        let sync_lockfiles: Vec<std::path::PathBuf> = sync_manifests
+            .iter()
+            .map(|m| m.with_file_name("Cargo.lock"))
+            .collect();
+        return run_verify(
+            &lockfile,
+            &sync_lockfiles,
+            &output,
+            cli.compress.as_deref(),
+            v,
+        );
     }
 
     // Step 1: Load cargo metadata to discover dependencies
@@ -259,7 +292,7 @@ fn main() -> Result<()> {
         local_pkgs.iter().map(|p| p.path.clone()).collect();
 
     // Step 0: Check cache — skip if all inputs are unchanged
-    if !cli.force && cache::is_cached(&lockfile, &output, &local_crate_paths)? {
+    if !cli.force && cache::is_cached(&lockfile, &sync_manifests, &output, &local_crate_paths)? {
         if v.info() {
             eprintln!("cargo-revendor: vendor/ is up to date (inputs unchanged)");
         }
@@ -298,7 +331,13 @@ fn main() -> Result<()> {
     )?;
 
     // Step 3: Run `cargo vendor` for external deps
-    vendor::run_cargo_vendor(&manifest_path, &vendor_staging, &patch_pkgs, v)?;
+    vendor::run_cargo_vendor(
+        &manifest_path,
+        &vendor_staging,
+        &patch_pkgs,
+        &sync_manifests,
+        v,
+    )?;
 
     // Step 4: Extract packaged local crates into vendor staging
     for (pkg_name, crate_path) in &packaged {
@@ -375,7 +414,7 @@ fn main() -> Result<()> {
     }
 
     // Step 14: Save cache
-    cache::save_cache(&lockfile, &output, &local_crate_paths)?;
+    cache::save_cache(&lockfile, &sync_manifests, &output, &local_crate_paths)?;
 
     // Count total crates
     let total = std::fs::read_dir(&output)
@@ -411,6 +450,7 @@ fn main() -> Result<()> {
 /// Verify that Cargo.lock, vendor/, and (optionally) the tarball agree.
 fn run_verify(
     lockfile: &std::path::Path,
+    sync_lockfiles: &[std::path::PathBuf],
     vendor_dir: &std::path::Path,
     tarball: Option<&std::path::Path>,
     v: Verbosity,
@@ -421,6 +461,22 @@ fn run_verify(
     verify::verify_lock_matches_vendor(lockfile, vendor_dir)?;
     if v.info() {
         eprintln!("  Cargo.lock ↔ vendor/: OK");
+    }
+
+    // Every --sync manifest carries its own Cargo.lock; each must agree with
+    // the shared vendor/ too.
+    for sync_lock in sync_lockfiles {
+        if v.info() {
+            eprintln!(
+                "cargo-revendor: verifying {} ↔ {}",
+                sync_lock.display(),
+                vendor_dir.display()
+            );
+        }
+        verify::verify_lock_matches_vendor(sync_lock, vendor_dir)?;
+        if v.info() {
+            eprintln!("  {} ↔ vendor/: OK", sync_lock.display());
+        }
     }
 
     if let Some(tarball) = tarball {
