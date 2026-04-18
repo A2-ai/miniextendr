@@ -8,34 +8,51 @@ CARGO_PROFILE = @CARGO_PROFILE@
 CARGO_STATICLIB_NAME = @CARGO_STATICLIB_NAME@
 ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
 CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
+ABS_RPKG_SRC_CARGO = @ABS_RPKG_SRC_CARGO@
 CARGO_LIBDIR = @CARGO_LIBDIR@
 VENDOR_OUT = @VENDOR_OUT@
 CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
 NOT_CRAN_FLAG = @NOT_CRAN@
 CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
+CDYLIB_PREFIX = @CDYLIB_PREFIX@
+CDYLIB_EXT = @CDYLIB_EXT@
 TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
+NATIVE_PKG_CPPFLAGS = @NATIVE_PKG_CPPFLAGS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
-# codegen-units = 1 in Cargo.toml ensures the entire crate compiles into a single
-# .o inside the staticlib archive, so the linker pulls in all linkme distributed_slice
-# entries when it resolves R_init_<pkg>. No force_load/whole-archive needed.
+# codegen-units = 1 in Cargo.toml ensures the user crate compiles into a single .o
+# inside the staticlib archive. The linker pulls it in (via R_init_<pkg>), which
+# brings all linkme distributed_slice entries along — no force_load needed.
 PKG_LIBS = $(CARGO_AR)
+PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
+
+# cdylib for R wrapper generation (platform-specific extension)
+CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_EXT)
 ## ----------------------------------------------------------------------
 
 # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
 # letting Cargo's own incremental compilation decide what to rebuild.
 .PHONY: all clean FORCE_CARGO
 
-# all must be defined FIRST to be the default target
-all: $(SHLIB)
+# all must be defined FIRST to be the default target.
+# Depend on both $(SHLIB) and $(WRAPPERS_R) so that:
+#   1. Staticlib builds first ($(SHLIB) needs $(CARGO_AR)), warming the incremental cache
+#   2. Cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
+#   3. R wrappers are generated from the cdylib
+all: $(SHLIB) $(WRAPPERS_R)
 	@# Dev mode: touch Cargo.toml so pkgbuild always thinks sources changed
 	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
 	fi
 	@# CRAN mode: cleanup vendor and target directories to save space
-	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
+	@# Guard: only clean when inst/vendor.tar.xz exists (genuine CRAN tarball build).
+	@# Without this guard, pkgbuild::compile_dll() (called by devtools::document()
+	@# and roxygen2::roxygenise()) runs without NOT_CRAN=true and would delete
+	@# vendor/ populated by scaffolding, breaking subsequent builds.
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ -f "$(ABS_TOP_SRCDIR)/inst/vendor.tar.xz" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
 	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \
@@ -53,17 +70,71 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR)
 
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
-# Note: Dependencies are resolved via direct path deps in Cargo.toml.
-# You must run `./configure` (or `just cross-configure`) before building.
-$(CARGO_AR): FORCE_CARGO
+# Note: Dependencies are vendored by configure script, not by this Makefile.
+# You must run `./configure` (or `just configure`) before building.
+#
+# CRAN tarball handling: R CMD build compresses vendor/ into vendor.tar.xz
+# to avoid NOTEs about hidden files and long paths. We unpack it here.
+VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
+
+# OBJECTS are passed to cargo as link-args so the Rust crate can reference
+# symbols from C shim files (bindgen-generated static inline wrappers).
+$(CARGO_AR): FORCE_CARGO $(OBJECTS)
+	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
+	  echo "Unpacking vendor.tar.xz from inst/..."; \
+	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
+	fi
 	@set -e; \
 	TARGET_OPT=""; \
+	LINK_ARGS=""; \
+	for obj in $(OBJECTS); do LINK_ARGS="$$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
-	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
 	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 	  --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR); \
 	test -f "$(CARGO_AR)"
+	@# On Windows, remove cdylib .dll.a import lib so MinGW linker uses the staticlib.
+	@rm -f '$(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).dll.a'
+
+# Automatic R wrapper generation.
+# Builds a cdylib (shared library) containing all linkme distributed_slice
+# entries, loads it in R, and calls miniextendr_write_wrappers() which
+# writes R/*-wrappers.R. The Rust code diffs old vs new and only overwrites
+# when content changes (printing a devtools::document() reminder).
+# NAMESPACE is NOT generated here — use devtools::document() for that.
+$(WRAPPERS_R): $(CARGO_CDYLIB)
+	@echo "Generating R wrappers..."
+	@_cdylib='$(CARGO_CDYLIB)'; \
+	_wrappers='$(WRAPPERS_R)'; \
+	if command -v cygpath >/dev/null 2>&1; then \
+	  _cdylib=$$(cygpath -m "$$_cdylib"); \
+	  _wrappers=$$(cygpath -m "$$_wrappers"); \
+	fi; \
+	MINIEXTENDR_CDYLIB_WRAPPERS=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_cdylib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); dyn.unload('$$_cdylib') }))"
+	@echo "Removing cdylib to prevent linker collision with staticlib..."
+	@rm -f '$(CARGO_CDYLIB)'
+
+# Build cdylib for wrapper generation.
+# Runs after staticlib (via `all` ordering), so the incremental cache is warm.
+# Vendor extraction is handled by $(CARGO_AR) which builds first.
+$(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
+	@set -e; \
+	TARGET_OPT=""; \
+	CDYLIB_LINK_ARGS=""; \
+	for obj in $(OBJECTS); do CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
+	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
+	if [ "$(CDYLIB_EXT)" = "dll" ]; then \
+	  CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
+	fi; \
+	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	  --lib --profile $(CARGO_PROFILE) \
+	  --manifest-path $(CARGO_TOML) \
+	  --target-dir $(CARGO_TARGET_DIR) \
+	  --crate-type cdylib \
+	  -- $$CDYLIB_LINK_ARGS
 
 clean:
