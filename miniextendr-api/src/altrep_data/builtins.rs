@@ -9,10 +9,11 @@
 //! - `&'static [T]` — borrowed slices (zero-copy from static data)
 //! - `[T; N]` — fixed-size arrays
 
+use std::borrow::Cow;
 use std::ops::Range;
 
-use crate::ffi::Rcomplex;
-use crate::ffi::SEXP;
+use crate::altrep_traits::NA_REAL;
+use crate::ffi::{Rcomplex, SEXP};
 
 use super::{
     AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,
@@ -317,13 +318,20 @@ impl AltRealData for Vec<f64> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.is_nan()))
+        // NA_real_ is a specific NaN bit pattern; regular NaN is not NA in R.
+        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
     }
 
     fn sum(&self, na_rm: bool) -> Option<f64> {
         let mut sum = 0.0;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                // R's NA_real_: propagates as NA unless removed.
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
+                // Regular IEEE NaN: propagates as NaN unless removed.
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -338,7 +346,11 @@ impl AltRealData for Vec<f64> {
         let mut min = f64::INFINITY;
         let mut found = false;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -354,7 +366,11 @@ impl AltRealData for Vec<f64> {
         let mut max = f64::NEG_INFINITY;
         let mut found = false;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -576,13 +592,17 @@ impl AltRealData for Box<[f64]> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.is_nan()))
+        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
     }
 
     fn sum(&self, na_rm: bool) -> Option<f64> {
         let mut sum = 0.0;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -597,7 +617,11 @@ impl AltRealData for Box<[f64]> {
         let mut min = f64::INFINITY;
         let mut found = false;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -613,7 +637,11 @@ impl AltRealData for Box<[f64]> {
         let mut max = f64::NEG_INFINITY;
         let mut found = false;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -1113,53 +1141,65 @@ impl AltRealData for &[f64] {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.is_nan()))
+        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
     }
 
     fn sum(&self, na_rm: bool) -> Option<f64> {
-        if na_rm {
-            Some(self.iter().filter(|x| !x.is_nan()).sum())
-        } else if self.iter().any(|x| x.is_nan()) {
-            None // Return NA
-        } else {
-            Some(self.iter().sum())
+        let mut sum = 0.0;
+        for &x in self.iter() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
+            } else {
+                sum += x;
+            }
         }
+        Some(sum)
     }
 
     fn min(&self, na_rm: bool) -> Option<f64> {
-        if self.is_empty() {
-            return None;
+        let mut min = f64::INFINITY;
+        let mut found = false;
+        for &x in self.iter() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
+            } else {
+                found = true;
+                min = min.min(x);
+            }
         }
-        if na_rm {
-            self.iter()
-                .filter(|x| !x.is_nan())
-                .copied()
-                .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        } else if self.iter().any(|x| x.is_nan()) {
-            None
-        } else {
-            self.iter()
-                .copied()
-                .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        }
+        if found { Some(min) } else { None }
     }
 
     fn max(&self, na_rm: bool) -> Option<f64> {
-        if self.is_empty() {
-            return None;
+        let mut max = f64::NEG_INFINITY;
+        let mut found = false;
+        for &x in self.iter() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
+            } else {
+                found = true;
+                max = max.max(x);
+            }
         }
-        if na_rm {
-            self.iter()
-                .filter(|x| !x.is_nan())
-                .copied()
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        } else if self.iter().any(|x| x.is_nan()) {
-            None
-        } else {
-            self.iter()
-                .copied()
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        }
+        if found { Some(max) } else { None }
     }
 }
 
@@ -1271,7 +1311,7 @@ impl<const N: usize> AltRealData for [f64; N] {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.is_nan()))
+        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
     }
 }
 
@@ -1399,8 +1439,6 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
 // ownership semantics. Borrowed variants expose the underlying R data directly
 // via dataptr; Owned variants behave like Vec<T>. Copy-on-write happens
 // automatically when R requests a writable dataptr on a Borrowed variant.
-
-use std::borrow::Cow;
 
 macro_rules! impl_len_cow {
     ($elem:ty) => {
@@ -1545,13 +1583,17 @@ impl AltRealData for Cow<'static, [f64]> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.is_nan()))
+        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
     }
 
     fn sum(&self, na_rm: bool) -> Option<f64> {
         let mut sum = 0.0;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -1566,7 +1608,11 @@ impl AltRealData for Cow<'static, [f64]> {
         let mut min = f64::INFINITY;
         let mut found = false;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -1582,7 +1628,11 @@ impl AltRealData for Cow<'static, [f64]> {
         let mut max = f64::NEG_INFINITY;
         let mut found = false;
         for &x in self.iter() {
-            if x.is_nan() {
+            if x.to_bits() == NA_REAL.to_bits() {
+                if !na_rm {
+                    return Some(NA_REAL);
+                }
+            } else if x.is_nan() {
                 if !na_rm {
                     return Some(f64::NAN);
                 }
@@ -1659,3 +1709,166 @@ impl_serialize_cow!(Rcomplex);
 // - Cow<'static, [i32]>, Cow<'static, [f64]>, Cow<'static, [u8]>, Cow<'static, [Rcomplex]>
 // - Range<i32>, Range<i64>, Range<f64>
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::altrep_data::AltRealData;
+
+    // region: NA_REAL bit pattern tests
+
+    /// Verify NA_REAL has the expected R bit pattern.
+    #[test]
+    fn na_real_bit_pattern() {
+        assert_eq!(NA_REAL.to_bits(), 0x7FF0_0000_0000_07A2);
+    }
+
+    /// Regular NaN is NOT the same bit pattern as NA_real_.
+    #[test]
+    fn nan_is_not_na_real() {
+        let nan = f64::NAN;
+        assert!(nan.is_nan());
+        assert_ne!(nan.to_bits(), NA_REAL.to_bits());
+    }
+
+    // endregion
+
+    // region: Vec<f64> no_na — NA vs NaN
+
+    /// A vector with only regular (non-NA) NaN should report no_na = Some(true).
+    /// Regular NaN is a valid floating-point value, not R's NA.
+    #[test]
+    fn vec_f64_no_na_with_regular_nan_is_true() {
+        let v: Vec<f64> = vec![1.0, f64::NAN, 3.0];
+        assert_eq!(AltRealData::no_na(&v), Some(true));
+    }
+
+    /// A vector containing NA_real_ should report no_na = Some(false).
+    #[test]
+    fn vec_f64_no_na_with_na_real_is_false() {
+        let v: Vec<f64> = vec![1.0, NA_REAL, 3.0];
+        assert_eq!(AltRealData::no_na(&v), Some(false));
+    }
+
+    /// A vector with no NaN and no NA should report no_na = Some(true).
+    #[test]
+    fn vec_f64_no_na_all_finite_is_true() {
+        let v: Vec<f64> = vec![1.0, 2.0, 3.0];
+        assert_eq!(AltRealData::no_na(&v), Some(true));
+    }
+
+    // endregion
+
+    // region: Vec<f64> sum — NA vs NaN
+
+    /// sum with na_rm=false and NA_real_ present should return Some(NA_REAL).
+    #[test]
+    fn vec_f64_sum_na_propagates() {
+        let v: Vec<f64> = vec![1.0, NA_REAL, 3.0];
+        let result = AltRealData::sum(&v, false);
+        assert!(result.is_some());
+        let bits = result.unwrap().to_bits();
+        assert_eq!(
+            bits,
+            NA_REAL.to_bits(),
+            "sum with NA should return NA_real_"
+        );
+    }
+
+    /// sum with na_rm=true and NA_real_ present should skip the NA and sum the rest.
+    #[test]
+    fn vec_f64_sum_na_rm_skips_na() {
+        let v: Vec<f64> = vec![1.0, NA_REAL, 3.0];
+        let result = AltRealData::sum(&v, true);
+        assert_eq!(result, Some(4.0));
+    }
+
+    /// sum with na_rm=false and regular NaN present should return Some(NaN) — NOT NA.
+    #[test]
+    fn vec_f64_sum_nan_propagates_as_nan_not_na() {
+        let v: Vec<f64> = vec![1.0, f64::NAN, 3.0];
+        let result = AltRealData::sum(&v, false);
+        assert!(result.is_some());
+        let val = result.unwrap();
+        assert!(val.is_nan(), "sum with NaN (not NA) should return NaN");
+        assert_ne!(
+            val.to_bits(),
+            NA_REAL.to_bits(),
+            "sum with regular NaN should NOT return NA_real_"
+        );
+    }
+
+    /// sum with na_rm=true and regular NaN present should skip the NaN.
+    #[test]
+    fn vec_f64_sum_nan_rm_skips_nan() {
+        let v: Vec<f64> = vec![1.0, f64::NAN, 3.0];
+        let result = AltRealData::sum(&v, true);
+        assert_eq!(result, Some(4.0));
+    }
+
+    // endregion
+
+    // region: Box<[f64]> no_na — NA vs NaN
+
+    #[test]
+    fn box_f64_no_na_with_regular_nan_is_true() {
+        let v: Box<[f64]> = vec![1.0, f64::NAN, 3.0].into_boxed_slice();
+        assert_eq!(AltRealData::no_na(&v), Some(true));
+    }
+
+    #[test]
+    fn box_f64_no_na_with_na_real_is_false() {
+        let v: Box<[f64]> = vec![1.0, NA_REAL, 3.0].into_boxed_slice();
+        assert_eq!(AltRealData::no_na(&v), Some(false));
+    }
+
+    // endregion
+
+    // region: &[f64] no_na — NA vs NaN
+
+    #[test]
+    fn slice_f64_no_na_with_regular_nan_is_true() {
+        let data: &[f64] = &[1.0, f64::NAN, 3.0];
+        assert_eq!(AltRealData::no_na(&data), Some(true));
+    }
+
+    #[test]
+    fn slice_f64_no_na_with_na_real_is_false() {
+        let data: &[f64] = &[1.0, NA_REAL, 3.0];
+        assert_eq!(AltRealData::no_na(&data), Some(false));
+    }
+
+    // endregion
+
+    // region: [f64; N] no_na — NA vs NaN
+
+    #[test]
+    fn array_f64_no_na_with_regular_nan_is_true() {
+        let arr: [f64; 3] = [1.0, f64::NAN, 3.0];
+        assert_eq!(AltRealData::no_na(&arr), Some(true));
+    }
+
+    #[test]
+    fn array_f64_no_na_with_na_real_is_false() {
+        let arr: [f64; 3] = [1.0, NA_REAL, 3.0];
+        assert_eq!(AltRealData::no_na(&arr), Some(false));
+    }
+
+    // endregion
+
+    // region: Cow<'static, [f64]> no_na — NA vs NaN
+
+    #[test]
+    fn cow_f64_no_na_with_regular_nan_is_true() {
+        let v: Cow<'static, [f64]> = Cow::Owned(vec![1.0, f64::NAN, 3.0]);
+        assert_eq!(AltRealData::no_na(&v), Some(true));
+    }
+
+    #[test]
+    fn cow_f64_no_na_with_na_real_is_false() {
+        let v: Cow<'static, [f64]> = Cow::Owned(vec![1.0, NA_REAL, 3.0]);
+        assert_eq!(AltRealData::no_na(&v), Some(false));
+    }
+
+    // endregion
+}

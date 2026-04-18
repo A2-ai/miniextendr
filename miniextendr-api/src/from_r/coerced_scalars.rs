@@ -6,6 +6,7 @@
 //! Covers: `i8`, `i16`, `u16`, `u32`, `f32` (sub-native scalars) and
 //! `i64`, `u64`, `isize`, `usize` (large integers via f64 intermediary).
 
+use crate::altrep_traits::NA_INTEGER;
 use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, TryFromSexp, is_na_real};
@@ -108,8 +109,25 @@ where
     let actual = sexp.type_of();
     match actual {
         SEXPTYPE::INTSXP => {
-            let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
-            if value == crate::altrep_traits::NA_INTEGER {
+            // Read raw i32 without the NA guard — we handle NA here by returning None.
+            let len = sexp.len();
+            if len != 1 {
+                return Err(crate::from_r::SexpLengthError {
+                    expected: 1,
+                    actual: len,
+                }
+                .into());
+            }
+            let value = unsafe { sexp.as_slice::<i32>() }
+                .first()
+                .cloned()
+                .ok_or_else(|| {
+                    SexpError::from(crate::from_r::SexpLengthError {
+                        expected: 1,
+                        actual: 0,
+                    })
+                })?;
+            if value == NA_INTEGER {
                 Ok(None)
             } else {
                 coerce_value(value).map(Some)
@@ -159,8 +177,25 @@ where
     let actual = sexp.type_of();
     match actual {
         SEXPTYPE::INTSXP => {
-            let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-            if value == crate::altrep_traits::NA_INTEGER {
+            // Read raw i32 without the NA guard — we handle NA here by returning None.
+            let len = unsafe { sexp.len_unchecked() };
+            if len != 1 {
+                return Err(crate::from_r::SexpLengthError {
+                    expected: 1,
+                    actual: len,
+                }
+                .into());
+            }
+            let value = unsafe { sexp.as_slice_unchecked::<i32>() }
+                .first()
+                .cloned()
+                .ok_or_else(|| {
+                    SexpError::from(crate::from_r::SexpLengthError {
+                        expected: 1,
+                        actual: 0,
+                    })
+                })?;
+            if value == NA_INTEGER {
                 Ok(None)
             } else {
                 coerce_value(value).map(Some)
