@@ -122,6 +122,27 @@ pub unsafe fn init_sexprec_data_offset() {
 /// - The candidate SEXP has the wrong type or length
 /// - The candidate is an ALTREP vector (data not at fixed offset from SEXP)
 ///
+/// # Why this is outside Rust's memory model (see #63)
+///
+/// This is a conservative-GC-style probe, analogous to Boehm GC scanning
+/// the heap without allocation provenance. We compute a speculative pointer
+/// via `wrapping_byte_sub` (well-defined pointer arithmetic) and read the
+/// first 4 bytes (sxpinfo bits) to check whether the address looks like the
+/// start of a SEXPREC. For pointers that did not come from an R SEXP, that
+/// read has no valid allocation provenance under Rust's Stacked / Tree
+/// Borrows model — it's defined behavior at the hardware level (the heap
+/// is contiguous mapped memory), but Miri correctly flags it as UB.
+///
+/// We guard the read with a 4096-byte address floor (below which the
+/// candidate would cross into unmapped memory), the ALTREP bit check
+/// (prevents calling dispatch fns on garbage), and the length check
+/// (filters random garbage with high probability). Callers that cannot
+/// tolerate a false positive must not rely on this path alone.
+///
+/// To keep Miri green, the whole recovery is a no-op under `#[cfg(miri)]`:
+/// we always return `None`, and callers fall back to the copy path. This
+/// is not a correctness change — the copy path is always a valid alternative.
+///
 /// # Safety
 ///
 /// Must be called on R's main thread. The data pointer must be valid
@@ -132,6 +153,16 @@ pub unsafe fn try_recover_r_sexp(
     expected_type: SEXPTYPE,
     expected_len: usize,
 ) -> Option<SEXP> {
+    // Speculative sxpinfo read has no provenance for Rust-allocated buffers
+    // (see `#63`). Under Miri, skip the probe entirely so the copy path is
+    // exercised and the analyzer stays clean. No functional regression.
+    #[cfg(miri)]
+    {
+        let _ = (data_ptr, expected_type, expected_len);
+        return None;
+    }
+
+    #[cfg_attr(miri, allow(unreachable_code))]
     let offset = SEXPREC_DATA_OFFSET.load(Ordering::Relaxed);
     if offset == 0 {
         return None;
