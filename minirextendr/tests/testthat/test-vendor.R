@@ -1,5 +1,82 @@
 # Tests for vendor and cache functions
 
+# -----------------------------------------------------------------------------
+# read_workspace_package_values (#253)
+# -----------------------------------------------------------------------------
+
+test_that("read_workspace_package_values returns defaults when workspace_root is NULL", {
+  vals <- minirextendr:::read_workspace_package_values(NULL)
+  expect_equal(vals$edition, "2024")
+  expect_equal(vals$version, "0.1.0")
+  expect_equal(vals$license, "MIT")
+})
+
+test_that("read_workspace_package_values reads string fields from workspace Cargo.toml", {
+  tmp <- withr::local_tempdir()
+  writeLines(c(
+    "[workspace.package]",
+    'edition = "2021"',
+    'version = "9.9.9"',
+    'license = "Apache-2.0"',
+    'repository = "https://example.com/repo"',
+    'homepage = "https://example.com/home"',
+    'keywords = ["a", "b"]',
+    'categories = ["x"]',
+    "",
+    "[workspace]",
+    "members = []"
+  ), fs::path(tmp, "Cargo.toml"))
+
+  vals <- minirextendr:::read_workspace_package_values(tmp)
+  expect_equal(vals$edition, "2021")
+  expect_equal(vals$version, "9.9.9")
+  expect_equal(vals$license, "Apache-2.0")
+  expect_equal(vals$repository, "https://example.com/repo")
+  expect_equal(vals$homepage, "https://example.com/home")
+  expect_equal(vals$keywords, '["a", "b"]')
+  expect_equal(vals$categories, '["x"]')
+})
+
+test_that("read_workspace_package_values falls back per-field when fields are missing", {
+  tmp <- withr::local_tempdir()
+  # Only declare `version` — everything else must fall back to defaults.
+  writeLines(c(
+    "[workspace.package]",
+    'version = "7.7.7"',
+    "",
+    "[workspace]",
+    "members = []"
+  ), fs::path(tmp, "Cargo.toml"))
+
+  vals <- minirextendr:::read_workspace_package_values(tmp)
+  expect_equal(vals$version, "7.7.7")       # from file
+  expect_equal(vals$edition, "2024")        # default
+  expect_equal(vals$license, "MIT")         # default
+  expect_equal(vals$keywords, '["r", "ffi", "bindings"]')  # default
+})
+
+test_that("read_workspace_package_values warns when workspace Cargo.toml is missing", {
+  tmp <- withr::local_tempdir()
+  expect_warning(
+    vals <- minirextendr:::read_workspace_package_values(tmp),
+    "Workspace Cargo.toml not found"
+  )
+  expect_equal(vals$edition, "2024")  # defaults used
+})
+
+test_that("read_workspace_package_values handles no [workspace.package] section", {
+  tmp <- withr::local_tempdir()
+  writeLines(c(
+    "[package]",
+    'name = "x"',
+    'version = "1.0.0"'
+  ), fs::path(tmp, "Cargo.toml"))
+
+  vals <- minirextendr:::read_workspace_package_values(tmp)
+  # No [workspace.package] → defaults returned, no warning.
+  expect_equal(vals$edition, "2024")
+})
+
 # Helper to skip tests that require network
 skip_if_offline <- function() {
   tryCatch(

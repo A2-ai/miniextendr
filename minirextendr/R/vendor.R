@@ -187,10 +187,12 @@ vendor_miniextendr <- function(path = ".",
     # Strip build artifacts, tests, benchmarks, and hidden files
     strip_vendored_crate(dest_path)
 
-    # Patch Cargo.toml to remove workspace inheritance
+    # Patch Cargo.toml to remove workspace inheritance. Pass the extracted
+    # miniextendr root so `[workspace.package]` values are read from the
+    # actual workspace rather than hardcoded (see #253).
     cargo_toml <- fs::path(dest_path, "Cargo.toml")
     if (fs::file_exists(cargo_toml)) {
-      patch_cargo_toml(cargo_toml, crate)
+      patch_cargo_toml(cargo_toml, crate, workspace_root = extracted_dir)
     }
 
     # Create .cargo-checksum.json (required when crate is in a vendor directory
@@ -213,23 +215,119 @@ vendor_miniextendr <- function(path = ".",
   invisible(TRUE)
 }
 
+#' Read `[workspace.package]` values from the miniextendr workspace root
+#'
+#' Parses a minimal subset of the workspace root's `Cargo.toml` to return
+#' the fields referenced by `patch_cargo_toml`. Not a full TOML parser —
+#' just enough to extract string / array values from the
+#' `[workspace.package]` table. Falls back to hardcoded defaults on parse
+#' failure or when `workspace_root` is NULL.
+#'
+#' Uses regex against the already-authored Cargo.toml shape (quoted string
+#' values, inline arrays), which is sufficient for the miniextendr workspace
+#' manifest. A more robust future implementation would delegate to
+#' `cargo-revendor`'s `cargo package` resolution.
+#'
+#' @param workspace_root Path to the miniextendr workspace root, or NULL to
+#'   skip parsing and use defaults.
+#' @return Named list with fields: edition, version, license, repository,
+#'   homepage, keywords, categories. Array fields are returned as their
+#'   TOML representation (e.g. `["r", "ffi", "bindings"]`).
+#' @noRd
+read_workspace_package_values <- function(workspace_root = NULL) {
+  # Hardcoded defaults preserve pre-#253 behavior when parsing fails.
+  defaults <- list(
+    edition = "2024",
+    version = "0.1.0",
+    license = "MIT",
+    repository = "https://github.com/CGMossa/miniextendr",
+    homepage = "https://github.com/CGMossa/miniextendr",
+    keywords = '["r", "ffi", "bindings"]',
+    categories = '["api-bindings", "external-ffi-bindings"]'
+  )
+
+  if (is.null(workspace_root)) {
+    return(defaults)
+  }
+
+  ws_cargo <- fs::path(workspace_root, "Cargo.toml")
+  if (!fs::file_exists(ws_cargo)) {
+    cli::cli_warn(c(
+      "Workspace Cargo.toml not found at {.path {ws_cargo}}",
+      "i" = "Falling back to hardcoded values — vendored crates may drift from workspace"
+    ))
+    return(defaults)
+  }
+
+  content <- readLines(ws_cargo, warn = FALSE)
+
+  # Find the [workspace.package] section bounds.
+  start <- grep("^\\[workspace\\.package\\]\\s*$", content)
+  if (length(start) == 0) {
+    return(defaults)
+  }
+  start <- start[[1]] + 1L
+
+  # Section ends at next `[...]` header or EOF.
+  next_section <- grep("^\\[", content[seq(start, length(content))])
+  end <- if (length(next_section) > 0) start + next_section[[1]] - 2L else length(content)
+
+  section <- content[seq(start, end)]
+
+  # Extract `key = "value"` for string fields.
+  extract_string <- function(key) {
+    pattern <- sprintf('^%s\\s*=\\s*"([^"]*)"\\s*$', key)
+    m <- regmatches(section, regexec(pattern, section))
+    hit <- Filter(function(x) length(x) == 2L, m)
+    if (length(hit) == 0) NULL else hit[[1L]][[2L]]
+  }
+
+  # Extract `key = [...]` for array fields — return the full `[...]` literal.
+  extract_array <- function(key) {
+    pattern <- sprintf("^%s\\s*=\\s*(\\[.*\\])\\s*$", key)
+    m <- regmatches(section, regexec(pattern, section))
+    hit <- Filter(function(x) length(x) == 2L, m)
+    if (length(hit) == 0) NULL else hit[[1L]][[2L]]
+  }
+
+  list(
+    edition    = extract_string("edition")    %||% defaults$edition,
+    version    = extract_string("version")    %||% defaults$version,
+    license    = extract_string("license")    %||% defaults$license,
+    repository = extract_string("repository") %||% defaults$repository,
+    homepage   = extract_string("homepage")   %||% defaults$homepage,
+    keywords   = extract_array("keywords")    %||% defaults$keywords,
+    categories = extract_array("categories")  %||% defaults$categories
+  )
+}
+
 #' Patch Cargo.toml to remove workspace inheritance
 #'
 #' @param path Path to Cargo.toml
 #' @param crate_name Name of the crate
+#' @param workspace_root Optional path to the miniextendr workspace root.
+#'   When provided, `[workspace.package]` values are read from that root's
+#'   `Cargo.toml` so version bumps / license changes propagate. Without it,
+#'   hardcoded fallbacks are used (with a warning).
 #' @noRd
-patch_cargo_toml <- function(path, crate_name) {
+patch_cargo_toml <- function(path, crate_name, workspace_root = NULL) {
   content <- readLines(path, warn = FALSE)
+
+  # Resolve workspace package values from the actual workspace Cargo.toml
+  # when available. Falls back to hardcoded defaults (matching the old
+  # behavior) if the root can't be read — emits a warning so stale values
+  # are visible instead of silent.
+  ws_vals <- read_workspace_package_values(workspace_root)
 
   # Replace workspace = true with actual values
   replacements <- list(
-    'edition\\.workspace = true' = 'edition = "2024"',
-    'version\\.workspace = true' = 'version = "0.1.0"',
-    'license\\.workspace = true' = 'license = "MIT"',
-    'repository\\.workspace = true' = 'repository = "https://github.com/CGMossa/miniextendr"',
-    'homepage\\.workspace = true' = 'homepage = "https://github.com/CGMossa/miniextendr"',
-    'keywords\\.workspace = true' = 'keywords = ["r", "ffi", "bindings"]',
-    'categories\\.workspace = true' = 'categories = ["api-bindings", "external-ffi-bindings"]'
+    'edition\\.workspace = true' = sprintf('edition = "%s"', ws_vals$edition),
+    'version\\.workspace = true' = sprintf('version = "%s"', ws_vals$version),
+    'license\\.workspace = true' = sprintf('license = "%s"', ws_vals$license),
+    'repository\\.workspace = true' = sprintf('repository = "%s"', ws_vals$repository),
+    'homepage\\.workspace = true' = sprintf('homepage = "%s"', ws_vals$homepage),
+    'keywords\\.workspace = true' = sprintf('keywords = %s', ws_vals$keywords),
+    'categories\\.workspace = true' = sprintf('categories = %s', ws_vals$categories)
   )
 
   for (pattern in names(replacements)) {
@@ -328,10 +426,12 @@ vendor_miniextendr_local <- function(local_path, dest) {
     # Strip build artifacts, tests, benchmarks, and hidden files
     strip_vendored_crate(dest_path)
 
-    # Patch Cargo.toml to remove workspace inheritance
+    # Patch Cargo.toml to remove workspace inheritance. Pass the local
+    # miniextendr checkout so `[workspace.package]` values are read from
+    # the actual workspace rather than hardcoded (see #253).
     cargo_toml <- fs::path(dest_path, "Cargo.toml")
     if (fs::file_exists(cargo_toml)) {
-      patch_cargo_toml(cargo_toml, crate)
+      patch_cargo_toml(cargo_toml, crate, workspace_root = local_path)
     }
 
     # Create .cargo-checksum.json (required when crate is in a vendor directory
