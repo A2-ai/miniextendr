@@ -35,7 +35,7 @@ S3MatchArgPoint
 
 \item{...}{Additional arguments.}
 
-\item{mode}{(undocumented)}
+\item{mode}{One of "Fast", "Safe", "Debug".}
 }
 \description{
 S3MatchArgPoint S3 Class

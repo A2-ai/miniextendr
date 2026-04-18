@@ -139,6 +139,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
         }
         // Document constructor params that aren't already documented
+        let ctor_mx_doc = ctx.match_arg_doc_placeholders();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
             let param_name = param.split('=').next().unwrap_or(param).trim();
             if param_name == ".ptr" {
@@ -150,10 +151,13 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .iter()
                 .any(|t| t.starts_with(&format!("@param {}", param_name)));
             if !already_documented {
-                lines.push(format!(
-                    "    #' @param {} (no documentation available)",
-                    param_name
-                ));
+                // match_arg'd constructor params get the write-time placeholder
+                // so the cdylib pass renders `One of "A", "B".` (#210).
+                let body = ctor_mx_doc
+                    .get(param_name)
+                    .map(String::as_str)
+                    .unwrap_or("(no documentation available)");
+                lines.push(format!("    #' @param {} {}", param_name, body));
             }
         }
 
@@ -278,6 +282,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
         }
         // Document method params that aren't already documented
+        let method_mx_doc = ctx.match_arg_doc_placeholders();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
             let param_name = param.split('=').next().unwrap_or(param).trim();
             let already_documented = ctx
@@ -286,10 +291,11 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .iter()
                 .any(|t| t.starts_with(&format!("@param {}", param_name)));
             if !already_documented {
-                lines.push(format!(
-                    "    #' @param {} (no documentation available)",
-                    param_name
-                ));
+                let body = method_mx_doc
+                    .get(param_name)
+                    .map(String::as_str)
+                    .unwrap_or("(no documentation available)");
+                lines.push(format!("    #' @param {} {}", param_name, body));
             }
         }
         lines.push(format!("    {} = function({}) {{", r_name, ctx.params));
