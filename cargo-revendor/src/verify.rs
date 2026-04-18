@@ -292,6 +292,12 @@ fn collect_file_hashes(root: &Path) -> Result<BTreeMap<String, u64>> {
             .unwrap_or(entry.path())
             .to_string_lossy()
             .into_owned();
+        // cache.rs writes `.revendor-cache` at the top of vendor/ AFTER the
+        // tarball is compressed, so it's never in the tarball by design —
+        // skip it to avoid a perpetual false-positive diff.
+        if rel == ".revendor-cache" {
+            continue;
+        }
         let bytes = std::fs::read(entry.path())?;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         bytes.hash(&mut hasher);
