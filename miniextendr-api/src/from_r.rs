@@ -376,7 +376,84 @@ macro_rules! impl_try_from_sexp_scalar_native {
     };
 }
 
-impl_try_from_sexp_scalar_native!(i32, INTSXP);
+// i32 has a bespoke impl that checks for NA_integer_ (i32::MIN).
+// The shared macro is NOT used for i32 — it would silently pass NA through.
+impl TryFromSexp for i32 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::INTSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into());
+        }
+        let len = sexp.len();
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+        let v = unsafe { sexp.as_slice::<i32>() }
+            .first()
+            .cloned()
+            .ok_or_else(|| {
+                SexpError::from(SexpLengthError {
+                    expected: 1,
+                    actual: 0,
+                })
+            })?;
+        if v == crate::altrep_traits::NA_INTEGER {
+            return Err(SexpNaError {
+                sexp_type: SEXPTYPE::INTSXP,
+            }
+            .into());
+        }
+        Ok(v)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::INTSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into());
+        }
+        let len = unsafe { sexp.len_unchecked() };
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+        let v = unsafe { sexp.as_slice_unchecked::<i32>() }
+            .first()
+            .cloned()
+            .ok_or_else(|| {
+                SexpError::from(SexpLengthError {
+                    expected: 1,
+                    actual: 0,
+                })
+            })?;
+        if v == crate::altrep_traits::NA_INTEGER {
+            return Err(SexpNaError {
+                sexp_type: SEXPTYPE::INTSXP,
+            }
+            .into());
+        }
+        Ok(v)
+    }
+}
+
 impl_try_from_sexp_scalar_native!(f64, REALSXP);
 impl_try_from_sexp_scalar_native!(u8, RAWSXP);
 impl_try_from_sexp_scalar_native!(RLogical, LGLSXP);
