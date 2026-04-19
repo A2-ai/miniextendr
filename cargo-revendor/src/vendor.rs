@@ -344,7 +344,7 @@ fn add_path_to_dep(dep: &mut toml_edit::Item, name: &str) -> bool {
 /// But workspace inheritance (`version.workspace = true`, etc.) won't resolve
 /// outside the workspace. This function reads the workspace root's
 /// `[workspace.package]` and replaces the inherited fields.
-fn resolve_workspace_inheritance(
+pub fn resolve_workspace_inheritance(
     vendor_crate_dir: &Path,
     original_crate_dir: &Path,
     v: crate::Verbosity,
