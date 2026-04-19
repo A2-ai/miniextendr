@@ -1,6 +1,9 @@
 # https://just.systems
 #
 # Quick reference:
+#   Setup (Windows-only):
+#     just install-deps-windows - Install Windows system tooling via Scoop (rv, etc.)
+#
 #   Rust:
 #     just check              - Run cargo check
 #     just check-features     - Check feature combinations compile
@@ -400,6 +403,12 @@ install_deps:
 # Prefer these aliases in CLI one-offs; CI still runs full `cargo clippy ... -D warnings`.
 dev-tools-install:
     cargo install cargo-limit
+
+# Install Windows system tooling via Scoop (https://scoop.sh). Currently installs
+# `rv` (https://github.com/a2-ai/rv), the R version manager used on this repo.
+[windows]
+install-deps-windows:
+    powershell.exe -NoProfile -Command "scoop install rv"
 
 # Install minirextendr dependencies (for scaffolding helper package)
 minirextendr-install-deps:
