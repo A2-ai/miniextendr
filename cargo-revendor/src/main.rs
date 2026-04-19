@@ -255,7 +255,45 @@ fn main() -> Result<()> {
         );
     }
 
-    // Step 1: Load cargo metadata to discover dependencies
+    // Step 1a: Pre-seed `vendor/<name>-<version>/` for each workspace member
+    // when `--source-root` is set (dev-monorepo configure path).
+    //
+    // Why: the target manifest ships in vendor-frozen state with `path =
+    // "../../vendor/<crate>-<ver>/"` in `[dependencies]`. Those aren't
+    // registry deps, so `--config patch.crates-io…` doesn't help; cargo
+    // follows the path directly. On a fresh clone, `vendor/` is empty, so
+    // `cargo metadata` fails with "failed to load manifest for dependency
+    // … os error 3" and we never get to vendor anything.
+    //
+    // A cheap cargo-native bootstrap: copy the workspace source into the
+    // expected `vendor/<name>-<ver>/` path before running metadata. cargo
+    // then resolves successfully, and the rest of the vendor pipeline
+    // overwrites/regenerates those directories from the canonical cargo
+    // package output (with workspace inheritance resolved, checksums
+    // generated, etc.) — so the pre-seeded copy is only used to unblock
+    // the first metadata call, not shipped.
+    let source_root_members = if let Some(ref source_root) = cli.source_root {
+        metadata::discover_workspace_members(source_root)?
+    } else {
+        Vec::new()
+    };
+
+    if !source_root_members.is_empty() {
+        bootstrap_vendor_from_source_root(&output, &source_root_members, v)?;
+        // After seeding, each workspace member's Cargo.toml still has its
+        // ORIGINAL inter-workspace `path = "../other-crate"` deps, which
+        // resolve relative to the NEW vendor location and go nowhere.
+        // Rewrite them to sibling vendor dirs (e.g. `../miniextendr-macros-0.1.0`)
+        // so cargo metadata can walk the dep graph.
+        vendor::rewrite_local_path_deps(
+            &output,
+            &source_root_members,
+            /* versioned_dirs = */ true,
+            v,
+        )?;
+    }
+
+    // Step 1b: Load cargo metadata to discover dependencies.
     let meta = metadata::load_metadata(&manifest_path)?;
 
     // Mirror upstream cargo's duplicate-source check: error out if two
@@ -266,9 +304,10 @@ fn main() -> Result<()> {
 
     let (mut local_pkgs, _external_pkgs) = metadata::partition_packages(&meta, &manifest_path)?;
 
-    // Also discover ALL workspace members from the source workspace root
-    let all_workspace_members = if let Some(ref source_root) = cli.source_root {
-        metadata::discover_workspace_members(source_root)?
+    // Fall back to heuristic workspace-root detection only if `--source-root`
+    // wasn't explicitly provided.
+    let all_workspace_members = if !source_root_members.is_empty() {
+        source_root_members
     } else if let Some(first_local) = local_pkgs.first() {
         let ws_root = find_workspace_root(&first_local.path)?;
         metadata::discover_workspace_members(&ws_root)?
@@ -592,6 +631,63 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
         } else {
             std::fs::copy(entry.path(), &target)?;
         }
+    }
+    Ok(())
+}
+
+/// Pre-seed `<vendor>/<name>-<version>/` with a copy of each source-root
+/// workspace member so `cargo metadata` on the target manifest can resolve
+/// `path = "../../vendor/<name>-<version>/"` deps even when `vendor/` is
+/// empty on a fresh clone.
+///
+/// Skips directories that already look like a Cargo package (contain a
+/// `Cargo.toml`) so we don't stomp on a user's in-progress vendor tree.
+/// The rest of the vendor pipeline runs `cargo package` + `cargo vendor`
+/// right after metadata succeeds, which replaces these seeds with the
+/// canonical packaged output (resolved workspace inheritance, checksums,
+/// etc.) — so the seed only has to satisfy cargo's manifest-read, not be
+/// a final artifact.
+fn bootstrap_vendor_from_source_root(
+    vendor: &std::path::Path,
+    source_root_members: &[metadata::LocalPackage],
+    v: crate::Verbosity,
+) -> Result<()> {
+    let mut seeded = 0usize;
+    for pkg in source_root_members {
+        let dir = vendor.join(format!("{}-{}", pkg.name, pkg.version));
+        if dir.join("Cargo.toml").is_file() {
+            continue; // already populated (tarball unpack, previous run)
+        }
+        if v.debug() {
+            eprintln!(
+                "  bootstrap-seeding {} -> {}",
+                pkg.path.display(),
+                dir.display()
+            );
+        }
+        copy_dir_recursive(&pkg.path, &dir).with_context(|| {
+            format!(
+                "failed to bootstrap-seed {} into {}",
+                pkg.path.display(),
+                dir.display()
+            )
+        })?;
+        // Inline `*.workspace = true` inheritance in the seeded Cargo.toml so
+        // cargo metadata doesn't bail with "failed to find a workspace root"
+        // — the vendor path isn't inside any workspace, so inheritance has
+        // nowhere to resolve from without this rewrite.
+        vendor::resolve_workspace_inheritance(&dir, &pkg.path, v).with_context(|| {
+            format!(
+                "failed to resolve workspace inheritance in seeded {}",
+                dir.display()
+            )
+        })?;
+        seeded += 1;
+    }
+    if v.info() && seeded > 0 {
+        eprintln!(
+            "  bootstrapped {seeded} workspace crate(s) into vendor/ so metadata can resolve"
+        );
     }
     Ok(())
 }
