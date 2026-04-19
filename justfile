@@ -347,17 +347,26 @@ configure-cran:
     NOT_CRAN=false bash ./configure
 
 # Vendor dependencies for CRAN release preparation.
-# Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor
+# Requires cargo-revendor: cargo install --path cargo-revendor (or `just revendor-install`).
 #
 # --force bypasses cargo-revendor's cache (#150): source-only edits to workspace
 # crates leave Cargo.lock untouched, so without --force the cache check skips
 # re-vendoring and ships a stale tarball. Once #150's fix lands on main and is
 # installed, --force becomes harmless (re-runs the full vendor when cache is
 # valid but produces identical output).
+#
+# --source-root points at the monorepo root so cargo-revendor can pre-seed
+# rpkg/vendor/<crate>-<ver>/ before running `cargo metadata`. Required on a
+# fresh clone: rpkg/src/rust/Cargo.toml ships with frozen `path =
+# "../../vendor/..."` deps, and inst/vendor.tar.xz is no longer tracked, so
+# without the source-root pre-seed the first `cargo metadata` call fails
+# with "failed to read .../vendor/miniextendr-api-0.1.0/Cargo.toml" and the
+# whole vendor step aborts. See #280.
 vendor:
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
       --output rpkg/vendor \
+      --source-root . \
       --strip-all \
       --freeze \
       --compress rpkg/inst/vendor.tar.xz \

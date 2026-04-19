@@ -1,4 +1,4 @@
-base_url = "https://cgmossa.github.io/miniextendr"
+base_url = "https://a2-ai.github.io/miniextendr"
 title = "miniextendr"
 description = "A Rust-R interoperability framework for building R packages with Rust backends"
 compile_sass = false
@@ -20,4 +20,4 @@ lazy_async_image = true
 theme = "github-dark"
 
 [extra]
-repo_url = "https://github.com/CGMossa/miniextendr"
+repo_url = "https://github.com/A2-ai/miniextendr"

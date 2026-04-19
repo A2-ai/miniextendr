@@ -509,7 +509,7 @@ Key paths in R source:
 
 ## Documentation Site
 
-The `site/` directory contains a [Zola](https://www.getzola.org/) static site deployed to GitHub Pages at `https://cgmossa.github.io/miniextendr/`.
+The `site/` directory contains a [Zola](https://www.getzola.org/) static site deployed to GitHub Pages at `https://a2-ai.github.io/miniextendr/`.
 
 ### Structure
 
@@ -554,7 +554,7 @@ GitHub Actions (`.github/workflows/pages.yml`) auto-deploys on push to `main` wh
 3. Copies rustdoc into `site/public/rustdoc/`
 4. Deploys the combined output to GitHub Pages
 
-Rustdoc API reference is at `https://cgmossa.github.io/miniextendr/rustdoc/miniextendr_api/`.
+Rustdoc API reference is at `https://a2-ai.github.io/miniextendr/rustdoc/miniextendr_api/`.
 
 Manual deploy via `workflow_dispatch` is also available.
 
