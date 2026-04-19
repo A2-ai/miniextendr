@@ -86,8 +86,11 @@ pub fn run_cargo_vendor(
 
 /// Extract a .crate archive OR copy a directory into the vendor directory.
 ///
-/// If `versioned_dirs` is true and `pkg_version` is provided, the destination
-/// directory is named `vendor/<name>-<version>/` instead of `vendor/<name>/`.
+/// Local workspace crates always land at flat `vendor/<name>/` — they are
+/// single-version by construction, so the #214 flat-slot non-determinism
+/// (which motivates `--versioned-dirs` for transitive deps) can't apply.
+/// `pkg_version` is kept only to clean up versioned placeholders that
+/// `cargo vendor --versioned-dirs` may have created for patched crates.
 pub fn extract_crate_archive(
     crate_path: &Path,
     vendor_dir: &Path,
@@ -95,16 +98,19 @@ pub fn extract_crate_archive(
     pkg_version: Option<&str>,
     v: crate::Verbosity,
 ) -> Result<()> {
-    let dir_name = if let Some(ver) = pkg_version {
-        format!("{}-{}", pkg_name, ver)
-    } else {
-        pkg_name.to_string()
-    };
+    let dir_name = pkg_name.to_string();
     let dest = vendor_dir.join(&dir_name);
 
-    // Remove any existing directory (cargo vendor may have put a placeholder)
+    // Remove any existing directory (cargo vendor may have put a placeholder
+    // at either the flat or versioned path depending on --versioned-dirs).
     if dest.exists() {
         std::fs::remove_dir_all(&dest)?;
+    }
+    if let Some(ver) = pkg_version {
+        let versioned = vendor_dir.join(format!("{}-{}", pkg_name, ver));
+        if versioned.exists() {
+            std::fs::remove_dir_all(&versioned)?;
+        }
     }
 
     if crate_path.is_dir() {
@@ -135,7 +141,7 @@ pub fn extract_crate_archive(
     // Find the extracted directory (name-version/)
     let extracted = find_single_subdir(&extract_tmp)?;
 
-    // Move to final destination (versioned or flat name)
+    // Move to final destination (flat `vendor/<name>/`)
     std::fs::rename(&extracted, &dest).with_context(|| {
         format!(
             "failed to move {} to {}",
@@ -233,11 +239,13 @@ fn remove_relative_path(dep: &mut toml_edit::Item) -> bool {
     }
 }
 
-/// Rewrite inter-crate path dependencies so local crates reference each other in vendor/
+/// Rewrite inter-crate path dependencies so local crates reference each other
+/// in `vendor/`. Local crates always land at flat `vendor/<name>/` — they are
+/// single-version by construction, so the #214 rationale for versioned dirs
+/// doesn't apply.
 pub fn rewrite_local_path_deps(
     vendor_dir: &Path,
     local_pkgs: &[LocalPackage],
-    versioned_dirs: bool,
     v: crate::Verbosity,
 ) -> Result<()> {
     for entry in std::fs::read_dir(vendor_dir)? {
@@ -262,13 +270,8 @@ pub fn rewrite_local_path_deps(
         for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
             if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
                 for pkg in local_pkgs.iter() {
-                    let dir_name = if versioned_dirs {
-                        format!("{}-{}", pkg.name, pkg.version)
-                    } else {
-                        pkg.name.clone()
-                    };
                     if let Some(dep) = table.get_mut(&pkg.name)
-                        && add_path_to_dep(dep, &dir_name)
+                        && add_path_to_dep(dep, &pkg.name)
                     {
                         changed = true;
                         if v.info() {
@@ -850,13 +853,19 @@ pub fn freeze_manifest(
         manifest_path.parent().context("manifest has no parent")?,
     );
 
-    // Step 1: Rewrite git/version deps to vendor/ path deps
+    // Step 1: Rewrite git/version deps to vendor/ path deps.
+    //
+    // Local workspace crates always land at flat `vendor/<name>/` — single-
+    // version by construction, so the #214 flat-slot non-determinism that
+    // motivates versioned dirs for transitive deps can't apply here. The
+    // `--flat-dirs` escape hatch is handled implicitly: when `versioned_dirs`
+    // is false, transitive deps are also flat, so the probe helper just
+    // returns the flat name too.
     for section in &["dependencies", "build-dependencies"] {
         if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
             for pkg in local_pkgs.iter() {
                 if let Some(dep) = table.get_mut(&pkg.name) {
-                    let dir_name = vendor_dir_name_for_pkg(vendor_dir, &pkg.name, &pkg.version, versioned_dirs);
-                    rewrite_dep_to_vendor(dep, &dir_name, &vendor_rel);
+                    rewrite_dep_to_vendor(dep, &pkg.name, &vendor_rel);
                 }
             }
         }
@@ -931,16 +940,21 @@ pub fn freeze_manifest(
     // unpublished crates (from git sources) remain available in the
     // crates-io namespace when resolved from vendored-sources.
     //
-    // Build a map of name -> version for local pkgs so we can resolve versioned dirs.
-    let local_versions: std::collections::HashMap<&str, &str> =
-        local_pkgs.iter().map(|p| (p.name.as_str(), p.version.as_str())).collect();
+    // Local crates → flat `vendor/<name>/` (single-version, safe).
+    // Transitive patched crates → `vendor_dir_name_for_pkg` probe (versioned
+    // first when `--versioned-dirs` is on, flat fallback otherwise).
+    let local_names: std::collections::HashSet<&str> =
+        local_pkgs.iter().map(|p| p.name.as_str()).collect();
     let mut patch_table = toml_edit::Table::new();
     for pkg in local_pkgs {
         patched_names.insert(pkg.name.clone());
     }
     for name in &patched_names {
-        let version = local_versions.get(name.as_str()).copied().unwrap_or("");
-        let dir_name = vendor_dir_name_for_pkg(vendor_dir, name, version, versioned_dirs);
+        let dir_name = if local_names.contains(name.as_str()) {
+            name.clone()
+        } else {
+            vendor_dir_name_for_pkg(vendor_dir, name, "", versioned_dirs)
+        };
         if vendor_dir.join(&dir_name).exists() {
             let rel = format!("{}/{}", vendor_rel, dir_name);
             let mut inline = toml_edit::InlineTable::new();
@@ -1006,19 +1020,55 @@ fn rewrite_dep_to_vendor(dep: &mut toml_edit::Item, name: &str, vendor_rel: &str
 
 /// Return the directory name for a vendored crate, probing for versioned first.
 ///
-/// With `versioned_dirs = true`: prefers `<name>-<version>` if that dir exists,
-/// or if neither dir exists yet (build-time, use the versioned name). Falls back
-/// to flat `<name>` only if the flat dir exists and the versioned one does not.
+/// With `versioned_dirs = true`:
+/// - If `version` is known, prefers `<name>-<version>` when that dir exists or
+///   neither dir exists yet (build time, use the versioned name).
+/// - If `version` is empty, scans `vendor_dir` for any `<name>-*` match
+///   (transitive patched crate whose version we don't have in hand).
+/// - Falls back to flat `<name>` if only the flat dir exists.
 ///
 /// With `versioned_dirs = false`: always returns `<name>`.
 fn vendor_dir_name_for_pkg(vendor_dir: &Path, name: &str, version: &str, versioned_dirs: bool) -> String {
-    if versioned_dirs && !version.is_empty() {
-        let versioned = format!("{}-{}", name, version);
-        if vendor_dir.join(&versioned).exists() || !vendor_dir.join(name).exists() {
-            return versioned;
+    if versioned_dirs {
+        if !version.is_empty() {
+            let versioned = format!("{}-{}", name, version);
+            if vendor_dir.join(&versioned).exists() || !vendor_dir.join(name).exists() {
+                return versioned;
+            }
+        } else if !vendor_dir.join(name).exists()
+            && let Some(found) = find_versioned_dir(vendor_dir, name)
+        {
+            return found;
         }
     }
     name.to_string()
+}
+
+/// Scan `vendor_dir` for a directory named `<name>-<version>` where the
+/// suffix starts with a digit. Returns the first match if exactly one such
+/// directory exists; ambiguous cases return `None` and fall back to the flat
+/// name (which will either exist or legitimately fail downstream).
+fn find_versioned_dir(vendor_dir: &Path, name: &str) -> Option<String> {
+    let prefix = format!("{}-", name);
+    let mut matches = std::fs::read_dir(vendor_dir).ok()?.filter_map(|e| {
+        let entry = e.ok()?;
+        if !entry.file_type().ok()?.is_dir() {
+            return None;
+        }
+        let fname = entry.file_name().into_string().ok()?;
+        let suffix = fname.strip_prefix(&prefix)?;
+        if suffix.chars().next()?.is_ascii_digit() {
+            Some(fname)
+        } else {
+            None
+        }
+    });
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        None
+    } else {
+        Some(first)
+    }
 }
 
 /// Compute relative path from base to target
