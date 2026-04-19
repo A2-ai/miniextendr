@@ -410,7 +410,10 @@ install_deps:
 # cargo-limit: provides `cargo lcheck`/`lclippy`/`ltest`/`lbuild` that surface the first
 # few errors/warnings without dumping thousands of lines of "noise" into the terminal.
 # Prefer these aliases in CLI one-offs; CI still runs full `cargo clippy ... -D warnings`.
-dev-tools-install:
+# cargo-revendor: required by `just configure` in dev-monorepo mode to sync
+# workspace crates into rpkg/vendor/ (otherwise cargo metadata fails on the
+# frozen path = "../../vendor/..." deps in rpkg/src/rust/Cargo.toml).
+dev-tools-install: revendor-install
     cargo install cargo-limit
 
 # Install Windows system tooling via Scoop (https://scoop.sh). Currently installs
