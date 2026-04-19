@@ -1,14 +1,15 @@
-//! Integration test for the cooperative worker shutdown path (#204).
+//! Integration test for the worker shutdown path.
 //!
-//! PR #199 (closes #103) added `recv_timeout(250ms)` + `WORKER_SHOULD_STOP:
-//! AtomicBool` + `miniextendr_runtime_shutdown()`. The previous worker tests
-//! exercised dispatch + re-entry guarding, but never the actual shutdown
-//! transition. This test:
+//! `miniextendr_runtime_shutdown()` must block until the worker thread has
+//! actually exited. Package unload (`R_unload_<pkg>` → shutdown) returns
+//! right before `library.dynam.unload` unmaps the DLL's code pages — a
+//! still-live worker that wakes up in freed memory corrupts SEH state and
+//! produces "failed to initiate panic, error 5" across the process (#277).
 //!
-//! 1. Initializes the runtime (spawns the worker).
-//! 2. Sends `miniextendr_runtime_shutdown()`.
-//! 3. Polls `miniextendr_runtime_join_for_test` until the worker exits or
-//!    2 s elapse — roughly 8 shutdown polls at the 250 ms poll interval.
+//! The old design polled an `AtomicBool` from a `recv_timeout(250ms)` loop
+//! and joined via `JoinHandle::is_finished()` polling. It's been replaced
+//! with a tagged `WorkerMsg::{Job, Shutdown}` channel and a blocking
+//! `JoinHandle::join()`. This test exercises the new path.
 //!
 //! Lives in its own integration binary (each `tests/*.rs` file becomes one)
 //! so taking the worker down here does not disrupt other test binaries that
@@ -16,34 +17,43 @@
 
 mod r_test_utils;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[test]
 #[cfg(feature = "worker-thread")]
 fn worker_exits_after_runtime_shutdown() {
     // Boot R + the miniextendr runtime (this spawns the worker thread under
     // the `worker-thread` feature). We don't need to actually dispatch a job:
-    // the worker is parked on `recv_timeout` from the moment init completes,
-    // which is exactly the state where #103's deadlock would manifest.
+    // the worker is parked on `recv()` from the moment init completes, which
+    // is exactly the state where the DLL unload race would manifest.
     r_test_utils::with_r_thread(|| ());
 
+    // `shutdown` sends `WorkerMsg::Shutdown`, drops the sender, and blocks
+    // on `JoinHandle::join()`. With no jobs in flight the worker wakes from
+    // its `recv()` immediately, matches `Shutdown`, and exits; the join
+    // completes in microseconds.
+    //
+    // We still bound the call at a generous deadline so a regression that
+    // makes shutdown wedge (e.g. a new thread-local cleanup path that
+    // deadlocks) fails loudly instead of hanging the test suite.
+    let start = Instant::now();
     miniextendr_api::worker::miniextendr_runtime_shutdown();
-
-    let joined = miniextendr_api::worker::miniextendr_runtime_join_for_test(Duration::from_secs(2));
+    let elapsed = start.elapsed();
 
     assert!(
-        joined,
-        "worker did not exit within 2 s after miniextendr_runtime_shutdown; \
-         the cooperative shutdown path from #103 appears broken"
+        elapsed < Duration::from_secs(2),
+        "miniextendr_runtime_shutdown did not return within 2 s (took {elapsed:?}). \
+         The shutdown path must block until the worker has joined — if it hangs, \
+         R_unload_<pkg> will hang devtools::test / library.dynam.unload."
     );
 }
 
 #[test]
 #[cfg(not(feature = "worker-thread"))]
 fn shutdown_is_noop_without_worker_thread_feature() {
-    // Without the feature there is no worker; shutdown + join are both no-ops.
+    // Without the feature there is no worker; shutdown should return
+    // essentially instantly (it only uninstalls the panic hook).
+    let start = Instant::now();
     miniextendr_api::worker::miniextendr_runtime_shutdown();
-    assert!(miniextendr_api::worker::miniextendr_runtime_join_for_test(
-        Duration::from_millis(10)
-    ));
+    assert!(start.elapsed() < Duration::from_millis(100));
 }
