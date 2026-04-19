@@ -629,13 +629,22 @@ jobs:
             echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
           fi
 
-          # Create empty libgcc stubs for Rust linking (Rust std expects these).
-          # Use `ar crs` to produce valid empty archives (with the !<arch> magic
-          # header) rather than zero-byte files — ld.bfd tolerates empty files,
-          # but ld.lld rejects them as "unknown file type".
+          # Satisfy rustc's -lgcc_eh / -lgcc_s with the toolchain's real libgcc.
+          # Rtools45's `.static.posix` gcc ships a unified `libgcc.a` (no separate
+          # libgcc_eh.a / libgcc_s.a), so we stage symlinks to the real archive.
+          # Previous versions of this job used empty `ar crs` archives, which
+          # satisfied the linker but left `__gcc_personality_v0` unresolved at
+          # runtime — the panic machinery then aborted with
+          # "fatal runtime error: failed to initiate panic, error 5" whenever
+          # Rust tried to unwind on Windows. ld.bfd hid this; ld.lld exposes it.
           mkdir -p libgcc_mock
-          ar crs libgcc_mock/libgcc_eh.a
-          ar crs libgcc_mock/libgcc_s.a
+          real_libgcc="$(x86_64-w64-mingw32.static.posix-gcc.exe -print-libgcc-file-name)"
+          if [ ! -f "$real_libgcc" ]; then
+            echo "::error::gcc -print-libgcc-file-name returned non-file: $real_libgcc"
+            exit 1
+          fi
+          cp "$real_libgcc" libgcc_mock/libgcc_eh.a
+          cp "$real_libgcc" libgcc_mock/libgcc_s.a
 
           # Configure Cargo for Windows GNU target
           mkdir -p .cargo
