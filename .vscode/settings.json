@@ -77,6 +77,30 @@
   "terminal.integrated.env.windows": {
     "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/rust-target"
   },
+  "terminal.integrated.profiles.windows": {
+    "Rtools45 UCRT64 (x86_64)": {
+      "path": "C:\\rtools45\\usr\\bin\\bash.exe",
+      "args": ["--login", "-i"],
+      "env": {
+        "MSYSTEM": "UCRT64",
+        "CHERE_INVOKING": "1",
+        "MSYS2_PATH_TYPE": "inherit"
+      },
+      "icon": "terminal-bash",
+      "overrideName": true
+    },
+    "Rtools45 CLANGARM64 (aarch64)": {
+      "path": "C:\\rtools45-aarch64\\usr\\bin\\bash.exe",
+      "args": ["--login", "-i"],
+      "env": {
+        "MSYSTEM": "CLANGARM64",
+        "CHERE_INVOKING": "1",
+        "MSYS2_PATH_TYPE": "inherit"
+      },
+      "icon": "terminal-bash",
+      "overrideName": true
+    }
+  },
   "[rust]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "rust-lang.rust-analyzer"

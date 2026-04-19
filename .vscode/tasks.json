@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Rtools: Open UCRT64 shell (x86_64)",
+      "type": "shell",
+      "command": "C:\\rtools45\\usr\\bin\\bash.exe",
+      "args": ["--login", "-i"],
+      "options": {
+        "env": {
+          "MSYSTEM": "UCRT64",
+          "CHERE_INVOKING": "1",
+          "MSYS2_PATH_TYPE": "inherit"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true,
+        "echo": false
+      },
+      "problemMatcher": [],
+      "detail": "Spawns an MSYS2 UCRT64 bash shell from Rtools45 (see docs/windows-build-environment.md)."
+    },
+    {
+      "label": "Rtools: Open CLANGARM64 shell (aarch64)",
+      "type": "shell",
+      "command": "C:\\rtools45-aarch64\\usr\\bin\\bash.exe",
+      "args": ["--login", "-i"],
+      "options": {
+        "env": {
+          "MSYSTEM": "CLANGARM64",
+          "CHERE_INVOKING": "1",
+          "MSYS2_PATH_TYPE": "inherit"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true,
+        "echo": false
+      },
+      "problemMatcher": [],
+      "detail": "Spawns an MSYS2 CLANGARM64 bash shell from Rtools45-aarch64 (see docs/windows-build-environment.md)."
+    }
+  ]
+}

@@ -573,6 +573,10 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
       SCCACHE_GHA_ENABLED: "true"
       CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
+      # Dev profile: R CMD check doesn't benefit from optimized rustc output, and
+      # MinGW linking is the dominant cost on Windows. Dev profile is ~3-5x faster
+      # to compile/link than release and keeps codegen-units = 1 (linkme requirement).
+      CARGO_PROFILE: dev
 
     steps:
       - uses: actions/checkout@v6
@@ -625,9 +629,22 @@ jobs:
             echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
           fi
 
-          # Create empty libgcc stubs for Rust linking (Rust std expects these)
+          # Satisfy rustc's -lgcc_eh / -lgcc_s with the toolchain's real libgcc.
+          # Rtools45's `.static.posix` gcc ships a unified `libgcc.a` (no separate
+          # libgcc_eh.a / libgcc_s.a), so we stage symlinks to the real archive.
+          # Previous versions of this job used empty `ar crs` archives, which
+          # satisfied the linker but left `__gcc_personality_v0` unresolved at
+          # runtime — the panic machinery then aborted with
+          # "fatal runtime error: failed to initiate panic, error 5" whenever
+          # Rust tried to unwind on Windows. ld.bfd hid this; ld.lld exposes it.
           mkdir -p libgcc_mock
-          touch libgcc_mock/libgcc_eh.a libgcc_mock/libgcc_s.a
+          real_libgcc="$(x86_64-w64-mingw32.static.posix-gcc.exe -print-libgcc-file-name)"
+          if [ ! -f "$real_libgcc" ]; then
+            echo "::error::gcc -print-libgcc-file-name returned non-file: $real_libgcc"
+            exit 1
+          fi
+          cp "$real_libgcc" libgcc_mock/libgcc_eh.a
+          cp "$real_libgcc" libgcc_mock/libgcc_s.a
 
           # Configure Cargo for Windows GNU target
           mkdir -p .cargo
@@ -635,13 +652,16 @@ jobs:
           cat > .cargo/config.toml <<TOML
           [target.x86_64-pc-windows-gnu]
           linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+          # lld is dramatically faster than MinGW's bfd linker. rustup's
+          # bundled rust-lld (shipped with the toolchain) satisfies -fuse-ld=lld.
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
           [env]
           LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
           TOML
 
       - name: Install just
-        run: cargo install just
+        uses: taiki-e/install-action@just
 
       - name: Install cargo-revendor
         run: cargo install --path cargo-revendor
