@@ -4,7 +4,7 @@ weight = 4
 description = "Walk through the pigworld model project from package skeleton to Rust runtime, configure glue, and generated R wrappers."
 +++
 
-This guide uses `tests/model_project/` as a concrete end-to-end example. It is a much better tutorial reference than a minimal hello-world because it shows a full package with configure logic, a nested Rust crate, generated R wrappers, and a nontrivial Rust type exported to R.
+This guide uses `tests/model_project/` as a concrete end-to-end example. It is a more instructive reference than a minimal hello-world because it shows a full package with configure logic, a nested Rust crate, generated R wrappers, and a nontrivial Rust type exported to R.
 
 ## Why this project is useful
 
@@ -16,7 +16,7 @@ The model project is a scaffolded package called `pigworld`. It includes:
 - generated R wrappers and roxygen output
 - a real exported Rust-backed `World` type instead of a single toy function
 
-In other words: it shows the whole shape of a package, not just one boundary crossing.
+It shows the whole shape of a package, not just one boundary crossing.
 
 ## Step 1: the package shell
 
@@ -28,7 +28,7 @@ Start with the R package files:
 
 These establish the installed package name (`pigworld`), register the dynamic library, and provide the minimal R-side package shell that the generated wrappers plug into.
 
-This is the layer that should still look familiar to an R package author. miniextendr does not replace the package shell; it fills in the Rust side and the wrapper generation workflow.
+This layer should look familiar to an R package author. miniextendr does not replace the package shell; it fills in the Rust side and the wrapper generation workflow.
 
 If the extra `DESCRIPTION` entries look unfamiliar, read [DESCRIPTION Fields for miniextendr Packages](/manual/description-fields/). That page explains what the `Config/build/*`, `SystemRequirements`, roxygen, and testthat lines are doing there.
 
@@ -46,9 +46,14 @@ The Rust code lives in:
 - dependency on vendored `miniextendr-api`
 - optional features forwarded into the runtime crate
 
-`lib.rs` shows a more realistic exported type than a trivial function. The project defines a `World` struct, derives `ExternalPtr`, and exports methods through `#[miniextendr]`:
+`lib.rs` shows a more realistic exported type than a trivial function. The project defines a `World` struct, derives `ExternalPtr`, and exports methods through `#[miniextendr]`. The file starts with the package entry point, then the struct and impl:
 
 ```rust
+use miniextendr_api::miniextendr;
+
+// Required: generates the R_init_pigworld entry point that R calls on package load.
+miniextendr_api::miniextendr_init!(pigworld);
+
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct World {
     pigs: Vec<Pig>,
@@ -64,14 +69,26 @@ pub struct World {
 
 #[miniextendr]
 impl World {
-    pub fn new(...) -> Self { ... }
+    pub fn new(
+        n_initial: i32,
+        food_per_tick: f64,
+        move_cost: f64,
+        reproduction_threshold: f64,
+        max_age: i32,
+        interaction_radius: f64,
+        seed: i32,
+    ) -> Self { ... }
+
     pub fn step(&mut self) { ... }
     pub fn run(&mut self, steps: i32) { ... }
     pub fn summary(&self) -> String { ... }
+    // ... plus get_tick, population, x_positions, y_positions, energies, ages, age_histogram
 }
 ```
 
-That is the key teaching point: the Rust side still looks like an ordinary type with methods. The R-facing API is derived from it, rather than hand-written separately.
+The key teaching point: the Rust side looks like an ordinary type with methods. The R-facing API is derived from it, not hand-written separately. Every `pub fn` in the `impl` block becomes an R method; every doc comment becomes an `@param`/`@return` entry in the generated `.Rd` file.
+
+`#[distributed_slice]` registration is automatic. No `miniextendr_module!` macro or manual registration call is needed beyond `miniextendr_init!` at the top of `lib.rs`.
 
 ## Step 3: the build and configure glue
 
@@ -93,6 +110,8 @@ This layer answers the questions that a toy example usually skips:
 - how the static library gets linked into the final package library
 
 `bootstrap.R` is especially useful to study because it shows how devtools workflows force a predictable configure mode before the package build starts.
+
+**Dev mode prerequisite.** In the miniextendr monorepo, always run `bash ./configure` (via `just configure`) before any R CMD operation. Configure generates `Makevars` from `.in` templates and, in dev mode, syncs workspace crates into `src/rust/vendor/`. Skipping this step causes stale or missing build artifacts.
 
 ## Step 4: wrapper generation and R-facing methods
 
@@ -118,7 +137,21 @@ world$run(100L)
 world$summary()
 ```
 
-The important thing to notice is that the wrappers are generated from the Rust impl block and Rust doc comments. The R methods, Rd entries, and method dispatch shape all come out of the Rust source.
+The wrappers are generated from the Rust impl block and Rust doc comments. The R methods, Rd entries, and method dispatch shape all come out of the Rust source.
+
+**Regenerating wrappers.** Whenever you change a `#[miniextendr]` function, add a parameter, or edit a doc comment, regenerate the wrappers:
+
+```bash
+just configure && just rcmdinstall && just devtools-document
+```
+
+The generated file (`R/pigworld-wrappers.R`) and the documentation (`man/World.Rd`, `NAMESPACE`) must be committed together with the Rust changes that produced them.
+
+**Running tests.** The package ships R tests in `tests/testthat/`. Run them with:
+
+```bash
+just devtools-test
+```
 
 ## Step 5: how to read this project as a tutorial
 
@@ -149,3 +182,6 @@ Compared with a simple `add(a, b)` tutorial, the model project shows:
 - Read [Getting Started](/getting-started/) for the minimal first package flow.
 - Read [Packages](/packages/) if you want the repository-wide map of crates and R packages.
 - Read [Package Map](/manual/packages/) for the detailed relationship between workspace crates, R packages, and fixtures.
+- Read [Class Systems](/class-systems/) for env, R6, S3, S4, S7, and vctrs class generation.
+- Browse the [API reference](/api/) for per-crate rustdoc.
+- Check the [Roadmap](/roadmap/) for open issues and planned work.
