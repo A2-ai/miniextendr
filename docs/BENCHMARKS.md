@@ -1,237 +1,367 @@
-# Performance Benchmarks
+# Benchmarks
 
-Baseline measurements for miniextendr's runtime overhead on Apple M3 Max (macOS, Rust 1.93, R 4.5).
-Run date: 2026-02-18.
+Performance-investigation tooling for miniextendr: how to run the
+bench suite, how to capture a baseline, and what the published
+numbers actually mean.
 
-## Quick Reference
+`miniextendr-bench` embeds R through `miniextendr-engine`, exercises
+every FFI path the runtime cares about (conversions, ALTREP,
+ExternalPtr, worker routing, trait ABI, unwind protection, GC
+protection, class dispatch, …), and prints numbers that engineers can
+compare against an earlier baseline before landing a change.
+
+The crate is `publish = false` and is **never** shipped in a CRAN
+tarball. It is for maintainer and contributor use only.
+
+## Why benchmarks exist
+
+miniextendr's selling points are safety, small FFI overhead, and
+ALTREP throughput. Those are empirical claims — the only way to keep
+them true across refactors is to measure them. Every non-trivial
+change to a hot path (conversions, ALTREP callbacks, unwind protect,
+worker dispatch, class-system codegen) should be accompanied by at
+least one `just bench`/`just bench-save` run and, ideally, a
+`just bench-drift` check against the prior baseline.
+
+## Running benchmarks
+
+Prerequisites:
+
+- R installed and reachable on `PATH`
+- `rustup` with the workspace-pinned toolchain
+- `cargo-limit` (optional, via `just dev-tools-install`)
+
+### Everyday recipes
+
+```bash
+# Full Rust suite (all targets in miniextendr-bench/benches/)
+just bench
+
+# A single target (e.g. trait_abi dispatch microbenchmarks)
+just bench --bench trait_abi
+
+# Core high-signal subset (ffi_calls, into_r, from_r, translate,
+# strings, externalptr, worker, unwind_protect)
+just bench-core
+
+# Feature-gated (connections, rayon, refcount-fast-hash)
+just bench-features
+
+# Full matrix: core + feature targets
+just bench-full
+```
+
+### Specialised targets
+
+```bash
+# Lint-scan benchmarks (miniextendr-lint/benches/lint_scan.rs)
+just bench-lint
+
+# Macro compile-time benchmark (synthetic crates, cold/warm/incr)
+just bench-compile
+
+# R-side benchmarks (requires rpkg installed + the R `bench` package)
+just bench-r
+```
+
+### Filtering inside a target
+
+Everything after `--` is forwarded to `cargo bench`, and everything
+after a second `--` is forwarded to the `divan` harness. Divan
+supports regex filtering and baseline save/compare:
+
+```bash
+# Only run the `altrep_int_dataptr` benchmarks inside the altrep target
+just bench --bench altrep -- altrep_int_dataptr
+
+# Save a divan baseline named "main" for the worker target
+cargo bench --manifest-path=miniextendr-bench/Cargo.toml \
+  --bench worker -- --save-baseline main
+
+# …make changes, then compare against that baseline
+cargo bench --manifest-path=miniextendr-bench/Cargo.toml \
+  --bench worker -- --baseline main
+```
+
+## Structured baselines and drift detection
+
+The repository ships a small wrapper around divan that stores raw
+output, a machine-readable CSV, and git metadata under
+`miniextendr-bench/baselines/`.
+
+| Recipe | What it does |
+|--------|--------------|
+| `just bench-save` | Run the suite, parse output, write `bench-<timestamp>.txt` + `bench-<timestamp>.csv` + `bench-<timestamp>.meta.json` to `miniextendr-bench/baselines/` |
+| `just bench-compare [file.csv]` | Print the slowest/fastest benchmarks from the most recent (or specified) baseline |
+| `just bench-drift [--threshold=20]` | Compare the two most recent baselines; fail if any median regressed beyond the threshold percentage |
+| `just bench-info` | List saved baselines with git-SHA, R version, CPU, date |
+
+The CSV schema is:
+
+```
+timestamp,bench_target,group,name,args,median_ns,unit
+```
+
+Drift detection uses `median_ns` so unit-changes (ns ↔ us ↔ ms)
+never produce false positives. The implementation lives in
+`tests/perf/bench_baseline.sh`.
+
+## Environment setup for reproducible runs
+
+Noise is the enemy. Before a baseline run:
+
+1. Close heavy background workloads (editors with LSP servers, Docker,
+   video calls). A 10% jitter floor is normal; 30%+ usually means
+   something else is hitting the CPU.
+2. Disable CPU turbo and frequency scaling if possible.
+3. On macOS, disable App Nap for the shell running the bench.
+4. On Linux, pin to specific cores via `taskset -c <N>` and disable
+   hyper-thread siblings. `DIVAN_SKIP_SLOW=1` skips the 50 K-size
+   end of the size matrix for faster iteration while developing.
+
+Before saving a baseline, capture the environment so a later reader
+can reproduce it:
+
+```bash
+# System / OS
+uname -a
+sysctl -n machdep.cpu.brand_string            # macOS
+cat /proc/cpuinfo | grep -m1 'model name'     # Linux
+
+# R
+R --version | head -1
+Rscript -e 'sessionInfo()'
+
+# Rust
+rustc --version
+cargo --version
+
+# miniextendr
+git describe --always --dirty
+```
+
+`just bench-save` captures most of this automatically into the
+`.meta.json` sidecar.
+
+### Environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `R_HOME` | Selects the R installation the embedder uses |
+| `DIVAN_SKIP_SLOW=1` | Skips the largest size in each size matrix |
+| `RAYON_NUM_THREADS` | Thread count for the `rayon` benchmarks |
+| `CARGO_INCREMENTAL=0` | Matches CI; avoids per-run hash noise in sccache |
+
+## What each target measures
+
+Each file under `miniextendr-bench/benches/` focuses on one subsystem
+so iterations stay fast and failures point at a single owner. The
+high-level plan lives in `miniextendr-bench/src/bench_plan.rs`.
+
+| Target | Measures |
+|--------|----------|
+| `allocator` | R allocator vs system allocator across size matrix |
+| `altrep` / `altrep_advanced` / `altrep_iter` | ALTREP element access, `DATAPTR` materialisation, guard modes, string ALTREP, zero-alloc patterns |
+| `coerce` | R-side `Rf_coerceVector` vs Rust-side coercion |
+| `connections` | Custom R connections: build/open, read, write, burst write (feature `connections`) |
+| `dataframe` | `Vec<Struct>` → R data.frame transpose + full pipelines |
+| `externalptr` | Creation, access, downcast, N-ptr churn; vs plain `Box` baseline |
+| `factor` | Cached vs uncached level lookup; `Vec<Factor>` throughput |
+| `ffi_calls` | Raw `Rf_*` calls (`ScalarInteger`, `allocVector`, `protect`/`unprotect`, `install`) |
+| `from_r` | `TryFromSexp` scalar/slice/map/set paths |
+| `gc_protect` | `OwnedProtect`, `ProtectScope`, manual `PROTECT`/`UNPROTECT` |
+| `gc_protection_compare` | Seven protection mechanisms head-to-head (stack, vec pool, slotmap, precious list, DLL preserve, reprotect-slot, DLL reinsert) |
+| `into_r` | `IntoR` scalar and vector (incl. 1 M-element scale benchmarks) |
+| `list` | List construction, named lookup, derive-based builders |
+| `native_vs_coerce` | RNative memcpy path vs element-wise coercion |
+| `panic_telemetry` | Panic-hook `RwLock` read cost, fire cost |
+| `preserve` | Preserve list insert/release vs `PROTECT`/`UNPROTECT` |
+| `raw_access` | `r_slice`, unchecked slice, raw pointer access across INTSXP/REALSXP |
+| `rarray` | `RArray`/`RMatrix` row/col access patterns |
+| `rayon` | `rayon_bridge` parallel helpers (feature `rayon`) |
+| `refcount_protect` | `RefCountedArena` vs `ProtectScope` vs raw preserve |
+| `rffi_checked` | `#[r_ffi_checked]` overhead vs `*_unchecked` variant |
+| `sexp_ext` | `SexpExt` helpers vs raw pointer deref |
+| `strict` | Strict-mode scalar/vector conversions vs normal |
+| `strings` | UTF-8/Latin-1 extraction, `mkCharLen`, `translateCharUTF8` |
+| `trait_abi` | `mx_erased` vtable query + dispatch (single-method and 5-method) |
+| `translate` | `R_CHAR` vs `translateCharUTF8` extraction costs |
+| `typed_list` | `typed_list!` validation across field count |
+| `unwind_protect` | `with_r_unwind_protect` overhead; nested layers; panic path |
+| `worker` | Worker-thread round-trip, channel saturation, batching, payload size |
+| `wrappers` | Generated R wrapper dispatch (plain, env, R6, S3, S4, S7); requires rpkg installed |
+
+Each benchmark uses the shared `miniextendr_bench::init()` harness
+from `miniextendr-bench/src/lib.rs`, which embeds R on the init
+thread and asserts thread affinity on every call. The canonical size
+matrix is `[1, 16, 256, 4096, 65536]`; named-list benchmarks use
+`[16, 256, 4096]`.
+
+## Interpreting results
+
+Divan prints four numbers per case:
+
+- **fastest** — the single fastest sample. Useful for latency-bound
+  comparisons but noisy across runs.
+- **slowest** — the slowest sample. A sudden slowest spike hints at GC
+  pauses, OS scheduling, or an allocator interaction worth chasing.
+- **median** — the canonical number for drift detection. Not skewed
+  by a single spike.
+- **mean / std-dev** — use when comparing two allocation-heavy paths
+  where allocator variance matters.
+
+Rules of thumb:
+
+- For anything under ~50 ns, absolute deltas are almost always below
+  measurement noise. Compare *ratios* across a size matrix instead.
+- For ALTREP and worker paths, always report both the cold path
+  (first call, includes class/channel init) and the hot path.
+- String and CHARSXP allocation dominates large-vector conversion
+  timings. Changes in `strings`/`into_r` that don't touch
+  `mkCharLenCE` should not move those numbers.
+
+## Reference baseline — 2026-02-18 (Apple M3 Max)
+
+Full raw data, all tables, and methodology notes are in
+[`miniextendr-bench/BENCH_RESULTS_2026-02-18.md`](../miniextendr-bench/BENCH_RESULTS_2026-02-18.md).
+The headline numbers below are a subset for quick reference.
+
+Environment: `rustc 1.93.0`, R 4.5, macOS 15.3 arm64, 36 GB RAM.
+Commit `d479886` on `main`.
+
+### Quick reference
 
 | Subsystem | Operation | Median | Notes |
 |-----------|-----------|--------|-------|
-| **Worker thread** (requires `worker-thread` feature) | round-trip | 5 us | `run_on_worker` channel hop |
-| **Worker thread** (requires `worker-thread` feature) | `with_r_thread` (main) | 14 ns | already on main thread |
-| **Unwind protect** | `with_r_unwind_protect` | 32 ns | overhead vs direct call |
-| **Unwind protect** | nested 5 layers | 169 ns | linear scaling |
-| **catch_unwind** | success path | 0.5 ns | no panic |
-| **catch_unwind** | panic caught | 6.3 us | panic + catch overhead |
-| **ExternalPtr** | create (8 B) | 83 ns | vs Box 42 ns (2x) |
-| **ExternalPtr** | create (64 KB) | 168 ns | vs Box 1.1 us |
-| **Trait ABI** | vtable query | ~1 ns | cache-hot, 2 or 5 methods |
-| **Trait ABI** | dispatch (1 method) | 55-63 ns | full view dispatch |
-| **Trait ABI** | dispatch (all 5) | 417 ns | multi-method hot loop |
-| **R allocator** | small (8 B) | 61 ns | vs system 17 ns (3.6x) |
-| **R allocator** | large (64 KB) | 1.2 us | vs system 500 ns (2.4x) |
+| Worker thread | `run_on_worker` round-trip | 5 µs | channel hop |
+| Worker thread | `with_r_thread` (on main) | 10 ns | near free |
+| Unwind protect | `with_r_unwind_protect` | 31 ns | overhead vs direct |
+| Unwind protect | nested 5 layers | 170 ns | linear |
+| `catch_unwind` | success path | 0.5 ns | |
+| `catch_unwind` | panic caught | 5.3 µs | panic + catch |
+| ExternalPtr | create (8 B) | 65 ns | Box baseline 12 ns (~5×) |
+| ExternalPtr | create (64 KB) | 727 ns | Box baseline 512 ns (~1.4×) |
+| Trait ABI | `mx_query_vtable` | 1 ns | cache-hot |
+| Trait ABI | single-method dispatch | 55–62 ns | view + call |
+| Trait ABI | all-5-method dispatch | 417 ns | multi-method hot loop |
+| R allocator | small (8 B) | 71 ns | system 16 ns |
+| R allocator | large (64 KB) | 867 ns | system 521 ns |
 
-## Type Conversions
+### Type conversions (64 K elements unless noted)
 
-### Rust to R (`into_sexp`)
+| Type | `into_sexp` median | `try_from_sexp` median |
+|------|--------------------|-------------------------|
+| `i32` scalar | 12.5 ns | 3.1 ns |
+| `f64` scalar | 12.5 ns | 3.0 ns |
+| `Vec<i32>` | 13.3 µs | — |
+| `Vec<f64>` | 22.5 µs | — |
+| `Vec<String>` | 3.95 ms | — |
+| `Vec<Option<i32>>` (50% NA) | 14.1 µs | — |
+| `slice_i32` / `slice_f64` | — | 8.0 ns (zero-copy) |
+| `HashSet<i32>` from 4 K | — | 68 µs |
 
-| Type | Size | Median | Notes |
-|------|------|--------|-------|
-| i32 | 1 | 12 ns | scalar |
-| i32 | 1K | 378 ns | memcpy |
-| i32 | 1M | 105 us | |
-| f64 | 1M | 220 us | |
-| String | 1M | ~60 ms | CHARSXP allocation dominates |
-| Option\<i32\> 50% NA | 1M | 391 us | |
-| i64 (smart) | scalar | 40-43 ns | INTSXP or REALSXP |
+**1 M element scale:** `i32` 675 µs; `f64` 1.6 ms; `String` 276 ms
+(CHARSXP allocation dominates); `Option<i32>` 934 µs.
 
-### R to Rust (`try_from_sexp`)
+### ALTREP (64 K elements)
 
-| Type | Size | Median | Notes |
-|------|------|--------|-------|
-| i32 scalar | 1 | 30 ns | |
-| f64 scalar | 1 | 27 ns | |
-| f64 slice | any | ~21 ns | zero-copy (pointer cast) |
-| i32 slice | any | ~21 ns | zero-copy (pointer cast) |
-| String | 1 | 38 ns | UTF-8 (no re-encode needed) |
-| String (Latin1) | 1 | 250 ns | requires re-encoding |
-| Vec\<i32\> → HashSet | 64K | 1.5 ms | hashing overhead |
+| Operation | ALTREP | Plain INTSXP |
+|-----------|--------|--------------|
+| element access (elt) | 16.2 µs | 9.2 ns |
+| `DATAPTR` materialisation | 15.1 µs | 9.9 ns |
+| full scan via elt loop | 5.1 ms | — |
+| full scan via `DATAPTR` | 18.6 µs | 8.9 ns |
 
-### Strict Mode
+**Guard modes (64 K full scan):** `unsafe` 15.7 ms • `rust_unwind`
+(default) 16.2 ms • `r_unwind` 20.2 ms • plain INTSXP 258 µs.
+`r_unwind` adds ~25% over `unsafe` due to per-callback
+`R_UnwindProtect`.
 
-Negligible overhead for scalar conversions (~2-5 ns). Vec\<i64\> at 10K: strict 6.2 us vs normal 12.4 us (strict is actually faster due to INTSXP-only fast path avoiding REALSXP conversion).
+**String ALTREP (64 K strings):** create 2.6 ms • elt access 2.6 ms •
+elt with NA 2.4 ms • force materialise 6.6 ms • plain STRSXP elt
+4.5 ms.
 
-### Coercion
-
-| Operation | Median | Notes |
-|-----------|--------|-------|
-| scalar int direct | 23 ns | no coercion |
-| scalar int→real (R) | 31 ns | `Rf_coerceVector` |
-| scalar int→real (Rust) | 23 ns | Rust-side cast |
-| vec int→real (256 elts, R) | 350 ns | R `as.double()` |
-| vec int→real (256 elts, Rust) | 265 ns | Rust-side conversion |
-
-Rust-side coercion is ~25% faster than R's `Rf_coerceVector` for vectors.
-
-## DataFrames
-
-| Operation | Rows | Median | Notes |
-|-----------|------|--------|-------|
-| Point3 → SEXP | 100 | 750 ns | 3 f64 columns |
-| Point3 → SEXP | 100K | 273 us | |
-| Event (enum) → SEXP | 100K | 7.1 ms | 5 columns, string-heavy |
-| Mixed → SEXP | 100K | 10.5 ms | 7 columns, mixed types |
-| Transpose (Point3) | 100K | 246 us | row→column pivot |
-| Transpose (wide 10-col) | 100K | 1.4 ms | |
-
-## ALTREP
-
-| Operation | Size | ALTREP | Plain | Ratio |
-|-----------|------|--------|-------|-------|
-| element access (elt) | 1 | 220 ns | 9 ns | 24x |
-| DATAPTR materialization | 64K | 17-20 us | 9 ns | — |
-| full scan (elt loop) | 64K | 5.2 ms | 2.7 us | ~1900x |
-| full scan (DATAPTR) | 64K | 20 us | 9 ns | — |
-
-### Guard Modes (64K elements, full scan)
-
-| Guard | Median |
-|-------|--------|
-| `unsafe` | 16.7 ms |
-| `rust_unwind` (default) | 17.5 ms |
-| `r_unwind` | 21 ms |
-| plain INTSXP | 261 us |
-
-`unsafe` and `rust_unwind` are equivalent. `r_unwind` adds ~25% overhead due to `R_UnwindProtect` per callback.
-
-### String ALTREP (64K strings)
-
-| Operation | Median |
-|-----------|--------|
-| create | 2.6 ms |
-| elt access | 2.7 ms |
-| elt with NA | 2.4 ms |
-| force materialize (DATAPTR_RO) | 6.9 ms |
-| plain STRSXP elt | 4.7 ms |
-
-### Zero-Allocation (constant real)
-
-| Operation | Size | Median |
-|-----------|------|--------|
-| create constant | any | 229 ns |
-| constant elt | any | 513 ns |
-| constant full scan | 64K | 17.9 ms |
-| vec-backed full scan | 64K | 5.2 ms |
-
-## Connections
-
-| Operation | Size | Median |
-|-----------|------|--------|
-| build + open | — | 583 ns |
-| write | 128 B | 25 ns |
-| read | 64 B | 24 ns |
-| read | 16 KB | 1.7 us |
-| write | 16 KB | 1.0 us |
-| burst write (50x 256 B) | 12.8 KB total | 1.2 us |
-
-## R Wrapper Dispatch
-
-| Class System | Median | Notes |
-|-------------|--------|-------|
-| plain fn call | 125 ns | baseline |
-| env `$` dispatch | 166 ns | native env lookup |
-| R6 `$` dispatch | 364 ns | |
-| S3 `UseMethod` | 521 ns | |
-| S4 `setMethod` | 542 ns | |
-| S7 dispatch | 2.8 us | |
-| wrapper overhead | 229 ns | wrapper fn → inner fn |
-| `as.integer()` coercion | 291 ns | scalar |
-| `as.character()` coercion | 625 ns | scalar |
-
-## GC Protection
-
-See `analysis/gc-protection-strategies.md` for full analysis and
-`analysis/gc-protection-benchmarks-results.md` for detailed results.
-All numbers below measure pure protection cost (SEXP allocation excluded).
-
-### Per-operation cost
+### GC protection (per-op)
 
 | Mechanism | Single op | Notes |
 |-----------|-----------|-------|
-| Protect stack | **7.4 ns** | array write + integer subtract |
-| Vec pool (VECSXP) | **9.6 ns** | SET_VECTOR_ELT + free list |
+| Protect stack | 7.4 ns | array write + counter decrement |
+| Vec pool (VECSXP) | 9.6 ns | + free list |
 | Slotmap pool | 11.4 ns | + generational safety check |
 | Precious list | 13.1 ns | CONS alloc + prepend |
 | DLL preserve | 28.9 ns | CONS alloc + doubly-linked splice |
 
-### Batch throughput (protect N, release all)
+**Replace-in-loop (10 K iterations):** ReprotectSlot 37.6 µs •
+Pool overwrite 45.2 µs • DLL reinsert 271 µs • Precious churn 15.1 s
+(O(n²) — do not use for reassignment).
 
-| Mechanism | 1k | 10k | 50k |
-|-----------|----|-----|-----|
-| Protect stack | **3.8 µs** | **38 µs** | — (50k limit) |
-| Vec pool | 9.6 µs | 97 µs | 486 µs |
-| Slotmap pool | 11.7 µs | 116 µs | 575 µs |
-| DLL preserve | 27.2 µs | 256 µs | 1.31 ms |
-| Precious list | 568 µs | — | — |
-
-### Replace-in-loop (N replacements)
-
-| Mechanism | 10k | Per-op |
-|-----------|-----|--------|
-| ReprotectSlot | **37.6 µs** | 3.8 ns |
-| Pool overwrite | 45.2 µs | 4.5 ns |
-| DLL reinsert | 271 µs | 27.1 ns |
-| Precious churn | **15.1 s** | 1.5 ms (O(n²)) |
-
-## Typed List Validation
-
-| Fields | Median |
-|--------|--------|
-| 3 | 682 ns |
-| 10 | 2.1 us |
-| 50 | 12.8 us |
-
-Linear scaling (~240 ns/field).
-
-## Factors
-
-| Operation | Median |
-|-----------|--------|
-| single (cached) | 58 ns |
-| single (uncached) | 372 ns |
-| 100 repeated (cached) | 5.5 us |
-| Vec\<Factor\> (4096) | 4.4 us |
-
-## Lint (miniextendr-lint)
+### Lint (miniextendr-lint)
 
 | Benchmark | Scale | Median |
 |-----------|-------|--------|
-| full_scan | 10 modules | 1.9 ms |
-| full_scan | 100 modules | 16.3 ms |
-| full_scan | 500 modules | 84.9 ms |
-| impl_scan | 10 types | 1.9 ms |
-| impl_scan | 100 types | 16.8 ms |
-| scaling | 500 fns, 10 files | 5.9 ms |
-| scaling | 500 fns, 500 files | 67.9 ms |
+| `full_scan` | 10 modules | 1.8 ms |
+| `full_scan` | 100 modules | 15.6 ms |
+| `full_scan` | 500 modules | 82.1 ms |
+| `impl_scan` | 10 types | 1.8 ms |
+| `impl_scan` | 100 types | 16.1 ms |
+| `scaling` | 500 fns / 10 files | 5.8 ms |
+| `scaling` | 500 fns / 500 files | 64.1 ms |
 
-Linear scaling in both module count and file count.
+Linear in both module count and file count.
 
-## FFI Call Overhead
+### Connections (feature `connections`)
 
 | Operation | Size | Median |
 |-----------|------|--------|
-| Rf_ScalarInteger | — | 11 ns |
-| Rf_ScalarReal | — | 12 ns |
-| Rf_ScalarLogical | — | 4 ns |
-| INTEGER_ELT | any | 7.5 ns |
-| REAL_ELT | any | 7.6 ns |
-| Rf_protect/unprotect | 1 | 18 ns |
-| Rf_allocVector (INTSXP, 64K) | 64K | ~235 ns |
+| `connection_build` + open | — | 542 ns |
+| `connection_write` | 128 B | 29 ns |
+| `connection_read` | 64 B | 21 ns |
+| `connection_read` | 16 KB | 1.2 µs |
+| `connection_write_sized` | 16 KB | 1.0 µs |
+| `connection_burst_write` | 50× 256 B | 1.1 µs |
 
-## Reproducing
+## Publishing new baselines
 
-```bash
-# Full Rust suite
-cargo bench --manifest-path=miniextendr-bench/Cargo.toml
+When a PR changes numbers that show up in this document, attach a
+fresh baseline to the PR and point `BENCH_RESULTS_<date>.md` at it.
+The workflow:
 
-# Connections (feature-gated)
-cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections --bench connections
+1. `just bench-save` on a quiet machine.
+2. Commit the new raw results file under
+   `miniextendr-bench/BENCH_RESULTS_<YYYY-MM-DD>.md` (re-using the
+   template from the 2026-02-18 file).
+3. Update the "Reference baseline" section in this document to point
+   at the new file.
+4. Mention in the PR description which subsystem moved and by how
+   much. If the reference baseline's machine differs from the one
+   used for the run, note it — don't silently mix hardware.
 
-# Lint benchmarks
-cargo bench --manifest-path=miniextendr-lint/Cargo.toml --bench lint_scan
+Old baselines stay in the tree. `miniextendr-bench/baselines/` plus
+the dated `BENCH_RESULTS_*.md` files are the historical record used
+by `just bench-drift`.
 
-# Save structured baseline
-just bench-save
-```
+## Skipped / known issues
 
-Raw results: `miniextendr-bench/BENCH_RESULTS_2026-02-18.md`
+- **`wrappers`**: Requires `rpkg` installed to provide R class
+  methods. Skipped on a cold checkout; run
+  `just rcmdinstall && just bench --bench wrappers`.
+- **R-side benchmarks**: Need rpkg installed and the R `bench`
+  package. Run `just bench-r`.
+- **Macro compile-time**: Generates synthetic crates on a
+  temp-dir. Run `just bench-compile`; the results are written to the
+  temp-dir and summarised on stdout.
+- **Feature combinations that conflict with `--all-features`**:
+  `default-r6` and `default-s7` are mutually exclusive, so
+  `--all-features` fails. Use the explicit feature list from
+  `CLAUDE.md`'s "Reproducing CI clippy before PR" section when you
+  need the CI-equivalent set.
+
+## Reference
+
+- Raw results file: [`miniextendr-bench/BENCH_RESULTS_2026-02-18.md`](../miniextendr-bench/BENCH_RESULTS_2026-02-18.md)
+- Benchmark plan: `miniextendr-bench/src/bench_plan.rs`
+- Harness and fixtures: `miniextendr-bench/src/lib.rs`
+- Baseline tooling: `tests/perf/bench_baseline.sh`
+- Cross-reference analysis (GC protection):
+  `analysis/gc-protection-strategies.md` and
+  `analysis/gc-protection-benchmarks-results.md`
