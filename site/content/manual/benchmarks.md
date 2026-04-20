@@ -20,12 +20,25 @@ tarball. It is for maintainer and contributor use only.
 ## Why benchmarks exist
 
 miniextendr's selling points are safety, small FFI overhead, and
-ALTREP throughput. Those are empirical claims — the only way to keep
+ALTREP throughput. Those are empirical claims. The only way to keep
 them true across refactors is to measure them. Every non-trivial
 change to a hot path (conversions, ALTREP callbacks, unwind protect,
 worker dispatch, class-system codegen) should be accompanied by at
 least one `just bench`/`just bench-save` run and, ideally, a
 `just bench-drift` check against the prior baseline.
+
+### The FFI model being measured
+
+miniextendr exposes Rust to R the same way [cpp11](https://cpp11.r-lib.org/)
+exposes C++: a shared library (`.so` / `.dylib` / `.dll`) is loaded
+into the R session, and R calls into it via registered `.Call()`
+entry points. R hands the callee an array of `SEXP` arguments and
+receives a `SEXP` back. No marshalling, no serialisation, no IPC.
+Most of what these benchmarks measure is the thin work that happens
+on top of that already-fast call: argument conversion, GC protection,
+unwind guarding, ALTREP materialisation, and the occasional hop to
+the worker thread. If a benchmark moves, it is one of those layers
+that moved, not the `.Call()` dispatch itself.
 
 ## Running benchmarks
 
@@ -205,13 +218,13 @@ matrix is `[1, 16, 256, 4096, 65536]`; named-list benchmarks use
 
 Divan prints four numbers per case:
 
-- **fastest** — the single fastest sample. Useful for latency-bound
+- **fastest**: the single fastest sample. Useful for latency-bound
   comparisons but noisy across runs.
-- **slowest** — the slowest sample. A sudden slowest spike hints at GC
+- **slowest**: the slowest sample. A sudden slowest spike hints at GC
   pauses, OS scheduling, or an allocator interaction worth chasing.
-- **median** — the canonical number for drift detection. Not skewed
+- **median**: the canonical number for drift detection. Not skewed
   by a single spike.
-- **mean / std-dev** — use when comparing two allocation-heavy paths
+- **mean / std-dev**: use when comparing two allocation-heavy paths
   where allocator variance matters.
 
 Rules of thumb:
@@ -224,7 +237,7 @@ Rules of thumb:
   timings. Changes in `strings`/`into_r` that don't touch
   `mkCharLenCE` should not move those numbers.
 
-## Reference baseline — 2026-04-20 (Apple M3 Max)
+## Reference baseline: 2026-04-20 (Apple M3 Max)
 
 Full raw data, all tables, and methodology notes are in
 [`miniextendr-bench/BENCH_RESULTS_2026-04-20.md`](../miniextendr-bench/BENCH_RESULTS_2026-04-20.md).
@@ -257,12 +270,12 @@ Commit `00df79d4` on `main`.
 |------|--------------------|-------------------------|
 | `i32` scalar | 11.7 ns | 23.8 ns |
 | `f64` scalar | 12.0 ns | 21.9 ns |
-| `Vec<i32>` | 9.0 µs | — |
-| `Vec<f64>` | 16.6 µs | — |
-| `Vec<String>` | 3.87 ms | — |
-| `Vec<Option<i32>>` (50% NA) | 29.2 µs | — |
-| `slice_i32` / `slice_f64` | — | 21 ns (zero-copy) |
-| `HashSet<i32>` from 64 K | — | 1.49 ms |
+| `Vec<i32>` | 9.0 µs | - |
+| `Vec<f64>` | 16.6 µs | - |
+| `Vec<String>` | 3.87 ms | - |
+| `Vec<Option<i32>>` (50% NA) | 29.2 µs | - |
+| `slice_i32` / `slice_f64` | - | 21 ns (zero-copy) |
+| `HashSet<i32>` from 64 K | - | 1.49 ms |
 
 **1 M element scale:** `i32` 106 µs; `f64` 233 µs; `String` 94.6 ms
 (CHARSXP allocation dominates); `Option<i32>` 440 µs.
@@ -273,7 +286,7 @@ Commit `00df79d4` on `main`.
 |-----------|--------|--------------|
 | element access (elt) | 15.7 µs | 9.1 ns |
 | `DATAPTR` materialisation | 17.1 µs | 9.3 ns |
-| full scan via elt loop | 4.79 ms | — |
+| full scan via elt loop | 4.79 ms | - |
 | full scan via `DATAPTR` | 21.5 µs | 9.4 ns |
 
 **Guard modes (64 K full scan):** `unsafe` 1.07 ms • `rust_unwind`
@@ -298,7 +311,7 @@ elt with NA 2.72 ms • force materialise 6.22 ms • plain STRSXP elt
 
 **Replace-in-loop (10 K iterations):** Vec pool 1.14 ms •
 DLL preserve 1.30 ms • Precious churn 74 ms
-(O(n²) — do not use for reassignment).
+(O(n²); do not use for reassignment).
 
 ### Lint (miniextendr-lint)
 
@@ -318,8 +331,8 @@ Linear in both module count and file count.
 
 | Operation | Size | Median |
 |-----------|------|--------|
-| `connection_build` + open | — | 625 ns |
-| `connection_write` | — | 28 ns |
+| `connection_build` + open | - | 625 ns |
+| `connection_write` | - | 28 ns |
 | `connection_read` | 64 B | 24 ns |
 | `connection_read` | 16 KB | 273 ns |
 | `connection_write_sized` | 16 KB | 922 ns |
@@ -339,7 +352,7 @@ The workflow:
    at the new file.
 4. Mention in the PR description which subsystem moved and by how
    much. If the reference baseline's machine differs from the one
-   used for the run, note it — don't silently mix hardware.
+   used for the run, note it. Don't silently mix hardware.
 
 Old baselines stay in the tree. `miniextendr-bench/baselines/` plus
 the dated `BENCH_RESULTS_*.md` files are the historical record used
