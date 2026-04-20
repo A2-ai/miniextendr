@@ -42,7 +42,7 @@ impl SexpBridge for Array2<f64> { ... }
 //   foreign (api)  foreign (ndarray) → still blocked
 ```
 
-**Result:** Same orphan violation — `SexpBridge` is foreign to `miniextendr-ndarray`.
+**Result:** Same orphan violation - `SexpBridge` is foreign to `miniextendr-ndarray`.
 
 ### 2. `TryFrom<SEXP>` (std trait)
 
@@ -94,4 +94,4 @@ There is no stable Rust mechanism to write `impl ForeignTrait for ForeignType` o
 
 serde solves this differently: external crates (chrono, uuid) add `serde` as an optional dependency and impl `Serialize`/`Deserialize` themselves (they own the type). We can't use this approach because we don't control the external crates.
 
-The `serde_with` / remote derive pattern still requires the impl to live in a crate that owns either the trait or the type — it just provides ergonomic sugar for defining mirror types.
+The `serde_with` / remote derive pattern still requires the impl to live in a crate that owns either the trait or the type - it just provides ergonomic sugar for defining mirror types.

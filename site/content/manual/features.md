@@ -936,7 +936,7 @@ You do **not** need to add optional crates as direct dependencies:
 
 ```toml
 [dependencies]
-# This is enough — no need for uuid = "1" or ndarray = "0.17"
+# This is enough - no need for uuid = "1" or ndarray = "0.17"
 miniextendr-api = { version = "0.1", features = ["uuid", "ndarray"] }
 ```
 

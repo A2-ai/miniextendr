@@ -34,7 +34,7 @@ use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};
 
 #[miniextendr]
 fn parallel_sqrt(x: &[f64]) -> SEXP {
-    // .collect_r() writes directly into R memory — zero intermediate allocation
+    // .collect_r() writes directly into R memory - zero intermediate allocation
     x.par_iter().map(|&val| val.sqrt()).collect_r()
 }
 ```
@@ -100,7 +100,7 @@ of data and never need to call `par_iter()` or manage thread dispatch.
 
 ### Chunk-Based Fill
 
-#### `with_r_vec(len, f)` — Chunk-based parallel fill
+#### `with_r_vec(len, f)` - Chunk-based parallel fill
 
 Allocates an R vector of `len` elements, splits into chunks, calls `f(chunk, offset)`
 in parallel. The closure receives a mutable slice and the starting index.
@@ -120,7 +120,7 @@ with_r_vec(1000, |chunk: &mut [f64], offset: usize| {
 });
 ```
 
-#### `with_r_vec_map(len, f)` — Index-based fill (sugar)
+#### `with_r_vec_map(len, f)` - Index-based fill (sugar)
 
 Each element depends only on its index. Sugar over `with_r_vec`.
 
@@ -130,7 +130,7 @@ with_r_vec_map(1000, |i: usize| (i as f64).sqrt());
 
 ### Parallel Map
 
-#### `par_map(input, f)` — Transform slice → R vector
+#### `par_map(input, f)` - Transform slice → R vector
 
 Element-wise parallel transform. Writes directly into R memory (zero intermediate allocation).
 
@@ -150,14 +150,14 @@ par_map(x, |&v| v.sqrt())
 par_map(ints, |&v| v as f64)
 ```
 
-#### `par_map2(a, b, f)` — Two-input parallel map
+#### `par_map2(a, b, f)` - Two-input parallel map
 
 ```rust
 // Element-wise addition
 par_map2(a, b, |&x, &y| x + y)
 ```
 
-#### `par_map3(a, b, c, f)` — Three-input parallel map
+#### `par_map3(a, b, c, f)` - Three-input parallel map
 
 ```rust
 // Fused multiply-add: a * b + c
@@ -166,7 +166,7 @@ par_map3(a, b, c, |&x, &y, &z| x * y + z)
 
 ### Matrix and Array
 
-#### `with_r_matrix(nrow, ncol, f)` — Column-wise parallel fill
+#### `with_r_matrix(nrow, ncol, f)` - Column-wise parallel fill
 
 Each column is a natural chunk (contiguous in R's column-major layout).
 The closure receives `(column_slice, col_idx)`.
@@ -179,7 +179,7 @@ with_r_matrix(100, 50, |col: &mut [f64], col_idx: usize| {
 });
 ```
 
-#### `with_r_array(dims, f)` — Slab-wise parallel fill
+#### `with_r_array(dims, f)` - Slab-wise parallel fill
 
 For dims `[d0, d1, ..., dN]`, each slab has `d0 * d1 * ... * d(N-1)` elements.
 The closure receives `(slab_slice, slab_idx)` where `slab_idx` is the index along
@@ -220,11 +220,11 @@ perf::in_rayon_thread()  // Are we in a Rayon thread?
 perf::thread_index()     // Current thread index (if in pool)
 ```
 
-### `.collect_r()` — Parallel Iterator → R Vector
+### `.collect_r()` - Parallel Iterator → R Vector
 
 The `ParCollectR` extension trait adds `.collect_r()` to every indexed parallel
 iterator. It allocates an R vector on the main thread, then fills it in parallel
-using Rayon's `zip` — zero intermediate allocation.
+using Rayon's `zip` - zero intermediate allocation.
 
 ```rust
 use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};
@@ -248,10 +248,10 @@ fn index_fill(n: i32) -> SEXP {
 | `vec.into_par_iter().map(...)` | Yes | Yes |
 | `(0..n).into_par_iter()` | Yes | Yes |
 | `.enumerate()`, `.zip()`, `.take()`, `.skip()` | Yes | Yes |
-| `.filter(...)` | **No** | No — use `par_collect_sexp` |
-| `.flat_map(...)` | **No** | No — use `par_collect_sexp` |
+| `.filter(...)` | **No** | No - use `par_collect_sexp` |
+| `.flat_map(...)` | **No** | No - use `par_collect_sexp` |
 
-### `par_collect_sexp()` — Non-Indexed Fallback
+### `par_collect_sexp()` - Non-Indexed Fallback
 
 For iterators that lose their index (`.filter()`, `.flat_map()`, `.par_bridge()`),
 use this function. It collects to an intermediate `Vec<T>` then converts to R.
@@ -261,7 +261,7 @@ use miniextendr_api::rayon_bridge;
 
 #[miniextendr]
 fn parallel_filter(x: &[f64]) -> SEXP {
-    // .filter() loses index — can't use .collect_r()
+    // .filter() loses index - can't use .collect_r()
     rayon_bridge::par_collect_sexp(
         x.par_iter().filter(|&&v| v > 0.0).copied()
     )
@@ -319,7 +319,7 @@ fn parallel_pipeline(x: &[f64]) -> Vec<f64> {
 
 **Use when:** Any parallel transform where output length equals input length
 
-**Performance:** Best — zero intermediate allocation, writes directly into R memory
+**Performance:** Best - zero intermediate allocation, writes directly into R memory
 
 ```rust
 use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};
@@ -339,7 +339,7 @@ fn generate_sequence(n: i32) -> SEXP {
 
 **Use when:** You prefer a closure-based API, or need per-chunk state (e.g., RNG)
 
-**Performance:** Same as `.collect_r()` — zero copy, deterministic chunks
+**Performance:** Same as `.collect_r()` - zero copy, deterministic chunks
 
 ```rust
 // par_map: one-liner for element-wise transforms
@@ -362,7 +362,7 @@ fn generate_random(n: i32, seed: i64) -> SEXP {
 
 **Use when:** Variable-length output (filtering, flat-mapping)
 
-**Performance:** Moderate — one extra allocation (intermediate `Vec<T>`)
+**Performance:** Moderate - one extra allocation (intermediate `Vec<T>`)
 
 ```rust
 // par_collect_sexp: returns SEXP directly
@@ -373,7 +373,7 @@ fn parallel_filter(x: &[f64]) -> SEXP {
     )
 }
 
-// Or just return Vec<T> — miniextendr converts automatically
+// Or just return Vec<T> - miniextendr converts automatically
 #[miniextendr]
 fn parallel_filter_vec(x: &[f64]) -> Vec<f64> {
     x.par_iter().filter(|&&v| v > 0.0).map(|&v| v.log2()).collect()
@@ -404,7 +404,7 @@ regardless of thread scheduling.
 ### How It Works
 
 `with_r_vec` splits the output into `len / (num_threads * 4)` sized chunks using
-Rayon's `par_chunks_mut`. The chunk boundaries are fixed — chunk 0 always starts at
+Rayon's `par_chunks_mut`. The chunk boundaries are fixed - chunk 0 always starts at
 index 0, chunk 1 always starts at `chunk_size`, etc. Only the **scheduling order**
 varies between runs, not the boundaries.
 
@@ -471,7 +471,7 @@ R's RNG (`RRng`, `Rf_runif`, etc.) calls R APIs, which **panic** on Rayon thread
 Use a Rust RNG crate (`rand`, `rand_chacha`) instead:
 
 ```rust
-// WRONG: R's RNG calls R APIs — panics in parallel
+// WRONG: R's RNG calls R APIs - panics in parallel
 with_r_vec(len, |chunk, _| {
     let mut rng = RRng::new();  // PANICS!
     for slot in chunk { *slot = rng.uniform_f64(); }
@@ -497,7 +497,7 @@ with_r_vec(len, |chunk, offset| {
 
 **Be Careful:**
 - Frequent R API calls (each call has channel overhead)
-- Small datasets (<1,000 elements — overhead > gains)
+- Small datasets (<1,000 elements - overhead > gains)
 - Operations R can vectorize efficiently
 
 **Avoid:**
@@ -507,7 +507,7 @@ with_r_vec(len, |chunk, offset| {
 
 ### Optimization Tips
 
-1. **Use `.collect_r()`** for par iterator chains — zero-copy into R memory
+1. **Use `.collect_r()`** for par iterator chains - zero-copy into R memory
 2. **Use `par_map`** for simple element-wise transforms (same performance, closure style)
 3. **Use `with_r_vec`** when you need per-chunk state (RNG, accumulators)
 4. **Use `par_collect_sexp`** only for non-indexed iterators (`.filter()`, `.flat_map()`)
@@ -533,12 +533,12 @@ with_r_vec(n, |chunk, offset| {
 
 **Unsafe Patterns:**
 ```rust
-// WRONG: R API in closure — PANICS
+// WRONG: R API in closure - PANICS
 with_r_vec(n, |chunk, _| {
     let sexp = unsafe { ffi::Rf_ScalarReal(1.0) };  // CRASH!
 });
 
-// WRONG: with_r_thread inside closure — PANICS
+// WRONG: with_r_thread inside closure - PANICS
 with_r_vec(n, |chunk, _| {
     with_r_thread(|| { ... });  // PANICS! Not on worker thread
 });
@@ -637,6 +637,6 @@ eprintln!("Thread index: {:?}", perf::thread_index());
 
 ## See Also
 
-- [SAFETY.md](SAFETY.md) — Thread safety invariants
-- [ENTRYPOINT.md](ENTRYPOINT.md) — Worker initialization requirements
-- `miniextendr-bench/benches/rayon.rs` — Performance benchmarks
+- [SAFETY.md](SAFETY.md) - Thread safety invariants
+- [ENTRYPOINT.md](ENTRYPOINT.md) - Worker initialization requirements
+- `miniextendr-bench/benches/rayon.rs` - Performance benchmarks

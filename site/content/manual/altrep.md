@@ -28,7 +28,7 @@ Here's a minimal ALTREP example - a constant integer vector using the field-base
 ```rust
 use miniextendr_api::{miniextendr, ffi::SEXP, IntoR};
 
-// 1. Define your data type with derive — generates everything
+// 1. Define your data type with derive - generates everything
 #[derive(miniextendr_api::AltrepInteger)]
 #[altrep(len = "len", elt = "value", class = "ConstantInt")]
 pub struct ConstantIntData {
@@ -473,9 +473,9 @@ let cls = R_make_altreal_class(class_name, pkg_name, dll);
 ```
 
 Without DllInfo (`NULL`), R can't find the class during deserialization, even
-if it's registered. This was a bug — all classes were registered with `NULL`.
+if it's registered. This was a bug - all classes were registered with `NULL`.
 
-### 2. Eager registration — classes must exist before readRDS runs
+### 2. Eager registration - classes must exist before readRDS runs
 
 ALTREP classes are registered in two ways:
 
@@ -497,7 +497,7 @@ for reg_fn in MX_ALTREP_REGISTRATIONS.iter() {
 ```
 
 **Built-in classes** (`Vec<f64>`, `Box<[i32]>`, Arrow arrays, etc.) use
-`OnceLock` inside `RegisterAltrep::get_or_init_class()`. These are lazy —
+`OnceLock` inside `RegisterAltrep::get_or_init_class()`. These are lazy -
 the class is created on first use (e.g., when `.into_sexp_altrep()` is
 called). This is a problem for `readRDS`: R tries to find the class *during
 deserialization*, before any miniextendr code has called `into_sexp_altrep`.
@@ -506,7 +506,7 @@ The fix: `register_builtin_altrep_classes()` is called during `R_init` and
 eagerly calls `get_or_init_class()` for every built-in type:
 
 ```rust
-// In registry.rs — during R_init:
+// In registry.rs - during R_init:
 register_builtin_altrep_classes();  // Vec, Box, Range
 #[cfg(feature = "arrow")]
 register_arrow_altrep_classes();    // Float64Array, Int32Array, etc.
@@ -542,7 +542,7 @@ Session B: library(miniextendr); readRDS("data.rds")
 Session C: readRDS("data.rds")  # WITHOUT library(miniextendr)
   → ALTREP class not registered → R falls back to the serialized state
   → Returns a plain R numeric vector (the materialized data)
-  → Works correctly — just not an ALTREP anymore
+  → Works correctly - just not an ALTREP anymore
 ```
 
 ### Adding serialization to new types
@@ -554,23 +554,23 @@ When you add a new `impl_alt*_from_data!` with `serialize`:
 3. If it's a built-in type (in miniextendr-api, not user code), add it to
    `register_builtin_altrep_classes()` so it's eagerly registered at init
 
-User types don't need step 3 — the proc-macro generates `#[distributed_slice]`
+User types don't need step 3 - the proc-macro generates `#[distributed_slice]`
 entries automatically.
 
 ### Class names must be unique within the package
 
-`R_make_alt*_class` expects a unique `(class_name, pkg_name)` pair — two
+`R_make_alt*_class` expects a unique `(class_name, pkg_name)` pair - two
 registrations that pick the same name silently clobber each other. miniextendr
 catches this at package init by tracking every registered class name and
 panicking on the first duplicate:
 
 ```
-miniextendr: duplicate ALTREP class name "MyClass" — each ALTREP type must have
+miniextendr: duplicate ALTREP class name "MyClass" - each ALTREP type must have
 a unique class name within the package
 ```
 
 If you hit this, check every `#[altrep(class = "...")]` string in your crate
-(derive-generated and manual paths combined) — two types share the same name.
+(derive-generated and manual paths combined) - two types share the same name.
 Built-in classes (`Vec<i32>`, `Box<[f64]>`, etc.) are registered with names the
 framework guarantees unique, so the collision is always in your own code.
 

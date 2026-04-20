@@ -7,12 +7,12 @@ How miniextendr handles ALTREP vectors when R passes them to Rust functions.
 ## The Problem
 
 R uses ALTREP (Alternative Representations) for many common operations. For
-example, `1:10` creates a compact integer sequence — an ALTREP object — not a
+example, `1:10` creates a compact integer sequence - an ALTREP object - not a
 regular integer vector. This is invisible to R users but matters for Rust code
 because:
 
 1. **ALTREP data pointers are unstable.** Calling `DATAPTR_RO` on an ALTREP
-   vector triggers *materialization* — R allocates a new vector, runs GC, and
+   vector triggers *materialization* - R allocates a new vector, runs GC, and
    fills in the data. This involves R's C runtime and must happen on the R main
    thread.
 
@@ -32,7 +32,7 @@ miniextendr uses a two-type strategy:
 | **Typed** (`Vec<i32>`, `&[f64]`, `String`, etc.) | Yes | Auto-materializes via `DATAPTR_RO` during conversion. Safe and transparent. |
 | **`SEXP`** | Yes | Auto-materializes via `ensure_materialized` before the function body runs. |
 | **`AltrepSexp`** | Only ALTREP | Wraps the ALTREP vector without materializing. `!Send + !Sync`. |
-| **`extern "C-unwind"` with raw `SEXP`** | Yes (raw) | No conversion — receives the raw SEXP as-is, including ALTREP. |
+| **`extern "C-unwind"` with raw `SEXP`** | Yes (raw) | No conversion - receives the raw SEXP as-is, including ALTREP. |
 
 ### Typed Parameters: The Recommended Default
 
@@ -46,8 +46,8 @@ pub fn sum_integers(x: Vec<i32>) -> i64 {
 ```
 
 ```r
-sum_integers(1:1000000)  # Works — 1:N is ALTREP, auto-materialized
-sum_integers(c(1L, 2L))  # Works — regular vector
+sum_integers(1:1000000)  # Works - 1:N is ALTREP, auto-materialized
+sum_integers(c(1L, 2L))  # Works - regular vector
 ```
 
 Typed conversions (`Vec<T>`, `&[T]`, scalar types) go through their own
@@ -70,14 +70,14 @@ pub fn inspect_vector(x: SEXP) -> i32 {
 ```
 
 ```r
-inspect_vector(1:10)  # Works — auto-materialized before Rust sees it
-inspect_vector(c(1L, 2L))  # Works — no materialization needed
+inspect_vector(1:10)  # Works - auto-materialized before Rust sees it
+inspect_vector(c(1L, 2L))  # Works - no materialization needed
 ```
 
 `ensure_materialized` works by calling `DATAPTR_RO` (for contiguous types like
 INTSXP, REALSXP) or iterating `STRING_ELT` (for STRSXP) to force R to
-materialize the underlying data. The SEXP itself is unchanged — it still has the
-ALTREP flag set — but its data pointer is now stable.
+materialize the underlying data. The SEXP itself is unchanged - it still has the
+ALTREP flag set - but its data pointer is now stable.
 
 ### AltrepSexp: Explicit ALTREP Handling
 
@@ -98,11 +98,11 @@ pub fn altrep_info(x: AltrepSexp) -> Vec<String> {
 ```
 
 ```r
-altrep_info(1:10)          # Works — 1:10 is ALTREP
+altrep_info(1:10)          # Works - 1:10 is ALTREP
 altrep_info(c(1L, 2L, 3L)) # Error: "expected an ALTREP vector"
 ```
 
-`AltrepSexp` is `!Send + !Sync` — it cannot be sent to rayon threads or other
+`AltrepSexp` is `!Send + !Sync` - it cannot be sent to rayon threads or other
 worker threads. This is enforced at compile time via `PhantomData<Rc<()>>`.
 
 To extract data from an `AltrepSexp`, materialize it on the R main thread:
@@ -152,7 +152,7 @@ pub extern "C-unwind" fn C_is_materialized(x: SEXP) -> SEXP {
 }
 ```
 
-`extern "C-unwind"` functions bypass `TryFromSexp` entirely — they receive the
+`extern "C-unwind"` functions bypass `TryFromSexp` entirely - they receive the
 raw `SEXP` directly from R's `.Call()`. This is necessary when you need to
 inspect ALTREP state without triggering materialization.
 
@@ -264,7 +264,7 @@ of the wrapper, but typically you should just use typed parameters.
 ### Consuming ALTREP Data (Recommended)
 
 ```rust
-/// Process integers — works with any R integer vector, ALTREP or not.
+/// Process integers - works with any R integer vector, ALTREP or not.
 #[miniextendr]
 pub fn double_values(x: Vec<i32>) -> Vec<i32> {
     x.iter().map(|&v| v.wrapping_mul(2)).collect()
@@ -321,21 +321,21 @@ pub extern "C-unwind" fn C_safe_extract(x: SEXP) -> SEXP {
 
 ### Types
 
-- **`AltrepSexp`** — `!Send + !Sync` wrapper for ALTREP vectors. Use as a
+- **`AltrepSexp`** - `!Send + !Sync` wrapper for ALTREP vectors. Use as a
   `#[miniextendr]` parameter to accept only ALTREP input.
   ([source](../miniextendr-api/src/altrep_sexp.rs))
 
 ### Functions
 
-- **`ensure_materialized(sexp: SEXP) -> SEXP`** — If ALTREP, materialize and
+- **`ensure_materialized(sexp: SEXP) -> SEXP`** - If ALTREP, materialize and
   return. If not ALTREP, return as-is. Must be called on the R main thread.
   ([source](../miniextendr-api/src/altrep_sexp.rs))
 
 ### TryFromSexp Implementations
 
-- **`TryFromSexp for SEXP`** — Auto-materializes ALTREP via `ensure_materialized`.
+- **`TryFromSexp for SEXP`** - Auto-materializes ALTREP via `ensure_materialized`.
   ([source](../miniextendr-api/src/from_r.rs))
 
-- **`TryFromSexp for AltrepSexp`** — Accepts only ALTREP vectors, errors on
+- **`TryFromSexp for AltrepSexp`** - Accepts only ALTREP vectors, errors on
   non-ALTREP input.
   ([source](../miniextendr-api/src/altrep_sexp.rs))

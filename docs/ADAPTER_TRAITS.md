@@ -63,7 +63,7 @@ impl RNum for MyNumber {
     // Uses the blanket impl above
 }
 
-// 4. Registration is automatic — #[miniextendr] items are registered via
+// 4. Registration is automatic - #[miniextendr] items are registered via
 //    linkme distributed slices. No manual module declaration needed.
 ```
 
@@ -129,10 +129,10 @@ When designing adapter traits, keep these limitations in mind:
 
 | Feature | Supported? | Notes |
 |---------|------------|-------|
-| Generic parameters on trait | Yes | `trait Foo<T>` — concrete shims generated at impl site |
+| Generic parameters on trait | Yes | `trait Foo<T>` - concrete shims generated at impl site |
 | Generic methods | No | `fn bar<T>()` not allowed |
 | Async methods | No | `async fn` not allowed |
-| Associated types | Yes | `type Item` — resolved to concrete type at impl site |
+| Associated types | Yes | `type Item` - resolved to concrete type at impl site |
 | Self by value | Yes | `fn consume(self)` works |
 | &self / &mut self | Yes | Standard receivers |
 | Static methods | Yes | But don't go through vtable |
@@ -170,8 +170,8 @@ impl RIterator for CountUp {
     fn collect_n(&self, n: i32) -> Vec<i32> { /* ... */ }
     fn skip(&self, n: i32) -> i32 { /* ... */ }
     fn nth(&self, n: i32) -> Option<i32> { /* ... */ }
-    // size_hint is #[miniextendr(skip)] — not exposed to R
-    // next is #[miniextendr(r_name = "next_item")] — called next_item() in R
+    // size_hint is #[miniextendr(skip)] - not exposed to R
+    // next is #[miniextendr(r_name = "next_item")] - called next_item() in R
 }
 ```
 
@@ -289,11 +289,11 @@ use miniextendr_api::{RDebug, RClone};
 #[derive(Debug, Clone, ExternalPtr)]
 struct MyData { value: i32 }
 
-// Empty body — uses blanket impl from RDebug
+// Empty body - uses blanket impl from RDebug
 #[miniextendr]
 impl RDebug for MyData {}
 
-// Empty body — uses blanket impl from RClone
+// Empty body - uses blanket impl from RClone
 #[miniextendr]
 impl RClone for MyData {}
 ```

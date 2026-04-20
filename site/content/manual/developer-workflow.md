@@ -24,7 +24,7 @@ just dev-tools-install
 Installs the helpers expected by the other recipes:
 
 - `cargo-revendor` from the in-tree `cargo-revendor/` (required by `just vendor` and the dev-monorepo configure path).
-- `cargo-limit`, which provides the `cargo lcheck` / `lclippy` / `ltest` / `lbuild` aliases that truncate output to the first few errors — recommended for interactive iteration. CI and `just` recipes keep plain `cargo` so `-D warnings` output stays complete.
+- `cargo-limit`, which provides the `cargo lcheck` / `lclippy` / `ltest` / `lbuild` aliases that truncate output to the first few errors - recommended for interactive iteration. CI and `just` recipes keep plain `cargo` so `-D warnings` output stays complete.
 
 ## Quick Start
 
@@ -131,7 +131,7 @@ just configure && just rcmdinstall && just devtools-document && just rcmdinstall
 
 ### Stale R wrappers after macro changes
 
-Same fix — run the full 4-step workflow:
+Same fix - run the full 4-step workflow:
 
 ```bash
 just configure && just rcmdinstall && just devtools-document && just rcmdinstall

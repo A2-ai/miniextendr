@@ -6,7 +6,7 @@ This document explains how ALTREP serves as a foundation for building advanced d
 
 ## ALTREP as a Building Block
 
-ALTREP is not just about zero-copy conversions—it's a **foundation for building custom R vector types** with specialized behavior. Think of it as R's version of implementing custom collection types.
+ALTREP is not just about zero-copy conversions-it's a **foundation for building custom R vector types** with specialized behavior. Think of it as R's version of implementing custom collection types.
 
 ### What ALTREP Enables
 

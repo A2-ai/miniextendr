@@ -392,6 +392,27 @@ main.content.wide {
   margin-top: 1rem;
 }
 
+.api-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 900px;
+
+  .doc-card {
+    min-width: 0;
+    p {
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    code {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .api-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 .roadmap-count {
   font-size: 0.85em;
   font-weight: 400;

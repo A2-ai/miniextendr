@@ -1,4 +1,4 @@
-# minirextendr — Scaffolding & Workflow Helper
+# minirextendr - Scaffolding & Workflow Helper
 
 `minirextendr` is a pure-R companion package that scaffolds, builds, and maintains
 R packages using the miniextendr Rust-R framework. Think of it as `usethis` for
@@ -122,7 +122,7 @@ Stages: `"install"` (default), `"wrappers"`, `"build"`.
 Compile Rust code on the fly without an existing package (like Rcpp's `sourceCpp()`):
 
 ```r
-# Single function — auto-wraps with imports and module block
+# Single function - auto-wraps with imports and module block
 rust_function('
 #[miniextendr]
 pub fn add_one(x: i32) -> i32 { x + 1 }
@@ -196,7 +196,7 @@ Thin wrappers around `cargo` that target the package's `src/rust/` directory:
 All accept `path` (default `"."`) and `...` for extra arguments.
 
 **Note:** `cargo_fmt("--check")` may report formatting diffs in vendored crates.
-This is expected — vendored code isn't subject to local formatting rules.
+This is expected - vendored code isn't subject to local formatting rules.
 
 ## Feature Scaffolding
 
@@ -223,7 +223,7 @@ Each `use_*()` function:
 `use_feature_detection()` sets up conditional compilation via R-detected feature flags:
 
 ```r
-# Initial setup — creates detect-features.R and wires it into configure.ac
+# Initial setup - creates detect-features.R and wires it into configure.ac
 use_feature_detection()
 
 # After adding new features to miniextendr.yml, regenerate the detection script
@@ -254,7 +254,7 @@ miniextendr_available_versions()
 ## Diagnostics
 
 ```r
-has_miniextendr("mypackage")        # TRUE/FALSE — is this a miniextendr package?
+has_miniextendr("mypackage")        # TRUE/FALSE - is this a miniextendr package?
 miniextendr_status(path = ".")      # Show file status (present, stale, missing)
 miniextendr_validate(path = ".")    # Validate project consistency
 miniextendr_doctor(path = ".")      # Comprehensive health check
@@ -283,7 +283,7 @@ Installs idempotent `pre-commit` and `post-merge` hooks into `.git/hooks/`:
 | `post-merge` | Reminds you to reconfigure + rebuild when build-relevant files changed (`configure.ac`, `Makevars.in`, `Cargo.toml`, `*.rs`) |
 
 The hooks auto-detect standalone vs monorepo layouts (searches for
-`src/rust/Cargo.toml`) and preserve existing content from other tools —
+`src/rust/Cargo.toml`) and preserve existing content from other tools -
 they append a marker-delimited miniextendr section rather than
 overwriting. `miniextendr_doctor()` reports missing hooks as a warning.
 Running twice is safe; the installer skips on the `# miniextendr`

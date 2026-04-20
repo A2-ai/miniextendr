@@ -342,7 +342,7 @@ pub fn rows_as_df(rows: Vec<Row>) -> ColumnarDataFrame {
 ```
 
 `ColumnarDataFrame` implements `IntoR`, so return it directly from a
-`#[miniextendr]` function — no explicit `.build()` or `into_sexp()` call
+`#[miniextendr]` function - no explicit `.build()` or `into_sexp()` call
 needed. Builder methods (`rename`, `strip_prefix`, `drop`, `select`) are
 chainable and run before the SEXP reaches R.
 

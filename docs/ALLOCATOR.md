@@ -18,8 +18,8 @@ on dealloc.
 |----------|-----------------|
 | Standalone binary embedding R | Yes |
 | Arena-style allocation in `.Call` | Yes |
-| `#[global_allocator]` in an R package lib crate | **No** — would be called at compile time when R isn't available |
-| Performance-critical hot loops | Probably not — system allocator is faster |
+| `#[global_allocator]` in an R package lib crate | **No** - would be called at compile time when R isn't available |
+| Performance-critical hot loops | Probably not - system allocator is faster |
 
 ## Memory Layout
 
@@ -35,7 +35,7 @@ RAWSXP data bytes:
                                   └── pointer returned to caller
 ```
 
-The `Header` stores a single `preserve_tag: SEXP` — the cell in the preserve
+The `Header` stores a single `preserve_tag: SEXP` - the cell in the preserve
 list that keeps this RAWSXP alive. On dealloc, the allocator reads the header
 to recover the tag and releases the preserve cell.
 
@@ -44,15 +44,15 @@ to recover the tag and releases the preserve cell.
 ### Allocation
 
 1. Compute total size: alignment padding + `Header` (8 bytes) + requested size
-2. `Rf_allocVector(RAWSXP, total)` — allocate an R raw vector
-3. `preserve::insert(sexp)` — protect from GC (any-order release, not LIFO)
+2. `Rf_allocVector(RAWSXP, total)` - allocate an R raw vector
+3. `preserve::insert(sexp)` - protect from GC (any-order release, not LIFO)
 4. Write the `Header` (preserve tag) immediately before the user pointer
 5. Return the aligned user pointer
 
 ### Deallocation
 
 1. Read the `Header` just before the pointer → recover `preserve_tag`
-2. `preserve::release(tag)` — R's GC can now reclaim the RAWSXP
+2. `preserve::release(tag)` - R's GC can now reclaim the RAWSXP
 
 ### Reallocation
 
@@ -78,7 +78,7 @@ All R API calls are routed to the main thread automatically:
 | Worker thread (with `worker-thread` feature, inside `run_on_worker`) | Routes via `with_r_thread` |
 | Other threads (Rayon, spawned) | **Panics** |
 
-The panic on arbitrary threads is intentional — R's C API is not thread-safe,
+The panic on arbitrary threads is intentional - R's C API is not thread-safe,
 and silently corrupting R's heap would be worse than a loud failure.
 
 ## Caveats
@@ -96,7 +96,7 @@ If this happens:
   leaks (files, locks, etc.)
 
 Best practice: use `RAllocator` inside `with_r_unwind_protect` or the worker
-thread pattern — contexts where unwind protection is active.
+thread pattern - contexts where unwind protection is active.
 
 ### Protection Strategy
 
@@ -123,5 +123,5 @@ fn main() {
 }
 ```
 
-**Do NOT do this in an R package library crate** — the allocator would be
+**Do NOT do this in an R package library crate** - the allocator would be
 invoked during `cargo build` before R is available.

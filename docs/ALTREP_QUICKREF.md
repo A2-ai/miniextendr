@@ -71,7 +71,7 @@ fn int_range(from: i32, to: i32) -> SEXP {
 ## Minimal Example: Field-Based Derive (1 step)
 
 ```rust
-// Everything generated from the derive — no trait impls needed
+// Everything generated from the derive - no trait impls needed
 #[derive(miniextendr_api::AltrepInteger)]
 #[altrep(len = "len", elt = "value", class = "MyClass")]
 pub struct MyData { value: i32, len: usize }

@@ -245,7 +245,7 @@ All S7 features are implemented:
 | Multi-level inheritance (3+ level chains) | Implemented |
 | Property validation (`s7(validate)`) | Implemented |
 
-Method combination (before/after) is not applicable — S7 is single-dispatch by design.
+Method combination (before/after) is not applicable - S7 is single-dispatch by design.
 
 **Multi-level inheritance example:** `S7Animal` (abstract) -> `S7Dog` -> `S7GoldenRetriever`
 demonstrates a 3-level chain with methods and properties inherited through S7 generic dispatch.
@@ -412,7 +412,7 @@ See [FEATURES.md](FEATURES.md#connections) for the `connections` feature flag.
 
 ### ~~4.2 vctrs Integration (Partial)~~ MOSTLY RESOLVED
 
-**Status:** Comprehensive — derive macros, impl blocks, coercion chains all implemented
+**Status:** Comprehensive - derive macros, impl blocks, coercion chains all implemented
 **Feature flag:** `vctrs`
 **Location:** `miniextendr-api/src/vctrs.rs`, `miniextendr-macros/src/vctrs_derive.rs`
 
@@ -436,7 +436,7 @@ See [FEATURES.md](FEATURES.md#connections) for the `connections` feature flag.
 **Status:** Not planned (by design)
 **Impact:** Low
 
-There is no async/await or Tokio integration. R's C API is single-threaded and synchronous —
+There is no async/await or Tokio integration. R's C API is single-threaded and synchronous -
 async would require a runtime that conflicts with R's execution model. The worker thread
 pattern already provides the key benefit (non-blocking Rust execution):
 

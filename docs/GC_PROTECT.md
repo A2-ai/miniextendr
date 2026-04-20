@@ -15,7 +15,7 @@ balance `PROTECT`/`UNPROTECT` calls.
 | [PROTECT stack](#protectscope) | Within `.Call` | ~50k (ppsize) | LIFO | Temporary allocations |
 | [ProtectPool](#protectpool) | Cross-`.Call` | Unlimited | Any order | Cross-call, many objects (10.1 ns/op) |
 | [Preserve list](#preserve-list) | Cross-`.Call` | Unlimited | Any order | Few long-lived R objects |
-| [Refcount arenas](#refcount-arenas) | Flexible | Unlimited | Any order | Legacy — see ProtectPool |
+| [Refcount arenas](#refcount-arenas) | Flexible | Unlimited | Any order | Legacy - see ProtectPool |
 
 ### PROTECT Stack Types
 
@@ -91,12 +91,12 @@ let vec = scope.collect(evens);
 **Why this is efficient**: Typed vectors (INTSXP, REALSXP, etc.) don't need
 per-element protection. You allocate once, protect once, then fill by writing
 directly to the data pointer. No GC can occur during fills because you're just
-doing pointer writes—no R allocations.
+doing pointer writes-no R allocations.
 
 ## Root
 
 A lightweight handle returned by `scope.protect()`. Has no `Drop` implementation
-—the scope owns the unprotection responsibility.
+-the scope owns the unprotection responsibility.
 
 ```rust
 let root: Root<'_> = scope.protect(sexp);
@@ -309,10 +309,10 @@ unsafe {
 
 | Type | Backing | Thread-Local | Feature |
 |------|---------|-------------|---------|
-| `RefCountedArena` | BTreeMap + RefCell | No | — |
-| `HashMapArena` | HashMap + RefCell | No | — |
-| `ThreadLocalArena` | BTreeMap + thread_local | Yes | — |
-| `ThreadLocalHashArena` | HashMap + thread_local | Yes | — |
+| `RefCountedArena` | BTreeMap + RefCell | No | - |
+| `HashMapArena` | HashMap + RefCell | No | - |
+| `ThreadLocalArena` | BTreeMap + thread_local | Yes | - |
+| `ThreadLocalHashArena` | HashMap + thread_local | Yes | - |
 | `FastHashMapArena` | ahash HashMap + RefCell | No | `refcount-fast-hash` |
 | `ThreadLocalFastHashArena` | ahash HashMap + thread_local | Yes | `refcount-fast-hash` |
 

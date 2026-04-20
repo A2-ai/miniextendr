@@ -13,6 +13,26 @@ miniextendr differs from extendr in several key design decisions:
 - **ALTREP first-class**: Proc-macro-driven ALTREP support for lazy/zero-copy vectors.
 - **Vendored for CRAN**: All dependencies are vendored for offline CRAN builds.
 
+## SEXP as the unit of memory
+
+Rust types in miniextendr are, wherever possible, thin wrappers around `SEXP` (R's tagged pointer) rather than independent Rust-owned allocations. The goal is that the Rust-side representation of an R object *is* the R object: same pointer, same memory, same GC root. Concretely, types like `ExternalPtr<T>`, `Altrep<T>`, owned vector views, and the class-system wrappers (`R6<T>`, `S7<T>`, etc.) are all `#[repr(transparent)]` over `SEXP`, which lets us `transmute` between a typed handle and its raw `SEXP` without a conversion step and without any copy.
+
+That alignment with the R API matters for three reasons:
+
+1. **No parallel heap.** There is exactly one live copy of the data: the R heap. The Rust side doesn't duplicate it into `Vec<T>` and then write back, so the GC never sees "shadow" values that could go stale. Conversions that *do* copy (e.g. `Vec<i32>` to `integer()`) are explicit and localized to `TryFromSexp` / `IntoR`.
+2. **FFI is free.** Passing a miniextendr wrapper across the `extern "C"` boundary is just passing a pointer. There's no boxing, no adapter struct, no `into_raw` dance. The transmute-equivalence means a `fn foo() -> MyExternalPtr` compiles to the same ABI as a `fn foo() -> SEXP`.
+3. **Trait dispatch travels with the pointer.** Because the pointer carries its R class/altrep/extptr tag, type recovery is `Any::downcast` or a class-symbol check, not a lookup into a Rust-side registry that another package can't see. Cross-package dispatch works without a shared Rust type.
+
+Implication for extenders: if you find yourself writing `struct MyThing { inner: Vec<Foo> }` and then converting back to `SEXP` on every call, prefer keeping the canonical storage on the R side and letting your Rust type be a typed view over it. ALTREP (see below) is the tool for keeping R semantics while materializing lazily on demand.
+
+## Performance considerations
+
+Performance was a concrete design input, not a post-hoc measurement. The architectural choices above (main-thread default, SEXP-as-memory, ALTREP-first) were picked because they eliminate the two costs that dominate an R/Rust boundary: (1) cross-thread handoff of pointers that can't move off the main thread, and (2) data copies between the R heap and a parallel Rust heap.
+
+The maintainer-only [`miniextendr-bench/`](https://github.com/A2-ai/miniextendr/tree/main/miniextendr-bench) crate exercises each subsystem (FFI dispatch, conversions, ALTREP materialization, panic/unwind overhead, class-system dispatch) under divan, and the results feed back into architectural review. The full methodology, recipe list, and the current reference baseline are documented in [Benchmarks](./manual/benchmarks/). Design changes that regress any headline number block the PR.
+
+A concrete example: the `.Call()`-registered C entry point is the same mechanism [cpp11](https://cpp11.r-lib.org/) uses to expose C++ to R. miniextendr leans on the fact that R's DLL / `.Call()` dispatch is already a well-optimized, zero-marshalling path (R passes a `SEXP` array, the callee returns a `SEXP`); any interop framework that keeps SEXPs *as* SEXPs on the Rust side pays only the pointer-copy cost on the boundary. That is what miniextendr-bench's FFI-dispatch numbers are measuring against.
+
 ## Crate Architecture
 
 ```text

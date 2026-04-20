@@ -27,11 +27,11 @@ platforms, so this only fails on very old or misconfigured R installations.
 The assertion is called automatically by `package_init()` (via `miniextendr_init!`):
 
 ```rust
-// lib.rs — the macro handles UTF-8 assertion automatically
+// lib.rs - the macro handles UTF-8 assertion automatically
 miniextendr_api::miniextendr_init!(mypkg);
 ```
 
-No user action is required — `miniextendr_init!` includes the UTF-8 locale
+No user action is required - `miniextendr_init!` includes the UTF-8 locale
 check as part of the standard initialization sequence.
 
 ## Encoding Info (Non-API, Embedding Only)

@@ -12,31 +12,26 @@
     {{ page.content | safe }}
   </div>
 
-  <div class="doc-grid">
+  <div class="doc-grid api-grid">
     <a class="doc-card" href="{{ config.base_url }}/rustdoc/miniextendr_api/" rel="noopener">
       <span class="doc-kind">Runtime</span>
       <h3>miniextendr_api</h3>
-      <p>Safe Rust &harr; R interop: FFI, conversions, <code>ExternalPtr</code>, ALTREP, worker thread, unwind protection.</p>
+      <p>Safe Rust to R interop: FFI, conversions, <code>ExternalPtr</code>, ALTREP, worker thread, unwind protection.</p>
     </a>
     <a class="doc-card" href="{{ config.base_url }}/rustdoc/miniextendr_macros/" rel="noopener">
       <span class="doc-kind">Macros</span>
       <h3>miniextendr_macros</h3>
-      <p>Procedural macros: <code>#[miniextendr]</code>, derives (<code>AltrepInteger</code>, <code>IntoR</code>, &hellip;), class-system codegen.</p>
+      <p>Procedural macros: <code>#[miniextendr]</code>, derives (<code>AltrepInteger</code>, <code>IntoR</code>, etc.), class-system codegen.</p>
     </a>
     <a class="doc-card" href="{{ config.base_url }}/rustdoc/miniextendr_engine/" rel="noopener">
       <span class="doc-kind">Engine</span>
       <h3>miniextendr_engine</h3>
-      <p>Standalone R embedding: init, evaluate, parse &mdash; used by <code>cargo test</code> and external hosts.</p>
+      <p>Standalone R embedding: init, evaluate, parse. Used by <code>cargo test</code> and external hosts.</p>
     </a>
     <a class="doc-card" href="{{ config.base_url }}/rustdoc/miniextendr_lint/" rel="noopener">
       <span class="doc-kind">Lint</span>
       <h3>miniextendr_lint</h3>
       <p>Build-time static analysis (MXL008/009/010/106/203/300/301). Runs via <code>build.rs</code>.</p>
-    </a>
-    <a class="doc-card" href="{{ config.base_url }}/rustdoc/miniextendr/" rel="noopener">
-      <span class="doc-kind">Example</span>
-      <h3>miniextendr (rpkg)</h3>
-      <p>The bundled example R package &mdash; every conversion fixture, ALTREP pattern, and class-system demo lives here.</p>
     </a>
   </div>
 

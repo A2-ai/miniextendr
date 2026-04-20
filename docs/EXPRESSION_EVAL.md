@@ -98,7 +98,7 @@ let sexp = base.as_sexp();
 ```
 
 Prefer `package_namespace(pkg)` over chasing symbols through
-`R_GlobalEnv` — the former mirrors `getNamespace(pkg)` and resolves
+`R_GlobalEnv` - the former mirrors `getNamespace(pkg)` and resolves
 against the package's own namespace regardless of what the user has
 attached on the search path. `eval_global()` has been removed; evaluate
 in `base()`, `base_namespace()`, or the caller's env instead.

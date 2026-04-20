@@ -10,10 +10,10 @@ miniextendr provides two complementary systems for enum-like types:
 
 | System | R Representation | Partial Match | Default | Use Case |
 |--------|-----------------|---------------|---------|----------|
-| `RFactor` | Factor (integer + levels) | No | — | Categorical data for `table()`, `lm()`, etc. |
+| `RFactor` | Factor (integer + levels) | No | - | Categorical data for `table()`, `lm()`, etc. |
 | `MatchArg` | Character scalar | Yes | First choice | Parameter validation (`match.arg()` style) |
 
-## RFactor — Enum as R Factor
+## RFactor - Enum as R Factor
 
 Maps a Rust enum to an R factor with levels. Each variant becomes a level.
 
@@ -130,12 +130,12 @@ Instead of `#[derive(RFactor)]`, you can use the attribute macro:
 pub enum Color { Red, Green, Blue }
 ```
 
-This is equivalent — `#[miniextendr]` on a fieldless enum dispatches to the same
+This is equivalent - `#[miniextendr]` on a fieldless enum dispatches to the same
 RFactor derive internally.
 
 ---
 
-## MatchArg — Enum as String Parameter
+## MatchArg - Enum as String Parameter
 
 Maps a Rust enum to R character strings with `match.arg()` validation. Supports
 partial matching and defaults to the first variant when `NULL` is passed.
@@ -235,11 +235,11 @@ list and returns a character vector. miniextendr exposes this with
 `several_ok`, which is valid on both `match_arg` and `choices`:
 
 ```rust
-// Enum: Vec<Mode> — each element validated against MatchArg::CHOICES
+// Enum: Vec<Mode> - each element validated against MatchArg::CHOICES
 #[miniextendr]
 pub fn pick_modes(#[miniextendr(match_arg, several_ok)] modes: Vec<Mode>) -> String { ... }
 
-// Inline: Vec<String> — each element validated against the inline list
+// Inline: Vec<String> - each element validated against the inline list
 #[miniextendr]
 pub fn pick_metrics(
     #[miniextendr(choices("mean", "median", "sd", "var"), several_ok)] metrics: Vec<String>,
@@ -259,8 +259,8 @@ pass a character vector to get multiple exact/partial matches.
 
 Rust rejects attribute macros on function parameters inside impl items, so
 `match_arg` / `choices` / `several_ok` on impl methods use **method-level**
-attributes that name the parameter. This works for all class systems —
-`r6`, `env`, `s3`, `s4`, `s7`, `vctrs` — on both constructors and instance
+attributes that name the parameter. This works for all class systems -
+`r6`, `env`, `s3`, `s4`, `s7`, `vctrs` - on both constructors and instance
 methods:
 
 ```rust
@@ -270,11 +270,11 @@ impl Counter {
     #[miniextendr(match_arg(mode))]
     pub fn new(mode: Mode) -> Self { ... }
 
-    // several_ok variant — note the distinct attribute name.
+    // several_ok variant - note the distinct attribute name.
     #[miniextendr(match_arg_several_ok(modes))]
     pub fn reset(&mut self, modes: Vec<Mode>) -> i32 { ... }
 
-    // Inline string choices — pass the list as a comma-separated string.
+    // Inline string choices - pass the list as a comma-separated string.
     #[miniextendr(choices(level = "low, medium, high"))]
     pub fn describe(level: String) -> String { ... }
 }
@@ -285,7 +285,7 @@ functions, including the choices vector as the formal default.
 
 The vctrs class system accepts `match_arg` on its `fn new()` constructor
 even though vctrs constructors return a data vector (`Vec<T>`) rather than
-`Self` — the vctrs generator recognizes a receiverless `new` as the
+`Self` - the vctrs generator recognizes a receiverless `new` as the
 constructor regardless of return type.
 
 ### Auto-Injected `@param` Docs
@@ -305,7 +305,7 @@ verbatim; only missing entries are auto-generated.
 
 ### Returning `Vec<Enum>`
 
-Functions can return `Vec<T>` for any `MatchArg` enum — each variant round-trips
+Functions can return `Vec<T>` for any `MatchArg` enum - each variant round-trips
 to its choice string:
 
 ```rust
@@ -321,7 +321,7 @@ all_modes()
 ```
 
 This is provided by a blanket `impl<T: MatchArg> IntoR for Vec<T>` in
-`miniextendr-api` — no extra derive required.
+`miniextendr-api` - no extra derive required.
 
 ---
 
@@ -373,5 +373,5 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 
 ## See Also
 
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) — `#[miniextendr]` on enums
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) — Full type conversion reference
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) - `#[miniextendr]` on enums
+- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) - Full type conversion reference

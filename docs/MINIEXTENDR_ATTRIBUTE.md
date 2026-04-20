@@ -32,7 +32,7 @@ Generates:
 - R wrapper (`greet <- function(name) { .Call(C_greet, name) }`)
 - `pub` functions get `@export`; non-pub get `@noRd`
 - Each function's roxygen gets an auto-generated `@rdname <file-stem>`
-  derived from `file!()` — so functions defined in `zero_copy_tests.rs`
+  derived from `file!()` - so functions defined in `zero_copy_tests.rs`
   share the `zero_copy_tests.Rd` page. Explicit `@rdname` wins; `@noRd`
   suppresses the injection; `lib.rs` / `mod.rs` stems are skipped.
 
@@ -180,7 +180,7 @@ pub fn with_connection(x: i32) -> i32 { x }
 pub fn create_widget(n: i32) -> i32 { n * 10 }
 ```
 
-`r_on_exit` defaults: `add = TRUE`, `after = TRUE` (composable, FIFO — standard R convention).
+`r_on_exit` defaults: `add = TRUE`, `after = TRUE` (composable, FIFO - standard R convention).
 When `add = FALSE`: omits both `add` and `after` (R ignores `after` when `add = FALSE`).
 
 #### S3 Standalone Functions
@@ -414,10 +414,10 @@ pub trait Counter {
 ```
 
 Generates cross-package ABI:
-- `TAG_COUNTER` — Type tag constant
-- `CounterVTable` — Function pointer table
-- Method shims — `extern "C"` trampolines with `with_r_unwind_protect`
-- `CounterView` — Runtime dispatch wrapper
+- `TAG_COUNTER` - Type tag constant
+- `CounterVTable` - Function pointer table
+- Method shims - `extern "C"` trampolines with `with_r_unwind_protect`
+- `CounterView` - Runtime dispatch wrapper
 
 **No attributes accepted** on the `#[miniextendr]` for traits (the attr parameter is unused).
 
@@ -614,12 +614,12 @@ appropriate derives internally. Both paths produce identical code.
 
 ## See Also
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) — All 6 class systems with examples
-- [S3_METHODS.md](S3_METHODS.md) — Detailed S3 print/format guide
-- [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) — Dots and typed_list validation
-- [ALTREP.md](ALTREP.md) — ALTREP deep dive
-- [DATAFRAME.md](DATAFRAME.md) — DataFrame conversion (derive + serde + columnar)
-- [SERDE_R.md](SERDE_R.md) — serde integration for direct Rust-R serialization
-- [ERROR_HANDLING.md](ERROR_HANDLING.md) — error_in_r, unwrap_in_r, panic handling
-- [LIFECYCLE.md](LIFECYCLE.md) — Deprecation/experimental lifecycle attributes
-- [TRAIT_ABI.md](TRAIT_ABI.md) — Cross-package trait dispatch
+- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) - All 6 class systems with examples
+- [S3_METHODS.md](S3_METHODS.md) - Detailed S3 print/format guide
+- [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) - Dots and typed_list validation
+- [ALTREP.md](ALTREP.md) - ALTREP deep dive
+- [DATAFRAME.md](DATAFRAME.md) - DataFrame conversion (derive + serde + columnar)
+- [SERDE_R.md](SERDE_R.md) - serde integration for direct Rust-R serialization
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) - error_in_r, unwrap_in_r, panic handling
+- [LIFECYCLE.md](LIFECYCLE.md) - Deprecation/experimental lifecycle attributes
+- [TRAIT_ABI.md](TRAIT_ABI.md) - Cross-package trait dispatch

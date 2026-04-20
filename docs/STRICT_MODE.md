@@ -5,7 +5,7 @@ values. When enabled, out-of-range values panic instead of being coerced.
 
 ## What It Affects
 
-Strict mode applies to **lossy integer types** only — types where R's native
+Strict mode applies to **lossy integer types** only - types where R's native
 integer range (`i32`, excluding `NA_integer_`) cannot represent all values:
 
 | Type | Scalar | Vec | Option | Vec\<Option\> |
@@ -15,7 +15,7 @@ integer range (`i32`, excluding `NA_integer_`) cannot represent all values:
 | `isize` | Yes | Yes | Yes | Yes |
 | `usize` | Yes | Yes | Yes | Yes |
 
-Types like `i32`, `f64`, `String`, `bool` are **not affected** — they have
+Types like `i32`, `f64`, `String`, `bool` are **not affected** - they have
 lossless R representations.
 
 ## Behavior Comparison
@@ -39,7 +39,7 @@ pub fn strict_big() -> i64 {
 }
 ```
 
-Valid range: `(i32::MIN, i32::MAX]` — note `i32::MIN` (-2147483648) is excluded
+Valid range: `(i32::MIN, i32::MAX]` - note `i32::MIN` (-2147483648) is excluded
 because it represents `NA_integer_` in R.
 
 ### Input (R → Rust)
@@ -137,6 +137,6 @@ These panics are caught and converted to R errors.
 
 ## See Also
 
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) — `strict` attribute reference
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) — Normal conversion behavior
-- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) — Project-wide feature flags
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) - `strict` attribute reference
+- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) - Normal conversion behavior
+- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) - Project-wide feature flags

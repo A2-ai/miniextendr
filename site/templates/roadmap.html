@@ -11,17 +11,6 @@
   <h1>{{ page.title }}</h1>
   {% if page.description %}<p class="section-description">{{ page.description }}</p>{% endif %}
 
-  <div class="section-body">
-    <p>
-      This page is regenerated on every deploy. The issue list is pulled
-      directly from
-      <a href="{{ config.extra.repo_url }}/issues" rel="noopener">the GitHub tracker</a>
-      via the Pages workflow, and the plan summaries are extracted from
-      <a href="{{ config.extra.repo_url }}/tree/main/plans" rel="noopener"><code>plans/</code></a>
-      at build time.
-    </p>
-  </div>
-
   <h2 id="issues">Open issues
     {% if issues_data %}<span class="roadmap-count">({{ issues_data | length }})</span>{% endif %}
   </h2>

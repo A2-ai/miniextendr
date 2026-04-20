@@ -152,6 +152,6 @@ Rscript rpkg/tests/testthat/bench-dots.R
 ```
 
 Baselines are stored in `miniextendr-bench/baselines/` as:
-- `bench-TIMESTAMP.txt` — raw divan output
-- `bench-TIMESTAMP.csv` — machine-readable (timestamp, target, group, name, args, median_ns, unit, mean_ns)
-- `bench-TIMESTAMP.meta` — environment metadata (commit, rustc, OS, R version)
+- `bench-TIMESTAMP.txt` - raw divan output
+- `bench-TIMESTAMP.csv` - machine-readable (timestamp, target, group, name, args, median_ns, unit, mean_ns)
+- `bench-TIMESTAMP.meta` - environment metadata (commit, rustc, OS, R version)

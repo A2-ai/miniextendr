@@ -140,7 +140,7 @@ struct Measured {
 - All elements preserved (no truncation)
 - If all vecs are empty: no expansion columns produced
 
-`Box<[T]>` and `&[T]` work identically to `Vec<T>` for all expansion modes — they
+`Box<[T]>` and `&[T]` work identically to `Vec<T>` for all expansion modes - they
 share the same `.get()`, `.len()`, and indexing behavior.
 
 **Note:** Using `&[T]` introduces a lifetime parameter on both the row struct and
@@ -350,22 +350,22 @@ pub fn big_points() -> PointDataFrame {
     let points: Vec<Point> = (0..100_000)
         .map(|i| Point { x: i as f64, y: (i * 2) as f64, label: format!("p{}", i) })
         .collect();
-    // Explicit parallel — always uses rayon, no threshold check
+    // Explicit parallel - always uses rayon, no threshold check
     PointDataFrame::from_rows_par(points)
 }
 ```
 
 **Generated methods on every companion type:**
 
-- `DfType::from_rows(rows)` — sequential push-based fill (always available)
-- `DfType::from_rows_par(rows)` — parallel scatter-write via `ColumnWriter` (`#[cfg(feature = "rayon")]`)
-- `From<Vec<Row>>` / `RowType::to_dataframe(rows)` — sequential (unchanged)
+- `DfType::from_rows(rows)` - sequential push-based fill (always available)
+- `DfType::from_rows_par(rows)` - parallel scatter-write via `ColumnWriter` (`#[cfg(feature = "rayon")]`)
+- `From<Vec<Row>>` / `RowType::to_dataframe(rows)` - sequential (unchanged)
 
 **How `from_rows_par` works:**
 
 - Pre-allocates column vectors to exact size, then fills indices in parallel
 - Uses `rayon::par_iter()` with `ColumnWriter<T>` for safe concurrent writes to disjoint indices
-- No threshold — the caller explicitly opts in to parallelism
+- No threshold - the caller explicitly opts in to parallelism
 
 **Enum support:** Parallel fill also works with enum DataFrameRow types:
 

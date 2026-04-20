@@ -1,12 +1,12 @@
 +++
 title = "Cached SEXPs"
 weight = 52
-description = "R strings (CHARSXPs), symbols, and class vectors are immutable once created. When the same value is needed repeatedly — especially on hot paths like vectorized conversions — cache it once and reuse the pointer."
+description = "R strings (CHARSXPs), symbols, and class vectors are immutable once created. When the same value is needed repeatedly - especially on hot paths like vectorized conversions - cache it once and reuse the pointer."
 +++
 
 R strings (CHARSXPs), symbols, and class vectors are immutable once created.
-When the same value is needed repeatedly — especially on hot paths like
-vectorized conversions — cache it once and reuse the pointer.
+When the same value is needed repeatedly - especially on hot paths like
+vectorized conversions - cache it once and reuse the pointer.
 
 ## Macros
 
@@ -47,7 +47,7 @@ Caches the result of `Rf_install`. Symbols are never GC'd, so no
 
 Allocates a STRSXP, fills it with permanent CHARSXPs (via `Rf_install` +
 `PRINTNAME`), and preserves it with `R_PreserveObject`. Works for class
-vectors, names vectors, scalar strings — anything that's a fixed STRSXP.
+vectors, names vectors, scalar strings - anything that's a fixed STRSXP.
 
 ## How it works
 
@@ -111,7 +111,7 @@ items use the narrowest `#[cfg]` that covers their callers:
 
 | Cached value | Feature gate |
 |---|---|
-| `data_frame_class_sexp()` | (none — always available) |
+| `data_frame_class_sexp()` | (none - always available) |
 | `rust_error_class_sexp()` | (none) |
 | `error_names_sexp()` | (none) |
 | `rust_error_attr_symbol()` | (none) |
@@ -123,15 +123,15 @@ items use the narrowest `#[cfg]` that covers their callers:
 | `mx_raw_type_symbol()` | `raw_conversions` |
 | `ptype_symbol()` | `vctrs` |
 | `size_symbol()` | `vctrs` |
-| `factor_class_sexp()` | (none — in `factor.rs`) |
+| `factor_class_sexp()` | (none - in `factor.rs`) |
 
 ## Safety
 
 - `R_PreserveObject` prevents GC for the lifetime of the R session.
   `OnceLock` ensures single initialization.
 - The cached STRSXP is shared across all callers. This is safe because
-  `set_class` / `Rf_setAttrib` attach it as an attribute — they don't
+  `set_class` / `Rf_setAttrib` attach it as an attribute - they don't
   mutate the value itself.
-- Symbols (`Rf_install`) are never GC'd — no `R_PreserveObject` needed
+- Symbols (`Rf_install`) are never GC'd - no `R_PreserveObject` needed
   for the symbol itself, but the accessor caches it to avoid repeated
   hash lookups.

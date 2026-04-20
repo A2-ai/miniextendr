@@ -337,8 +337,8 @@ The `ExternalPtr` derive:
 ### Iteration Cycle
 
 1. Edit Rust code in `src/rust/lib.rs`
-2. Run `devtools::document()` — compiles Rust, generates R wrappers, runs roxygen2
-3. Run `devtools::install()` — install the package
+2. Run `devtools::document()` - compiles Rust, generates R wrappers, runs roxygen2
+3. Run `devtools::install()` - install the package
 4. Test in R
 
 `devtools::document()` handles `./configure`, compilation, and wrapper generation

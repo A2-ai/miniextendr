@@ -279,7 +279,7 @@ impl Person {
         Person { name, age }
     }
 
-    /// Implements print.Person — &mut self triggers invisible(x) return
+    /// Implements print.Person - &mut self triggers invisible(x) return
     #[miniextendr(generic = "print")]
     pub fn show(&mut self) {
         println!("Person: {}, age {}", self.name, self.age);
@@ -679,7 +679,7 @@ Both blocks generate methods for the same type.
 
 ## Cross-Type Class Name References
 
-Several attributes let one `#[miniextendr]` type reference another by name —
+Several attributes let one `#[miniextendr]` type reference another by name -
 `s7(parent = ...)`, `r6(inherit = ...)`, `s7(convert_from = ...)`, and
 `s7(convert_to = ...)`. miniextendr resolves these at cdylib-write time using
 the Rust type name, not the R class name, so you can stay consistent with your
@@ -705,7 +705,7 @@ S7Circle <- S7::new_class("S7Circle", parent = Shape, ...)
 
 The same placeholder (`.__MX_CLASS_REF_<Type>__`) powers R6 `inherit =` and S7
 `convert_from` / `convert_to`. Unregistered names produce a compile-time warning
-and fall through to the bare identifier — which will fail at R load.
+and fall through to the bare identifier - which will fail at R load.
 
 ### S7 Property Class Constraints
 
@@ -745,7 +745,7 @@ don't break package load:
 | Unregistered / primitive / `SEXP` / `PathBuf` | `S7::class_any` |
 
 The other four reference sites (`parent`, `inherit`, `convert_from`,
-`convert_to`) keep the loud fallback — an unresolved name there almost always
+`convert_to`) keep the loud fallback - an unresolved name there almost always
 means a typo worth surfacing.
 
 ---
@@ -755,16 +755,16 @@ means a typo worth surfacing.
 The generator strips the following roxygen tags from doc comments on
 impl-block methods and emits a deprecation warning at build time:
 
-- `@param` — supplied by the method signature (use `#' @param name desc`
+- `@param` - supplied by the method signature (use `#' @param name desc`
   at the class level instead)
-- `@return` / `@returns` — most class systems combine multiple methods
+- `@return` / `@returns` - most class systems combine multiple methods
   into one Rd page; per-method return tags would conflict
-- `@examples` — same reason
-- `@export` — export visibility is controlled by `#[miniextendr(...)]`
+- `@examples` - same reason
+- `@export` - export visibility is controlled by `#[miniextendr(...)]`
   attributes, not roxygen
 
-S4's structural tags — `@exportClass`, `@exportMethod`,
-`@exportPattern` — pass through (tag-name matching is exact on the
+S4's structural tags - `@exportClass`, `@exportMethod`,
+`@exportPattern` - pass through (tag-name matching is exact on the
 first whitespace-delimited token).
 
 ---
