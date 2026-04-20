@@ -287,14 +287,17 @@ The internal layout of an `ExternalPtr`-created `EXTPTRSXP`:
 
 ```text
 EXTPTRSXP
-  addr  → *mut T (heap-allocated Rust value)
+  addr  → *mut Box<dyn Any> (thin pointer → heap-allocated fat pointer)
+            └→ Box<T> (the actual Rust value)
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
   prot  → VECSXP[2]
             [0] → SYMSXP (TYPE_ID_CSTR, for type checking)
             [1] → user-protected SEXP (set via set_protected)
 ```
 
-The `prot` slot holds a two-element list. Slot 0 is the namespaced type ID symbol for fast pointer-based type comparison. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer.
+Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols.
+
+The `prot` slot holds a two-element list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer.
 
 ## Thread Safety
 
