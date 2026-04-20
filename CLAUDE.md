@@ -247,9 +247,13 @@ Claude Code sandbox blocks compilation. For any compiling command (`just devtool
 
 Zola static site in `site/` → GitHub Pages at `https://a2-ai.github.io/miniextendr/`. Content pages are TOML-frontmatter markdown (`+++`). `weight` controls sort order.
 
-GitHub Actions auto-deploys on push to `main` when `site/**` or `*/src/**` changes: builds rustdoc (`cargo doc --no-deps --workspace`) → builds Zola → copies rustdoc to `site/public/rustdoc/` → deploys. Rustdoc lives at `.../rustdoc/miniextendr_api/`.
+GitHub Actions auto-deploys on push to `main` when `site/**`, `docs/**`, or `*/src/**` changes: runs `scripts/docs-to-site.sh` → builds nightly rustdoc (`--document-private-items --document-hidden-items --show-type-layout --enable-index-page --generate-link-to-definition -Z rustdoc-map`) → builds Zola → copies rustdoc to `site/public/rustdoc/` → deploys. Rustdoc index at `.../rustdoc/`; individual crates at `.../rustdoc/miniextendr_api/` etc.
 
-`site/content/` pages are curated summaries of `docs/` — not 1:1 copies. When updating `docs/`, check if the corresponding site page needs updating.
+`site/content/manual/` is **auto-generated from `docs/`** by `scripts/docs-to-site.sh` (1:1 conversion, not curated summaries). Edit `docs/*.md` only — never edit `site/content/manual/*.md` directly.
+
+**After editing `docs/`, regenerate and commit both together**: `bash scripts/docs-to-site.sh && git add docs/ site/content/manual/`. CI runs `docs-to-site.sh` itself before each deploy, so the live site is always correct — but the in-repo `site/content/manual/` drifts out of sync if you skip the regenerate step, making subsequent diffs noisy and masking unrelated site edits.
+
+`just site-build` / `just site-serve` only run `zola build` / `zola serve`; they do **not** call `docs-to-site.sh`. Run the script by hand when previewing doc edits locally.
 
 ## Reference Docs (`background/`, gitignored)
 
