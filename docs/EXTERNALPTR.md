@@ -120,6 +120,21 @@ same R object they passed in.
 
 R's GC finalizer handles cleanup when the `ExternalPtr` goes out of scope in Rust without being explicitly consumed. The Rust `Drop` impl is a no-op to avoid double-free.
 
+### Panicking destructors are not recoverable
+
+The GC finalizer is an `extern "C"` function — unwinding through it is
+undefined behavior. miniextendr wraps every ExternalPtr finalizer in
+`drop_catching_panic`, which calls `std::panic::catch_unwind` around the
+destructor; if a `Drop` impl panics the helper prints the panic message
+to stderr and calls `std::process::abort()`. That's the only safe
+response — R's GC cannot resume after a cross-ABI unwind.
+
+This means: a panic in `impl Drop for YourType` crashes the R session.
+Treat destructors as infallible. Put anything that can fail (file
+writes, network, mutex takedown) behind an explicit `close()` /
+`finalize()` method that the user calls, and keep `Drop` limited to
+plain memory release.
+
 ## ExternalPtr as a Self Receiver
 
 Inside a `#[miniextendr]` impl block, methods can take the wrapping
