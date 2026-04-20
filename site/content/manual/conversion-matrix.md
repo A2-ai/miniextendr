@@ -34,7 +34,7 @@ These types require an exact R type match. Length must be 1.
 
 | Rust Type | Accepted R Type | On NA | On Type Mismatch |
 |-----------|----------------|-------|------------------|
-| `i32` | INTSXP | Error (`SexpError::Na`) - use `Option<i32>` for NA | Error |
+| `i32` | INTSXP | Error (`SexpError::Na`): use `Option<i32>` for NA | Error |
 | `f64` | REALSXP | Returns NA_real_ (specific NaN) | Error |
 | `u8` | RAWSXP | No NA concept in raw | Error |
 | `Rcomplex` | CPLXSXP | Returns `Rcomplex { r: NA_real_, i: NA_real_ }` | Error |
@@ -255,7 +255,7 @@ Enabled with `features = ["raw_conversions"]`. Uses R's `RAWSXP` for binary POD 
 
 ## Cookbook: Common Conversion Recipes
 
-### "I have `Vec<Option<i64>>` - how does it convert to R?"
+### `Vec<Option<i64>>`: how it converts to R
 
 Each element uses the smart i64 conversion. If all `Some` values fit in i32, the whole vector is INTSXP; otherwise REALSXP. `None` values become `NA_integer_` or `NA_real_` accordingly.
 
@@ -269,7 +269,7 @@ fn make_nullable_ids() -> Vec<Option<i64>> {
 
 ### "I want to accept either integer or numeric from R"
 
-Use a coerced type (`i64`, `u64`, `f32`) - they accept INTSXP, REALSXP, RAWSXP, and LGLSXP automatically:
+Use a coerced type (`i64`, `u64`, `f32`), which accepts INTSXP, REALSXP, RAWSXP, and LGLSXP automatically:
 
 ```rust
 #[miniextendr]
@@ -300,7 +300,7 @@ In R: `process_config(list(threshold = 0.9, alpha = 0.05))`
 
 ### "I want to return NA for missing values"
 
-Wrap in `Option` - `None` becomes the appropriate NA:
+Wrap in `Option`. `None` becomes the appropriate NA:
 
 ```rust
 #[miniextendr]
@@ -323,7 +323,7 @@ fn try_parse(s: String) -> Result<i32, ()> {
 
 ### "I have a struct and want to pass it to R and back"
 
-Use `#[miniextendr]` on an impl block - the struct is wrapped in an ExternalPtr:
+Use `#[miniextendr]` on an impl block. The struct is wrapped in an ExternalPtr:
 
 ```rust
 struct Counter { n: i32 }

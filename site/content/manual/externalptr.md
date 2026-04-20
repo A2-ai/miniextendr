@@ -89,7 +89,7 @@ Explicit access methods:
 | `as_sexp()` | `SEXP` | The underlying R object |
 | `reborrow()` | `ExternalPtr<T>` | Owned alias sharing the same SEXP; no allocation, no R object copy |
 
-### `reborrow()` - identity-preserving returns
+### `reborrow()`: identity-preserving returns
 
 When a `#[miniextendr]` method receives one or more `ExternalPtr<T>` values
 and returns one of them to R, `reborrow()` lets you build an owned
@@ -126,12 +126,12 @@ R's GC finalizer handles cleanup when the `ExternalPtr` goes out of scope in Rus
 
 ### Panicking destructors are not recoverable
 
-The GC finalizer is an `extern "C"` function - unwinding through it is
+The GC finalizer is an `extern "C"` function. Unwinding through it is
 undefined behavior. miniextendr wraps every ExternalPtr finalizer in
 `drop_catching_panic`, which calls `std::panic::catch_unwind` around the
 destructor; if a `Drop` impl panics the helper prints the panic message
 to stderr and calls `std::process::abort()`. That's the only safe
-response - R's GC cannot resume after a cross-ABI unwind.
+response: R's GC cannot resume after a cross-ABI unwind.
 
 This means: a panic in `impl Drop for YourType` crashes the R session.
 Treat destructors as infallible. Put anything that can fail (file
@@ -163,14 +163,14 @@ impl MyType {
 ```
 
 This is the form to use when a method needs `ExternalPtr` identity or tag
-metadata - `as_sexp()`, `tag()`, `protected()`, `ptr_eq()`, `reborrow()`,
+metadata: `as_sexp()`, `tag()`, `protected()`, `ptr_eq()`, `reborrow()`,
 etc. The macro rewrites `self` to an internal binding so the pattern
 compiles on stable Rust (no `arbitrary_self_types` required), and the
 generated C wrapper uses typed `ExternalPtr::<T>::wrap_sexp()` rather than
 an erased downcast.
 
 Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`.
-Consuming receivers (`self: ExternalPtr<Self>`) are not supported - R owns
+Consuming receivers (`self: ExternalPtr<Self>`) are not supported. R owns
 the pointer.
 
 ## Type Identification with TypedExternal

@@ -1,12 +1,12 @@
 +++
 title = "Cached SEXPs"
 weight = 52
-description = "R strings (CHARSXPs), symbols, and class vectors are immutable once created. When the same value is needed repeatedly - especially on hot paths like vectorized conversions - cache it once and reuse the pointer."
+description = "R strings (CHARSXPs), symbols, and class vectors are immutable once created. Cache values that are needed repeatedly, especially on hot paths like vectorized conversions, and reuse the pointer."
 +++
 
 R strings (CHARSXPs), symbols, and class vectors are immutable once created.
-When the same value is needed repeatedly - especially on hot paths like
-vectorized conversions - cache it once and reuse the pointer.
+Cache values that are needed repeatedly, especially on hot paths like
+vectorized conversions, and reuse the pointer.
 
 ## Macros
 
@@ -47,7 +47,7 @@ Caches the result of `Rf_install`. Symbols are never GC'd, so no
 
 Allocates a STRSXP, fills it with permanent CHARSXPs (via `Rf_install` +
 `PRINTNAME`), and preserves it with `R_PreserveObject`. Works for class
-vectors, names vectors, scalar strings - anything that's a fixed STRSXP.
+vectors, names vectors, and scalar strings: anything that's a fixed STRSXP.
 
 ## How it works
 

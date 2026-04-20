@@ -36,7 +36,7 @@ miniextendr uses a two-type strategy:
 | **Typed** (`Vec<i32>`, `&[f64]`, `String`, etc.) | Yes | Auto-materializes via `DATAPTR_RO` during conversion. Safe and transparent. |
 | **`SEXP`** | Yes | Auto-materializes via `ensure_materialized` before the function body runs. |
 | **`AltrepSexp`** | Only ALTREP | Wraps the ALTREP vector without materializing. `!Send + !Sync`. |
-| **`extern "C-unwind"` with raw `SEXP`** | Yes (raw) | No conversion - receives the raw SEXP as-is, including ALTREP. |
+| **`extern "C-unwind"` with raw `SEXP`** | Yes (raw) | No conversion: receives the raw SEXP as-is, including ALTREP. |
 
 ### Typed Parameters: The Recommended Default
 
@@ -80,8 +80,7 @@ inspect_vector(c(1L, 2L))  # Works - no materialization needed
 
 `ensure_materialized` works by calling `DATAPTR_RO` (for contiguous types like
 INTSXP, REALSXP) or iterating `STRING_ELT` (for STRSXP) to force R to
-materialize the underlying data. The SEXP itself is unchanged (the ALTREP flag
-remains set), but its data pointer is now stable.
+materialize the underlying data. The SEXP itself is unchanged (the ALTREP flag remains set), but its data pointer is now stable.
 
 ### AltrepSexp: Explicit ALTREP Handling
 
@@ -325,21 +324,21 @@ pub extern "C-unwind" fn C_safe_extract(x: SEXP) -> SEXP {
 
 ### Types
 
-- **`AltrepSexp`** - `!Send + !Sync` wrapper for ALTREP vectors. Use as a
+- **`AltrepSexp`**: `!Send + !Sync` wrapper for ALTREP vectors. Use as a
   `#[miniextendr]` parameter to accept only ALTREP input.
   ([source](../miniextendr-api/src/altrep_sexp.rs))
 
 ### Functions
 
-- **`ensure_materialized(sexp: SEXP) -> SEXP`** - If ALTREP, materialize and
+- **`ensure_materialized(sexp: SEXP) -> SEXP`**: if ALTREP, materialize and
   return. If not ALTREP, return as-is. Must be called on the R main thread.
   ([source](../miniextendr-api/src/altrep_sexp.rs))
 
 ### TryFromSexp Implementations
 
-- **`TryFromSexp for SEXP`** - Auto-materializes ALTREP via `ensure_materialized`.
+- **`TryFromSexp for SEXP`**: auto-materializes ALTREP via `ensure_materialized`.
   ([source](../miniextendr-api/src/from_r.rs))
 
-- **`TryFromSexp for AltrepSexp`** - Accepts only ALTREP vectors, errors on
+- **`TryFromSexp for AltrepSexp`**: accepts only ALTREP vectors, errors on
   non-ALTREP input.
   ([source](../miniextendr-api/src/altrep_sexp.rs))

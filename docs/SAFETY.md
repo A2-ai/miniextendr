@@ -122,13 +122,13 @@ Similar to `SendablePtr` but allows null (for allocation failures).
 
 `ExternalPtr<T>` is `Send` when `T: Send` (declared as
 `unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T>` in
-`miniextendr-api/src/externalptr.rs`). It is **not** `Sync` - there is no
+`miniextendr-api/src/externalptr.rs`). It is **not** `Sync`. There is no
 interior synchronization, and R's runtime is single-threaded.
 
 This is sound because the `ExternalPtr` value itself is just an owning handle
 over a heap allocation (`Box<Box<dyn Any>>`); transferring the handle to
 another thread moves ownership, no shared state is created. What is *not*
-allowed from off-thread is calling R API functions on the underlying SEXP -
+allowed from off-thread is calling R API functions on the underlying SEXP.
 R's GC, finalizer registration, and pointer dereference all require the main
 thread.
 
@@ -218,8 +218,8 @@ correctly. Only the last guard to drop restores the original limit.
 The R-backed allocator (`allocator.rs`) has special requirements:
 
 1. **Main thread only**: Calls `Rf_allocVector` which must run on main thread
-2. **Thread routing**: Uses `with_r_thread_or_inline` - runs inline on main thread,
-   routes via `with_r_thread` if worker context exists, panics otherwise
+2. **Thread routing**: Uses `with_r_thread_or_inline`, which runs inline on main thread,
+   routes via `with_r_thread` if worker context exists, and panics otherwise
 3. **No fallback**: Panics if called from arbitrary thread without worker context
 
 ```rust

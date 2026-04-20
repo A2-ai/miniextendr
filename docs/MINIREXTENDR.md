@@ -1,4 +1,4 @@
-# minirextendr - Scaffolding & Workflow Helper
+# minirextendr: Scaffolding and Workflow Helper
 
 `minirextendr` is a pure-R companion package that scaffolds, builds, and maintains
 R packages using the miniextendr Rust-R framework. Think of it as `usethis` for
@@ -196,7 +196,7 @@ Thin wrappers around `cargo` that target the package's `src/rust/` directory:
 All accept `path` (default `"."`) and `...` for extra arguments.
 
 **Note:** `cargo_fmt("--check")` may report formatting diffs in vendored crates.
-This is expected - vendored code isn't subject to local formatting rules.
+This is expected. Vendored code isn't subject to local formatting rules.
 
 ## Feature Scaffolding
 
@@ -283,8 +283,8 @@ Installs idempotent `pre-commit` and `post-merge` hooks into `.git/hooks/`:
 | `post-merge` | Reminds you to reconfigure + rebuild when build-relevant files changed (`configure.ac`, `Makevars.in`, `Cargo.toml`, `*.rs`) |
 
 The hooks auto-detect standalone vs monorepo layouts (searches for
-`src/rust/Cargo.toml`) and preserve existing content from other tools -
-they append a marker-delimited miniextendr section rather than
+`src/rust/Cargo.toml`) and preserve existing content from other tools. They
+append a marker-delimited miniextendr section rather than
 overwriting. `miniextendr_doctor()` reports missing hooks as a warning.
 Running twice is safe; the installer skips on the `# miniextendr`
 marker.

@@ -15,22 +15,22 @@ wrapped in `static R_INLINE` functions. Examples: `cli` (progress bars),
 
 The integration has three layers:
 
-1. **bindgen** (development time) - parses the C headers and generates:
+1. **bindgen** (development time): parses the C headers and generates:
    - A Rust FFI module (`*_ffi.rs`) with `extern "C"` declarations
    - A C shim file (`*_static_wrappers.c`) that wraps `static inline` functions
      into normal linkable symbols
 
-2. **R's build system** (install time) - compiles the C shims into `.o` files
+2. **R's build system** (install time): compiles the C shims into `.o` files
    alongside `stub.c` and any other C sources in `src/`
 
-3. **Makevars** - passes all compiled `.o` files to cargo as link arguments so
+3. **Makevars**: passes all compiled `.o` files to cargo as link arguments so
    both the cdylib (for wrapper generation) and the staticlib (for the final
    `.so`) can resolve the shim symbols
 
 ## Quick Start: `minirextendr::use_native_package()`
 
-For the most common pattern - a package whose C API is a set of
-`R_GetCCallable` calls wrapped in `static R_INLINE` functions - the
+For the most common pattern (a package whose C API is a set of
+`R_GetCCallable` calls wrapped in `static R_INLINE` functions), the
 minirextendr helper automates every step below:
 
 ```r
@@ -50,7 +50,7 @@ check_native_package("cli")
    `src/rust/native/cli_ffi.rs` + `src/cli_static_wrappers.c`
 3. Patches `src/Makevars.in` to include `$(NATIVE_PKG_CPPFLAGS)` and to
    forward every `OBJECTS` entry to cargo as a `-C link-arg=…`
-4. Probes the target package - if it's pure C, the shim is built in C
+4. Probes the target package: if it's pure C, the shim is built in C
    mode (so `--wrap-static-fns` actually emits the shim file); C++
    packages fall through to C++17/C++14 with wrappers skipped
 5. Walks `LinkingTo:` recursively so transitive headers resolve
@@ -59,7 +59,7 @@ check_native_package("cli")
 the corpus-wide bindgen probe (308/594 CRAN packages parse successfully
 today) classifies this package as pure C, C++, or unparseable.
 
-The rest of this document covers the manual workflow - useful when
+The rest of this document covers the manual workflow, useful when
 `use_native_package()` isn't a fit (non-standard header layouts, C++
 packages that also expose `static inline` functions, custom link flags).
 
@@ -131,14 +131,14 @@ At the top of the generated `cli_ffi.rs`, add:
 
 ### 4. What gets generated
 
-**`src/cli_wrapper.h`** - bridge header that includes R and the package headers:
+**`src/cli_wrapper.h`**: bridge header that includes R and the package headers:
 
 ```c
 #include <Rinternals.h>
 #include <cli/progress.h>
 ```
 
-**`src/cli_static_wrappers.c`** - C shims for static inline functions. Each
+**`src/cli_static_wrappers.c`**: C shims for static inline functions. Each
 function `foo()` becomes `foo__extern()`:
 
 ```c
@@ -149,7 +149,7 @@ int cli_progress_num__extern(void) { return cli_progress_num(); }
 // ... one per static inline function
 ```
 
-**`src/rust/native/cli_ffi.rs`** - Rust FFI declarations with `__extern` link names:
+**`src/rust/native/cli_ffi.rs`**: Rust FFI declarations with `__extern` link names:
 
 ```rust
 use miniextendr_api::ffi::SEXP;
@@ -231,7 +231,7 @@ fi
 AC_SUBST([NATIVE_PKG_CPPFLAGS])
 ```
 
-### 8. Update Makevars.in - the OBJECTS pattern
+### 8. Update Makevars.in: the OBJECTS pattern
 
 This is the critical piece. R's build system automatically compiles all `.c`
 files in `src/` into `.o` files and collects them in `$(OBJECTS)`. By placing
@@ -331,7 +331,7 @@ static R_INLINE int cli_progress_num(void) {
 }
 ```
 
-These are `static inline` - they exist only in the header file, not in any
+These are `static inline` functions that exist only in the header file, not in any
 compiled library. bindgen can't just declare them as `extern "C"` because
 there's no compiled symbol to link against.
 
@@ -360,7 +360,7 @@ Rust: cli_ffi::cli_progress_num()
 ```
 
 The `R_GetCCallable` mechanism requires the cli package's DLL to be loaded.
-This is why `importFrom(cli, cli_progress_bar)` in NAMESPACE is essential -
+This is why `importFrom(cli, cli_progress_bar)` in NAMESPACE is essential:
 it triggers `library.dynam("cli", ...)` during package loading.
 
 ## Corpus: which packages work with bindgen
@@ -410,7 +410,7 @@ The wrapper header must define `R_NO_REMAP` before including `Rinternals.h`:
 
 R's `Rinternals.h` defines macros like `#define length Rf_length`,
 `#define error Rf_error`, `#define allocVector Rf_allocVector`. These
-collide with C++ identifiers - `rapidjson::Document` has a `length`
+collide with C++ identifiers. `rapidjson::Document` has a `length`
 member, for instance. `R_NO_REMAP` suppresses these macros, keeping
 only the `Rf_` prefixed versions.
 
@@ -436,18 +436,18 @@ This prevents bindgen from constructing IR for Boost internals while
 still allowing the package's own headers to reference Boost types
 opaquely. The package's public API bindings generate correctly.
 
-Tested: `svines` (25k lines) and `vinereg` (31k lines) - both produce
+Tested: `svines` (25k lines) and `vinereg` (31k lines), both producing
 valid bindings with the blocklist.
 
 ### Remaining failure categories (286 packages)
 
 | Category | Count | Cause | Fixable? |
 |----------|-------|-------|----------|
-| cxx_stdlib | 122 | Deep Rcpp/RcppArmadillo dependency chains | Partially - needs recursive LinkingTo resolution |
-| compile_error | 80 | C++ template errors, deprecated APIs | No - package-specific issues |
-| missing_header | 59 | System libs (HDF5, GL, petscsnes) | Yes - install system deps |
-| rcpp_dep | 9 | Direct `#include <Rcpp.h>` | No - Rcpp ecosystem |
-| bindgen_panic | 2 | anonymous types in Boost/wdm headers | Yes - `--blocklist-file '.*/boost/.*'` |
+| cxx_stdlib | 122 | Deep Rcpp/RcppArmadillo dependency chains | Partially (needs recursive LinkingTo resolution) |
+| compile_error | 80 | C++ template errors, deprecated APIs | No (package-specific issues) |
+| missing_header | 59 | System libs (HDF5, GL, petscsnes) | Yes (install system deps) |
+| rcpp_dep | 9 | Direct `#include <Rcpp.h>` | No (Rcpp ecosystem) |
+| bindgen_panic | 2 | anonymous types in Boost/wdm headers | Yes (`--blocklist-file '.*/boost/.*'`) |
 
 ### Notable working packages
 

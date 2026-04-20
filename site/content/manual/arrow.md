@@ -42,7 +42,7 @@ pub fn passthrough_df(df: RecordBatch) -> RecordBatch {
 R stores strings as STRSXP (array of CHARSXP pointers). Each CHARSXP is interned,
 GC-managed, and has a known `LENGTH`. Instead of copying into `String`, borrow directly.
 
-### `Cow<'static, str>` - scalar
+### `Cow<'static, str>`: scalar
 
 ```rust
 #[miniextendr]
@@ -53,7 +53,7 @@ pub fn greet(name: Cow<'static, str>) -> String {
 }
 ```
 
-### `Vec<Cow<'static, str>>` - vector, zero-copy per element
+### `Vec<Cow<'static, str>>`: vector, zero-copy per element
 
 ```rust
 #[miniextendr]
@@ -75,7 +75,7 @@ pub fn count_non_na(words: Vec<Option<Cow<'static, str>>>) -> i32 {
 }
 ```
 
-### `Cow<'static, [T]>` - numeric slices
+### `Cow<'static, [T]>`: numeric slices
 
 ```rust
 #[miniextendr]
@@ -91,7 +91,7 @@ pub fn passthrough_cow(x: Cow<'static, [i32]>) -> Cow<'static, [i32]> {
 }
 ```
 
-### `ProtectedStrVec` vs `StrVec` - safety vs speed
+### `ProtectedStrVec` vs `StrVec`
 
 `ProtectedStrVec` and `StrVec` both wrap an R STRSXP and provide zero-copy
 `&str` access to its elements. They differ in GC safety:
@@ -100,7 +100,7 @@ pub fn passthrough_cow(x: Cow<'static, [i32]>) -> Cow<'static, [i32]> {
 |---|---|---|
 | Size | 1 word (just the SEXP) | 3 words (SEXP + len + OwnedProtect) |
 | Copy | `Copy` | `!Copy` (owns protection guard) |
-| GC protection | None - caller's responsibility | `OwnedProtect` keeps STRSXP alive |
+| GC protection | None (caller's responsibility) | `OwnedProtect` keeps STRSXP alive |
 | Borrow lifetime | `&'static str` (lie) | `&'a str` tied to `&'a self` |
 | Iterator | `StrVecIter` (`Option<&'static str>`) | `ProtectedStrVecIter<'a>` (`Option<&'a str>`) |
 
@@ -117,15 +117,15 @@ let dangling: &str;
 ```
 
 With `StrVec` or `Vec<&'static str>`, the same code **compiles silently** and
-produces a dangling pointer - the `'static` lifetime is a lie (the data is only
+produces a dangling pointer. The `'static` lifetime is a lie: the data is only
 valid while R protects the SEXP).
 
 **When to use which:**
 
-- **`StrVec`** / **`Vec<&'static str>`** - inside a `#[miniextendr]` function
+- **`StrVec`** / **`Vec<&'static str>`**: inside a `#[miniextendr]` function
   where R protects the `.Call` argument. Lightweight, fine. The SEXP won't be
   GC'd during the call.
-- **`ProtectedStrVec`** - when you store the string vector beyond the immediate
+- **`ProtectedStrVec`**: when you store the string vector beyond the immediate
   scope, pass it to a closure, or want the compiler to catch lifetime bugs.
   The `OwnedProtect` guard keeps the STRSXP alive until the struct is dropped.
 
@@ -238,7 +238,7 @@ pub fn df_add_column(df: RecordBatch) -> RecordBatch {
 }
 ```
 
-### `alloc_r_backed_buffer` - Rust→Arrow→R zero-copy
+### `alloc_r_backed_buffer`: Rust→Arrow→R zero-copy
 
 Allocate an Arrow buffer backed by R memory from the start. Write through
 the raw SEXP pointer, then wrap in Arrow types. When the array is later
@@ -272,7 +272,7 @@ pub fn generate_sequence(n: i32) -> SEXP {
 }
 ```
 
-### `RStringArray` - string round-trip tracking
+### `RStringArray`: string round-trip tracking
 
 Arrow's StringArray and R's STRSXP have incompatible layouts (contiguous data+offsets
 vs per-element CHARSXPs). Automatic pointer recovery can't work for strings.
@@ -339,7 +339,7 @@ verify: TYPEOF(candidate) == expected AND LENGTH(candidate) == expected AND DATA
 **Safety consideration**: For Rust-allocated buffers, `data_ptr - offset` points to
 arbitrary heap memory. The 4-byte type-tag read at that address is technically undefined
 behavior in Rust's abstract model (the pointer wasn't derived from an R allocation).
-In practice, this is safe - the address is in mapped heap memory and the read is
+In practice, this is safe. The address is in mapped heap memory and the read is
 immediately validated by the triple check (type + length + DATAPTR_RO round-trip),
 which makes false positives impossible. ALTREP vectors also fail safely (the
 DATAPTR_RO round-trip check catches them, since ALTREP data isn't at a fixed offset).
@@ -347,7 +347,7 @@ DATAPTR_RO round-trip check catches them, since ALTREP data isn't at a fixed off
 ### String conversion (`charsxp_to_str`)
 
 `charsxp_to_str()` uses `R_CHAR` + `LENGTH` (O(1)) with `from_utf8_unchecked`.
-No per-string UTF-8 validation - `miniextendr_assert_utf8_locale()` at package init
+No per-string UTF-8 validation. `miniextendr_assert_utf8_locale()` at package init
 guarantees all CHARSXPs in the session are valid UTF-8. `charsxp_to_cow()` wraps
 the result in `Cow::Borrowed` (always borrowed, never owned).
 

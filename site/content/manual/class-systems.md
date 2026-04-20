@@ -759,16 +759,16 @@ means a typo worth surfacing.
 The generator strips the following roxygen tags from doc comments on
 impl-block methods and emits a deprecation warning at build time:
 
-- `@param` - supplied by the method signature (use `#' @param name desc`
+- `@param`: supplied by the method signature (use `#' @param name desc`
   at the class level instead)
-- `@return` / `@returns` - most class systems combine multiple methods
+- `@return` / `@returns`: most class systems combine multiple methods
   into one Rd page; per-method return tags would conflict
-- `@examples` - same reason
-- `@export` - export visibility is controlled by `#[miniextendr(...)]`
+- `@examples`: same reason
+- `@export`: export visibility is controlled by `#[miniextendr(...)]`
   attributes, not roxygen
 
-S4's structural tags - `@exportClass`, `@exportMethod`,
-`@exportPattern` - pass through (tag-name matching is exact on the
+S4's structural tags (`@exportClass`, `@exportMethod`,
+`@exportPattern`) pass through unchanged. Tag-name matching is exact on the
 first whitespace-delimited token).
 
 ---

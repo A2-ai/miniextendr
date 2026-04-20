@@ -155,12 +155,12 @@ $R_HOME/etc/Makeconf  # final Makeconf shipped with R
 
 ### What MkRules.rules computes automatically
 
-- `CC = $(BINPREF)$(CCBASE) $(M_ARCH)` - compiler command
+- `CC = $(BINPREF)$(CCBASE) $(M_ARCH)`: compiler command
 - `CCBASE` = `gcc` or `clang` (if `USE_LLVM` is set)
 - `FC` = `gfortran` or `flang`
-- `AR`, `NM`, `RANLIB`, `DLLTOOL`, `RESCOMP` - all prefixed with `BINPREF` and optionally `LLVMPREF` (`llvm-`) for LLVM builds
-- `TEXI2DVI = env COMSPEC= texi2dvi` - clears COMSPEC to work around an MSYS2 bug
-- `PKG_CONFIG = $(BINPREF)pkg-config` - for library detection
+- `AR`, `NM`, `RANLIB`, `DLLTOOL`, `RESCOMP`: all prefixed with `BINPREF` and optionally `LLVMPREF` (`llvm-`) for LLVM builds
+- `TEXI2DVI = env COMSPEC= texi2dvi`: clears COMSPEC to work around an MSYS2 bug
+- `PKG_CONFIG = $(BINPREF)pkg-config`: for library detection
 
 ---
 
@@ -240,7 +240,7 @@ Key points:
   Terminal" actions in Explorer / IDEs).
 - For the aarch64 toolchain, swap in `C:\rtools45-aarch64\usr\bin\bash.exe`
   and `MSYSTEM=CLANGARM64`. Only add that profile if Rtools45-aarch64 is
-  actually installed - a missing `commandline` or `icon` path makes Windows
+  actually installed. A missing `commandline` or `icon` path makes Windows
   Terminal warn on every startup.
 
 ### Option E: Register as a VS Code / Positron terminal profile
@@ -286,7 +286,7 @@ PATH="${R_CUSTOM_TOOLS_PATH:-${R_RTOOLS45_PATH}};${PATH}/"
    (`src/gnuwin32/system.c`) to prevent mangling of `R_ARCH`.
 
 4. **No hardcoded Rtools path.** If `gcc` isn't on PATH, the build will
-   fail - there is no fallback path detection.
+   fail. There is no fallback path detection.
 
 5. **pkg-config is used by default** (`USE_PKG_CONFIG = 1`) to find
    library flags. Falls back to hardcoded library lists if pkg-config
@@ -314,7 +314,7 @@ PATH="${R_CUSTOM_TOOLS_PATH:-${R_RTOOLS45_PATH}};${PATH}/"
    The MSYS2 runtime tries to create these mounts on startup; when bash
    is launched outside the `msys2_shell.cmd` wrapper it can't set them
    up against the virtual `/dev` tree. The warnings are **benign for R
-   package work** - nothing in the R build toolchain (`gcc`, `make`,
+   package work**. Nothing in the R build toolchain (`gcc`, `make`,
    `R CMD INSTALL`, `cargo`) uses POSIX semaphores or message queues.
 
    To silence them, launch through the wrapper instead of raw `bash.exe`

@@ -31,7 +31,7 @@ The assertion is called automatically by `package_init()` (via `miniextendr_init
 miniextendr_api::miniextendr_init!(mypkg);
 ```
 
-No user action is required - `miniextendr_init!` includes the UTF-8 locale
+No user action is required. `miniextendr_init!` includes the UTF-8 locale
 check as part of the standard initialization sequence.
 
 ## Encoding Info (Non-API, Embedding Only)

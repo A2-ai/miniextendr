@@ -106,7 +106,7 @@ exists solely to satisfy R's build system requirement for at least one C file.
 
 For CRAN compatibility, all dependencies must be vendored:
 
-1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint) and **crates.io dependencies** (proc-macro2, syn, quote): Both are populated by `cargo revendor` into `rpkg/vendor/` - see [VENDOR.md](VENDOR.md) for details.
+1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint) and **crates.io dependencies** (proc-macro2, syn, quote): Both are populated by `cargo revendor` into `rpkg/vendor/`. See [VENDOR.md](VENDOR.md) for details.
 2. **Local crates** use flat paths (`vendor/miniextendr-api/`); **transitive registry crates** use versioned paths (`vendor/serde-1.0.210/`).
 
 ### Cross-package dispatch

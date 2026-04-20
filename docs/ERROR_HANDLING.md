@@ -227,7 +227,7 @@ pub fn verbose_function() {
 
 ---
 
-## Error-in-R Mode (`error_in_r`) - Default
+## Error-in-R Mode (`error_in_r`)
 
 By default, Rust-origin failures (panics, `Result::Err`, `Option::None`) are transported as
 **tagged SEXP values** back to R, and the generated R wrapper inspects the value and raises a

@@ -127,5 +127,5 @@ fn main() {
 }
 ```
 
-**Do NOT do this in an R package library crate.** The allocator would be
+**Do NOT do this in an R package library crate**. The allocator would be
 invoked during `cargo build` before R is available.

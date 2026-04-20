@@ -95,12 +95,12 @@ let vec = scope.collect(evens);
 **Why this is efficient**: Typed vectors (INTSXP, REALSXP, etc.) don't need
 per-element protection. You allocate once, protect once, then fill by writing
 directly to the data pointer. No GC can occur during fills because you're just
-doing pointer writes-no R allocations.
+doing pointer writes. No R allocations occur.
 
 ## Root
 
 A lightweight handle returned by `scope.protect()`. Has no `Drop` implementation
--the scope owns the unprotection responsibility.
+. The scope owns the unprotection responsibility.
 
 ```rust
 let root: Root<'_> = scope.protect(sexp);

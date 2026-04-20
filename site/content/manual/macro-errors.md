@@ -35,7 +35,7 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 | **MXL009** | Multiple impl blocks without labels | Add `#[miniextendr(label = "unique")]` to each impl block |
 | **MXL010** | Duplicate labels on impl blocks | Use unique labels for each impl block |
 
-### Warnings (P0 - high impact)
+### Warnings (P0: high impact)
 
 | Code | Description | Fix |
 |------|-------------|-----|
@@ -50,7 +50,7 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 | **MXL108** | Missing registration for trait impl | Add `#[miniextendr]` to the trait impl |
 | **MXL109** | `#[cfg]` mismatch between `mod` declarations | Ensure `#[cfg]` attributes are consistent |
 
-### Warnings (P1 - important)
+### Warnings (P1: important)
 
 | Code | Description | Fix |
 |------|-------------|-----|
@@ -60,7 +60,7 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 | **MXL203** | `internal` + `noexport` redundancy | Use just `#[miniextendr(internal)]` (implies noexport) |
 | **MXL204** | Multiple root-level registrations | Only one root registration per crate |
 
-### Warnings (P2 - safety)
+### Warnings (P2: safety)
 
 | Code | Description | Fix |
 |------|-------------|-----|
@@ -73,10 +73,10 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 
 **Preferred alternatives:**
 
-- `panic!("message")` - caught by miniextendr's unwind protection, produces a structured R condition
-- `return Err(...)` - for `Result<T, E>` return types, produces a clean R error
+- `panic!("message")`: caught by miniextendr's unwind protection, produces a structured R condition
+- `return Err(...)`: for `Result<T, E>` return types, produces a clean R error
 
-**When Rf_error is intentional** (e.g., inside `with_r_unwind_protect` closures or test fixtures), suppress with `// mxl::allow(MXL300)` - see [Inline Suppression](#inline-suppression) below.
+**When Rf_error is intentional** (e.g., inside `with_r_unwind_protect` closures or test fixtures), suppress with `// mxl::allow(MXL300)`. See [Inline Suppression](#inline-suppression) below.
 
 #### MXL301: Unchecked FFI calls
 
@@ -204,6 +204,6 @@ impl MyType { /* ... */ }
 
 ## Debugging Tips
 
-1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building - it catches attribute issues earlier than compile errors
-2. **Check NAMESPACE** - if a function exists in Rust but not in R, run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile)
-3. **Feature-gated modules** - use `#[cfg]` on `mod` declarations for conditional compilation
+1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors
+2. **Check NAMESPACE**: if a function exists in Rust but not in R, run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile)
+3. **Feature-gated modules**: use `#[cfg]` on `mod` declarations for conditional compilation

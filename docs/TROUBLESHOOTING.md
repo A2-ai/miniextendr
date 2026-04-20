@@ -188,5 +188,5 @@ rt.block_on(async { /* ... */ });
 ```
 
 No background threads, no stranded pipe handles, no hang. Applies on
-Linux/macOS too - they just don't manifest as a hang because the pipe
+Linux/macOS too; they just don't manifest as a hang because the pipe
 closes on process exit.

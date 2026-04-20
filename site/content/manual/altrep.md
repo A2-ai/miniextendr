@@ -473,7 +473,7 @@ let cls = R_make_altreal_class(class_name, pkg_name, dll);
 ```
 
 Without DllInfo (`NULL`), R can't find the class during deserialization, even
-if it's registered. This was a bug - all classes were registered with `NULL`.
+if it's registered. This was a bug: all classes were registered with `NULL`.
 
 ### 2. Eager registration: classes must exist before readRDS runs
 
@@ -497,10 +497,10 @@ for reg_fn in MX_ALTREP_REGISTRATIONS.iter() {
 ```
 
 **Built-in classes** (`Vec<f64>`, `Box<[i32]>`, Arrow arrays, etc.) use
-`OnceLock` inside `RegisterAltrep::get_or_init_class()` and are created on
-first use (e.g., when `.into_sexp_altrep()` is called). This is a problem for
-`readRDS`: R tries to find the class *during deserialization*, before any
-miniextendr code has called `into_sexp_altrep`.
+`OnceLock` inside `RegisterAltrep::get_or_init_class()`. These are lazy,
+the class is created on first use (e.g., when `.into_sexp_altrep()` is
+called). This is a problem for `readRDS`: R tries to find the class *during
+deserialization*, before any miniextendr code has called `into_sexp_altrep`.
 
 The fix: `register_builtin_altrep_classes()` is called during `R_init` and
 eagerly calls `get_or_init_class()` for every built-in type:
@@ -542,7 +542,7 @@ Session B: library(miniextendr); readRDS("data.rds")
 Session C: readRDS("data.rds")  # WITHOUT library(miniextendr)
   → ALTREP class not registered → R falls back to the serialized state
   → Returns a plain R numeric vector (the materialized data)
-  → Works correctly - just not an ALTREP anymore
+  → Works correctly (just not an ALTREP anymore)
 ```
 
 ### Adding serialization to new types
@@ -570,7 +570,7 @@ a unique class name within the package
 ```
 
 If you hit this, check every `#[altrep(class = "...")]` string in your crate
-across derive-generated and manual paths. Two types share the same name.
+(derive-generated and manual paths combined). Two types share the same name.
 Built-in classes (`Vec<i32>`, `Box<[f64]>`, etc.) are registered with names the
 framework guarantees unique, so the collision is always in your own code.
 

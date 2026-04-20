@@ -9,7 +9,7 @@ miniextendr provides two complementary systems for enum-like types:
 | `RFactor` | Factor (integer + levels) | No | - | Categorical data for `table()`, `lm()`, etc. |
 | `MatchArg` | Character scalar | Yes | First choice | Parameter validation (`match.arg()` style) |
 
-## RFactor - Enum as R Factor
+## RFactor: enum as R Factor
 
 Maps a Rust enum to an R factor with levels. Each variant becomes a level.
 
@@ -126,12 +126,12 @@ Instead of `#[derive(RFactor)]`, you can use the attribute macro:
 pub enum Color { Red, Green, Blue }
 ```
 
-This is equivalent - `#[miniextendr]` on a fieldless enum dispatches to the same
+These are equivalent. `#[miniextendr]` on a fieldless enum dispatches to the same
 RFactor derive internally.
 
 ---
 
-## MatchArg - Enum as String Parameter
+## MatchArg: enum as string parameter
 
 Maps a Rust enum to R character strings with `match.arg()` validation. Supports
 partial matching and defaults to the first variant when `NULL` is passed.
@@ -255,8 +255,8 @@ pass a character vector to get multiple exact/partial matches.
 
 Rust rejects attribute macros on function parameters inside impl items, so
 `match_arg` / `choices` / `several_ok` on impl methods use **method-level**
-attributes that name the parameter. This works for all class systems -
-`r6`, `env`, `s3`, `s4`, `s7`, `vctrs` - on both constructors and instance
+attributes that name the parameter. This works for all class systems
+(`r6`, `env`, `s3`, `s4`, `s7`, `vctrs`) on both constructors and instance
 methods:
 
 ```rust
@@ -281,7 +281,7 @@ functions, including the choices vector as the formal default.
 
 The vctrs class system accepts `match_arg` on its `fn new()` constructor
 even though vctrs constructors return a data vector (`Vec<T>`) rather than
-`Self` - the vctrs generator recognizes a receiverless `new` as the
+`Self`. The vctrs generator recognizes a receiverless `new` as the
 constructor regardless of return type.
 
 ### Auto-Injected `@param` Docs
@@ -301,7 +301,7 @@ verbatim; only missing entries are auto-generated.
 
 ### Returning `Vec<Enum>`
 
-Functions can return `Vec<T>` for any `MatchArg` enum - each variant round-trips
+Functions can return `Vec<T>` for any `MatchArg` enum. Each variant round-trips
 to its choice string:
 
 ```rust
@@ -317,7 +317,7 @@ all_modes()
 ```
 
 This is provided by a blanket `impl<T: MatchArg> IntoR for Vec<T>` in
-`miniextendr-api` - no extra derive required.
+`miniextendr-api`. No extra derive is required.
 
 ---
 
@@ -369,5 +369,5 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 
 ## See Also
 
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) - `#[miniextendr]` on enums
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) - Full type conversion reference
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md): `#[miniextendr]` on enums
+- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md): full type conversion reference

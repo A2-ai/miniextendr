@@ -154,7 +154,7 @@ pub struct Wrapper { pub data: Vec<i32> }
 
 ## Conflicts
 
-You cannot derive two Prefer* markers on the same type - they would both try to
+You cannot derive two Prefer* markers on the same type. They would both try to
 implement `IntoR`, causing a conflict:
 
 ```rust
@@ -177,6 +177,6 @@ representations for the same type in different contexts.
 
 ## See Also
 
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) - `prefer` attribute reference
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) - IntoR trait and conversion system
-- [DATAFRAME.md](DATAFRAME.md) - DataFrame conversion patterns
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md): `prefer` attribute reference
+- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md): IntoR trait and conversion system
+- [DATAFRAME.md](DATAFRAME.md): DataFrame conversion patterns

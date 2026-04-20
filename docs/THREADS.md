@@ -245,7 +245,7 @@ miniextendr auto-materializes it on the R main thread before the function body
 runs. This ensures the data pointer is stable before any SEXP could cross a
 thread boundary.
 
-For explicit ALTREP handling, use `AltrepSexp` - a `!Send + !Sync` wrapper
+For explicit ALTREP handling, use `AltrepSexp`, a `!Send + !Sync` wrapper
 that prevents un-materialized ALTREP vectors from reaching rayon or other
 worker threads at compile time.
 
@@ -261,7 +261,7 @@ background.
 
 On Windows, `R_unload_<pkg>` → `library.dynam.unload` unmaps the DLL's code
 pages **as soon as the unload hook returns**. If the worker thread is still
-alive at that point - even mid-sleep in a polling loop - it will resume
+alive at that point (even mid-sleep in a polling loop), it will resume
 execution in freed memory, corrupting the process's SEH exception chain. The
 next `RaiseException` anywhere in the process then fails with
 `ERROR_ACCESS_DENIED` (Win32 error 5), which Rust's panic runtime surfaces as:
@@ -280,7 +280,7 @@ for the full root-cause analysis.
 `miniextendr_panic_hook()` installs a process-global panic hook via
 `std::panic::set_hook`. The hook closure is compiled code that lives in the
 DLL. After unload, the process-global hook still points at that code. The next
-panic from **any** crate - not just miniextendr - would jump to unmapped memory.
+panic from **any** crate (not just miniextendr) would jump to unmapped memory.
 
 `miniextendr_runtime_shutdown` calls `miniextendr_panic_hook_uninstall()` after
 the worker has joined (order matters: the worker might itself panic during
@@ -315,18 +315,18 @@ pub(super) fn shutdown() {
 `library.dynam.unload`'s subsequent memory unmap sees no live code references.
 The `WORKER_SHOULD_STOP` atomic, the 250 ms `SHUTDOWN_POLL_INTERVAL`, the
 `atexit` registration, and the test-only `miniextendr_runtime_join_for_test`
-helper are all gone - the new design doesn't need them.
+helper are all gone. The new design doesn't need them.
 
 ### API surface
 
-`miniextendr_runtime_shutdown()` - `extern "C-unwind" fn` with `#[unsafe(no_mangle)]`,
+`miniextendr_runtime_shutdown()`: `extern "C-unwind" fn` with `#[unsafe(no_mangle)]`,
 called from the generated `R_unload_<pkg>` hook produced by `miniextendr_init!`.
 Idempotent: subsequent calls after the first are no-ops. Also runs without
 the `worker-thread` feature (panic hook uninstall still runs).
 
-`miniextendr_runtime_init()` - counterpart init, called from `R_init_<pkg>`.
+`miniextendr_runtime_init()`: counterpart init, called from `R_init_<pkg>`.
 Registers the main thread ID and (with `worker-thread`) spawns the worker.
-Explicitly does **not** register a libc `atexit` handler - an `atexit` function
+Explicitly does **not** register a libc `atexit` handler. An `atexit` function
 pointer into the DLL has the same unmap hazard as the worker thread or panic
 hook. If the package is unloaded before process exit, the `atexit` registry
 would jump to freed memory. Normal exit via `R_unload_<pkg>` is sufficient;

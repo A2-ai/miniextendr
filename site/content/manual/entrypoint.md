@@ -11,7 +11,7 @@ functions and initializes the runtime when an R package loads.
 
 When R loads a package's shared library, it calls `R_init_<pkgname>()`. In
 miniextendr, this function is **generated entirely in Rust** via the
-`miniextendr_init!` proc macro - no C entry point file is needed.
+`miniextendr_init!` proc macro. No C entry point file is needed.
 
 ## How It Works
 
@@ -48,11 +48,11 @@ miniextendr_api::miniextendr_init!();
 
 The macro reads `CARGO_CRATE_NAME` at expansion time, so the package
 name is auto-detected from the `[lib] name` (with hyphens→underscores)
-- no argument needed. The explicit form `miniextendr_init!(mypkg)`
+. No argument is needed. The explicit form `miniextendr_init!(mypkg)`
 still works for edge cases where the R init symbol should differ from
 the crate name.
 
-### 3. Package loads - everything is automatic
+### 3. Package loads
 
 When R runs `library(mypkg)`, it calls `R_init_mypkg()`, which the macro
 expanded into Rust code that does all initialization.
@@ -72,16 +72,16 @@ unsafe extern "C-unwind" fn R_init_mypkg(dll: *mut DllInfo) {
 
 `package_init()` performs the following in order:
 
-1. **Install panic hook** - captures panic messages for R error reporting
-2. **Initialize runtime** - records main thread ID; with `worker-thread`
+1. **Install panic hook**: captures panic messages for R error reporting
+2. **Initialize runtime**: records main thread ID; with `worker-thread`
    feature, also spawns the worker thread
-3. **Assert UTF-8 locale** - fails fast if locale isn't UTF-8
-4. **Register ALTREP classes** - registers all `#[derive(Altrep*)]` classes
-5. **Register trait ABI** - calls `mx_abi_register()` for cross-package
+3. **Assert UTF-8 locale**: fails fast if locale isn't UTF-8
+4. **Register ALTREP classes**: registers all `#[derive(Altrep*)]` classes
+5. **Register trait ABI**: calls `mx_abi_register()` for cross-package
    trait dispatch (`mx_wrap`, `mx_get`, `mx_query`)
-6. **Register routines** - calls `R_registerRoutines()` with all linkme-
+6. **Register routines**: calls `R_registerRoutines()` with all linkme-
    collected `.Call` entries
-7. **Lock down symbols** - `R_useDynamicSymbols(dll, FALSE)` and
+7. **Lock down symbols**: `R_useDynamicSymbols(dll, FALSE)` and
    `R_forceSymbols(dll, TRUE)`
 
 ## The `stub.c` File
@@ -121,7 +121,7 @@ Static libraries (`.a`) strip unreferenced archive members during linking.
 With `codegen-units = 1` in `Cargo.toml`, the entire user crate compiles
 into a single `.o` file inside the staticlib archive. `stub.c` references
 `miniextendr_force_link` (emitted by `miniextendr_init!`), which forces the
-linker to pull in that single archive member - bringing all linkme
+linker to pull in that single archive member, bringing all linkme
 distributed_slice entries along. No platform-specific force-load flags needed.
 
 ## R Wrapper Generation
@@ -162,7 +162,7 @@ pub fn add(x: i32, y: i32) -> i32 {
 miniextendr_api::miniextendr_init!(myrust);
 ```
 
-That's it - no C files to write, no module declarations, no manual registration.
+That's it. No C files to write, no module declarations, no manual registration.
 
 ## Embedding R (miniextendr-engine)
 
@@ -210,7 +210,7 @@ and Cargo.toml. The crate name must use underscores (not hyphens) for the
 
 ## See Also
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - High-level crate and call flow overview
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) - Complete `#[miniextendr]` reference
-- [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) - How R builds packages with compiled code
-- [LINKING.md](LINKING.md) - Shared library linking strategy (libR discovery)
+- [ARCHITECTURE.md](ARCHITECTURE.md): high-level crate and call flow overview
+- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md): complete `#[miniextendr]` reference
+- [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md): how R builds packages with compiled code
+- [LINKING.md](LINKING.md): shared library linking strategy (libR discovery)

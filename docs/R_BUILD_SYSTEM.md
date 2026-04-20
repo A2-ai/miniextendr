@@ -148,13 +148,13 @@ $(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK)
 
 Key design decisions:
 
-1. **No link recipe on `$(SHLIB)`** - we only add dependencies. The recipe comes
+1. **No link recipe on `$(SHLIB)`**: we only add dependencies. The recipe comes
    from shlib.mk (`$(SHLIB_LINK) -o $@ $(OBJECTS) $(ALL_LIBS)`).
 
-2. **FORCE_CARGO phony target** - ensures Cargo is always invoked, letting Cargo's
+2. **FORCE_CARGO phony target**: ensures Cargo is always invoked, letting Cargo's
    own incremental build system decide what to rebuild.
 
-3. **`all: $(SHLIB)` with post-build recipe** - runs after R links the shared lib
+3. **`all: $(SHLIB)` with post-build recipe**: runs after R links the shared lib
    to handle dev-mode touches and CRAN cleanup.
 
 ### Our Makevars.win (Windows)
@@ -168,7 +168,7 @@ PKG_LIBS = ... -lws2_32 -lntdll ...   # Override with Windows system libs
 
 R auto-detects `.c` files in `src/` and compiles them:
 
-- `stub.c` → `stub.o` - Empty file required by R's build system to invoke the linker
+- `stub.c` → `stub.o`: empty file required by R's build system to invoke the linker
 
 This is the only C file. All entry points (`R_init_*`), registration, and
 runtime initialization are defined in Rust via `miniextendr_init!`. The Rust
@@ -224,9 +224,9 @@ variables and filesystem detection:
 
 **Environment variables:**
 
-- `NOT_CRAN=true` - dev mode (legacy, still supported)
-- `PREPARE_CRAN=true` - explicit CRAN release prep (highest precedence)
-- Neither set - auto-detects from monorepo/vendor presence
+- `NOT_CRAN=true`: dev mode (legacy, still supported)
+- `PREPARE_CRAN=true`: explicit CRAN release prep (highest precedence)
+- Neither set: auto-detects from monorepo/vendor presence
 
 **IFS save/restore:** The configure script saves and restores `IFS` around
 any code that modifies it (`miniextendr_saved_IFS=$IFS` / `IFS=$miniextendr_saved_IFS`).
@@ -235,9 +235,9 @@ being set to its default value.
 
 ## See Also
 
-- [LINKING.md](LINKING.md) - How miniextendr links to libR (engine vs package)
-- [ENTRYPOINT.md](ENTRYPOINT.md) - The C entry point design
-- [VENDOR.md](VENDOR.md) - Dependency vendoring for CRAN
-- [TEMPLATES.md](TEMPLATES.md) - How configure.ac templates work
+- [LINKING.md](LINKING.md): how miniextendr links to libR (engine vs package)
+- [ENTRYPOINT.md](ENTRYPOINT.md): the C entry point design
+- [VENDOR.md](VENDOR.md): dependency vendoring for CRAN
+- [TEMPLATES.md](TEMPLATES.md): how configure.ac templates work
 - R sources: `share/make/shlib.mk`, `share/make/winshlib.mk`
 - R sources: `src/library/tools/R/install.R` (the `R CMD INSTALL` implementation)

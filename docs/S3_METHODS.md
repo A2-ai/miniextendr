@@ -91,7 +91,7 @@ method to have a more descriptive name.
 ### Dots (`...`)
 
 All S3 method signatures include `...` automatically. You don't need to declare them
-in your Rust signature - the generated R wrapper adds `...` to the parameter list:
+in your Rust signature. The generated R wrapper adds `...` to the parameter list:
 
 ```r
 # Generated: always has (x, ...) or (x, other_params, ...)
@@ -132,7 +132,7 @@ pub fn species() -> String { "Homo sapiens".into() }
 R convention: `print()` displays output and returns `invisible(x)` so the object
 can be used in pipelines without double-printing.
 
-**Recommended pattern - use `&mut self` returning `()`:**
+**Recommended pattern: use `&mut self` returning `()`:**
 
 ```rust
 #[miniextendr(generic = "print")]
@@ -155,11 +155,11 @@ matches the R convention where `print()` returns the object invisibly.
 
 **Why `&mut self`?** The `invisible(x)` pattern is only generated for `&mut self`
 methods returning `()`. With `&self` returning `()`, the generated code would be
-a bare `.Call(...)` returning `NULL` - functional but doesn't follow R convention.
+a bare `.Call(...)` returning `NULL`, which is functional but doesn't follow R convention.
 If your print method doesn't actually mutate, using `&mut self` is a pragmatic
 choice to get correct R behavior.
 
-**Alternative - `&self` returning `()`:**
+**Alternative: `&self` returning `()`:**
 
 ```rust
 #[miniextendr(generic = "print")]
@@ -176,7 +176,7 @@ print.Person <- function(x, ...) {
 }
 ```
 
-This works - the `println!` output appears - but the function returns `NULL` instead
+This works (the `println!` output appears), but the function returns `NULL` instead
 of `invisible(x)`. For most interactive use this is fine, but `y <- print(x)` gives
 `NULL` rather than `x`.
 
@@ -185,7 +185,7 @@ of `invisible(x)`. For most interactive use this is fine, but `y <- print(x)` gi
 R convention: `format()` returns a character vector representation. Many R functions
 use `format()` internally (e.g., `paste()`, `cat(format(x))`).
 
-**Recommended pattern - `&self` returning `String`:**
+**Recommended pattern: `&self` returning `String`:**
 
 ```rust
 #[miniextendr(generic = "format")]
@@ -326,6 +326,6 @@ pub fn tbl_sum_my_tbl(x: SEXP, _dots: ...) -> Vec<String> { ... }
 
 ## See Also
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) - Overview of all 6 class systems (env, R6, S3, S4, S7, vctrs)
-- [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) - Using dots and typed_list validation
-- [VCTRS.md](VCTRS.md) - vctrs-compatible S3 classes with `format` methods
+- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md): overview of all 6 class systems (env, R6, S3, S4, S7, vctrs)
+- [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md): using dots and typed_list validation
+- [VCTRS.md](VCTRS.md): vctrs-compatible S3 classes with `format` methods

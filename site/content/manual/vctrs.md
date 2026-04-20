@@ -439,7 +439,7 @@ the underlying data vector (e.g. `Vec<f64>`) is the canonical vctrs pattern:
 the macro wraps the return through `vctrs::new_vctr()` into the class's S3
 vector. Returning `Self` here would produce an `ExternalPtr`, which
 `new_vctr` rejects as `.data`. This relaxation also lets `match_arg` / enum
-choices work on vctrs constructors - the generated R wrapper splices the
+choices work on vctrs constructors. The generated R wrapper splices the
 enum's choices into the formal default just like any other `#[miniextendr]`
 function.
 
