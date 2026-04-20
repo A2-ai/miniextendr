@@ -40,7 +40,7 @@ jobs:
         env:
           RUSTFLAGS: --cfg=docsrs
           RUSTDOCFLAGS: --cfg=docsrs -Z unstable-options --document-private-items
-        run: cargo doc --no-deps -Z rustdoc-map -p miniextendr-api -p miniextendr-macros -p miniextendr-lint
+        run: cargo doc --no-deps -Z rustdoc-map -p miniextendr-api -p miniextendr-macros -p miniextendr-lint -p miniextendr-engine
 
       # rpkg/src/rust/Cargo.toml [patch.crates-io] points at
       # ../../vendor/miniextendr-api etc. Populate vendor/ so the
