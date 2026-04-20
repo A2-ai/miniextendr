@@ -249,7 +249,7 @@ Zola static site in `site/` → GitHub Pages at `https://a2-ai.github.io/miniext
 
 GitHub Actions auto-deploys on push to `main` when `site/**`, `docs/**`, or `*/src/**` changes: runs `scripts/docs-to-site.sh` → builds nightly rustdoc (`--document-private-items --document-hidden-items --show-type-layout --enable-index-page --generate-link-to-definition -Z rustdoc-map`) → builds Zola → copies rustdoc to `site/public/rustdoc/` → deploys. Rustdoc index at `.../rustdoc/`; individual crates at `.../rustdoc/miniextendr_api/` etc.
 
-`site/content/manual/` is **auto-generated from `docs/`** by `scripts/docs-to-site.sh` (1:1 conversion, not curated summaries). Edit `docs/*.md` only — never edit `site/content/manual/*.md` directly.
+`site/content/manual/` is **auto-generated from `docs/`** by `scripts/docs-to-site.sh` (1:1 conversion, not curated summaries). Edit `docs/*.md` only — never edit `site/content/manual/*.md` directly. The generator derives frontmatter (title + description) from each doc's `# Heading` and first paragraph. `site/content/_index.md` and anything outside `manual/` are hand-authored and must be edited directly.
 
 **After editing `docs/`, regenerate and commit both together**: `bash scripts/docs-to-site.sh && git add docs/ site/content/manual/`. CI runs `docs-to-site.sh` itself before each deploy, so the live site is always correct — but the in-repo `site/content/manual/` drifts out of sync if you skip the regenerate step, making subsequent diffs noisy and masking unrelated site edits.
 
