@@ -11,6 +11,17 @@ Quick reference for common development tasks. See [CLAUDE.md](../CLAUDE.md) for 
 
 > **Tip:** The `miniextendr` CLI (`miniextendr-cli/`) can replace most `just` recipes. Install with `just cli-install` or `cargo install --path miniextendr-cli --features dev`. See the [CLI README](../miniextendr-cli/README.md) for full usage.
 
+### One-shot dev bootstrap
+
+```bash
+just dev-tools-install
+```
+
+Installs the helpers expected by the other recipes:
+
+- `cargo-revendor` from the in-tree `cargo-revendor/` (required by `just vendor` and the dev-monorepo configure path).
+- `cargo-limit`, which provides the `cargo lcheck` / `lclippy` / `ltest` / `lbuild` aliases that truncate output to the first few errors — recommended for interactive iteration. CI and `just` recipes keep plain `cargo` so `-D warnings` output stays complete.
+
 ## Quick Start
 
 ```bash

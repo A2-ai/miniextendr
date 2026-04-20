@@ -221,6 +221,79 @@ pub fn correlate(
 }
 ```
 
+### Multiple Choices with `several_ok`
+
+R's `match.arg(..., several.ok = TRUE)` accepts multiple values from the choice
+list and returns a character vector. miniextendr exposes this with
+`several_ok`, which is valid on both `match_arg` and `choices`:
+
+```rust
+// Enum: Vec<Mode> — each element validated against MatchArg::CHOICES
+#[miniextendr]
+pub fn pick_modes(#[miniextendr(match_arg, several_ok)] modes: Vec<Mode>) -> String { ... }
+
+// Inline: Vec<String> — each element validated against the inline list
+#[miniextendr]
+pub fn pick_metrics(
+    #[miniextendr(choices("mean", "median", "sd", "var"), several_ok)] metrics: Vec<String>,
+) -> String { ... }
+```
+
+Accepted container shapes: `Vec<T>`, `Box<[T]>`, `&[T]`, `[T; N]`, and
+`Missing<Vec<T>>` (optional). `several_ok` without `match_arg` or `choices`
+is a compile error (no choice list to validate against). `several_ok` on a
+scalar type (e.g. `Mode` without a `Vec`) is also a compile error.
+
+Default behavior when the R caller omits the argument: the full choice list,
+matching `base::match.arg`. Pass a single string to get partial matching,
+pass a character vector to get multiple exact/partial matches.
+
+### On Impl-Block Methods
+
+Rust rejects attribute macros on function parameters inside impl items, so
+`match_arg` / `choices` / `several_ok` on impl methods use **method-level**
+attributes that name the parameter. This works for all class systems —
+`r6`, `env`, `s3`, `s4`, `s7`, `vctrs` — on both constructors and instance
+methods:
+
+```rust
+#[miniextendr(r6)]
+impl Counter {
+    // Constructor: first choice becomes the R default.
+    #[miniextendr(match_arg(mode))]
+    pub fn new(mode: Mode) -> Self { ... }
+
+    // several_ok variant — note the distinct attribute name.
+    #[miniextendr(match_arg_several_ok(modes))]
+    pub fn reset(&mut self, modes: Vec<Mode>) -> i32 { ... }
+
+    // Inline string choices — pass the list as a comma-separated string.
+    #[miniextendr(choices(level = "low, medium, high"))]
+    pub fn describe(level: String) -> String { ... }
+}
+```
+
+Each form generates the same R `match.arg` prelude you get on standalone
+functions, including the choices vector as the formal default.
+
+The vctrs class system accepts `match_arg` on its `fn new()` constructor
+even though vctrs constructors return a data vector (`Vec<T>`) rather than
+`Self` — the vctrs generator recognizes a receiverless `new` as the
+constructor regardless of return type.
+
+### Auto-Injected `@param` Docs
+
+When you leave a `match_arg` parameter undocumented, miniextendr fills in
+the roxygen `@param` line at write time using the enum's `CHOICES`:
+
+```r
+#' @param mode One of "Fast", "Safe", "Debug".
+```
+
+This runs for both standalone functions and impl-block methods across every
+class system. Explicit `@param` lines you write yourself are preserved
+verbatim; only missing entries are auto-generated.
+
 ---
 
 ## MatchArg as Base Trait
