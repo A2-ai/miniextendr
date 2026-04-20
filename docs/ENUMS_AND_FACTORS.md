@@ -158,16 +158,19 @@ pub fn run(mode: Mode) -> String {
 }
 ```
 
-The generated R wrapper includes `match.arg()` validation:
+The generated R wrapper shows the choice list directly as the formal default:
 
 ```r
-run <- function(mode = NULL) {
-  .__mx_choices_mode <- .Call(C_run__match_arg_choices__mode)
+run <- function(mode = c("Fast", "Safe", "Debug")) {
   mode <- if (is.factor(mode)) as.character(mode) else mode
-  mode <- base::match.arg(mode, .__mx_choices_mode)
+  mode <- base::match.arg(mode)
   .Call(C_run, mode)
 }
 ```
+
+The enum's `CHOICES` are spliced in at cdylib-write time (not stored in an R
+variable), so `?run` and tab-completion both show the real options. If you set
+an explicit `default = "\"Safe\""` it overrides the splice: `function(mode = "Safe")`.
 
 From R:
 
@@ -296,6 +299,28 @@ verbatim; only missing entries are auto-generated.
 
 ---
 
+### Returning `Vec<Enum>`
+
+Functions can return `Vec<T>` for any `MatchArg` enum — each variant round-trips
+to its choice string:
+
+```rust
+#[miniextendr]
+pub fn all_modes() -> Vec<Mode> {
+    vec![Mode::Fast, Mode::Safe, Mode::Debug]
+}
+```
+
+```r
+all_modes()
+# [1] "Fast"  "Safe"  "Debug"
+```
+
+This is provided by a blanket `impl<T: MatchArg> IntoR for Vec<T>` in
+`miniextendr-api` — no extra derive required.
+
+---
+
 ## MatchArg as Base Trait
 
 `MatchArg` is the base trait for all enum-like types. `RFactor` requires `MatchArg`
@@ -323,7 +348,7 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 | R storage | `factor(1, levels=c(...))` | `"Fast"` (character) |
 | Validation | Type check (is factor with correct levels) | `match.arg()` with partial matching |
 | Default on NULL | Error | First choice |
-| Vec support | `FactorVec<T>`, `FactorOptionVec<T>` | Single values only |
+| Vec support | `FactorVec<T>`, `FactorOptionVec<T>` | `Vec<T>` return + `several_ok` inputs |
 | Partial matching | No | Yes (`"F"` → `"Fast"`) |
 | Factor input | Native | Converted to character first |
 | Use case | Categorical data | Parameter selection |

@@ -677,6 +677,79 @@ Both blocks generate methods for the same type.
 
 ---
 
+## Cross-Type Class Name References
+
+Several attributes let one `#[miniextendr]` type reference another by name —
+`s7(parent = ...)`, `r6(inherit = ...)`, `s7(convert_from = ...)`, and
+`s7(convert_to = ...)`. miniextendr resolves these at cdylib-write time using
+the Rust type name, not the R class name, so you can stay consistent with your
+Rust source and still get the correct R-visible name in generated wrappers.
+
+```rust
+#[miniextendr(s7, class = "Shape")]
+impl S7Shape {
+    pub fn new() -> Self { S7Shape }
+}
+
+#[miniextendr(s7(parent = "S7Shape"))]   // Rust name on the left
+impl S7Circle {
+    pub fn new() -> Self { S7Circle }
+}
+```
+
+Generated R uses the registered class name:
+
+```r
+S7Circle <- S7::new_class("S7Circle", parent = Shape, ...)
+```
+
+The same placeholder (`.__MX_CLASS_REF_<Type>__`) powers R6 `inherit =` and S7
+`convert_from` / `convert_to`. Unregistered names produce a compile-time warning
+and fall through to the bare identifier — which will fail at R load.
+
+### S7 Property Class Constraints
+
+When an S7 `getter` method returns another `#[miniextendr]` type, the generated
+property declares that class as its constraint:
+
+```rust
+#[miniextendr(s7)]
+impl S7PropOuter {
+    pub fn new(inner: S7PropInner) -> (Self, /* sidecar */) { ... }
+
+    #[miniextendr(s7(getter))]
+    pub fn inner(&self) -> S7PropInner { ... }
+}
+```
+
+```r
+S7PropOuter <- S7::new_class("S7PropOuter",
+    properties = list(
+        inner = S7::new_property(
+            class = S7PropInner,                          # resolved class name
+            getter = function(self) .Call(..., self@.ptr)
+        )
+    )
+)
+```
+
+Property-class resolution uses a sibling placeholder
+(`.__MX_CLASS_REF_OR_ANY_<Type>__`) with a **silent** fallback to
+`S7::class_any` in two cases, so property getters returning "foreign" types
+don't break package load:
+
+| Getter return type | Emitted class |
+|--------------------|---------------|
+| Registered S7 class | `<R class name>` |
+| Registered non-S7 class (R6 / S3 / S4 / Env / vctrs) | `S7::class_any` |
+| Unregistered / primitive / `SEXP` / `PathBuf` | `S7::class_any` |
+
+The other four reference sites (`parent`, `inherit`, `convert_from`,
+`convert_to`) keep the loud fallback — an unresolved name there almost always
+means a typo worth surfacing.
+
+---
+
 ## Generated Wrapper Annotations
 
 Each generated R wrapper (constructor, instance method, or static method)
