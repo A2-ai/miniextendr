@@ -392,6 +392,85 @@ main.content.wide {
   margin-top: 1rem;
 }
 
+.roadmap-count {
+  font-size: 0.85em;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 0.3em;
+}
+
+.roadmap-label-heading {
+  margin-top: 1.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary);
+}
+
+.roadmap-issue-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+
+  li {
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+
+    &:last-child { border-bottom: none; }
+
+    a {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--text);
+
+      &:hover { color: var(--primary); }
+    }
+  }
+}
+
+.roadmap-issue-num {
+  font-family: $font-mono;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.roadmap-issue-title {
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roadmap-issue-labels {
+  display: inline-flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.roadmap-chip {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.05em 0.5em;
+  border: 1px solid;
+  border-radius: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.roadmap-empty {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
 .doc-card {
   display: block;
   background: var(--surface);

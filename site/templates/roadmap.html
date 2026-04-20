@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} | {{ config.title }}{% endblock %}
+{% block main_class %} wide{% endblock %}
+
+{% block content %}
+{% set issues_data = load_data(path="data/issues.json", required=false, format="json") %}
+{% set plans_data  = load_data(path="data/plans.json",  required=false, format="json") %}
+
+<article class="section-page">
+  <h1>{{ page.title }}</h1>
+  {% if page.description %}<p class="section-description">{{ page.description }}</p>{% endif %}
+
+  <div class="section-body">
+    <p>
+      This page is regenerated on every deploy. The issue list is pulled
+      directly from
+      <a href="{{ config.extra.repo_url }}/issues" rel="noopener">the GitHub tracker</a>
+      via the Pages workflow, and the plan summaries are extracted from
+      <a href="{{ config.extra.repo_url }}/tree/main/plans" rel="noopener"><code>plans/</code></a>
+      at build time.
+    </p>
+  </div>
+
+  <h2 id="issues">Open issues
+    {% if issues_data %}<span class="roadmap-count">({{ issues_data | length }})</span>{% endif %}
+  </h2>
+
+  {% if issues_data and issues_data | length > 0 %}
+    {# Collect the set of primary labels (first label per issue), plus an "unlabelled" bucket. #}
+    {% set_global primary_labels = [] %}
+    {% set_global has_unlabelled = false %}
+    {% for issue in issues_data %}
+      {% if issue.labels and issue.labels | length > 0 %}
+        {% set primary = issue.labels | first %}
+        {% if primary.name not in primary_labels %}
+          {% set_global primary_labels = primary_labels | concat(with=primary.name) %}
+        {% endif %}
+      {% else %}
+        {% set_global has_unlabelled = true %}
+      {% endif %}
+    {% endfor %}
+
+    {% set sorted_labels = primary_labels | sort %}
+
+    {% for label in sorted_labels %}
+      <h3 class="roadmap-label-heading">{{ label }}</h3>
+      <ul class="roadmap-issue-list">
+        {% for issue in issues_data %}
+          {% if issue.labels and issue.labels | length > 0 %}
+            {% set issue_primary = issue.labels | first %}
+            {% if issue_primary.name == label %}
+            <li>
+              <a href="{{ issue.url }}" rel="noopener">
+                <span class="roadmap-issue-num">#{{ issue.number }}</span>
+                <span class="roadmap-issue-title">{{ issue.title }}</span>
+              </a>
+              {% if issue.labels | length > 1 %}
+                <span class="roadmap-issue-labels">
+                  {% for l in issue.labels %}
+                    {% if not loop.first %}<span class="roadmap-chip" style="background-color: #{{ l.color }}22; border-color: #{{ l.color }};">{{ l.name }}</span>{% endif %}
+                  {% endfor %}
+                </span>
+              {% endif %}
+            </li>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      </ul>
+    {% endfor %}
+
+    {% if has_unlabelled %}
+      <h3 class="roadmap-label-heading">unlabelled</h3>
+      <ul class="roadmap-issue-list">
+        {% for issue in issues_data %}
+          {% if not issue.labels or issue.labels | length == 0 %}
+            <li>
+              <a href="{{ issue.url }}" rel="noopener">
+                <span class="roadmap-issue-num">#{{ issue.number }}</span>
+                <span class="roadmap-issue-title">{{ issue.title }}</span>
+              </a>
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% else %}
+    <p class="roadmap-empty">
+      No issue snapshot available at build time. See
+      <a href="{{ config.extra.repo_url }}/issues" rel="noopener">the live GitHub tracker</a>.
+    </p>
+  {% endif %}
+
+  <h2 id="plans">Active plans
+    {% if plans_data %}<span class="roadmap-count">({{ plans_data | length }})</span>{% endif %}
+  </h2>
+
+  <p>
+    Design documents under <code>plans/</code> cover work that's either
+    scoped out, partially landed, or being prototyped. Each links to
+    the full plan on GitHub.
+  </p>
+
+  {% if plans_data and plans_data | length > 0 %}
+    <div class="doc-grid">
+      {% for plan in plans_data %}
+        <a class="doc-card" href="{{ plan.url }}" rel="noopener">
+          <span class="doc-kind">Plan</span>
+          <h3>{{ plan.title }}</h3>
+          {% if plan.summary %}<p>{{ plan.summary }}</p>{% endif %}
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="roadmap-empty">
+      No plan summaries available. See
+      <a href="{{ config.extra.repo_url }}/tree/main/plans" rel="noopener">the plans/ directory</a>.
+    </p>
+  {% endif %}
+</article>
+{% endblock %}
