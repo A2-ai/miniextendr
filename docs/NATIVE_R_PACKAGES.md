@@ -27,6 +27,42 @@ The integration has three layers:
    both the cdylib (for wrapper generation) and the staticlib (for the final
    `.so`) can resolve the shim symbols
 
+## Quick Start: `minirextendr::use_native_package()`
+
+For the most common pattern — a package whose C API is a set of
+`R_GetCCallable` calls wrapped in `static R_INLINE` functions — the
+minirextendr helper automates every step below:
+
+```r
+library(minirextendr)
+
+# Add cli's progress-bar C API to the current miniextendr package.
+use_native_package("cli", headers = "cli/progress.h")
+
+# Sanity-check before committing.
+check_native_package("cli")
+```
+
+`use_native_package()`:
+
+1. Adds `cli` to `LinkingTo:` in `DESCRIPTION`
+2. Writes `src/cli_wrapper.h` and runs bindgen to produce
+   `src/rust/native/cli_ffi.rs` + `src/cli_static_wrappers.c`
+3. Patches `src/Makevars.in` to include `$(NATIVE_PKG_CPPFLAGS)` and to
+   forward every `OBJECTS` entry to cargo as a `-C link-arg=…`
+4. Probes the target package — if it's pure C, the shim is built in C
+   mode (so `--wrap-static-fns` actually emits the shim file); C++
+   packages fall through to C++17/C++14 with wrappers skipped
+5. Walks `LinkingTo:` recursively so transitive headers resolve
+
+`check_native_package()` re-runs the detection step and reports whether
+the corpus-wide bindgen probe (308/594 CRAN packages parse successfully
+today) classifies this package as pure C, C++, or unparseable.
+
+The rest of this document covers the manual workflow — useful when
+`use_native_package()` isn't a fit (non-standard header layouts, C++
+packages that also expose `static inline` functions, custom link flags).
+
 ## Step-by-step: adding a native R package
 
 ### 1. Run bindgen to generate the FFI

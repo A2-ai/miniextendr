@@ -553,6 +553,23 @@ When you add a new `impl_alt*_from_data!` with `serialize`:
 User types don't need step 3 — the proc-macro generates `#[distributed_slice]`
 entries automatically.
 
+### Class names must be unique within the package
+
+`R_make_alt*_class` expects a unique `(class_name, pkg_name)` pair — two
+registrations that pick the same name silently clobber each other. miniextendr
+catches this at package init by tracking every registered class name and
+panicking on the first duplicate:
+
+```
+miniextendr: duplicate ALTREP class name "MyClass" — each ALTREP type must have
+a unique class name within the package
+```
+
+If you hit this, check every `#[altrep(class = "...")]` string in your crate
+(derive-generated and manual paths combined) — two types share the same name.
+Built-in classes (`Vec<i32>`, `Box<[f64]>`, etc.) are registered with names the
+framework guarantees unique, so the collision is always in your own code.
+
 ---
 
 ## Mutable Vectors (Set_elt)
