@@ -466,69 +466,22 @@ main.content.wide {
 }
 
 // ── Doc (single) page with sidebar + TOC ──────────────
+// Reading column stays at $max-width; sidebars float outside as position: fixed
+// at wide viewports so they never compress the main text column (matches the
+// cgmossa.github.io CV layout).
 .doc-layout {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2rem;
-  max-width: $max-width-wide;
+  position: relative;
+  max-width: $max-width;
   margin: 0 auto;
 
-  @media (min-width: 960px) {
-    grid-template-columns: 220px minmax(0, 1fr);
-  }
-
-  @media (min-width: 1280px) {
-    grid-template-columns: 220px minmax(0, 1fr) 200px;
+  h2, h3, h4, h5, h6 {
+    scroll-margin-top: calc(#{$nav-height} + 1rem);
   }
 }
 
-.doc-sidebar {
-  position: sticky;
-  top: calc(#{$nav-height} + 1.5rem);
-  align-self: start;
-  max-height: calc(100vh - #{$nav-height} - 2rem);
-  overflow-y: auto;
-  display: none;
-
-  @media (min-width: 960px) { display: block; }
-
-  .eyebrow {
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted);
-    margin-bottom: 0.75rem;
-  }
-
-  ul {
-    list-style: none;
-    li { margin-bottom: 0.2rem; }
-    a {
-      display: block;
-      padding: 0.35rem 0.6rem;
-      border-radius: 4px;
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      &:hover { color: var(--primary); background: var(--hover); }
-    }
-    li.active a {
-      color: var(--primary);
-      background: var(--hover);
-      font-weight: 600;
-    }
-  }
-}
-
+.doc-sidebar,
 .doc-toc {
-  position: sticky;
-  top: calc(#{$nav-height} + 1.5rem);
-  align-self: start;
-  max-height: calc(100vh - #{$nav-height} - 2rem);
-  overflow-y: auto;
   display: none;
-
-  @media (min-width: 1280px) { display: block; }
 
   .eyebrow {
     font-size: 0.72rem;
@@ -538,19 +491,61 @@ main.content.wide {
     color: var(--text-muted);
     margin-bottom: 0.75rem;
   }
+}
 
-  ul {
-    list-style: none;
-    li { margin: 0.2rem 0; }
-    ul { margin-left: 0.75rem; }
-    a {
-      display: block;
-      font-size: 0.82rem;
-      color: var(--text-muted);
-      padding: 0.2rem 0;
-      line-height: 1.4;
-      &:hover { color: var(--primary); }
-    }
+.doc-sidebar ul {
+  list-style: none;
+  li { margin-bottom: 0.2rem; }
+  a {
+    display: block;
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    &:hover { color: var(--primary); background: var(--hover); }
+  }
+  li.active a {
+    color: var(--primary);
+    background: var(--hover);
+    font-weight: 600;
+  }
+}
+
+.doc-toc ul {
+  list-style: none;
+  li { margin: 0.2rem 0; }
+  ul { margin-left: 0.75rem; }
+  a {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    padding: 0.2rem 0;
+    line-height: 1.4;
+    &:hover { color: var(--primary); }
+  }
+}
+
+@media (min-width: 1280px) {
+  .doc-sidebar {
+    display: block;
+    position: fixed;
+    top: calc(#{$nav-height} + 1.5rem);
+    right: calc(50% + (#{$max-width} / 2) + 2rem);
+    width: 220px;
+    max-height: calc(100vh - #{$nav-height} - 2rem);
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 1480px) {
+  .doc-toc {
+    display: block;
+    position: fixed;
+    top: calc(#{$nav-height} + 1.5rem);
+    left: calc(50% + (#{$max-width} / 2) + 2rem);
+    width: 200px;
+    max-height: calc(100vh - #{$nav-height} - 2rem);
+    overflow-y: auto;
   }
 }
 

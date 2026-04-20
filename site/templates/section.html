@@ -4,25 +4,41 @@
 {% block main_class %} wide{% endblock %}
 
 {% block content %}
-<article class="section-page">
-  <h1>{{ section.title }}</h1>
-  {% if section.description %}<p class="section-description">{{ section.description }}</p>{% endif %}
-
-  <div class="section-body">
-    {{ section.content | safe }}
-  </div>
-
-  {% if section.pages | length > 0 %}
-  <h2>Pages</h2>
-  <div class="doc-grid">
-    {% for page in section.pages %}
-    <a class="doc-card" href="{{ page.permalink }}">
-      <span class="doc-kind">{% if section.relative_path == "manual/_index.md" %}Manual{% else %}Guide{% endif %}</span>
-      <h3>{{ page.title }}</h3>
-      {% if page.description %}<p>{{ page.description }}</p>{% endif %}
-    </a>
-    {% endfor %}
-  </div>
+{% set has_pages = section.pages | length > 0 %}
+<div class="doc-layout">
+  {% if has_pages %}
+  <aside class="doc-sidebar" aria-label="Section pages">
+    <p class="eyebrow">{{ section.title }}</p>
+    <ul>
+      {% for p in section.pages %}
+      <li class="{% if current_path == p.path %}active{% endif %}">
+        <a href="{{ p.permalink }}">{{ p.title }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </aside>
   {% endif %}
-</article>
+
+  <article class="doc-main section-page">
+    <h1>{{ section.title }}</h1>
+    {% if section.description %}<p class="section-description">{{ section.description }}</p>{% endif %}
+
+    <div class="section-body">
+      {{ section.content | safe }}
+    </div>
+
+    {% if has_pages %}
+    <h2>Pages</h2>
+    <div class="doc-grid">
+      {% for page in section.pages %}
+      <a class="doc-card" href="{{ page.permalink }}">
+        <span class="doc-kind">{% if section.relative_path == "manual/_index.md" %}Manual{% else %}Guide{% endif %}</span>
+        <h3>{{ page.title }}</h3>
+        {% if page.description %}<p>{{ page.description }}</p>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </article>
+</div>
 {% endblock %}
