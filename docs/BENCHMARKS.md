@@ -220,92 +220,93 @@ Rules of thumb:
   timings. Changes in `strings`/`into_r` that don't touch
   `mkCharLenCE` should not move those numbers.
 
-## Reference baseline — 2026-02-18 (Apple M3 Max)
+## Reference baseline — 2026-04-20 (Apple M3 Max)
 
 Full raw data, all tables, and methodology notes are in
-[`miniextendr-bench/BENCH_RESULTS_2026-02-18.md`](../miniextendr-bench/BENCH_RESULTS_2026-02-18.md).
+[`miniextendr-bench/BENCH_RESULTS_2026-04-20.md`](../miniextendr-bench/BENCH_RESULTS_2026-04-20.md).
 The headline numbers below are a subset for quick reference.
 
-Environment: `rustc 1.93.0`, R 4.5, macOS 15.3 arm64, 36 GB RAM.
-Commit `d479886` on `main`.
+Environment: `rustc 1.95.0`, R 4.5.2, macOS 25.4.0 arm64, 36 GB RAM.
+Commit `00df79d4` on `main`.
 
 ### Quick reference
 
 | Subsystem | Operation | Median | Notes |
 |-----------|-----------|--------|-------|
-| Worker thread | `run_on_worker` round-trip | 5 µs | channel hop |
-| Worker thread | `with_r_thread` (on main) | 10 ns | near free |
-| Unwind protect | `with_r_unwind_protect` | 31 ns | overhead vs direct |
-| Unwind protect | nested 5 layers | 170 ns | linear |
-| `catch_unwind` | success path | 0.5 ns | |
-| `catch_unwind` | panic caught | 5.3 µs | panic + catch |
-| ExternalPtr | create (8 B) | 65 ns | Box baseline 12 ns (~5×) |
-| ExternalPtr | create (64 KB) | 727 ns | Box baseline 512 ns (~1.4×) |
-| Trait ABI | `mx_query_vtable` | 1 ns | cache-hot |
-| Trait ABI | single-method dispatch | 55–62 ns | view + call |
+| Worker thread | `run_on_worker_no_r` | 0.46 ns | compiles to inline call |
+| Worker thread | `with_r_thread` (on main) | 11.6 ns | near free |
+| Unwind protect | `with_r_unwind_protect` | 32.6 ns | overhead vs direct |
+| Unwind protect | nested 5 layers | 161 ns | linear |
+| `catch_unwind` | success path | 0.46 ns | |
+| `catch_unwind` | panic caught | 5.4 µs | panic + catch |
+| ExternalPtr | create (8 B) | 209 ns | Box baseline 18 ns (~12×) |
+| ExternalPtr | create (64 KB) | 209 ns | Box baseline 667 ns (allocator fast) |
+| Trait ABI | `mx_query_vtable` | 2.3 ns | cache-hot |
+| Trait ABI | single-method dispatch | 55–60 ns | view + call |
 | Trait ABI | all-5-method dispatch | 417 ns | multi-method hot loop |
-| R allocator | small (8 B) | 71 ns | system 16 ns |
-| R allocator | large (64 KB) | 867 ns | system 521 ns |
+| R allocator | small (8 B) | 18.0 ns | system 16.5 ns |
+| R allocator | large (64 KB) | 797 ns | system 82 ns |
 
 ### Type conversions (64 K elements unless noted)
 
 | Type | `into_sexp` median | `try_from_sexp` median |
 |------|--------------------|-------------------------|
-| `i32` scalar | 12.5 ns | 3.1 ns |
-| `f64` scalar | 12.5 ns | 3.0 ns |
-| `Vec<i32>` | 13.3 µs | — |
-| `Vec<f64>` | 22.5 µs | — |
-| `Vec<String>` | 3.95 ms | — |
-| `Vec<Option<i32>>` (50% NA) | 14.1 µs | — |
-| `slice_i32` / `slice_f64` | — | 8.0 ns (zero-copy) |
-| `HashSet<i32>` from 4 K | — | 68 µs |
+| `i32` scalar | 11.7 ns | 23.8 ns |
+| `f64` scalar | 12.0 ns | 21.9 ns |
+| `Vec<i32>` | 9.0 µs | — |
+| `Vec<f64>` | 16.6 µs | — |
+| `Vec<String>` | 3.87 ms | — |
+| `Vec<Option<i32>>` (50% NA) | 29.2 µs | — |
+| `slice_i32` / `slice_f64` | — | 21 ns (zero-copy) |
+| `HashSet<i32>` from 64 K | — | 1.49 ms |
 
-**1 M element scale:** `i32` 675 µs; `f64` 1.6 ms; `String` 276 ms
-(CHARSXP allocation dominates); `Option<i32>` 934 µs.
+**1 M element scale:** `i32` 106 µs; `f64` 233 µs; `String` 94.6 ms
+(CHARSXP allocation dominates); `Option<i32>` 440 µs.
 
 ### ALTREP (64 K elements)
 
 | Operation | ALTREP | Plain INTSXP |
 |-----------|--------|--------------|
-| element access (elt) | 16.2 µs | 9.2 ns |
-| `DATAPTR` materialisation | 15.1 µs | 9.9 ns |
-| full scan via elt loop | 5.1 ms | — |
-| full scan via `DATAPTR` | 18.6 µs | 8.9 ns |
+| element access (elt) | 15.7 µs | 9.1 ns |
+| `DATAPTR` materialisation | 17.1 µs | 9.3 ns |
+| full scan via elt loop | 4.79 ms | — |
+| full scan via `DATAPTR` | 21.5 µs | 9.4 ns |
 
-**Guard modes (64 K full scan):** `unsafe` 15.7 ms • `rust_unwind`
-(default) 16.2 ms • `r_unwind` 20.2 ms • plain INTSXP 258 µs.
-`r_unwind` adds ~25% over `unsafe` due to per-callback
-`R_UnwindProtect`.
+**Guard modes (64 K full scan):** `unsafe` 1.07 ms • `rust_unwind`
+(default) 4.71 ms • `r_unwind` 4.70 ms • plain INTSXP 256 µs.
+`unsafe` is ~4× faster than the default guard; `r_unwind` and default
+are similar (both use `catch_unwind` internally; `r_unwind` adds
+`R_UnwindProtect` per callback).
 
-**String ALTREP (64 K strings):** create 2.6 ms • elt access 2.6 ms •
-elt with NA 2.4 ms • force materialise 6.6 ms • plain STRSXP elt
-4.5 ms.
+**String ALTREP (64 K strings):** create 2.51 ms • elt access 2.81 ms •
+elt with NA 2.72 ms • force materialise 6.22 ms • plain STRSXP elt
+4.47 ms.
 
 ### GC protection (per-op)
 
 | Mechanism | Single op | Notes |
 |-----------|-----------|-------|
-| Protect stack | 7.4 ns | array write + counter decrement |
-| Vec pool (VECSXP) | 9.6 ns | + free list |
-| Slotmap pool | 11.4 ns | + generational safety check |
-| Precious list | 13.1 ns | CONS alloc + prepend |
-| DLL preserve | 28.9 ns | CONS alloc + doubly-linked splice |
+| Protect stack | 1.9 ns | array write + counter decrement |
+| Vec pool (VECSXP) | 13.0 ns | + free list |
+| Slotmap pool | 14.4 ns | + generational safety check |
+| Precious list | 15.3 ns | CONS alloc + prepend |
+| DLL preserve | 29.1 ns | CONS alloc + doubly-linked splice |
 
-**Replace-in-loop (10 K iterations):** ReprotectSlot 37.6 µs •
-Pool overwrite 45.2 µs • DLL reinsert 271 µs • Precious churn 15.1 s
+**Replace-in-loop (10 K iterations):** Vec pool 1.14 ms •
+DLL preserve 1.30 ms • Precious churn 74 ms
 (O(n²) — do not use for reassignment).
 
 ### Lint (miniextendr-lint)
 
 | Benchmark | Scale | Median |
 |-----------|-------|--------|
-| `full_scan` | 10 modules | 1.8 ms |
-| `full_scan` | 100 modules | 15.6 ms |
-| `full_scan` | 500 modules | 82.1 ms |
-| `impl_scan` | 10 types | 1.8 ms |
-| `impl_scan` | 100 types | 16.1 ms |
-| `scaling` | 500 fns / 10 files | 5.8 ms |
-| `scaling` | 500 fns / 500 files | 64.1 ms |
+| `full_scan` | 10 modules | 2.2 ms |
+| `full_scan` | 100 modules | 19.8 ms |
+| `full_scan` | 500 modules | 114 ms |
+| `impl_scan` | 10 types | 2.4 ms |
+| `impl_scan` | 100 types | 22.2 ms |
+| `scaling` | 500 fns / 10 files | 8.6 ms |
+| `scaling` | 500 fns / 500 files | 76.8 ms |
 
 Linear in both module count and file count.
 
@@ -313,12 +314,12 @@ Linear in both module count and file count.
 
 | Operation | Size | Median |
 |-----------|------|--------|
-| `connection_build` + open | — | 542 ns |
-| `connection_write` | 128 B | 29 ns |
-| `connection_read` | 64 B | 21 ns |
-| `connection_read` | 16 KB | 1.2 µs |
-| `connection_write_sized` | 16 KB | 1.0 µs |
-| `connection_burst_write` | 50× 256 B | 1.1 µs |
+| `connection_build` + open | — | 625 ns |
+| `connection_write` | — | 28 ns |
+| `connection_read` | 64 B | 24 ns |
+| `connection_read` | 16 KB | 273 ns |
+| `connection_write_sized` | 16 KB | 922 ns |
+| `connection_burst_write` | 50 items | 1.04 µs |
 
 ## Publishing new baselines
 
@@ -358,7 +359,8 @@ by `just bench-drift`.
 
 ## Reference
 
-- Raw results file: [`miniextendr-bench/BENCH_RESULTS_2026-02-18.md`](../miniextendr-bench/BENCH_RESULTS_2026-02-18.md)
+- Raw results file: [`miniextendr-bench/BENCH_RESULTS_2026-04-20.md`](../miniextendr-bench/BENCH_RESULTS_2026-04-20.md)
+- Previous baseline: [`miniextendr-bench/BENCH_RESULTS_2026-02-18.md`](../miniextendr-bench/BENCH_RESULTS_2026-02-18.md)
 - Benchmark plan: `miniextendr-bench/src/bench_plan.rs`
 - Harness and fixtures: `miniextendr-bench/src/lib.rs`
 - Baseline tooling: `tests/perf/bench_baseline.sh`
