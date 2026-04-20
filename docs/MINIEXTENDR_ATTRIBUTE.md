@@ -31,6 +31,10 @@ Generates:
 - C wrapper (`C_greet`) handling SEXP conversion
 - R wrapper (`greet <- function(name) { .Call(C_greet, name) }`)
 - `pub` functions get `@export`; non-pub get `@noRd`
+- Each function's roxygen gets an auto-generated `@rdname <file-stem>`
+  derived from `file!()` — so functions defined in `zero_copy_tests.rs`
+  share the `zero_copy_tests.Rd` page. Explicit `@rdname` wins; `@noRd`
+  suppresses the injection; `lib.rs` / `mod.rs` stems are skipped.
 
 ### Function Attributes
 
