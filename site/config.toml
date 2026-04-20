@@ -1,7 +1,7 @@
 base_url = "https://a2-ai.github.io/miniextendr"
 title = "miniextendr"
 description = "A Rust-R interoperability framework for building R packages with Rust backends"
-compile_sass = false
+compile_sass = true
 build_search_index = true
 generate_feeds = false
 

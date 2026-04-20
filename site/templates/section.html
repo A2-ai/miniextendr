@@ -1,134 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}{{ section.title | default(value="miniextendr") }} | miniextendr{% endblock %}
-{% block body_class %}site-shell section-page{% if section.relative_path == "manual/_index.md" or section.path == "/manual/" %} manual-section{% endif %}{% endblock body_class %}
+{% block title %}{{ section.title | default(value=config.title) }} | {{ config.title }}{% endblock %}
+{% block main_class %} wide{% endblock %}
 
 {% block content %}
-{% if section.relative_path == "manual/_index.md" or section.path == "/manual/" %}
-<section class="hero-section section-hero">
-    <div class="hero-copy">
-        <p class="eyebrow">Reference manual</p>
-        <h1 class="hero-title">{{ section.title }}</h1>
-        <p class="hero-lead">{{ section.description }}</p>
-        <div class="hero-actions">
-            <a class="button button-primary" href="{{ get_url(path='@/manual/getting-started.md') }}">Open the setup guide</a>
-            <a class="button button-secondary" href="{{ get_url(path='@/manual/troubleshooting.md') }}">Troubleshoot a build</a>
-        </div>
-        <ul class="hero-points">
-            <li>Runtime behavior, conversion rules, macros, and build tooling in one place.</li>
-            <li>Pages are ordered by a suggested learning path, not just alphabetical listing.</li>
-            <li>Descriptions are generated from the source docs so the index is scannable.</li>
-        </ul>
-    </div>
-    <div class="hero-panel">
-        <div class="terminal-card">
-            <div class="terminal-bar">
-                <div class="terminal-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-                <span class="terminal-label">manual scope</span>
-            </div>
-            <p class="terminal-kicker">The reference side of the site is built for lookup speed as much as long-form reading.</p>
-            <div class="hero-metrics">
-                <div class="metric-card">
-                    <span class="metric-value">{{ section.pages | length }}</span>
-                    <span class="metric-label">pages in the manual</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value">Core</span>
-                    <span class="metric-label">getting started, architecture, conversions, classes</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value">Deep</span>
-                    <span class="metric-label">ALTREP, threading, GC protection, macros, packaging</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
+<article class="section-page">
+  <h1>{{ section.title }}</h1>
+  {% if section.description %}<p class="section-description">{{ section.description }}</p>{% endif %}
 
-<section class="story-grid">
-    <article class="content-card">
-        <p class="section-kicker">How to use the manual</p>
-        <div class="section-copy">
-            {{ section.content | safe }}
-        </div>
-    </article>
-    <aside class="content-card content-card-accent">
-        <p class="section-kicker">Fast paths</p>
-        <div class="launch-list">
-            <a class="launch-card" href="{{ get_url(path='@/manual/getting-started.md') }}">
-                <span class="launch-index">A</span>
-                <div>
-                    <strong>Build a first package</strong>
-                    <p>Scaffold a package, export functions, and get the install loop working.</p>
-                </div>
-            </a>
-            <a class="launch-card" href="{{ get_url(path='@/manual/type-conversions.md') }}">
-                <span class="launch-index">B</span>
-                <div>
-                    <strong>Check conversion rules</strong>
-                    <p>See exactly how scalar, vector, collection, and ALTREP-backed values cross the boundary.</p>
-                </div>
-            </a>
-            <a class="launch-card" href="{{ get_url(path='@/manual/r-build-system.md') }}">
-                <span class="launch-index">C</span>
-                <div>
-                    <strong>Understand packaging</strong>
-                    <p>Follow the configure, vendor, and generated-file story that makes R builds predictable.</p>
-                </div>
-            </a>
-        </div>
-    </aside>
-</section>
+  <div class="section-body">
+    {{ section.content | safe }}
+  </div>
 
-<section class="docs-section">
-    <div class="section-heading">
-        <div>
-            <p class="eyebrow">Full Index</p>
-            <h2>Every manual page, ordered as a documentation path.</h2>
-        </div>
-        <p class="section-summary">
-            Start near the top if you are learning the framework.
-            Jump deeper when you already know the subsystem you need.
-        </p>
-    </div>
-    <div class="docs-grid">
-        {% for page in section.pages %}
-        <a class="doc-card manual-index-card" href="{{ page.permalink }}">
-            <div class="doc-card-topline">
-                <span class="doc-kind">Manual page</span>
-                <span class="doc-state">{{ loop.index }}</span>
-            </div>
-            <h2>{{ page.title }}</h2>
-            {% if page.description %}
-            <p>{{ page.description }}</p>
-            {% endif %}
-        </a>
-        {% endfor %}
-    </div>
-</section>
-{% else %}
-<section class="story-grid">
-    <article class="content-card">
-        <div class="section-copy">
-            {{ section.content | safe }}
-        </div>
-    </article>
-</section>
-<section class="docs-section">
-    <div class="docs-grid">
-        {% for page in section.pages %}
-        <a class="doc-card" href="{{ page.permalink }}">
-            <h2>{{ page.title }}</h2>
-            {% if page.description %}
-            <p>{{ page.description }}</p>
-            {% endif %}
-        </a>
-        {% endfor %}
-    </div>
-</section>
-{% endif %}
+  {% if section.pages | length > 0 %}
+  <h2>Pages</h2>
+  <div class="doc-grid">
+    {% for page in section.pages %}
+    <a class="doc-card" href="{{ page.permalink }}">
+      <span class="doc-kind">{% if section.relative_path == "manual/_index.md" %}Manual{% else %}Guide{% endif %}</span>
+      <h3>{{ page.title }}</h3>
+      {% if page.description %}<p>{{ page.description }}</p>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</article>
 {% endblock %}
