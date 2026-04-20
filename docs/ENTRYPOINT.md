@@ -39,8 +39,14 @@ pub fn hello() -> &'static str {
     "Hello from Rust!"
 }
 
-miniextendr_api::miniextendr_init!(mypkg);
+miniextendr_api::miniextendr_init!();
 ```
+
+The macro reads `CARGO_CRATE_NAME` at expansion time, so the package
+name is auto-detected from the `[lib] name` (with hyphens→underscores)
+— no argument needed. The explicit form `miniextendr_init!(mypkg)`
+still works for edge cases where the R init symbol should differ from
+the crate name.
 
 ### 3. Package loads — everything is automatic
 
