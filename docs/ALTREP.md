@@ -1580,7 +1580,7 @@ impl OptionallyMaterialized {
 
 ### "Error: could not find function"
 - Ensure constructor function has `#[miniextendr]` and is `pub`
-- Run `just devtools-document` after adding new functions
+- Run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) after adding new functions
 
 ### Elements return wrong values
 - Check your `elt()` implementation

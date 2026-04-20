@@ -87,7 +87,7 @@ just templates-check
 
 ### 2. When templates-check Fails
 
-If `just templates-check` fails, it means templates have drifted from the example package (`rpkg/`):
+If [`just templates-check`](https://github.com/A2-ai/miniextendr/blob/main/justfile) fails, it means templates have drifted from the example package (`rpkg/`):
 
 ```bash
 # See what changed

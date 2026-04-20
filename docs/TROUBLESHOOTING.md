@@ -70,14 +70,14 @@ Functions exist in Rust but aren't callable from R. Check in order:
 
 1. **Function is `pub`** -- non-pub functions don't get `@export` in R wrappers
 2. **Function has `#[miniextendr]`** -- check the attribute is present
-3. **NAMESPACE is stale** -- run `just devtools-document` to regenerate
+3. **NAMESPACE is stale** -- run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to regenerate
 
 Quick fix:
 ```bash
 NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
 ```
 
-**Note:** The lint tool (`just lint`) catches issues #1 and #2 at build time.
+**Note:** The lint tool ([`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)) catches issues #1 and #2 at build time.
 
 ### "package not found" when running tests
 

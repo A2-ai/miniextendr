@@ -134,7 +134,7 @@ via a cdylib-based approach:
 3. The function reads the linkme slices and writes R wrapper code to a file
 4. `roxygen2::roxygenise()` generates NAMESPACE exports from the wrappers
 
-This runs during `just devtools-document` or equivalent.
+This runs during [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) or equivalent.
 
 ## When APIs Can Be Called
 

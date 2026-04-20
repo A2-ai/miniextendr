@@ -13,7 +13,7 @@ Quick reference for common development tasks. See [CLAUDE.md](../CLAUDE.md) for 
 - [just](https://github.com/casey/just) command runner (optional if using the CLI)
 - autoconf (for regenerating `configure` from `configure.ac`)
 
-> **Tip:** The `miniextendr` CLI (`miniextendr-cli/`) can replace most `just` recipes. Install with `just cli-install` or `cargo install --path miniextendr-cli --features dev`. See the [CLI README](../miniextendr-cli/README.md) for full usage.
+> **Tip:** The `miniextendr` CLI (`miniextendr-cli/`) can replace most `just` recipes. Install with [`just cli-install`](https://github.com/A2-ai/miniextendr/blob/main/justfile) or `cargo install --path miniextendr-cli --features dev`. See the [CLI README](../miniextendr-cli/README.md) for full usage.
 
 ### One-shot dev bootstrap
 
@@ -23,7 +23,7 @@ just dev-tools-install
 
 Installs the helpers expected by the other recipes:
 
-- `cargo-revendor` from the in-tree `cargo-revendor/` (required by `just vendor` and the dev-monorepo configure path).
+- `cargo-revendor` from the in-tree `cargo-revendor/` (required by [`just vendor`](https://github.com/A2-ai/miniextendr/blob/main/justfile) and the dev-monorepo configure path).
 - `cargo-limit`, which provides the `cargo lcheck` / `lclippy` / `ltest` / `lbuild` aliases that truncate output to the first few errors - recommended for interactive iteration. CI and `just` recipes keep plain `cargo` so `-D warnings` output stays complete.
 
 ## Quick Start
@@ -121,7 +121,7 @@ The function exists in Rust but isn't callable from R. Check:
 
 1. Function is `pub`
 2. Function has the `#[miniextendr]` attribute
-3. Run `just devtools-document` to regenerate NAMESPACE
+3. Run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to regenerate NAMESPACE
 
 Quick fix:
 
@@ -147,7 +147,7 @@ R_LIBS=/tmp/R_lib just rcmdinstall
 
 ### Lint warnings
 
-Run `just lint` to check source-level attributes for consistency. See [MACRO_ERRORS.md](MACRO_ERRORS.md) for interpreting lint output.
+Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to check source-level attributes for consistency. See [MACRO_ERRORS.md](MACRO_ERRORS.md) for interpreting lint output.
 
 ### Transient test failures in parallel runs
 

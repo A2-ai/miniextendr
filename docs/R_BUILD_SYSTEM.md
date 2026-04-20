@@ -208,7 +208,7 @@ R CMD INSTALL:
 ```
 
 Note: R wrapper generation (`miniextendr-wrappers.R`) happens separately via
-`just devtools-document`, not during R CMD INSTALL.
+[`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile), not during R CMD INSTALL.
 
 ## Build Contexts
 

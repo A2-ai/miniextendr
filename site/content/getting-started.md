@@ -207,6 +207,8 @@ pub fn parse_int(s: &str) -> Result<i32, String> {
 3. Run `devtools::install()` -- install the package
 4. Test in R
 
+When working in the miniextendr monorepo itself, the [`justfile`](https://github.com/A2-ai/miniextendr/blob/main/justfile) provides recipes like `just configure`, `just rcmdinstall`, and `just devtools-document` that automate the full build cycle.
+
 ## Next Steps
 
 - [Architecture](/architecture/) -- How miniextendr works
