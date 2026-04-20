@@ -168,3 +168,25 @@ Windows uses `configure.win` / `configure.ucrt` instead of the autoconf-based `c
 1. Check `rpkg/configure.win` and `rpkg/configure.ucrt` exist
 2. Check `rpkg/cleanup.win` and `rpkg/cleanup.ucrt` exist
 3. Ensure paths use forward slashes in R code
+
+### `R CMD check` hangs at "checking tests" on Windows
+
+If you depend on a crate that spins up a multi-threaded Tokio runtime
+(`DataFusion`, `reqwest` with the default client, etc.), `R CMD check`
+on Windows can hang indefinitely at `* checking tests ...`. The worker
+threads outlive R's main thread and keep the Rterm stdout pipe open;
+`system2(stdout = TRUE)` then waits forever.
+
+Fix by constructing a `current_thread` runtime on the worker thread:
+
+```rust
+let rt = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .expect("tokio current_thread runtime");
+rt.block_on(async { /* ... */ });
+```
+
+No background threads, no stranded pipe handles, no hang. Applies on
+Linux/macOS too — they just don't manifest as a hang because the pipe
+closes on process exit.
