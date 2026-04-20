@@ -475,7 +475,7 @@ let cls = R_make_altreal_class(class_name, pkg_name, dll);
 Without DllInfo (`NULL`), R can't find the class during deserialization, even
 if it's registered. This was a bug - all classes were registered with `NULL`.
 
-### 2. Eager registration - classes must exist before readRDS runs
+### 2. Eager registration: classes must exist before readRDS runs
 
 ALTREP classes are registered in two ways:
 
@@ -497,10 +497,10 @@ for reg_fn in MX_ALTREP_REGISTRATIONS.iter() {
 ```
 
 **Built-in classes** (`Vec<f64>`, `Box<[i32]>`, Arrow arrays, etc.) use
-`OnceLock` inside `RegisterAltrep::get_or_init_class()`. These are lazy -
-the class is created on first use (e.g., when `.into_sexp_altrep()` is
-called). This is a problem for `readRDS`: R tries to find the class *during
-deserialization*, before any miniextendr code has called `into_sexp_altrep`.
+`OnceLock` inside `RegisterAltrep::get_or_init_class()` and are created on
+first use (e.g., when `.into_sexp_altrep()` is called). This is a problem for
+`readRDS`: R tries to find the class *during deserialization*, before any
+miniextendr code has called `into_sexp_altrep`.
 
 The fix: `register_builtin_altrep_classes()` is called during `R_init` and
 eagerly calls `get_or_init_class()` for every built-in type:
@@ -554,12 +554,12 @@ When you add a new `impl_alt*_from_data!` with `serialize`:
 3. If it's a built-in type (in miniextendr-api, not user code), add it to
    `register_builtin_altrep_classes()` so it's eagerly registered at init
 
-User types don't need step 3 - the proc-macro generates `#[distributed_slice]`
+User types don't need step 3. The proc-macro generates `#[distributed_slice]`
 entries automatically.
 
 ### Class names must be unique within the package
 
-`R_make_alt*_class` expects a unique `(class_name, pkg_name)` pair - two
+`R_make_alt*_class` expects a unique `(class_name, pkg_name)` pair. Two
 registrations that pick the same name silently clobber each other. miniextendr
 catches this at package init by tracking every registered class name and
 panicking on the first duplicate:
@@ -570,7 +570,7 @@ a unique class name within the package
 ```
 
 If you hit this, check every `#[altrep(class = "...")]` string in your crate
-(derive-generated and manual paths combined) - two types share the same name.
+across derive-generated and manual paths. Two types share the same name.
 Built-in classes (`Vec<i32>`, `Box<[f64]>`, etc.) are registered with names the
 framework guarantees unique, so the collision is always in your own code.
 

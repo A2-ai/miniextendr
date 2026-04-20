@@ -245,6 +245,75 @@ format(t)   # "36.6°C" (returns the string)
 cat(format(t), "\n")  # 36.6°C
 ```
 
+## Standalone S3 methods (class defined elsewhere)
+
+The `#[miniextendr(s3)]`-on-impl pattern above owns both the constructor and the methods: the Rust type `Person` *is* the S3 class. That is the right tool when Rust holds the canonical data. It is the wrong tool when:
+
+- The class is defined in R (an existing `structure(list(), class = "my_thing")` or a package you don't control).
+- The class is a vctrs type where the "object" is an R vector with a class attribute, not a Rust struct.
+- You want to provide a method for a base R class (`print.data.frame`, `format.POSIXct`) from a Rust extension.
+
+For those cases, drop the impl block and write a plain function:
+
+```rust
+use miniextendr_api::{miniextendr, SEXP};
+
+/// Implements `format.percent` in Rust.
+#[miniextendr(s3(generic = "format", class = "percent"))]
+pub fn format_percent(x: SEXP, _dots: ...) -> Vec<String> {
+    let data: &[f64] = unsafe { x.as_slice::<f64>() };
+    data.iter().map(|v| format!("{:.1}%", v * 100.0)).collect()
+}
+```
+
+What the macro does:
+
+1. Emits an R wrapper named `format.percent` (the `<generic>.<class>` convention).
+2. Adds `#' @method format percent` to the roxygen block. `devtools::document()` picks that up and writes `S3method(format, percent)` into `NAMESPACE`. You do not call `.S3method()` yourself.
+3. Registers the underlying C entry point via `distributed_slice`, same as every other `#[miniextendr]` function.
+
+Your Rust function receives exactly the arguments R dispatches with. For most S3 generics that is `(x, ...)`, so the first param is typed (`SEXP`, or a concrete type with `TryFromSexp`) and the last is `_dots: ...` to absorb the R-level `...`. If the generic takes more positional arguments (`vec_cast(x, to, ...)`), list them in order.
+
+### Double dispatch (vctrs)
+
+A few generics dispatch on two arguments. vctrs calls `vec_ptype2(x, y, ...)` and resolves the method as `vec_ptype2.<class_of_x>.<class_of_y>`. Encode that as a dotted class string:
+
+```rust
+#[miniextendr(s3(generic = "vec_ptype2", class = "percent.percent"))]
+pub fn vec_ptype2_percent_percent(_x: SEXP, _y: SEXP, _dots: ...) -> SEXP { ... }
+
+#[miniextendr(s3(generic = "vec_cast", class = "percent.double"))]
+pub fn vec_cast_percent_double(x: SEXP, _to: SEXP, _dots: ...) -> SEXP { ... }
+```
+
+The wrapper name becomes `vec_ptype2.percent.percent`, and the roxygen becomes `#' @method vec_ptype2 percent.percent`. That is what vctrs expects.
+
+### vctrs `@importFrom`
+
+The macro recognizes the vctrs generic names (`vec_ptype_abbr`, `vec_proxy`, `vec_restore`, `vec_ptype2`, `vec_cast`, etc.) and auto-injects `#' @importFrom vctrs <generic>` into the roxygen block. This forces vctrs to load before your method is registered, which is necessary for `R_GetCCallable` lookups (vctrs registers its native generics via ccallable).
+
+For non-vctrs generics from other packages (e.g., `tibble::tbl_sum`), add the import manually:
+
+```rust
+/// @importFrom tibble tbl_sum
+#[miniextendr(s3(generic = "tbl_sum", class = "my_tbl"))]
+pub fn tbl_sum_my_tbl(x: SEXP, _dots: ...) -> Vec<String> { ... }
+```
+
+### Constraints
+
+- `s3(...)` requires `class`. `generic` defaults to the Rust function name if omitted, but supplying it explicitly is the convention.
+- Cannot be combined with `r_name = "..."`. The S3 naming (`<generic>.<class>`) already fixes the R wrapper name.
+- The constructor for the class is out of scope for the method function. Either write it in R, or write a separate `#[miniextendr]` function that returns `structure(x, class = "my_class")` via `new_vctr(...)` or equivalent helpers in `miniextendr_api::vctrs`.
+
+### When to pick which
+
+| You have... | Use |
+|---|---|
+| A Rust struct that owns the data, methods hang off it | `#[miniextendr(s3)] impl MyType { ... }` |
+| An R-side class (vctrs, base R, another package), methods are Rust logic | standalone `#[miniextendr(s3(generic = ..., class = ...))]` functions |
+| A vctrs class authored here | `#[miniextendr(vctrs)]` on impl for the constructor + static methods, standalone `s3(...)` functions for the dispatch-on-class-attribute generics |
+
 ## Summary Table
 
 | Method | Receiver | Return | Generated R | R Convention |

@@ -47,12 +47,12 @@ pub struct DynamicStrings {
 
 ## When to Use Each Mode
 
-### RUnwind (default) - Safe for All Callbacks
+### RUnwind (default): Safe for All Callbacks
 
 The default. Catches both Rust panics and R longjmps. Safe for callbacks that
 call R API functions (e.g., `Rf_mkCharLenCE`, `Rf_allocVector`).
 
-### RustUnwind - Pure Rust Callbacks Only
+### RustUnwind: Pure Rust Callbacks Only
 
 Use when callbacks only access Rust data and don't call R API functions.
 Slightly lower overhead than RUnwind but **unsafe if callbacks call R APIs**.
@@ -77,7 +77,7 @@ impl AltIntegerData for Sequence {
 - Safe for pure-Rust code only
 - **Unsafe if callbacks call R APIs** - R longjmps bypass `catch_unwind`
 
-### RUnwind Example - Callbacks That Call R APIs
+### RUnwind Example: Callbacks That Call R APIs
 
 The default. Use for all callbacks, especially those that invoke R functions:
 
@@ -106,7 +106,7 @@ Situations requiring `r_unwind`:
 
 Uses `R_UnwindProtect` + `catch_unwind` (nested guards).
 
-### Unsafe - Trivial Callbacks
+### Unsafe: Trivial Callbacks
 
 Use when callbacks are guaranteed not to panic and you need maximum performance:
 
@@ -158,7 +158,7 @@ where F: FnOnce() -> R {
 ```
 
 Since `T::GUARD` is a `const`, the compiler eliminates dead branches at
-monomorphization time - zero runtime cost for the chosen mode.
+monomorphization time. The chosen mode has zero runtime cost.
 
 ## See Also
 

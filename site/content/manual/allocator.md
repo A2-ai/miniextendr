@@ -39,7 +39,7 @@ RAWSXP data bytes:
                                   └── pointer returned to caller
 ```
 
-The `Header` stores a single `preserve_tag: SEXP` - the cell in the preserve
+The `Header` stores a single `preserve_tag: SEXP`, the cell in the preserve
 list that keeps this RAWSXP alive. On dealloc, the allocator reads the header
 to recover the tag and releases the preserve cell.
 
@@ -82,7 +82,7 @@ All R API calls are routed to the main thread automatically:
 | Worker thread (with `worker-thread` feature, inside `run_on_worker`) | Routes via `with_r_thread` |
 | Other threads (Rayon, spawned) | **Panics** |
 
-The panic on arbitrary threads is intentional - R's C API is not thread-safe,
+The panic on arbitrary threads is intentional. R's C API is not thread-safe,
 and silently corrupting R's heap would be worse than a loud failure.
 
 ## Caveats
@@ -100,7 +100,7 @@ If this happens:
   leaks (files, locks, etc.)
 
 Best practice: use `RAllocator` inside `with_r_unwind_protect` or the worker
-thread pattern - contexts where unwind protection is active.
+thread pattern, where unwind protection is active.
 
 ### Protection Strategy
 
@@ -127,5 +127,5 @@ fn main() {
 }
 ```
 
-**Do NOT do this in an R package library crate** - the allocator would be
+**Do NOT do this in an R package library crate.** The allocator would be
 invoked during `cargo build` before R is available.

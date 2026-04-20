@@ -11,12 +11,12 @@ How miniextendr handles ALTREP vectors when R passes them to Rust functions.
 ## The Problem
 
 R uses ALTREP (Alternative Representations) for many common operations. For
-example, `1:10` creates a compact integer sequence - an ALTREP object - not a
+example, `1:10` creates a compact integer sequence (an ALTREP object), not a
 regular integer vector. This is invisible to R users but matters for Rust code
 because:
 
 1. **ALTREP data pointers are unstable.** Calling `DATAPTR_RO` on an ALTREP
-   vector triggers *materialization* - R allocates a new vector, runs GC, and
+   vector triggers *materialization*: R allocates a new vector, runs GC, and
    fills in the data. This involves R's C runtime and must happen on the R main
    thread.
 
@@ -80,8 +80,8 @@ inspect_vector(c(1L, 2L))  # Works - no materialization needed
 
 `ensure_materialized` works by calling `DATAPTR_RO` (for contiguous types like
 INTSXP, REALSXP) or iterating `STRING_ELT` (for STRSXP) to force R to
-materialize the underlying data. The SEXP itself is unchanged - it still has the
-ALTREP flag set - but its data pointer is now stable.
+materialize the underlying data. The SEXP itself is unchanged (the ALTREP flag
+remains set), but its data pointer is now stable.
 
 ### AltrepSexp: Explicit ALTREP Handling
 
@@ -106,7 +106,7 @@ altrep_info(1:10)          # Works - 1:10 is ALTREP
 altrep_info(c(1L, 2L, 3L)) # Error: "expected an ALTREP vector"
 ```
 
-`AltrepSexp` is `!Send + !Sync` - it cannot be sent to rayon threads or other
+`AltrepSexp` is `!Send + !Sync` and cannot be sent to rayon threads or other
 worker threads. This is enforced at compile time via `PhantomData<Rc<()>>`.
 
 To extract data from an `AltrepSexp`, materialize it on the R main thread:
@@ -156,7 +156,7 @@ pub extern "C-unwind" fn C_is_materialized(x: SEXP) -> SEXP {
 }
 ```
 
-`extern "C-unwind"` functions bypass `TryFromSexp` entirely - they receive the
+`extern "C-unwind"` functions bypass `TryFromSexp` entirely. They receive the
 raw `SEXP` directly from R's `.Call()`. This is necessary when you need to
 inspect ALTREP state without triggering materialization.
 
