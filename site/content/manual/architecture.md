@@ -22,11 +22,11 @@ miniextendr-macros        miniextendr-engine
 (proc macros)             (code generation)
       │                         │
       ├─────────┬───────────────┘
-      ▼         ▼
-miniextendr-api           miniextendr-macros-core
-(runtime library)         (shared parser types)
-      │                         │
-      ▼                    used by macros + lint
+      ▼
+miniextendr-api
+(runtime library)
+      │
+      ▼
 example package / user packages
 (R package with Rust backend)
 ```
@@ -55,10 +55,6 @@ Proc macros that generate the glue code:
 ### miniextendr-engine
 
 Code generation engine. Provides the `miniextendr_write_wrappers` function that reads linkme distributed slices and generates `miniextendr-wrappers.R` (the R-side wrapper functions). Called via a temporary cdylib loaded into R.
-
-### miniextendr-macros-core
-
-Shared parser types used by both `miniextendr-macros` and `miniextendr-lint`. Provides common AST types, ensuring both crates agree on syntax.
 
 ### miniextendr-lint
 
@@ -110,8 +106,8 @@ exists solely to satisfy R's build system requirement for at least one C file.
 
 For CRAN compatibility, all dependencies must be vendored:
 
-1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint): Synced by `./configure` via rsync to `rpkg/vendor/`
-2. **crates.io dependencies** (proc-macro2, syn, quote): Vendored by `cargo vendor` during configure
+1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint) and **crates.io dependencies** (proc-macro2, syn, quote): Both are populated by `cargo revendor` into `rpkg/vendor/` — see [VENDOR.md](VENDOR.md) for details.
+2. **Local crates** use flat paths (`vendor/miniextendr-api/`); **transitive registry crates** use versioned paths (`vendor/serde-1.0.210/`).
 
 ### Cross-package dispatch
 

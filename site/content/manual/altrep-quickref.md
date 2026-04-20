@@ -72,11 +72,21 @@ fn int_range(from: i32, to: i32) -> SEXP {
 | character | `AltStringData` | `Option<&str>` | `fn elt(&self, i: usize) -> Option<&str>` |
 | list | `AltListData` | `SEXP` | `fn elt(&self, i: usize) -> SEXP` |
 
-## Minimal Example (4 steps)
+## Minimal Example: Field-Based Derive (1 step)
 
 ```rust
-// 1. Define data struct
-#[derive(miniextendr_api::ExternalPtr)]
+// Everything generated from the derive — no trait impls needed
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(len = "len", elt = "value", class = "MyClass")]
+pub struct MyData { value: i32, len: usize }
+```
+
+## Minimal Example: Manual Traits (3 steps)
+
+```rust
+// 1. Define data struct with registration derive
+#[derive(miniextendr_api::Altrep)]
+#[altrep(class = "MyClass")]
 pub struct MyData { value: i32, len: usize }
 
 // 2. Implement required traits
@@ -90,11 +100,9 @@ impl AltIntegerData for MyData {
 
 // 3. Generate low-level traits
 miniextendr_api::impl_altinteger_from_data!(MyData);
-
-// 4. Create wrapper
-#[miniextendr(class = "MyClass", pkg = "mypkg")]
-pub struct MyClass(pub MyData);
 ```
+
+In both cases, use `MyData { value: 42, len: 100 }.into_sexp()` to create the ALTREP vector.
 
 ## Optional Methods
 
@@ -111,7 +119,22 @@ pub struct MyClass(pub MyData);
 | **Min** | `min()` | - | O(1) computation possible |
 | **Max** | `max()` | - | O(1) computation possible |
 
-## Macro Syntax
+## Derive Syntax
+
+### Field-based derive (generates everything)
+
+```rust
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(len = "len_field", elt = "value_field", class = "ClassName")]
+pub struct MyType { value_field: i32, len_field: usize }
+
+// Optional: dataptr, serialize, subset via #[altrep(...)] options
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(len = "len", elt_delegate = "data", dataptr, class = "DelegateType")]
+pub struct MyType2 { data: Vec<i32>, len: usize }
+```
+
+### Manual traits macro syntax
 
 ```rust
 // Basic (elt only)
@@ -204,10 +227,11 @@ Do you have data in memory?
 ## Debugging Checklist
 
 - [ ] Function is `pub`?
-- [ ] Struct has `#[miniextendr(class="...", pkg="...")]`?
-- [ ] Used correct macro for vector type?
-- [ ] `impl AltrepLen` provided?
-- [ ] `impl Alt*Data` provided?
+- [ ] Data struct has `#[derive(AltrepInteger)]` (or `#[derive(Altrep)]` for manual pattern)?
+- [ ] `#[altrep(class = "...")]` attribute present?
+- [ ] For manual pattern: `impl AltrepLen` provided?
+- [ ] For manual pattern: `impl Alt*Data` provided?
+- [ ] For manual pattern: used correct `impl_alt*_from_data!` macro?
 - [ ] Ran `devtools::document()`?
 - [ ] Reinstalled package?
 
@@ -223,7 +247,7 @@ Do you have data in memory?
 
 ## Safety Checklist
 
-- [ ] `#[derive(ExternalPtr)]` on data struct
+- [ ] ALTREP derive (`#[derive(Altrep)]` or `#[derive(AltrepInteger)]` etc.) on data struct
 - [ ] No raw pointers outliving their source
 - [ ] `RefCell` (not Mutex) for interior mutability
 - [ ] Returned pointers valid for object lifetime

@@ -34,7 +34,7 @@ These types require an exact R type match. Length must be 1.
 
 | Rust Type | Accepted R Type | On NA | On Type Mismatch |
 |-----------|----------------|-------|------------------|
-| `i32` | INTSXP | Returns `i32::MIN` (NA_integer_) | Error |
+| `i32` | INTSXP | Error (`SexpError::Na`) — use `Option<i32>` for NA | Error |
 | `f64` | REALSXP | Returns NA_real_ (specific NaN) | Error |
 | `u8` | RAWSXP | No NA concept in raw | Error |
 | `Rcomplex` | CPLXSXP | Returns `Rcomplex { r: NA_real_, i: NA_real_ }` | Error |
@@ -243,8 +243,8 @@ Enabled with `features = ["raw_conversions"]`. Uses R's `RAWSXP` for binary POD 
 
 | R Value | Rust Representation | Notes |
 |---------|-------------------|-------|
-| `NA_integer_` | `i32::MIN` (-2147483648) | Excluded from valid i32 range in conversions |
-| `NA_real_` | Specific NaN bit pattern | Distinguished from regular NaN by bit comparison |
+| `NA_integer_` | `i32::MIN` (-2147483648) | Excluded from valid i32 range; inbound NA produces `SexpError::Na` on `i32` (use `Option<i32>` to receive NA) |
+| `NA_real_` | `0x7FF0000000000007A2` (specific NaN bit pattern) | Distinguished from ordinary `f64::NAN` by bit-exact comparison; ALTREP `no_na`/`sum`/`min`/`max` treat only this bit pattern as NA |
 | `NA_logical_` | `i32::MIN` | Same sentinel as NA_integer_ |
 | `NA_character_` | R_NaString CHARSXP | Mapped to `None` in `Option<String>` |
 | `NaN` | `f64::NAN` | **Not** the same as NA_real_; passes through as valid f64 |

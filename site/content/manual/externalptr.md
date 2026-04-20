@@ -87,6 +87,32 @@ Explicit access methods:
 | `as_mut()` | `Option<&mut T>` | Always `Some` for valid ptrs |
 | `as_ptr()` | `*const T` | Raw pointer, no ownership transfer |
 | `as_sexp()` | `SEXP` | The underlying R object |
+| `reborrow()` | `ExternalPtr<T>` | Owned alias sharing the same SEXP; no allocation, no R object copy |
+
+### `reborrow()` — identity-preserving returns
+
+When a `#[miniextendr]` method receives one or more `ExternalPtr<T>` values
+and returns one of them to R, `reborrow()` lets you build an owned
+`ExternalPtr<T>` that points at the same `EXTPTRSXP` without allocating a
+new R object:
+
+```rust
+#[miniextendr(env)]
+impl Counter {
+    // R will see `identical(a, pick_larger(a, b))` == TRUE when `a` wins,
+    // because reborrow() returns the same SEXP rather than a fresh copy.
+    pub fn pick_larger(
+        self: &ExternalPtr<Self>,
+        other: &ExternalPtr<Self>,
+    ) -> ExternalPtr<Self> {
+        if self.value >= other.value { self.reborrow() } else { other.reborrow() }
+    }
+}
+```
+
+`clone()` would allocate a fresh SEXP with a deep copy of the inner `T`;
+`reborrow()` is the correct choice when the caller expects to get back the
+same R object they passed in.
 
 ## Consuming and Dropping
 
@@ -97,6 +123,55 @@ Explicit access methods:
 | `leak(this)` | Returns `&'a mut T`, memory is never freed |
 
 R's GC finalizer handles cleanup when the `ExternalPtr` goes out of scope in Rust without being explicitly consumed. The Rust `Drop` impl is a no-op to avoid double-free.
+
+### Panicking destructors are not recoverable
+
+The GC finalizer is an `extern "C"` function — unwinding through it is
+undefined behavior. miniextendr wraps every ExternalPtr finalizer in
+`drop_catching_panic`, which calls `std::panic::catch_unwind` around the
+destructor; if a `Drop` impl panics the helper prints the panic message
+to stderr and calls `std::process::abort()`. That's the only safe
+response — R's GC cannot resume after a cross-ABI unwind.
+
+This means: a panic in `impl Drop for YourType` crashes the R session.
+Treat destructors as infallible. Put anything that can fail (file
+writes, network, mutex takedown) behind an explicit `close()` /
+`finalize()` method that the user calls, and keep `Drop` limited to
+plain memory release.
+
+## ExternalPtr as a Self Receiver
+
+Inside a `#[miniextendr]` impl block, methods can take the wrapping
+`ExternalPtr` as the receiver instead of a plain reference:
+
+```rust
+#[miniextendr(env)]
+impl MyType {
+    // Plain receiver — gets &MyType via Deref
+    pub fn value(&self) -> i32 { self.value }
+
+    // ExternalPtr receivers — access ExternalPtr methods directly;
+    // Deref/DerefMut still expose the inner T transparently.
+    pub fn is_null_ptr(self: &ExternalPtr<Self>) -> bool {
+        self.is_null()
+    }
+
+    pub fn set_via_ptr(self: &mut ExternalPtr<Self>, v: i32) {
+        self.value = v;  // DerefMut to &mut MyType
+    }
+}
+```
+
+This is the form to use when a method needs `ExternalPtr` identity or tag
+metadata — `as_sexp()`, `tag()`, `protected()`, `ptr_eq()`, `reborrow()`,
+etc. The macro rewrites `self` to an internal binding so the pattern
+compiles on stable Rust (no `arbitrary_self_types` required), and the
+generated C wrapper uses typed `ExternalPtr::<T>::wrap_sexp()` rather than
+an erased downcast.
+
+Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`.
+Consuming receivers (`self: ExternalPtr<Self>`) are not supported — R owns
+the pointer.
 
 ## Type Identification with TypedExternal
 
@@ -291,14 +366,17 @@ The internal layout of an `ExternalPtr`-created `EXTPTRSXP`:
 
 ```text
 EXTPTRSXP
-  addr  → *mut T (heap-allocated Rust value)
+  addr  → *mut Box<dyn Any> (thin pointer → heap-allocated fat pointer)
+            └→ Box<T> (the actual Rust value)
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
   prot  → VECSXP[2]
             [0] → SYMSXP (TYPE_ID_CSTR, for type checking)
             [1] → user-protected SEXP (set via set_protected)
 ```
 
-The `prot` slot holds a two-element list. Slot 0 is the namespaced type ID symbol for fast pointer-based type comparison. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer.
+Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols.
+
+The `prot` slot holds a two-element list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer.
 
 ## Thread Safety
 

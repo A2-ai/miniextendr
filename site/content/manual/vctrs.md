@@ -431,6 +431,18 @@ impl DerivedCurrency {
 
 This gives you the same vctrs class registration but lets you override specific protocol methods with Rust implementations. The `format_currency` method is called as `format.derived_currency()` from R.
 
+### Non-`Self` constructors in vctrs impl blocks
+
+For `#[miniextendr(vctrs(...))]` impl blocks, a `fn new(...)` with no receiver
+is treated as the constructor even if its return type isn't `Self`. Returning
+the underlying data vector (e.g. `Vec<f64>`) is the canonical vctrs pattern:
+the macro wraps the return through `vctrs::new_vctr()` into the class's S3
+vector. Returning `Self` here would produce an `ExternalPtr`, which
+`new_vctr` rejects as `.data`. This relaxation also lets `match_arg` / enum
+choices work on vctrs constructors — the generated R wrapper splices the
+enum's choices into the formal default just like any other `#[miniextendr]`
+function.
+
 ---
 
 ## Derive vs Manual Approach

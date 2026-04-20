@@ -124,14 +124,22 @@ Similar to `SendablePtr` but allows null (for allocation failures).
 
 ## ExternalPtr<T> Thread Safety
 
-`ExternalPtr<T>` is **not** `Send` or `Sync` because:
+`ExternalPtr<T>` is `Send` when `T: Send` (declared as
+`unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T>` in
+`miniextendr-api/src/externalptr.rs`). It is **not** `Sync` — there is no
+interior synchronization, and R's runtime is single-threaded.
 
-1. The underlying SEXP is an R object that should only be accessed on the main thread
-2. R's finalizer registration (`R_RegisterCFinalizerEx`) must happen on main thread
-3. The data pointer can become invalid if R garbage collects the SEXP
+This is sound because the `ExternalPtr` value itself is just an owning handle
+over a heap allocation (`Box<Box<dyn Any>>`); transferring the handle to
+another thread moves ownership, no shared state is created. What is *not*
+allowed from off-thread is calling R API functions on the underlying SEXP —
+R's GC, finalizer registration, and pointer dereference all require the main
+thread.
 
-**Safe pattern**: Create `ExternalPtr` on main thread, return to R. Access only
-via `.Call` entry points (which run on main thread).
+**Safe pattern**: Freely move `ExternalPtr<T: Send>` between Rust threads for
+compute-only work, but perform all R API calls (including construction from
+a SEXP, finalizer registration, and returning to R) on the main thread.
+`.Call` entry points always run on the main thread.
 
 ## R_UnwindProtect
 
@@ -255,16 +263,16 @@ thread panics (there is no routing infrastructure to fall back on).
 
 ## Initialization Requirements
 
-`miniextendr_runtime_init()` must be called before any R API use:
+`miniextendr_runtime_init()` must be called before any R API use. In practice
+this happens via the `miniextendr_init!` macro, which generates
+`R_init_<pkgname>` and calls `package_init()` (which runs
+`miniextendr_runtime_init()` plus wrapper/registration setup):
 
-```c
-void R_init_pkgname(DllInfo *dll) {
-    miniextendr_runtime_init();  // First!
-    R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
-}
+```rust
+miniextendr_api::miniextendr_init!(pkgname);
 ```
 
-This function:
+See [ENTRYPOINT.md](ENTRYPOINT.md) for the full init sequence. `package_init()`:
 1. Records `R_MAIN_THREAD_ID` for thread checks
 2. With `worker-thread` feature: spawns the worker thread and sets up channels
 3. Without `worker-thread`: only records the thread ID (no thread spawned)
@@ -278,7 +286,7 @@ will cause all subsequent thread checks to be incorrect.
 |-----------|-----------|
 | `R_MAIN_THREAD_ID` | Set once, from main thread, during init |
 | `Sendable<T>` | Value moved, not shared; accessed only at destination |
-| `ExternalPtr<T>` | Not Send/Sync; main thread only |
+| `ExternalPtr<T>` | `Send` when `T: Send`; not `Sync`; R API calls require main thread |
 | `AltrepSexp` | !Send + !Sync; materialization on main thread only |
 | SEXP (via `TryFromSexp`) | ALTREP auto-materialized before function body runs |
 | `R_CONTINUATION_TOKEN` | Created once, preserved for session lifetime |

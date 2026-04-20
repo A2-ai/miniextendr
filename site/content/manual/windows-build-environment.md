@@ -204,6 +204,53 @@ cp MkRules.dist MkRules.local
 make all recommended
 ```
 
+### Option D: Register as a Windows Terminal profile
+
+To make the Rtools MSYS2 shell available (and optionally the default) in
+Windows Terminal, add a profile to
+`%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`:
+
+```json
+{
+  "guid": "{ede0cb62-8f00-4a05-8058-c00da0637b98}",
+  "name": "Rtools45 UCRT64 (x86_64)",
+  "commandline": "C:\\rtools45\\usr\\bin\\bash.exe --login -i",
+  "icon": "C:\\rtools45\\ucrt64.ico",
+  "hidden": false,
+  "startingDirectory": "%USERPROFILE%",
+  "environment": {
+    "MSYSTEM": "UCRT64",
+    "CHERE_INVOKING": "1",
+    "MSYS2_PATH_TYPE": "inherit"
+  }
+}
+```
+
+Place the profile inside `profiles.list`. To make it the default, set
+`defaultProfile` at the top of the settings file to the same GUID.
+
+Key points:
+
+- `MSYS2_PATH_TYPE=inherit` is **required** so the MSYS2 login shell prepends
+  its toolchain paths to the Windows PATH instead of replacing it. This is
+  what keeps `cargo`, `rustc`, `R.exe`, `git`, etc. reachable inside the
+  shell.
+- `CHERE_INVOKING=1` tells `/etc/profile` not to `cd` to `$HOME`, so the
+  shell opens in whatever directory launched it (important for "Open in
+  Terminal" actions in Explorer / IDEs).
+- For the aarch64 toolchain, swap in `C:\rtools45-aarch64\usr\bin\bash.exe`
+  and `MSYSTEM=CLANGARM64`. Only add that profile if Rtools45-aarch64 is
+  actually installed — a missing `commandline` or `icon` path makes Windows
+  Terminal warn on every startup.
+
+### Option E: Register as a VS Code / Positron terminal profile
+
+The repo's `.vscode/settings.json` ships Windows terminal profiles for
+UCRT64 (and CLANGARM64) using the same environment as Option D. Pick one
+from the `+` dropdown in the integrated terminal, or via the Command
+Palette → *Terminal: Create New Terminal (With Profile)*.
+`.vscode/tasks.json` also exposes them as *Tasks: Run Task* entries.
+
 ---
 
 ## How R Invokes make for Package Installation
@@ -249,3 +296,35 @@ PATH="${R_CUSTOM_TOOLS_PATH:-${R_RTOOLS45_PATH}};${PATH}/"
    `.static.posix` in the toolchain name). `DLLFLAGS` includes
    `-static-libgcc` and libraries are linked statically from
    `LOCAL_SOFT/lib`.
+
+7. **`/dev/shm` and `/dev/mqueue` warnings when launching from Windows
+   Terminal.** Starting an Rtools shell directly via `bash.exe` in
+   Windows Terminal can print:
+
+   ```text
+   mkdir: cannot create directory '/dev/shm': Read-only file system
+   Creating /dev/shm directory failed.
+   POSIX semaphores and POSIX shared memory will not work
+
+   mkdir: cannot create directory '/dev/mqueue': Read-only file system
+   Creating /dev/mqueue directory failed.
+   POSIX message queues will not work
+   ```
+
+   The MSYS2 runtime tries to create these mounts on startup; when bash
+   is launched outside the `msys2_shell.cmd` wrapper it can't set them
+   up against the virtual `/dev` tree. The warnings are **benign for R
+   package work** — nothing in the R build toolchain (`gcc`, `make`,
+   `R CMD INSTALL`, `cargo`) uses POSIX semaphores or message queues.
+
+   To silence them, launch through the wrapper instead of raw `bash.exe`
+   in your Windows Terminal profile:
+
+   ```json
+   "commandline": "C:\\rtools45\\msys2_shell.cmd -defterm -here -no-start -ucrt64"
+   ```
+
+   (use `-clangarm64` for Rtools45-aarch64). The wrapper mounts
+   `/dev/shm` and `/dev/mqueue` as tmpfs before bash starts. The
+   Option D profile above works fine despite the warnings, so only
+   switch wrappers if the noise bothers you.

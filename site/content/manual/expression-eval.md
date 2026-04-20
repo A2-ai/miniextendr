@@ -90,13 +90,22 @@ Provides handles to R's well-known environments:
 ```rust
 use miniextendr_api::expression::REnv;
 
-let global = REnv::global();  // R_GlobalEnv
-let base = REnv::base();      // R_BaseEnv
-let empty = REnv::empty();    // R_EmptyEnv
+let global = REnv::global();                     // R_GlobalEnv
+let base = REnv::base();                         // R_BaseEnv
+let empty = REnv::empty();                       // R_EmptyEnv
+let base_ns = REnv::base_namespace();            // R_BaseNamespace (for .Internal etc.)
+let methods = REnv::package_namespace("methods"); // getNamespace("methods")
+let caller = REnv::caller();                     // calling environment (R_GetCurrentEnv)
 
 // Use as SEXP
 let sexp = base.as_sexp();
 ```
+
+Prefer `package_namespace(pkg)` over chasing symbols through
+`R_GlobalEnv` — the former mirrors `getNamespace(pkg)` and resolves
+against the package's own namespace regardless of what the user has
+attached on the search path. `eval_global()` has been removed; evaluate
+in `base()`, `base_namespace()`, or the caller's env instead.
 
 ## Safety Requirements
 

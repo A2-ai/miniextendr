@@ -273,6 +273,26 @@ toolchain checks.
 **Note:** In monorepo mode, `miniextendr_doctor()` may report false-positive vendor
 warnings because vendored crates are resolved differently via `[patch]` in the workspace.
 
+## Git Hooks
+
+```r
+use_miniextendr_git_hooks(path = ".")
+```
+
+Installs idempotent `pre-commit` and `post-merge` hooks into `.git/hooks/`:
+
+| Hook | Checks |
+|------|--------|
+| `pre-commit` | `cargo fmt --check`; blocks if `configure.ac` is staged without an up-to-date `configure`; warns on a likely-stale `inst/vendor.tar.xz` |
+| `post-merge` | Reminds you to reconfigure + rebuild when build-relevant files changed (`configure.ac`, `Makevars.in`, `Cargo.toml`, `*.rs`) |
+
+The hooks auto-detect standalone vs monorepo layouts (searches for
+`src/rust/Cargo.toml`) and preserve existing content from other tools —
+they append a marker-delimited miniextendr section rather than
+overwriting. `miniextendr_doctor()` reports missing hooks as a warning.
+Running twice is safe; the installer skips on the `# miniextendr`
+marker.
+
 ## Configuration
 
 `miniextendr.yml` in the package root for project-level settings:
@@ -351,6 +371,8 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | **Inline compilation** | `rust_source`, `rust_function`, `rust_source_clean` |
 | **Cargo wrappers** | `cargo_add`, `cargo_rm`, `cargo_build`, `cargo_check`, `cargo_test`, `cargo_clippy`, `cargo_fmt`, `cargo_doc`, `cargo_search`, `cargo_deps`, `cargo_update`, `cargo_init`, `cargo_new` |
 | **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_vendor_lib` |
+| **Native R package FFI** | `use_native_package`, `check_native_package` (see [NATIVE_R_PACKAGES.md](NATIVE_R_PACKAGES.md)) |
+| **Git hooks** | `use_miniextendr_git_hooks` (pre-commit + post-merge reminders) |
 | **Vendoring** | `vendor_miniextendr`, `vendor_crates_io`, `vendor_sync`, `miniextendr_vendor`, `miniextendr_available_versions` |
 | **Diagnostics** | `has_miniextendr`, `miniextendr_status`, `miniextendr_validate`, `miniextendr_doctor`, `miniextendr_check_rust` |
 | **Configuration** | `miniextendr_config`, `miniextendr_config_defaults` |
