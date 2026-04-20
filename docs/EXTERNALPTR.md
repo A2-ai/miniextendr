@@ -83,6 +83,32 @@ Explicit access methods:
 | `as_mut()` | `Option<&mut T>` | Always `Some` for valid ptrs |
 | `as_ptr()` | `*const T` | Raw pointer, no ownership transfer |
 | `as_sexp()` | `SEXP` | The underlying R object |
+| `reborrow()` | `ExternalPtr<T>` | Owned alias sharing the same SEXP; no allocation, no R object copy |
+
+### `reborrow()` — identity-preserving returns
+
+When a `#[miniextendr]` method receives one or more `ExternalPtr<T>` values
+and returns one of them to R, `reborrow()` lets you build an owned
+`ExternalPtr<T>` that points at the same `EXTPTRSXP` without allocating a
+new R object:
+
+```rust
+#[miniextendr(env)]
+impl Counter {
+    // R will see `identical(a, pick_larger(a, b))` == TRUE when `a` wins,
+    // because reborrow() returns the same SEXP rather than a fresh copy.
+    pub fn pick_larger(
+        self: &ExternalPtr<Self>,
+        other: &ExternalPtr<Self>,
+    ) -> ExternalPtr<Self> {
+        if self.value >= other.value { self.reborrow() } else { other.reborrow() }
+    }
+}
+```
+
+`clone()` would allocate a fresh SEXP with a deep copy of the inner `T`;
+`reborrow()` is the correct choice when the caller expects to get back the
+same R object they passed in.
 
 ## Consuming and Dropping
 
@@ -93,6 +119,40 @@ Explicit access methods:
 | `leak(this)` | Returns `&'a mut T`, memory is never freed |
 
 R's GC finalizer handles cleanup when the `ExternalPtr` goes out of scope in Rust without being explicitly consumed. The Rust `Drop` impl is a no-op to avoid double-free.
+
+## ExternalPtr as a Self Receiver
+
+Inside a `#[miniextendr]` impl block, methods can take the wrapping
+`ExternalPtr` as the receiver instead of a plain reference:
+
+```rust
+#[miniextendr(env)]
+impl MyType {
+    // Plain receiver — gets &MyType via Deref
+    pub fn value(&self) -> i32 { self.value }
+
+    // ExternalPtr receivers — access ExternalPtr methods directly;
+    // Deref/DerefMut still expose the inner T transparently.
+    pub fn is_null_ptr(self: &ExternalPtr<Self>) -> bool {
+        self.is_null()
+    }
+
+    pub fn set_via_ptr(self: &mut ExternalPtr<Self>, v: i32) {
+        self.value = v;  // DerefMut to &mut MyType
+    }
+}
+```
+
+This is the form to use when a method needs `ExternalPtr` identity or tag
+metadata — `as_sexp()`, `tag()`, `protected()`, `ptr_eq()`, `reborrow()`,
+etc. The macro rewrites `self` to an internal binding so the pattern
+compiles on stable Rust (no `arbitrary_self_types` required), and the
+generated C wrapper uses typed `ExternalPtr::<T>::wrap_sexp()` rather than
+an erased downcast.
+
+Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`.
+Consuming receivers (`self: ExternalPtr<Self>`) are not supported — R owns
+the pointer.
 
 ## Type Identification with TypedExternal
 

@@ -677,6 +677,17 @@ Both blocks generate methods for the same type.
 
 ---
 
+## Generated Wrapper Annotations
+
+Each generated R wrapper (constructor, instance method, or static method)
+carries a `# Type::method (line:col)` source-location comment just above
+the `.Call()` line, pointing back at the Rust declaration. This is emitted
+for all six class systems (env, R6, S3, S4, S7, vctrs) and makes
+`rpkg/R/*-wrappers.R` diffs easy to trace when macro changes shift
+generated code around.
+
+---
+
 ## Trait Implementations
 
 For cross-package interoperability:
