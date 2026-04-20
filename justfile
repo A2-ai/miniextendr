@@ -360,7 +360,7 @@ configure-cran:
 # fresh clone: rpkg/src/rust/Cargo.toml ships with frozen `path =
 # "../../vendor/..."` deps, and inst/vendor.tar.xz is no longer tracked, so
 # without the source-root pre-seed the first `cargo metadata` call fails
-# with "failed to read .../vendor/miniextendr-api-0.1.0/Cargo.toml" and the
+# with "failed to read .../vendor/miniextendr-api/Cargo.toml" and the
 # whole vendor step aborts. See #280.
 vendor:
     cargo revendor \

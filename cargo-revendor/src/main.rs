@@ -283,14 +283,9 @@ fn main() -> Result<()> {
         // After seeding, each workspace member's Cargo.toml still has its
         // ORIGINAL inter-workspace `path = "../other-crate"` deps, which
         // resolve relative to the NEW vendor location and go nowhere.
-        // Rewrite them to sibling vendor dirs (e.g. `../miniextendr-macros-0.1.0`)
-        // so cargo metadata can walk the dep graph.
-        vendor::rewrite_local_path_deps(
-            &output,
-            &source_root_members,
-            /* versioned_dirs = */ true,
-            v,
-        )?;
+        // Rewrite them to sibling vendor dirs (flat `../<name>`) so
+        // cargo metadata can walk the dep graph.
+        vendor::rewrite_local_path_deps(&output, &source_root_members, v)?;
     }
 
     // Step 1b: Load cargo metadata to discover dependencies.
@@ -414,13 +409,15 @@ fn main() -> Result<()> {
         v,
     )?;
 
-    // Step 4: Extract packaged local crates into vendor staging
+    // Step 4: Extract packaged local crates into vendor staging.
+    // Local crates always land at flat `vendor/<name>/`. Pass the pkg_version
+    // so the extractor can also clear any `vendor/<name>-<version>/` placeholder
+    // that `cargo vendor --versioned-dirs` may have created.
     for (pkg_name, crate_path) in &packaged {
-        let pkg_version = if versioned_dirs {
-            local_pkgs.iter().find(|p| &p.name == pkg_name).map(|p| p.version.as_str())
-        } else {
-            None
-        };
+        let pkg_version = local_pkgs
+            .iter()
+            .find(|p| &p.name == pkg_name)
+            .map(|p| p.version.as_str());
         vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, pkg_version, v)?;
     }
 
@@ -438,7 +435,7 @@ fn main() -> Result<()> {
     vendor::strip_vendor_path_deps(&vendor_staging, v)?;
 
     // Step 6: Rewrite inter-crate path deps for local crates
-    vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, versioned_dirs, v)?;
+    vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, v)?;
 
     // Step 7: Clear checksums
     vendor::clear_checksums(&vendor_staging)?;
@@ -622,7 +619,20 @@ fn merge_packages(
 
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
-    for entry in walkdir::WalkDir::new(src).min_depth(1) {
+    // When dst is nested inside src (e.g., bootstrap-seeding a source root
+    // that contains its own vendor/ subdir), skip the destination subtree so
+    // we don't recursively copy freshly-written files into themselves.
+    let dst_canonical = dst.canonicalize().unwrap_or_else(|_| dst.to_path_buf());
+    for entry in walkdir::WalkDir::new(src)
+        .min_depth(1)
+        .into_iter()
+        .filter_entry(|e| {
+            e.path()
+                .canonicalize()
+                .map(|p| p != dst_canonical)
+                .unwrap_or(true)
+        })
+    {
         let entry = entry?;
         let relative = entry.path().strip_prefix(src).unwrap();
         let target = dst.join(relative);
@@ -635,10 +645,11 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
     Ok(())
 }
 
-/// Pre-seed `<vendor>/<name>-<version>/` with a copy of each source-root
-/// workspace member so `cargo metadata` on the target manifest can resolve
-/// `path = "../../vendor/<name>-<version>/"` deps even when `vendor/` is
-/// empty on a fresh clone.
+/// Pre-seed `<vendor>/<name>/` with a copy of each source-root workspace
+/// member so `cargo metadata` on the target manifest can resolve
+/// `path = "../../vendor/<name>/"` deps even when `vendor/` is empty on a
+/// fresh clone. Local workspace crates always go flat (single-version by
+/// construction, so the #214 rationale for versioned dirs doesn't apply).
 ///
 /// Skips directories that already look like a Cargo package (contain a
 /// `Cargo.toml`) so we don't stomp on a user's in-progress vendor tree.
@@ -654,7 +665,7 @@ fn bootstrap_vendor_from_source_root(
 ) -> Result<()> {
     let mut seeded = 0usize;
     for pkg in source_root_members {
-        let dir = vendor.join(format!("{}-{}", pkg.name, pkg.version));
+        let dir = vendor.join(&pkg.name);
         if dir.join("Cargo.toml").is_file() {
             continue; // already populated (tarball unpack, previous run)
         }
