@@ -95,6 +95,11 @@ framework.
 
 - **[R Build System](R_BUILD_SYSTEM.md)** -- How R builds packages with
   compiled code
+- **[Native R Packages](NATIVE_R_PACKAGES.md)** -- Calling C APIs from other R
+  packages (`cli`, `Matrix`, `vctrs`, ...) via `LinkingTo:` + bindgen shims
+- **[`NATIVE_PKG_CPPFLAGS`](NATIVE_PKG_CPPFLAGS.md)** -- How `configure.ac`
+  and `Makevars.in` cooperate to pass `LinkingTo:` include paths into C shim
+  compilation
 - **[Templates](TEMPLATES.md)** -- `.in` template files and configure
 - **[minirextendr](MINIREXTENDR.md)** -- Scaffolding, vendoring, and R workflow
   helpers
