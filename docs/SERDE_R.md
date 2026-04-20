@@ -308,6 +308,40 @@ pub fn convert_from_r(sexp: SEXP) -> Vec<i32> {
 }
 ```
 
+## Columnar `data.frame` Assembly
+
+For `&[T: Serialize]`, `ColumnarDataFrame::from_rows` (alias
+`vec_to_dataframe`) produces a column-oriented R `data.frame` where each
+field of `T` becomes one atomic column. Nested structs are recursively
+flattened into prefixed columns (`point_x`, `point_y`); `#[serde(flatten)]`
+fields appear without a prefix; `#[serde(skip_serializing_if)]` fills NA.
+`Option<Struct>` fills NA across all sub-columns when `None`.
+
+```rust
+use miniextendr_api::serde_r::{ColumnarDataFrame, vec_to_dataframe};
+
+#[derive(Serialize)]
+struct Row {
+    id: i32,
+    point: Point,           // flattened to point_x, point_y
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,   // NA when None
+}
+
+#[miniextendr]
+pub fn rows_as_df(rows: Vec<Row>) -> ColumnarDataFrame {
+    ColumnarDataFrame::from_rows(&rows).unwrap()
+        .rename("point_x", "x")
+        .rename("point_y", "y")
+        .drop("note")
+}
+```
+
+`ColumnarDataFrame` implements `IntoR`, so return it directly from a
+`#[miniextendr]` function — no explicit `.build()` or `into_sexp()` call
+needed. Builder methods (`rename`, `strip_prefix`, `drop`, `select`) are
+chainable and run before the SEXP reaches R.
+
 ## Error Handling
 
 Deserialization can fail for various reasons:
