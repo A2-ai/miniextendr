@@ -56,9 +56,15 @@ struct Cli {
     #[arg(hide = true, default_value = "revendor")]
     _subcommand: String,
 
-    /// Path to the Cargo.toml of the R package's Rust crate
-    #[arg(long, default_value = "src/rust/Cargo.toml")]
-    manifest_path: PathBuf,
+    /// Path to the Cargo.toml of the R package's Rust crate.
+    ///
+    /// When omitted, cargo-revendor searches the current directory for a
+    /// plausible R-package layout: first `src/rust/Cargo.toml` (canonical),
+    /// then `./Cargo.toml` (running from inside the Rust crate), then any
+    /// single subdirectory matching `*/src/rust/Cargo.toml` (e.g. running
+    /// from a workspace root where the R package is in a subdir).
+    #[arg(long)]
+    manifest_path: Option<PathBuf>,
 
     /// Output directory for vendored crates
     #[arg(long, short, default_value = "vendor")]
@@ -208,10 +214,7 @@ fn main() -> Result<()> {
     // versioned_dirs is default-on; only disable when --flat-dirs is passed
     let versioned_dirs = !cli.flat_dirs;
 
-    let manifest_path = cli
-        .manifest_path
-        .canonicalize()
-        .with_context(|| format!("manifest not found: {}", cli.manifest_path.display()))?;
+    let manifest_path = resolve_manifest_path(cli.manifest_path.as_deref())?;
 
     if v.info() && !cli.verify {
         eprintln!(
@@ -529,6 +532,71 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Resolve `--manifest-path`, auto-discovering a plausible R-package layout
+/// when the flag is omitted.
+///
+/// Search order, from the current working directory:
+/// 1. `src/rust/Cargo.toml` (canonical R-package layout)
+/// 2. `./Cargo.toml` (CWD is the Rust crate itself)
+/// 3. `*/src/rust/Cargo.toml` (R package lives in a subdirectory — e.g.
+///    running from a repo root where the R package is `dvs-rpkg/`)
+///
+/// When the user passes `--manifest-path`, we trust them — no discovery.
+fn resolve_manifest_path(user_path: Option<&std::path::Path>) -> Result<PathBuf> {
+    if let Some(p) = user_path {
+        return p
+            .canonicalize()
+            .with_context(|| format!("manifest not found: {}", p.display()));
+    }
+    let cwd = std::env::current_dir().context("cannot read current directory")?;
+    let canonical = cwd.join("src/rust/Cargo.toml");
+    if canonical.exists() {
+        return canonical.canonicalize().context("manifest not found");
+    }
+    // Running from inside the Rust crate itself (has Cargo.toml + src/lib.rs or src/main.rs).
+    let in_crate = cwd.join("Cargo.toml");
+    if in_crate.exists()
+        && (cwd.join("src/lib.rs").exists() || cwd.join("src/main.rs").exists())
+    {
+        return in_crate.canonicalize().context("manifest not found");
+    }
+    // Subdirectory layout: R package in a subdir (e.g. dvs-rpkg/src/rust/Cargo.toml).
+    let mut hits: Vec<PathBuf> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&cwd) {
+        for entry in rd.flatten() {
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let candidate = entry.path().join("src").join("rust").join("Cargo.toml");
+            if candidate.exists() {
+                hits.push(candidate);
+            }
+        }
+    }
+    match hits.len() {
+        0 => anyhow::bail!(
+            "no Cargo.toml found at `src/rust/Cargo.toml`, `./Cargo.toml`, or `*/src/rust/Cargo.toml`.\n\
+             Pass `--manifest-path <path>` or run from your R package's directory."
+        ),
+        1 => hits
+            .into_iter()
+            .next()
+            .unwrap()
+            .canonicalize()
+            .context("manifest not found"),
+        _ => {
+            let list = hits
+                .iter()
+                .map(|p| format!("  {}", p.display()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            anyhow::bail!(
+                "multiple candidate manifests found; disambiguate with `--manifest-path`:\n{list}"
+            );
+        }
+    }
 }
 
 /// Verify that Cargo.lock, vendor/, and (optionally) the tarball agree.

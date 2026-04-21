@@ -382,3 +382,69 @@ cfg-if = "1"
 }
 
 // endregion
+
+// region: Manifest auto-discovery (no --manifest-path)
+
+/// **D3** — when `--manifest-path` is omitted, pick up a canonical
+/// `src/rust/Cargo.toml` laid out relative to the current directory.
+#[test]
+fn auto_discovers_canonical_rpkg_layout() {
+    use predicates::prelude::PredicateBooleanExt;
+    let dir = tempfile::tempdir().unwrap();
+    let rust = dir.path().join("src/rust");
+    std::fs::create_dir_all(&rust).unwrap();
+    std::fs::write(
+        rust.join("Cargo.toml"),
+        "[package]\nname=\"p\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[lib]\npath=\"lib.rs\"\n",
+    )
+    .unwrap();
+    std::fs::write(rust.join("lib.rs"), "").unwrap();
+
+    // No --manifest-path; should not bail out on discovery.
+    revendor_cmd()
+        .current_dir(dir.path())
+        .args(["revendor", "--verify", "--output", "vendor-never-created"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("no Cargo.toml found").not());
+}
+
+/// **D4** — when `--manifest-path` is omitted and the R package is in a
+/// subdirectory (e.g. `dvs-rpkg/src/rust/Cargo.toml`), auto-discover it.
+#[test]
+fn auto_discovers_subdir_layout() {
+    use predicates::prelude::PredicateBooleanExt;
+    let dir = tempfile::tempdir().unwrap();
+    let rust = dir.path().join("dvs-rpkg/src/rust");
+    std::fs::create_dir_all(&rust).unwrap();
+    std::fs::write(
+        rust.join("Cargo.toml"),
+        "[package]\nname=\"p\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[lib]\npath=\"lib.rs\"\n",
+    )
+    .unwrap();
+    std::fs::write(rust.join("lib.rs"), "").unwrap();
+
+    revendor_cmd()
+        .current_dir(dir.path())
+        .args(["revendor", "--verify", "--output", "vendor-never-created"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("no Cargo.toml found").not());
+}
+
+/// **D5** — when no plausible manifest exists anywhere, fail with a clear
+/// message pointing at `--manifest-path`.
+#[test]
+fn no_manifest_nearby_gives_helpful_error() {
+    let dir = tempfile::tempdir().unwrap();
+
+    revendor_cmd()
+        .current_dir(dir.path())
+        .args(["revendor"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("no Cargo.toml found"))
+        .stderr(predicates::str::contains("--manifest-path"));
+}
+
+// endregion
