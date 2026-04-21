@@ -282,9 +282,10 @@ impl ColumnarDataFrame {
         }
     }
 
-    /// Replace the column named `name` with `column`. No-op if `name` doesn't
-    /// match any column. Caller is responsible for matching row length and for
-    /// ensuring `column` is a valid R vector; miniextendr does not validate.
+    /// Upsert a column: replace the column named `name` with `column` if it
+    /// already exists, otherwise append `column` at the end. Caller is
+    /// responsible for matching row length and for ensuring `column` is a
+    /// valid R vector; miniextendr does not validate.
     pub fn with_column(self, name: &str, column: SEXP) -> Self {
         unsafe {
             let names_sexp = self.sexp.get_names();
@@ -295,11 +296,32 @@ impl ColumnarDataFrame {
             for i in 0..ncol {
                 if col_name(names_sexp, i) == name {
                     self.sexp.set_vector_elt(i, column);
-                    break;
+                    return self;
                 }
             }
+
+            // Not found — append at the end. Reallocate the list and names,
+            // copy over existing entries, add the new column.
+            let new_ncol = ncol + 1;
+            let new_list = Rf_allocVector(SEXPTYPE::VECSXP, new_ncol);
+            Rf_protect(new_list);
+            let new_names = Rf_allocVector(SEXPTYPE::STRSXP, new_ncol);
+            Rf_protect(new_names);
+
+            for i in 0..ncol {
+                new_list.set_vector_elt(i, self.sexp.vector_elt(i));
+                new_names.set_string_elt(i, names_sexp.string_elt(i));
+            }
+            new_list.set_vector_elt(ncol, column);
+            new_names.set_string_elt(ncol, SEXP::charsxp(name));
+
+            new_list.set_names(new_names);
+            copy_df_attrs(self.sexp, new_list);
+
+            Rf_unprotect(2);
+
+            ColumnarDataFrame { sexp: new_list }
         }
-        self
     }
 }
 

@@ -90,7 +90,7 @@ test_that("select keeps only named columns in order", {
 })
 
 test_that("with_column replaces an existing column", {
-  df <- test_columnar_with_column()
+  df <- test_columnar_with_column_replace()
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 3)
   expect_equal(names(df), c("id", "value"))
@@ -101,12 +101,16 @@ test_that("with_column replaces an existing column", {
   expect_equal(df$value, c(10.0, 20.0, 30.0))
 })
 
-test_that("with_column for a nonexistent column is a silent no-op", {
-  df <- test_columnar_with_column_noop()
+test_that("with_column appends a new column when the name is absent", {
+  df <- test_columnar_with_column_append()
   expect_s3_class(df, "data.frame")
-  expect_equal(names(df), c("x", "y"))
-  expect_equal(df$x, 1.0)
-  expect_equal(df$y, 2.0)
+  expect_equal(nrow(df), 2)
+  # Original columns first, new "label" appended at the end.
+  expect_equal(names(df), c("x", "y", "label"))
+  expect_equal(df$x, c(1.0, 3.0))
+  expect_equal(df$y, c(2.0, 4.0))
+  expect_type(df$label, "character")
+  expect_equal(df$label, c("first", "second"))
 })
 
 test_that("strip_prefix removes prefix from matching columns", {

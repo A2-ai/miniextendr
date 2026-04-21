@@ -262,11 +262,12 @@ pub fn test_columnar_select() -> ColumnarDataFrame {
         .select(&["point_y", "label"])
 }
 
-/// with_column: replace an integer column with a character SEXP of matching length.
+/// with_column: replace an existing integer column with a character SEXP of
+/// matching length.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_with_column() -> ColumnarDataFrame {
+pub fn test_columnar_with_column_replace() -> ColumnarDataFrame {
     #[derive(Serialize)]
     #[serde(crate = "crate::serde")]
     struct Row {
@@ -284,16 +285,19 @@ pub fn test_columnar_with_column() -> ColumnarDataFrame {
         .with_column("id", replacement)
 }
 
-/// with_column: no-op when column name doesn't exist.
+/// with_column: append a new column when the name doesn't exist.
 ///
 /// @export
 #[miniextendr]
-pub fn test_columnar_with_column_noop() -> ColumnarDataFrame {
-    let rows = vec![Inner { x: 1.0, y: 2.0 }];
-    let replacement = vec!["z".to_string()].into_sexp();
+pub fn test_columnar_with_column_append() -> ColumnarDataFrame {
+    let rows = vec![
+        Inner { x: 1.0, y: 2.0 },
+        Inner { x: 3.0, y: 4.0 },
+    ];
+    let new_col = vec!["first".to_string(), "second".to_string()].into_sexp();
     ColumnarDataFrame::from_rows(&rows)
         .expect("from_rows")
-        .with_column("nonexistent", replacement)
+        .with_column("label", new_col)
 }
 
 /// strip_prefix: remove "point_" from column names.
