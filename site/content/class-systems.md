@@ -137,3 +137,17 @@ impl Describable for Counter {
 ```
 
 In R, trait methods are accessible via `Type$Trait$method(obj)` (standalone) or `obj$Trait$method()` (`$` dispatch).
+
+Trait dispatch works cross-package: a consumer package can call trait methods registered by a producer package through the trait ABI.
+
+## Multiple Impl Blocks
+
+If a type has more than one `#[miniextendr]` impl block, add `#[miniextendr(label = "...")]` to disambiguate them. Without a label, the second block causes a lint error (MXL009).
+
+```rust
+#[miniextendr(label = "counter_core")]
+impl Counter { /* ... */ }
+
+#[miniextendr(label = "counter_ext")]
+impl Counter { /* additional methods */ }
+```
