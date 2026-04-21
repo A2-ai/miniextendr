@@ -2,6 +2,7 @@
 //! `#[serde(flatten)]`, `#[serde(skip_serializing_if)]`, rename/drop/select API.
 
 use crate::serde::Serialize;
+use miniextendr_api::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::serde::ColumnarDataFrame;
 
@@ -259,6 +260,40 @@ pub fn test_columnar_select() -> ColumnarDataFrame {
     ColumnarDataFrame::from_rows(&rows)
         .expect("from_rows")
         .select(&["point_y", "label"])
+}
+
+/// with_column: replace an integer column with a character SEXP of matching length.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_with_column() -> ColumnarDataFrame {
+    #[derive(Serialize)]
+    #[serde(crate = "crate::serde")]
+    struct Row {
+        id: i32,
+        value: f64,
+    }
+    let rows = vec![
+        Row { id: 1, value: 10.0 },
+        Row { id: 2, value: 20.0 },
+        Row { id: 3, value: 30.0 },
+    ];
+    let replacement = vec!["a".to_string(), "b".to_string(), "c".to_string()].into_sexp();
+    ColumnarDataFrame::from_rows(&rows)
+        .expect("from_rows")
+        .with_column("id", replacement)
+}
+
+/// with_column: no-op when column name doesn't exist.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_with_column_noop() -> ColumnarDataFrame {
+    let rows = vec![Inner { x: 1.0, y: 2.0 }];
+    let replacement = vec!["z".to_string()].into_sexp();
+    ColumnarDataFrame::from_rows(&rows)
+        .expect("from_rows")
+        .with_column("nonexistent", replacement)
 }
 
 /// strip_prefix: remove "point_" from column names.

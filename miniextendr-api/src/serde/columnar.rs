@@ -93,6 +93,7 @@ unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
 /// ```ignore
 /// ColumnarDataFrame::from_rows(&rows)?
 ///     .rename("hashes_blake3", "hash")
+///     .with_column("status", status_sexp)
 ///     .drop("internal_id")
 /// ```
 pub struct ColumnarDataFrame {
@@ -110,6 +111,7 @@ impl ColumnarDataFrame {
     /// ```ignore
     /// ColumnarDataFrame::from_rows(&rows)?
     ///     .rename("hashes_blake3", "hash")
+    ///     .with_column("status", status_sexp)
     ///     .drop("internal_id")
     /// ```
     ///
@@ -278,6 +280,26 @@ impl ColumnarDataFrame {
 
             ColumnarDataFrame { sexp: new_list }
         }
+    }
+
+    /// Replace the column named `name` with `column`. No-op if `name` doesn't
+    /// match any column. Caller is responsible for matching row length and for
+    /// ensuring `column` is a valid R vector; miniextendr does not validate.
+    pub fn with_column(self, name: &str, column: SEXP) -> Self {
+        unsafe {
+            let names_sexp = self.sexp.get_names();
+            if names_sexp == SEXP::nil() {
+                return self;
+            }
+            let ncol = crate::ffi::Rf_xlength(names_sexp);
+            for i in 0..ncol {
+                if col_name(names_sexp, i) == name {
+                    self.sexp.set_vector_elt(i, column);
+                    break;
+                }
+            }
+        }
+        self
     }
 }
 
