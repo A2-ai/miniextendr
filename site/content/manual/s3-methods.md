@@ -330,6 +330,6 @@ pub fn tbl_sum_my_tbl(x: SEXP, _dots: ...) -> Vec<String> { ... }
 
 ## See Also
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md): overview of all 6 class systems (env, R6, S3, S4, S7, vctrs)
-- [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md): using dots and typed_list validation
-- [VCTRS.md](VCTRS.md): vctrs-compatible S3 classes with `format` methods
+- [CLASS_SYSTEMS.md](../class-systems/): overview of all 6 class systems (env, R6, S3, S4, S7, vctrs)
+- [DOTS_TYPED_LIST.md](../dots-typed-list/): using dots and typed_list validation
+- [VCTRS.md](../vctrs/): vctrs-compatible S3 classes with `format` methods

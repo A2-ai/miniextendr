@@ -6,7 +6,7 @@ description = "How miniextendr handles ALTREP vectors when R passes them to Rust
 
 How miniextendr handles ALTREP vectors when R passes them to Rust functions.
 
-**See also**: [ALTREP.md](ALTREP.md) (creating ALTREP vectors), [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md), [THREADS.md](THREADS.md)
+**See also**: [ALTREP.md](../altrep/) (creating ALTREP vectors), [ALTREP_QUICKREF.md](../altrep-quickref/), [THREADS.md](../threads/)
 
 ## The Problem
 

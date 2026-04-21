@@ -4,19 +4,49 @@ weight = 10
 description = "Cargo features, derive macros, and optional subsystems"
 +++
 
-## Cargo Features
+## Optional Cargo Features
 
-miniextendr uses cargo features to gate optional functionality:
+miniextendr-api gates optional functionality behind Cargo feature flags. Only
+`default` features (`doc-lint`, `refcount-fast-hash`) are enabled automatically.
 
-| Feature | Description |
-|---------|-------------|
-| `serde_r` | Direct Rust-R serialization via serde |
-| `serde_full` | Both JSON and native R serialization |
-| `worker-thread` | Dedicated worker thread for Rust code |
-| `default-worker` | Implies `worker-thread`, makes it the default |
-| `nonapi` | Access to non-API R functions (`DATAPTR`, etc.) |
-| `rayon` | Parallel computation via rayon |
-| `materialization-tracking` | ALTREP materialization diagnostics |
+Add features to the `miniextendr-api` dependency in your package's `Cargo.toml`:
+
+```toml
+[dependencies]
+miniextendr-api = { version = "0.1", features = ["rayon", "serde", "ndarray"] }
+```
+
+The prelude re-exports upstream crates for every enabled feature, so you rarely need
+to add optional crates as separate direct dependencies.
+
+### Categories at a glance
+
+| Category | Features |
+|----------|---------|
+| Core / R | `nonapi`, `rayon`, `worker-thread`, `connections`, `indicatif`, `vctrs` |
+| Serialization | `serde`, `serde_json`, `toml` |
+| Matrix / Array | `ndarray`, `nalgebra` |
+| Numeric | `num-bigint`, `rust_decimal`, `ordered-float`, `num-complex` |
+| Adapters | `num-traits`, `bytes` |
+| String / Text | `uuid`, `regex`, `url`, `aho-corasick` |
+| Date / Time | `time` |
+| RNG | `rand`, `rand_distr` |
+| Collections | `indexmap`, `tinyvec` |
+| Either | `either` |
+| Binary | `borsh`, `raw_conversions` |
+| Hashing | `sha2` |
+| Bitflags | `bitflags`, `bitvec` |
+| Formatting | `tabled` |
+| Arrow / DataFusion | `arrow`, `datafusion` |
+| Logging | `log` |
+| Project defaults | `default-strict`, `default-coerce`, `default-r6`, `default-s7`, `default-worker` |
+| Diagnostics | `macro-coverage`, `debug-preserve`, `growth-debug` |
+
+For the complete entry-by-entry reference -- including descriptions, type tables, and
+code examples for every feature -- see the
+[Feature Flags Reference](/miniextendr/manual/features/) in the manual.
+
+---
 
 ## Derive Macros
 
@@ -35,25 +65,25 @@ Typed derives generate the full ALTREP class from field attributes. The manual `
 
 | Derive | Purpose |
 |--------|---------|
-| `#[derive(AltrepInteger)]` | Integer ALTREP class from `#[altrep(len, elt, class, …)]` fields |
+| `#[derive(AltrepInteger)]` | Integer ALTREP class from `#[altrep(len, elt, class, ...)]` fields |
 | `#[derive(AltrepReal)]` | Real (double) ALTREP class |
 | `#[derive(AltrepLogical)]` | Logical ALTREP class |
 | `#[derive(AltrepRaw)]` | Raw (byte) ALTREP class |
 | `#[derive(AltrepString)]` | Character ALTREP class (`Vec<Option<String>>` preserves `NA_character_`) |
 | `#[derive(AltrepComplex)]` | Complex ALTREP class |
 | `#[derive(AltrepList)]` | List ALTREP class |
-| `#[derive(Altrep)]` | Manual pattern — registers the class; you implement `AltrepLen` and `Alt*Data` |
+| `#[derive(Altrep)]` | Manual pattern -- registers the class; you implement `AltrepLen` and `Alt*Data` |
 
 ### List / data-frame round-tripping
 
 | Derive | Purpose |
 |--------|---------|
-| `#[derive(IntoList)]` | Convert struct → named R list |
-| `#[derive(TryFromList)]` | Convert named R list → struct |
+| `#[derive(IntoList)]` | Convert struct to a named R list |
+| `#[derive(TryFromList)]` | Convert named R list to struct |
 | `#[derive(DataFrameRow)]` | Treat struct as a data-frame row; generates a companion DataFrame type |
 | `#[derive(Vctrs)]` | vctrs-compatible S3 vector class (`Vctr`, `Rcrd`, `ListOf` kinds) |
 
-### Enums ↔ R
+### Enums to R
 
 | Derive | Purpose |
 |--------|---------|
@@ -70,6 +100,8 @@ Control which `IntoR` / `TryFromSexp` path a type takes when multiple are possib
 | `#[derive(PreferDataFrame)]` | Prefer data-frame representation |
 | `#[derive(PreferList)]` | Prefer named-list representation |
 | `#[derive(PreferRNativeType)]` | Prefer native R scalar representation |
+
+---
 
 ## Attribute Options
 
@@ -93,6 +125,8 @@ The `#[miniextendr]` attribute supports many options:
 #[miniextendr(label = "name")]       // Label for multiple impl blocks
 ```
 
+---
+
 ## Variadic Arguments (Dots)
 
 R's `...` becomes `&Dots` in Rust:
@@ -114,6 +148,8 @@ pub fn structured_dots(_dots: &Dots, ...) -> f64 {
     dots_typed.x as f64 + dots_typed.y
 }
 ```
+
+---
 
 ## Factors (Enums)
 

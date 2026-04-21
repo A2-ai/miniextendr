@@ -367,6 +367,6 @@ just r-cmd-check
 
 ## See Also
 
-- [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md): how R builds packages with compiled code
-- [TEMPLATES.md](TEMPLATES.md): template system (configure.ac templates)
-- [SMOKE_TEST.md](SMOKE_TEST.md): phase A4 covers CRAN-like tarball validation
+- [R_BUILD_SYSTEM.md](../r-build-system/): how R builds packages with compiled code
+- [TEMPLATES.md](../templates/): template system (configure.ac templates)
+- [SMOKE_TEST.md](../smoke-test/): phase A4 covers CRAN-like tarball validation

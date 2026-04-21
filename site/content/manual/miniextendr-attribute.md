@@ -118,7 +118,7 @@ pub fn parse_data(s: String) -> Result<i32, String> {
 | `rng` | Manage R's RNG state (`GetRNGstate`/`PutRNGstate`) |
 | `c_symbol = "..."` | Custom C function name |
 | `lifecycle = "..."` | Mark as deprecated/experimental/superseded |
-| `dots = typed_list!(...)` | Validate `...` arguments (see [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md)) |
+| `dots = typed_list!(...)` | Validate `...` arguments (see [DOTS_TYPED_LIST.md](../dots-typed-list/)) |
 
 ```rust
 #[miniextendr(check_interrupt, rng)]
@@ -618,12 +618,12 @@ appropriate derives internally. Both paths produce identical code.
 
 ## See Also
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md): all 6 class systems with examples
-- [S3_METHODS.md](S3_METHODS.md): detailed S3 print/format guide
-- [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md): dots and typed_list validation
-- [ALTREP.md](ALTREP.md): ALTREP deep dive
-- [DATAFRAME.md](DATAFRAME.md): DataFrame conversion (derive + serde + columnar)
-- [SERDE_R.md](SERDE_R.md): serde integration for direct Rust-R serialization
-- [ERROR_HANDLING.md](ERROR_HANDLING.md): error_in_r, unwrap_in_r, panic handling
-- [LIFECYCLE.md](LIFECYCLE.md): deprecation/experimental lifecycle attributes
-- [TRAIT_ABI.md](TRAIT_ABI.md): cross-package trait dispatch
+- [CLASS_SYSTEMS.md](../class-systems/): all 6 class systems with examples
+- [S3_METHODS.md](../s3-methods/): detailed S3 print/format guide
+- [DOTS_TYPED_LIST.md](../dots-typed-list/): dots and typed_list validation
+- [ALTREP.md](../altrep/): ALTREP deep dive
+- [DATAFRAME.md](../dataframe/): DataFrame conversion (derive + serde + columnar)
+- [SERDE_R.md](../serde-r/): serde integration for direct Rust-R serialization
+- [ERROR_HANDLING.md](../error-handling/): error_in_r, unwrap_in_r, panic handling
+- [LIFECYCLE.md](../lifecycle/): deprecation/experimental lifecycle attributes
+- [TRAIT_ABI.md](../trait-abi/): cross-package trait dispatch

@@ -162,10 +162,18 @@ for doc in "$DOCS_DIR"/*.md; do
     fi
     echo "+++"
     echo ""
-    # Skip the first line (# Title) and any blank line immediately after
+    # Skip the first line (# Title) and any blank line immediately after.
+    # Also rewrite cross-doc links: FOO_BAR.md → ../foo-bar/ so they resolve
+    # correctly in Zola (which serves pages at /manual/foo-bar/, not /manual/FOO_BAR.md).
     tail -n +2 "$doc" | sed '1{
 /^$/d
-}'
+}' | perl -pe '
+  s{\(([A-Z][A-Z0-9_]+)\.md(#[^)]+)?\)}{
+    my ($name, $anchor) = ($1, $2 // "");
+    my $slug = lc($name) =~ s/_/-/gr;
+    "(../$slug/$anchor)"
+  }ge
+'
   } > "$CONTENT_DIR/${slug}.md"
 done
 

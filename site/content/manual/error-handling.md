@@ -918,19 +918,19 @@ pub fn risky() -> Result<(), String> {
 
 ## Known Limitations
 
-- **Spawned-thread panics** cannot be cleanly propagated through `extern "C-unwind"` boundaries. Convert thread errors to `Result` instead of using `resume_unwind`. See [GAPS.md](GAPS.md#56-thread-panic-propagation-limitation).
-- **Thread safety debug assertions** for SEXP access only run in debug builds. Checked FFI wrappers provide runtime thread checks in all build modes. See [GAPS.md](GAPS.md#55-thread-safety-debug-assertions).
+- **Spawned-thread panics** cannot be cleanly propagated through `extern "C-unwind"` boundaries. Convert thread errors to `Result` instead of using `resume_unwind`. See [GAPS.md](../gaps/#56-thread-panic-propagation-limitation).
+- **Thread safety debug assertions** for SEXP access only run in debug builds. Checked FFI wrappers provide runtime thread checks in all build modes. See [GAPS.md](../gaps/#55-thread-safety-debug-assertions).
 
-See [GAPS.md](GAPS.md) for the full catalog of known limitations.
+See [GAPS.md](../gaps/) for the full catalog of known limitations.
 
 ---
 
 ## See Also
 
-- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide feature defaults
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) -- Complete `#[miniextendr]` option reference
-- [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) -- `MINIEXTENDR_BACKTRACE` and other env vars
-- [THREADS.md](THREADS.md) -- Worker thread architecture and thread safety
-- [SAFETY.md](SAFETY.md) -- Safety invariants (R_UnwindProtect, GC protection)
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#error-cases) -- Type conversion error messages
-- [MACRO_ERRORS.md](MACRO_ERRORS.md) -- Proc-macro and lint error codes
+- [FEATURE_DEFAULTS.md](../feature-defaults/) -- Project-wide feature defaults
+- [MINIEXTENDR_ATTRIBUTE.md](../miniextendr-attribute/) -- Complete `#[miniextendr]` option reference
+- [ENVIRONMENT_VARIABLES.md](../environment-variables/) -- `MINIEXTENDR_BACKTRACE` and other env vars
+- [THREADS.md](../threads/) -- Worker thread architecture and thread safety
+- [SAFETY.md](../safety/) -- Safety invariants (R_UnwindProtect, GC protection)
+- [TYPE_CONVERSIONS.md](../type-conversions/#error-cases) -- Type conversion error messages
+- [MACRO_ERRORS.md](../macro-errors/) -- Proc-macro and lint error codes

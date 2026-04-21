@@ -667,7 +667,7 @@ These are thin wrappers around `R_GetConnection`, `R_ReadConnection`, and `R_Wri
 
 ## See Also
 
-- [FEATURES.md](FEATURES.md) -- Feature flags reference (`connections`)
-- [THREADS.md](THREADS.md) -- Thread safety and the worker thread model
-- [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling across the FFI boundary
+- [FEATURES.md](../features/) -- Feature flags reference (`connections`)
+- [THREADS.md](../threads/) -- Thread safety and the worker thread model
+- [ERROR_HANDLING.md](../error-handling/) -- Panic handling across the FFI boundary
 - Test fixtures: `rpkg/src/rust/connection_tests.rs`

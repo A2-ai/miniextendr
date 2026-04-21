@@ -75,9 +75,9 @@ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 `$(CC) $(CPPFLAGS) $(CPICFLAGS) $(PKG_CPPFLAGS) ...`, adding our
 discovered include paths to the preprocessor search.
 
-See [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) for how `PKG_CPPFLAGS` fits
+See [R_BUILD_SYSTEM.md](../r-build-system/) for how `PKG_CPPFLAGS` fits
 into R's overall Makefile include chain, and
-[NATIVE_R_PACKAGES.md](NATIVE_R_PACKAGES.md) for the full recipe
+[NATIVE_R_PACKAGES.md](../native-r-packages/) for the full recipe
 (including the `OBJECTS → cargo rustc -C link-arg=` link step that
 makes the shim's symbols visible to the Rust crate).
 

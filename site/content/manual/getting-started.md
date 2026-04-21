@@ -214,7 +214,7 @@ c$current    # Active binding (no parens)
 impl Counter { ... }
 ```
 
-See [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) for detailed comparison.
+See [CLASS_SYSTEMS.md](../class-systems/) for detailed comparison.
 
 ---
 
@@ -416,10 +416,10 @@ describe_color(factor("Red", levels = c("Red", "Green", "Blue")))
 
 ## Next Steps
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) - Detailed class system comparison
-- [ALTREP.md](ALTREP.md) - Lazy/compact vectors
-- [THREADS.md](THREADS.md) - Threading and parallelism
-- [SAFETY.md](SAFETY.md) - Memory safety guarantees
+- [CLASS_SYSTEMS.md](../class-systems/) - Detailed class system comparison
+- [ALTREP.md](../altrep/) - Lazy/compact vectors
+- [THREADS.md](../threads/) - Threading and parallelism
+- [SAFETY.md](../safety/) - Memory safety guarantees
 
 ---
 
@@ -449,7 +449,7 @@ cd src/rust && cargo check
 
 ## Next Steps
 
-- [Documentation Index](README.md) -- Browse all available documentation
-- [Known Gaps & Limitations](GAPS.md) -- Important context on what's missing or limited
-- [Troubleshooting](TROUBLESHOOTING.md) -- Common issues and solutions
-- [Architecture Overview](ARCHITECTURE.md) -- How miniextendr works under the hood
+- [Documentation Index](../readme/) -- Browse all available documentation
+- [Known Gaps & Limitations](../gaps/) -- Important context on what's missing or limited
+- [Troubleshooting](../troubleshooting/) -- Common issues and solutions
+- [Architecture Overview](../architecture/) -- How miniextendr works under the hood

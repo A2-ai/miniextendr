@@ -427,5 +427,5 @@ unique_records <- records[!duplicated(hashes)]
 
 ## See Also
 
-- [ADAPTER_TRAITS.md](ADAPTER_TRAITS.md) - Pattern explanation and constraints
-- [SAFETY.md](SAFETY.md) - Thread safety for trait objects
+- [ADAPTER_TRAITS.md](../adapter-traits/) - Pattern explanation and constraints
+- [SAFETY.md](../safety/) - Thread safety for trait objects

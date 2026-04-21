@@ -460,6 +460,6 @@ stopifnot(!is.na(max(x)))
 ---
 
 **See also**:
-- [ALTREP.md](ALTREP.md) - Complete API reference
+- [ALTREP.md](../altrep/) - Complete API reference
 - [Background reference implementations](../background/) - simplemmap, mutable, vectorwindow
 - [Test suite](../rpkg/tests/testthat/test-altrep*.R) - Examples in tests

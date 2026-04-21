@@ -125,6 +125,6 @@ In `#[miniextendr]` functions, use these inside `unsafe(main_thread)` blocks or 
 
 ## See Also
 
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md#s4-helpers-module) -- S4 helpers built on RCall
-- [THREADS.md](THREADS.md) -- Main thread requirements
-- [GC_PROTECT.md](GC_PROTECT.md) -- Protecting returned SEXPs
+- [CLASS_SYSTEMS.md](../class-systems/#s4-helpers-module) -- S4 helpers built on RCall
+- [THREADS.md](../threads/) -- Main thread requirements
+- [GC_PROTECT.md](../gc-protect/) -- Protecting returned SEXPs

@@ -371,7 +371,7 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | **Inline compilation** | `rust_source`, `rust_function`, `rust_source_clean` |
 | **Cargo wrappers** | `cargo_add`, `cargo_rm`, `cargo_build`, `cargo_check`, `cargo_test`, `cargo_clippy`, `cargo_fmt`, `cargo_doc`, `cargo_search`, `cargo_deps`, `cargo_update`, `cargo_init`, `cargo_new` |
 | **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_vendor_lib` |
-| **Native R package FFI** | `use_native_package`, `check_native_package` (see [NATIVE_R_PACKAGES.md](NATIVE_R_PACKAGES.md)) |
+| **Native R package FFI** | `use_native_package`, `check_native_package` (see [NATIVE_R_PACKAGES.md](../native-r-packages/)) |
 | **Git hooks** | `use_miniextendr_git_hooks` (pre-commit + post-merge reminders) |
 | **Vendoring** | `vendor_miniextendr`, `vendor_crates_io`, `vendor_sync`, `miniextendr_vendor`, `miniextendr_available_versions` |
 | **Diagnostics** | `has_miniextendr`, `miniextendr_status`, `miniextendr_validate`, `miniextendr_doctor`, `miniextendr_check_rust` |

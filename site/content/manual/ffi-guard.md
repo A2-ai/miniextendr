@@ -244,7 +244,7 @@ All four panic-to-R-error sites call `panic_telemetry::fire()`:
 
 ## See Also
 
-- [Error Handling](ERROR_HANDLING.md) -- How panics, Result, and R errors interact
-- [ALTREP Guards](ALTREP_GUARDS.md) -- Per-type guard mode selection for ALTREP
-- [Threads](THREADS.md) -- Worker thread architecture
-- [Connections](CONNECTIONS.md) -- Custom R connections from Rust
+- [Error Handling](../error-handling/) -- How panics, Result, and R errors interact
+- [ALTREP Guards](../altrep-guards/) -- Per-type guard mode selection for ALTREP
+- [Threads](../threads/) -- Worker thread architecture
+- [Connections](../connections/) -- Custom R connections from Rust

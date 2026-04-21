@@ -93,7 +93,7 @@ my_func <- function(x, ...) {
 }
 ```
 
-See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) for the full dots guide, including `typed_list!` validation.
+See [DOTS_TYPED_LIST.md](../dots-typed-list/) for the full dots guide, including `typed_list!` validation.
 
 ---
 
@@ -123,7 +123,7 @@ Create a stub for the disabled case:
 
 This pattern is used throughout the example package (`rpkg/`) (e.g., `rayon_tests.rs` / `rayon_tests_disabled.rs`) and is documented in CLAUDE.md.
 
-See [FEATURES.md](FEATURES.md) for the full feature flags reference.
+See [FEATURES.md](../features/) for the full feature flags reference.
 
 ---
 
@@ -178,7 +178,7 @@ pub fn modify_state(state: &mut MyState) {
 }
 ```
 
-See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) for slice lifetime details and [SAFETY.md](SAFETY.md) for the full safety model.
+See [TYPE_CONVERSIONS.md](../type-conversions/) for slice lifetime details and [SAFETY.md](../safety/) for the full safety model.
 
 ---
 
@@ -200,7 +200,7 @@ let string_matrix: Vec<Vec<String>> = array.outer_iter()
 
 **Why:** R's STRSXP is a vector of CHARSXP pointers, not contiguous memory. Direct ndarray integration would require special handling because ndarray assumes a contiguous backing buffer.
 
-See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) for supported matrix types and [FEATURES.md](FEATURES.md#ndarray) for the `ndarray` feature flag.
+See [TYPE_CONVERSIONS.md](../type-conversions/) for supported matrix types and [FEATURES.md](../features/#ndarray) for the `ndarray` feature flag.
 
 ---
 
@@ -368,7 +368,7 @@ data structures that don't exist here. **S7 is the recommended class system for 
 and generic dispatch. Fall back to S4 only when integrating with Bioconductor or other S4-based
 ecosystems.
 
-See [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) for the full class system comparison and decision flowchart.
+See [CLASS_SYSTEMS.md](../class-systems/) for the full class system comparison and decision flowchart.
 
 ---
 
@@ -410,7 +410,7 @@ if check_connections_version().is_ok() {
 }
 ```
 
-See [FEATURES.md](FEATURES.md#connections) for the `connections` feature flag.
+See [FEATURES.md](../features/#connections) for the `connections` feature flag.
 
 ---
 
@@ -456,7 +456,7 @@ pub fn fetch_data(url: String) -> String {
 For true async I/O needs, users should use R-level parallelism (mirai, callr) with
 miniextendr handling the per-request Rust work synchronously.
 
-See [THREADS.md](THREADS.md) for the worker thread model and [FEATURES.md](FEATURES.md#rayon) for parallel iteration via Rayon.
+See [THREADS.md](../threads/) for the worker thread model and [FEATURES.md](../features/#rayon) for parallel iteration via Rayon.
 
 ---
 
@@ -500,7 +500,7 @@ impl<T, R> TryCoerce<R> for T where T: Coerce<R> {
 }
 ```
 
-See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#coercion-system) for the user-facing coercion guide and [COERCE.md](COERCE.md) for the full coercion trait design.
+See [TYPE_CONVERSIONS.md](../type-conversions/#coercion-system) for the user-facing coercion guide and [COERCE.md](../coerce/) for the full coercion trait design.
 
 ---
 
@@ -538,7 +538,7 @@ let x: Option<i32> = None;
 let r: i32 = x.coerce();  // Returns NA_INTEGER
 ```
 
-See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#na-value-representation) for the full NA handling guide with examples for all types.
+See [TYPE_CONVERSIONS.md](../type-conversions/#na-value-representation) for the full NA handling guide with examples for all types.
 
 ---
 
@@ -574,7 +574,7 @@ unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str
 
 **Recommended pattern:** Use `OwnedProtect` or `ProtectScope` for RAII-based SEXP protection. Never store raw SEXPs in long-lived Rust structures without protection.
 
-See [GC_PROTECT.md](GC_PROTECT.md) for the full GC protection toolkit and [SAFETY.md](SAFETY.md) for safety invariants.
+See [GC_PROTECT.md](../gc-protect/) for the full GC protection toolkit and [SAFETY.md](../safety/) for safety invariants.
 
 ---
 
@@ -610,7 +610,7 @@ pub fn replace(&mut self, new: Self) {
 }
 ```
 
-See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#externalptr-semantics) for the ExternalPtr ownership model.
+See [TYPE_CONVERSIONS.md](../type-conversions/#externalptr-semantics) for the ExternalPtr ownership model.
 
 ---
 
@@ -633,7 +633,7 @@ fn assert_main_thread() { ... }
 
 **Recommended pattern:** Rely on the worker thread model for safe R API access. For explicit thread control, use `spawn_with_r()` or `StackCheckGuard`.
 
-See [THREADS.md](THREADS.md) for the thread safety model, [SAFETY.md](SAFETY.md) for invariants, and [ERROR_HANDLING.md](ERROR_HANDLING.md#thread-safety) for thread-related error patterns.
+See [THREADS.md](../threads/) for the thread safety model, [SAFETY.md](../safety/) for invariants, and [ERROR_HANDLING.md](../error-handling/#thread-safety) for thread-related error patterns.
 
 ---
 
@@ -682,7 +682,7 @@ pub fn safe_threaded_work() -> Result<i32, String> {
 
 **Tests:** See `test-errors-more.R` for skipped tests demonstrating this behavior.
 
-See [ERROR_HANDLING.md](ERROR_HANDLING.md) for the full error handling model and [THREADS.md](THREADS.md) for the worker thread architecture.
+See [ERROR_HANDLING.md](../error-handling/) for the full error handling model and [THREADS.md](../threads/) for the worker thread architecture.
 
 ---
 
@@ -739,11 +739,11 @@ no inline snapshot tests for generated R code.
 
 | Guide | Status |
 |-------|--------|
-| Getting Started | [docs/GETTING_STARTED.md](GETTING_STARTED.md) |
-| Choosing a Class System | [docs/CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) |
-| Type Conversions | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
-| ALTREP Tutorial | [docs/ALTREP.md](ALTREP.md) |
-| Error Handling Best Practices | [docs/ERROR_HANDLING.md](ERROR_HANDLING.md) |
+| Getting Started | [docs/GETTING_STARTED.md](../getting-started/) |
+| Choosing a Class System | [docs/CLASS_SYSTEMS.md](../class-systems/) |
+| Type Conversions | [docs/TYPE_CONVERSIONS.md](../type-conversions/) |
+| ALTREP Tutorial | [docs/ALTREP.md](../altrep/) |
+| Error Handling Best Practices | [docs/ERROR_HANDLING.md](../error-handling/) |
 | Thread Safety Guide | Covered in Error Handling |
 | Building a Package from Scratch | Covered in Getting Started |
 
@@ -751,10 +751,10 @@ no inline snapshot tests for generated R code.
 
 | Topic | Status |
 |-------|--------|
-| Coercion precedence rules | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
-| NA handling for each type | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
-| SEXP lifetime rules | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
-| Feature flag effects | [docs/FEATURES.md](FEATURES.md) |
+| Coercion precedence rules | [docs/TYPE_CONVERSIONS.md](../type-conversions/) |
+| NA handling for each type | [docs/TYPE_CONVERSIONS.md](../type-conversions/) |
+| SEXP lifetime rules | [docs/TYPE_CONVERSIONS.md](../type-conversions/) |
+| Feature flag effects | [docs/FEATURES.md](../features/) |
 
 ### 7.3 Example Coverage
 

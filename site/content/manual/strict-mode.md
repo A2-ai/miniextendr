@@ -141,6 +141,6 @@ These panics are caught and converted to R errors.
 
 ## See Also
 
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md): `strict` attribute reference
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md): normal conversion behavior
-- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md): project-wide feature flags
+- [MINIEXTENDR_ATTRIBUTE.md](../miniextendr-attribute/): `strict` attribute reference
+- [TYPE_CONVERSIONS.md](../type-conversions/): normal conversion behavior
+- [FEATURE_DEFAULTS.md](../feature-defaults/): project-wide feature flags

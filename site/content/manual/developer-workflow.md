@@ -147,7 +147,7 @@ R_LIBS=/tmp/R_lib just rcmdinstall
 
 ### Lint warnings
 
-Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to check source-level attributes for consistency. See [MACRO_ERRORS.md](MACRO_ERRORS.md) for interpreting lint output.
+Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to check source-level attributes for consistency. See [MACRO_ERRORS.md](../macro-errors/) for interpreting lint output.
 
 ### Transient test failures in parallel runs
 

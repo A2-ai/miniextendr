@@ -57,8 +57,12 @@ Only `default` features are enabled automatically.
 | `sha2` | SHA-256/SHA-512 hashing helpers | sha2 |
 | **Formatting** | | |
 | `tabled` | ASCII/Unicode table formatting | tabled |
+| **Arrow / DataFusion** | | |
+| `arrow` | Zero-copy R vector / data.frame to Apache Arrow array conversions | arrow-array, arrow-buffer, arrow-schema, arrow-select |
+| `datafusion` | SQL query engine on R data frames via DataFusion (implies `arrow`) | datafusion, tokio |
+| **Logging** | | |
+| `log` | Routes Rust `log` macros (`info!`, `warn!`, `error!`) to R console | log |
 | **Diagnostics** | | |
-| `materialization-tracking` | Logs ALTREP materializations for diagnostics | (none) |
 | `macro-coverage` | Macro expansion coverage module for auditing | (none) |
 
 ---
@@ -863,20 +867,56 @@ cat(format_scores(c("Alice", "Bob"), c(95, 87)))
 
 ---
 
-## Diagnostic Features
+## Arrow / DataFusion Features
 
-### `materialization-tracking`
+### `arrow`
 
-Logs every ALTREP `Dataptr` call, which is when R forces a lazy/compact vector to
-materialize into contiguous memory. Useful for diagnosing unexpected materializations
-that negate ALTREP performance benefits.
+Zero-copy conversions between R vectors/data.frames and Apache Arrow arrays/RecordBatch.
+Foundation for DataFusion and other Arrow-based tools.
 
-Zero-cost when disabled (no runtime overhead).
+**Supported types (zero-copy where R memory layout matches Arrow):**
+- Scalar arrays: `Float64Array`, `Int32Array`, `BooleanArray`, `StringArray`, etc.
+- `RecordBatch` -- round-trips R data.frames column by column
 
-**From R:**
-```r
-miniextendr:::altrep_materialization_count()
+See [ARROW.md](ARROW.md) for the full guide.
+
+### `datafusion`
+
+SQL query engine on R data frames via Apache DataFusion. Depends on `arrow`.
+Provides `RSessionContext` for running SQL queries on R data frames.
+
+Uses Tokio internally (`current_thread` / `block_on`) -- NOT `rt-multi-thread`.
+
+**Provides:**
+- `RSessionContext` -- register R data frames as tables, execute SQL
+- `execute_sql()`, `collect_to_r()` helpers
+
+---
+
+## Logging Features
+
+### `log`
+
+Routes Rust `log` macros (`info!`, `warn!`, `error!`, `debug!`, `trace!`) to R's
+console output (`Rprintf`/`REprintf`). The logger is installed automatically during
+`package_init()` -- no setup needed beyond enabling the feature.
+
+```rust
+use log::{info, warn};
+
+#[miniextendr]
+pub fn process_data(n: i32) -> i32 {
+    info!("Processing {} rows", n);
+    if n > 10000 {
+        warn!("Large input -- this may be slow");
+    }
+    n * 2
+}
 ```
+
+---
+
+## Diagnostic Features
 
 ### `macro-coverage`
 
@@ -953,6 +993,8 @@ Feature implications (automatically enabled):
 | `serde_json` | `serde` |
 | `rand_distr` | `rand` |
 | `indicatif` | `nonapi` |
+| `datafusion` | `arrow` |
+| `default-worker` | `worker-thread` |
 
 ---
 
