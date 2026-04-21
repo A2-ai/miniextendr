@@ -303,10 +303,8 @@ impl ColumnarDataFrame {
             // Not found — append at the end. Reallocate the list and names,
             // copy over existing entries, add the new column.
             let new_ncol = ncol + 1;
-            let new_list = Rf_allocVector(SEXPTYPE::VECSXP, new_ncol);
-            Rf_protect(new_list);
-            let new_names = Rf_allocVector(SEXPTYPE::STRSXP, new_ncol);
-            Rf_protect(new_names);
+            let new_list = crate::OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, new_ncol));
+            let new_names = crate::OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, new_ncol));
 
             for i in 0..ncol {
                 new_list.set_vector_elt(i, self.sexp.vector_elt(i));
@@ -315,12 +313,10 @@ impl ColumnarDataFrame {
             new_list.set_vector_elt(ncol, column);
             new_names.set_string_elt(ncol, SEXP::charsxp(name));
 
-            new_list.set_names(new_names);
-            copy_df_attrs(self.sexp, new_list);
+            new_list.set_names(*new_names);
+            copy_df_attrs(self.sexp, *new_list);
 
-            Rf_unprotect(2);
-
-            ColumnarDataFrame { sexp: new_list }
+            ColumnarDataFrame { sexp: *new_list }
         }
     }
 }
