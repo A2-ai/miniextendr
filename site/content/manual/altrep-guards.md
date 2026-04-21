@@ -162,6 +162,6 @@ monomorphization time. The chosen mode has zero runtime cost.
 
 ## See Also
 
-- [ALTREP.md](ALTREP.md): full ALTREP guide
-- [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md): quick reference checklist
-- [ERROR_HANDLING.md](ERROR_HANDLING.md): panic handling across FFI boundaries
+- [ALTREP.md](../altrep/): full ALTREP guide
+- [ALTREP_QUICKREF.md](../altrep-quickref/): quick reference checklist
+- [ERROR_HANDLING.md](../error-handling/): panic handling across FFI boundaries

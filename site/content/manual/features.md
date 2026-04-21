@@ -61,8 +61,12 @@ Only `default` features are enabled automatically.
 | `sha2` | SHA-256/SHA-512 hashing helpers | sha2 |
 | **Formatting** | | |
 | `tabled` | ASCII/Unicode table formatting | tabled |
+| **Arrow / DataFusion** | | |
+| `arrow` | Zero-copy R vector / data.frame to Apache Arrow array conversions | arrow-array, arrow-buffer, arrow-schema, arrow-select |
+| `datafusion` | SQL query engine on R data frames via DataFusion (implies `arrow`) | datafusion, tokio |
+| **Logging** | | |
+| `log` | Routes Rust `log` macros (`info!`, `warn!`, `error!`) to R console | log |
 | **Diagnostics** | | |
-| `materialization-tracking` | Logs ALTREP materializations for diagnostics | (none) |
 | `macro-coverage` | Macro expansion coverage module for auditing | (none) |
 
 ---
@@ -98,7 +102,7 @@ symbols may change between R versions and will cause `R CMD check` warnings.
 - `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- stack checking controls
 - `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` -- thread safety utilities
 
-See [NONAPI.md](NONAPI.md) for the full tracking list.
+See [NONAPI.md](../nonapi/) for the full tracking list.
 
 ### `worker-thread`
 
@@ -129,7 +133,7 @@ Parallel iterators via the Rayon crate, with R-safe interop.
 - `with_r_matrix()` -- parallel matrix fill
 - `reduce()` -- parallel reductions returning R scalars
 
-See [RAYON.md](RAYON.md) for the full guide.
+See [RAYON.md](../rayon/) for the full guide.
 
 ### `connections`
 
@@ -147,7 +151,7 @@ this feature flag to make the instability opt-in.
 - `RConnectionIo` builder -- auto-wraps any `std::io` type with zero boilerplate
 - Helper functions: `get_connection()`, `read_connection()`, `write_connection()`
 
-See [CONNECTIONS.md](CONNECTIONS.md) for the full guide with examples.
+See [CONNECTIONS.md](../connections/) for the full guide with examples.
 
 ### `indicatif`
 
@@ -161,7 +165,7 @@ All output is a no-op when called off the R main thread.
 - `progress::RStream` -- stdout/stderr target selection
 - Convenience constructors: `term_like_stdout()`, `term_like_stderr()`, `term_like_*_with_hz()`
 
-See [PROGRESS.md](PROGRESS.md) for the full guide with examples.
+See [PROGRESS.md](../progress/) for the full guide with examples.
 
 ### `vctrs`
 
@@ -179,7 +183,7 @@ for defining custom vctrs-compatible classes.
 - `#[miniextendr(vctrs)]` impl blocks for methods
 - `coerce = "type"` attribute for `vec_ptype2`/`vec_cast` generation
 
-Requires the `vctrs` R package to be installed. See [VCTRS.md](VCTRS.md) for the full guide.
+Requires the `vctrs` R package to be installed. See [VCTRS.md](../vctrs/) for the full guide.
 
 ---
 
@@ -196,7 +200,7 @@ native R objects (named lists, atomic vectors, etc.) using serde's `Serialize` a
 - `AsSerialize<T>` wrapper for returning `Serialize` types from `#[miniextendr]` functions
 
 **Type mappings:** structs become named lists, `Vec<primitive>` becomes atomic vectors,
-`Option::None` becomes NA or NULL. See [SERDE_R.md](SERDE_R.md) for details.
+`Option::None` becomes NA or NULL. See [SERDE_R.md](../serde-r/) for details.
 
 ### `serde_json`
 
@@ -867,20 +871,56 @@ cat(format_scores(c("Alice", "Bob"), c(95, 87)))
 
 ---
 
-## Diagnostic Features
+## Arrow / DataFusion Features
 
-### `materialization-tracking`
+### `arrow`
 
-Logs every ALTREP `Dataptr` call, which is when R forces a lazy/compact vector to
-materialize into contiguous memory. Useful for diagnosing unexpected materializations
-that negate ALTREP performance benefits.
+Zero-copy conversions between R vectors/data.frames and Apache Arrow arrays/RecordBatch.
+Foundation for DataFusion and other Arrow-based tools.
 
-Zero-cost when disabled (no runtime overhead).
+**Supported types (zero-copy where R memory layout matches Arrow):**
+- Scalar arrays: `Float64Array`, `Int32Array`, `BooleanArray`, `StringArray`, etc.
+- `RecordBatch` -- round-trips R data.frames column by column
 
-**From R:**
-```r
-miniextendr:::altrep_materialization_count()
+See [ARROW.md](../arrow/) for the full guide.
+
+### `datafusion`
+
+SQL query engine on R data frames via Apache DataFusion. Depends on `arrow`.
+Provides `RSessionContext` for running SQL queries on R data frames.
+
+Uses Tokio internally (`current_thread` / `block_on`) -- NOT `rt-multi-thread`.
+
+**Provides:**
+- `RSessionContext` -- register R data frames as tables, execute SQL
+- `execute_sql()`, `collect_to_r()` helpers
+
+---
+
+## Logging Features
+
+### `log`
+
+Routes Rust `log` macros (`info!`, `warn!`, `error!`, `debug!`, `trace!`) to R's
+console output (`Rprintf`/`REprintf`). The logger is installed automatically during
+`package_init()` -- no setup needed beyond enabling the feature.
+
+```rust
+use log::{info, warn};
+
+#[miniextendr]
+pub fn process_data(n: i32) -> i32 {
+    info!("Processing {} rows", n);
+    if n > 10000 {
+        warn!("Large input -- this may be slow");
+    }
+    n * 2
+}
 ```
+
+---
+
+## Diagnostic Features
 
 ### `macro-coverage`
 
@@ -895,7 +935,7 @@ supported attribute combinations.
 These features set project-wide defaults for `#[miniextendr]` options, so you don't
 need to annotate every function. Individual items can opt out with `no_` prefixed keywords.
 
-See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
+See [FEATURE_DEFAULTS.md](../feature-defaults/) for the full guide with examples.
 
 | Feature | Effect | Opt-out |
 |---------|--------|---------|
@@ -957,21 +997,23 @@ Feature implications (automatically enabled):
 | `serde_json` | `serde` |
 | `rand_distr` | `rand` |
 | `indicatif` | `nonapi` |
+| `datafusion` | `arrow` |
+| `default-worker` | `worker-thread` |
 
 ---
 
 ## Known Limitations
 
-- **`connections` is experimental.** R reserves the right to change the connection ABI without backward compatibility. Always check `R_CONNECTIONS_VERSION`. See [GAPS.md](GAPS.md#41-r-connections-api-experimental).
-- **Feature-gated modules** require path-based module switching with `#[cfg]` on `mod` declarations. See [GAPS.md](GAPS.md#13-feature-gated-module-entries).
-- **vctrs cross-package export** and inheritance are not yet implemented. See [GAPS.md](GAPS.md) section 4.2.
+- **`connections` is experimental.** R reserves the right to change the connection ABI without backward compatibility. Always check `R_CONNECTIONS_VERSION`. See [GAPS.md](../gaps/#41-r-connections-api-experimental).
+- **Feature-gated modules** require path-based module switching with `#[cfg]` on `mod` declarations. See [GAPS.md](../gaps/#13-feature-gated-module-entries).
+- **vctrs cross-package export** and inheritance are not yet implemented. See [GAPS.md](../gaps/) section 4.2.
 
-See [GAPS.md](GAPS.md) for the full catalog of known limitations.
+See [GAPS.md](../gaps/) for the full catalog of known limitations.
 
 ---
 
 ## See Also
 
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) -- How feature-gated types convert to/from R
-- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features
-- [THREADS.md](THREADS.md) -- Thread utilities enabled by the `nonapi` feature
+- [TYPE_CONVERSIONS.md](../type-conversions/) -- How feature-gated types convert to/from R
+- [FEATURE_DEFAULTS.md](../feature-defaults/) -- Project-wide defaults via Cargo features
+- [THREADS.md](../threads/) -- Thread utilities enabled by the `nonapi` feature

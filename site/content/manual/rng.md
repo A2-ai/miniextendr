@@ -233,10 +233,10 @@ fn parallel_random(len: i32, seed: i64) -> SEXP {
 }
 ```
 
-See [Rayon](RAYON.md#rng-reproducibility) for full details on reproducible parallel RNG.
+See [Rayon](../rayon/#rng-reproducibility) for full details on reproducible parallel RNG.
 
 ## See Also
 
-- [Rayon Integration](RAYON.md) -- Parallel computation (including RNG reproducibility)
-- [`#[miniextendr]` Attribute](MINIEXTENDR_ATTRIBUTE.md) -- Complete attribute reference
-- [Threads](THREADS.md) -- Worker thread architecture
+- [Rayon Integration](../rayon/) -- Parallel computation (including RNG reproducibility)
+- [`#[miniextendr]` Attribute](../miniextendr-attribute/) -- Complete attribute reference
+- [Threads](../threads/) -- Worker thread architecture

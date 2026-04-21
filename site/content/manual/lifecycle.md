@@ -103,5 +103,5 @@ Or in `Suggests` if lifecycle signals are optional.
 
 ## See Also
 
-- [FEATURES.md](FEATURES.md) -- Feature flags reference
-- [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md) -- How lifecycle interacts with class generators
+- [FEATURES.md](../features/) -- Feature flags reference
+- [CLASS_SYSTEMS.md](../class-systems/) -- How lifecycle interacts with class generators

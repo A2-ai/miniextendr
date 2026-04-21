@@ -11,7 +11,7 @@ by R's memory manager.
 
 `RAllocator` routes every Rust heap allocation through R's `Rf_allocVector(RAWSXP, n)`,
 so Rust memory participates in R's garbage collection. Each allocation is
-GC-protected via the [preserve list](GC_PROTECT.md#preserve-list) and released
+GC-protected via the [preserve list](../gc-protect/#preserve-list) and released
 on dealloc.
 
 **Source:** `miniextendr-api/src/allocator.rs`
@@ -110,7 +110,7 @@ The allocator uses the **preserve list** (not the PROTECT stack) because:
 - Deallocations happen in arbitrary order (not LIFO)
 - The preserve list supports O(1) insert and any-order release
 
-See [GC Protection](GC_PROTECT.md) for the full picture of protection strategies.
+See [GC Protection](../gc-protect/) for the full picture of protection strategies.
 
 ## Example
 

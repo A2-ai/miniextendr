@@ -350,7 +350,7 @@ for row in 0..nrow {
 
 ## See Also
 
-- [Type Conversions](TYPE_CONVERSIONS.md) -- `TryFromSexp`/`IntoR` system
-- [`#[miniextendr]` Attribute](MINIEXTENDR_ATTRIBUTE.md) -- `unsafe(main_thread)` and other options
-- [Rayon Integration](RAYON.md) -- `with_r_matrix` and `new_r_matrix` for parallel matrix construction
-- [GC Protection](GC_PROTECT.md) -- Protecting allocated arrays from garbage collection
+- [Type Conversions](../type-conversions/) -- `TryFromSexp`/`IntoR` system
+- [`#[miniextendr]` Attribute](../miniextendr-attribute/) -- `unsafe(main_thread)` and other options
+- [Rayon Integration](../rayon/) -- `with_r_matrix` and `new_r_matrix` for parallel matrix construction
+- [GC Protection](../gc-protect/) -- Protecting allocated arrays from garbage collection

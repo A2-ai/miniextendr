@@ -66,10 +66,10 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 | `MINIEXTENDR_ENCODING_DEBUG` | Print encoding snapshot at init (any value enables) | Not set |
 
 `MINIEXTENDR_BACKTRACE` is read at panic time, not at package load, so it can be toggled
-during a session without restarting R. See [Error Handling: Panic Hook and Backtraces](ERROR_HANDLING.md#panic-hook-and-backtraces).
+during a session without restarting R. See [Error Handling: Panic Hook and Backtraces](../error-handling/#panic-hook-and-backtraces).
 
 `MINIEXTENDR_ENCODING_DEBUG` is only useful when embedding R via `miniextendr-engine` or on platforms where non-API
-encoding symbols are exported. See [Encoding](ENCODING.md).
+encoding symbols are exported. See [Encoding](../encoding/).
 
 ## minirextendr (Scaffolding)
 

@@ -74,7 +74,7 @@ parameter types handle this transparently:
 | `SEXP` | Auto-materialized via `ensure_materialized` |
 | `AltrepSexp` | Accepted only if ALTREP, `!Send + !Sync` |
 
-See [Receiving ALTREP from R](ALTREP_SEXP.md) for details.
+See [Receiving ALTREP from R](../altrep-sexp/) for details.
 
 ---
 
@@ -617,15 +617,15 @@ pub fn double_in_place(mut x: Vec<f64>) -> Vec<f64> {
 - **String matrices** (`ndarray::Array<String, Ix2>`) are not directly convertible because R's STRSXP is not contiguous memory. Use `Vec<Vec<String>>` as an intermediary.
 - **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
 
-See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds.
+See [GAPS.md](../gaps/) for the full catalog of known limitations and workarounds.
 
 ---
 
 ## See Also
 
-- [COERCE.md](COERCE.md) -- Type coercion trait design
-- [AS_COERCE.md](AS_COERCE.md) -- `as.<class>()` coercion methods
-- [CONVERSION_MATRIX.md](CONVERSION_MATRIX.md) -- R type x Rust type behavior reference
-- [FEATURES.md](FEATURES.md) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
-- [GC_PROTECT.md](GC_PROTECT.md) -- RAII-based GC protection for SEXP lifetimes
-- [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) -- Type conversion error messages
+- [COERCE.md](../coerce/) -- Type coercion trait design
+- [AS_COERCE.md](../as-coerce/) -- `as.<class>()` coercion methods
+- [CONVERSION_MATRIX.md](../conversion-matrix/) -- R type x Rust type behavior reference
+- [FEATURES.md](../features/) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
+- [GC_PROTECT.md](../gc-protect/) -- RAII-based GC protection for SEXP lifetimes
+- [ERROR_HANDLING.md](../error-handling/#type-conversion-errors) -- Type conversion error messages

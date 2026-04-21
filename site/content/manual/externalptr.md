@@ -255,7 +255,7 @@ The `TYPE_ID_CSTR` format (`crate@version::module::Type`) ensures:
 
 When wrapping a SEXP, `wrap_sexp()` compares the stored symbol pointer against the expected symbol pointer. A mismatch returns `None` (or `TypeMismatchError` from `wrap_sexp_with_error`).
 
-For cross-package trait dispatch, see [Trait ABI](TRAIT_ABI.md).
+For cross-package trait dispatch, see [Trait ABI](../trait-abi/).
 
 ## Type-Erased Pointers (ErasedExternalPtr)
 

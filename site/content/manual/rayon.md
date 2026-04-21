@@ -637,6 +637,6 @@ eprintln!("Thread index: {:?}", perf::thread_index());
 
 ## See Also
 
-- [SAFETY.md](SAFETY.md): thread safety invariants
-- [ENTRYPOINT.md](ENTRYPOINT.md): worker initialization requirements
+- [SAFETY.md](../safety/): thread safety invariants
+- [ENTRYPOINT.md](../entrypoint/): worker initialization requirements
 - `miniextendr-bench/benches/rayon.rs`: performance benchmarks

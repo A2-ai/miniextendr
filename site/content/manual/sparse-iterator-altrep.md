@@ -6,7 +6,7 @@ description = "Sparse iterator ALTREP vectors use Iterator::nth() to skip direct
 
 Sparse iterator ALTREP vectors use `Iterator::nth()` to skip directly to requested indices, caching only the elements that are actually accessed. This makes them ideal for large vectors where only a few elements are needed.
 
-**See also**: [ALTREP.md](ALTREP.md) for the full ALTREP system documentation, [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md) for a quick reference.
+**See also**: [ALTREP.md](../altrep/) for the full ALTREP system documentation, [ALTREP_QUICKREF.md](../altrep-quickref/) for a quick reference.
 
 ---
 

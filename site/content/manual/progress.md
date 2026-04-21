@@ -165,7 +165,7 @@ operations that need R console access should use `unsafe(main_thread)` or run th
 bar update on the main thread. In practice, since indicatif batches draws, the simplest
 approach is to create the progress bar and call `pb.inc()` from your function directly.
 
-See [THREADS.md](THREADS.md) for details on the worker thread model.
+See [THREADS.md](../threads/) for details on the worker thread model.
 
 ## ANSI Cursor Support
 
@@ -268,6 +268,6 @@ pub fn parallel_progress() {
 
 ## See Also
 
-- [FEATURES.md](FEATURES.md) -- Feature flags reference (`indicatif`)
-- [THREADS.md](THREADS.md) -- Worker thread architecture and main thread safety
+- [FEATURES.md](../features/) -- Feature flags reference (`indicatif`)
+- [THREADS.md](../threads/) -- Worker thread architecture and main thread safety
 - [indicatif documentation](https://docs.rs/indicatif) -- Full indicatif API reference

@@ -280,12 +280,12 @@ pub fn altrep_len(x: AltrepSexp) -> usize { x.len() }
 // altrep_len(c(1L, 2L)) ← error: not ALTREP
 ```
 
-Full guide: [Receiving ALTREP from R](ALTREP_SEXP.md)
+Full guide: [Receiving ALTREP from R](../altrep-sexp/)
 
 ## Further Reading
 
-- **Complete guide**: [ALTREP.md](ALTREP.md)
-- **Receiving ALTREP**: [ALTREP_SEXP.md](ALTREP_SEXP.md)
-- **Practical examples**: [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md)
+- **Complete guide**: [ALTREP.md](../altrep/)
+- **Receiving ALTREP**: [ALTREP_SEXP.md](../altrep-sexp/)
+- **Practical examples**: [ALTREP_EXAMPLES.md](../altrep-examples/)
 - **Test suite**: [../rpkg/tests/testthat/test-altrep*.R](../rpkg/tests/testthat/)
 - **Reference**: [R Altrep.h](../background/r-source-tags-R-4-5-2/src/include/R_ext/Altrep.h)

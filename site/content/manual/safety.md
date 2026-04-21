@@ -272,7 +272,7 @@ this happens via the `miniextendr_init!` macro, which generates
 miniextendr_api::miniextendr_init!(pkgname);
 ```
 
-See [ENTRYPOINT.md](ENTRYPOINT.md) for the full init sequence. `package_init()`:
+See [ENTRYPOINT.md](../entrypoint/) for the full init sequence. `package_init()`:
 1. Records `R_MAIN_THREAD_ID` for thread checks
 2. With `worker-thread` feature: spawns the worker thread and sets up channels
 3. Without `worker-thread`: only records the thread ID (no thread spawned)

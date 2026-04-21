@@ -373,5 +373,5 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 
 ## See Also
 
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md): `#[miniextendr]` on enums
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md): full type conversion reference
+- [MINIEXTENDR_ATTRIBUTE.md](../miniextendr-attribute/): `#[miniextendr]` on enums
+- [TYPE_CONVERSIONS.md](../type-conversions/): full type conversion reference

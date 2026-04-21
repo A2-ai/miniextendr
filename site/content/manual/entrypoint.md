@@ -210,7 +210,7 @@ and Cargo.toml. The crate name must use underscores (not hyphens) for the
 
 ## See Also
 
-- [ARCHITECTURE.md](ARCHITECTURE.md): high-level crate and call flow overview
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md): complete `#[miniextendr]` reference
-- [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md): how R builds packages with compiled code
-- [LINKING.md](LINKING.md): shared library linking strategy (libR discovery)
+- [ARCHITECTURE.md](../architecture/): high-level crate and call flow overview
+- [MINIEXTENDR_ATTRIBUTE.md](../miniextendr-attribute/): complete `#[miniextendr]` reference
+- [R_BUILD_SYSTEM.md](../r-build-system/): how R builds packages with compiled code
+- [LINKING.md](../linking/): shared library linking strategy (libR discovery)

@@ -336,6 +336,6 @@ pub trait RIterator {
 
 ## See Also
 
-- [SAFETY.md](SAFETY.md) - Thread safety for trait dispatch
-- [ENTRYPOINT.md](ENTRYPOINT.md) - Trait ABI initialization requirements
+- [SAFETY.md](../safety/) - Thread safety for trait dispatch
+- [ENTRYPOINT.md](../entrypoint/) - Trait ABI initialization requirements
 - `miniextendr-api/src/trait_abi/` - Trait ABI implementation

@@ -181,6 +181,6 @@ representations for the same type in different contexts.
 
 ## See Also
 
-- [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md): `prefer` attribute reference
-- [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md): IntoR trait and conversion system
-- [DATAFRAME.md](DATAFRAME.md): DataFrame conversion patterns
+- [MINIEXTENDR_ATTRIBUTE.md](../miniextendr-attribute/): `prefer` attribute reference
+- [TYPE_CONVERSIONS.md](../type-conversions/): IntoR trait and conversion system
+- [DATAFRAME.md](../dataframe/): DataFrame conversion patterns
