@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-04-16 12:25:35
-+++ b/monorepo/rpkg/configure.ac	2026-04-17 09:23:52
+--- a/monorepo/rpkg/configure.ac	2026-04-21 11:11:07
++++ b/monorepo/rpkg/configure.ac	2026-04-21 11:11:07
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -70,9 +70,59 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+@@ -474,31 +466,4 @@
+       if command -v cargo-revendor >/dev/null 2>&1; then
+         echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
+-        dnl rpkg/src/rust/Cargo.toml uses path deps pointing at ../../vendor/
+-        dnl (miniextendr-api, miniextendr-lint, miniextendr-macros). cargo
+-        dnl metadata cannot resolve them when vendor/ is empty, so
+-        dnl cargo-revendor also can't run. The --source-root bootstrap in
+-        dnl cargo-revendor pre-seeds vendor/<name>/ from a workspace
+-        dnl checkout; in an isolated install (R extracted rpkg/ alone, no
+-        dnl monorepo in sight), clone miniextendr from github and hand
+-        dnl that to --source-root so cargo metadata can walk the graph.
+-        _source_root_arg=""
+-        _bootstrap_clone=""
+-        if grep -q 'path = "\.\./\.\./vendor/' src/rust/Cargo.toml; then
+-          if command -v git >/dev/null 2>&1; then
+-            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
+-            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
+-            if git clone --depth=1 --quiet https://github.com/CGMossa/miniextendr "$_bootstrap_clone"; then
+-              _source_root_arg="--source-root $_bootstrap_clone"
+-            else
+-              echo "configure: error: git clone of miniextendr failed" >&2
+-              echo "configure:        Auto-vendor requires network access to bootstrap path deps." >&2
+-              rm -rf "$_bootstrap_clone"
+-              exit 1
+-            fi
+-          else
+-            echo "configure: error: git required to bootstrap path deps for auto-vendor" >&2
+-            exit 1
+-          fi
+-        fi
+         cargo revendor \
+           --manifest-path src/rust/Cargo.toml \
+@@ -506,17 +471,10 @@
+           --strip-all \
+           --source-marker \
+-          $_source_root_arg \
+           -v || {
+           echo "configure: error: cargo revendor failed" >&2
+           echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
+           echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
+-          if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
+-            rm -rf "$_bootstrap_clone"
+-          fi
+           exit 1
+         }
+-        if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
+-          rm -rf "$_bootstrap_clone"
+-        fi
+         dnl Strip checksums from Cargo.lock so cargo accepts the vendored
+         dnl copies (same post-step as the tarball-unpack path above).
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-04-16 12:25:35
-+++ b/rpkg/configure.ac	2026-04-17 09:23:36
+--- a/rpkg/configure.ac	2026-04-21 11:11:07
++++ b/rpkg/configure.ac	2026-04-21 11:11:07
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -142,3 +192,53 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
  dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+@@ -474,31 +466,4 @@
+       if command -v cargo-revendor >/dev/null 2>&1; then
+         echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
+-        dnl rpkg/src/rust/Cargo.toml uses path deps pointing at ../../vendor/
+-        dnl (miniextendr-api, miniextendr-lint, miniextendr-macros). cargo
+-        dnl metadata cannot resolve them when vendor/ is empty, so
+-        dnl cargo-revendor also can't run. The --source-root bootstrap in
+-        dnl cargo-revendor pre-seeds vendor/<name>/ from a workspace
+-        dnl checkout; in an isolated install (R extracted rpkg/ alone, no
+-        dnl monorepo in sight), clone miniextendr from github and hand
+-        dnl that to --source-root so cargo metadata can walk the graph.
+-        _source_root_arg=""
+-        _bootstrap_clone=""
+-        if grep -q 'path = "\.\./\.\./vendor/' src/rust/Cargo.toml; then
+-          if command -v git >/dev/null 2>&1; then
+-            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
+-            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
+-            if git clone --depth=1 --quiet https://github.com/CGMossa/miniextendr "$_bootstrap_clone"; then
+-              _source_root_arg="--source-root $_bootstrap_clone"
+-            else
+-              echo "configure: error: git clone of miniextendr failed" >&2
+-              echo "configure:        Auto-vendor requires network access to bootstrap path deps." >&2
+-              rm -rf "$_bootstrap_clone"
+-              exit 1
+-            fi
+-          else
+-            echo "configure: error: git required to bootstrap path deps for auto-vendor" >&2
+-            exit 1
+-          fi
+-        fi
+         cargo revendor \
+           --manifest-path src/rust/Cargo.toml \
+@@ -506,17 +471,10 @@
+           --strip-all \
+           --source-marker \
+-          $_source_root_arg \
+           -v || {
+           echo "configure: error: cargo revendor failed" >&2
+           echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
+           echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
+-          if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
+-            rm -rf "$_bootstrap_clone"
+-          fi
+           exit 1
+         }
+-        if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
+-          rm -rf "$_bootstrap_clone"
+-        fi
+         dnl Strip checksums from Cargo.lock so cargo accepts the vendored
+         dnl copies (same post-step as the tarball-unpack path above).
