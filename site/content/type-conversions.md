@@ -4,6 +4,15 @@ weight = 3
 description = "R-Rust type mappings, NA handling, and coercion rules"
 +++
 
+## Core Traits
+
+| Trait | Direction | Notes |
+|-------|-----------|-------|
+| `TryFromSexp` | R -> Rust | Fallible; `try_from_sexp` (checked) or `try_from_sexp_unchecked` |
+| `IntoR` | Rust -> R | `into_sexp` (checked) or `into_sexp_unchecked` |
+| `IntoRAs<Target>` | Rust -> R | Explicit target type (e.g., force `i64` -> `INTSXP`) |
+| `Coerce<R>` | Rust -> Rust | Infallible widening before R conversion |
+
 ## Scalar Types
 
 | R Type | Rust Type | Notes |
@@ -63,13 +72,14 @@ Multiple container types are supported:
 
 ## Coercion
 
-The `Coerce` trait handles type widening:
+The `Coerce` trait handles element-wise widening on slices:
 
 ```rust
 use miniextendr_api::coerce::Coerce;
 
-// i32 -> f64 coercion
-let x: Vec<f64> = vec![1i32, 2, 3].coerce();
+// Element-wise i8 -> i32
+let slice: &[i8] = &[1, 2, 3];
+let vec: Vec<i32> = slice.coerce();
 ```
 
 Coercion is available for:
@@ -90,9 +100,20 @@ pub fn exact_i64(x: i64) -> i64 {
 
 In strict mode, only `INTSXP` and `REALSXP` are accepted as input -- `RAWSXP` and `LGLSXP` are rejected.
 
-## serde_r: Native Serialization
+## Conversion-Preference Derives
 
-The `serde_r` feature provides direct Rust-to-R serialization without JSON intermediaries:
+For custom types, derive macros select the `IntoR` conversion path:
+
+| Derive | `IntoR` result |
+|--------|----------------|
+| `#[derive(PreferList)]` | R named list |
+| `#[derive(PreferDataFrame)]` | R data frame |
+| `#[derive(PreferExternalPtr)]` | R external pointer |
+| `#[derive(PreferRNativeType)]` | Native SEXP (e.g., `INTSXP`) |
+
+## serde: Native Serialization
+
+The `serde` feature provides direct Rust-to-R serialization without JSON intermediaries:
 
 ```rust
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -105,8 +126,8 @@ pub fn make_point() -> Point {
 // Returns: list(x = 1.0, y = 2.0) in R
 ```
 
-| Feature | `serde` (JSON) | `serde_r` (Native) |
-|---------|----------------|-------------------|
+| Feature | `serde_json` (JSON string) | `serde` (native R) |
+|---------|---------------------------|-------------------|
 | Intermediate format | JSON string | None |
 | Type preservation | No (all numbers -> f64) | Yes (i32 stays i32) |
 | NA handling | Limited | Full support via `Option<T>` |
