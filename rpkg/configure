@@ -3774,17 +3774,43 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
                                             if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
       if command -v cargo-revendor >/dev/null 2>&1; then
         echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
+                                                                        _source_root_arg=""
+        _bootstrap_clone=""
+        if grep -q 'path = "\.\./\.\./vendor/' src/rust/Cargo.toml; then
+          if command -v git >/dev/null 2>&1; then
+            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
+            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
+            if git clone --depth=1 --quiet https://github.com/CGMossa/miniextendr "$_bootstrap_clone"; then
+              _source_root_arg="--source-root $_bootstrap_clone"
+            else
+              echo "configure: error: git clone of miniextendr failed" >&2
+              echo "configure:        Auto-vendor requires network access to bootstrap path deps." >&2
+              rm -rf "$_bootstrap_clone"
+              exit 1
+            fi
+          else
+            echo "configure: error: git required to bootstrap path deps for auto-vendor" >&2
+            exit 1
+          fi
+        fi
         cargo revendor \
           --manifest-path src/rust/Cargo.toml \
           --output "$VENDOR_OUT" \
           --strip-all \
           --source-marker \
+          $_source_root_arg \
           -v || {
           echo "configure: error: cargo revendor failed" >&2
           echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
           echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
+          if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
+            rm -rf "$_bootstrap_clone"
+          fi
           exit 1
         }
+        if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
+          rm -rf "$_bootstrap_clone"
+        fi
                         if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
           $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
         fi
