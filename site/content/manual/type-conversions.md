@@ -44,14 +44,24 @@ miniextendr supports converting nested collections to R lists:
 
 These are particularly useful with `#[derive(DataFrameRow)]` where row fields can contain collections.
 
-### Option Types (NA-Safe)
+### Option Types (NA-Safe Scalars)
 
-| R Type | Rust Type | NA Handling |
-|--------|-----------|-------------|
-| `integer` | `Option<i32>` | NA → `None` |
-| `numeric` | `Option<f64>` | NA → `None` |
-| `logical` | `Option<bool>` | NA → `None` |
-| `character` | `Option<String>` | NA → `None` |
+Use `Option<T>` to handle NA safely on both input and output.
+
+**Input (R → Rust):** NA becomes `None`; non-NA becomes `Some(value)`.
+**Output (Rust → R):** `None` becomes the appropriate R NA; `Some(v)` converts normally.
+**NULL:** `Option<T>` also maps R's `NULL` to `None` on input.
+
+| R Type | Rust Type | Input NA | Input NULL | Output None |
+|--------|-----------|----------|------------|-------------|
+| `integer` | `Option<i32>` | `None` | `None` | `NA_integer_` |
+| `numeric` | `Option<f64>` | `None` | `None` | `NA_real_` |
+| `logical` | `Option<bool>` | `None` | `None` | `NA` (logical) |
+| `character` | `Option<String>` | `None` | `None` | `NA_character_` |
+| `character` | `Option<&str>` | `None` | `None` | `NA_character_` |
+
+Note: `i32` rejects `NA_integer_` (= `i32::MIN`) on input; you must use `Option<i32>` to receive integer NA.
+Note: `bool` rejects logical NA on input; use `Option<bool>` to receive logical NA.
 
 ### ALTREP-Aware Types
 
@@ -209,7 +219,8 @@ pub fn mixed(
 
 ## Option-to-NA Conversion
 
-When returning `Option<T>`, `None` converts to R's NA:
+When returning `Option<T>`, `None` converts to R's NA for the corresponding R type.
+When accepting `Option<T>`, R's NA (or NULL) becomes `None` in Rust.
 
 ```rust
 #[miniextendr]
@@ -219,8 +230,37 @@ pub fn maybe_value(x: i32) -> Option<i32> {
 ```
 
 ```r
-maybe_value(5)   # 5
-maybe_value(-1)  # NA
+maybe_value(5L)   # 5L
+maybe_value(-1L)  # NA_integer_
+```
+
+String NA round-trip:
+
+```rust
+#[miniextendr]
+pub fn handle_na_string(s: Option<String>) -> Option<String> {
+    s.map(|x| x.to_uppercase())
+}
+```
+
+```r
+handle_na_string("hello")     # "HELLO"
+handle_na_string(NA_character_)  # NA_character_
+```
+
+NULL on input:
+
+```rust
+#[miniextendr]
+pub fn nullable(x: Option<i32>) -> i32 {
+    x.unwrap_or(-1)
+}
+```
+
+```r
+nullable(NULL)        # -1
+nullable(NA_integer_) # -1
+nullable(42L)         # 42
 ```
 
 ### Coercion for Options
@@ -238,6 +278,37 @@ pub fn option_coerce(x: f64) -> f64 { x }
 
 ## Vector NA Handling
 
+### NA-Aware Vector Types
+
+Both `Vec<Option<T>>` and `Box<[Option<T>]>` are supported for reading and writing
+NA-aware vectors. Element-level semantics: `None` ↔ NA, `Some(v)` ↔ concrete value.
+
+**Input (R → Rust):**
+
+| R Type | Rust Type | NA sentinel mapped to `None` |
+|--------|-----------|------------------------------|
+| INTSXP | `Vec<Option<i32>>`, `Box<[Option<i32>]>` | `i32::MIN` (`NA_integer_`) |
+| REALSXP | `Vec<Option<f64>>`, `Box<[Option<f64>]>` | specific NaN bit pattern (`NA_real_`) |
+| LGLSXP | `Vec<Option<bool>>`, `Box<[Option<bool>]>` | `i32::MIN` (`NA_logical_`) |
+| STRSXP | `Vec<Option<String>>`, `Box<[Option<String>]>` | `R_NaString` (`NA_character_`) |
+
+Coerced numeric types also support `Vec<Option<T>>` (accepts INTSXP, REALSXP, RAWSXP, LGLSXP):
+
+| Rust Type | Accepted R Types | NA handling |
+|-----------|-----------------|-------------|
+| `Vec<Option<i64>>` | INTSXP, REALSXP, RAWSXP, LGLSXP | `NA_integer_`/`NA_real_` → `None` |
+| `Vec<Option<u64>>` | INTSXP, REALSXP, RAWSXP, LGLSXP | `NA_integer_`/`NA_real_` → `None` |
+| `Vec<Option<i8>>`, `Vec<Option<i16>>`, etc. | INTSXP, REALSXP, RAWSXP, LGLSXP | NA → `None` |
+
+**Output (Rust → R):**
+
+| Rust Type | R Output | `None` becomes |
+|-----------|----------|----------------|
+| `Vec<Option<i32>>` | INTSXP | `NA_integer_` |
+| `Vec<Option<f64>>` | REALSXP | `NA_real_` |
+| `Vec<Option<bool>>` | LGLSXP | `NA` (logical) |
+| `Vec<Option<String>>` | STRSXP | `NA_character_` |
+
 ### Reading Vectors with NA
 
 For vectors with potential NA values, use `Option` element type:
@@ -246,6 +317,15 @@ For vectors with potential NA values, use `Option` element type:
 #[miniextendr]
 pub fn count_na(x: Vec<Option<i32>>) -> i32 {
     x.iter().filter(|v| v.is_none()).count() as i32
+}
+```
+
+Use `Box<[Option<T>]>` when you prefer a fixed-size owned slice over `Vec`:
+
+```rust
+#[miniextendr]
+pub fn sum_non_na(x: Box<[Option<f64>]>) -> f64 {
+    x.iter().filter_map(|v| *v).sum()
 }
 ```
 
@@ -259,6 +339,17 @@ pub fn add_na_at_end(x: Vec<i32>) -> Vec<Option<i32>> {
     let mut result: Vec<Option<i32>> = x.into_iter().map(Some).collect();
     result.push(None);  // Adds NA
     result
+}
+```
+
+### Partial-results pattern
+
+```rust
+#[miniextendr]
+pub fn parse_numbers(strings: Vec<String>) -> Vec<Option<f64>> {
+    strings.iter()
+        .map(|s| s.parse().ok())  // failed parses become None (NA in R)
+        .collect()
 }
 ```
 

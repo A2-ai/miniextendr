@@ -198,6 +198,80 @@ pub fn check_input(x: i32) -> Result<i32, String> {
 > **Note**: `r_stop()` exists internally but is not part of the public API.
 > The `r_error!` macro has been removed. Always use `panic!()` or `Err(...)` instead.
 
+---
+
+## Never Call Rf_error / Rf_errorcall Directly
+
+**Calling `Rf_error()` or `Rf_errorcall()` from Rust is forbidden.**
+
+### Why it is forbidden
+
+`Rf_error` and `Rf_errorcall` raise an R error by executing a `longjmp`. That jump
+unwinds the C call stack directly, bypassing every Rust stack frame between your code
+and the `setjmp` point in R's evaluator. The consequence is that Rust destructors never
+run -- any heap allocations, file handles, locks, or `Box<T>` values held by those
+frames leak or remain poisoned forever.
+
+The `R_UnwindProtect` wrapper that miniextendr uses internally is designed specifically
+to avoid this: it runs a cleanup handler before continuing R's unwind, which lets Rust
+drop everything properly. But that protection only exists when the Rust code enters
+`R_UnwindProtect`. Code that calls `Rf_error` directly skips the protection entirely.
+
+### Use panic!() or Err(...) instead
+
+Both alternatives route through the safe wrapper:
+
+```rust
+// Good: framework catches this and raises a simpleError on the R side
+#[miniextendr]
+pub fn check(x: i32) -> i32 {
+    if x < 0 {
+        panic!("x must be non-negative");
+    }
+    x
+}
+
+// Also good: Err is transported as a value, raised as simpleError in the R wrapper
+#[miniextendr]
+pub fn parse(s: &str) -> Result<i32, String> {
+    s.parse().map_err(|e| format!("parse failed: {e}"))
+}
+```
+
+Both produce an R condition with class `c("rust_error", "simpleError", "error", "condition")` --
+the same hierarchy as `stop()`. R code can catch them at any level:
+
+```r
+tryCatch(check(-1L), error = function(e) cat("caught:", conditionMessage(e), "\n"))
+# caught: x must be non-negative
+```
+
+### MXL300 lint
+
+miniextendr-lint (MXL300) scans your crate for direct `Rf_error()` and `Rf_errorcall()`
+call sites and emits a build-time warning. If you see MXL300, replace the call with
+`panic!()` or `Err(...)`.
+
+To suppress a false positive on a single line (e.g., inside the framework itself):
+
+```rust
+// miniextendr-lint: suppress MXL300
+unsafe { Rf_error(...) }
+```
+
+### The ~8-byte leak on R_ContinueUnwind
+
+There is one documented, accepted cost in the unwind path: when an R error propagates
+through `with_r_unwind_protect_error_in_r`, the `R_ContinueUnwind` call that hands
+control back to R's evaluator leaks approximately 8 bytes (the `RErrorMarker` struct
+plus its `Box` header). This is not a bug -- it is a deliberate trade-off to keep the
+unwind path free of further R API calls that could themselves error.
+
+This cost does **not** apply to the normal Rust panic path, which returns to R via a
+tagged SEXP value without any `longjmp`. If you see this leak in valgrind, it is
+expected and bounded: one allocation per R error that crosses a `with_r_unwind_protect`
+boundary, not per call.
+
 ### Warnings
 
 Issue warnings without stopping execution:

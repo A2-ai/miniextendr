@@ -71,6 +71,30 @@ with_r_unwind_protect(|| { ... })
 
 Note: `with_r_unwind_protect_error_in_r` leaks ~8 bytes (the `RErrorMarker` + Box header) on the R-longjmp path (`R_ContinueUnwind`). Regular Rust panics do not leak. This is why MXL300 flags direct `Rf_error()` calls: they longjmp through Rust frames and bypass destructors unless wrapped correctly.
 
+## Never Call Rf_error() Directly
+
+**Calling `Rf_error()` or `Rf_errorcall()` from Rust is forbidden.**
+
+These functions raise an R error by executing a `longjmp`, which jumps past every Rust
+stack frame without running destructors. Heap allocations, locks, and RAII guards all
+leak.
+
+Use `panic!()` or `Err(...)` instead. The framework catches both and raises a structured
+R condition with class `c("rust_error", "simpleError", "error", "condition")`:
+
+```rust
+// Both of these produce a simpleError on the R side:
+panic!("something went wrong");
+return Err("something went wrong".to_string());
+```
+
+miniextendr-lint (MXL300) flags direct `Rf_error()` call sites at build time.
+
+**Note on the `~8-byte leak`**: on the `R_ContinueUnwind` path (R error propagating through
+`with_r_unwind_protect_error_in_r`), approximately 8 bytes are leaked per event
+(`RErrorMarker` + Box header). This is a documented, bounded cost -- not a bug. Regular
+Rust panics do not leak.
+
 ## Best Practices
 
 - Use `panic!()` instead of `Rf_error()` -- the framework converts panics safely
