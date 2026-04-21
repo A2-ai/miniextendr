@@ -452,14 +452,46 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       echo "configure: dev mode — using existing vendor/"
     fi
   else
-    dnl CRAN/offline mode: vendor/ must exist
+    dnl CRAN/offline mode: vendor/ must exist.
+    dnl
+    dnl Priority 1 (tarball): already attempted at the top of this block —
+    dnl a real CRAN tarball always ships inst/vendor.tar.xz.
+    dnl
+    dnl Priority 2 (downstream first-install): install.packages(),
+    dnl remotes::install_github(), or rv sync cloned from git without a
+    dnl committed vendor tarball. We can't reliably tell this apart from a
+    dnl real CRAN build, so instead of erroring we auto-vendor when
+    dnl cargo-revendor is installed (and the network is available).
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      echo "configure: error: CRAN build requires vendored sources." >&2
-      echo "configure:        Run 'just vendor' to vendor deps." >&2
-      echo "configure:        Requires cargo-revendor: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
-      exit 1
+      if command -v cargo-revendor >/dev/null 2>&1; then
+        echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
+        cargo revendor \
+          --manifest-path src/rust/Cargo.toml \
+          --output "$VENDOR_OUT" \
+          --strip-all \
+          --source-marker \
+          -v || {
+          echo "configure: error: cargo revendor failed" >&2
+          echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
+          echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
+          exit 1
+        }
+        dnl Strip checksums from Cargo.lock so cargo accepts the vendored
+        dnl copies (same post-step as the tarball-unpack path above).
+        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+        fi
+        echo "configure: auto-vendored — vendor ready"
+      else
+        echo "configure: error: vendored sources required but vendor/ and inst/vendor.tar.xz are both missing." >&2
+        echo "configure:        Install cargo-revendor to auto-vendor on first install:" >&2
+        echo "configure:          cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
+        echo "configure:        Or commit inst/vendor.tar.xz alongside the package." >&2
+        exit 1
+      fi
+    else
+      echo "configure: CRAN build — vendor ready"
     fi
-    echo "configure: CRAN build — vendor ready"
   fi
 ],
 [NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
