@@ -839,7 +839,7 @@ vendor-sync-check:
       echo "Vendor sync check passed: all miniextendr crates match."
     fi
 
-# Verify lint crate compiles against current macros-core parser
+# Verify lint crate compiles against the current miniextendr-macros parser
 lint-sync-check:
     cargo check --manifest-path=miniextendr-lint/Cargo.toml
 

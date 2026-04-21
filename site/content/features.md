@@ -20,14 +20,56 @@ miniextendr uses cargo features to gate optional functionality:
 
 ## Derive Macros
 
+miniextendr ships roughly twenty derives grouped by what they produce.
+
+### Wrapper types
+
 | Derive | Purpose |
 |--------|---------|
-| `#[derive(ExternalPtr)]` | Wrap struct as R external pointer |
-| `#[derive(DataFrameRow)]` | Convert struct to/from data frame row |
-| `#[derive(Vctrs)]` | Generate vctrs-compatible class |
+| `#[derive(ExternalPtr)]` | Wrap struct as an `EXTPTRSXP`; implements `TypedExternal` and `IntoExternalPtr` |
+| `#[derive(RNativeType)]` | Newtype wrapper around a native R scalar (`i32`, `f64`, `bool`, `String`, etc.) |
+
+### ALTREP
+
+Typed derives generate the full ALTREP class from field attributes. The manual `Altrep` derive lets you implement the per-method traits yourself.
+
+| Derive | Purpose |
+|--------|---------|
+| `#[derive(AltrepInteger)]` | Integer ALTREP class from `#[altrep(len, elt, class, …)]` fields |
+| `#[derive(AltrepReal)]` | Real (double) ALTREP class |
+| `#[derive(AltrepLogical)]` | Logical ALTREP class |
+| `#[derive(AltrepRaw)]` | Raw (byte) ALTREP class |
+| `#[derive(AltrepString)]` | Character ALTREP class (`Vec<Option<String>>` preserves `NA_character_`) |
+| `#[derive(AltrepComplex)]` | Complex ALTREP class |
+| `#[derive(AltrepList)]` | List ALTREP class |
+| `#[derive(Altrep)]` | Manual pattern — registers the class; you implement `AltrepLen` and `Alt*Data` |
+
+### List / data-frame round-tripping
+
+| Derive | Purpose |
+|--------|---------|
+| `#[derive(IntoList)]` | Convert struct → named R list |
+| `#[derive(TryFromList)]` | Convert named R list → struct |
+| `#[derive(DataFrameRow)]` | Treat struct as a data-frame row; generates a companion DataFrame type |
+| `#[derive(Vctrs)]` | vctrs-compatible S3 vector class (`Vctr`, `Rcrd`, `ListOf` kinds) |
+
+### Enums ↔ R
+
+| Derive | Purpose |
+|--------|---------|
 | `#[derive(RFactor)]` | Map enum variants to R factor levels |
-| `#[derive(PreferExternalPtr)]` | Prefer ExternalPtr over data conversion |
-| `#[derive(PreferDataFrame)]` | Prefer DataFrame over ExternalPtr |
+| `#[derive(MatchArg)]` | Map enum variants to R character values via `match.arg` |
+
+### Conversion preference
+
+Control which `IntoR` / `TryFromSexp` path a type takes when multiple are possible.
+
+| Derive | Purpose |
+|--------|---------|
+| `#[derive(PreferExternalPtr)]` | Prefer `ExternalPtr` wrapping |
+| `#[derive(PreferDataFrame)]` | Prefer data-frame representation |
+| `#[derive(PreferList)]` | Prefer named-list representation |
+| `#[derive(PreferRNativeType)]` | Prefer native R scalar representation |
 
 ## Attribute Options
 

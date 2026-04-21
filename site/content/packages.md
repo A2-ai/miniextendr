@@ -21,8 +21,7 @@ The repository has four broad groups:
 |---------|------|----------------------------|
 | `miniextendr-api` | Runtime crate | The crate downstream Rust code usually depends on |
 | `miniextendr-macros` | Proc-macro crate | The macro layer behind `#[miniextendr]` and derives |
-| `miniextendr-macros-core` | Internal helper crate | Shared parser/generation support for macros and lint |
-| `miniextendr-engine` | Embedding crate | Standalone embedded-R support outside normal package builds |
+| `miniextendr-engine` | Wrapper-codegen crate | Reads linkme registrations from a cdylib and emits `miniextendr-wrappers.R` |
 | `miniextendr-cli` | CLI tool | Rust-side workflow and scaffolding commands |
 | `miniextendr-lint` | Internal lint crate | Build-time checks for framework usage |
 | `miniextendr-bench` | Benchmark crate | Performance and runtime experiments |

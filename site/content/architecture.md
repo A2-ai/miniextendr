@@ -36,18 +36,26 @@ A concrete example: the `.Call()`-registered C entry point is the same mechanism
 ## Crate Architecture
 
 ```text
-miniextendr-macros        miniextendr-engine
-(proc macros)             (code generation)
-      |                         |
-      +----------+--------------+
-      v          v
-miniextendr-api           miniextendr-macros-core
-(runtime library)         (shared parser types)
-      |                         |
-      v                    used by macros + lint
-example package / user packages
-(R package with Rust backend)
+miniextendr-macros        miniextendr-engine       miniextendr-lint
+(proc macros)             (wrapper codegen)        (build-time checks)
+      \                         |                        /
+       \                        |                       /
+        +-----------------------+----------------------+
+                                v
+                        miniextendr-api
+                        (runtime library)
+                                |
+                                v
+                example package / user packages
+                (R package with Rust backend)
 ```
+
+Supporting crates outside the main dependency chain:
+
+- `miniextendr-bench/` — divan-based performance suite (maintainer-only, separate workspace member).
+- `miniextendr-cli/` — Rust-side workflow commands.
+- `cargo-revendor/` — standalone `cargo revendor` subcommand for offline/CRAN vendoring (excluded from the main workspace).
+- `minirextendr/` — R scaffolding helper for end users.
 
 ### miniextendr-api
 
