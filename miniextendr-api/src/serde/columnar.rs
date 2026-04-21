@@ -291,7 +291,7 @@ impl ColumnarDataFrame {
             if names_sexp == SEXP::nil() {
                 return self;
             }
-            let ncol = crate::ffi::Rf_xlength(names_sexp);
+            let ncol = names_sexp.xlength();
             for i in 0..ncol {
                 if col_name(names_sexp, i) == name {
                     self.sexp.set_vector_elt(i, column);
