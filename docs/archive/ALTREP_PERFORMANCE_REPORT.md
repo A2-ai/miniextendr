@@ -651,7 +651,7 @@ Memory allocation measured via:
 
 2. **ALTREP System**: R Core Team. (2019). "ALTREP: Alternative Representations for R Objects" in *R Internals*. https://cran.r-project.org/doc/manuals/r-release/R-ints.html#ALTREP
 
-3. **miniextendr**: miniextendr Development Team. (2026). *miniextendr: Rust-R Interoperability Framework*. https://github.com/miniextendr/miniextendr
+3. **miniextendr**: miniextendr Development Team. (2026). *miniextendr: Rust-R Interoperability Framework*. https://github.com/A2-ai/miniextendr
 
 4. **Performance Best Practices**: Neal, R. (2014). "Inaccurate results from microbenchmark". https://radfordneal.wordpress.com/2014/02/02/inaccurate-results-from-microbenchmark/
 
@@ -665,4 +665,4 @@ Memory allocation measured via:
 
 ---
 
-**For questions or feedback**, please file an issue at: https://github.com/miniextendr/miniextendr/issues
+**For questions or feedback**, please file an issue at: https://github.com/A2-ai/miniextendr/issues
