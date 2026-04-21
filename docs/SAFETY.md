@@ -293,5 +293,5 @@ will cause all subsequent thread checks to be incorrect.
 ## Reporting Safety Issues
 
 If you discover a soundness issue in miniextendr, please report it via
-[GitHub Issues](https://github.com/miniextendr/miniextendr/issues) with the
+[GitHub Issues](https://github.com/A2-ai/miniextendr/issues) with the
 `[SAFETY]` tag.

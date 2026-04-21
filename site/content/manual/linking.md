@@ -162,4 +162,4 @@ miniextendr always links dynamically to `libR`:
 ## See Also
 
 - [R Installation and Administration](https://cran.r-project.org/doc/manuals/r-release/R-admin.html)
-- [Writing R Extensions: Linking](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Linking-GUIs-and-other-front-ends-to-R)
+- [Writing R Extensions: Linking](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Linking-GUIs-and-other-front_002dends-to-R)
