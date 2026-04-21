@@ -21,8 +21,8 @@ R --version       # Should be 4.0+
 Use the `minirextendr` helper package to scaffold a new project:
 
 ```r
-# Install minirextendr (once)
-install.packages("minirextendr")
+# Install minirextendr (once, from GitHub)
+remotes::install_github("CGMossa/miniextendr", subdir = "minirextendr")
 
 # Create a new package
 library(minirextendr)
@@ -35,12 +35,12 @@ mypackage/
 ├── DESCRIPTION
 ├── NAMESPACE
 ├── R/
-│   └── mypackage_wrappers.R    # Auto-generated R wrappers
+│   └── mypackage-wrappers.R    # Auto-generated R wrappers
 ├── src/
 │   └── rust/
 │       ├── Cargo.toml
-│       ├── lib.rs              # Your Rust code goes here
-│       └── vendor/             # Vendored miniextendr crates
+│       └── lib.rs              # Your Rust code goes here
+├── vendor/                     # Vendored miniextendr crates
 ├── configure                   # Build configuration script
 └── configure.ac                # Autoconf source
 ```
@@ -51,6 +51,9 @@ Edit `src/rust/lib.rs`:
 
 ```rust
 use miniextendr_api::miniextendr;
+
+// Required: generates the R_init_mypackage entry point.
+miniextendr_api::miniextendr_init!();
 
 /// Add two integers.
 /// @param a First number
@@ -73,18 +76,27 @@ pub fn greet(name: &str) -> String {
 
 ## Step 3: Build and Test
 
+The simplest approach is `minirextendr::miniextendr_build()`, which runs autoconf, configure, install, and roxygen2 in the correct order:
+
 ```r
-# Recommended: devtools handles everything in one step
-devtools::document("mypackage")
-devtools::install("mypackage")
+library(minirextendr)
+miniextendr_build("mypackage")
 ```
 
-Or manually:
+Or step by step:
+
+```r
+devtools::install("mypackage")   # Compile Rust, generate R wrappers, install
+devtools::document("mypackage")  # Update NAMESPACE and man pages
+```
+
+Or manually from the shell:
 
 ```bash
 cd mypackage
-./configure            # Generate build files
-R CMD INSTALL .        # Compile Rust and install
+autoconf -vif              # Generate configure from configure.ac
+bash ./configure           # Generate Makevars and build files
+R CMD INSTALL .            # Compile Rust and install
 ```
 
 ## Step 4: Use from R
@@ -116,7 +128,7 @@ The macro:
 - Manages error handling and panics
 - Extracts documentation from Rust doc comments
 
-Items annotated with `#[miniextendr]` are automatically registered via linkme distributed slices -- no manual module declarations needed.
+Items annotated with `#[miniextendr]` are automatically registered via linkme distributed slices. No manual module declarations are needed.
 
 ## Type Conversions
 
@@ -203,15 +215,17 @@ pub fn parse_int(s: &str) -> Result<i32, String> {
 ## Development Workflow
 
 1. Edit Rust code in `src/rust/lib.rs`
-2. Run `devtools::document()` -- compiles Rust, generates R wrappers, runs roxygen2
-3. Run `devtools::install()` -- install the package
+2. Run `devtools::install("mypackage")` (compiles Rust, generates R wrappers, installs)
+3. Run `devtools::document("mypackage")` (updates NAMESPACE and man pages)
 4. Test in R
+
+Or use `minirextendr::miniextendr_build("mypackage")` to run all steps in one call.
 
 When working in the miniextendr monorepo itself, the [`justfile`](https://github.com/A2-ai/miniextendr/blob/main/justfile) provides recipes like `just configure`, `just rcmdinstall`, and `just devtools-document` that automate the full build cycle.
 
 ## Next Steps
 
-- [Architecture](/architecture/) -- How miniextendr works
-- [Type Conversions](/type-conversions/) -- Full type mapping reference
-- [Class Systems](/class-systems/) -- Choosing and using R class systems
-- [ALTREP](/altrep/) -- Lazy and compact vectors
+- [Architecture](/architecture/) - How miniextendr works
+- [Type Conversions](/type-conversions/) - Full type mapping reference
+- [Class Systems](/class-systems/) - Choosing and using R class systems
+- [ALTREP](/altrep/) - Lazy and compact vectors
