@@ -1521,14 +1521,23 @@ pub mod vctrs_support {
     use crate::list::List;
     use crate::vctrs::new_rcrd;
 
-    /// Helper: allocate a INTSXP column of length `n` and fill it.
-    unsafe fn alloc_int_col(n: usize, extract: impl Fn(usize) -> i32) -> SEXP {
+    /// Helper: allocate an INTSXP column of length `n`, fill it, and return an
+    /// [`OwnedProtect`] guard that keeps the SEXP protected until the caller
+    /// drops it.  The caller **must** hold every guard alive until after
+    /// `List::from_raw_values` returns, because `from_raw_values` calls
+    /// `Rf_allocVector(VECSXP, …)` which can trigger GC.
+    unsafe fn alloc_int_col(
+        n: usize,
+        extract: impl Fn(usize) -> i32,
+    ) -> crate::gc_protect::OwnedProtect {
         let (col, dst) = unsafe { crate::into_r::alloc_r_vector::<i32>(n) };
-        let _guard = unsafe { crate::gc_protect::OwnedProtect::new(col) };
+        // SAFETY: col was just allocated on the R thread; guard keeps it
+        // rooted for the caller's entire alloc-and-list-build sequence.
+        let guard = unsafe { crate::gc_protect::OwnedProtect::new(col) };
         for (i, slot) in dst.iter_mut().enumerate() {
             *slot = extract(i);
         }
-        col
+        guard
     }
 
     /// Convert a slice of `Span`s into a vctrs `jiff_span` rcrd SEXP.
@@ -1539,29 +1548,35 @@ pub mod vctrs_support {
         let n = spans.len();
         // get_years → i16; get_months/weeks/days/hours → i32
         // get_minutes/seconds/ms/us/ns → i64 (truncate to i32; in practice always fits)
-        let years = unsafe { alloc_int_col(n, |i| i32::from(spans[i].get_years())) };
-        let months = unsafe { alloc_int_col(n, |i| spans[i].get_months()) };
-        let weeks = unsafe { alloc_int_col(n, |i| spans[i].get_weeks()) };
-        let days = unsafe { alloc_int_col(n, |i| spans[i].get_days()) };
-        let hours = unsafe { alloc_int_col(n, |i| spans[i].get_hours()) };
-        let minutes = unsafe { alloc_int_col(n, |i| spans[i].get_minutes() as i32) };
-        let seconds = unsafe { alloc_int_col(n, |i| spans[i].get_seconds() as i32) };
-        let milliseconds = unsafe { alloc_int_col(n, |i| spans[i].get_milliseconds() as i32) };
-        let microseconds = unsafe { alloc_int_col(n, |i| spans[i].get_microseconds() as i32) };
-        let nanoseconds = unsafe { alloc_int_col(n, |i| spans[i].get_nanoseconds() as i32) };
+        //
+        // GC-SAFETY: all guards are held alive until after List::from_raw_values
+        // returns. from_raw_values calls Rf_allocVector(VECSXP, …) which can
+        // trigger GC — so every column must stay protected through that call.
+        let g_years = unsafe { alloc_int_col(n, |i| i32::from(spans[i].get_years())) };
+        let g_months = unsafe { alloc_int_col(n, |i| spans[i].get_months()) };
+        let g_weeks = unsafe { alloc_int_col(n, |i| spans[i].get_weeks()) };
+        let g_days = unsafe { alloc_int_col(n, |i| spans[i].get_days()) };
+        let g_hours = unsafe { alloc_int_col(n, |i| spans[i].get_hours()) };
+        let g_minutes = unsafe { alloc_int_col(n, |i| spans[i].get_minutes() as i32) };
+        let g_seconds = unsafe { alloc_int_col(n, |i| spans[i].get_seconds() as i32) };
+        let g_milliseconds = unsafe { alloc_int_col(n, |i| spans[i].get_milliseconds() as i32) };
+        let g_microseconds = unsafe { alloc_int_col(n, |i| spans[i].get_microseconds() as i32) };
+        let g_nanoseconds = unsafe { alloc_int_col(n, |i| spans[i].get_nanoseconds() as i32) };
 
         let list = List::from_raw_values(vec![
-            years,
-            months,
-            weeks,
-            days,
-            hours,
-            minutes,
-            seconds,
-            milliseconds,
-            microseconds,
-            nanoseconds,
+            g_years.get(),
+            g_months.get(),
+            g_weeks.get(),
+            g_days.get(),
+            g_hours.get(),
+            g_minutes.get(),
+            g_seconds.get(),
+            g_milliseconds.get(),
+            g_microseconds.get(),
+            g_nanoseconds.get(),
         ])
+        // guards drop here — safe because the list VECSXP now holds references
+        // to each column as a child object, keeping them alive via R's GC graph.
         .set_names_str(&[
             "years",
             "months",
@@ -1585,13 +1600,14 @@ pub mod vctrs_support {
     pub fn zoned_vec_to_rcrd(zones: &[Zoned]) -> SEXP {
         let n = zones.len();
         let (ts_col, ts_dst) = unsafe { crate::into_r::alloc_r_vector::<f64>(n) };
+        // GC-SAFETY: _ts_guard keeps ts_col rooted until after from_raw_values.
         let _ts_guard = unsafe { crate::gc_protect::OwnedProtect::new(ts_col) };
 
-        let tz_col = unsafe {
-            let col = Rf_allocVector(SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
-            Rf_protect(col);
-            col
-        };
+        // STRSXP column — allocate and protect via OwnedProtect so it outlives
+        // the List::from_raw_values call (which allocates a VECSXP and can GC).
+        let tz_col = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t) };
+        // GC-SAFETY: _tz_guard keeps tz_col rooted until after from_raw_values.
+        let _tz_guard = unsafe { crate::gc_protect::OwnedProtect::new(tz_col) };
 
         for (i, z) in zones.iter().enumerate() {
             let ts = z.timestamp();
@@ -1599,8 +1615,9 @@ pub mod vctrs_support {
             let iana = z.time_zone().iana_name().unwrap_or("UTC");
             tz_col.set_string_elt(i as crate::ffi::R_xlen_t, SEXP::charsxp(iana));
         }
-        unsafe { Rf_unprotect(1) }; // tz_col
-
+        // Guards (_ts_guard, _tz_guard) drop after from_raw_values returns —
+        // at that point the VECSXP owns both columns via SET_VECTOR_ELT, keeping
+        // them alive through R's GC object graph.
         let list = List::from_raw_values(vec![ts_col, tz_col]).set_names_str(&["timestamp", "tz"]);
 
         new_rcrd(list, &["jiff_zoned"], &[])
@@ -1612,24 +1629,33 @@ pub mod vctrs_support {
     /// Fields: `year`, `month`, `day`, `hour`, `minute`, `second`, `nanosecond`.
     pub fn datetime_vec_to_rcrd(dts: &[DateTime]) -> SEXP {
         let n = dts.len();
-        let year = unsafe { alloc_int_col(n, |i| i32::from(dts[i].year())) };
-        let month = unsafe { alloc_int_col(n, |i| i32::from(dts[i].month())) };
-        let day = unsafe { alloc_int_col(n, |i| i32::from(dts[i].day())) };
-        let hour = unsafe { alloc_int_col(n, |i| i32::from(dts[i].hour())) };
-        let minute = unsafe { alloc_int_col(n, |i| i32::from(dts[i].minute())) };
-        let second = unsafe { alloc_int_col(n, |i| i32::from(dts[i].second())) };
-        let nanosecond = unsafe { alloc_int_col(n, |i| dts[i].subsec_nanosecond()) };
+        // GC-SAFETY: guards kept alive until after from_raw_values (see span_vec_to_rcrd).
+        let g_year = unsafe { alloc_int_col(n, |i| i32::from(dts[i].year())) };
+        let g_month = unsafe { alloc_int_col(n, |i| i32::from(dts[i].month())) };
+        let g_day = unsafe { alloc_int_col(n, |i| i32::from(dts[i].day())) };
+        let g_hour = unsafe { alloc_int_col(n, |i| i32::from(dts[i].hour())) };
+        let g_minute = unsafe { alloc_int_col(n, |i| i32::from(dts[i].minute())) };
+        let g_second = unsafe { alloc_int_col(n, |i| i32::from(dts[i].second())) };
+        let g_nanosecond = unsafe { alloc_int_col(n, |i| dts[i].subsec_nanosecond()) };
 
-        let list = List::from_raw_values(vec![year, month, day, hour, minute, second, nanosecond])
-            .set_names_str(&[
-                "year",
-                "month",
-                "day",
-                "hour",
-                "minute",
-                "second",
-                "nanosecond",
-            ]);
+        let list = List::from_raw_values(vec![
+            g_year.get(),
+            g_month.get(),
+            g_day.get(),
+            g_hour.get(),
+            g_minute.get(),
+            g_second.get(),
+            g_nanosecond.get(),
+        ])
+        .set_names_str(&[
+            "year",
+            "month",
+            "day",
+            "hour",
+            "minute",
+            "second",
+            "nanosecond",
+        ]);
 
         new_rcrd(list, &["jiff_datetime"], &[])
             .expect("new_rcrd should not fail for well-formed datetime fields")
@@ -1640,17 +1666,19 @@ pub mod vctrs_support {
     /// Fields: `hour`, `minute`, `second`, `nanosecond`.
     pub fn time_vec_to_rcrd(times: &[Time]) -> SEXP {
         let n = times.len();
-        let hour = unsafe { alloc_int_col(n, |i| i32::from(times[i].hour())) };
-        let minute = unsafe { alloc_int_col(n, |i| i32::from(times[i].minute())) };
-        let second = unsafe { alloc_int_col(n, |i| i32::from(times[i].second())) };
-        let nanosecond = unsafe { alloc_int_col(n, |i| times[i].subsec_nanosecond()) };
+        // GC-SAFETY: guards kept alive until after from_raw_values (see span_vec_to_rcrd).
+        let g_hour = unsafe { alloc_int_col(n, |i| i32::from(times[i].hour())) };
+        let g_minute = unsafe { alloc_int_col(n, |i| i32::from(times[i].minute())) };
+        let g_second = unsafe { alloc_int_col(n, |i| i32::from(times[i].second())) };
+        let g_nanosecond = unsafe { alloc_int_col(n, |i| times[i].subsec_nanosecond()) };
 
-        let list = List::from_raw_values(vec![hour, minute, second, nanosecond]).set_names_str(&[
-            "hour",
-            "minute",
-            "second",
-            "nanosecond",
-        ]);
+        let list = List::from_raw_values(vec![
+            g_hour.get(),
+            g_minute.get(),
+            g_second.get(),
+            g_nanosecond.get(),
+        ])
+        .set_names_str(&["hour", "minute", "second", "nanosecond"]);
 
         new_rcrd(list, &["jiff_time"], &[])
             .expect("new_rcrd should not fail for well-formed time fields")

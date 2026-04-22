@@ -3,7 +3,9 @@ use miniextendr_api::cached_class::set_posixct_utc;
 use miniextendr_api::ffi::{Rf_protect, Rf_unprotect, SEXP};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
-use miniextendr_api::{JiffDate, JiffTimestampVec, SignedDuration, Timestamp, Zoned};
+use miniextendr_api::{
+    JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, SignedDuration, Span, Timestamp, Zoned,
+};
 use std::sync::Arc;
 
 // region: Timestamp (POSIXct UTC)
@@ -222,6 +224,208 @@ pub fn jiff_altrep_len(x: Vec<Timestamp>) -> i32 {
 pub fn jiff_altrep_elt(x: Vec<Timestamp>, i: i32) -> f64 {
     let ts = &x[i as usize];
     ts.as_second() as f64 + (ts.subsec_nanosecond() as f64 / 1_000_000_000.0)
+}
+
+// endregion
+
+// region: Span ExternalPtr (exercises RSpan adapter trait)
+
+/// An ExternalPtr wrapper around a jiff `Span`.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+pub struct JiffSpan(pub Span);
+
+type JiffSpanPtr = miniextendr_api::externalptr::ExternalPtr<JiffSpan>;
+
+/// Create a new JiffSpan ExternalPtr from year/month/day components.
+/// @param years Number of years (integer).
+/// @param months Number of months (integer).
+/// @param days Number of days (integer).
+#[miniextendr]
+pub fn jiff_span_new(years: i32, months: i32, days: i32) -> JiffSpanPtr {
+    let span = Span::new()
+        .years(years as i64)
+        .months(months as i64)
+        .days(days as i64);
+    miniextendr_api::externalptr::ExternalPtr::new(JiffSpan(span))
+}
+
+/// Extract the years component from a JiffSpan.
+/// @param span ExternalPtr wrapping a JiffSpan.
+#[miniextendr]
+pub fn jiff_span_years(span: JiffSpanPtr) -> i32 {
+    i32::from(span.0.get_years())
+}
+
+/// Extract the months component from a JiffSpan.
+/// @param span ExternalPtr wrapping a JiffSpan.
+#[miniextendr]
+pub fn jiff_span_months(span: JiffSpanPtr) -> i32 {
+    span.0.get_months()
+}
+
+/// Extract the days component from a JiffSpan.
+/// @param span ExternalPtr wrapping a JiffSpan.
+#[miniextendr]
+pub fn jiff_span_days(span: JiffSpanPtr) -> i32 {
+    span.0.get_days()
+}
+
+/// Check whether a JiffSpan is zero.
+/// @param span ExternalPtr wrapping a JiffSpan.
+#[miniextendr]
+pub fn jiff_span_is_zero(span: JiffSpanPtr) -> bool {
+    span.0.is_zero()
+}
+
+/// Check whether a JiffSpan is negative.
+/// @param span ExternalPtr wrapping a JiffSpan.
+#[miniextendr]
+pub fn jiff_span_is_negative(span: JiffSpanPtr) -> bool {
+    span.0.is_negative()
+}
+
+// endregion
+
+// region: civil::DateTime fixtures (exercises RDateTime adapter trait)
+
+/// An ExternalPtr wrapper around a jiff civil `DateTime`.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+pub struct JiffDateTimePtr(pub JiffDateTime);
+
+type DateTimePtrType = miniextendr_api::externalptr::ExternalPtr<JiffDateTimePtr>;
+
+/// Build a civil::DateTime ExternalPtr from year/month/day/hour/minute/second components.
+/// @param year Year.
+/// @param month Month (1–12).
+/// @param day Day (1–31).
+/// @param hour Hour (0–23).
+/// @param minute Minute (0–59).
+/// @param second Second (0–59).
+#[miniextendr]
+pub fn jiff_datetime_new(
+    year: i32,
+    month: i32,
+    day: i32,
+    hour: i32,
+    minute: i32,
+    second: i32,
+) -> DateTimePtrType {
+    let dt = JiffDateTime::constant(
+        year as i16,
+        month as i8,
+        day as i8,
+        hour as i8,
+        minute as i8,
+        second as i8,
+        0,
+    );
+    miniextendr_api::externalptr::ExternalPtr::new(JiffDateTimePtr(dt))
+}
+
+/// Extract the year from a civil::DateTime ExternalPtr.
+/// @param dt ExternalPtr wrapping a JiffDateTimePtr.
+#[miniextendr]
+pub fn jiff_datetime_year(dt: DateTimePtrType) -> i32 {
+    i32::from(dt.0.year())
+}
+
+/// Extract the month from a civil::DateTime ExternalPtr (1–12).
+/// @param dt ExternalPtr wrapping a JiffDateTimePtr.
+#[miniextendr]
+pub fn jiff_datetime_month(dt: DateTimePtrType) -> i32 {
+    i32::from(dt.0.month())
+}
+
+/// Extract the day from a civil::DateTime ExternalPtr (1–31).
+/// @param dt ExternalPtr wrapping a JiffDateTimePtr.
+#[miniextendr]
+pub fn jiff_datetime_day(dt: DateTimePtrType) -> i32 {
+    i32::from(dt.0.day())
+}
+
+/// Extract the hour from a civil::DateTime ExternalPtr (0–23).
+/// @param dt ExternalPtr wrapping a JiffDateTimePtr.
+#[miniextendr]
+pub fn jiff_datetime_hour(dt: DateTimePtrType) -> i32 {
+    i32::from(dt.0.hour())
+}
+
+// endregion
+
+// region: civil::Time fixtures (exercises RTime adapter trait)
+
+/// An ExternalPtr wrapper around a jiff civil `Time`.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+pub struct JiffTimePtr(pub JiffTime);
+
+type TimePtrType = miniextendr_api::externalptr::ExternalPtr<JiffTimePtr>;
+
+/// Build a civil::Time ExternalPtr from hour/minute/second components.
+/// @param hour Hour (0–23).
+/// @param minute Minute (0–59).
+/// @param second Second (0–59).
+#[miniextendr]
+pub fn jiff_time_new(hour: i32, minute: i32, second: i32) -> TimePtrType {
+    let t = JiffTime::constant(hour as i8, minute as i8, second as i8, 0);
+    miniextendr_api::externalptr::ExternalPtr::new(JiffTimePtr(t))
+}
+
+/// Extract the hour from a civil::Time ExternalPtr (0–23).
+/// @param t ExternalPtr wrapping a JiffTimePtr.
+#[miniextendr]
+pub fn jiff_time_hour(t: TimePtrType) -> i32 {
+    i32::from(t.0.hour())
+}
+
+/// Extract the minute from a civil::Time ExternalPtr (0–59).
+/// @param t ExternalPtr wrapping a JiffTimePtr.
+#[miniextendr]
+pub fn jiff_time_minute(t: TimePtrType) -> i32 {
+    i32::from(t.0.minute())
+}
+
+/// Extract the second from a civil::Time ExternalPtr (0–59).
+/// @param t ExternalPtr wrapping a JiffTimePtr.
+#[miniextendr]
+pub fn jiff_time_second(t: TimePtrType) -> i32 {
+    i32::from(t.0.second())
+}
+
+// endregion
+
+// region: vctrs rcrd fixtures (exercises span_vec_to_rcrd / zoned_vec_to_rcrd)
+
+/// Build a `jiff_span` vctrs rcrd from three hard-coded spans.
+///
+/// Spans: 1y2m, 3m15d, zero.
+/// @return A vctrs rcrd of class `jiff_span`.
+#[cfg(feature = "vctrs")]
+#[miniextendr]
+pub fn jiff_span_rcrd_demo() -> SEXP {
+    let spans = vec![
+        Span::new().years(1i64).months(2i64),
+        Span::new().months(3i64).days(15i64),
+        Span::new(),
+    ];
+    miniextendr_api::jiff_impl::span_vec_to_rcrd(&spans)
+}
+
+/// Build a `jiff_zoned` vctrs rcrd from two zones: UTC and Europe/Paris.
+///
+/// @return A vctrs rcrd of class `jiff_zoned`.
+#[cfg(feature = "vctrs")]
+#[miniextendr]
+pub fn jiff_zoned_rcrd_demo() -> SEXP {
+    use miniextendr_api::jiff::tz::TimeZone;
+    let utc_zone = Timestamp::new(1_704_067_200, 0)
+        .expect("valid timestamp")
+        .to_zoned(TimeZone::UTC);
+    let paris_zone = Timestamp::new(1_704_067_200, 0)
+        .expect("valid timestamp")
+        .in_tz("Europe/Paris")
+        .expect("valid tz");
+    let zones = vec![utc_zone, paris_zone];
+    miniextendr_api::jiff_impl::zoned_vec_to_rcrd(&zones)
 }
 
 // endregion
