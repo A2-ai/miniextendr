@@ -197,7 +197,7 @@ cached_symbol!(
 ///
 /// `sexp` must be a valid REALSXP. Must be called on R's main thread.
 #[cfg(any(feature = "time", feature = "jiff"))]
-pub(crate) fn set_posixct_utc(sexp: crate::ffi::SEXP) {
+pub fn set_posixct_utc(sexp: crate::ffi::SEXP) {
     use crate::ffi::SexpExt as _;
     sexp.set_class(posixct_class_sexp());
     sexp.set_attr(tzone_symbol(), utc_tzone_sexp());
@@ -212,7 +212,7 @@ pub(crate) fn set_posixct_utc(sexp: crate::ffi::SEXP) {
 ///
 /// `sexp` must be a valid REALSXP. Must be called on R's main thread.
 #[cfg(feature = "jiff")]
-pub(crate) fn set_posixct_tz(sexp: crate::ffi::SEXP, iana: &str) {
+pub fn set_posixct_tz(sexp: crate::ffi::SEXP, iana: &str) {
     use crate::ffi::SexpExt as _;
     sexp.set_class(posixct_class_sexp());
     // Build a one-element STRSXP for the tzone attribute.

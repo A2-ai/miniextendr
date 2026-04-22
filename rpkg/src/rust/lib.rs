@@ -232,6 +232,8 @@ mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
 mod thread_tests;
+#[cfg(feature = "jiff")]
+mod jiff_adapter_tests;
 #[cfg(feature = "time")]
 mod time_adapter_tests;
 #[cfg(feature = "tinyvec")]
