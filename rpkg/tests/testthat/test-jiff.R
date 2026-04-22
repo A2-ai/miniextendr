@@ -105,6 +105,25 @@ test_that("jiff: Vec<Zoned> roundtrips as POSIXct vector", {
   expect_equal(as.numeric(result), as.numeric(ts_vec), tolerance = 1e-6)
 })
 
+test_that("jiff: unknown IANA timezone returns error (not silent UTC)", {
+  bad <- structure(0, class = c("POSIXct", "POSIXt"), tzone = "Mars/Olympus")
+  expect_error(jiff_roundtrip_zoned(bad), regexp = "Mars/Olympus")
+})
+
+test_that("jiff: Vec<Zoned> with mixed tzs uses first tz for vector attribute", {
+  # Two elements in different timezones: the vector-level tzone attr should match the first element.
+  ts_ny <- as.POSIXct("2024-01-01 12:00:00", tz = "America/New_York")
+  ts_london <- as.POSIXct("2024-06-15 08:00:00", tz = "Europe/London")
+  # R's c() will coerce to the same numeric base but the tzone is taken from the first element
+  ts_vec <- c(ts_ny, ts_london)
+  attr(ts_vec, "tzone") <- "America/New_York"  # first element's tz dominates
+  result <- jiff_roundtrip_zoned_vec(ts_vec)
+  expect_s3_class(result, "POSIXct")
+  expect_length(result, 2L)
+  # After roundtrip the vector carries the first element's tz (America/New_York)
+  expect_equal(attr(result, "tzone"), "America/New_York")
+})
+
 # endregion
 
 # region: civil::Date (R Date)
@@ -140,6 +159,16 @@ test_that("jiff: jiff_date_year/month/day extract components", {
   expect_equal(jiff_date_year(d), 2024L)
   expect_equal(jiff_date_month(d), 7L)
   expect_equal(jiff_date_day(d), 4L)
+})
+
+test_that("jiff: leap-day civil::Date (2024-02-29) roundtrips", {
+  leap <- as.Date("2024-02-29")
+  result <- jiff_roundtrip_date(leap)
+  expect_s3_class(result, "Date")
+  expect_equal(result, leap)
+  expect_equal(jiff_date_year(leap), 2024L)
+  expect_equal(jiff_date_month(leap), 2L)
+  expect_equal(jiff_date_day(leap), 29L)
 })
 
 # endregion
@@ -198,6 +227,81 @@ test_that("jiff: ALTREP JiffTimestampVec is POSIXct class", {
 test_that("jiff: empty ALTREP JiffTimestampVec has length 0", {
   altrep <- jiff_altrep_timestamps(0L)
   expect_length(altrep, 0L)
+})
+
+# endregion
+
+# region: civil::DateTime ExternalPtr (RDateTime adapter trait)
+
+test_that("jiff: civil::DateTime ExternalPtr component accessors work", {
+  dt <- jiff_datetime_new(year = 2024L, month = 6L, day = 15L,
+                          hour = 10L, minute = 30L, second = 45L)
+  expect_equal(jiff_datetime_year(dt), 2024L)
+  expect_equal(jiff_datetime_month(dt), 6L)
+  expect_equal(jiff_datetime_day(dt), 15L)
+  expect_equal(jiff_datetime_hour(dt), 10L)
+})
+
+# endregion
+
+# region: civil::Time ExternalPtr (RTime adapter trait)
+
+test_that("jiff: civil::Time ExternalPtr component accessors work", {
+  t <- jiff_time_new(hour = 14L, minute = 30L, second = 59L)
+  expect_equal(jiff_time_hour(t), 14L)
+  expect_equal(jiff_time_minute(t), 30L)
+  expect_equal(jiff_time_second(t), 59L)
+})
+
+# endregion
+
+# region: Span ExternalPtr (RSpan adapter trait)
+
+test_that("jiff: Span ExternalPtr component accessors work", {
+  s <- jiff_span_new(years = 1L, months = 2L, days = 15L)
+  expect_equal(jiff_span_years(s), 1L)
+  expect_equal(jiff_span_months(s), 2L)
+  expect_equal(jiff_span_days(s), 15L)
+  expect_false(jiff_span_is_zero(s))
+  expect_false(jiff_span_is_negative(s))
+})
+
+test_that("jiff: zero Span is_zero returns TRUE", {
+  zero <- jiff_span_new(years = 0L, months = 0L, days = 0L)
+  expect_true(jiff_span_is_zero(zero))
+  expect_false(jiff_span_is_negative(zero))
+})
+
+test_that("jiff: negative Span is_negative returns TRUE", {
+  neg <- jiff_span_new(years = -1L, months = 0L, days = 0L)
+  expect_true(jiff_span_is_negative(neg))
+  expect_false(jiff_span_is_zero(neg))
+})
+
+# endregion
+
+# region: vctrs rcrd constructors
+
+test_that("jiff: Span vctrs rcrd has correct fields", {
+  if (!exists("jiff_span_rcrd_demo", mode = "function")) skip("vctrs feature off")
+  if (!requireNamespace("vctrs", quietly = TRUE)) skip("vctrs not installed")
+  v <- jiff_span_rcrd_demo()
+  expect_s3_class(v, "jiff_span")
+  expect_s3_class(v, "vctrs_rcrd")
+  expect_s3_class(v, "vctrs_vctr")
+  expect_equal(vctrs::vec_size(v), 3L)
+  expect_equal(vctrs::field(v, "years"), c(1L, 0L, 0L))
+  expect_equal(vctrs::field(v, "months"), c(2L, 3L, 0L))
+  expect_equal(vctrs::field(v, "days"), c(0L, 15L, 0L))
+})
+
+test_that("jiff: Zoned vctrs rcrd preserves per-element IANA name", {
+  if (!exists("jiff_zoned_rcrd_demo", mode = "function")) skip("vctrs feature off")
+  if (!requireNamespace("vctrs", quietly = TRUE)) skip("vctrs not installed")
+  v <- jiff_zoned_rcrd_demo()
+  expect_s3_class(v, "jiff_zoned")
+  expect_equal(vctrs::vec_size(v), 2L)
+  expect_equal(vctrs::field(v, "tz"), c("UTC", "Europe/Paris"))
 })
 
 # endregion
