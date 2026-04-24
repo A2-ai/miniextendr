@@ -130,7 +130,7 @@ test columnar all none str
 
 test columnar deep nesting
 
-test columnar leading none
+Leading Nones followed by Some: type is inferred when the Some row is reached
 
 strip_prefix: remove "point_" from column names
 

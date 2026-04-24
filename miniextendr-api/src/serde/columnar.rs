@@ -503,8 +503,25 @@ fn discover_schema_union<T: Serialize>(
 
         // Iterate over key_order (preserves struct field order) instead of HashMap
         for key in &discoverer.key_order {
-            if unified_mappings.contains_key(key) {
-                continue; // already have this field's schema
+            if let Some(existing) = unified_mappings.get(key) {
+                // Field already known. If it's still Generic and this row has a concrete
+                // type, upgrade it — handles Option<T> fields where earlier rows were None.
+                if let FieldMapping::Scalar {
+                    col_idx: unified_idx,
+                } = *existing
+                {
+                    if unified_fields[unified_idx].col_type == ColumnType::Generic {
+                        if let Some(FieldMapping::Scalar { col_idx: local_idx }) =
+                            discoverer.mappings.get(key)
+                        {
+                            let discovered = discoverer.fields[*local_idx].col_type;
+                            if discovered != ColumnType::Generic {
+                                unified_fields[unified_idx].col_type = discovered;
+                            }
+                        }
+                    }
+                }
+                continue;
             }
 
             let Some(mapping) = discoverer.mappings.remove(key) else {
@@ -548,9 +565,12 @@ fn discover_schema_union<T: Serialize>(
             }
         }
 
-        // Short-circuit: if this row contributed no new fields and it's not the first row,
-        // the schema is complete (all distinct field sets have been seen).
-        if row_idx > 0 && unified_fields.len() == fields_before {
+        // Short-circuit: stop once all fields are known with a concrete type.
+        // Don't break while any field is still Generic — a later row may resolve it.
+        let still_generic = unified_fields
+            .iter()
+            .any(|f| f.col_type == ColumnType::Generic);
+        if row_idx > 0 && unified_fields.len() == fields_before && !still_generic {
             break;
         }
     }

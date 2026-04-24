@@ -186,8 +186,8 @@ test_that("all-None with no hint falls back to list column", {
   expect_type(df$score, "list")
 })
 
-test_that("Some in first row infers type correctly; trailing None become NA (regression)", {
+test_that("leading None rows upgrade to correct type when Some is seen later", {
   df <- test_columnar_leading_none()
   expect_type(df$value, "double")
-  expect_equal(df$value, c(42.0, NA_real_, NA_real_))
+  expect_equal(df$value, c(NA_real_, NA_real_, 42.0))
 })

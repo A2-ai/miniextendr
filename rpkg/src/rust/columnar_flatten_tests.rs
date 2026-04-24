@@ -463,15 +463,15 @@ pub fn test_columnar_all_none_no_hint() -> ColumnarDataFrame {
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
-/// First row has Some: type is inferred from the first-seen value (regression guard).
+/// Leading Nones followed by Some: type is inferred when the Some row is reached.
 ///
 /// @export
 #[miniextendr]
 pub fn test_columnar_leading_none() -> ColumnarDataFrame {
     let rows = vec![
-        WithLeadingNone { x: 1.0, value: Some(42.0) },
+        WithLeadingNone { x: 1.0, value: None },
         WithLeadingNone { x: 2.0, value: None },
-        WithLeadingNone { x: 3.0, value: None },
+        WithLeadingNone { x: 3.0, value: Some(42.0) },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
