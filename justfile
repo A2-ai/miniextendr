@@ -58,15 +58,17 @@
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
 #
-set shell := ["bash", "-euo", "pipefail", "-c"]
-set windows-shell := ["bash", "-euo", "pipefail", "-c"]
+just_bin_dir := justfile_directory() / "dev" / "just-bin"
+
+set shell := ["./dev/just-bin/bash", "-euo", "pipefail", "-c"]
+set windows-shell := ["./dev/just-bin/bash", "-euo", "pipefail", "-c"]
 
 # On Windows (Git Bash / MSYS2), cargo and R may not be in /bin/bash's PATH.
 # Export CARGO_HOME/bin so recipes can find cargo/rustc.
 export PATH := if os() == "windows" {
-    env("CARGO_HOME", env("USERPROFILE", "") / ".cargo") / "bin" + ":" + env("PATH", "")
+    just_bin_dir + ":" + env("CARGO_HOME", env("USERPROFILE", "") / ".cargo") / "bin" + ":" + env("PATH", "")
 } else {
-    env("PATH", "")
+    just_bin_dir + ":" + env("PATH", "")
 }
 
 # All optional features for testing (excluding nonapi which causes CRAN warnings).
@@ -104,8 +106,8 @@ cargo-clean *cargo_flags:
 
 # Check feature combinations compile (F2: feature interaction testing)
 # Tests important feature combos that might interact but are only tested independently.
-[script("bash")]
 check-features:
+    #!/usr/bin/env bash
     set -euo pipefail
     manifest="miniextendr-api/Cargo.toml"
     combos=(
@@ -179,8 +181,8 @@ clippy *cargo_flags:
 # Lint output appears as cargo warnings. Errors indicate:
 # - Multiple unlabeled impl blocks for the same type
 # - Class system incompatibilities between inherent and trait impls
-[script("bash")]
 lint:
+    #!/usr/bin/env bash
     set -euo pipefail
     cd rpkg
     output=$(cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
@@ -298,8 +300,8 @@ bench-full *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,refcount-fast-hash --bench connections --bench rayon --bench refcount_protect {{cargo_flags}}
 
 # Run R-side benchmarks (requires rpkg installed)
-[script("bash")]
 bench-r:
+    #!/usr/bin/env bash
     set -euo pipefail
     for f in rpkg/tests/testthat/bench-*.R; do
       echo "=== Running $f ==="
@@ -487,8 +489,8 @@ r-cmd-check *args: vendor
 #
 # Builds tarball with --compression=none and extracts to rpkg_build/ for inspection.
 # Useful for verifying what gets included in CRAN submissions.
-[script("bash")]
 test-r-build: configure
+    #!/usr/bin/env bash
     set -euo pipefail
     # MSYS2 tar interprets D: as remote host; --force-local treats all as local
     TAR_FORCE_LOCAL=""
@@ -516,8 +518,8 @@ minirextendr-document:
     Rscript -e 'devtools::document("minirextendr")'
 
 # Run tests for minirextendr R package
-[script("bash")]
 minirextendr-test FILTER="":
+    #!/usr/bin/env bash
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr")'
@@ -542,8 +544,8 @@ minirextendr-build:
     R CMD build --no-manual minirextendr
 
 # Run R CMD check on minirextendr package
-[script("bash")]
 minirextendr-rcmdcheck:
+    #!/usr/bin/env bash
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
@@ -602,8 +604,8 @@ patch_file  := "patches/templates.patch"
 # "upstream" source, and templates may have intentional differences like
 # {{package_rs}} placeholders. The patch file captures approved differences.
 
-[script("bash")]
 templates-sources:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     # Two template types exist:
@@ -616,6 +618,7 @@ templates-sources:
     # === R Package Template (rpkg/) ===
     rpkg/bootstrap.R	rpkg/bootstrap.R
     rpkg/build.rs	rpkg/src/rust/build.rs
+    rpkg/dev/just-bin/bash	dev/just-bin/bash
     rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     rpkg/cleanup	rpkg/cleanup
@@ -632,6 +635,7 @@ templates-sources:
     # The embedded R package uses same sources as rpkg/ template
     monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
+    monorepo/dev/just-bin/bash	dev/just-bin/bash
     monorepo/rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     monorepo/rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     monorepo/rpkg/cleanup	rpkg/cleanup
@@ -648,8 +652,8 @@ templates-sources:
 
 # Internal helper: populate an upstream snapshot into DEST.
 # The snapshot is a tree laid out to match inst/templates.
-[script("bash")]
 _templates-upstream-populate dest:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     dest="{{dest}}"
@@ -697,8 +701,8 @@ _templates-upstream-populate dest:
 
 # Accept the current delta as approved by regenerating patches/templates.patch
 # (Builds an upstream snapshot from templates-sources before diffing.)
-[script("bash")]
 templates-approve:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     mkdir -p "$(dirname "{{patch_file}}")"
@@ -732,8 +736,8 @@ templates-approve:
 # Verify: upstream snapshot + approved patch == inst/templates
 # - exits nonzero on drift
 # - exits nonzero if the patch no longer applies cleanly
-[script("bash")]
 templates-check:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     test -f "{{patch_file}}"
@@ -769,8 +773,8 @@ templates-check:
     diff -ruN "$tmp" "$tmp2"
 
 # CI-friendly: only prints diff when failing
-[script("bash")]
 templates-check-ci:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     test -f "{{patch_file}}"
@@ -799,8 +803,8 @@ templates-check-ci:
 # Run `just vendor` to refresh if this check fails.
 
 # Check that vendored miniextendr crates match workspace sources
-[script("bash")]
 vendor-sync-check:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     vendor_dir="rpkg/vendor"
@@ -844,8 +848,8 @@ lint-sync-check:
     cargo check --manifest-path=miniextendr-lint/Cargo.toml
 
 # Show diff between workspace and vendored crates
-[script("bash")]
 vendor-sync-diff:
+    #!/usr/bin/env bash
     set -euo pipefail
 
     vendor_dir="rpkg/vendor"

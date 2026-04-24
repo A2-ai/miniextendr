@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+self_dir=$(
+  CDPATH= cd -- "$(dirname -- "$0")" && pwd
+)
+
+strip_self_from_path() {
+  old_ifs=$IFS
+  IFS=:
+  new_path=
+  for entry in $1; do
+    if [ "$entry" = "$self_dir" ]; then
+      continue
+    fi
+    if [ -n "$new_path" ]; then
+      new_path="${new_path}:$entry"
+    else
+      new_path=$entry
+    fi
+  done
+  IFS=$old_ifs
+  printf '%s' "$new_path"
+}
+
+clean_path=$(strip_self_from_path "${PATH-}")
+
+if [ -n "$clean_path" ]; then
+  PATH=$clean_path
+  export PATH
+fi
+
+real_bash=$(command -v bash 2>/dev/null || true)
+if [ -z "$real_bash" ]; then
+  real_bash=/bin/bash
+fi
+
+if command -v rtk >/dev/null 2>&1; then
+  exec rtk "$real_bash" "$@"
+fi
+
+exec "$real_bash" "$@"

@@ -1,6 +1,10 @@
 # Cross-package trait dispatch testing
 
-set shell := ["bash", "-euo", "pipefail", "-c"]
+just_bin_dir := justfile_directory() / ".." / ".." / "dev" / "just-bin"
+
+set shell := ["../../dev/just-bin/bash", "-euo", "pipefail", "-c"]
+
+export PATH := just_bin_dir + ":" + env("PATH", "")
 
 default:
     @just --list
