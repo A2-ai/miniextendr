@@ -37,7 +37,7 @@ Bandwidth resets monthly; each clone/fetch downloads only the checked-out versio
 
 ```bash
 # 1. Fresh clone (clean state, no local refs to confuse filter)
-git clone https://github.com/CGMossa/miniextendr.git miniextendr-lfs-cleanup
+git clone https://github.com/A2-ai/miniextendr.git miniextendr-lfs-cleanup
 cd miniextendr-lfs-cleanup
 git lfs install
 
@@ -57,7 +57,7 @@ git push --force --tags
 #    Old objects will be garbage collected eventually.
 
 # 6. All collaborators re-clone
-#    git clone https://github.com/CGMossa/miniextendr.git
+#    git clone https://github.com/A2-ai/miniextendr.git
 ```
 
 ## Rollback
