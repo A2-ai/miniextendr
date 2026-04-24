@@ -238,7 +238,7 @@ mod traits;
 // Re-export the serde crate for convenience
 pub use ::serde::{Deserialize, Serialize};
 
-pub use columnar::{ColumnarDataFrame, vec_to_dataframe};
+pub use columnar::{ColumnType, ColumnarBuilder, ColumnarDataFrame, vec_to_dataframe};
 pub use de::RDeserializer;
 pub use error::RSerdeError;
 #[cfg(feature = "serde_json")]

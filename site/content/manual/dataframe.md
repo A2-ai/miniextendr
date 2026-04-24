@@ -432,6 +432,39 @@ This is useful when you already have serde-serializable types and don't want to
 add `IntoList` + `DataFrameRow` derives. For new types, prefer `#[derive(DataFrameRow)]`
 which gives you a typed companion type and better ergonomics.
 
+### All-None columns
+
+Schema discovery is runtime-only: when every row has `None` for an `Option<T>`
+field, the column type cannot be inferred and falls back to a list column
+(`list(NULL, NULL, ...)`). This causes downstream R code that expects an atomic
+column (e.g., `is.numeric`, `sum`, dplyr verbs) to fail.
+
+Use `ColumnarDataFrame::builder()` with `.hint()` to specify the column type
+explicitly:
+
+```rust
+use miniextendr_api::serde::{ColumnType, ColumnarDataFrame};
+
+#[derive(Serialize)]
+struct Row {
+    id: i32,
+    score: Option<f64>,   // may be all-None
+}
+
+let df = ColumnarDataFrame::builder()
+    .hint("score", ColumnType::Real)
+    .from_rows(&rows)?;
+// df$score is now a numeric NA vector, not a list
+```
+
+Without a hint, the fallback to a list column is preserved — useful for
+genuinely heterogeneous data. The `ColumnType` variants are `Real`, `Integer`,
+`Logical`, and `Character`.
+
+Hints apply to top-level serde field keys only. Nested struct fields are
+individually probed; if an entire nested struct is all-`None`, hint its
+top-level key name.
+
 ---
 
 ## Approach 2: `DataFrame<T>`

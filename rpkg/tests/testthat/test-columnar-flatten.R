@@ -156,3 +156,38 @@ test_that("internally tagged enum: kind column + variant-specific fields", {
   expect_true("delta" %in% names(df))
   expect_equal(df$delta, c(NA, -3.5, NA))
 })
+
+test_that("all-None Option<f64> with hint produces NA_real_ column", {
+  df <- test_columnar_all_none_real()
+  expect_type(df$score, "double")
+  expect_true(all(is.na(df$score)))
+})
+
+test_that("all-None Option<i32> with hint produces NA_integer_ column", {
+  df <- test_columnar_all_none_int()
+  expect_type(df$count, "integer")
+  expect_true(all(is.na(df$count)))
+})
+
+test_that("all-None Option<bool> with hint produces NA logical column", {
+  df <- test_columnar_all_none_bool()
+  expect_type(df$flag, "logical")
+  expect_true(all(is.na(df$flag)))
+})
+
+test_that("all-None Option<String> with hint produces NA_character_ column", {
+  df <- test_columnar_all_none_str()
+  expect_type(df$label, "character")
+  expect_true(all(is.na(df$label)))
+})
+
+test_that("all-None with no hint falls back to list column", {
+  df <- test_columnar_all_none_no_hint()
+  expect_type(df$score, "list")
+})
+
+test_that("Some in first row infers type correctly; trailing None become NA (regression)", {
+  df <- test_columnar_leading_none()
+  expect_type(df$value, "double")
+  expect_equal(df$value, c(42.0, NA_real_, NA_real_))
+})

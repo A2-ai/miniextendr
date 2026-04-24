@@ -4,7 +4,7 @@
 use crate::serde::Serialize;
 use miniextendr_api::IntoR;
 use miniextendr_api::miniextendr;
-use miniextendr_api::serde::ColumnarDataFrame;
+use miniextendr_api::serde::{ColumnType, ColumnarDataFrame};
 
 // region: Test types
 
@@ -363,3 +363,117 @@ pub fn test_columnar_tagged_enum() -> ColumnarDataFrame {
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
+
+// region: All-None builder hint fixtures
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct WithAllNoneReal {
+    x: f64,
+    score: Option<f64>,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct WithAllNoneInt {
+    x: f64,
+    count: Option<i32>,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct WithAllNoneBool {
+    x: f64,
+    flag: Option<bool>,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct WithAllNoneStr {
+    x: f64,
+    label: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct WithLeadingNone {
+    x: f64,
+    value: Option<f64>,
+}
+
+/// @export
+#[miniextendr]
+pub fn test_columnar_all_none_real() -> ColumnarDataFrame {
+    let rows = vec![
+        WithAllNoneReal { x: 1.0, score: None },
+        WithAllNoneReal { x: 2.0, score: None },
+    ];
+    ColumnarDataFrame::builder()
+        .hint("score", ColumnType::Real)
+        .from_rows(&rows)
+        .expect("from_rows")
+}
+
+/// @export
+#[miniextendr]
+pub fn test_columnar_all_none_int() -> ColumnarDataFrame {
+    let rows = vec![
+        WithAllNoneInt { x: 1.0, count: None },
+        WithAllNoneInt { x: 2.0, count: None },
+    ];
+    ColumnarDataFrame::builder()
+        .hint("count", ColumnType::Integer)
+        .from_rows(&rows)
+        .expect("from_rows")
+}
+
+/// @export
+#[miniextendr]
+pub fn test_columnar_all_none_bool() -> ColumnarDataFrame {
+    let rows = vec![
+        WithAllNoneBool { x: 1.0, flag: None },
+        WithAllNoneBool { x: 2.0, flag: None },
+    ];
+    ColumnarDataFrame::builder()
+        .hint("flag", ColumnType::Logical)
+        .from_rows(&rows)
+        .expect("from_rows")
+}
+
+/// @export
+#[miniextendr]
+pub fn test_columnar_all_none_str() -> ColumnarDataFrame {
+    let rows = vec![
+        WithAllNoneStr { x: 1.0, label: None },
+        WithAllNoneStr { x: 2.0, label: None },
+    ];
+    ColumnarDataFrame::builder()
+        .hint("label", ColumnType::Character)
+        .from_rows(&rows)
+        .expect("from_rows")
+}
+
+/// @export
+#[miniextendr]
+pub fn test_columnar_all_none_no_hint() -> ColumnarDataFrame {
+    let rows = vec![
+        WithAllNoneReal { x: 1.0, score: None },
+        WithAllNoneReal { x: 2.0, score: None },
+    ];
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+}
+
+/// First row has Some: type is inferred from the first-seen value (regression guard).
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_leading_none() -> ColumnarDataFrame {
+    let rows = vec![
+        WithLeadingNone { x: 1.0, value: Some(42.0) },
+        WithLeadingNone { x: 2.0, value: None },
+        WithLeadingNone { x: 3.0, value: None },
+    ];
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+}
+
+// endregion
