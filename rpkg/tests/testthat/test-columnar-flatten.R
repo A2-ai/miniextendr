@@ -191,3 +191,4 @@ test_that("leading None rows upgrade to correct type when Some is seen later", {
   expect_type(df$value, "double")
   expect_equal(df$value, c(NA_real_, NA_real_, 42.0))
 })
+

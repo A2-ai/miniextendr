@@ -567,6 +567,9 @@ fn discover_schema_union<T: Serialize>(
 
         // Short-circuit: stop once all fields are known with a concrete type.
         // Don't break while any field is still Generic — a later row may resolve it.
+        // Trade-off: a dataset where every row is None (and no hint is given) scans all rows
+        // before settling on Generic. For large all-None datasets without hints, prefer
+        // ColumnarDataFrame::builder().hint(...) to avoid the full scan.
         let still_generic = unified_fields
             .iter()
             .any(|f| f.col_type == ColumnType::Generic);
