@@ -187,3 +187,12 @@ test_that("leading None rows upgrade to correct type when Some is seen later", {
   expect_equal(df$value, c(NA_real_, NA_real_, 42.0))
 })
 
+test_that("unrecognized Option type falls back to list column with NULLs", {
+  df <- test_columnar_generic_fallback()
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 2)
+  expect_equal(names(df), c("x", "tags"))
+  expect_type(df$tags, "list")
+  expect_true(all(sapply(df$tags, is.null)))
+})
+

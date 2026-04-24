@@ -398,6 +398,15 @@ struct WithLeadingNone {
     value: Option<f64>,
 }
 
+/// `Option<Vec<f64>>` is not in the type-name lookup table, so it stays
+/// `Generic` even when all rows are `None` → list column with NULLs.
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct WithGenericField {
+    x: f64,
+    tags: Option<Vec<f64>>,
+}
+
 /// @export
 #[miniextendr]
 pub fn test_columnar_all_none_real() -> ColumnarDataFrame {
@@ -452,6 +461,18 @@ pub fn test_columnar_all_none_str() -> ColumnarDataFrame {
             x: 2.0,
             label: None,
         },
+    ];
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
+}
+
+/// Option<Vec<f64>> stays Generic (not in type-name lookup) → list column with NULLs.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_generic_fallback() -> ColumnarDataFrame {
+    let rows = vec![
+        WithGenericField { x: 1.0, tags: None },
+        WithGenericField { x: 2.0, tags: None },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
