@@ -3,8 +3,9 @@
 
 use crate::serde::Serialize;
 use miniextendr_api::IntoR;
+use miniextendr_api::list::List;
 use miniextendr_api::miniextendr;
-use miniextendr_api::serde::ColumnarDataFrame;
+use miniextendr_api::serde::{ColumnarDataFrame, vec_to_dataframe_split};
 
 // region: Test types
 
@@ -360,3 +361,52 @@ pub fn test_columnar_tagged_enum() -> ColumnarDataFrame {
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
+
+// region: vec_to_dataframe_split fixtures
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+enum ExtEvent {
+    Click { x: f64, y: f64 },
+    Scroll { delta: f64 },
+}
+
+/// Externally-tagged enum split: per-variant data.frames, no NA columns.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_ext_tagged_split() -> List {
+    let rows = vec![
+        ExtEvent::Click { x: 1.0, y: 2.0 },
+        ExtEvent::Scroll { delta: -3.0 },
+        ExtEvent::Click { x: 5.0, y: 6.0 },
+    ];
+    vec_to_dataframe_split(&rows).expect("split")
+}
+
+/// Internally-tagged enum split: tag column dropped, per-variant data.frames.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_int_tagged_split() -> List {
+    let rows = vec![
+        TaggedEvent::Click { x: 10.0, y: 20.0 },
+        TaggedEvent::Scroll { delta: -3.5 },
+        TaggedEvent::Click { x: 30.0, y: 40.0 },
+    ];
+    vec_to_dataframe_split(&rows).expect("split")
+}
+
+/// Single-variant externally-tagged split returns a bare data.frame.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_single_variant_split() -> List {
+    let rows = vec![
+        ExtEvent::Click { x: 1.0, y: 2.0 },
+        ExtEvent::Click { x: 3.0, y: 4.0 },
+    ];
+    vec_to_dataframe_split(&rows).expect("split")
+}
+
+// endregion
