@@ -20,7 +20,7 @@ test_that("check_path_deps detects path deps in [dependencies]", {
     'version = "0.1.0"',
     "",
     "[dependencies]",
-    'miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }',
+    'miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }',
     'dvs = { path = "../../../dvs" }',
     'other-crate = { version = "1.0", path = "../other" }',
     "",
@@ -61,7 +61,7 @@ test_that("check_path_deps returns empty data frame when no path deps", {
     'version = "0.1.0"',
     "",
     "[dependencies]",
-    'miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }',
+    'miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }',
     'serde = "1.0"'
   ), file.path(cargo_dir, "Cargo.toml"))
 
@@ -98,7 +98,7 @@ test_that("check_path_deps ignores path deps in [patch.*] sections", {
     'miniextendr-api = { path = "../../vendor/miniextendr-api" }',
     'miniextendr-macros = { path = "../../vendor/miniextendr-macros" }',
     "",
-    '[patch."https://github.com/CGMossa/miniextendr"]',
+    '[patch."https://github.com/A2-ai/miniextendr"]',
     'miniextendr-api = { path = "../../vendor/miniextendr-api" }'
   ), file.path(cargo_dir, "Cargo.toml"))
 
