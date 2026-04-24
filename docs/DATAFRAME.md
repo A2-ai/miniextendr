@@ -458,8 +458,7 @@ genuinely heterogeneous data. The `ColumnType` variants are `Real`, `Integer`,
 `Logical`, and `Character`.
 
 Hints apply to top-level serde field keys only. Nested struct fields are
-individually probed; if an entire nested struct is all-`None`, hint its
-top-level key name.
+individually probed without hints; all-`None` nested fields cannot be hinted.
 
 ---
 

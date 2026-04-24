@@ -141,9 +141,14 @@ impl ColumnarDataFrame {
     /// | `i8/i16/i32` | `integer` |
     /// | `i64/u64/f32/f64` | `numeric` |
     /// | `String/&str` | `character` |
-    /// | `Option<T>` | Same type with NA for `None`. When ALL rows have `None` for a field, the column type cannot be inferred — use `ColumnarDataFrame::builder().hint("field", ColumnType::Real)` to specify it explicitly. Without a hint the column falls back to a `list` column. |
+    /// | `Option<T>` | Same type with NA for `None` (see note below) |
     /// | Nested struct | Recursively flattened with `parent_child` naming |
     /// | Other | Falls back to per-element list column |
+    ///
+    /// **All-`None` columns**: when every row has `None` for an `Option<T>` field, the
+    /// column type cannot be inferred and falls back to a `list` column. Use
+    /// [`ColumnarDataFrame::builder()`] with `.hint("field", ColumnType::Real)` (or the
+    /// appropriate variant) to produce a typed NA vector instead.
     pub fn from_rows<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
         ColumnarDataFrame::builder().from_rows(rows)
     }
@@ -454,9 +459,8 @@ struct FieldMap {
 /// rows have `None` for an `Option<T>` field. Without a hint, all-`None`
 /// fields fall back to a generic list column.
 ///
-/// Note: hints apply only to top-level serde field keys. Nested struct fields
-/// are individually probed; hint them by their top-level key name if the entire
-/// nested struct is `None` for all rows.
+/// Hints apply to top-level serde field keys only. Nested struct fields are
+/// individually probed with no hints; all-`None` nested fields cannot be hinted.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum ColumnType {
