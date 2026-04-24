@@ -51,8 +51,10 @@
 #     just bench-check        - Check benchmark crate compiles
 #
 #   Documentation site:
-#     just site-build          - Build Zola site
-#     just site-serve          - Local preview server
+#     just site-docs           - Regenerate site/content/manual/ + site/data/plans.json
+#     just site-build          - Build Zola site (run site-docs first for doc changes)
+#     just site-serve          - Local preview server (run site-docs first for doc changes)
+#     just bump-version <v>    - Bump version across all Cargo.toml + DESCRIPTION files
 #
 #   Vendor sync:
 #     just vendor-sync-check  - Verify vendored crates match workspace
@@ -959,10 +961,21 @@ bindgen-corpus-remove-packages:
 
 # ── Documentation site ──────────────────────────────────────────────────────
 
-# Build Zola site (output in site/public/)
+# Regenerate site/content/manual/ from docs/ and site/data/plans.json from plans/.
+# Run before site-build or site-serve when previewing doc or plan changes locally.
+# CI runs docs-to-site.sh automatically before each deploy.
+site-docs:
+    bash scripts/docs-to-site.sh
+    bash scripts/plans-to-json.sh > site/data/plans.json
+
+# Build Zola site (output in site/public/). Run `just site-docs` first if docs or plans changed.
 site-build:
     cd site && zola build
 
-# Local preview server (http://127.0.0.1:1111)
+# Local preview server (http://127.0.0.1:1111). Run `just site-docs` first if docs or plans changed.
 site-serve:
     cd site && zola serve
+
+# Bump version across all Cargo.toml and DESCRIPTION files.
+bump-version version:
+    bash scripts/bump-version.sh {{version}}
