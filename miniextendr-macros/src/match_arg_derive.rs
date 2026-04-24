@@ -26,6 +26,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields};
 
+use crate::naming;
+
 /// Parsed `#[match_arg(...)]` attributes from an enum or variant.
 #[derive(Default)]
 struct MatchArgAttrs {
@@ -75,25 +77,9 @@ fn parse_match_arg_attrs(attrs: &[syn::Attribute]) -> syn::Result<MatchArgAttrs>
     Ok(result)
 }
 
-/// Convert a PascalCase string to snake_case (same logic as `factor_derive`).
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() {
-            if i > 0 {
-                result.push('_');
-            }
-            result.push(c.to_ascii_lowercase());
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
-
-/// Convert a PascalCase string to kebab-case (same logic as `factor_derive`).
+/// Convert a PascalCase string to kebab-case.
 fn to_kebab_case(s: &str) -> String {
-    to_snake_case(s).replace('_', "-")
+    naming::to_snake_case(s).replace('_', "-")
 }
 
 /// Apply a `rename_all` transformation to a variant name.
@@ -102,7 +88,7 @@ fn to_kebab_case(s: &str) -> String {
 /// Returns the name unchanged if `rename_all` is `None`.
 fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
     match rename_all {
-        Some("snake_case") => to_snake_case(name),
+        Some("snake_case") => naming::to_snake_case(name),
         Some("kebab-case") => to_kebab_case(name),
         Some("lower") => name.to_lowercase(),
         Some("upper") => name.to_uppercase(),

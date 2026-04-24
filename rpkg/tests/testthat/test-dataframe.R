@@ -196,3 +196,31 @@ test_that("to_dataframe_split single variant returns data.frame directly", {
   expect_equal(result$x, c(1.0, 3.0))
   expect_equal(result$y, c(2.0, 4.0))
 })
+
+test_that("to_dataframe_split shared field appears in both partitions non-optionally", {
+  result <- create_shapes_split()
+
+  expect_type(result, "list")
+  expect_false(is.data.frame(result))
+  expect_setequal(names(result), c("circle", "rect"))
+
+  # circle: 2 rows, only Circle columns — area non-optional (no NAs)
+  expect_s3_class(result$circle, "data.frame")
+  expect_equal(nrow(result$circle), 2)
+  expect_equal(sort(names(result$circle)), sort(c("radius", "area")))
+  expect_false(anyNA(result$circle$area))
+  expect_false(anyNA(result$circle$radius))
+  expect_equal(result$circle$radius, c(5.0, 1.0))
+  expect_equal(result$circle$area,   c(78.54, pi))
+
+  # rect: 1 row, only Rect columns — area non-optional, no rect-specific NA
+  expect_s3_class(result$rect, "data.frame")
+  expect_equal(nrow(result$rect), 1)
+  expect_equal(sort(names(result$rect)), sort(c("width", "height", "area")))
+  expect_false(anyNA(result$rect$area))
+  expect_false(anyNA(result$rect$width))
+  expect_false(anyNA(result$rect$height))
+  expect_equal(result$rect$width,  3.0)
+  expect_equal(result$rect$height, 4.0)
+  expect_equal(result$rect$area,   12.0)
+})
