@@ -20,6 +20,7 @@
 //! | `regex` | `regex_impl` | Compiled regex from R strings |
 //! | `indexmap` | `indexmap_impl` | Order-preserving maps |
 //! | `time` | `time_impl` | Date/time conversions |
+//! | `jiff` | `jiff_impl` | Date/time conversions with IANA tz (parallel to `time`) |
 //! | `serde` | `serde_impl` | JSON serialization |
 //! | `num-traits` | `num_traits_impl` | Generic numeric operations |
 //! | `bytes` | `bytes_impl` | Byte buffer operations |
@@ -299,6 +300,18 @@ pub use indexmap_impl::{IndexMap, RIndexMapOps};
 pub mod time_impl;
 #[cfg(feature = "time")]
 pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
+
+/// Date and time conversions via the `jiff` crate — first-class IANA timezone support.
+///
+/// Coexists with the `time` feature. Enable with `features = ["jiff"]`.
+#[cfg(feature = "jiff")]
+pub mod jiff_impl;
+#[cfg(feature = "jiff")]
+pub use jiff_impl::{
+    Date as JiffDate, DateTime as JiffDateTime, JiffTimestampVec, RDate, RDateTime,
+    RSignedDuration, RSpan, RTime, RTimestamp, RZoned, SignedDuration, Span, Time as JiffTime,
+    Timestamp, Zoned,
+};
 // endregion
 
 // region: Serialization

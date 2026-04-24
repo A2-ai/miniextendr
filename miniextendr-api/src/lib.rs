@@ -806,6 +806,16 @@ pub use optionals::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 #[cfg(feature = "time")]
 pub use time;
 
+#[cfg(feature = "jiff")]
+pub use jiff;
+#[cfg(feature = "jiff")]
+pub use optionals::jiff_impl;
+#[cfg(feature = "jiff")]
+pub use optionals::{
+    JiffDate, JiffDateTime, JiffTime, JiffTimestampVec, RDate, RDateTime, RSignedDuration, RSpan,
+    RTime, RTimestamp, RZoned, SignedDuration, Span, Timestamp, Zoned,
+};
+
 #[cfg(feature = "serde_json")]
 pub use optionals::serde_impl;
 #[cfg(feature = "toml")]

@@ -224,6 +224,38 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 
 ---
 
+## Date / Time Conversions (Feature-Gated)
+
+### `time` feature
+
+Enabled with `features = ["time"]`.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `OffsetDateTime` | `POSIXct` | UTC only; tzone attr set to `"UTC"` |
+| `Date` | `Date` | Days since 1970-01-01 |
+| `Duration` | `difftime` | Seconds unit |
+
+### `jiff` feature
+
+Enabled with `features = ["jiff"]`. Bundles IANA timezone database (`tzdb-bundle-always`).
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Timestamp` | `POSIXct` (UTC) | Nanosecond precision; floor-based fractional-second split for correctness on negative timestamps |
+| `Zoned` | `POSIXct` + `tzone` attr | IANA timezone name preserved; unknown tz on input → error (no UTC fallback) |
+| `civil::Date` | `Date` | Days since 1970-01-01 via `Span::try_days` |
+| `SignedDuration` | `difftime` (secs) | Nanosecond-precision duration stored as f64 seconds |
+| `Vec<Timestamp>` (ALTREP) | `POSIXct` | `JiffTimestampVec`; elements materialized on access via `Arc<Vec<Timestamp>>` |
+
+**Adapter traits** (wrapping via `ExternalPtr`):
+`RTimestamp`, `RDate`, `RZoned`, `RSignedDuration`, `RSpan`, `RDateTime`, `RTime`
+
+**vctrs rcrd constructors** (requires `vctrs` feature):
+`span_vec_to_rcrd`, `zoned_vec_to_rcrd`, `datetime_vec_to_rcrd`, `time_vec_to_rcrd`
+
+---
+
 ## Raw/Bytemuck Conversions (Feature-Gated)
 
 Enabled with `features = ["raw_conversions"]`. Uses R's `RAWSXP` for binary POD data.

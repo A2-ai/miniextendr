@@ -117,13 +117,13 @@ pub(crate) fn permanent_charsxp(name: &std::ffi::CStr) -> crate::ffi::SEXP {
 
 cached_strsxp!(
     /// Cached `c("POSIXct", "POSIXt")` class STRSXP.
-    #[cfg(any(feature = "time", feature = "arrow"))]
+    #[cfg(any(feature = "time", feature = "jiff", feature = "arrow"))]
     pub(crate) fn posixct_class_sexp() = [c"POSIXct", c"POSIXt"]
 );
 
 cached_strsxp!(
     /// Cached `"Date"` class STRSXP.
-    #[cfg(any(feature = "time", feature = "arrow"))]
+    #[cfg(any(feature = "time", feature = "jiff", feature = "arrow"))]
     pub(crate) fn date_class_sexp() = [c"Date"]
 );
 
@@ -148,7 +148,7 @@ cached_strsxp!(
 
 cached_strsxp!(
     /// Cached `"UTC"` scalar string SEXP for the `tzone` attribute.
-    #[cfg(feature = "time")]
+    #[cfg(any(feature = "time", feature = "jiff"))]
     fn utc_tzone_sexp() = [c"UTC"]
 );
 
@@ -158,7 +158,7 @@ cached_strsxp!(
 
 cached_symbol!(
     /// Cached `tzone` symbol.
-    #[cfg(any(feature = "time", feature = "arrow"))]
+    #[cfg(any(feature = "time", feature = "jiff", feature = "arrow"))]
     pub(crate) fn tzone_symbol() = c"tzone"
 );
 
@@ -196,11 +196,34 @@ cached_symbol!(
 /// # Safety
 ///
 /// `sexp` must be a valid REALSXP. Must be called on R's main thread.
-#[cfg(feature = "time")]
-pub(crate) fn set_posixct_utc(sexp: crate::ffi::SEXP) {
+#[cfg(any(feature = "time", feature = "jiff"))]
+pub fn set_posixct_utc(sexp: crate::ffi::SEXP) {
     use crate::ffi::SexpExt as _;
     sexp.set_class(posixct_class_sexp());
     sexp.set_attr(tzone_symbol(), utc_tzone_sexp());
+}
+
+/// Set class = `c("POSIXct", "POSIXt")` and tzone = `iana` on an SEXP.
+///
+/// Used by the jiff integration to round-trip `Zoned` timezone identity.
+/// Falls back to `"UTC"` for zones without an IANA name (e.g., fixed-offset zones).
+///
+/// # Safety
+///
+/// `sexp` must be a valid REALSXP. Must be called on R's main thread.
+#[cfg(feature = "jiff")]
+pub fn set_posixct_tz(sexp: crate::ffi::SEXP, iana: &str) {
+    use crate::ffi::SexpExt as _;
+    sexp.set_class(posixct_class_sexp());
+    // Build a one-element STRSXP for the tzone attribute.
+    unsafe {
+        let tzone_charsxp = crate::ffi::SEXP::charsxp(iana);
+        let tzone_sexp = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, 1);
+        crate::ffi::Rf_protect(tzone_sexp);
+        tzone_sexp.set_string_elt(0, tzone_charsxp);
+        sexp.set_attr(tzone_symbol(), tzone_sexp);
+        crate::ffi::Rf_unprotect(1);
+    }
 }
 
 // endregion

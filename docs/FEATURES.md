@@ -39,6 +39,7 @@ Only `default` features are enabled automatically.
 | `aho-corasick` | Fast multi-pattern string search | aho-corasick |
 | **Date / Time** | | |
 | `time` | `OffsetDateTime`, `Date`, `Duration` conversions | time (with formatting/parsing/macros) |
+| `jiff` | `Timestamp`/`Zoned`/`civil::Date`/`SignedDuration` conversions + ALTREP + vctrs | jiff 0.2 (bundled tzdb) |
 | **Random Number Generation** | | |
 | `rand` | Wraps R's RNG with `rand` traits (`RRng`) | rand |
 | `rand_distr` | Additional distributions (Normal, Exp, etc.) | rand, rand_distr |
@@ -677,6 +678,34 @@ macro features.
 | `Duration` | `difftime` | Time duration |
 
 **Types:** `RDateTimeFormat`, `RDuration`
+
+---
+
+### `jiff`
+
+Date and time conversions via the `jiff 0.2` crate with first-class IANA timezone
+support. Uses a bundled timezone database (`tzdb-bundle-always`) so no system tzdata
+is required.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Timestamp` | `POSIXct` (UTC) | Nanosecond-precision Unix timestamp |
+| `Zoned` | `POSIXct` + `tzone` attr | Preserves IANA timezone identity |
+| `civil::Date` | `Date` | Calendar date (no timezone) |
+| `SignedDuration` | `difftime` (secs) | Signed nanosecond-precision duration |
+
+**Adapter traits** (for `ExternalPtr` wrapping):
+`RTimestamp`, `RDate`, `RZoned`, `RSignedDuration`, `RSpan`, `RDateTime`, `RTime`
+
+**ALTREP:** `JiffTimestampVec` — lazy `Vec<Timestamp>` backed by `Arc`; elements
+projected on access, no upfront materialization.
+
+**vctrs rcrd constructors** (requires `vctrs` feature):
+`span_vec_to_rcrd`, `zoned_vec_to_rcrd`, `datetime_vec_to_rcrd`, `time_vec_to_rcrd`
+
+> **Timezone policy:** `Zoned → R` uses the first element's IANA name; `R → Zoned`
+> refuses unknown timezone names (no silent UTC fallback). Zoned ALTREP is tracked in
+> a follow-up issue.
 
 ---
 
