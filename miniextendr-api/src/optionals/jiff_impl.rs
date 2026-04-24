@@ -1143,7 +1143,8 @@ impl RSignedDuration for SignedDuration {
         self.as_secs_f64()
     }
     fn as_milliseconds(&self) -> i64 {
-        self.as_millis() as i64
+        // as_millis() returns i128; clamp to i64 range (saturating, not truncating).
+        self.as_millis().clamp(i64::MIN as i128, i64::MAX as i128) as i64
     }
     fn whole_seconds(&self) -> i64 {
         self.as_secs()
