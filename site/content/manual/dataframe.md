@@ -434,35 +434,26 @@ which gives you a typed companion type and better ergonomics.
 
 ### All-None columns
 
-Schema discovery is runtime-only: when every row has `None` for an `Option<T>`
-field, the column type cannot be inferred and falls back to a list column
-(`list(NULL, NULL, ...)`). This causes downstream R code that expects an atomic
-column (e.g., `is.numeric`, `sum`, dplyr verbs) to fail.
-
-Use `ColumnarDataFrame::builder()` with `.hint()` to specify the column type
-explicitly:
+Schema discovery is runtime-only. For `Option<T>` fields where `T` is a
+standard Rust primitive (`f64`, `i32`, `bool`, `String`, etc.), the column type
+is inferred automatically from the field's Rust type even when every row has
+`None`. `Option<f64>` produces `NA_real_`, `Option<i32>` produces `NA_integer_`,
+`Option<bool>` produces `NA` (logical), and `Option<String>` produces
+`NA_character_`.
 
 ```rust
-use miniextendr_api::serde::{ColumnType, ColumnarDataFrame};
-
 #[derive(Serialize)]
 struct Row {
     id: i32,
-    score: Option<f64>,   // may be all-None
+    score: Option<f64>,   // all-None rows still produce a numeric column
 }
 
-let df = ColumnarDataFrame::builder()
-    .hint("score", ColumnType::Real)
-    .from_rows(&rows)?;
-// df$score is now a numeric NA vector, not a list
+let df = ColumnarDataFrame::from_rows(&rows)?;
+// df$score is a numeric NA vector: typeof(df$score) == "double"
 ```
 
-Without a hint, the fallback to a list column is preserved — useful for
-genuinely heterogeneous data. The `ColumnType` variants are `Real`, `Integer`,
-`Logical`, and `Character`.
-
-Hints apply to top-level serde field keys only. Nested struct fields are
-individually probed without hints; all-`None` nested fields cannot be hinted.
+For custom or complex inner types that cannot be automatically mapped (e.g.,
+`Option<MyEnum>`), the column falls back to a `list` column.
 
 ---
 

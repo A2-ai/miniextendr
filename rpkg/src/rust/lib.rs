@@ -178,6 +178,8 @@ mod indicatif_adapter_tests;
 mod interrupt_tests;
 mod into_r_as_tests;
 mod into_r_error_tests;
+#[cfg(feature = "jiff")]
+mod jiff_adapter_tests;
 #[cfg(feature = "serde")]
 mod json_string_tests;
 mod lazy_tests;
@@ -232,8 +234,6 @@ mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
 mod thread_tests;
-#[cfg(feature = "jiff")]
-mod jiff_adapter_tests;
 #[cfg(feature = "time")]
 mod time_adapter_tests;
 #[cfg(feature = "tinyvec")]

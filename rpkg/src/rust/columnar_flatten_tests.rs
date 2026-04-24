@@ -4,7 +4,7 @@
 use crate::serde::Serialize;
 use miniextendr_api::IntoR;
 use miniextendr_api::miniextendr;
-use miniextendr_api::serde::{ColumnType, ColumnarDataFrame};
+use miniextendr_api::serde::ColumnarDataFrame;
 
 // region: Test types
 
@@ -290,10 +290,7 @@ pub fn test_columnar_with_column_replace() -> ColumnarDataFrame {
 /// @export
 #[miniextendr]
 pub fn test_columnar_with_column_append() -> ColumnarDataFrame {
-    let rows = vec![
-        Inner { x: 1.0, y: 2.0 },
-        Inner { x: 3.0, y: 4.0 },
-    ];
+    let rows = vec![Inner { x: 1.0, y: 2.0 }, Inner { x: 3.0, y: 4.0 }];
     let new_col = vec!["first".to_string(), "second".to_string()].into_sexp();
     ColumnarDataFrame::from_rows(&rows)
         .expect("from_rows")
@@ -364,7 +361,7 @@ pub fn test_columnar_tagged_enum() -> ColumnarDataFrame {
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
-// region: All-None builder hint fixtures
+// region: All-None type-inference fixtures
 
 #[derive(Serialize)]
 #[serde(crate = "crate::serde")]
@@ -405,26 +402,32 @@ struct WithLeadingNone {
 #[miniextendr]
 pub fn test_columnar_all_none_real() -> ColumnarDataFrame {
     let rows = vec![
-        WithAllNoneReal { x: 1.0, score: None },
-        WithAllNoneReal { x: 2.0, score: None },
+        WithAllNoneReal {
+            x: 1.0,
+            score: None,
+        },
+        WithAllNoneReal {
+            x: 2.0,
+            score: None,
+        },
     ];
-    ColumnarDataFrame::builder()
-        .hint("score", ColumnType::Real)
-        .from_rows(&rows)
-        .expect("from_rows")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
 pub fn test_columnar_all_none_int() -> ColumnarDataFrame {
     let rows = vec![
-        WithAllNoneInt { x: 1.0, count: None },
-        WithAllNoneInt { x: 2.0, count: None },
+        WithAllNoneInt {
+            x: 1.0,
+            count: None,
+        },
+        WithAllNoneInt {
+            x: 2.0,
+            count: None,
+        },
     ];
-    ColumnarDataFrame::builder()
-        .hint("count", ColumnType::Integer)
-        .from_rows(&rows)
-        .expect("from_rows")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
@@ -434,31 +437,21 @@ pub fn test_columnar_all_none_bool() -> ColumnarDataFrame {
         WithAllNoneBool { x: 1.0, flag: None },
         WithAllNoneBool { x: 2.0, flag: None },
     ];
-    ColumnarDataFrame::builder()
-        .hint("flag", ColumnType::Logical)
-        .from_rows(&rows)
-        .expect("from_rows")
+    ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
 
 /// @export
 #[miniextendr]
 pub fn test_columnar_all_none_str() -> ColumnarDataFrame {
     let rows = vec![
-        WithAllNoneStr { x: 1.0, label: None },
-        WithAllNoneStr { x: 2.0, label: None },
-    ];
-    ColumnarDataFrame::builder()
-        .hint("label", ColumnType::Character)
-        .from_rows(&rows)
-        .expect("from_rows")
-}
-
-/// @export
-#[miniextendr]
-pub fn test_columnar_all_none_no_hint() -> ColumnarDataFrame {
-    let rows = vec![
-        WithAllNoneReal { x: 1.0, score: None },
-        WithAllNoneReal { x: 2.0, score: None },
+        WithAllNoneStr {
+            x: 1.0,
+            label: None,
+        },
+        WithAllNoneStr {
+            x: 2.0,
+            label: None,
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }
@@ -469,9 +462,18 @@ pub fn test_columnar_all_none_no_hint() -> ColumnarDataFrame {
 #[miniextendr]
 pub fn test_columnar_leading_none() -> ColumnarDataFrame {
     let rows = vec![
-        WithLeadingNone { x: 1.0, value: None },
-        WithLeadingNone { x: 2.0, value: None },
-        WithLeadingNone { x: 3.0, value: Some(42.0) },
+        WithLeadingNone {
+            x: 1.0,
+            value: None,
+        },
+        WithLeadingNone {
+            x: 2.0,
+            value: None,
+        },
+        WithLeadingNone {
+            x: 3.0,
+            value: Some(42.0),
+        },
     ];
     ColumnarDataFrame::from_rows(&rows).expect("from_rows")
 }

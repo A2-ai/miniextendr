@@ -101,24 +101,6 @@ pub struct ColumnarDataFrame {
 }
 
 impl ColumnarDataFrame {
-    /// Return a builder for constructing a `ColumnarDataFrame` with optional
-    /// field-type hints.
-    ///
-    /// Use the builder when one or more `Option<T>` fields have all-`None` rows
-    /// and schema discovery cannot infer the column type:
-    ///
-    /// ```ignore
-    /// ColumnarDataFrame::builder()
-    ///     .hint("score", ColumnType::Real)
-    ///     .hint("flags", ColumnType::Logical)
-    ///     .from_rows(&rows)?
-    /// ```
-    pub fn builder() -> ColumnarBuilder {
-        ColumnarBuilder {
-            hints: HashMap::new(),
-        }
-    }
-
     /// Convert a slice of serializable structs to an R data.frame in columnar layout.
     ///
     /// Each field of `T` becomes a column (R atomic vector). Nested structs are
@@ -141,41 +123,10 @@ impl ColumnarDataFrame {
     /// | `i8/i16/i32` | `integer` |
     /// | `i64/u64/f32/f64` | `numeric` |
     /// | `String/&str` | `character` |
-    /// | `Option<T>` | Same type with NA for `None` (see note below) |
+    /// | `Option<T>` | Same type with NA for `None` |
     /// | Nested struct | Recursively flattened with `parent_child` naming |
     /// | Other | Falls back to per-element list column |
-    ///
-    /// **All-`None` columns**: when every row has `None` for an `Option<T>` field, the
-    /// column type cannot be inferred and falls back to a `list` column. Use
-    /// [`ColumnarDataFrame::builder()`] with `.hint("field", ColumnType::Real)` (or the
-    /// appropriate variant) to produce a typed NA vector instead.
     pub fn from_rows<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
-        ColumnarDataFrame::builder().from_rows(rows)
-    }
-}
-
-/// Builder for [`ColumnarDataFrame`] with optional field-type hints.
-///
-/// Created by [`ColumnarDataFrame::builder()`].
-pub struct ColumnarBuilder {
-    hints: HashMap<String, ColumnType>,
-}
-
-impl ColumnarBuilder {
-    /// Hint the column type for a field when all rows may have `None`.
-    ///
-    /// `field` is the serde field key (top-level only). The hint is applied
-    /// after schema probing: if the probed type is still `Generic` (all rows
-    /// were `None`), the hint replaces it, producing a typed NA vector instead
-    /// of a list column.
-    pub fn hint(mut self, field: impl Into<String>, col_type: ColumnType) -> Self {
-        self.hints.insert(field.into(), col_type);
-        self
-    }
-
-    /// Convert a slice of serializable structs to an R data.frame, applying
-    /// any registered type hints for all-`None` fields.
-    pub fn from_rows<T: Serialize>(self, rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
         if rows.is_empty() {
             return Ok(ColumnarDataFrame {
                 sexp: empty_dataframe(),
@@ -183,7 +134,7 @@ impl ColumnarBuilder {
         }
 
         // Phase 1: Discover schema from ALL rows (union of fields across enum variants)
-        let schema = discover_schema_union(rows, &self.hints)?;
+        let schema = discover_schema_union(rows)?;
         let ncol = schema.fields.len();
         let nrow = rows.len();
 
@@ -453,17 +404,8 @@ struct FieldMap {
 
 // region: Schema discovery
 
-/// The R column type for a field discovered by schema probing.
-///
-/// Used with [`ColumnarBuilder::hint`] to override schema discovery when all
-/// rows have `None` for an `Option<T>` field. Without a hint, all-`None`
-/// fields fall back to a generic list column.
-///
-/// Hints apply to top-level serde field keys only. Nested struct fields are
-/// individually probed with no hints; all-`None` nested fields cannot be hinted.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[non_exhaustive]
-pub enum ColumnType {
+enum ColumnType {
     Logical,
     Integer,
     Real,
@@ -481,22 +423,44 @@ struct Schema {
     field_map: FieldMap,
 }
 
+/// Map from a Rust type's `type_name` to the R column type, covering
+/// `Option<T>` for all `T` that `RNativeType` and `Coerce` already handle.
+///
+/// Works without `'static` bounds because `type_name::<T>()` is callable for
+/// any `T: ?Sized`. Reliable for standard-library types; returns `Generic`
+/// for custom or composite types.
+fn column_type_for_type<T: ?Sized>() -> ColumnType {
+    match std::any::type_name::<T>() {
+        "core::option::Option<f64>" | "core::option::Option<f32>" => ColumnType::Real,
+        "core::option::Option<i8>"
+        | "core::option::Option<i16>"
+        | "core::option::Option<i32>"
+        | "core::option::Option<u8>"
+        | "core::option::Option<u16>" => ColumnType::Integer,
+        "core::option::Option<i64>"
+        | "core::option::Option<u32>"
+        | "core::option::Option<u64>"
+        | "core::option::Option<usize>"
+        | "core::option::Option<isize>" => ColumnType::Real,
+        "core::option::Option<bool>" => ColumnType::Logical,
+        "core::option::Option<alloc::string::String>" => ColumnType::Character,
+        _ => ColumnType::Generic,
+    }
+}
+
 /// Discover schema by probing rows and taking the union of field sets.
 ///
 /// Different rows may serialize different fields (e.g., enum variants).
 /// The unified schema contains every field seen in any row. During filling,
 /// fields absent from a particular row get NA via the padding mechanism.
-fn discover_schema_union<T: Serialize>(
-    rows: &[T],
-    hints: &HashMap<String, ColumnType>,
-) -> Result<Schema, RSerdeError> {
+fn discover_schema_union<T: Serialize>(rows: &[T]) -> Result<Schema, RSerdeError> {
     let mut unified_fields: Vec<FieldInfo> = Vec::new();
     let mut unified_mappings: HashMap<String, FieldMapping> = HashMap::new();
 
     for (row_idx, row) in rows.iter().enumerate() {
         let fields_before = unified_fields.len();
 
-        let mut discoverer = SchemaDiscoverer::new(0, hints);
+        let mut discoverer = SchemaDiscoverer::new(0);
         if row.serialize(&mut discoverer).is_err() {
             continue; // skip rows that fail discovery (e.g., None-only)
         }
@@ -567,9 +531,6 @@ fn discover_schema_union<T: Serialize>(
 
         // Short-circuit: stop once all fields are known with a concrete type.
         // Don't break while any field is still Generic — a later row may resolve it.
-        // Trade-off: a dataset where every row is None (and no hint is given) scans all rows
-        // before settling on Generic. For large all-None datasets without hints, prefer
-        // ColumnarDataFrame::builder().hint(...) to avoid the full scan.
         let still_generic = unified_fields
             .iter()
             .any(|f| f.col_type == ColumnType::Generic);
@@ -634,9 +595,7 @@ fn try_discover_nested<T: ?Sized + Serialize>(
     value: &T,
     col_offset: usize,
 ) -> Option<(Vec<FieldInfo>, FieldMap)> {
-    // Nested values don't receive top-level hints — they are individually probed.
-    let empty: HashMap<String, ColumnType> = HashMap::new();
-    let mut discoverer = SchemaDiscoverer::new(col_offset, &empty);
+    let mut discoverer = SchemaDiscoverer::new(col_offset);
     if value.serialize(&mut discoverer).is_ok() && !discoverer.fields.is_empty() {
         let total = discoverer.fields.len();
         Some((
@@ -652,22 +611,20 @@ fn try_discover_nested<T: ?Sized + Serialize>(
     }
 }
 
-struct SchemaDiscoverer<'h> {
+struct SchemaDiscoverer {
     fields: Vec<FieldInfo>,
     mappings: HashMap<String, FieldMapping>,
     key_order: Vec<String>,
     col_offset: usize,
-    hints: &'h HashMap<String, ColumnType>,
 }
 
-impl<'h> SchemaDiscoverer<'h> {
-    fn new(col_offset: usize, hints: &'h HashMap<String, ColumnType>) -> Self {
+impl SchemaDiscoverer {
+    fn new(col_offset: usize) -> Self {
         Self {
             fields: Vec::new(),
             mappings: HashMap::new(),
             key_order: Vec::new(),
             col_offset,
-            hints,
         }
     }
 
@@ -699,7 +656,9 @@ impl<'h> SchemaDiscoverer<'h> {
             };
             let _ = value.serialize(&mut type_probe);
             let col_type = if type_probe.col_type == ColumnType::Generic {
-                self.hints.get(key).copied().unwrap_or(ColumnType::Generic)
+                // Fall back to type_name inspection to detect Option<T: RNativeType> fields
+                // whose value happened to be None for this row.
+                column_type_for_type::<T>()
             } else {
                 type_probe.col_type
             };
@@ -714,15 +673,15 @@ impl<'h> SchemaDiscoverer<'h> {
     }
 }
 
-impl<'a, 'h> ser::Serializer for &'a mut SchemaDiscoverer<'h> {
+impl<'a> ser::Serializer for &'a mut SchemaDiscoverer {
     type Ok = ();
     type Error = RSerdeError;
     type SerializeSeq = ser::Impossible<(), RSerdeError>;
     type SerializeTuple = ser::Impossible<(), RSerdeError>;
     type SerializeTupleStruct = ser::Impossible<(), RSerdeError>;
     type SerializeTupleVariant = ser::Impossible<(), RSerdeError>;
-    type SerializeMap = SchemaMapDiscoverer<'a, 'h>;
-    type SerializeStruct = SchemaStructDiscoverer<'a, 'h>;
+    type SerializeMap = SchemaMapDiscoverer<'a>;
+    type SerializeStruct = SchemaStructDiscoverer<'a>;
     type SerializeStructVariant = ser::Impossible<(), RSerdeError>;
 
     fn serialize_struct(
@@ -746,11 +705,11 @@ impl<'a, 'h> ser::Serializer for &'a mut SchemaDiscoverer<'h> {
     );
 }
 
-struct SchemaStructDiscoverer<'a, 'h> {
-    parent: &'a mut SchemaDiscoverer<'h>,
+struct SchemaStructDiscoverer<'a> {
+    parent: &'a mut SchemaDiscoverer,
 }
 
-impl ser::SerializeStruct for SchemaStructDiscoverer<'_, '_> {
+impl ser::SerializeStruct for SchemaStructDiscoverer<'_> {
     type Ok = ();
     type Error = RSerdeError;
 
@@ -768,12 +727,12 @@ impl ser::SerializeStruct for SchemaStructDiscoverer<'_, '_> {
 }
 
 /// Map-based schema discoverer for structs using `#[serde(flatten)]`.
-struct SchemaMapDiscoverer<'a, 'h> {
-    parent: &'a mut SchemaDiscoverer<'h>,
+struct SchemaMapDiscoverer<'a> {
+    parent: &'a mut SchemaDiscoverer,
     pending_key: Option<String>,
 }
 
-impl ser::SerializeMap for SchemaMapDiscoverer<'_, '_> {
+impl ser::SerializeMap for SchemaMapDiscoverer<'_> {
     type Ok = ();
     type Error = RSerdeError;
 
