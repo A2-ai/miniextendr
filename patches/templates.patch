@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-04-21 11:11:07
-+++ b/monorepo/rpkg/configure.ac	2026-04-21 11:11:07
+--- a/monorepo/rpkg/configure.ac	2026-04-24 09:27:22
++++ b/monorepo/rpkg/configure.ac	2026-04-24 09:27:15
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -87,7 +87,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          if command -v git >/dev/null 2>&1; then
 -            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
 -            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
--            if git clone --depth=1 --quiet https://github.com/CGMossa/miniextendr "$_bootstrap_clone"; then
+-            if git clone --depth=1 --quiet https://github.com/A2-ai/miniextendr "$_bootstrap_clone"; then
 -              _source_root_arg="--source-root $_bootstrap_clone"
 -            else
 -              echo "configure: error: git clone of miniextendr failed" >&2
@@ -121,8 +121,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
          dnl Strip checksums from Cargo.lock so cargo accepts the vendored
          dnl copies (same post-step as the tarball-unpack path above).
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-04-21 11:11:07
-+++ b/rpkg/configure.ac	2026-04-21 11:11:07
+--- a/rpkg/configure.ac	2026-04-24 09:27:22
++++ b/rpkg/configure.ac	2026-04-24 09:27:13
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -209,7 +209,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          if command -v git >/dev/null 2>&1; then
 -            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
 -            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
--            if git clone --depth=1 --quiet https://github.com/CGMossa/miniextendr "$_bootstrap_clone"; then
+-            if git clone --depth=1 --quiet https://github.com/A2-ai/miniextendr "$_bootstrap_clone"; then
 -              _source_root_arg="--source-root $_bootstrap_clone"
 -            else
 -              echo "configure: error: git clone of miniextendr failed" >&2
