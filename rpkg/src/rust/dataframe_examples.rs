@@ -1,7 +1,7 @@
 //! Examples and tests for data frame conversion features.
 
 use miniextendr_api::convert::ToDataFrame;
-use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
+use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 
 // Test with homogeneous types first
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -138,6 +138,41 @@ pub fn create_shapes_df() -> ToDataFrame<ShapeRowDataFrame> {
         },
     ];
     ToDataFrame(ShapeRow::to_dataframe(rows))
+}
+// endregion
+
+// region: to_dataframe_split examples
+
+/// Single-variant enum — split returns a data.frame directly, not a list.
+#[derive(Clone, Debug, DataFrameRow)]
+pub enum SingleEvent {
+    Click { x: f64, y: f64 },
+}
+
+/// Unzip events to a named list of data.frames, one per variant.
+///
+/// @export
+#[miniextendr]
+pub fn create_events_split() -> List {
+    let rows = vec![
+        EventRow::Click { id: 1, x: 1.5, y: 2.5 },
+        EventRow::Impression { id: 2, slot: "top_banner".to_string() },
+        EventRow::Error { id: 3, code: 404, message: "not found".to_string() },
+        EventRow::Click { id: 4, x: 3.0, y: 4.0 },
+    ];
+    EventRow::to_dataframe_split(rows)
+}
+
+/// Unzip single-variant enum — returns a data.frame directly.
+///
+/// @export
+#[miniextendr]
+pub fn create_single_event_split() -> List {
+    let rows = vec![
+        SingleEvent::Click { x: 1.0, y: 2.0 },
+        SingleEvent::Click { x: 3.0, y: 4.0 },
+    ];
+    SingleEvent::to_dataframe_split(rows)
 }
 // endregion
 

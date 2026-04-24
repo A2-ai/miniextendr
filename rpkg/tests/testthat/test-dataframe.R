@@ -148,3 +148,51 @@ test_that("DataFrameRow enum with array expansion in variants", {
   # Single-only field
   expect_equal(df$reading, c(NA, 42.0, NA))
 })
+
+# ── to_dataframe_split tests ──────────────────────────────────────────────────
+
+test_that("to_dataframe_split returns named list of data.frames for multi-variant enum", {
+  result <- create_events_split()
+
+  # outer result is a plain list, not a data.frame
+  expect_type(result, "list")
+  expect_false(is.data.frame(result))
+
+  # names are snake_case variant names
+  expect_setequal(names(result), c("click", "impression", "error"))
+
+  # each element is a data.frame
+  expect_s3_class(result$click,      "data.frame")
+  expect_s3_class(result$impression, "data.frame")
+  expect_s3_class(result$error,      "data.frame")
+
+  # click: 2 rows, only Click columns (id, x, y) — no NA columns from other variants
+  expect_equal(nrow(result$click), 2)
+  expect_equal(sort(names(result$click)), sort(c("id", "x", "y")))
+  expect_equal(result$click$id, c(1L, 4L))
+  expect_equal(result$click$x,  c(1.5, 3.0))
+  expect_equal(result$click$y,  c(2.5, 4.0))
+
+  # impression: 1 row, only Impression columns (id, slot)
+  expect_equal(nrow(result$impression), 1)
+  expect_equal(sort(names(result$impression)), sort(c("id", "slot")))
+  expect_equal(result$impression$id,   2L)
+  expect_equal(result$impression$slot, "top_banner")
+
+  # error: 1 row, only Error columns (id, code, message)
+  expect_equal(nrow(result$error), 1)
+  expect_equal(sort(names(result$error)), sort(c("id", "code", "message")))
+  expect_equal(result$error$code,    404L)
+  expect_equal(result$error$message, "not found")
+})
+
+test_that("to_dataframe_split single variant returns data.frame directly", {
+  result <- create_single_event_split()
+
+  # single variant -> data.frame, not a named list of data.frames
+  expect_s3_class(result, "data.frame")
+  expect_equal(nrow(result), 2)
+  expect_equal(sort(names(result)), sort(c("x", "y")))
+  expect_equal(result$x, c(1.0, 3.0))
+  expect_equal(result$y, c(2.0, 4.0))
+})
