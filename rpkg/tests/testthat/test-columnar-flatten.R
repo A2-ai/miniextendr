@@ -156,3 +156,66 @@ test_that("internally tagged enum: kind column + variant-specific fields", {
   expect_true("delta" %in% names(df))
   expect_equal(df$delta, c(NA, -3.5, NA))
 })
+
+# ── vec_to_dataframe_split ────────────────────────────────────────────────────
+
+test_that("externally-tagged enum split: named list, no NA columns", {
+  result <- test_columnar_ext_tagged_split()
+
+  # outer result is a named list, not a data.frame
+  expect_type(result, "list")
+  expect_false(is.data.frame(result))
+  expect_setequal(names(result), c("Click", "Scroll"))
+
+  # Click: 2 rows, only x and y — no delta column
+  click <- result$Click
+  expect_s3_class(click, "data.frame")
+  expect_equal(nrow(click), 2)
+  expect_equal(sort(names(click)), sort(c("x", "y")))
+  expect_equal(click$x, c(1.0, 5.0))
+  expect_equal(click$y, c(2.0, 6.0))
+
+  # Scroll: 1 row, only delta — no x or y column
+  scroll <- result$Scroll
+  expect_s3_class(scroll, "data.frame")
+  expect_equal(nrow(scroll), 1)
+  expect_equal(names(scroll), "delta")
+  expect_equal(scroll$delta, -3.0)
+})
+
+test_that("internally-tagged enum split: tag column dropped, no NA columns", {
+  result <- test_columnar_int_tagged_split()
+
+  # outer result is a named list
+  expect_type(result, "list")
+  expect_false(is.data.frame(result))
+  expect_setequal(names(result), c("Click", "Scroll"))
+
+  # Click: 2 rows, x + y only — no kind column
+  click <- result$Click
+  expect_s3_class(click, "data.frame")
+  expect_equal(nrow(click), 2)
+  expect_false("kind" %in% names(click))
+  expect_equal(sort(names(click)), sort(c("x", "y")))
+  expect_equal(click$x, c(10.0, 30.0))
+  expect_equal(click$y, c(20.0, 40.0))
+
+  # Scroll: 1 row, delta only — no kind column
+  scroll <- result$Scroll
+  expect_s3_class(scroll, "data.frame")
+  expect_equal(nrow(scroll), 1)
+  expect_false("kind" %in% names(scroll))
+  expect_equal(names(scroll), "delta")
+  expect_equal(scroll$delta, -3.5)
+})
+
+test_that("single-variant split returns bare data.frame", {
+  result <- test_columnar_single_variant_split()
+
+  # single variant → bare data.frame, not a named list of data.frames
+  expect_s3_class(result, "data.frame")
+  expect_equal(nrow(result), 2)
+  expect_equal(sort(names(result)), sort(c("x", "y")))
+  expect_equal(result$x, c(1.0, 3.0))
+  expect_equal(result$y, c(2.0, 4.0))
+})

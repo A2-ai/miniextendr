@@ -1423,3 +1423,413 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
     }
 }
 // endregion
+
+// region: Enum split (vec_to_dataframe_split)
+
+struct VariantInfo {
+    name: String,
+    is_unit: bool,
+    tag_field: Option<String>,
+}
+
+fn extract_variant_info<T: Serialize>(row: &T) -> Option<VariantInfo> {
+    let mut ext = VariantNameExtractor::default();
+    let _ = row.serialize(&mut ext);
+    ext.name.map(|name| VariantInfo {
+        name,
+        is_unit: ext.is_unit,
+        tag_field: ext.tag_field,
+    })
+}
+
+// ── VariantNameExtractor ──────────────────────────────────────────────────────
+
+#[derive(Default)]
+struct VariantNameExtractor {
+    name: Option<String>,
+    is_unit: bool,
+    tag_field: Option<String>,
+}
+
+struct NoopStructVariant;
+impl ser::SerializeStructVariant for NoopStructVariant {
+    type Ok = ();
+    type Error = RSerdeError;
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, _: &T) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn end(self) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+}
+
+struct NoopTupleVariant;
+impl ser::SerializeTupleVariant for NoopTupleVariant {
+    type Ok = ();
+    type Error = RSerdeError;
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, _: &T) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn end(self) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+}
+
+struct TagStructCapture<'a> {
+    parent: &'a mut VariantNameExtractor,
+    first_done: bool,
+}
+
+impl ser::SerializeStruct for TagStructCapture<'_> {
+    type Ok = ();
+    type Error = RSerdeError;
+
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, key: &'static str, value: &T) -> Result<(), RSerdeError> {
+        if !self.first_done {
+            self.first_done = true;
+            let mut ve = ValueExtractor::default();
+            let _ = value.serialize(&mut ve);
+            if let ExtractedValue::Str(s) = ve.value {
+                self.parent.name = Some(s);
+                self.parent.tag_field = Some(key.to_string());
+            }
+        }
+        Ok(())
+    }
+
+    fn end(self) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+}
+
+struct TagMapCapture<'a> {
+    parent: &'a mut VariantNameExtractor,
+    pending_key: Option<String>,
+    first_done: bool,
+}
+
+impl ser::SerializeMap for TagMapCapture<'_> {
+    type Ok = ();
+    type Error = RSerdeError;
+
+    fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<(), RSerdeError> {
+        if !self.first_done {
+            let mut ve = ValueExtractor::default();
+            let _ = key.serialize(&mut ve);
+            if let ExtractedValue::Str(s) = ve.value {
+                self.pending_key = Some(s);
+            }
+        }
+        Ok(())
+    }
+
+    fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
+        if !self.first_done {
+            self.first_done = true;
+            let key = self.pending_key.take().unwrap_or_default();
+            let mut ve = ValueExtractor::default();
+            let _ = value.serialize(&mut ve);
+            if let ExtractedValue::Str(s) = ve.value {
+                self.parent.name = Some(s);
+                self.parent.tag_field = Some(key);
+            }
+        }
+        Ok(())
+    }
+
+    fn end(self) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+}
+
+impl<'a> ser::Serializer for &'a mut VariantNameExtractor {
+    type Ok = ();
+    type Error = RSerdeError;
+    type SerializeSeq = ser::Impossible<(), RSerdeError>;
+    type SerializeTuple = ser::Impossible<(), RSerdeError>;
+    type SerializeTupleStruct = ser::Impossible<(), RSerdeError>;
+    type SerializeTupleVariant = NoopTupleVariant;
+    type SerializeMap = TagMapCapture<'a>;
+    type SerializeStruct = TagStructCapture<'a>;
+    type SerializeStructVariant = NoopStructVariant;
+
+    fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_char(self, _: char) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_str(self, _: &str) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_none(self) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<(), RSerdeError> {
+        v.serialize(self)
+    }
+    fn serialize_unit(self) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_unit_variant(self, _: &'static str, _: u32, variant: &'static str) -> Result<(), RSerdeError> {
+        self.name = Some(variant.to_string());
+        self.is_unit = true;
+        Ok(())
+    }
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, v: &T) -> Result<(), RSerdeError> {
+        v.serialize(self)
+    }
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, variant: &'static str, _: &T) -> Result<(), RSerdeError> {
+        self.name = Some(variant.to_string());
+        Ok(())
+    }
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, RSerdeError> {
+        Err(RSerdeError::Message("seq in variant extractor".into()))
+    }
+    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, RSerdeError> {
+        Err(RSerdeError::Message("tuple in variant extractor".into()))
+    }
+    fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, RSerdeError> {
+        Err(RSerdeError::Message("tuple_struct in variant extractor".into()))
+    }
+    fn serialize_tuple_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<Self::SerializeTupleVariant, RSerdeError> {
+        self.name = Some(variant.to_string());
+        Ok(NoopTupleVariant)
+    }
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
+        Ok(TagMapCapture { parent: self, pending_key: None, first_done: false })
+    }
+    fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, RSerdeError> {
+        Ok(TagStructCapture { parent: self, first_done: false })
+    }
+    fn serialize_struct_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<Self::SerializeStructVariant, RSerdeError> {
+        self.name = Some(variant.to_string());
+        Ok(NoopStructVariant)
+    }
+}
+
+// ── VariantStrippingSerializer ────────────────────────────────────────────────
+
+struct VariantPayload<T>(T);
+
+impl<T: Serialize> Serialize for VariantPayload<T> {
+    fn serialize<S: ser::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(VariantStrippingSerializer { inner: s })
+    }
+}
+
+struct VariantStrippingSerializer<S: ser::Serializer> {
+    inner: S,
+}
+
+struct VariantAsStruct<S: ser::SerializeStruct>(S);
+
+impl<S: ser::SerializeStruct> ser::SerializeStructVariant for VariantAsStruct<S> {
+    type Ok = S::Ok;
+    type Error = S::Error;
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, key: &'static str, value: &T) -> Result<(), S::Error> {
+        self.0.serialize_field(key, value)
+    }
+    fn end(self) -> Result<S::Ok, S::Error> {
+        self.0.end()
+    }
+}
+
+struct VariantAsTupleStruct<S: ser::SerializeTupleStruct>(S);
+
+impl<S: ser::SerializeTupleStruct> ser::SerializeTupleVariant for VariantAsTupleStruct<S> {
+    type Ok = S::Ok;
+    type Error = S::Error;
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), S::Error> {
+        self.0.serialize_field(value)
+    }
+    fn end(self) -> Result<S::Ok, S::Error> {
+        self.0.end()
+    }
+}
+
+impl<S: ser::Serializer> ser::Serializer for VariantStrippingSerializer<S> {
+    type Ok = S::Ok;
+    type Error = S::Error;
+    type SerializeSeq = S::SerializeSeq;
+    type SerializeTuple = S::SerializeTuple;
+    type SerializeTupleStruct = S::SerializeTupleStruct;
+    type SerializeTupleVariant = VariantAsTupleStruct<S::SerializeTupleStruct>;
+    type SerializeMap = S::SerializeMap;
+    type SerializeStruct = S::SerializeStruct;
+    type SerializeStructVariant = VariantAsStruct<S::SerializeStruct>;
+
+    fn serialize_bool(self, v: bool) -> Result<S::Ok, S::Error> { self.inner.serialize_bool(v) }
+    fn serialize_i8(self, v: i8) -> Result<S::Ok, S::Error> { self.inner.serialize_i8(v) }
+    fn serialize_i16(self, v: i16) -> Result<S::Ok, S::Error> { self.inner.serialize_i16(v) }
+    fn serialize_i32(self, v: i32) -> Result<S::Ok, S::Error> { self.inner.serialize_i32(v) }
+    fn serialize_i64(self, v: i64) -> Result<S::Ok, S::Error> { self.inner.serialize_i64(v) }
+    fn serialize_u8(self, v: u8) -> Result<S::Ok, S::Error> { self.inner.serialize_u8(v) }
+    fn serialize_u16(self, v: u16) -> Result<S::Ok, S::Error> { self.inner.serialize_u16(v) }
+    fn serialize_u32(self, v: u32) -> Result<S::Ok, S::Error> { self.inner.serialize_u32(v) }
+    fn serialize_u64(self, v: u64) -> Result<S::Ok, S::Error> { self.inner.serialize_u64(v) }
+    fn serialize_f32(self, v: f32) -> Result<S::Ok, S::Error> { self.inner.serialize_f32(v) }
+    fn serialize_f64(self, v: f64) -> Result<S::Ok, S::Error> { self.inner.serialize_f64(v) }
+    fn serialize_char(self, v: char) -> Result<S::Ok, S::Error> { self.inner.serialize_char(v) }
+    fn serialize_str(self, v: &str) -> Result<S::Ok, S::Error> { self.inner.serialize_str(v) }
+    fn serialize_bytes(self, v: &[u8]) -> Result<S::Ok, S::Error> { self.inner.serialize_bytes(v) }
+    fn serialize_none(self) -> Result<S::Ok, S::Error> { self.inner.serialize_none() }
+    fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_some(v)
+    }
+    fn serialize_unit(self) -> Result<S::Ok, S::Error> { self.inner.serialize_unit() }
+    fn serialize_unit_struct(self, name: &'static str) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_unit_struct(name)
+    }
+    fn serialize_unit_variant(self, _: &'static str, _: u32, variant: &'static str) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_unit_struct(variant)
+    }
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, name: &'static str, v: &T) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_newtype_struct(name, v)
+    }
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, v: &T) -> Result<S::Ok, S::Error> {
+        v.serialize(self.inner)
+    }
+    fn serialize_seq(self, len: Option<usize>) -> Result<S::SerializeSeq, S::Error> {
+        self.inner.serialize_seq(len)
+    }
+    fn serialize_tuple(self, len: usize) -> Result<S::SerializeTuple, S::Error> {
+        self.inner.serialize_tuple(len)
+    }
+    fn serialize_tuple_struct(self, name: &'static str, len: usize) -> Result<S::SerializeTupleStruct, S::Error> {
+        self.inner.serialize_tuple_struct(name, len)
+    }
+    fn serialize_tuple_variant(self, _: &'static str, _: u32, variant: &'static str, len: usize) -> Result<Self::SerializeTupleVariant, S::Error> {
+        let ts = self.inner.serialize_tuple_struct(variant, len)?;
+        Ok(VariantAsTupleStruct(ts))
+    }
+    fn serialize_map(self, len: Option<usize>) -> Result<S::SerializeMap, S::Error> {
+        self.inner.serialize_map(len)
+    }
+    fn serialize_struct(self, name: &'static str, len: usize) -> Result<S::SerializeStruct, S::Error> {
+        self.inner.serialize_struct(name, len)
+    }
+    fn serialize_struct_variant(self, _: &'static str, _: u32, variant: &'static str, len: usize) -> Result<Self::SerializeStructVariant, S::Error> {
+        let s = self.inner.serialize_struct(variant, len)?;
+        Ok(VariantAsStruct(s))
+    }
+}
+
+// ── 0-column data.frame for unit variants ────────────────────────────────────
+
+fn unit_variant_dataframe(nrow: usize) -> SEXP {
+    unsafe {
+        let list = Rf_allocVector(SEXPTYPE::VECSXP, 0);
+        Rf_protect(list);
+        list.set_class(crate::cached_class::data_frame_class_sexp());
+        let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
+        Rf_protect(row_names);
+        rn[0] = i32::MIN;
+        rn[1] = -i32::try_from(nrow).expect("nrow overflow");
+        list.set_row_names(row_names);
+        Rf_unprotect(2);
+        list
+    }
+}
+
+// ── vec_to_dataframe_split ────────────────────────────────────────────────────
+
+/// Partition a slice of serializable enum rows into a named list of data.frames,
+/// one per variant.
+///
+/// Each variant's data.frame contains only that variant's fields — no NA-filled
+/// columns from other variants. For internally-tagged enums (`#[serde(tag = "...")]`),
+/// the tag column is automatically dropped from each partition.
+///
+/// Returns:
+/// - **Single variant**: the bare data.frame as a [`List`](crate::list::List)
+/// - **Multiple variants**: a named `List` of per-variant data.frames, keyed by
+///   the variant name as serialized by serde
+///
+/// Supports externally-tagged (default) and internally-tagged (`#[serde(tag)]`)
+/// enums. Unit variants produce 0-column data.frames with the correct row count.
+///
+/// # Errors
+///
+/// Returns an error if any row serializes without a variant name (not an enum),
+/// or if column building fails.
+pub fn vec_to_dataframe_split<T: Serialize>(
+    rows: &[T],
+) -> Result<crate::list::List, RSerdeError> {
+    use crate::OwnedProtect;
+    use crate::IntoR as _;
+    use crate::list::List;
+
+    if rows.is_empty() {
+        return Ok(List::from_raw_pairs(Vec::<(String, SEXP)>::new()));
+    }
+
+    // Phase 1: extract variant info for each row
+    let infos: Vec<VariantInfo> = {
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            match extract_variant_info(row) {
+                Some(info) => out.push(info),
+                None => {
+                    return Err(RSerdeError::Message(
+                        "vec_to_dataframe_split: row has no variant — use vec_to_dataframe for plain structs".into(),
+                    ));
+                }
+            }
+        }
+        out
+    };
+
+    // Phase 2: group indices by variant name (preserve first-seen order)
+    let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+    for (i, info) in infos.iter().enumerate() {
+        if let Some(grp) = groups.iter_mut().find(|(n, _)| n == &info.name) {
+            grp.1.push(i);
+        } else {
+            groups.push((info.name.clone(), vec![i]));
+        }
+    }
+
+    // Detect enum style from the first row that has a tag field
+    let tag_field: Option<&str> = infos.iter().find_map(|i| i.tag_field.as_deref());
+
+    // Phase 3: build per-partition data.frames, protecting each immediately
+    let mut protected: Vec<(String, OwnedProtect)> = Vec::with_capacity(groups.len());
+
+    for (name, indices) in &groups {
+        let is_unit = infos[indices[0]].is_unit;
+
+        let prot = if is_unit {
+            unsafe { OwnedProtect::new(unit_variant_dataframe(indices.len())) }
+        } else if tag_field.is_some() {
+            // Internally-tagged: call from_rows directly, then drop the tag column
+            let refs: Vec<&T> = indices.iter().map(|&i| &rows[i]).collect();
+            let df = ColumnarDataFrame::from_rows(&refs)?;
+            let df = if let Some(tf) = tag_field { df.drop(tf) } else { df };
+            unsafe { OwnedProtect::new(df.into_sexp()) }
+        } else {
+            // Externally-tagged: wrap each row so serialize_struct_variant is
+            // redirected to serialize_struct (strips the outer variant wrapper)
+            let wrapped: Vec<VariantPayload<&T>> =
+                indices.iter().map(|&i| VariantPayload(&rows[i])).collect();
+            let df = ColumnarDataFrame::from_rows(&wrapped)?;
+            unsafe { OwnedProtect::new(df.into_sexp()) }
+        };
+
+        protected.push((name.clone(), prot));
+    }
+
+    // Phase 4: assemble the result
+    if protected.len() == 1 {
+        let (_, prot) = protected.into_iter().next().unwrap();
+        Ok(unsafe { List::from_raw(prot.get()) })
+    } else {
+        // All partition SEXPs are protected via `protected` throughout from_raw_pairs
+        let pairs: Vec<(String, SEXP)> = protected.iter().map(|(n, p)| (n.clone(), p.get())).collect();
+        Ok(List::from_raw_pairs(pairs))
+    }
+}
+
+// endregion
