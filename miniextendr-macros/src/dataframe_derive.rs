@@ -7,6 +7,24 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields};
 
+// region: Utility functions
+
+/// Convert a PascalCase or CamelCase string to snake_case.
+///
+/// Inserts `_` before each uppercase character (if not the first), then lowercases all.
+/// `Click` → `click`, `MyVariant` → `my_variant`.
+pub(super) fn to_snake_case(s: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in s.char_indices() {
+        if c.is_uppercase() && i > 0 {
+            out.push('_');
+        }
+        out.extend(c.to_lowercase());
+    }
+    out
+}
+// endregion
+
 // region: Attribute parsing
 
 /// Parsed container-level `#[dataframe(...)]` attributes.
