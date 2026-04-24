@@ -128,7 +128,7 @@ fn vendor_versions(quiet: bool, json: bool) -> Result<()> {
         "gh",
         &[
             "api",
-            "repos/CGMossa/miniextendr/branches",
+            "repos/A2-ai/miniextendr/branches",
             "--jq",
             ".[].name",
         ],

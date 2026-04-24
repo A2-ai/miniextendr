@@ -10,7 +10,7 @@ package workflows.
 From GitHub:
 
 ```r
-remotes::install_github("CGMossa/miniextendr", subdir = "minirextendr")
+remotes::install_github("A2-ai/miniextendr", subdir = "minirextendr")
 ```
 
 From a local checkout:
@@ -82,7 +82,7 @@ crates instead of git sources, add a `[patch."https://..."]` section to your
 `Cargo.toml`:
 
 ```toml
-[patch."https://github.com/CGMossa/miniextendr"]
+[patch."https://github.com/A2-ai/miniextendr"]
 miniextendr-api = { path = "../path/to/miniextendr-api" }
 miniextendr-macros = { path = "../path/to/miniextendr-macros" }
 miniextendr-lint = { path = "../path/to/miniextendr-lint" }

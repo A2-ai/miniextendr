@@ -453,7 +453,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
         }
       else
         echo "configure: error: cargo-revendor not found" >&2
-        echo "configure:        Install: cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
+        echo "configure:        Install: cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor" >&2
         exit 1
       fi
     else
@@ -487,7 +487,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           if command -v git >/dev/null 2>&1; then
             _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
             echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
-            if git clone --depth=1 --quiet https://github.com/CGMossa/miniextendr "$_bootstrap_clone"; then
+            if git clone --depth=1 --quiet https://github.com/A2-ai/miniextendr "$_bootstrap_clone"; then
               _source_root_arg="--source-root $_bootstrap_clone"
             else
               echo "configure: error: git clone of miniextendr failed" >&2
@@ -527,7 +527,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       else
         echo "configure: error: vendored sources required but vendor/ and inst/vendor.tar.xz are both missing." >&2
         echo "configure:        Install cargo-revendor to auto-vendor on first install:" >&2
-        echo "configure:          cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor" >&2
+        echo "configure:          cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor" >&2
         echo "configure:        Or commit inst/vendor.tar.xz alongside the package." >&2
         exit 1
       fi

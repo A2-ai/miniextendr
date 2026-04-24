@@ -1,7 +1,7 @@
 # Vendor management functions
 
 # GitHub repo for miniextendr
-MINIEXTENDR_REPO <- "CGMossa/miniextendr"
+MINIEXTENDR_REPO <- "A2-ai/miniextendr"
 
 #' List available miniextendr versions
 #'
@@ -240,8 +240,8 @@ read_workspace_package_values <- function(workspace_root = NULL) {
     edition = "2024",
     version = "0.1.0",
     license = "MIT",
-    repository = "https://github.com/CGMossa/miniextendr",
-    homepage = "https://github.com/CGMossa/miniextendr",
+    repository = "https://github.com/A2-ai/miniextendr",
+    homepage = "https://github.com/A2-ai/miniextendr",
     keywords = '["r", "ffi", "bindings"]',
     categories = '["api-bindings", "external-ffi-bindings"]'
   )
@@ -830,7 +830,7 @@ check_path_deps <- function(path = ".") {
 #' Add `[patch]` entries to Cargo.toml for vendored crates
 #'
 #' After vendoring miniextendr crates to vendor/, adds a
-#' `[patch."https://github.com/CGMossa/miniextendr"]` section to
+#' `[patch."https://github.com/A2-ai/miniextendr"]` section to
 #' src/rust/Cargo.toml so that dev mode (NOT_CRAN=true) resolves
 #' dependencies from vendor/ instead of fetching from git.
 #'
@@ -849,7 +849,7 @@ add_vendor_patches <- function(vendor_dir) {
   if (any(grepl("^\\[patch\\.", content))) return(invisible())
 
   # Don't add if no git URLs to patch (path deps don't need patching)
-  if (!any(grepl("github\\.com/CGMossa", content))) return(invisible())
+  if (!any(grepl("github\\.com/A2-ai", content))) return(invisible())
 
   # Only patch crates that are actual dependencies (not miniextendr-engine,
 
@@ -858,7 +858,7 @@ add_vendor_patches <- function(vendor_dir) {
 
   patch_lines <- c(
     "",
-    '[patch."https://github.com/CGMossa/miniextendr"]'
+    '[patch."https://github.com/A2-ai/miniextendr"]'
   )
   for (crate in crates) {
     # Accept both versioned (vendor/<name>-<version>/) and flat (vendor/<name>/) layouts

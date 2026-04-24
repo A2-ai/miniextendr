@@ -115,7 +115,7 @@ miniextendr-ndarray = { path = "../miniextendr-ndarray", optional = true }
 ## `rpkg` + Vendoring Changes
 
 Use this repo's existing patch source convention:
-- `rpkg/src/rust/Cargo.toml` uses `[patch."https://github.com/CGMossa/miniextendr"]`
+- `rpkg/src/rust/Cargo.toml` uses `[patch."https://github.com/A2-ai/miniextendr"]`
 - `minirextendr/R/vendor.R` manages vendored crate list and patch insertion.
 
 Do **not** switch to `[patch.crates-io]` for this workflow.

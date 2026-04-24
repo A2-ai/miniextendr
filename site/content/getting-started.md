@@ -22,7 +22,7 @@ Use the `minirextendr` helper package to scaffold a new project:
 
 ```r
 # Install minirextendr (once, from GitHub)
-remotes::install_github("CGMossa/miniextendr", subdir = "minirextendr")
+remotes::install_github("A2-ai/miniextendr", subdir = "minirextendr")
 
 # Create a new package
 library(minirextendr)

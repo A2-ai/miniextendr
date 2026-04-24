@@ -26,7 +26,7 @@ make_test_project <- function() {
     'crate-type = ["staticlib"]',
     '',
     '[dependencies]',
-    'miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }',
+    'miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }',
     '',
     '[features]',
     'default = []'
