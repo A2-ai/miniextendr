@@ -155,10 +155,25 @@ pub enum SingleEvent {
 #[miniextendr]
 pub fn create_events_split() -> List {
     let rows = vec![
-        EventRow::Click { id: 1, x: 1.5, y: 2.5 },
-        EventRow::Impression { id: 2, slot: "top_banner".to_string() },
-        EventRow::Error { id: 3, code: 404, message: "not found".to_string() },
-        EventRow::Click { id: 4, x: 3.0, y: 4.0 },
+        EventRow::Click {
+            id: 1,
+            x: 1.5,
+            y: 2.5,
+        },
+        EventRow::Impression {
+            id: 2,
+            slot: "top_banner".to_string(),
+        },
+        EventRow::Error {
+            id: 3,
+            code: 404,
+            message: "not found".to_string(),
+        },
+        EventRow::Click {
+            id: 4,
+            x: 3.0,
+            y: 4.0,
+        },
     ];
     EventRow::to_dataframe_split(rows)
 }
@@ -173,6 +188,19 @@ pub fn create_single_event_split() -> List {
         SingleEvent::Click { x: 3.0, y: 4.0 },
     ];
     SingleEvent::to_dataframe_split(rows)
+}
+
+/// Unzip shapes to a named list of data.frames (2 variants, shared field).
+///
+/// @export
+#[miniextendr]
+pub fn create_shapes_split() -> List {
+    let rows = vec![
+        ShapeRow::Circle { radius: 5.0, area: 78.54 },
+        ShapeRow::Rect { width: 3.0, height: 4.0, area: 12.0 },
+        ShapeRow::Circle { radius: 1.0, area: std::f64::consts::PI },
+    ];
+    ShapeRow::to_dataframe_split(rows)
 }
 // endregion
 

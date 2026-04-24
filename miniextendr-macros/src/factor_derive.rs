@@ -55,32 +55,14 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, Type};
 
-/// Convert a PascalCase string to snake_case.
-///
-/// Inserts an underscore before each uppercase letter (except the first),
-/// then lowercases the entire result. For example, `"InProgress"` becomes
-/// `"in_progress"`.
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() {
-            if i > 0 {
-                result.push('_');
-            }
-            result.push(c.to_ascii_lowercase());
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
+use crate::naming;
 
 /// Convert a PascalCase string to kebab-case.
 ///
 /// First converts to snake_case, then replaces underscores with hyphens.
 /// For example, `"InProgress"` becomes `"in-progress"`.
 fn to_kebab_case(s: &str) -> String {
-    to_snake_case(s).replace('_', "-")
+    naming::to_snake_case(s).replace('_', "-")
 }
 
 /// Apply a `rename_all` transformation to a variant name.
@@ -89,7 +71,7 @@ fn to_kebab_case(s: &str) -> String {
 /// If `rename_all` is `None` or unrecognized, the name is returned unchanged.
 fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
     match rename_all {
-        Some("snake_case") => to_snake_case(name),
+        Some("snake_case") => naming::to_snake_case(name),
         Some("kebab-case") => to_kebab_case(name),
         Some("lower") => name.to_lowercase(),
         Some("upper") => name.to_uppercase(),
@@ -559,10 +541,10 @@ mod tests {
 
     #[test]
     fn test_snake_case() {
-        assert_eq!(to_snake_case("HelloWorld"), "hello_world");
-        assert_eq!(to_snake_case("InProgress"), "in_progress");
-        assert_eq!(to_snake_case("ABC"), "a_b_c");
-        assert_eq!(to_snake_case("Red"), "red");
+        assert_eq!(naming::to_snake_case("HelloWorld"), "hello_world");
+        assert_eq!(naming::to_snake_case("InProgress"), "in_progress");
+        assert_eq!(naming::to_snake_case("ABC"), "a_b_c");
+        assert_eq!(naming::to_snake_case("Red"), "red");
     }
 
     #[test]

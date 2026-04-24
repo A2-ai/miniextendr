@@ -290,10 +290,7 @@ pub fn test_columnar_with_column_replace() -> ColumnarDataFrame {
 /// @export
 #[miniextendr]
 pub fn test_columnar_with_column_append() -> ColumnarDataFrame {
-    let rows = vec![
-        Inner { x: 1.0, y: 2.0 },
-        Inner { x: 3.0, y: 4.0 },
-    ];
+    let rows = vec![Inner { x: 1.0, y: 2.0 }, Inner { x: 3.0, y: 4.0 }];
     let new_col = vec!["first".to_string(), "second".to_string()].into_sexp();
     ColumnarDataFrame::from_rows(&rows)
         .expect("from_rows")

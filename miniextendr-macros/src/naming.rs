@@ -31,3 +31,19 @@ pub(crate) fn match_arg_call_defs_ident_for(rust_ident: &syn::Ident) -> syn::Ide
     let upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("MATCH_ARG_CALL_DEFS_{upper}")
 }
+
+/// Convert a PascalCase string to snake_case.
+///
+/// Inserts an underscore before each uppercase letter (except the first),
+/// then lowercases the entire result. For example, `"InProgress"` becomes
+/// `"in_progress"`.
+pub(crate) fn to_snake_case(s: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in s.char_indices() {
+        if c.is_uppercase() && i > 0 {
+            out.push('_');
+        }
+        out.extend(c.to_lowercase());
+    }
+    out
+}

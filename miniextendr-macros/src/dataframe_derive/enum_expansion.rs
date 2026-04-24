@@ -10,8 +10,9 @@ use syn::{DeriveInput, Fields};
 use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumResolvedField, EnumSingleFieldData, FieldTypeKind, VariantInfo,
-    VariantShape, classify_field_type, parse_field_attrs, to_snake_case,
+    VariantShape, classify_field_type, parse_field_attrs,
 };
+use crate::naming;
 use std::collections::HashMap;
 
 /// Derive `DataFrameRow` for an enum with `#[dataframe(align)]`.
@@ -1053,9 +1054,8 @@ fn generate_split_method(
 
     for vi in variant_infos {
         let variant_name = &vi.name;
-        let snake = to_snake_case(&variant_name.to_string());
-        let snake_str = snake.clone();
-        snake_names.push(snake_str.clone());
+        let snake = naming::to_snake_case(&variant_name.to_string());
+        snake_names.push(snake.clone());
 
         let df_var = format_ident!("__{}_df", snake);
         df_var_names.push(df_var.clone());
@@ -1104,8 +1104,7 @@ fn generate_split_method(
                         }
                         EnumResolvedField::ExpandedFixed(data) => {
                             for i in 1..=data.len {
-                                let buf =
-                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
+                                let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                 let elem_ty = &data.elem_ty;
                                 buf_decls.push(quote! {
                                     let mut #buf: Vec<#elem_ty> = Vec::new();
@@ -1114,8 +1113,7 @@ fn generate_split_method(
                         }
                         EnumResolvedField::ExpandedVec(data) => {
                             for i in 1..=data.width {
-                                let buf =
-                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
+                                let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                 let elem_ty = &data.elem_ty;
                                 buf_decls.push(quote! {
                                     let mut #buf: Vec<Option<#elem_ty>> = Vec::new();
@@ -1145,18 +1143,16 @@ fn generate_split_method(
                             }
                             EnumResolvedField::ExpandedFixed(data) => (0..data.len)
                                 .map(|i| {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, i + 1
-                                    );
+                                    let buf =
+                                        format_ident!("__s_{}_{}_{}", snake, data.base_name, i + 1);
                                     let idx = syn::Index::from(i);
                                     quote! { #buf.push(#binding[#idx]); }
                                 })
                                 .collect(),
                             EnumResolvedField::ExpandedVec(data) => (0..data.width)
                                 .map(|i| {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, i + 1
-                                    );
+                                    let buf =
+                                        format_ident!("__s_{}_{}_{}", snake, data.base_name, i + 1);
                                     quote! { #buf.push(#binding.get(#i).cloned()); }
                                 })
                                 .collect(),
@@ -1215,9 +1211,10 @@ fn generate_split_method(
 
                     // Find the first non-auto field for the length expression, or first auto
                     let len_expr: TokenStream = {
-                        let first_non_auto = vi.fields.iter().find(|f| {
-                            !matches!(f, EnumResolvedField::AutoExpandVec(_))
-                        });
+                        let first_non_auto = vi
+                            .fields
+                            .iter()
+                            .find(|f| !matches!(f, EnumResolvedField::AutoExpandVec(_)));
                         if let Some(f) = first_non_auto {
                             match f {
                                 EnumResolvedField::Single(data) => {
@@ -1226,13 +1223,19 @@ fn generate_split_method(
                                 }
                                 EnumResolvedField::ExpandedFixed(data) => {
                                     let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, 1usize
+                                        "__s_{}_{}_{}",
+                                        snake,
+                                        data.base_name,
+                                        1usize
                                     );
                                     quote! { #buf.len() }
                                 }
                                 EnumResolvedField::ExpandedVec(data) => {
                                     let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, 1usize
+                                        "__s_{}_{}_{}",
+                                        snake,
+                                        data.base_name,
+                                        1usize
                                     );
                                     quote! { #buf.len() }
                                 }
@@ -1240,8 +1243,7 @@ fn generate_split_method(
                             }
                         } else {
                             // All fields are AutoExpandVec — use the first auto buf length
-                            if let Some(EnumResolvedField::AutoExpandVec(data)) =
-                                vi.fields.first()
+                            if let Some(EnumResolvedField::AutoExpandVec(data)) = vi.fields.first()
                             {
                                 let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                                 quote! { #buf.len() }
@@ -1335,32 +1337,28 @@ fn generate_split_method(
                     let n_var = format_ident!("__n_{}", snake);
 
                     // Length expression: first field's buffer length
-                    let len_expr: TokenStream =
-                        if let Some(erf) = vi.fields.first() {
-                            match erf {
-                                EnumResolvedField::Single(data) => {
-                                    let buf =
-                                        format_ident!("__s_{}_{}", snake, data.col_name);
-                                    quote! { #buf.len() }
-                                }
-                                EnumResolvedField::ExpandedFixed(data) => {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, 1usize
-                                    );
-                                    quote! { #buf.len() }
-                                }
-                                EnumResolvedField::ExpandedVec(data) => {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, 1usize
-                                    );
-                                    quote! { #buf.len() }
-                                }
-                                EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                    let len_expr: TokenStream = if let Some(erf) = vi.fields.first() {
+                        match erf {
+                            EnumResolvedField::Single(data) => {
+                                let buf = format_ident!("__s_{}_{}", snake, data.col_name);
+                                quote! { #buf.len() }
                             }
-                        } else {
-                            // No fields (unexpected for Named/Tuple, but handle it)
-                            quote! { 0usize }
-                        };
+                            EnumResolvedField::ExpandedFixed(data) => {
+                                let buf =
+                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
+                                quote! { #buf.len() }
+                            }
+                            EnumResolvedField::ExpandedVec(data) => {
+                                let buf =
+                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
+                                quote! { #buf.len() }
+                            }
+                            EnumResolvedField::AutoExpandVec(_) => unreachable!(),
+                        }
+                    } else {
+                        // No fields (unexpected for Named/Tuple, but handle it)
+                        quote! { 0usize }
+                    };
 
                     // Collect pairs
                     let pairs: Vec<TokenStream> = vi
@@ -1368,8 +1366,7 @@ fn generate_split_method(
                         .iter()
                         .flat_map(|erf| match erf {
                             EnumResolvedField::Single(data) => {
-                                let buf =
-                                    format_ident!("__s_{}_{}", snake, data.col_name);
+                                let buf = format_ident!("__s_{}_{}", snake, data.col_name);
                                 let col_str = data.col_name.to_string();
                                 vec![quote! {
                                     (#col_str, ::miniextendr_api::IntoR::into_sexp(#buf))
@@ -1377,9 +1374,8 @@ fn generate_split_method(
                             }
                             EnumResolvedField::ExpandedFixed(data) => (1..=data.len)
                                 .map(|i| {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, i
-                                    );
+                                    let buf =
+                                        format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
                                         (#col_str, ::miniextendr_api::IntoR::into_sexp(#buf))
@@ -1388,9 +1384,8 @@ fn generate_split_method(
                                 .collect(),
                             EnumResolvedField::ExpandedVec(data) => (1..=data.width)
                                 .map(|i| {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}", snake, data.base_name, i
-                                    );
+                                    let buf =
+                                        format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
                                         (#col_str, ::miniextendr_api::IntoR::into_sexp(#buf))
@@ -1410,8 +1405,7 @@ fn generate_split_method(
                         .set_row_names_int(#n_var);
                     });
                 }
-            }
-            // endregion
+            } // endregion
         }
     }
 
