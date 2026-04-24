@@ -251,9 +251,24 @@ GitHub Actions auto-deploys on push to `main` when `site/**`, `docs/**`, or `*/s
 
 `site/content/manual/` is **auto-generated from `docs/`** by `scripts/docs-to-site.sh` (1:1 conversion, not curated summaries). Edit `docs/*.md` only — never edit `site/content/manual/*.md` directly. The generator derives frontmatter (title + description) from each doc's `# Heading` and first paragraph. `site/content/_index.md` and anything outside `manual/` are hand-authored and must be edited directly.
 
-**After editing `docs/`, regenerate and commit both together**: `bash scripts/docs-to-site.sh && git add docs/ site/content/manual/`. CI runs `docs-to-site.sh` itself before each deploy, so the live site is always correct — but the in-repo `site/content/manual/` drifts out of sync if you skip the regenerate step, making subsequent diffs noisy and masking unrelated site edits.
+**After editing `docs/`, regenerate and commit both together**: `just site-docs && git add docs/ site/content/manual/ site/data/plans.json`. CI runs `docs-to-site.sh` itself before each deploy, so the live site is always correct — but the in-repo `site/content/manual/` drifts out of sync if you skip the regenerate step, making subsequent diffs noisy and masking unrelated site edits.
 
-`just site-build` / `just site-serve` only run `zola build` / `zola serve`; they do **not** call `docs-to-site.sh`. Run the script by hand when previewing doc edits locally.
+### Site scripts
+
+| Script | What it does |
+|--------|-------------|
+| `scripts/docs-to-site.sh` | Converts `docs/*.md` → `site/content/manual/` (frontmatter derived from heading + first paragraph) |
+| `scripts/plans-to-json.sh` | Emits `site/data/plans.json` — title/summary/URL for each `plans/*.md`, consumed by the Zola roadmap template |
+| `scripts/bump-version.sh <version>` | Bumps `version =` / `Version:` across all Cargo.toml and DESCRIPTION files (workspace + rpkg + minirextendr + cross-package) |
+
+### Just recipes
+
+| Recipe | What it runs |
+|--------|-------------|
+| `just site-docs` | `docs-to-site.sh` + `plans-to-json.sh` — run before `site-build`/`site-serve` when previewing doc or plan changes locally |
+| `just site-build` | `zola build` only (output in `site/public/`) |
+| `just site-serve` | `zola serve` only (http://127.0.0.1:1111) |
+| `just bump-version <v>` | `bump-version.sh <v>` — use before a release commit |
 
 ## Reference Docs (`background/`, gitignored)
 
