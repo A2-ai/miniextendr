@@ -1455,7 +1455,11 @@ struct NoopStructVariant;
 impl ser::SerializeStructVariant for NoopStructVariant {
     type Ok = ();
     type Error = RSerdeError;
-    fn serialize_field<T: ?Sized + Serialize>(&mut self, _: &'static str, _: &T) -> Result<(), RSerdeError> {
+    fn serialize_field<T: ?Sized + Serialize>(
+        &mut self,
+        _: &'static str,
+        _: &T,
+    ) -> Result<(), RSerdeError> {
         Ok(())
     }
     fn end(self) -> Result<(), RSerdeError> {
@@ -1484,7 +1488,11 @@ impl ser::SerializeStruct for TagStructCapture<'_> {
     type Ok = ();
     type Error = RSerdeError;
 
-    fn serialize_field<T: ?Sized + Serialize>(&mut self, key: &'static str, value: &T) -> Result<(), RSerdeError> {
+    fn serialize_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), RSerdeError> {
         if !self.first_done {
             self.first_done = true;
             let mut ve = ValueExtractor::default();
@@ -1502,6 +1510,10 @@ impl ser::SerializeStruct for TagStructCapture<'_> {
     }
 }
 
+// Defends against custom `Serialize` impls that emit internally-tagged enums via
+// `serialize_map` rather than `serialize_struct`. `#[derive(Serialize)]` always
+// uses `serialize_struct` for internally-tagged enums, so this path doesn't fire
+// for derive-generated impls — but hand-written serializers may use a map.
 struct TagMapCapture<'a> {
     parent: &'a mut VariantNameExtractor,
     pending_key: Option<String>,
@@ -1553,35 +1565,84 @@ impl<'a> ser::Serializer for &'a mut VariantNameExtractor {
     type SerializeStruct = TagStructCapture<'a>;
     type SerializeStructVariant = NoopStructVariant;
 
-    fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_char(self, _: char) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_str(self, _: &str) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_none(self) -> Result<(), RSerdeError> { Ok(()) }
+    fn serialize_bool(self, _: bool) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i8(self, _: i8) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i16(self, _: i16) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i32(self, _: i32) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_i64(self, _: i64) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u8(self, _: u8) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u16(self, _: u16) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u32(self, _: u32) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_u64(self, _: u64) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_f32(self, _: f32) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_f64(self, _: f64) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_char(self, _: char) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_str(self, _: &str) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_bytes(self, _: &[u8]) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_none(self) -> Result<(), RSerdeError> {
+        Ok(())
+    }
     fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<(), RSerdeError> {
         v.serialize(self)
     }
-    fn serialize_unit(self) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> { Ok(()) }
-    fn serialize_unit_variant(self, _: &'static str, _: u32, variant: &'static str) -> Result<(), RSerdeError> {
+    fn serialize_unit(self) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_unit_struct(self, _: &'static str) -> Result<(), RSerdeError> {
+        Ok(())
+    }
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+    ) -> Result<(), RSerdeError> {
         self.name = Some(variant.to_string());
         self.is_unit = true;
         Ok(())
     }
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, _: &'static str, v: &T) -> Result<(), RSerdeError> {
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        v: &T,
+    ) -> Result<(), RSerdeError> {
         v.serialize(self)
     }
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, variant: &'static str, _: &T) -> Result<(), RSerdeError> {
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        _: &T,
+    ) -> Result<(), RSerdeError> {
         self.name = Some(variant.to_string());
         Ok(())
     }
@@ -1591,20 +1652,49 @@ impl<'a> ser::Serializer for &'a mut VariantNameExtractor {
     fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, RSerdeError> {
         Err(RSerdeError::Message("tuple in variant extractor".into()))
     }
-    fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, RSerdeError> {
-        Err(RSerdeError::Message("tuple_struct in variant extractor".into()))
+    fn serialize_tuple_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleStruct, RSerdeError> {
+        Err(RSerdeError::Message(
+            "tuple_struct in variant extractor".into(),
+        ))
     }
-    fn serialize_tuple_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<Self::SerializeTupleVariant, RSerdeError> {
+    fn serialize_tuple_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleVariant, RSerdeError> {
         self.name = Some(variant.to_string());
         Ok(NoopTupleVariant)
     }
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, RSerdeError> {
-        Ok(TagMapCapture { parent: self, pending_key: None, first_done: false })
+        Ok(TagMapCapture {
+            parent: self,
+            pending_key: None,
+            first_done: false,
+        })
     }
-    fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, RSerdeError> {
-        Ok(TagStructCapture { parent: self, first_done: false })
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStruct, RSerdeError> {
+        Ok(TagStructCapture {
+            parent: self,
+            first_done: false,
+        })
     }
-    fn serialize_struct_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<Self::SerializeStructVariant, RSerdeError> {
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStructVariant, RSerdeError> {
         self.name = Some(variant.to_string());
         Ok(NoopStructVariant)
     }
@@ -1629,7 +1719,11 @@ struct VariantAsStruct<S: ser::SerializeStruct>(S);
 impl<S: ser::SerializeStruct> ser::SerializeStructVariant for VariantAsStruct<S> {
     type Ok = S::Ok;
     type Error = S::Error;
-    fn serialize_field<T: ?Sized + Serialize>(&mut self, key: &'static str, value: &T) -> Result<(), S::Error> {
+    fn serialize_field<T: ?Sized + Serialize>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), S::Error> {
         self.0.serialize_field(key, value)
     }
     fn end(self) -> Result<S::Ok, S::Error> {
@@ -1661,35 +1755,82 @@ impl<S: ser::Serializer> ser::Serializer for VariantStrippingSerializer<S> {
     type SerializeStruct = S::SerializeStruct;
     type SerializeStructVariant = VariantAsStruct<S::SerializeStruct>;
 
-    fn serialize_bool(self, v: bool) -> Result<S::Ok, S::Error> { self.inner.serialize_bool(v) }
-    fn serialize_i8(self, v: i8) -> Result<S::Ok, S::Error> { self.inner.serialize_i8(v) }
-    fn serialize_i16(self, v: i16) -> Result<S::Ok, S::Error> { self.inner.serialize_i16(v) }
-    fn serialize_i32(self, v: i32) -> Result<S::Ok, S::Error> { self.inner.serialize_i32(v) }
-    fn serialize_i64(self, v: i64) -> Result<S::Ok, S::Error> { self.inner.serialize_i64(v) }
-    fn serialize_u8(self, v: u8) -> Result<S::Ok, S::Error> { self.inner.serialize_u8(v) }
-    fn serialize_u16(self, v: u16) -> Result<S::Ok, S::Error> { self.inner.serialize_u16(v) }
-    fn serialize_u32(self, v: u32) -> Result<S::Ok, S::Error> { self.inner.serialize_u32(v) }
-    fn serialize_u64(self, v: u64) -> Result<S::Ok, S::Error> { self.inner.serialize_u64(v) }
-    fn serialize_f32(self, v: f32) -> Result<S::Ok, S::Error> { self.inner.serialize_f32(v) }
-    fn serialize_f64(self, v: f64) -> Result<S::Ok, S::Error> { self.inner.serialize_f64(v) }
-    fn serialize_char(self, v: char) -> Result<S::Ok, S::Error> { self.inner.serialize_char(v) }
-    fn serialize_str(self, v: &str) -> Result<S::Ok, S::Error> { self.inner.serialize_str(v) }
-    fn serialize_bytes(self, v: &[u8]) -> Result<S::Ok, S::Error> { self.inner.serialize_bytes(v) }
-    fn serialize_none(self) -> Result<S::Ok, S::Error> { self.inner.serialize_none() }
+    fn serialize_bool(self, v: bool) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_bool(v)
+    }
+    fn serialize_i8(self, v: i8) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_i8(v)
+    }
+    fn serialize_i16(self, v: i16) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_i16(v)
+    }
+    fn serialize_i32(self, v: i32) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_i32(v)
+    }
+    fn serialize_i64(self, v: i64) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_i64(v)
+    }
+    fn serialize_u8(self, v: u8) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_u8(v)
+    }
+    fn serialize_u16(self, v: u16) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_u16(v)
+    }
+    fn serialize_u32(self, v: u32) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_u32(v)
+    }
+    fn serialize_u64(self, v: u64) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_u64(v)
+    }
+    fn serialize_f32(self, v: f32) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_f32(v)
+    }
+    fn serialize_f64(self, v: f64) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_f64(v)
+    }
+    fn serialize_char(self, v: char) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_char(v)
+    }
+    fn serialize_str(self, v: &str) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_str(v)
+    }
+    fn serialize_bytes(self, v: &[u8]) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_bytes(v)
+    }
+    fn serialize_none(self) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_none()
+    }
     fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<S::Ok, S::Error> {
         self.inner.serialize_some(v)
     }
-    fn serialize_unit(self) -> Result<S::Ok, S::Error> { self.inner.serialize_unit() }
+    fn serialize_unit(self) -> Result<S::Ok, S::Error> {
+        self.inner.serialize_unit()
+    }
     fn serialize_unit_struct(self, name: &'static str) -> Result<S::Ok, S::Error> {
         self.inner.serialize_unit_struct(name)
     }
-    fn serialize_unit_variant(self, _: &'static str, _: u32, variant: &'static str) -> Result<S::Ok, S::Error> {
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+    ) -> Result<S::Ok, S::Error> {
         self.inner.serialize_unit_struct(variant)
     }
-    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, name: &'static str, v: &T) -> Result<S::Ok, S::Error> {
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        name: &'static str,
+        v: &T,
+    ) -> Result<S::Ok, S::Error> {
         self.inner.serialize_newtype_struct(name, v)
     }
-    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, _: &'static str, _: u32, _: &'static str, v: &T) -> Result<S::Ok, S::Error> {
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        v: &T,
+    ) -> Result<S::Ok, S::Error> {
         v.serialize(self.inner)
     }
     fn serialize_seq(self, len: Option<usize>) -> Result<S::SerializeSeq, S::Error> {
@@ -1698,20 +1839,40 @@ impl<S: ser::Serializer> ser::Serializer for VariantStrippingSerializer<S> {
     fn serialize_tuple(self, len: usize) -> Result<S::SerializeTuple, S::Error> {
         self.inner.serialize_tuple(len)
     }
-    fn serialize_tuple_struct(self, name: &'static str, len: usize) -> Result<S::SerializeTupleStruct, S::Error> {
+    fn serialize_tuple_struct(
+        self,
+        name: &'static str,
+        len: usize,
+    ) -> Result<S::SerializeTupleStruct, S::Error> {
         self.inner.serialize_tuple_struct(name, len)
     }
-    fn serialize_tuple_variant(self, _: &'static str, _: u32, variant: &'static str, len: usize) -> Result<Self::SerializeTupleVariant, S::Error> {
+    fn serialize_tuple_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeTupleVariant, S::Error> {
         let ts = self.inner.serialize_tuple_struct(variant, len)?;
         Ok(VariantAsTupleStruct(ts))
     }
     fn serialize_map(self, len: Option<usize>) -> Result<S::SerializeMap, S::Error> {
         self.inner.serialize_map(len)
     }
-    fn serialize_struct(self, name: &'static str, len: usize) -> Result<S::SerializeStruct, S::Error> {
+    fn serialize_struct(
+        self,
+        name: &'static str,
+        len: usize,
+    ) -> Result<S::SerializeStruct, S::Error> {
         self.inner.serialize_struct(name, len)
     }
-    fn serialize_struct_variant(self, _: &'static str, _: u32, variant: &'static str, len: usize) -> Result<Self::SerializeStructVariant, S::Error> {
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        variant: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeStructVariant, S::Error> {
         let s = self.inner.serialize_struct(variant, len)?;
         Ok(VariantAsStruct(s))
     }
@@ -1747,6 +1908,8 @@ fn unit_variant_dataframe(nrow: usize) -> SEXP {
 /// - **Single variant**: the bare data.frame as a [`List`](crate::list::List)
 /// - **Multiple variants**: a named `List` of per-variant data.frames, keyed by
 ///   the variant name as serialized by serde
+/// - **Empty input**: an empty unnamed `list()` — the variant set is unknowable
+///   from zero rows, so no data.frame structure can be inferred
 ///
 /// Supports externally-tagged (default) and internally-tagged (`#[serde(tag)]`)
 /// enums. Unit variants produce 0-column data.frames with the correct row count.
@@ -1755,11 +1918,9 @@ fn unit_variant_dataframe(nrow: usize) -> SEXP {
 ///
 /// Returns an error if any row serializes without a variant name (not an enum),
 /// or if column building fails.
-pub fn vec_to_dataframe_split<T: Serialize>(
-    rows: &[T],
-) -> Result<crate::list::List, RSerdeError> {
-    use crate::OwnedProtect;
+pub fn vec_to_dataframe_split<T: Serialize>(rows: &[T]) -> Result<crate::list::List, RSerdeError> {
     use crate::IntoR as _;
+    use crate::OwnedProtect;
     use crate::list::List;
 
     if rows.is_empty() {
@@ -1807,7 +1968,11 @@ pub fn vec_to_dataframe_split<T: Serialize>(
             // Internally-tagged: call from_rows directly, then drop the tag column
             let refs: Vec<&T> = indices.iter().map(|&i| &rows[i]).collect();
             let df = ColumnarDataFrame::from_rows(&refs)?;
-            let df = if let Some(tf) = tag_field { df.drop(tf) } else { df };
+            let df = if let Some(tf) = tag_field {
+                df.drop(tf)
+            } else {
+                df
+            };
             unsafe { OwnedProtect::new(df.into_sexp()) }
         } else {
             // Externally-tagged: wrap each row so serialize_struct_variant is
@@ -1827,7 +1992,10 @@ pub fn vec_to_dataframe_split<T: Serialize>(
         Ok(unsafe { List::from_raw(prot.get()) })
     } else {
         // All partition SEXPs are protected via `protected` throughout from_raw_pairs
-        let pairs: Vec<(String, SEXP)> = protected.iter().map(|(n, p)| (n.clone(), p.get())).collect();
+        let pairs: Vec<(String, SEXP)> = protected
+            .iter()
+            .map(|(n, p)| (n.clone(), p.get()))
+            .collect();
         Ok(List::from_raw_pairs(pairs))
     }
 }

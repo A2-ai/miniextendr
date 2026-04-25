@@ -196,11 +196,64 @@ pub fn create_single_event_split() -> List {
 #[miniextendr]
 pub fn create_shapes_split() -> List {
     let rows = vec![
-        ShapeRow::Circle { radius: 5.0, area: 78.54 },
-        ShapeRow::Rect { width: 3.0, height: 4.0, area: 12.0 },
-        ShapeRow::Circle { radius: 1.0, area: std::f64::consts::PI },
+        ShapeRow::Circle {
+            radius: 5.0,
+            area: 78.54,
+        },
+        ShapeRow::Rect {
+            width: 3.0,
+            height: 4.0,
+            area: 12.0,
+        },
+        ShapeRow::Circle {
+            radius: 1.0,
+            area: std::f64::consts::PI,
+        },
     ];
     ShapeRow::to_dataframe_split(rows)
+}
+
+/// Tuple variants split: positional fields → columns named `_0`, `_1`, …
+/// Field types must agree across variants where positions overlap (schema registry).
+#[derive(Clone, Debug, DataFrameRow)]
+pub enum TupleSig {
+    Pair(i32, i32),
+    Triple(i32, i32, i32),
+}
+
+/// Unzip tuple-variant enum to a named list of data.frames.
+///
+/// @export
+#[miniextendr]
+pub fn create_tuple_sig_split() -> List {
+    let rows = vec![
+        TupleSig::Pair(1, 2),
+        TupleSig::Triple(10, 20, 30),
+        TupleSig::Pair(100, 200),
+    ];
+    TupleSig::to_dataframe_split(rows)
+}
+
+/// Mixed unit + non-unit variants: unit partitions become 0-column data.frames.
+#[derive(Clone, Debug, DataFrameRow)]
+pub enum UnitStatus {
+    Active,
+    Pending { id: i32 },
+}
+
+/// Unzip unit-variant enum — the unit partition is a 0-column data.frame
+/// with the correct row count.
+///
+/// @export
+#[miniextendr]
+pub fn create_unit_status_split() -> List {
+    let rows = vec![
+        UnitStatus::Active,
+        UnitStatus::Pending { id: 7 },
+        UnitStatus::Active,
+        UnitStatus::Active,
+    ];
+    UnitStatus::to_dataframe_split(rows)
 }
 // endregion
 

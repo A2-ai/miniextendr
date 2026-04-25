@@ -224,3 +224,45 @@ test_that("to_dataframe_split shared field appears in both partitions non-option
   expect_equal(result$rect$height, 4.0)
   expect_equal(result$rect$area,   12.0)
 })
+
+test_that("to_dataframe_split tuple variants → positional columns _0, _1, ...", {
+  result <- create_tuple_sig_split()
+
+  expect_type(result, "list")
+  expect_false(is.data.frame(result))
+  expect_setequal(names(result), c("pair", "triple"))
+
+  # pair: 2 rows, columns _0 and _1
+  expect_s3_class(result$pair, "data.frame")
+  expect_equal(nrow(result$pair), 2)
+  expect_equal(sort(names(result$pair)), sort(c("_0", "_1")))
+  expect_equal(result$pair[["_0"]], c(1L, 100L))
+  expect_equal(result$pair[["_1"]], c(2L, 200L))
+
+  # triple: 1 row, columns _0, _1, _2
+  expect_s3_class(result$triple, "data.frame")
+  expect_equal(nrow(result$triple), 1)
+  expect_equal(sort(names(result$triple)), sort(c("_0", "_1", "_2")))
+  expect_equal(result$triple[["_0"]], 10L)
+  expect_equal(result$triple[["_1"]], 20L)
+  expect_equal(result$triple[["_2"]], 30L)
+})
+
+test_that("to_dataframe_split unit variant → 0-column data.frame with row count", {
+  result <- create_unit_status_split()
+
+  expect_type(result, "list")
+  expect_false(is.data.frame(result))
+  expect_setequal(names(result), c("active", "pending"))
+
+  # active (unit): 3 rows, 0 columns
+  expect_s3_class(result$active, "data.frame")
+  expect_equal(nrow(result$active), 3)
+  expect_equal(ncol(result$active), 0)
+
+  # pending (named): 1 row, 1 column
+  expect_s3_class(result$pending, "data.frame")
+  expect_equal(nrow(result$pending), 1)
+  expect_equal(names(result$pending), "id")
+  expect_equal(result$pending$id, 7L)
+})
