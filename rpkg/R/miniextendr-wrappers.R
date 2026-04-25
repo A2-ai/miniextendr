@@ -20,7 +20,7 @@ NULL
 #' @param x The SidecarR6 external pointer
 #' @return The value of the `value` field
 #' @export
-SidecarR6_get_value <- function(x) .Call(C__mx_rdata_get_SidecarR6_value, x)
+SidecarR6_get_value <- function(x) .Call(C__mx_rdata_get_SidecarR6_value, .call = match.call(), x)
 
 #' Set `value` field on SidecarR6 (for R6)
 #' @rdname SidecarR6
@@ -29,7 +29,7 @@ SidecarR6_get_value <- function(x) .Call(C__mx_rdata_get_SidecarR6_value, x)
 #' @return The SidecarR6 pointer (invisibly)
 #' @export
 SidecarR6_set_value <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarR6_value, x, value)
+  .Call(C__mx_rdata_set_SidecarR6_value, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 89:9
@@ -40,7 +40,7 @@ SidecarR6_set_value <- function(x, value) {
 #' @param x The SidecarR6 external pointer
 #' @return The value of the `label` field
 #' @export
-SidecarR6_get_label <- function(x) .Call(C__mx_rdata_get_SidecarR6_label, x)
+SidecarR6_get_label <- function(x) .Call(C__mx_rdata_get_SidecarR6_label, .call = match.call(), x)
 
 #' Set `label` field on SidecarR6 (for R6)
 #' @rdname SidecarR6
@@ -49,7 +49,7 @@ SidecarR6_get_label <- function(x) .Call(C__mx_rdata_get_SidecarR6_label, x)
 #' @return The SidecarR6 pointer (invisibly)
 #' @export
 SidecarR6_set_label <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarR6_label, x, value)
+  .Call(C__mx_rdata_set_SidecarR6_label, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -82,7 +82,7 @@ NULL
 #' @param x The SidecarS3 external pointer
 #' @return The value of the `data` field
 #' @export
-SidecarS3_get_data <- function(x) .Call(C__mx_rdata_get_SidecarS3_data, x)
+SidecarS3_get_data <- function(x) .Call(C__mx_rdata_get_SidecarS3_data, .call = match.call(), x)
 
 #' Set `data` field on SidecarS3 (for S3)
 #' @rdname SidecarS3
@@ -91,7 +91,7 @@ SidecarS3_get_data <- function(x) .Call(C__mx_rdata_get_SidecarS3_data, x)
 #' @return The SidecarS3 pointer (invisibly)
 #' @export
 SidecarS3_set_data <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarS3_data, x, value)
+  .Call(C__mx_rdata_set_SidecarS3_data, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -109,7 +109,7 @@ NULL
 #' @param x The SidecarS4 external pointer
 #' @return The value of the `slot_int` field
 #' @export
-SidecarS4_get_slot_int <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_int, x)
+SidecarS4_get_slot_int <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_int, .call = match.call(), x)
 
 #' Set `slot_int` field on SidecarS4 (for S4)
 #' @rdname SidecarS4
@@ -118,7 +118,7 @@ SidecarS4_get_slot_int <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_int, 
 #' @return The SidecarS4 pointer (invisibly)
 #' @export
 SidecarS4_set_slot_int <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarS4_slot_int, x, value)
+  .Call(C__mx_rdata_set_SidecarS4_slot_int, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 164:9
@@ -129,7 +129,7 @@ SidecarS4_set_slot_int <- function(x, value) {
 #' @param x The SidecarS4 external pointer
 #' @return The value of the `slot_real` field
 #' @export
-SidecarS4_get_slot_real <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_real, x)
+SidecarS4_get_slot_real <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_real, .call = match.call(), x)
 
 #' Set `slot_real` field on SidecarS4 (for S4)
 #' @rdname SidecarS4
@@ -138,7 +138,7 @@ SidecarS4_get_slot_real <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_real
 #' @return The SidecarS4 pointer (invisibly)
 #' @export
 SidecarS4_set_slot_real <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarS4_slot_real, x, value)
+  .Call(C__mx_rdata_set_SidecarS4_slot_real, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 167:9
@@ -149,7 +149,7 @@ SidecarS4_set_slot_real <- function(x, value) {
 #' @param x The SidecarS4 external pointer
 #' @return The value of the `slot_str` field
 #' @export
-SidecarS4_get_slot_str <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_str, x)
+SidecarS4_get_slot_str <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_str, .call = match.call(), x)
 
 #' Set `slot_str` field on SidecarS4 (for S4)
 #' @rdname SidecarS4
@@ -158,7 +158,7 @@ SidecarS4_get_slot_str <- function(x) .Call(C__mx_rdata_get_SidecarS4_slot_str, 
 #' @return The SidecarS4 pointer (invisibly)
 #' @export
 SidecarS4_set_slot_str <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarS4_slot_str, x, value)
+  .Call(C__mx_rdata_set_SidecarS4_slot_str, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -176,7 +176,7 @@ NULL
 #' @param x The SidecarS7 external pointer
 #' @return The value of the `prop_int` field
 #' @export
-SidecarS7_get_prop_int <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_int, x)
+SidecarS7_get_prop_int <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_int, .call = match.call(), x)
 
 #' Set `prop_int` field on SidecarS7 (for S7)
 #' @rdname SidecarS7
@@ -185,7 +185,7 @@ SidecarS7_get_prop_int <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_int, 
 #' @return The SidecarS7 pointer (invisibly)
 #' @export
 SidecarS7_set_prop_int <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarS7_prop_int, x, value)
+  .Call(C__mx_rdata_set_SidecarS7_prop_int, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 207:9
@@ -196,7 +196,7 @@ SidecarS7_set_prop_int <- function(x, value) {
 #' @param x The SidecarS7 external pointer
 #' @return The value of the `prop_flag` field
 #' @export
-SidecarS7_get_prop_flag <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_flag, x)
+SidecarS7_get_prop_flag <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_flag, .call = match.call(), x)
 
 #' Set `prop_flag` field on SidecarS7 (for S7)
 #' @rdname SidecarS7
@@ -205,7 +205,7 @@ SidecarS7_get_prop_flag <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_flag
 #' @return The SidecarS7 pointer (invisibly)
 #' @export
 SidecarS7_set_prop_flag <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarS7_prop_flag, x, value)
+  .Call(C__mx_rdata_set_SidecarS7_prop_flag, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 210:9
@@ -216,7 +216,7 @@ SidecarS7_set_prop_flag <- function(x, value) {
 #' @param x The SidecarS7 external pointer
 #' @return The value of the `prop_name` field
 #' @export
-SidecarS7_get_prop_name <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_name, x)
+SidecarS7_get_prop_name <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_name, .call = match.call(), x)
 
 #' Set `prop_name` field on SidecarS7 (for S7)
 #' @rdname SidecarS7
@@ -225,7 +225,7 @@ SidecarS7_get_prop_name <- function(x) .Call(C__mx_rdata_get_SidecarS7_prop_name
 #' @return The SidecarS7 pointer (invisibly)
 #' @export
 SidecarS7_set_prop_name <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarS7_prop_name, x, value)
+  .Call(C__mx_rdata_set_SidecarS7_prop_name, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -259,7 +259,7 @@ NULL
 #' @param x The SidecarEnv external pointer
 #' @return The value of the `count` field
 #' @export
-SidecarEnv_get_count <- function(x) .Call(C__mx_rdata_get_SidecarEnv_count, x)
+SidecarEnv_get_count <- function(x) .Call(C__mx_rdata_get_SidecarEnv_count, .call = match.call(), x)
 
 #' Set `count` field on SidecarEnv
 #' @rdname SidecarEnv
@@ -268,7 +268,7 @@ SidecarEnv_get_count <- function(x) .Call(C__mx_rdata_get_SidecarEnv_count, x)
 #' @return The SidecarEnv pointer (invisibly)
 #' @export
 SidecarEnv_set_count <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarEnv_count, x, value)
+  .Call(C__mx_rdata_set_SidecarEnv_count, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 30:9
@@ -279,7 +279,7 @@ SidecarEnv_set_count <- function(x, value) {
 #' @param x The SidecarEnv external pointer
 #' @return The value of the `score` field
 #' @export
-SidecarEnv_get_score <- function(x) .Call(C__mx_rdata_get_SidecarEnv_score, x)
+SidecarEnv_get_score <- function(x) .Call(C__mx_rdata_get_SidecarEnv_score, .call = match.call(), x)
 
 #' Set `score` field on SidecarEnv
 #' @rdname SidecarEnv
@@ -288,7 +288,7 @@ SidecarEnv_get_score <- function(x) .Call(C__mx_rdata_get_SidecarEnv_score, x)
 #' @return The SidecarEnv pointer (invisibly)
 #' @export
 SidecarEnv_set_score <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarEnv_score, x, value)
+  .Call(C__mx_rdata_set_SidecarEnv_score, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 34:9
@@ -299,7 +299,7 @@ SidecarEnv_set_score <- function(x, value) {
 #' @param x The SidecarEnv external pointer
 #' @return The value of the `flag` field
 #' @export
-SidecarEnv_get_flag <- function(x) .Call(C__mx_rdata_get_SidecarEnv_flag, x)
+SidecarEnv_get_flag <- function(x) .Call(C__mx_rdata_get_SidecarEnv_flag, .call = match.call(), x)
 
 #' Set `flag` field on SidecarEnv
 #' @rdname SidecarEnv
@@ -308,7 +308,7 @@ SidecarEnv_get_flag <- function(x) .Call(C__mx_rdata_get_SidecarEnv_flag, x)
 #' @return The SidecarEnv pointer (invisibly)
 #' @export
 SidecarEnv_set_flag <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarEnv_flag, x, value)
+  .Call(C__mx_rdata_set_SidecarEnv_flag, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 38:9
@@ -319,7 +319,7 @@ SidecarEnv_set_flag <- function(x, value) {
 #' @param x The SidecarEnv external pointer
 #' @return The value of the `name` field
 #' @export
-SidecarEnv_get_name <- function(x) .Call(C__mx_rdata_get_SidecarEnv_name, x)
+SidecarEnv_get_name <- function(x) .Call(C__mx_rdata_get_SidecarEnv_name, .call = match.call(), x)
 
 #' Set `name` field on SidecarEnv
 #' @rdname SidecarEnv
@@ -328,7 +328,7 @@ SidecarEnv_get_name <- function(x) .Call(C__mx_rdata_get_SidecarEnv_name, x)
 #' @return The SidecarEnv pointer (invisibly)
 #' @export
 SidecarEnv_set_name <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarEnv_name, x, value)
+  .Call(C__mx_rdata_set_SidecarEnv_name, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 42:9
@@ -339,7 +339,7 @@ SidecarEnv_set_name <- function(x, value) {
 #' @param x The SidecarEnv external pointer
 #' @return The value of the `raw_slot` field
 #' @export
-SidecarEnv_get_raw_slot <- function(x) .Call(C__mx_rdata_get_SidecarEnv_raw_slot, x)
+SidecarEnv_get_raw_slot <- function(x) .Call(C__mx_rdata_get_SidecarEnv_raw_slot, .call = match.call(), x)
 
 #' Set `raw_slot` field on SidecarEnv
 #' @rdname SidecarEnv
@@ -348,7 +348,7 @@ SidecarEnv_get_raw_slot <- function(x) .Call(C__mx_rdata_get_SidecarEnv_raw_slot
 #' @return The SidecarEnv pointer (invisibly)
 #' @export
 SidecarEnv_set_raw_slot <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarEnv_raw_slot, x, value)
+  .Call(C__mx_rdata_set_SidecarEnv_raw_slot, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -366,7 +366,7 @@ NULL
 #' @param x The SidecarRaw external pointer
 #' @return The value of the `byte_val` field
 #' @export
-SidecarRaw_get_byte_val <- function(x) .Call(C__mx_rdata_get_SidecarRaw_byte_val, x)
+SidecarRaw_get_byte_val <- function(x) .Call(C__mx_rdata_get_SidecarRaw_byte_val, .call = match.call(), x)
 
 #' Set `byte_val` field on SidecarRaw
 #' @rdname SidecarRaw
@@ -375,7 +375,7 @@ SidecarRaw_get_byte_val <- function(x) .Call(C__mx_rdata_get_SidecarRaw_byte_val
 #' @return The SidecarRaw pointer (invisibly)
 #' @export
 SidecarRaw_set_byte_val <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarRaw_byte_val, x, value)
+  .Call(C__mx_rdata_set_SidecarRaw_byte_val, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -393,7 +393,7 @@ NULL
 #' @param x The SidecarVctrs external pointer
 #' @return The value of the `vec_data` field
 #' @export
-SidecarVctrs_get_vec_data <- function(x) .Call(C__mx_rdata_get_SidecarVctrs_vec_data, x)
+SidecarVctrs_get_vec_data <- function(x) .Call(C__mx_rdata_get_SidecarVctrs_vec_data, .call = match.call(), x)
 
 #' Set `vec_data` field on SidecarVctrs (for vctrs)
 #' @rdname SidecarVctrs
@@ -402,7 +402,7 @@ SidecarVctrs_get_vec_data <- function(x) .Call(C__mx_rdata_get_SidecarVctrs_vec_
 #' @return The SidecarVctrs pointer (invisibly)
 #' @export
 SidecarVctrs_set_vec_data <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarVctrs_vec_data, x, value)
+  .Call(C__mx_rdata_set_SidecarVctrs_vec_data, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 263:9
@@ -413,7 +413,7 @@ SidecarVctrs_set_vec_data <- function(x, value) {
 #' @param x The SidecarVctrs external pointer
 #' @return The value of the `vec_label` field
 #' @export
-SidecarVctrs_get_vec_label <- function(x) .Call(C__mx_rdata_get_SidecarVctrs_vec_label, x)
+SidecarVctrs_get_vec_label <- function(x) .Call(C__mx_rdata_get_SidecarVctrs_vec_label, .call = match.call(), x)
 
 #' Set `vec_label` field on SidecarVctrs (for vctrs)
 #' @rdname SidecarVctrs
@@ -422,7 +422,7 @@ SidecarVctrs_get_vec_label <- function(x) .Call(C__mx_rdata_get_SidecarVctrs_vec
 #' @return The SidecarVctrs pointer (invisibly)
 #' @export
 SidecarVctrs_set_vec_label <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarVctrs_vec_label, x, value)
+  .Call(C__mx_rdata_set_SidecarVctrs_vec_label, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -440,7 +440,7 @@ NULL
 #' @param x The SidecarRawSexp external pointer
 #' @return The value of the `int_vec` field
 #' @export
-SidecarRawSexp_get_int_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_int_vec, x)
+SidecarRawSexp_get_int_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_int_vec, .call = match.call(), x)
 
 #' Set `int_vec` field on SidecarRawSexp
 #' @rdname SidecarRawSexp
@@ -449,7 +449,7 @@ SidecarRawSexp_get_int_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_i
 #' @return The SidecarRawSexp pointer (invisibly)
 #' @export
 SidecarRawSexp_set_int_vec <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarRawSexp_int_vec, x, value)
+  .Call(C__mx_rdata_set_SidecarRawSexp_int_vec, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 298:9
@@ -460,7 +460,7 @@ SidecarRawSexp_set_int_vec <- function(x, value) {
 #' @param x The SidecarRawSexp external pointer
 #' @return The value of the `real_vec` field
 #' @export
-SidecarRawSexp_get_real_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_real_vec, x)
+SidecarRawSexp_get_real_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_real_vec, .call = match.call(), x)
 
 #' Set `real_vec` field on SidecarRawSexp
 #' @rdname SidecarRawSexp
@@ -469,7 +469,7 @@ SidecarRawSexp_get_real_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_
 #' @return The SidecarRawSexp pointer (invisibly)
 #' @export
 SidecarRawSexp_set_real_vec <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarRawSexp_real_vec, x, value)
+  .Call(C__mx_rdata_set_SidecarRawSexp_real_vec, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 302:9
@@ -480,7 +480,7 @@ SidecarRawSexp_set_real_vec <- function(x, value) {
 #' @param x The SidecarRawSexp external pointer
 #' @return The value of the `char_vec` field
 #' @export
-SidecarRawSexp_get_char_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_char_vec, x)
+SidecarRawSexp_get_char_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_char_vec, .call = match.call(), x)
 
 #' Set `char_vec` field on SidecarRawSexp
 #' @rdname SidecarRawSexp
@@ -489,7 +489,7 @@ SidecarRawSexp_get_char_vec <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_
 #' @return The SidecarRawSexp pointer (invisibly)
 #' @export
 SidecarRawSexp_set_char_vec <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarRawSexp_char_vec, x, value)
+  .Call(C__mx_rdata_set_SidecarRawSexp_char_vec, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 306:9
@@ -500,7 +500,7 @@ SidecarRawSexp_set_char_vec <- function(x, value) {
 #' @param x The SidecarRawSexp external pointer
 #' @return The value of the `list_val` field
 #' @export
-SidecarRawSexp_get_list_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_list_val, x)
+SidecarRawSexp_get_list_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_list_val, .call = match.call(), x)
 
 #' Set `list_val` field on SidecarRawSexp
 #' @rdname SidecarRawSexp
@@ -509,7 +509,7 @@ SidecarRawSexp_get_list_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_
 #' @return The SidecarRawSexp pointer (invisibly)
 #' @export
 SidecarRawSexp_set_list_val <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarRawSexp_list_val, x, value)
+  .Call(C__mx_rdata_set_SidecarRawSexp_list_val, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 310:9
@@ -520,7 +520,7 @@ SidecarRawSexp_set_list_val <- function(x, value) {
 #' @param x The SidecarRawSexp external pointer
 #' @return The value of the `func_val` field
 #' @export
-SidecarRawSexp_get_func_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_func_val, x)
+SidecarRawSexp_get_func_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_func_val, .call = match.call(), x)
 
 #' Set `func_val` field on SidecarRawSexp
 #' @rdname SidecarRawSexp
@@ -529,7 +529,7 @@ SidecarRawSexp_get_func_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_
 #' @return The SidecarRawSexp pointer (invisibly)
 #' @export
 SidecarRawSexp_set_func_val <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarRawSexp_func_val, x, value)
+  .Call(C__mx_rdata_set_SidecarRawSexp_func_val, .call = match.call(), x, value)
   invisible(x)
 }
 # Generated from Rust source line 314:9
@@ -540,7 +540,7 @@ SidecarRawSexp_set_func_val <- function(x, value) {
 #' @param x The SidecarRawSexp external pointer
 #' @return The value of the `env_val` field
 #' @export
-SidecarRawSexp_get_env_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_env_val, x)
+SidecarRawSexp_get_env_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_env_val, .call = match.call(), x)
 
 #' Set `env_val` field on SidecarRawSexp
 #' @rdname SidecarRawSexp
@@ -549,7 +549,7 @@ SidecarRawSexp_get_env_val <- function(x) .Call(C__mx_rdata_get_SidecarRawSexp_e
 #' @return The SidecarRawSexp pointer (invisibly)
 #' @export
 SidecarRawSexp_set_env_val <- function(x, value) {
-  .Call(C__mx_rdata_set_SidecarRawSexp_env_val, x, value)
+  .Call(C__mx_rdata_set_SidecarRawSexp_env_val, .call = match.call(), x, value)
   invisible(x)
 }
 
@@ -23583,7 +23583,7 @@ uuid_roundtrip_vec <- function(uuids) {
   .val
 }
 
-# Generated from Rust fn `arith_seq` (lib.rs:414:8)
+# Generated from Rust fn `arith_seq` (lib.rs:415:8)
 #' @title arith seq
 #' @param from (no documentation available)
 #' @param step (no documentation available)
@@ -23609,7 +23609,7 @@ arith_seq <- function(from, step, length_out) {
   .val
 }
 
-# Generated from Rust fn `boxed_raw` (lib.rs:1707:8)
+# Generated from Rust fn `boxed_raw` (lib.rs:1708:8)
 #' @title Create a Box<\[u8\]> ALTREP raw vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -25089,7 +25089,7 @@ vec_ptype2.percent.percent <- function(x, y, ...) {
   .val
 }
 
-# Generated from Rust fn `boxed_ints` (lib.rs:1389:8)
+# Generated from Rust fn `boxed_ints` (lib.rs:1390:8)
 #' @title Create an ALTREP integer vector backed by a boxed slice (`Box<[i32]>`)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -26023,7 +26023,7 @@ derived_rational_class_info <- function() {
   .val
 }
 
-# Generated from Rust fn `boxed_reals` (lib.rs:1677:8)
+# Generated from Rust fn `boxed_reals` (lib.rs:1678:8)
 #' @title Create a Box<\[f64\]> ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -26045,7 +26045,7 @@ boxed_reals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `lazy_string` (lib.rs:1022:8)
+# Generated from Rust fn `lazy_string` (lib.rs:1023:8)
 #' @title Create a lazy string ALTREP that computes elements on demand
 #' @rdname lazy_string_altrep
 #' @param prefix String prefix for generated elements.
@@ -26070,7 +26070,7 @@ lazy_string <- function(prefix, n) {
   .val
 }
 
-# Generated from Rust fn `leaked_ints` (lib.rs:1452:8)
+# Generated from Rust fn `leaked_ints` (lib.rs:1453:8)
 #' @title Create an ALTREP integer vector from a leaked Box (demonstrates Box::leak for 'static lifetime)
 #' @rdname altrep_special
 #' @param n Number of elements (generates 1..=n).
@@ -26092,7 +26092,7 @@ leaked_ints <- function(n) {
   .val
 }
 
-# Generated from Rust fn `static_ints` (lib.rs:1439:8)
+# Generated from Rust fn `static_ints` (lib.rs:1440:8)
 #' @title Create an ALTREP integer vector backed by a static slice (`&'static [i32]`)
 #' @rdname altrep_special
 #' @return An ALTREP integer vector with values 10, 20, 30, 40, 50.
@@ -26109,7 +26109,7 @@ static_ints <- function() {
   .val
 }
 
-# Generated from Rust fn `unit_circle` (lib.rs:1117:8)
+# Generated from Rust fn `unit_circle` (lib.rs:1118:8)
 #' @title Create a complex ALTREP of n points on the unit circle (e^(i*2*pi*k/n))
 #' @rdname altrep_special
 #' @param n Number of points on the unit circle.
@@ -26122,6 +26122,48 @@ unit_circle <- function(n) {
     "'n' must have length 1" = length(n) == 1L
   )
   .val <- .Call(C_unit_circle, .call = match.call(), n)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `call_attr_with` (call_attribution_demo.rs:18:8)
+#' @title Wrapped path
+#' @param left Ignored.
+#' @param right Ignored.
+#' @rdname call_attribution_demo
+#' @export
+#' @source Generated by miniextendr from Rust fn `call_attr_with`
+call_attr_with <- function(left, right) {
+  stopifnot(
+    "'left' must be numeric, logical, or raw" = is.numeric(left) || is.logical(left) || is.raw(left),
+    "'left' must have length 1" = length(left) == 1L,
+    "'right' must be numeric, logical, or raw" = is.numeric(right) || is.logical(right) || is.raw(right),
+    "'right' must have length 1" = length(right) == 1L
+  )
+  .val <- .Call(C_call_attr_with, .call = match.call(), left, right)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+    stop(structure(
+      class = c("rust_error", "simpleError", "error", "condition"),
+      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
+    ))
+  }
+  .val
+}
+
+# Generated from Rust fn `C_call_attr_without` (call_attribution_demo.rs:32:26)
+#' @title Unwrapped path
+#' @param left Ignored.
+#' @param right Ignored.
+#' @rdname call_attribution_demo
+#' @export
+#' @source Generated by miniextendr from Rust fn `C_call_attr_without`
+unsafe_C_call_attr_without <- function(left, right) {
+  .val <- .Call(C_call_attr_without, left, right)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
     stop(structure(
       class = c("rust_error", "simpleError", "error", "condition"),
@@ -26742,7 +26784,7 @@ arrayvec_roundtrip_int <- function(v) {
   .val
 }
 
-# Generated from Rust fn `constant_int` (lib.rs:330:8)
+# Generated from Rust fn `constant_int` (lib.rs:331:8)
 #' @title Create a constant-value integer ALTREP vector (10 elements, all 42)
 #' @rdname constant_altrep
 #' @return An ALTREP integer vector.
@@ -26759,7 +26801,7 @@ constant_int <- function() {
   .val
 }
 
-# Generated from Rust fn `lazy_int_seq` (lib.rs:637:8)
+# Generated from Rust fn `lazy_int_seq` (lib.rs:638:8)
 #' @title Create a lazy integer sequence ALTREP (like R's `seq()`)
 #' @description Elements are computed on demand; materialization is deferred until R needs the full data pointer.
 #' @rdname altrep_constructors
@@ -26788,7 +26830,7 @@ lazy_int_seq <- function(from, to, by) {
   .val
 }
 
-# Generated from Rust fn `lazy_squares` (lib.rs:798:8)
+# Generated from Rust fn `lazy_squares` (lib.rs:799:8)
 #' @title Example: Lazy computation - compute on demand
 #' @param n Length of the sequence.
 #' @export
@@ -27932,7 +27974,7 @@ streaming_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_complex` (lib.rs:1737:8)
+# Generated from Rust fn `boxed_complex` (lib.rs:1738:8)
 #' @title Create a Box<\[Rcomplex\]> ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -27954,7 +27996,7 @@ boxed_complex <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_strings` (lib.rs:1722:8)
+# Generated from Rust fn `boxed_strings` (lib.rs:1723:8)
 #' @title Create a Box<\[String\]> ALTREP string vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -27976,7 +28018,7 @@ boxed_strings <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_real` (lib.rs:380:8)
+# Generated from Rust fn `constant_real` (lib.rs:381:8)
 #' @title Create a constant-value real ALTREP vector (10 elements, all pi)
 #' @rdname constant_altrep
 #' @return An ALTREP real vector.
@@ -27993,7 +28035,7 @@ constant_real <- function() {
   .val
 }
 
-# Generated from Rust fn `repeating_raw` (lib.rs:1063:8)
+# Generated from Rust fn `repeating_raw` (lib.rs:1064:8)
 #' @title Create a repeating raw byte pattern ALTREP vector
 #' @rdname lazy_string_altrep
 #' @param pattern A raw vector containing the byte pattern to repeat.
@@ -28017,7 +28059,7 @@ repeating_raw <- function(pattern, n) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_copy` (lib.rs:831:8)
+# Generated from Rust fn `bench_vec_copy` (lib.rs:832:8)
 #' @title Create a vector of given size using regular copy (IntoR)
 #' @param n Length of the vector.
 #' @export
@@ -28037,7 +28079,7 @@ bench_vec_copy <- function(n) {
   .val
 }
 
-# Generated from Rust fn `boxed_logicals` (lib.rs:1692:8)
+# Generated from Rust fn `boxed_logicals` (lib.rs:1693:8)
 #' @title Create a Box<\[bool\]> ALTREP logical vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -28059,7 +28101,7 @@ boxed_logicals <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_range` (lib.rs:1558:8)
+# Generated from Rust fn `iter_int_range` (lib.rs:1559:8)
 #' @title Create an integer ALTREP from a collected range iterator
 #' @rdname altrep_iterators
 #' @param from Start of range (inclusive).
@@ -28084,7 +28126,7 @@ iter_int_range <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `iter_raw_bytes` (lib.rs:1590:8)
+# Generated from Rust fn `iter_raw_bytes` (lib.rs:1591:8)
 #' @title Create a raw bytes ALTREP via iterator collect (cycling 0..255)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -28106,7 +28148,7 @@ iter_raw_bytes <- function(n) {
   .val
 }
 
-# Generated from Rust fn `small_vec_copy` (lib.rs:779:8)
+# Generated from Rust fn `small_vec_copy` (lib.rs:780:8)
 #' @title Example: Small data - regular copy is fine
 #' @export
 #' @source Generated by miniextendr from Rust fn `small_vec_copy`
@@ -28121,7 +28163,7 @@ small_vec_copy <- function() {
   .val
 }
 
-# Generated from Rust fn `static_strings` (lib.rs:1496:8)
+# Generated from Rust fn `static_strings` (lib.rs:1497:8)
 #' @title Create an ALTREP string vector backed by a static string slice
 #' @rdname altrep_special
 #' @return An ALTREP string vector with 4 static entries.
@@ -28138,7 +28180,7 @@ static_strings <- function() {
   .val
 }
 
-# Generated from Rust fn `vec_int_altrep` (lib.rs:1637:8)
+# Generated from Rust fn `vec_int_altrep` (lib.rs:1638:8)
 #' @title Create a `Vec<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -28631,7 +28673,7 @@ json_serialize_point <- function(x, y) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_raw` (lib.rs:737:8)
+# Generated from Rust fn `altrep_from_raw` (lib.rs:738:8)
 #' @title Create an ALTREP raw vector from raw bytes
 #' @rdname altrep_constructors
 #' @param x A raw vector.
@@ -28650,7 +28692,7 @@ altrep_from_raw <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int` (lib.rs:1836:8)
+# Generated from Rust fn `sparse_iter_int` (lib.rs:1837:8)
 #' @title Create a sparse integer iterator ALTREP that skips elements
 #' @description Elements are computed on-demand using Iterator::nth(). Once an element is skipped (a higher index is accessed first), it cannot be retrieved and will return NA.
 #' @rdname sparse_altrep
@@ -28676,7 +28718,7 @@ sparse_iter_int <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_raw` (lib.rs:1985:8)
+# Generated from Rust fn `sparse_iter_raw` (lib.rs:1986:8)
 #' @title Create a sparse raw iterator ALTREP (cycling bytes 0..255)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -28698,7 +28740,7 @@ sparse_iter_raw <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_real_altrep` (lib.rs:1648:8)
+# Generated from Rust fn `vec_real_altrep` (lib.rs:1649:8)
 #' @title Create a `Vec<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -28881,7 +28923,7 @@ complex_roundtrip_vec <- function(v) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_list` (lib.rs:757:8)
+# Generated from Rust fn `altrep_from_list` (lib.rs:758:8)
 #' @title Create an ALTREP list from an R list, preserving the original SEXP
 #' @rdname altrep_constructors
 #' @param x An R list (VECSXP).
@@ -28899,7 +28941,7 @@ altrep_from_list <- function(x) {
   .val
 }
 
-# Generated from Rust fn `bench_vec_altrep` (lib.rs:843:8)
+# Generated from Rust fn `bench_vec_altrep` (lib.rs:844:8)
 #' @title Create a vector of given size using ALTREP zero-copy
 #' @param n Length of the vector.
 #' @export
@@ -28919,7 +28961,7 @@ bench_vec_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `constant_logical` (lib.rs:887:8)
+# Generated from Rust fn `constant_logical` (lib.rs:888:8)
 #' @title Create a constant-value logical ALTREP vector
 #' @rdname constant_altrep
 #' @param value Integer encoding of the logical value (0 = FALSE, NA_integer_ = NA, other = TRUE).
@@ -28944,7 +28986,7 @@ constant_logical <- function(value, n) {
   .val
 }
 
-# Generated from Rust fn `large_vec_altrep` (lib.rs:787:8)
+# Generated from Rust fn `large_vec_altrep` (lib.rs:788:8)
 #' @title Example: Large data - ALTREP avoids copy
 #' @export
 #' @source Generated by miniextendr from Rust fn `large_vec_altrep`
@@ -28959,7 +29001,7 @@ large_vec_altrep <- function() {
   .val
 }
 
-# Generated from Rust fn `range_i64_altrep` (lib.rs:1767:8)
+# Generated from Rust fn `range_i64_altrep` (lib.rs:1768:8)
 #' @title Create a `Range<i64>` ALTREP real vector (i64 stored as f64 bit patterns)
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -28984,7 +29026,7 @@ range_i64_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `range_int_altrep` (lib.rs:1756:8)
+# Generated from Rust fn `range_int_altrep` (lib.rs:1757:8)
 #' @title Create a `Range<i32>` ALTREP integer vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -29009,7 +29051,7 @@ range_int_altrep <- function(from, to) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_real` (lib.rs:1899:8)
+# Generated from Rust fn `sparse_iter_real` (lib.rs:1900:8)
 #' @title Create a sparse real iterator ALTREP with arithmetic progression
 #' @rdname sparse_altrep
 #' @param from Start value.
@@ -29263,7 +29305,7 @@ ptr_pick_larger <- function(a, b) {
   .val
 }
 
-# Generated from Rust fn `boxed_data_altrep` (lib.rs:814:8)
+# Generated from Rust fn `boxed_data_altrep` (lib.rs:815:8)
 #' @title Example: Using into_altrep() to store wrapper
 #' @param n Length of the vector.
 #' @export
@@ -29283,7 +29325,7 @@ boxed_data_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_int_from_u16` (lib.rs:1615:8)
+# Generated from Rust fn `iter_int_from_u16` (lib.rs:1616:8)
 #' @title Create an integer ALTREP from u16-range values coerced to i32 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -29305,7 +29347,7 @@ iter_int_from_u16 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_real_squares` (lib.rs:1568:8)
+# Generated from Rust fn `iter_real_squares` (lib.rs:1569:8)
 #' @title Create a real ALTREP of squared values (0, 1, 4, 9, ...) via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -29327,7 +29369,7 @@ iter_real_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_string_items` (lib.rs:1601:8)
+# Generated from Rust fn `iter_string_items` (lib.rs:1602:8)
 #' @title Create a string ALTREP via iterator collect ("item_0", "item_1", ...)
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -29349,7 +29391,7 @@ iter_string_items <- function(n) {
   .val
 }
 
-# Generated from Rust fn `range_real_altrep` (lib.rs:1778:8)
+# Generated from Rust fn `range_real_altrep` (lib.rs:1779:8)
 #' @title Create a `Range<f64>` ALTREP real vector
 #' @rdname altrep_vec
 #' @param from Start of range (inclusive).
@@ -29534,7 +29576,7 @@ ordered_float_roundtrip_vec <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_compact_int` (lib.rs:688:8)
+# Generated from Rust fn `altrep_compact_int` (lib.rs:689:8)
 #' @title Create a compact integer ALTREP from a lazy arithmetic sequence with printing on materialization
 #' @rdname altrep_constructors
 #' @param n Number of elements.
@@ -29562,7 +29604,7 @@ altrep_compact_int <- function(n, start, step) {
   .val
 }
 
-# Generated from Rust fn `iter_real_from_f32` (lib.rs:1626:8)
+# Generated from Rust fn `iter_real_from_f32` (lib.rs:1627:8)
 #' @title Create a real ALTREP from f32-precision values coerced to f64 via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -29584,7 +29626,7 @@ iter_real_from_f32 <- function(n) {
   .val
 }
 
-# Generated from Rust fn `vec_complex_altrep` (lib.rs:1659:8)
+# Generated from Rust fn `vec_complex_altrep` (lib.rs:1660:8)
 #' @title Create a `Vec<Rcomplex>` ALTREP complex vector
 #' @rdname altrep_vec
 #' @param n Number of elements.
@@ -29606,7 +29648,7 @@ vec_complex_altrep <- function(n) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_doubles` (lib.rs:707:8)
+# Generated from Rust fn `altrep_from_doubles` (lib.rs:708:8)
 #' @title Create an ALTREP real vector from a double vector
 #' @rdname altrep_constructors
 #' @param x A double vector.
@@ -29625,7 +29667,7 @@ altrep_from_doubles <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_strings` (lib.rs:717:8)
+# Generated from Rust fn `altrep_from_strings` (lib.rs:718:8)
 #' @title Create an ALTREP string vector from a character vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A character vector (may contain NA values).
@@ -29644,7 +29686,7 @@ altrep_from_strings <- function(x) {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_logical` (lib.rs:1940:8)
+# Generated from Rust fn `sparse_iter_logical` (lib.rs:1941:8)
 #' @title Create a sparse logical iterator ALTREP (alternating TRUE/FALSE)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -29666,7 +29708,7 @@ sparse_iter_logical <- function(n) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_integers` (lib.rs:747:8)
+# Generated from Rust fn `altrep_from_integers` (lib.rs:748:8)
 #' @title Create an ALTREP integer vector from an integer vector
 #' @rdname altrep_constructors
 #' @param x An integer vector.
@@ -29685,7 +29727,7 @@ altrep_from_integers <- function(x) {
   .val
 }
 
-# Generated from Rust fn `altrep_from_logicals` (lib.rs:727:8)
+# Generated from Rust fn `altrep_from_logicals` (lib.rs:728:8)
 #' @title Create an ALTREP logical vector from a logical vector (NA-preserving)
 #' @rdname altrep_constructors
 #' @param x A logical vector (may contain NA values).
@@ -29703,7 +29745,7 @@ altrep_from_logicals <- function(x) {
   .val
 }
 
-# Generated from Rust fn `integer_sequence_list` (lib.rs:1163:8)
+# Generated from Rust fn `integer_sequence_list` (lib.rs:1164:8)
 #' @title Create a list ALTREP where each element is an integer sequence
 #' @param n Number of elements in the list.
 #' @return A list where element i contains the vector 1:i.
@@ -29729,7 +29771,7 @@ integer_sequence_list <- function(n) {
   .val
 }
 
-# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2026:8)
+# Generated from Rust fn `rpkg_enabled_features` (lib.rs:2027:8)
 #' @title Returns a vector of enabled feature names for this build
 #' @description This function is useful for R tests to skip tests when features are not enabled.
 #' @name rpkg_enabled_features
@@ -29765,7 +29807,7 @@ standalone_dataframe_roundtrip <- function() {
   .val
 }
 
-# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1852:8)
+# Generated from Rust fn `sparse_iter_int_squares` (lib.rs:1853:8)
 #' @title Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...)
 #' @rdname sparse_altrep
 #' @param n Number of elements.
@@ -29787,7 +29829,7 @@ sparse_iter_int_squares <- function(n) {
   .val
 }
 
-# Generated from Rust fn `iter_logical_alternating` (lib.rs:1579:8)
+# Generated from Rust fn `iter_logical_alternating` (lib.rs:1580:8)
 #' @title Create an alternating TRUE/FALSE logical ALTREP via iterator collect
 #' @rdname altrep_iterators
 #' @param n Number of elements.
@@ -29809,7 +29851,7 @@ iter_logical_alternating <- function(n) {
   .val
 }
 
-# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:662:26)
+# Generated from Rust fn `C_lazy_int_seq_is_materialized` (lib.rs:663:26)
 #' @title Check if a lazy integer sequence ALTREP has been materialized
 #' @description Takes raw SEXP (extern "C-unwind") because auto-materialization in `TryFromSexp` for SEXP would trigger materialization before we can inspect it.
 #' @rdname altrep_constructors

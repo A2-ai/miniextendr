@@ -420,6 +420,17 @@ impl DotCallBuilder {
         self
     }
 
+    /// Add a pre-joined argument string (e.g., `"x, y"`) as a single emit unit.
+    ///
+    /// Empty strings are ignored, so callers can pass the result of
+    /// `build_r_call_args_from_sig` directly without a length check.
+    pub fn with_args_str(mut self, args: &str) -> Self {
+        if !args.is_empty() {
+            self.args.push(args.to_string());
+        }
+        self
+    }
+
     /// Build the `.Call()` string.
     pub fn build(&self) -> String {
         let mut all_args = Vec::new();

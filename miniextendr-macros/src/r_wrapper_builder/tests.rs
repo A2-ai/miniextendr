@@ -102,6 +102,26 @@ fn test_dot_call_static_with_args() {
     );
 }
 
+#[test]
+fn test_dot_call_with_args_str_empty_skips_args() {
+    let call = DotCallBuilder::new("C_Counter__new")
+        .with_args_str("")
+        .build();
+    assert_eq!(call, ".Call(C_Counter__new, .call = match.call())");
+}
+
+#[test]
+fn test_dot_call_with_args_str_passes_through() {
+    let call = DotCallBuilder::new("C_Counter__update")
+        .with_self("self")
+        .with_args_str("step, verbose")
+        .build();
+    assert_eq!(
+        call,
+        ".Call(C_Counter__update, .call = match.call(), self, step, verbose)"
+    );
+}
+
 // RoxygenBuilder tests
 #[test]
 fn test_roxygen_basic() {
