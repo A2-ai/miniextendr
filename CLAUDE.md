@@ -67,9 +67,8 @@ just r-cmd-build         # Build tarball
 just r-cmd-check         # Check built tarball (save to log — see Capturing Output)
 just devtools-check      # Check, preserving output in rpkg-check-output/
 
-# CRAN release prep
-just vendor              # cargo-revendor: vendor → strip → freeze → compress to inst/vendor.tar.xz
-just configure-cran      # PREPARE_CRAN=true configure (unpacks vendor.tar.xz)
+# CRAN release prep (only step needed; configure auto-detects tarball mode)
+just vendor              # regen Cargo.lock in tarball-shape, vendor deps, compress to inst/vendor.tar.xz
 
 # Cross-package
 just cross-install / cross-test / cross-check
@@ -85,19 +84,20 @@ just site-build / site-serve   # http://127.0.0.1:1111
 
 Always `bash ./configure` (not bare `./configure` — `#!/bin/sh` causes spurious errors in `AC_CONFIG_COMMANDS` passthrough). Configure:
 1. Generates `Makevars` from `.in` templates
-2. In dev mode, syncs workspace crates into `rpkg/vendor/`
-3. Does **not** create `inst/vendor.tar.xz` — that's `just vendor`
+2. Auto-detects install mode (source vs tarball) from `[ -f inst/vendor.tar.xz ]`
+3. Writes `.cargo/config.toml` per mode (source: `[patch."git+url"]` for monorepo siblings or empty; tarball: `[source]` replacement to `vendored-sources`)
+4. Does **not** create `inst/vendor.tar.xz` — that's `just vendor`
 
 Package loads as `library(miniextendr)`, not `library(rpkg)`. Always check the **built tarball**, not the source dir (R CMD check on a source dir skips `Authors@R` → `Author/Maintainer` conversion).
 
-### Build contexts
+### Install modes (source vs tarball)
 
-| Context | Trigger | Behavior |
+| Mode | Triggered when | What configure does |
 |---|---|---|
-| `dev-monorepo` | Default in monorepo | `[patch]` paths, no vendoring |
-| `dev-detached` | No monorepo, no vendor | Git/network deps |
-| `vendored-install` | `NOT_CRAN=false` or vendor artifacts | Offline build from vendor |
-| `prepare-cran` | `PREPARE_CRAN=true` (highest precedence) | CRAN release prep |
+| **Source** | `inst/vendor.tar.xz` absent | No vendoring. In monorepo: writes `[patch."git+url"]` → workspace siblings. Otherwise: minimal config, cargo follows git URL. |
+| **Tarball** | `inst/vendor.tar.xz` present | Unpacks tarball, writes `[source]` replacement to `vendored-sources`, build is offline. |
+
+That's the entire decision. No `NOT_CRAN`, no `FORCE_VENDOR`, no `PREPARE_CRAN`, no `BUILD_CONTEXT`. See `docs/CRAN_COMPATIBILITY.md`.
 
 ## Development Workflow
 
