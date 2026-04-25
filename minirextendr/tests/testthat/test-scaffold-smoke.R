@@ -183,11 +183,9 @@ test_that("standalone scaffold can vendor for CRAN prep", {
   expect_true(file.exists(tarball), info = "vendor.tar.xz should exist")
   expect_true(file.size(tarball) > 0, info = "vendor.tar.xz should be non-empty")
 
-  # Configure in CRAN mode (NOT_CRAN unset)
+  # Configure in tarball mode (inst/vendor.tar.xz present — configure auto-detects)
   suppressMessages({
-    withr::with_envvar(c(NOT_CRAN = NA), {
-      miniextendr_configure(path = pkg_path)
-    })
+    miniextendr_configure(path = pkg_path)
   })
 
   # cargo check --offline should work with vendored deps

@@ -14,8 +14,6 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-export NOT_CRAN := "true"
-
 # R package subdirectory
 rpkg := "{{{rpkg_name}}}"
 
@@ -58,17 +56,12 @@ clean:
 #
 # This must be run before any R CMD operation. It:
 # 1. Generates {{rpkg}}/src/Makevars from Makevars.in
-# 2. Sets up cargo config for vendored sources (CRAN mode only)
-# Note: vendor/ has miniextendr crates from scaffolding. Run 'just vendor' for full CRAN prep.
+# 2. Detects install mode: tarball (inst/vendor.tar.xz present) or source (cargo git deps)
+# Source installs (R CMD INSTALL ., devtools::*) never need vendoring — cargo resolves deps.
 configure:
     cd {{rpkg}} && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
     bash ./configure
-
-# Configure in CRAN mode (for testing CRAN submission)
-# Uses vendored sources in offline mode
-configure-cran:
-    cd {{rpkg}} && NOT_CRAN=false bash ./configure
 
 # Build and install R package with R CMD INSTALL
 install *args: configure
@@ -99,16 +92,8 @@ devtools-install: configure
 rbuild *args: configure
     cd {{rpkg}} && R CMD build {{args}} .
 
-# Build R package tarball in CRAN/offline mode
-rbuild-cran *args: configure-cran
-    cd {{rpkg}} && R CMD build {{args}} .
-
 # Run R CMD check
 rcheck: configure
-    Rscript -e "rcmdcheck::rcmdcheck('{{rpkg}}', args = c('--as-cran', '--no-manual'), error_on = 'warning')"
-
-# Run R CMD check in CRAN/offline mode
-rcheck-cran: configure-cran
     Rscript -e "rcmdcheck::rcmdcheck('{{rpkg}}', args = c('--as-cran', '--no-manual'), error_on = 'warning')"
 
 # Run devtools::check
@@ -127,19 +112,19 @@ reinstall: install
 
 # Install cargo-revendor (required for vendoring)
 install-revendor:
-    cargo install --git https://github.com/CGMossa/miniextendr cargo-revendor
+    cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor
 
-# Vendor all dependencies for offline/CRAN builds
-# Vendors deps, strips fat, freezes manifest, compresses into inst/vendor.tar.xz
+# Vendor all dependencies for CRAN submission
+# Creates inst/vendor.tar.xz — include in CRAN tarball (R CMD build bundles it automatically).
 vendor:
     cargo revendor \
       --manifest-path {{{rpkg_name}}}/src/rust/Cargo.toml \
       --output {{{rpkg_name}}}/vendor \
       --strip-all \
-      --freeze \
       --compress {{{rpkg_name}}}/inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
+      --force \
       -v
 
 # Vendor monorepo library crates for CRAN (use_vendor_lib)
@@ -149,8 +134,8 @@ vendor-lib crate dev_path:
     Rscript -e 'args <- commandArgs(trailingOnly = TRUE); minirextendr::use_vendor_lib(args[[1]], dev_path = args[[2]], path = args[[3]])' "{{crate}}" "{{dev_path}}" "{{{rpkg_name}}}"
     cd {{rpkg}} && autoconf -vif
 
-# Prepare for CRAN submission: vendor deps, configure in CRAN mode, build, check
-cran-prep: vendor rbuild-cran rcheck-cran
+# Prepare for CRAN submission: vendor deps, build, check
+cran-prep: vendor rbuild rcheck
 
 # ============================================================================
 # Version management

@@ -91,8 +91,7 @@ add_cargo_patch <- function(crate, dev_path) {
 #'
 #' Modifies configure.ac to add:
 #' 1. VENDOR_LIB variable (after VENDOR_OUT_CARGO)
-#' 2. Updated dev-cargo-config block (vendor-lib-only check)
-#' 3. vendor-lib AC_CONFIG_COMMANDS block (between cargo-vendor and post-vendor)
+#' 2. vendor-lib AC_CONFIG_COMMANDS block (before post-config)
 #'
 #' If anchor points are not found, warns and prints manual instructions.
 #'
@@ -136,72 +135,20 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
     ))
   }
 
-  # --- 2. Update dev-cargo-config block (add vendor-lib-only check) ---
-  # Work with content as a single string for multi-line replacement
-  content <- paste(lines, collapse = "\n")
-
-  old_dev_cfg_close <- paste(c(
-    "  fi",
-    "],",
-    '[NOT_CRAN="$NOT_CRAN"])'
-  ), collapse = "\n")
-
-  new_dev_cfg_close <- paste(c(
-    '  elif test ! -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then',
-    "    # Vendor-lib-only: no full vendor, remove cargo config",
-    '    if test -f "$RPKG_CFG"; then',
-    '      rm "$RPKG_CFG"',
-    '      echo "configure: removed cargo config (vendor-lib-only - no source replacement needed)"',
-    "    fi",
-    "  fi",
-    "],",
-    '[NOT_CRAN="$NOT_CRAN" abs_rpkg_dir="$abs_top_srcdir"])'
-  ), collapse = "\n")
-
-  if (grepl(old_dev_cfg_close, content, fixed = TRUE)) {
-    content <- sub(old_dev_cfg_close, new_dev_cfg_close, content, fixed = TRUE)
-    lines <- strsplit(content, "\n")[[1]]
-    cli::cli_alert_success("Updated dev-cargo-config block in configure.ac")
-  } else {
-    cli::cli_warn(c(
-      "Could not find dev-cargo-config closing pattern in configure.ac",
-      "i" = "Manually add vendor-lib-only cargo config removal to dev-cargo-config block"
-    ))
-  }
-
-  # --- 3. Insert vendor-lib AC_CONFIG_COMMANDS block before post-vendor ---
-  post_vendor_idx <- grep("AC_CONFIG_COMMANDS\\(\\[post-vendor\\]", lines)
-  if (length(post_vendor_idx) > 0) {
+  # --- 2. Insert vendor-lib AC_CONFIG_COMMANDS block before post-config ---
+  # Re-read lines after possible insertion above
+  post_config_idx <- grep("AC_CONFIG_COMMANDS\\(\\[post-config\\]", lines)
+  if (length(post_config_idx) > 0) {
     vendor_lib_block <- c(
       sprintf("dnl vendor-lib: package and extract %s from monorepo", crate),
       sprintf("AC_CONFIG_COMMANDS([vendor-lib-%s],", crate),
       "[",
       sprintf('  _lib_crate="%s"', crate),
       sprintf('  _lib_dev_path="%s"', dev_path),
-      '  _lib_tarball="$abs_rpkg_dir/inst/$_lib_crate-lib.tar.gz"',
+      '  _lib_tarball="$abs_top_srcdir/inst/$_lib_crate-lib.tar.gz"',
       "",
-      '  if test "$NOT_CRAN" = "true"; then',
-      '    # Dev mode: build the crate tarball for future CRAN submission',
-      '    _lib_manifest="$abs_rpkg_dir/$_lib_dev_path/Cargo.toml"',
-      '    if test -f "$_lib_manifest"; then',
-      '      _tmpdir="$(mktemp -d)"',
-      '      echo "configure: packaging $_lib_crate for CRAN..."',
-      '      (CARGO_TARGET_DIR="$_tmpdir" $CARGO_CMD package \\',
-      '        --manifest-path "$_lib_manifest" --allow-dirty --no-verify 2>/dev/null)',
-      '      _lib_crate_file="$(ls -1t "$_tmpdir/package"/$_lib_crate-*.crate 2>/dev/null | head -1)"',
-      '      if test -n "$_lib_crate_file"; then',
-      '        mkdir -p "$abs_rpkg_dir/inst"',
-      '        cp "$_lib_crate_file" "$_lib_tarball"',
-      '        echo "configure: created $(basename "$_lib_tarball")"',
-      "      else",
-      '        echo "configure: warning: cargo package produced no .crate for $_lib_crate" >&2',
-      "      fi",
-      '      rm -rf "$_tmpdir"',
-      "    else",
-      '      echo "configure: dev mode -- $_lib_crate resolved via [patch.crates-io]"',
-      "    fi",
-      "  else",
-      '    # CRAN mode: extract vendored lib crate',
+      '  if test "$IS_TARBALL_INSTALL" = "true"; then',
+      '    # Tarball install: extract vendored lib crate',
       '    if test -f "$_lib_tarball"; then',
       '      echo "configure: extracting $_lib_crate from $(basename "$_lib_tarball")"',
       '      mkdir -p "$VENDOR_OUT/$_lib_crate"',
@@ -210,25 +157,42 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
       '        echo "configure: error: failed to extract $_lib_tarball" >&2',
       "        exit 1",
       "      fi",
-      '      # Rewrite [patch.crates-io] dev path to vendor path',
-      "      \"$SED\" \"s|$_lib_dev_path|../../vendor/$_lib_crate|g\" src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && \\",
-      "        mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml",
-      '      echo "configure: patched [patch.crates-io] for $_lib_crate -> vendor/$_lib_crate"',
+      '      echo "configure: extracted $_lib_crate to vendor/$_lib_crate"',
       "    else",
-      '      echo "configure: warning: $_lib_tarball not found (run configure in dev mode first)" >&2',
+      '      echo "configure: warning: $_lib_tarball not found" >&2',
+      "    fi",
+      "  else",
+      '    # Source install: build the crate tarball for future CRAN submission',
+      '    _lib_manifest="$abs_top_srcdir/$_lib_dev_path/Cargo.toml"',
+      '    if test -f "$_lib_manifest"; then',
+      '      _tmpdir="$(mktemp -d)"',
+      '      echo "configure: packaging $_lib_crate for CRAN..."',
+      '      (CARGO_TARGET_DIR="$_tmpdir" $CARGO_CMD package \\',
+      '        --manifest-path "$_lib_manifest" --allow-dirty --no-verify 2>/dev/null)',
+      '      _lib_crate_file="$(ls -1t "$_tmpdir/package"/$_lib_crate-*.crate 2>/dev/null | head -1)"',
+      '      if test -n "$_lib_crate_file"; then',
+      '        mkdir -p "$abs_top_srcdir/inst"',
+      '        cp "$_lib_crate_file" "$_lib_tarball"',
+      '        echo "configure: created $(basename "$_lib_tarball")"',
+      "      else",
+      '        echo "configure: warning: cargo package produced no .crate for $_lib_crate" >&2',
+      "      fi",
+      '      rm -rf "$_tmpdir"',
+      "    else",
+      '      echo "configure: source install — $_lib_crate resolved via monorepo path or git URL"',
       "    fi",
       "  fi",
       "],",
-      '[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" SED="$SED" CARGO_CMD="$CARGO_CMD" abs_rpkg_dir="$abs_top_srcdir" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])',
+      '[IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL" VENDOR_OUT="$VENDOR_OUT" SED="$SED" CARGO_CMD="$CARGO_CMD" abs_top_srcdir="$abs_top_srcdir" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])',
       ""
     )
 
-    lines <- append(lines, vendor_lib_block, after = post_vendor_idx[1] - 1)
+    lines <- append(lines, vendor_lib_block, after = post_config_idx[1] - 1)
     cli::cli_alert_success("Added vendor-lib block to configure.ac")
   } else {
     cli::cli_warn(c(
-      "Could not find AC_CONFIG_COMMANDS([post-vendor]) anchor in configure.ac",
-      "i" = "Manually add the vendor-lib AC_CONFIG_COMMANDS block before post-vendor"
+      "Could not find AC_CONFIG_COMMANDS([post-config]) anchor in configure.ac",
+      "i" = "Manually add the vendor-lib AC_CONFIG_COMMANDS block before post-config"
     ))
   }
 

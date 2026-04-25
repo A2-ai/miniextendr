@@ -501,13 +501,13 @@ build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
   check_result(result, "autoconf (inline)")
   fs::file_chmod(fs::path(pkg_dir, "configure"), "755")
 
-  # Step 2: configure (dev mode)
+  # Step 2: configure (source mode — no vendor.tar.xz present, so configure
+  # detects source install and lets cargo resolve git deps normally).
   if (!quiet) cli::cli_alert("Running configure...")
   result <- run_with_logging(
     "bash", args = c("./configure"),
     log_prefix = "inline-configure",
-    wd = as.character(pkg_dir),
-    env = c(NOT_CRAN = "true")
+    wd = as.character(pkg_dir)
   )
   check_result(result, "configure (inline)")
 
@@ -521,8 +521,7 @@ build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
              "--no-test-load",
              as.character(pkg_dir)),
     log_prefix = "inline-install",
-    wd = as.character(pkg_dir),
-    env = c(NOT_CRAN = "true")
+    wd = as.character(pkg_dir)
   )
   check_result(result, "R CMD INSTALL (inline)")
 

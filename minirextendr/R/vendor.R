@@ -119,9 +119,6 @@ vendor_miniextendr <- function(path = ".",
 
   if (!is.null(local_path)) {
     vendor_miniextendr_local(local_path, dest)
-    # Add [patch] entries so dev mode (NOT_CRAN=true) resolves from vendor/
-    # instead of fetching from git (which fails if miniextendr-macros isn't on crates.io)
-    add_vendor_patches(dest)
     return(invisible(TRUE))
   }
 
@@ -831,8 +828,8 @@ check_path_deps <- function(path = ".") {
 #'
 #' After vendoring miniextendr crates to vendor/, adds a
 #' `[patch."https://github.com/A2-ai/miniextendr"]` section to
-#' src/rust/Cargo.toml so that dev mode (NOT_CRAN=true) resolves
-#' dependencies from vendor/ instead of fetching from git.
+#' src/rust/Cargo.toml so cargo resolves dependencies from vendor/ instead of
+#' fetching from git.
 #'
 #' @param vendor_dir Path to the vendor directory (vendor/)
 #' @noRd

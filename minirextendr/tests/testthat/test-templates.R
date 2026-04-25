@@ -56,7 +56,7 @@ install_to_templib <- function(pkg_path, tmp) {
   result <- system2(
     file.path(R.home("bin"), "R"),
     c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
+    env = c(paste0("R_LIBS=", lib_path)),
     stdout = TRUE, stderr = TRUE
   )
   status <- attr(result, "status")
@@ -370,21 +370,16 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   )
   writeLines(lib_content, lib_rs)
 
-  # Reconfigure with FORCE_VENDOR to vendor itertools
+  # Reconfigure in source mode (itertools will be fetched by cargo during build)
   suppressMessages({
-    config_env <- c(devtools::r_env_vars(), c("FORCE_VENDOR" = "1"))
     result <- minirextendr:::run_with_logging(
       "bash", args = c("./configure"),
-      log_prefix = "configure-vendor", wd = pkg_path, env = config_env
+      log_prefix = "configure-cargo-dep", wd = pkg_path,
+      env = devtools::r_env_vars()
     )
     expect_true(result$success,
-                info = paste("configure with FORCE_VENDOR failed:", paste(result$output, collapse = "\n")))
+                info = paste("configure failed:", paste(result$output, collapse = "\n")))
   })
-
-  # Accept both flat (vendor/itertools/) and versioned (vendor/itertools-<ver>/) layouts
-  itertools_vendored <- dir.exists(file.path(pkg_path, "vendor", "itertools")) ||
-    length(list.files(file.path(pkg_path, "vendor"), pattern = "^itertools-[0-9]")) > 0
-  expect_true(itertools_vendored, info = "itertools was not vendored")
 
   lib_path <- install_to_templib(pkg_path, tmp)
   generate_r_wrappers(pkg_path)

@@ -92,22 +92,19 @@ miniextendr_configure <- function(path = ".") {
 #' @param path Path to the R package root, or `NULL` to use the active project.
 #' @param install Whether to run `R CMD INSTALL` step. If `FALSE`, only
 #'   runs autoconf + configure.
-#' @param not_cran Logical. If `TRUE` (the default), sets `NOT_CRAN=true`
-#'   for configure and install steps.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
+miniextendr_build <- function(path = ".", install = TRUE) {
   with_project(path)
   cli::cli_h1("miniextendr build workflow")
 
-  env_vars <- if (not_cran) c(NOT_CRAN = "true") else character()
   pkg_path <- usethis::proj_get()
 
   cli::cli_h2("Step 1: autoconf")
   miniextendr_autoconf()
 
   cli::cli_h2("Step 2: configure")
-  with_envvars(env_vars, miniextendr_configure())
+  miniextendr_configure()
 
   if (install) {
     cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
@@ -115,9 +112,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
       cli::cli_warn("devtools not installed, skipping install step")
     } else {
       tryCatch(
-        with_envvars(env_vars, {
-          devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE)
-        }),
+        devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE),
         error = function(e) {
           cli::cli_abort(c(
             "Package installation failed",
@@ -282,7 +277,7 @@ miniextendr_check <- function(path = ".",
   pkg_path <- usethis::proj_get()
 
   cli::cli_h2("Step 1: build (autoconf + configure + install + roxygen2)")
-  miniextendr_build(install = TRUE, not_cran = TRUE)
+  miniextendr_build(install = TRUE)
 
   # Check for path dependencies that will fail R CMD check without vendor-lib
   path_deps <- check_path_deps()
