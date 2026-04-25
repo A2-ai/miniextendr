@@ -219,3 +219,12 @@ test_that("single-variant split returns bare data.frame", {
   expect_equal(result$x, c(1.0, 3.0))
   expect_equal(result$y, c(2.0, 4.0))
 })
+
+test_that("empty input split returns an empty list()", {
+  result <- test_columnar_empty_split()
+
+  # variant set is unknowable from zero rows → list(), not a data.frame
+  expect_type(result, "list")
+  expect_false(is.data.frame(result))
+  expect_equal(length(result), 0)
+})

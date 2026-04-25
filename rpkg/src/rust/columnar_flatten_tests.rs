@@ -409,4 +409,13 @@ pub fn test_columnar_single_variant_split() -> List {
     vec_to_dataframe_split(&rows).expect("split")
 }
 
+/// Empty input split — variant set is unknowable, returns an unnamed empty list.
+///
+/// @export
+#[miniextendr]
+pub fn test_columnar_empty_split() -> List {
+    let rows: Vec<ExtEvent> = Vec::new();
+    vec_to_dataframe_split(&rows).expect("split")
+}
+
 // endregion
