@@ -115,7 +115,6 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             start.line,
             start.column + 1,
         ));
-        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let method_name = if let Some(ref generic) = method.method_attrs.generic {
             generic.clone()
         } else {
@@ -127,12 +126,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // match_arg'd params, and `match_arg_prelude()` emits the
         // `base::match.arg()` validation block injected below.
         let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call(), x@ptr)", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), x@ptr, {})", c_ident, args)
-        };
+        let call = ctx.instance_call("x@ptr");
         let full_params = ctx.instance_formals(true);
 
         // Documentation for the generic - skip if class has @noRd
