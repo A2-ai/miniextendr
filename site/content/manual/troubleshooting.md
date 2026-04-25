@@ -60,8 +60,8 @@ just rcmdinstall        # 4. Rebuild with regenerated wrappers
 Symptoms: R wrappers don't reflect your new `#[miniextendr]` functions.
 
 ```bash
-NOT_CRAN=true just devtools-document  # Regenerate R/miniextendr-wrappers.R
-NOT_CRAN=true just rcmdinstall        # Rebuild with new wrappers
+just devtools-document  # Regenerate R/miniextendr-wrappers.R
+just rcmdinstall        # Rebuild with new wrappers
 ```
 
 ---
@@ -78,7 +78,7 @@ Functions exist in Rust but aren't callable from R. Check in order:
 
 Quick fix:
 ```bash
-NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
+just devtools-document && just rcmdinstall
 ```
 
 **Note:** The lint tool ([`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)) catches issues #1 and #2 at build time.
