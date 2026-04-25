@@ -85,7 +85,7 @@ default:
 clean:
     just configure
     just cargo-clean
-    cd rpkg && NOT_CRAN=false ./cleanup
+    cd rpkg && ./cleanup
     cd tests/cross-package && just clean
 
 # Clean build artifacts
