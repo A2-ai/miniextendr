@@ -635,7 +635,6 @@ templates-sources:
     # === R Package Template (rpkg/) ===
     rpkg/bootstrap.R	rpkg/bootstrap.R
     rpkg/build.rs	rpkg/src/rust/build.rs
-    rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     rpkg/cleanup	rpkg/cleanup
     rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
@@ -651,7 +650,6 @@ templates-sources:
     # The embedded R package uses same sources as rpkg/ template
     monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
-    monorepo/rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     monorepo/rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     monorepo/rpkg/cleanup	rpkg/cleanup
     monorepo/rpkg/cleanup.ucrt	rpkg/cleanup.ucrt

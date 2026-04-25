@@ -1,35 +1,43 @@
+diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
+--- a/monorepo/rpkg/bootstrap.R	2026-04-25 23:31:32
++++ b/monorepo/rpkg/bootstrap.R	2026-04-25 23:39:08
+@@ -2,4 +2,8 @@
+ # Runs ./configure so that Makevars and other generated files exist
+ # before R CMD build creates the source tarball.
++#
++# Install-mode detection is automatic: if inst/vendor.tar.xz exists
++# (put there by `just vendor` before `R CMD build`), configure builds
++# in tarball/offline mode. Otherwise, source/network mode is used.
+ 
+ if (.Platform$OS.type == "windows") {
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-04-24 09:27:22
-+++ b/monorepo/rpkg/configure.ac	2026-04-24 09:27:15
+--- a/monorepo/rpkg/configure.ac	2026-04-25 23:06:24
++++ b/monorepo/rpkg/configure.ac	2026-04-25 23:39:08
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
-@@ -54,7 +54,6 @@
+@@ -69,7 +69,6 @@
  dnl Set cargo features flag
  dnl
 -dnl rpkg is a demo package that demonstrates ALL miniextendr features.
--dnl Enable all optional features by default (both dev and CRAN modes).
--dnl Advanced users can override via CARGO_FEATURES environment variable.
+-dnl Enable all optional features by default. Advanced users can override
+-dnl via the CARGO_FEATURES environment variable.
 +dnl Users can enable optional features via CARGO_FEATURES environment variable.
 +dnl By default, no extra features are enabled.
  dnl
  dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
-@@ -62,9 +61,8 @@
+@@ -77,5 +76,8 @@
  AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
  
--dnl Enable all features by default for this demo package
--dnl Users can override by setting CARGO_FEATURES explicitly (even to empty string)
 +dnl Default: no extra features enabled
 +dnl Users can set CARGO_FEATURES to enable specific features
  if test -z "${CARGO_FEATURES+x}"; then
--  dnl CARGO_FEATURES not set — auto-detect via R script if available,
--  dnl falling back to the full feature set for this demo package
 +  dnl CARGO_FEATURES not set - auto-detect via R script if available
    if test -f "${srcdir}/tools/detect-features.R"; then
      CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-@@ -72,9 +70,9 @@
+@@ -83,8 +85,9 @@
        AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
      fi
 +  else
@@ -37,23 +45,111 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    AC_MSG_NOTICE([  If your crate uses optional dependencies, set CARGO_FEATURES explicitly])
 +    CARGO_FEATURES=""
    fi
--  dnl If auto-detection returned nothing, enable all features
 -  if test -z "$CARGO_FEATURES"; then
 -    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
 -  fi
  fi
  
-@@ -261,16 +259,9 @@
+@@ -124,4 +127,5 @@
+ 
+ dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
++dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
+ RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+ RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
+@@ -139,11 +143,16 @@
+ AC_SUBST([RUST_TOOLCHAIN])
+ 
++dnl Convenience: cargo command that includes optional toolchain selector
+ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
+ 
+ dnl ---- Cargo target/profile configuration ----
++dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
++dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
+ AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
+ : ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
+ AC_SUBST([CARGO_TARGET_DIR])
+ 
++dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
++dnl These are used in .cargo/config.toml which Cargo reads directly
+ CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
+ AC_SUBST([CARGO_TARGET_DIR_CARGO])
+@@ -151,4 +160,5 @@
+ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
+ : ${CARGO_PROFILE="release"}
++dnl Map legacy 'debug' → 'dev' (cargo rejects --profile debug)
+ if test "$CARGO_PROFILE" = "debug"; then
+   AC_MSG_WARN([CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead])
+@@ -157,4 +167,7 @@
+ AC_SUBST([CARGO_PROFILE])
+ 
++dnl Cargo output directory differs from profile name:
++dnl   --profile dev     → target/debug/
++dnl   --profile release → target/release/
+ if test "$CARGO_PROFILE" = "dev"; then
+   CARGO_PROFILE_DIR="debug"
+@@ -163,4 +176,7 @@
+ fi
+ 
++dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
++dnl It equals the Rust crate name (hyphens/dots → underscores)
++
+ AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
+ : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
+@@ -181,4 +197,8 @@
+ AC_SUBST([CARGO_BUILD_TARGET])
+ 
++dnl Compute Cargo libdir path:
++dnl - If CARGO_BUILD_TARGET is set, use target/<that>/<profile_dir>
++dnl - Otherwise, use target/<profile_dir>
++dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
+ if test -n "$CARGO_BUILD_TARGET"; then
+   CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
+@@ -188,19 +208,27 @@
+ AC_SUBST([CARGO_LIBDIR])
+ 
+-AC_MSG_NOTICE([R_HOME               = $R_HOME])
+-AC_MSG_NOTICE([CARGO_TARGET_DIR     = $CARGO_TARGET_DIR])
+-AC_MSG_NOTICE([CARGO_PROFILE        = $CARGO_PROFILE])
+-AC_MSG_NOTICE([ENV_RUSTFLAGS        = $ENV_RUSTFLAGS])
+-AC_MSG_NOTICE([CARGO_LIBDIR         = $CARGO_LIBDIR])
+-AS_IF([test -n "$RUST_TOOLCHAIN"],     [AC_MSG_NOTICE([RUST_TOOLCHAIN       = $RUST_TOOLCHAIN])])
+-AS_IF([test -n "$CARGO_BUILD_TARGET"], [AC_MSG_NOTICE([CARGO_BUILD_TARGET   = $CARGO_BUILD_TARGET])])
+-AS_IF([test -n "$CARGO_FEATURES"],     [AC_MSG_NOTICE([CARGO_FEATURES       = $CARGO_FEATURES])])
++dnl ---- user feedback ----
++AC_MSG_NOTICE([R_HOME                = $R_HOME])
++AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
++AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
++AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
++AC_MSG_NOTICE([CARGO_LIBDIR          = $CARGO_LIBDIR])
++AS_IF([test -n "$RUST_TOOLCHAIN"],
++      [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
++AS_IF([test -n "$CARGO_BUILD_TARGET"],
++      [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
++AS_IF([test -n "$CARGO_FEATURES"],
++      [AC_MSG_NOTICE([CARGO_FEATURES  = $CARGO_FEATURES])])
+ 
+ dnl ---- package name → Rust-safe variants ----
++dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
++dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
+ CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
++
++dnl Staticlib name matches the Rust crate name (= pkg_rs)
+ AC_SUBST([CARGO_STATICLIB_NAME])
+-AC_MSG_NOTICE([CARGO_STATICLIB_NAME = $CARGO_STATICLIB_NAME])
++AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
+ 
+-dnl MSYS2/MinGW tar interprets D: as remote host — --force-local fixes this
++dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
+ case "$host_os" in
+   *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+@@ -219,18 +247,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
--dnl Packages listed in LinkingTo: need their include/ paths for compiling
--dnl the C shim files generated by bindgen (static inline wrapper functions).
 +dnl Populated by minirextendr::use_native_package(). Each native package
 +dnl adds -I<path> for its inst/include/ headers so the C compiler can
 +dnl find them when compiling bindgen-generated static inline wrappers.
  NATIVE_PKG_CPPFLAGS=""
 -
--dnl cli — progress bar C API
 -CLI_INCLUDE=$("${R_HOME}/bin/Rscript" -e "cat(system.file('include', package='cli'))")
 -if test -n "$CLI_INCLUDE" && test -d "$CLI_INCLUDE"; then
 -  NATIVE_PKG_CPPFLAGS="$NATIVE_PKG_CPPFLAGS -I$CLI_INCLUDE"
@@ -64,94 +160,96 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl MINIREXTENDR: native-pkg-cppflags insertion marker
  AC_SUBST([NATIVE_PKG_CPPFLAGS])
  
-@@ -304,4 +295,5 @@
- AC_SUBST([VENDOR_OUT_CARGO])
+-AC_CONFIG_SRCDIR([src/rust/lib.rs])
++AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-+dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
- dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
- dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -474,31 +466,4 @@
-       if command -v cargo-revendor >/dev/null 2>&1; then
-         echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
--        dnl rpkg/src/rust/Cargo.toml uses path deps pointing at ../../vendor/
--        dnl (miniextendr-api, miniextendr-lint, miniextendr-macros). cargo
--        dnl metadata cannot resolve them when vendor/ is empty, so
--        dnl cargo-revendor also can't run. The --source-root bootstrap in
--        dnl cargo-revendor pre-seeds vendor/<name>/ from a workspace
--        dnl checkout; in an isolated install (R extracted rpkg/ alone, no
--        dnl monorepo in sight), clone miniextendr from github and hand
--        dnl that to --source-root so cargo metadata can walk the graph.
--        _source_root_arg=""
--        _bootstrap_clone=""
--        if grep -q 'path = "\.\./\.\./vendor/' src/rust/Cargo.toml; then
--          if command -v git >/dev/null 2>&1; then
--            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
--            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
--            if git clone --depth=1 --quiet https://github.com/A2-ai/miniextendr "$_bootstrap_clone"; then
--              _source_root_arg="--source-root $_bootstrap_clone"
--            else
--              echo "configure: error: git clone of miniextendr failed" >&2
--              echo "configure:        Auto-vendor requires network access to bootstrap path deps." >&2
--              rm -rf "$_bootstrap_clone"
--              exit 1
--            fi
--          else
--            echo "configure: error: git required to bootstrap path deps for auto-vendor" >&2
--            exit 1
--          fi
--        fi
-         cargo revendor \
-           --manifest-path src/rust/Cargo.toml \
-@@ -506,17 +471,10 @@
-           --strip-all \
-           --source-marker \
--          $_source_root_arg \
-           -v || {
-           echo "configure: error: cargo revendor failed" >&2
-           echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
-           echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
--          if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
--            rm -rf "$_bootstrap_clone"
--          fi
-           exit 1
-         }
--        if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
--          rm -rf "$_bootstrap_clone"
--        fi
-         dnl Strip checksums from Cargo.lock so cargo accepts the vendored
-         dnl copies (same post-step as the tarball-unpack path above).
++dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
++dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
++
+ dnl ---- vendor directory paths (used in tarball mode only) ----
++dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
++dnl thousands of .rs files in vendor/ during needs_compile() checks (same reasoning
++dnl as CARGO_TARGET_DIR above).
+ VENDOR_OUT="$abs_top_srcdir/vendor"
+ VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
+@@ -270,4 +300,5 @@
+ 
+ dnl ---- output files ----
++dnl Create .cargo directory (it's a hidden dir not included in tarball)
+ dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
+ dnl written by AC_CONFIG_COMMANDS below because its contents differ across
+@@ -417,5 +448,5 @@
+     if test "$CARGO_MAJOR" -lt 1 || \
+        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
+-      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
++      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+       rm -f "$LOCKFILE_PATH"
+       $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+@@ -433,13 +464,22 @@
+ AC_CONFIG_COMMANDS([post-config],
+ [
++  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
+   if test ! -f "src/rust/Cargo.lock"; then
+     $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+   fi
+ 
+-  dnl Touch Cargo.toml so make rebuilds the staticlib when CARGO_TARGET_DIR
+-  dnl points at a shared location that already has artifacts (e.g. R CMD check).
++  dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
++  dnl This is necessary because CARGO_TARGET_DIR may point to a shared location
++  dnl where the staticlib already exists (e.g., during R CMD check).
+   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
++  echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
+ ],
+ [ABS_RPKG_SRC="$abs_rpkg_src" CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
++
++dnl NOTE: vendor.tar.xz is NOT created by configure. It is the canonical
++dnl offline artifact produced by `just vendor` (cargo revendor --compress).
++dnl A previous repack step here silently created stale tarballs that could
++dnl disagree with Cargo.lock, and also embedded macOS xattr metadata that
++dnl caused warnings on Linux. See #157, #158.
+ 
+ AC_OUTPUT
+diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
+--- a/rpkg/bootstrap.R	2026-04-25 23:31:32
++++ b/rpkg/bootstrap.R	2026-04-25 23:39:08
+@@ -2,4 +2,8 @@
+ # Runs ./configure so that Makevars and other generated files exist
+ # before R CMD build creates the source tarball.
++#
++# Install-mode detection is automatic: if inst/vendor.tar.xz exists
++# (put there by `just vendor` before `R CMD build`), configure builds
++# in tarball/offline mode. Otherwise, source/network mode is used.
+ 
+ if (.Platform$OS.type == "windows") {
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-04-24 09:27:22
-+++ b/rpkg/configure.ac	2026-04-24 09:27:13
+--- a/rpkg/configure.ac	2026-04-25 23:06:24
++++ b/rpkg/configure.ac	2026-04-25 23:39:08
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
-@@ -54,7 +54,6 @@
+@@ -69,7 +69,6 @@
  dnl Set cargo features flag
  dnl
 -dnl rpkg is a demo package that demonstrates ALL miniextendr features.
--dnl Enable all optional features by default (both dev and CRAN modes).
--dnl Advanced users can override via CARGO_FEATURES environment variable.
+-dnl Enable all optional features by default. Advanced users can override
+-dnl via the CARGO_FEATURES environment variable.
 +dnl Users can enable optional features via CARGO_FEATURES environment variable.
 +dnl By default, no extra features are enabled.
  dnl
  dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
-@@ -62,9 +61,8 @@
+@@ -77,5 +76,8 @@
  AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
  
--dnl Enable all features by default for this demo package
--dnl Users can override by setting CARGO_FEATURES explicitly (even to empty string)
 +dnl Default: no extra features enabled
 +dnl Users can set CARGO_FEATURES to enable specific features
  if test -z "${CARGO_FEATURES+x}"; then
--  dnl CARGO_FEATURES not set — auto-detect via R script if available,
--  dnl falling back to the full feature set for this demo package
 +  dnl CARGO_FEATURES not set - auto-detect via R script if available
    if test -f "${srcdir}/tools/detect-features.R"; then
      CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
-@@ -72,9 +70,9 @@
+@@ -83,8 +85,9 @@
        AC_MSG_NOTICE([Auto-detected features: $CARGO_FEATURES])
      fi
 +  else
@@ -159,23 +257,111 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    AC_MSG_NOTICE([  If your crate uses optional dependencies, set CARGO_FEATURES explicitly])
 +    CARGO_FEATURES=""
    fi
--  dnl If auto-detection returned nothing, enable all features
 -  if test -z "$CARGO_FEATURES"; then
 -    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
 -  fi
  fi
  
-@@ -261,16 +259,9 @@
+@@ -124,4 +127,5 @@
+ 
+ dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
++dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
+ RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+ RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
+@@ -139,11 +143,16 @@
+ AC_SUBST([RUST_TOOLCHAIN])
+ 
++dnl Convenience: cargo command that includes optional toolchain selector
+ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
+ 
+ dnl ---- Cargo target/profile configuration ----
++dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
++dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
+ AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
+ : ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
+ AC_SUBST([CARGO_TARGET_DIR])
+ 
++dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
++dnl These are used in .cargo/config.toml which Cargo reads directly
+ CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
+ AC_SUBST([CARGO_TARGET_DIR_CARGO])
+@@ -151,4 +160,5 @@
+ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
+ : ${CARGO_PROFILE="release"}
++dnl Map legacy 'debug' → 'dev' (cargo rejects --profile debug)
+ if test "$CARGO_PROFILE" = "debug"; then
+   AC_MSG_WARN([CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead])
+@@ -157,4 +167,7 @@
+ AC_SUBST([CARGO_PROFILE])
+ 
++dnl Cargo output directory differs from profile name:
++dnl   --profile dev     → target/debug/
++dnl   --profile release → target/release/
+ if test "$CARGO_PROFILE" = "dev"; then
+   CARGO_PROFILE_DIR="debug"
+@@ -163,4 +176,7 @@
+ fi
+ 
++dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
++dnl It equals the Rust crate name (hyphens/dots → underscores)
++
+ AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
+ : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
+@@ -181,4 +197,8 @@
+ AC_SUBST([CARGO_BUILD_TARGET])
+ 
++dnl Compute Cargo libdir path:
++dnl - If CARGO_BUILD_TARGET is set, use target/<that>/<profile_dir>
++dnl - Otherwise, use target/<profile_dir>
++dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
+ if test -n "$CARGO_BUILD_TARGET"; then
+   CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
+@@ -188,19 +208,27 @@
+ AC_SUBST([CARGO_LIBDIR])
+ 
+-AC_MSG_NOTICE([R_HOME               = $R_HOME])
+-AC_MSG_NOTICE([CARGO_TARGET_DIR     = $CARGO_TARGET_DIR])
+-AC_MSG_NOTICE([CARGO_PROFILE        = $CARGO_PROFILE])
+-AC_MSG_NOTICE([ENV_RUSTFLAGS        = $ENV_RUSTFLAGS])
+-AC_MSG_NOTICE([CARGO_LIBDIR         = $CARGO_LIBDIR])
+-AS_IF([test -n "$RUST_TOOLCHAIN"],     [AC_MSG_NOTICE([RUST_TOOLCHAIN       = $RUST_TOOLCHAIN])])
+-AS_IF([test -n "$CARGO_BUILD_TARGET"], [AC_MSG_NOTICE([CARGO_BUILD_TARGET   = $CARGO_BUILD_TARGET])])
+-AS_IF([test -n "$CARGO_FEATURES"],     [AC_MSG_NOTICE([CARGO_FEATURES       = $CARGO_FEATURES])])
++dnl ---- user feedback ----
++AC_MSG_NOTICE([R_HOME                = $R_HOME])
++AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
++AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
++AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
++AC_MSG_NOTICE([CARGO_LIBDIR          = $CARGO_LIBDIR])
++AS_IF([test -n "$RUST_TOOLCHAIN"],
++      [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
++AS_IF([test -n "$CARGO_BUILD_TARGET"],
++      [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
++AS_IF([test -n "$CARGO_FEATURES"],
++      [AC_MSG_NOTICE([CARGO_FEATURES  = $CARGO_FEATURES])])
+ 
+ dnl ---- package name → Rust-safe variants ----
++dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
++dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
+ CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
++
++dnl Staticlib name matches the Rust crate name (= pkg_rs)
+ AC_SUBST([CARGO_STATICLIB_NAME])
+-AC_MSG_NOTICE([CARGO_STATICLIB_NAME = $CARGO_STATICLIB_NAME])
++AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
+ 
+-dnl MSYS2/MinGW tar interprets D: as remote host — --force-local fixes this
++dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
+ case "$host_os" in
+   *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
+@@ -219,18 +247,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
--dnl Packages listed in LinkingTo: need their include/ paths for compiling
--dnl the C shim files generated by bindgen (static inline wrapper functions).
 +dnl Populated by minirextendr::use_native_package(). Each native package
 +dnl adds -I<path> for its inst/include/ headers so the C compiler can
 +dnl find them when compiling bindgen-generated static inline wrappers.
  NATIVE_PKG_CPPFLAGS=""
 -
--dnl cli — progress bar C API
 -CLI_INCLUDE=$("${R_HOME}/bin/Rscript" -e "cat(system.file('include', package='cli'))")
 -if test -n "$CLI_INCLUDE" && test -d "$CLI_INCLUDE"; then
 -  NATIVE_PKG_CPPFLAGS="$NATIVE_PKG_CPPFLAGS -I$CLI_INCLUDE"
@@ -186,59 +372,53 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl MINIREXTENDR: native-pkg-cppflags insertion marker
  AC_SUBST([NATIVE_PKG_CPPFLAGS])
  
-@@ -304,4 +295,5 @@
- AC_SUBST([VENDOR_OUT_CARGO])
+-AC_CONFIG_SRCDIR([src/rust/lib.rs])
++AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
  
-+dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
- dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
- dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
-@@ -474,31 +466,4 @@
-       if command -v cargo-revendor >/dev/null 2>&1; then
-         echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
--        dnl rpkg/src/rust/Cargo.toml uses path deps pointing at ../../vendor/
--        dnl (miniextendr-api, miniextendr-lint, miniextendr-macros). cargo
--        dnl metadata cannot resolve them when vendor/ is empty, so
--        dnl cargo-revendor also can't run. The --source-root bootstrap in
--        dnl cargo-revendor pre-seeds vendor/<name>/ from a workspace
--        dnl checkout; in an isolated install (R extracted rpkg/ alone, no
--        dnl monorepo in sight), clone miniextendr from github and hand
--        dnl that to --source-root so cargo metadata can walk the graph.
--        _source_root_arg=""
--        _bootstrap_clone=""
--        if grep -q 'path = "\.\./\.\./vendor/' src/rust/Cargo.toml; then
--          if command -v git >/dev/null 2>&1; then
--            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
--            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
--            if git clone --depth=1 --quiet https://github.com/A2-ai/miniextendr "$_bootstrap_clone"; then
--              _source_root_arg="--source-root $_bootstrap_clone"
--            else
--              echo "configure: error: git clone of miniextendr failed" >&2
--              echo "configure:        Auto-vendor requires network access to bootstrap path deps." >&2
--              rm -rf "$_bootstrap_clone"
--              exit 1
--            fi
--          else
--            echo "configure: error: git required to bootstrap path deps for auto-vendor" >&2
--            exit 1
--          fi
--        fi
-         cargo revendor \
-           --manifest-path src/rust/Cargo.toml \
-@@ -506,17 +471,10 @@
-           --strip-all \
-           --source-marker \
--          $_source_root_arg \
-           -v || {
-           echo "configure: error: cargo revendor failed" >&2
-           echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
-           echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
--          if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
--            rm -rf "$_bootstrap_clone"
--          fi
-           exit 1
-         }
--        if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
--          rm -rf "$_bootstrap_clone"
--        fi
-         dnl Strip checksums from Cargo.lock so cargo accepts the vendored
-         dnl copies (same post-step as the tarball-unpack path above).
++dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
++dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
++
+ dnl ---- vendor directory paths (used in tarball mode only) ----
++dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
++dnl thousands of .rs files in vendor/ during needs_compile() checks (same reasoning
++dnl as CARGO_TARGET_DIR above).
+ VENDOR_OUT="$abs_top_srcdir/vendor"
+ VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
+@@ -270,4 +300,5 @@
+ 
+ dnl ---- output files ----
++dnl Create .cargo directory (it's a hidden dir not included in tarball)
+ dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
+ dnl written by AC_CONFIG_COMMANDS below because its contents differ across
+@@ -417,5 +448,5 @@
+     if test "$CARGO_MAJOR" -lt 1 || \
+        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
+-      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
++      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+       rm -f "$LOCKFILE_PATH"
+       $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+@@ -433,13 +464,22 @@
+ AC_CONFIG_COMMANDS([post-config],
+ [
++  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
+   if test ! -f "src/rust/Cargo.lock"; then
+     $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+   fi
+ 
+-  dnl Touch Cargo.toml so make rebuilds the staticlib when CARGO_TARGET_DIR
+-  dnl points at a shared location that already has artifacts (e.g. R CMD check).
++  dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
++  dnl This is necessary because CARGO_TARGET_DIR may point to a shared location
++  dnl where the staticlib already exists (e.g., during R CMD check).
+   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
++  echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
+ ],
+ [ABS_RPKG_SRC="$abs_rpkg_src" CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
++
++dnl NOTE: vendor.tar.xz is NOT created by configure. It is the canonical
++dnl offline artifact produced by `just vendor` (cargo revendor --compress).
++dnl A previous repack step here silently created stale tarballs that could
++dnl disagree with Cargo.lock, and also embedded macOS xattr metadata that
++dnl caused warnings on Linux. See #157, #158.
+ 
+ AC_OUTPUT
