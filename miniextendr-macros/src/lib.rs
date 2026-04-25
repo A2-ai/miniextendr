@@ -1521,10 +1521,10 @@ pub fn miniextendr(
             // choices helper call
             let choices_c_name =
                 crate::match_arg_keys::choices_helper_c_name(&c_ident.to_string(), r_param);
+            let choices_call = r_wrapper_builder::DotCallBuilder::new(&choices_c_name).build();
             lines.push(format!(
-                ".__mx_choices_{param} <- .Call({choices_c}, .call = match.call())",
+                ".__mx_choices_{param} <- {choices_call}",
                 param = r_param,
-                choices_c = choices_c_name,
             ));
             // factor → character normalization
             lines.push(format!(
