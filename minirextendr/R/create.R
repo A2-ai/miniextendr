@@ -258,7 +258,6 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_template("Cargo.toml.tmpl", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml"), subdir = "rpkg", data = data)
   use_template("build.rs", save_as = file.path(rpkg_name, "src", "rust", "build.rs"), subdir = "rpkg")
   use_template("lib.rs", save_as = file.path(rpkg_name, "src", "rust", "lib.rs"), subdir = "rpkg", data = data)
-  use_template("cargo-config.toml.in", save_as = file.path(rpkg_name, "src", "rust", "cargo-config.toml.in"), subdir = "rpkg")
 
   # Ignore files
   use_template("Rbuildignore", save_as = file.path(rpkg_name, ".Rbuildignore"), subdir = "rpkg")
@@ -412,7 +411,6 @@ use_miniextendr <- function(path = ".",
   # Rust project
   cli::cli_h2("Creating Rust project")
   use_miniextendr_rust()
-  use_miniextendr_cargo_config()
   use_miniextendr_stub()
   use_miniextendr_mx_abi()
 

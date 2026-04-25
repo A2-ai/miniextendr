@@ -371,6 +371,9 @@ vendor:
     cargo_cfg="$rust_dir/.cargo/config.toml"
     # Regenerate lockfile in tarball-shape: temporarily move .cargo aside so
     # cargo doesn't see the [patch] override and resolves git deps as-is.
+    # Entries for miniextendr-{api,lint,macros} get source = "git+url#<commit>",
+    # which is what cargo's source-replacement mechanism needs at offline
+    # install time.
     if [[ -f "$cargo_cfg" ]]; then
       mv "$cargo_cfg" "$cargo_cfg.tmp_just_vendor"
     fi
@@ -379,6 +382,13 @@ vendor:
     if [[ -f "$cargo_cfg.tmp_just_vendor" ]]; then
       mv "$cargo_cfg.tmp_just_vendor" "$cargo_cfg"
     fi
+    # NOTE: vendor/ content for miniextendr-{api,lint,macros} comes from the
+    # github URL pinned in Cargo.lock, NOT this checkout. A PR that edits a
+    # workspace crate alongside rpkg won't see those edits in the tarball
+    # because cargo-revendor follows the git source. cran-check therefore
+    # validates the published-main state, not the PR's. Tracked: see follow-up
+    # issue. Workaround for release: land workspace changes first, then run
+    # `just vendor` from main with the new commit hash present at github HEAD.
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
       --output rpkg/vendor \
@@ -387,11 +397,11 @@ vendor:
       --source-marker \
       --force \
       -v
-    # Strip per-crate checksums *after* cargo-revendor has done its work —
-    # cargo vendor re-resolves the lockfile during vendoring and would
-    # re-add checksums otherwise. The vendored sources have empty
-    # `.cargo-checksum.json` files, so cargo refuses to verify them
-    # against the registry checksums during a tarball install.
+    # Strip per-crate checksums *after* cargo-revendor — cargo vendor
+    # re-resolves the lockfile during vendoring and would re-add checksums
+    # otherwise. The vendored sources have empty `.cargo-checksum.json`
+    # files; cargo refuses to verify them against the registry checksums
+    # during a tarball install if the lockfile carries checksums.
     sed -i.bak '/^checksum = /d' "$rust_dir/Cargo.lock" && rm -f "$rust_dir/Cargo.lock.bak"
 
 # Verify committed Cargo.lock, vendor/, and vendor.tar.xz agree (#157).
@@ -446,7 +456,10 @@ minirextendr-install-deps:
     Rscript -e 'install.packages(c("cli","curl","desc","fs","gh","glue","rappdirs","rlang","rprojroot","usethis","withr","devtools","roxygen2","testthat"), repos = "https://cloud.r-project.org")'
 
 # Build rpkg with devtools::build
-devtools-build: configure
+# Depends on `vendor` for the same reason as r-cmd-build — devtools::build
+# wraps R CMD build, and the resulting tarball is meaningful only with
+# inst/vendor.tar.xz inside.
+devtools-build: configure vendor
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
@@ -474,8 +487,12 @@ r-cmd-install *args: configure
     R CMD INSTALL {{args}} rpkg 
 
 # Build R package tarball
+# Depends on `vendor` so the tarball ships inst/vendor.tar.xz, which is what
+# triggers tarball-mode install (offline, vendored sources). Without this dep
+# a maintainer can silently produce a tarball that source-mode-installs over
+# the network — defeating the point of `R CMD build` for CRAN submission.
 alias rcmdbuild := r-cmd-build
-r-cmd-build *args: configure
+r-cmd-build *args: configure vendor
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg

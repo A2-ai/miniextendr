@@ -87,13 +87,17 @@ Generated artifacts that must stay committed:
 Common workflows from the repo root:
 
 ```sh
-just configure        # dev configure + sync vendored workspace crates
+just configure        # generate Makevars + .cargo/config.toml (auto-detects mode)
 just devtools-load    # compile Rust, regenerate wrappers, load rpkg
 just devtools-test    # run rpkg tests
-just vendor           # build rpkg/inst/vendor.tar.xz for CRAN/offline builds
-just configure-cran   # configure rpkg against vendored sources only
-just r-cmd-check      # build tarball and run R CMD check
+just vendor           # CRAN release prep: build rpkg/inst/vendor.tar.xz
+just r-cmd-build      # build tarball (depends on `just vendor`)
+just r-cmd-check      # build + check tarball
 ```
+
+Install mode (source vs tarball) is auto-detected from
+`inst/vendor.tar.xz` presence — no env var to set. See
+[docs/CRAN_COMPATIBILITY.md](docs/CRAN_COMPATIBILITY.md).
 
 ## Development setup
 

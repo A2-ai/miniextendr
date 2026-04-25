@@ -7,7 +7,7 @@ use crate::project::{MINIEXTENDR_CRATES, ProjectContext};
 pub fn dispatch(cmd: &WorkflowCmd, ctx: &ProjectContext, quiet: bool) -> Result<()> {
     match cmd {
         WorkflowCmd::Autoconf => workflow_autoconf(ctx, quiet),
-        WorkflowCmd::Configure { cran } => workflow_configure(ctx, *cran, quiet),
+        WorkflowCmd::Configure => workflow_configure(ctx, quiet),
         WorkflowCmd::Document => workflow_document(ctx, quiet),
         WorkflowCmd::Build { no_install } => workflow_build(ctx, *no_install, quiet),
         WorkflowCmd::Install { r_cmd, args } => workflow_install(ctx, *r_cmd, args, quiet),
@@ -33,7 +33,10 @@ fn workflow_autoconf(ctx: &ProjectContext, quiet: bool) -> Result<()> {
 }
 
 /// Native — runs bash ./configure.
-fn workflow_configure(ctx: &ProjectContext, cran: bool, quiet: bool) -> Result<()> {
+///
+/// Install mode (source vs tarball) is auto-detected from
+/// `inst/vendor.tar.xz` presence; no env var to set.
+fn workflow_configure(ctx: &ProjectContext, quiet: bool) -> Result<()> {
     // Run autoconf first if available
     if ctx.configure_ac.is_some() && has_program("autoconf") {
         let _ = run_command("autoconf", &["-vif"], &ctx.root, true);
@@ -46,24 +49,18 @@ fn workflow_configure(ctx: &ProjectContext, cran: bool, quiet: bool) -> Result<(
         );
     }
 
-    let script = if cran {
-        "PREPARE_CRAN=true bash ./configure"
-    } else {
-        "NOT_CRAN=true bash ./configure"
-    };
-    bash(script, &ctx.root, quiet)?;
+    bash("bash ./configure", &ctx.root, quiet)?;
     Ok(())
 }
 
 /// Calls `devtools::document()` directly — requires devtools, not minirextendr.
 fn workflow_document(ctx: &ProjectContext, quiet: bool) -> Result<()> {
     // Configure first
-    let _ = workflow_configure(ctx, false, true);
+    let _ = workflow_configure(ctx, true);
 
     let root = ctx.root.to_string_lossy().replace('\\', "/");
     let expr = format!("devtools::document(\"{root}\")");
-    let script = format!("NOT_CRAN=true Rscript -e '{}'", expr.replace('\'', "'\\''"));
-    bash(&script, &ctx.root, quiet)?;
+    rscript_eval(&expr, &ctx.root, quiet)?;
     Ok(())
 }
 
@@ -72,7 +69,7 @@ fn workflow_build(ctx: &ProjectContext, no_install: bool, quiet: bool) -> Result
     if !quiet {
         eprintln!("=== configure ===");
     }
-    workflow_configure(ctx, false, quiet)?;
+    workflow_configure(ctx, quiet)?;
 
     if !no_install {
         if !quiet {
@@ -99,7 +96,7 @@ fn workflow_install(ctx: &ProjectContext, r_cmd: bool, args: &[String], quiet: b
     let root = ctx.root.to_string_lossy();
     if r_cmd {
         let extra = args.join(" ");
-        let script = format!("NOT_CRAN=true R CMD INSTALL {extra} {root}");
+        let script = format!("R CMD INSTALL {extra} {root}");
         bash(&script, &ctx.root, quiet)?;
     } else {
         let root_escaped = root.replace('\\', "/");
@@ -124,8 +121,7 @@ fn workflow_check(
     let expr = format!(
         "devtools::check(\"{root}\", error_on = \"{error_on}\", check_dir = {check_dir_r})"
     );
-    let script = format!("NOT_CRAN=true Rscript -e '{}'", expr.replace('\'', "'\\''"));
-    bash(&script, &ctx.root, quiet)?;
+    rscript_eval(&expr, &ctx.root, quiet)?;
     Ok(())
 }
 
@@ -299,7 +295,7 @@ fn workflow_upgrade(ctx: &ProjectContext, quiet: bool) -> Result<()> {
         eprintln!("Upgrading: re-running autoconf + configure...");
     }
     workflow_autoconf(ctx, true).ok();
-    workflow_configure(ctx, false, quiet)?;
+    workflow_configure(ctx, quiet)?;
     if !quiet {
         eprintln!("Upgrade complete. Run `miniextendr workflow build` for a full rebuild.");
     }
@@ -337,7 +333,7 @@ fn workflow_sync(ctx: &ProjectContext, quiet: bool) -> Result<()> {
     if !quiet {
         eprintln!("=== configure ===");
     }
-    workflow_configure(ctx, false, quiet)?;
+    workflow_configure(ctx, quiet)?;
 
     if !quiet {
         eprintln!("=== document ===");

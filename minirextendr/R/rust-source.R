@@ -444,11 +444,6 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   h_content <- gsub("\\{\\{package\\}\\}", pkg_name, h_content)
   writeLines(h_content, fs::path(pkg_dir, "inst", "include", "mx_abi.h"))
 
-  # cargo-config.toml.in
-  cargo_config_in <- template_path("cargo-config.toml.in")
-  fs::file_copy(cargo_config_in,
-                fs::path(pkg_dir, "src", "rust", "cargo-config.toml.in"))
-
   # win.def.in (needed by configure as input for AC_CONFIG_FILES)
   win_def_in <- template_path("win.def.in")
   fs::file_copy(win_def_in, fs::path(pkg_dir, "src", "win.def.in"))
