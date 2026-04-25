@@ -611,12 +611,12 @@ CYGPATH
 SED
 RUSTC
 CARGO
-ABS_RPKG_SRCDIR
-ABS_TOP_SRCDIR
 CARGO_FEATURES_FLAG
 CARGO_FEATURES
-NOT_CRAN
 CARGO_OFFLINE_FLAG
+IS_TARBALL_INSTALL
+ABS_RPKG_SRCDIR
+ABS_TOP_SRCDIR
 host_os
 host_vendor
 host_cpu
@@ -1995,32 +1995,43 @@ if test ! -d "$R_HOME"; then
   as_fn_error $? "R_HOME directory does not exist: $R_HOME" "$LINENO" 5
 fi
 
-: ${NOT_CRAN:=false}
-case "$NOT_CRAN" in
-  true|TRUE|1) NOT_CRAN=true ;;
-  *)           NOT_CRAN=false ;;
-esac
-export NOT_CRAN
+abs_top_srcdir="$(cd "$srcdir" && pwd)"
+ABS_TOP_SRCDIR="$abs_top_srcdir"
 
-if test "$NOT_CRAN" = "true"; then
-  CARGO_OFFLINE_FLAG=""
+abs_rpkg_src="$abs_top_srcdir/src"
+ABS_RPKG_SRCDIR="$abs_rpkg_src"
+
+RUST_SRC_DIR="$abs_rpkg_src/rust"
+
+if test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then
+  IS_TARBALL_INSTALL=true
+  _install_mode_label="tarball install (offline, vendored)"
 else
+  IS_TARBALL_INSTALL=false
+  _install_mode_label="source install (cargo network)"
+fi
+
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: install mode         = $_install_mode_label" >&5
+printf '%s\n' "$as_me: install mode         = $_install_mode_label" >&6;}
+
+if test "$IS_TARBALL_INSTALL" = "true"; then
   CARGO_OFFLINE_FLAG="--offline"
+else
+  CARGO_OFFLINE_FLAG=""
 fi
 
 
 
 
-
 if test -z "${CARGO_FEATURES+x}"; then
-      if test -f "${srcdir}/tools/detect-features.R"; then
+  if test -f "${srcdir}/tools/detect-features.R"; then
     CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")
     if test -n "$CARGO_FEATURES"; then
       { printf '%s\n' "$as_me:${as_lineno-$LINENO}: Auto-detected features: $CARGO_FEATURES" >&5
 printf '%s\n' "$as_me: Auto-detected features: $CARGO_FEATURES" >&6;}
     fi
   fi
-    if test -z "$CARGO_FEATURES"; then
+  if test -z "$CARGO_FEATURES"; then
     CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log"
   fi
 fi
@@ -2031,18 +2042,6 @@ else
   CARGO_FEATURES_FLAG=""
 fi
 
-
-
-
-abs_top_srcdir="$(cd "$srcdir" && pwd)"
-ABS_TOP_SRCDIR="$abs_top_srcdir"
-
-abs_rpkg_src="$abs_top_srcdir/src"
-ABS_RPKG_SRCDIR="$abs_rpkg_src"
-
-RUST_SRC_DIR="$abs_rpkg_src/rust"
-
-root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
 
 if test -n "$ac_tool_prefix"; then
   # Extract the first word of "${ac_tool_prefix}cargo", so it can be a program name with args.
@@ -2373,10 +2372,12 @@ fi
 
 
 abs_rpkg_src_cargo="$abs_rpkg_src"
+abs_top_srcdir_cargo="$abs_top_srcdir"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
     if test "x$CYGPATH" != "xno"; then
       abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
     fi
     ;;
 esac
@@ -2407,14 +2408,7 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 : ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
 
 
-CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
-case "$host_os" in
-  *msys*|*cygwin*|*mingw*)
-    if test "x$CYGPATH" != "xno"; then
-      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$abs_top_srcdir")/rust-target"
-    fi
-    ;;
-esac
+CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
 
 
 
@@ -2431,7 +2425,6 @@ if test "$CARGO_PROFILE" = "dev"; then
 else
   CARGO_PROFILE_DIR="$CARGO_PROFILE"
 fi
-
 
 
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
@@ -2462,39 +2455,36 @@ else
 fi
 
 
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: R_HOME                = $R_HOME" >&5
-printf '%s\n' "$as_me: R_HOME                = $R_HOME" >&6;}
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: NOT_CRAN              = $NOT_CRAN" >&5
-printf '%s\n' "$as_me: NOT_CRAN              = $NOT_CRAN" >&6;}
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&5
-printf '%s\n' "$as_me: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&6;}
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_PROFILE         = $CARGO_PROFILE" >&5
-printf '%s\n' "$as_me: CARGO_PROFILE         = $CARGO_PROFILE" >&6;}
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&5
-printf '%s\n' "$as_me: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&6;}
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_LIBDIR          = $CARGO_LIBDIR" >&5
-printf '%s\n' "$as_me: CARGO_LIBDIR          = $CARGO_LIBDIR" >&6;}
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: R_HOME               = $R_HOME" >&5
+printf '%s\n' "$as_me: R_HOME               = $R_HOME" >&6;}
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_TARGET_DIR     = $CARGO_TARGET_DIR" >&5
+printf '%s\n' "$as_me: CARGO_TARGET_DIR     = $CARGO_TARGET_DIR" >&6;}
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_PROFILE        = $CARGO_PROFILE" >&5
+printf '%s\n' "$as_me: CARGO_PROFILE        = $CARGO_PROFILE" >&6;}
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: ENV_RUSTFLAGS        = $ENV_RUSTFLAGS" >&5
+printf '%s\n' "$as_me: ENV_RUSTFLAGS        = $ENV_RUSTFLAGS" >&6;}
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_LIBDIR         = $CARGO_LIBDIR" >&5
+printf '%s\n' "$as_me: CARGO_LIBDIR         = $CARGO_LIBDIR" >&6;}
 if test -n "$RUST_TOOLCHAIN"
 then :
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: RUST_TOOLCHAIN        = $RUST_TOOLCHAIN" >&5
-printf '%s\n' "$as_me: RUST_TOOLCHAIN        = $RUST_TOOLCHAIN" >&6;}
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&5
+printf '%s\n' "$as_me: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&6;}
 fi
 if test -n "$CARGO_BUILD_TARGET"
 then :
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&5
-printf '%s\n' "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET   = $CARGO_BUILD_TARGET" >&5
+printf '%s\n' "$as_me: CARGO_BUILD_TARGET   = $CARGO_BUILD_TARGET" >&6;}
 fi
 if test -n "$CARGO_FEATURES"
 then :
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_FEATURES  = $CARGO_FEATURES" >&5
-printf '%s\n' "$as_me: CARGO_FEATURES  = $CARGO_FEATURES" >&6;}
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_FEATURES       = $CARGO_FEATURES" >&5
+printf '%s\n' "$as_me: CARGO_FEATURES       = $CARGO_FEATURES" >&6;}
 fi
 
 CARGO_STATICLIB_NAME="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 
-
-{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
-printf '%s\n' "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME = $CARGO_STATICLIB_NAME" >&5
+printf '%s\n' "$as_me: CARGO_STATICLIB_NAME = $CARGO_STATICLIB_NAME" >&6;}
 
 case "$host_os" in
   *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
@@ -2525,42 +2515,51 @@ fi
 
 
 
-case "$FORCE_VENDOR" in
-  1|true|TRUE|yes) FORCE_VENDOR=1 ;;
-  *)               FORCE_VENDOR="" ;;
-esac
-
 VENDOR_OUT="$abs_top_srcdir/vendor"
-
-abs_top_srcdir_cargo="$abs_top_srcdir"
-case "$host_os" in
-  *msys*|*cygwin*|*mingw*)
-    if test "x$CYGPATH" != "xno"; then
-      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
-    fi
-    ;;
-esac
 VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 
 
+MONOREPO_ROOT=""
+_probe="$abs_top_srcdir"
+for _i in 1 2 3 4 5; do
+  _probe="$(dirname "$_probe")"
+  if test "$_probe" = "/" || test "$_probe" = "."; then break; fi
+  if test -f "$_probe/miniextendr-api/Cargo.toml"; then
+    MONOREPO_ROOT="$_probe"
+    break
+  fi
+done
+
+MONOREPO_ROOT_CARGO="$MONOREPO_ROOT"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test -n "$MONOREPO_ROOT" && test "x$CYGPATH" != "xno"; then
+      MONOREPO_ROOT_CARGO="$($CYGPATH -m "$MONOREPO_ROOT")"
+    fi
+    ;;
+esac
+
+if test -n "$MONOREPO_ROOT"; then
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)" >&5
+printf '%s\n' "$as_me: monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)" >&6;}
+fi
+
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
-ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/$PACKAGE_NAME-win.def:src/win.def.in"
+ac_config_files="$ac_config_files src/Makevars:src/Makevars.in src/$PACKAGE_NAME-win.def:src/win.def.in"
 
 
-ac_config_commands="$ac_config_commands dev-cargo-config"
+ac_config_commands="$ac_config_commands unpack-vendor-tarball"
 
+
+ac_config_commands="$ac_config_commands cargo-config"
 
 
 ac_config_commands="$ac_config_commands cargo-lockfile-compat"
 
 
-ac_config_commands="$ac_config_commands cargo-vendor"
-
-
-ac_config_commands="$ac_config_commands post-vendor"
-
+ac_config_commands="$ac_config_commands post-config"
 
 
 cat >confcache <<\_ACEOF
@@ -3215,10 +3214,20 @@ cat >>"$CONFIG_STATUS" <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-NOT_CRAN="$NOT_CRAN" SED="$SED"
-CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
-NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
-ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"
+IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
+ abs_top_srcdir="$abs_top_srcdir"
+ abs_rpkg_src="$abs_rpkg_src"
+ VENDOR_OUT="$VENDOR_OUT"
+ SED="$SED"
+ TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"
+IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
+ MONOREPO_ROOT="$MONOREPO_ROOT"
+ MONOREPO_ROOT_CARGO="$MONOREPO_ROOT_CARGO"
+ VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
+ CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
+ SED="$SED"
+CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
+ABS_RPKG_SRC="$abs_rpkg_src" CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"
 
 _ACEOF
 
@@ -3228,13 +3237,12 @@ cat >>"$CONFIG_STATUS" <<\_ACEOF || ac_write_fail=1
 for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
-    "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars:src/Makevars.in" ;;
     "src/$PACKAGE_NAME-win.def") CONFIG_FILES="$CONFIG_FILES src/$PACKAGE_NAME-win.def:src/win.def.in" ;;
-    "dev-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS dev-cargo-config" ;;
+    "unpack-vendor-tarball") CONFIG_COMMANDS="$CONFIG_COMMANDS unpack-vendor-tarball" ;;
+    "cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
-    "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
-    "post-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS post-vendor" ;;
+    "post-config") CONFIG_COMMANDS="$CONFIG_COMMANDS post-config" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
   esac
@@ -3653,21 +3661,78 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
 
 
   case $ac_file$ac_mode in
-    "dev-cargo-config":C)
-  RPKG_CFG="src/rust/.cargo/config.toml"
-
-  if test "$NOT_CRAN" = "true"; then
-        if test -f "$RPKG_CFG"; then
-      rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode - using git deps)"
-    fi
-  elif test -f "$RPKG_CFG"; then
-            for _url in $("$SED" -n 's/.*git = "\(https:\/\/[^"]*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
-      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
-        printf '\n[source."git+%s"]\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
-        echo "configure: added source replacement for git dep: $_url"
+    "unpack-vendor-tarball":C)
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      echo "configure: tarball install — unpacking inst/vendor.tar.xz"
+      (cd "$abs_top_srcdir" && tar $TAR_FORCE_LOCAL -xJf "$abs_top_srcdir/inst/vendor.tar.xz")
+      if test $? -ne 0; then
+        echo "configure: error: failed to unpack inst/vendor.tar.xz" >&2
+        exit 1
       fi
-    done
+                  if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && \
+          rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+      fi
+    else
+      echo "configure: tarball install — vendor/ already populated"
+    fi
+  fi
+ ;;
+    "cargo-config":C)
+  RPKG_CFG="src/rust/.cargo/config.toml"
+  rm -f "$RPKG_CFG"
+
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    {
+      echo "# Autogenerated by configure — DO NOT EDIT"
+      echo "# Tarball install: redirect crates.io and the miniextendr git source"
+      echo "# to the unpacked inst/vendor.tar.xz."
+      echo ""
+      echo "[source.crates-io]"
+      echo 'replace-with = "vendored-sources"'
+      echo ""
+                        for _url in $("$SED" -n 's/.*git = "\(https:\/\/[^"]*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
+        echo "[source.\"git+$_url\"]"
+        echo "git = \"$_url\""
+        echo 'replace-with = "vendored-sources"'
+        echo ""
+      done
+      echo "[source.vendored-sources]"
+      echo "directory = \"$VENDOR_OUT_CARGO\""
+      echo ""
+      echo "[build]"
+      echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
+    } > "$RPKG_CFG"
+    echo "configure: wrote $RPKG_CFG (tarball mode)"
+
+  elif test -n "$MONOREPO_ROOT"; then
+    {
+      echo "# Autogenerated by configure — DO NOT EDIT"
+      echo "# Source install (monorepo): patch the miniextendr git source to"
+      echo "# resolve against local workspace crates."
+      echo ""
+      echo '[patch."https://github.com/A2-ai/miniextendr"]'
+      echo "miniextendr-api    = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-api\" }"
+      echo "miniextendr-lint   = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-lint\" }"
+      echo "miniextendr-macros = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-macros\" }"
+      echo ""
+      echo "[build]"
+      echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
+    } > "$RPKG_CFG"
+    echo "configure: wrote $RPKG_CFG (source mode, monorepo override)"
+
+  else
+    {
+      echo "# Autogenerated by configure — DO NOT EDIT"
+      echo "# Source install (no monorepo): cargo follows the git URL"
+      echo "# declared in Cargo.toml. First build downloads, subsequent"
+      echo "# builds use cargo's git cache."
+      echo ""
+      echo "[build]"
+      echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
+    } > "$RPKG_CFG"
+    echo "configure: wrote $RPKG_CFG (source mode, no monorepo siblings)"
   fi
  ;;
     "cargo-lockfile-compat":C)
@@ -3685,26 +3750,7 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
   if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
     if test "$CARGO_MAJOR" -lt 1 || \
        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
-            if test "$NOT_CRAN" != "true"; then
-        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
-            if test $? -ne 0; then
-              echo "configure: error: failed to unpack vendor.tar.xz" >&2
-              exit 1
-            fi
-                        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-            fi
-          else
-            echo "configure: error: CRAN/offline build requires vendored sources to regenerate Cargo.lock" >&2
-            echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
-            exit 1
-          fi
-        fi
-      fi
-      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
       rm -f "$LOCKFILE_PATH"
       $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
       _gen_status=$?
@@ -3715,131 +3761,13 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
     fi
   fi
  ;;
-    "cargo-vendor":C)
-  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-      echo "configure: unpacking inst/vendor.tar.xz"
-      (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
-      if test $? -ne 0; then
-        echo "configure: error: failed to unpack vendor.tar.xz" >&2
-        exit 1
-      fi
-      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-      fi
-    fi
+    "post-config":C)
+  if test ! -f "src/rust/Cargo.lock"; then
+    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
   fi
 
-  if test "$NOT_CRAN" = "true"; then
-        _monorepo_root=""
-    _probe="$abs_rpkg_dir"
-    for _i in 1 2 3 4 5; do
-      _probe="$(dirname "$_probe")"
-      if test "$_probe" = "/" || test "$_probe" = "."; then break; fi
-      if test -f "$_probe/miniextendr-api/Cargo.toml"; then
-        _monorepo_root="$_probe"
-        break
-      fi
-    done
-
-    if test "$FORCE_VENDOR" = "1" || test -n "$_monorepo_root"; then
-      if test -n "$_monorepo_root"; then
-        echo "configure: dev mode — syncing vendor/ from monorepo at $_monorepo_root"
-      else
-        echo "configure: FORCE_VENDOR — running cargo revendor"
-      fi
-      if command -v cargo-revendor >/dev/null 2>&1; then
-        _source_root=""
-        if test -n "$_monorepo_root"; then
-          _source_root="--source-root $_monorepo_root"
-        fi
-        cargo revendor \
-          --manifest-path src/rust/Cargo.toml \
-          --output "$VENDOR_OUT" \
-          --strip-all \
-          --source-marker \
-          $_source_root -v || {
-          echo "configure: error: cargo revendor failed" >&2
-          exit 1
-        }
-      else
-        echo "configure: error: cargo-revendor not found" >&2
-        echo "configure:        Install: cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor" >&2
-        exit 1
-      fi
-    else
-      echo "configure: dev mode — using existing vendor/"
-    fi
-  else
-                                            if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      if command -v cargo-revendor >/dev/null 2>&1; then
-        echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
-                                                                        _source_root_arg=""
-        _bootstrap_clone=""
-        if grep -q 'path = "\.\./\.\./vendor/' src/rust/Cargo.toml; then
-          if command -v git >/dev/null 2>&1; then
-            _bootstrap_clone="`mktemp -d 2>/dev/null || mktemp -d -t miniextendr-bootstrap.XXXXXX`"
-            echo "configure: cloning miniextendr for --source-root bootstrap: $_bootstrap_clone"
-            if git clone --depth=1 --quiet https://github.com/A2-ai/miniextendr "$_bootstrap_clone"; then
-              _source_root_arg="--source-root $_bootstrap_clone"
-            else
-              echo "configure: error: git clone of miniextendr failed" >&2
-              echo "configure:        Auto-vendor requires network access to bootstrap path deps." >&2
-              rm -rf "$_bootstrap_clone"
-              exit 1
-            fi
-          else
-            echo "configure: error: git required to bootstrap path deps for auto-vendor" >&2
-            exit 1
-          fi
-        fi
-        cargo revendor \
-          --manifest-path src/rust/Cargo.toml \
-          --output "$VENDOR_OUT" \
-          --strip-all \
-          --source-marker \
-          $_source_root_arg \
-          -v || {
-          echo "configure: error: cargo revendor failed" >&2
-          echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
-          echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
-          if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
-            rm -rf "$_bootstrap_clone"
-          fi
-          exit 1
-        }
-        if test -n "$_bootstrap_clone" && test -d "$_bootstrap_clone"; then
-          rm -rf "$_bootstrap_clone"
-        fi
-                        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
-        echo "configure: auto-vendored — vendor ready"
-      else
-        echo "configure: error: vendored sources required but vendor/ and inst/vendor.tar.xz are both missing." >&2
-        echo "configure:        Install cargo-revendor to auto-vendor on first install:" >&2
-        echo "configure:          cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor" >&2
-        echo "configure:        Or commit inst/vendor.tar.xz alongside the package." >&2
-        exit 1
-      fi
-    else
-      echo "configure: CRAN build — vendor ready"
-    fi
-  fi
+      touch "$ABS_RPKG_SRC/rust/Cargo.toml"
  ;;
-    "post-vendor":C)
-    if test ! -f "src/rust/Cargo.lock"; then
-    if test "$NOT_CRAN" = "true"; then
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
-    else
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
-    fi
-  fi
-
-        touch "$ABS_RPKG_SRC/rust/Cargo.toml"
-  echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
-
-     ;;
 
   esac
 done # for ac_tag

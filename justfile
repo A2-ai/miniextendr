@@ -327,55 +327,72 @@ expand *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run ./configure for dev mode
+# Run ./configure
 #
-# In dev mode, this:
-# 1. Generates build configuration files (Makevars, cargo config, etc.)
-# 2. Syncs vendor/ from the monorepo
-#    (same path end-user scaffolded packages use)
+# Generates build configuration files (Makevars, cargo config, etc.) using
+# the unified install-mode detection in configure.ac:
+#   - source mode (default): cargo resolves miniextendr deps from monorepo
+#     siblings via [patch] in .cargo/config.toml. No vendor/.
+#   - tarball mode: kicks in automatically when inst/vendor.tar.xz exists
+#     (i.e. inside R CMD INSTALL <built-tarball>). Configure unpacks the
+#     tarball and writes a vendored source-replacement config.
 #
-# For CRAN release prep, use `just vendor` then `just configure-cran`.
+# See docs/CRAN_COMPATIBILITY.md for the full table.
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true bash ./configure
+    bash ./configure
 
-# Configure in CRAN/offline mode
+# Vendor dependencies into inst/vendor.tar.xz for CRAN release preparation.
+# Requires cargo-revendor: `just revendor-install`.
 #
-# Run `just vendor` first to create inst/vendor.tar.xz.
-configure-cran:
-    cd rpkg && \
-    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=false bash ./configure
-
-# Vendor dependencies for CRAN release preparation.
-# Requires cargo-revendor: cargo install --path cargo-revendor (or `just revendor-install`).
+# Only needed when producing a build-tarball intended for offline install
+# (i.e. before `R CMD build .` for a CRAN submission). Day-to-day dev
+# (R CMD INSTALL ., devtools::install/test/load) never calls this recipe.
 #
-# --force bypasses cargo-revendor's cache (#150): source-only edits to workspace
-# crates leave Cargo.lock untouched, so without --force the cache check skips
-# re-vendoring and ships a stale tarball. Once #150's fix lands on main and is
-# installed, --force becomes harmless (re-runs the full vendor when cache is
-# valid but produces identical output).
+# Steps:
+#   1. Regenerate Cargo.lock against the bare git URL (no [patch] override),
+#      so the lockfile entries for miniextendr-{api,lint,macros} carry the
+#      `git+https://...#<commit>` source — required by cargo's source
+#      replacement mechanism when the tarball is later installed offline.
+#   2. Strip the per-crate checksum lines from Cargo.lock. Vendored sources
+#      ship with empty `.cargo-checksum.json` files; cargo refuses to verify
+#      them against the registry checksums otherwise.
+#   3. Run cargo-revendor against the freshly-regenerated lockfile.
+#   4. Compress vendor/ to inst/vendor.tar.xz.
 #
-# --source-root points at the monorepo root so cargo-revendor can pre-seed
-# rpkg/vendor/<crate>-<ver>/ before running `cargo metadata`. Required on a
-# fresh clone: rpkg/src/rust/Cargo.toml ships with frozen `path =
-# "../../vendor/..."` deps, and inst/vendor.tar.xz is no longer tracked, so
-# without the source-root pre-seed the first `cargo metadata` call fails
-# with "failed to read .../vendor/miniextendr-api/Cargo.toml" and the
-# whole vendor step aborts. See #280.
+# --force re-runs the full vendor even when cargo-revendor's cache thinks the
+# output is current. Cheap insurance against a stale committed tarball when
+# the workspace crates have edits that don't bump Cargo.lock.
+[script("bash")]
 vendor:
+    set -euo pipefail
+    rust_dir="{{justfile_directory()}}/rpkg/src/rust"
+    cargo_cfg="$rust_dir/.cargo/config.toml"
+    # Regenerate lockfile in tarball-shape: temporarily move .cargo aside so
+    # cargo doesn't see the [patch] override and resolves git deps as-is.
+    if [[ -f "$cargo_cfg" ]]; then
+      mv "$cargo_cfg" "$cargo_cfg.tmp_just_vendor"
+    fi
+    rm -f "$rust_dir/Cargo.lock"
+    cargo generate-lockfile --manifest-path "$rust_dir/Cargo.toml"
+    if [[ -f "$cargo_cfg.tmp_just_vendor" ]]; then
+      mv "$cargo_cfg.tmp_just_vendor" "$cargo_cfg"
+    fi
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
       --output rpkg/vendor \
-      --source-root . \
-      --strip-all \
-      --freeze \
       --compress rpkg/inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
       --force \
       -v
+    # Strip per-crate checksums *after* cargo-revendor has done its work —
+    # cargo vendor re-resolves the lockfile during vendoring and would
+    # re-add checksums otherwise. The vendored sources have empty
+    # `.cargo-checksum.json` files, so cargo refuses to verify them
+    # against the registry checksums during a tarball install.
+    sed -i.bak '/^checksum = /d' "$rust_dir/Cargo.lock" && rm -f "$rust_dir/Cargo.lock.bak"
 
 # Verify committed Cargo.lock, vendor/, and vendor.tar.xz agree (#157).
 # Runs in CI/pre-release to guarantee the offline build artifact is fresh.
