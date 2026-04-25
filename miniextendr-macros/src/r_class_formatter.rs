@@ -180,9 +180,9 @@ impl<'a> MethodContext<'a> {
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
             let choices_c_name =
                 crate::match_arg_keys::choices_helper_c_name(&self.c_ident, &r_name);
-            lines.push(format!(
-                ".__mx_choices_{r_name} <- .Call({choices_c_name}, .call = match.call())"
-            ));
+            let choices_call =
+                crate::r_wrapper_builder::DotCallBuilder::new(&choices_c_name).build();
+            lines.push(format!(".__mx_choices_{r_name} <- {choices_call}"));
             lines.push(format!(
                 "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
             ));
@@ -230,31 +230,19 @@ impl<'a> MethodContext<'a> {
 
     /// Build the `.Call()` expression for a static/constructor call.
     pub fn static_call(&self) -> String {
-        if self.args.is_empty() {
-            format!(".Call({}, .call = match.call())", self.c_ident)
-        } else {
-            format!(
-                ".Call({}, .call = match.call(), {})",
-                self.c_ident, self.args
-            )
-        }
+        crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
+            .with_args_str(&self.args)
+            .build()
     }
 
     /// Build the `.Call()` expression for an instance method with `self` as ptr.
     ///
     /// The `self_expr` is typically "self", "private$.ptr", "x", "x@ptr", or "x@.ptr".
     pub fn instance_call(&self, self_expr: &str) -> String {
-        if self.args.is_empty() {
-            format!(
-                ".Call({}, .call = match.call(), {})",
-                self.c_ident, self_expr
-            )
-        } else {
-            format!(
-                ".Call({}, .call = match.call(), {}, {})",
-                self.c_ident, self_expr, self.args
-            )
-        }
+        crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
+            .with_self(self_expr)
+            .with_args_str(&self.args)
+            .build()
     }
 
     /// Build full R formals for instance methods (prefixing x/self parameter).
