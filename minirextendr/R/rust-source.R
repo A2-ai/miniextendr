@@ -444,11 +444,6 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   h_content <- gsub("\\{\\{package\\}\\}", pkg_name, h_content)
   writeLines(h_content, fs::path(pkg_dir, "inst", "include", "mx_abi.h"))
 
-  # cargo-config.toml.in
-  cargo_config_in <- template_path("cargo-config.toml.in")
-  fs::file_copy(cargo_config_in,
-                fs::path(pkg_dir, "src", "rust", "cargo-config.toml.in"))
-
   # win.def.in (needed by configure as input for AC_CONFIG_FILES)
   win_def_in <- template_path("win.def.in")
   fs::file_copy(win_def_in, fs::path(pkg_dir, "src", "win.def.in"))
@@ -501,13 +496,13 @@ build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
   check_result(result, "autoconf (inline)")
   fs::file_chmod(fs::path(pkg_dir, "configure"), "755")
 
-  # Step 2: configure (dev mode)
+  # Step 2: configure (source mode — no vendor.tar.xz present, so configure
+  # detects source install and lets cargo resolve git deps normally).
   if (!quiet) cli::cli_alert("Running configure...")
   result <- run_with_logging(
     "bash", args = c("./configure"),
     log_prefix = "inline-configure",
-    wd = as.character(pkg_dir),
-    env = c(NOT_CRAN = "true")
+    wd = as.character(pkg_dir)
   )
   check_result(result, "configure (inline)")
 
@@ -521,8 +516,7 @@ build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
              "--no-test-load",
              as.character(pkg_dir)),
     log_prefix = "inline-install",
-    wd = as.character(pkg_dir),
-    env = c(NOT_CRAN = "true")
+    wd = as.character(pkg_dir)
   )
   check_result(result, "R CMD INSTALL (inline)")
 

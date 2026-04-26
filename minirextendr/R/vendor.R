@@ -119,9 +119,6 @@ vendor_miniextendr <- function(path = ".",
 
   if (!is.null(local_path)) {
     vendor_miniextendr_local(local_path, dest)
-    # Add [patch] entries so dev mode (NOT_CRAN=true) resolves from vendor/
-    # instead of fetching from git (which fails if miniextendr-macros isn't on crates.io)
-    add_vendor_patches(dest)
     return(invisible(TRUE))
   }
 
@@ -568,8 +565,7 @@ vendor_crates_io <- function(path = ".") {
     args = c(
       "revendor",
       "--manifest-path", cargo_toml,
-      "--output", vendor_dir,
-      "--strip-all"
+      "--output", vendor_dir
     ),
     log_prefix = "cargo-revendor",
     wd = usethis::proj_get()
@@ -577,8 +573,11 @@ vendor_crates_io <- function(path = ".") {
 
   check_result(result, "cargo revendor")
 
-  # Additional CRAN-targeted stripping beyond cargo-revendor's --strip-all:
-  # docs/, ci/, .circleci/, .github/, dotfiles that cargo-revendor preserves.
+  # Additional CRAN-targeted stripping: docs/, ci/, .circleci/, .github/,
+  # dotfiles that cargo-revendor preserves. (We don't pass --strip-all to
+  # cargo revendor because it strips dev-deps from Cargo.toml manifests
+  # while leaving dangling [features] references that point at them — see
+  # cargo-revendor issue #322.)
   strip_vendored_dir(vendor_dir)
 
   cli::cli_alert_success("External dependencies vendored")
@@ -831,8 +830,8 @@ check_path_deps <- function(path = ".") {
 #'
 #' After vendoring miniextendr crates to vendor/, adds a
 #' `[patch."https://github.com/A2-ai/miniextendr"]` section to
-#' src/rust/Cargo.toml so that dev mode (NOT_CRAN=true) resolves
-#' dependencies from vendor/ instead of fetching from git.
+#' src/rust/Cargo.toml so cargo resolves dependencies from vendor/ instead of
+#' fetching from git.
 #'
 #' @param vendor_dir Path to the vendor directory (vendor/)
 #' @noRd

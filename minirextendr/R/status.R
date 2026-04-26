@@ -48,8 +48,7 @@ miniextendr_status <- function(path = ".") {
     "Rust Project" = c(
       "src/rust/Cargo.toml",
       "src/rust/lib.rs",
-      "src/rust/build.rs",
-      "src/rust/cargo-config.toml.in"
+      "src/rust/build.rs"
     ),
     "Source Files" = c(
       "src/Makevars.in",
@@ -113,8 +112,7 @@ miniextendr_status <- function(path = ".") {
   cli::cli_h2("Staleness")
 
   template_pairs <- list(
-    c("src/Makevars.in", "src/Makevars"),
-    c("src/rust/cargo-config.toml.in", "src/rust/.cargo/config.toml")
+    c("src/Makevars.in", "src/Makevars")
   )
 
   stale <- character()

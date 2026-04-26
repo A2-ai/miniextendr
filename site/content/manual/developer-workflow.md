@@ -88,11 +88,14 @@ just cross-test         # Run cross-package trait ABI tests
 ### CRAN release prep
 
 ```bash
-just vendor             # Package workspace crates + vendor external deps
-just configure-cran     # Configure with PREPARE_CRAN=true
-just r-cmd-build        # Build tarball
-just r-cmd-check        # Check tarball (always check the tarball, not source dir)
+just vendor             # Regen Cargo.lock in tarball-shape, vendor deps,
+                        # compress to inst/vendor.tar.xz.
+just r-cmd-build        # Build tarball (depends on `just vendor`).
+just r-cmd-check        # Check tarball (always check the tarball, not source dir).
 ```
+
+The single signal `[ -f inst/vendor.tar.xz ]` triggers tarball-mode install
+automatically; no env var to set. See [docs/CRAN_COMPATIBILITY.md](../cran-compatibility/).
 
 ## Troubleshooting
 
@@ -158,14 +161,14 @@ just test               # If this fails, run specific crate tests
 just clippy             # May fail during parallel configure
 ```
 
-## Build Contexts
+## Install modes
 
-| Context | When | Behavior |
+| Mode | When | Behavior |
 |---|---|---|
-| `dev-monorepo` | In the monorepo (default) | Uses `[patch]` paths, no vendoring |
-| `dev-detached` | No monorepo, no vendor | Uses git/network deps |
-| `vendored-install` | Vendor artifacts present | Offline build |
-| `prepare-cran` | `PREPARE_CRAN=true` | CRAN release prep |
+| Source | `inst/vendor.tar.xz` absent | Cargo resolves through `[patch."git+url"]` to monorepo siblings, or fetches the git URL when no siblings are detected. |
+| Tarball | `inst/vendor.tar.xz` present | Configure unpacks the tarball, writes `[source]` replacement to `vendored-sources`, build runs `--offline`. |
+
+See [docs/CRAN_COMPATIBILITY.md](../cran-compatibility/) for the full table.
 
 ## Sync Checks
 

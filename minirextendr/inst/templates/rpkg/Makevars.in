@@ -1,23 +1,23 @@
 ## --- filled by configure ----------------------------------------------
-ABS_TOP_SRCDIR = @ABS_TOP_SRCDIR@
-ABS_RPKG_SRCDIR = @ABS_RPKG_SRCDIR@
-CARGO = @CARGO@
-RUST_TOOLCHAIN = @RUST_TOOLCHAIN@
-CARGO_TARGET_DIR = @CARGO_TARGET_DIR@
-CARGO_PROFILE = @CARGO_PROFILE@
-CARGO_STATICLIB_NAME = @CARGO_STATICLIB_NAME@
-ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
-CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
-ABS_RPKG_SRC_CARGO = @ABS_RPKG_SRC_CARGO@
-CARGO_LIBDIR = @CARGO_LIBDIR@
-VENDOR_OUT = @VENDOR_OUT@
-CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
-NOT_CRAN_FLAG = @NOT_CRAN@
-CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
-CDYLIB_PREFIX = @CDYLIB_PREFIX@
-CDYLIB_EXT = @CDYLIB_EXT@
-TAR_FORCE_LOCAL = @TAR_FORCE_LOCAL@
-NATIVE_PKG_CPPFLAGS = @NATIVE_PKG_CPPFLAGS@
+ABS_TOP_SRCDIR        = @ABS_TOP_SRCDIR@
+ABS_RPKG_SRCDIR       = @ABS_RPKG_SRCDIR@
+CARGO                 = @CARGO@
+RUST_TOOLCHAIN        = @RUST_TOOLCHAIN@
+CARGO_TARGET_DIR      = @CARGO_TARGET_DIR@
+CARGO_PROFILE         = @CARGO_PROFILE@
+CARGO_STATICLIB_NAME  = @CARGO_STATICLIB_NAME@
+ENV_RUSTFLAGS         = @ENV_RUSTFLAGS@
+CARGO_BUILD_TARGET    = @CARGO_BUILD_TARGET@
+ABS_RPKG_SRC_CARGO    = @ABS_RPKG_SRC_CARGO@
+CARGO_LIBDIR          = @CARGO_LIBDIR@
+VENDOR_OUT            = @VENDOR_OUT@
+CARGO_OFFLINE_FLAG    = @CARGO_OFFLINE_FLAG@
+IS_TARBALL_INSTALL    = @IS_TARBALL_INSTALL@
+CARGO_FEATURES_FLAG   = @CARGO_FEATURES_FLAG@
+CDYLIB_PREFIX         = @CDYLIB_PREFIX@
+CDYLIB_EXT            = @CDYLIB_EXT@
+TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
+NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 # codegen-units = 1 in Cargo.toml ensures the user crate compiles into a single .o
@@ -43,16 +43,15 @@ CARGO_CDYLIB = $(CARGO_LIBDIR)/$(CDYLIB_PREFIX)$(CARGO_STATICLIB_NAME).$(CDYLIB_
 #   2. Cdylib builds second ($(WRAPPERS_R) needs $(CARGO_CDYLIB)), fast from warm cache
 #   3. R wrappers are generated from the cdylib
 all: $(SHLIB) $(WRAPPERS_R)
-	@# Dev mode: touch Cargo.toml so pkgbuild always thinks sources changed
-	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
+	@# Source install: touch Cargo.toml so pkgbuild always thinks sources changed
+	@# (dev iteration with devtools::load_all() / install() relies on this).
+	@if [ "$(IS_TARBALL_INSTALL)" != "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
 	fi
-	@# CRAN mode: cleanup vendor and target directories to save space
-	@# Guard: only clean when inst/vendor.tar.xz exists (genuine CRAN tarball build).
-	@# Without this guard, pkgbuild::compile_dll() (called by devtools::document()
-	@# and roxygen2::roxygenise()) runs without NOT_CRAN=true and would delete
-	@# vendor/ populated by scaffolding, breaking subsequent builds.
-	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ -f "$(ABS_TOP_SRCDIR)/inst/vendor.tar.xz" ]; then \
+	@# Tarball install: scrub vendor and target dirs after build to save space
+	@# in the installed package. Gate on IS_TARBALL_INSTALL so dev installs
+	@# don't blow away in-progress build state.
+	@if [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
 	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \
@@ -70,21 +69,11 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR)
 
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
-# Note: Dependencies are vendored by configure script, not by this Makefile.
-# You must run `./configure` (or `just configure`) before building.
+# Vendor extraction (when in tarball-install mode) is handled by configure.
 #
-# CRAN tarball handling: R CMD build compresses vendor/ into vendor.tar.xz
-# to avoid NOTEs about hidden files and long paths. We unpack it here.
-VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
-
 # OBJECTS are passed to cargo as link-args so the Rust crate can reference
 # symbols from C shim files (bindgen-generated static inline wrappers).
 $(CARGO_AR): FORCE_CARGO $(OBJECTS)
-	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case only)
-	@if [ "$(NOT_CRAN_FLAG)" != "true" ] && [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
-	  echo "Unpacking vendor.tar.xz from inst/..."; \
-	  cd "$(ABS_TOP_SRCDIR)" && tar -xJf "$(VENDOR_TARBALL)"; \
-	fi
 	@set -e; \
 	TARGET_OPT=""; \
 	LINK_ARGS=""; \
@@ -119,7 +108,6 @@ $(WRAPPERS_R): $(CARGO_CDYLIB)
 
 # Build cdylib for wrapper generation.
 # Runs after staticlib (via `all` ordering), so the incremental cache is warm.
-# Vendor extraction is handled by $(CARGO_AR) which builds first.
 $(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
 	@set -e; \
 	TARGET_OPT=""; \

@@ -166,11 +166,9 @@ pub enum WorkflowCmd {
     /// Run autoconf to generate configure script from configure.ac.
     Autoconf,
     /// Run ./configure to generate Makevars and build config.
-    Configure {
-        /// Configure for CRAN release (PREPARE_CRAN=true).
-        #[arg(long)]
-        cran: bool,
-    },
+    /// Install mode (source vs tarball) is auto-detected from
+    /// `inst/vendor.tar.xz` presence — no flag to set.
+    Configure,
     /// Generate R wrappers from Rust code (devtools::document).
     Document,
     /// Full two-pass build: autoconf, configure, install, document, install.

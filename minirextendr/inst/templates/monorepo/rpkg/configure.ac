@@ -29,27 +29,42 @@ if test ! -d "$R_HOME"; then
   AC_MSG_ERROR([R_HOME directory does not exist: $R_HOME])
 fi
 
-dnl NOT_CRAN handling:
-dnl - CRAN builds: NOT_CRAN is unset or empty → default to false (offline mode)
-dnl - Dev builds: set NOT_CRAN=true in environment to enable network/vendoring
-dnl Normalize to "true" or "false" for consistent checks
-: ${NOT_CRAN:=false}
-case "$NOT_CRAN" in
-  true|TRUE|1) NOT_CRAN=true ;;
-  *)           NOT_CRAN=false ;;
-esac
-export NOT_CRAN
+dnl ---- canonical paths ----
+abs_top_srcdir="$(cd "$srcdir" && pwd)"
+AC_SUBST([ABS_TOP_SRCDIR], ["$abs_top_srcdir"])
+abs_rpkg_src="$abs_top_srcdir/src"
+AC_SUBST([ABS_RPKG_SRCDIR], ["$abs_rpkg_src"])
+RUST_SRC_DIR="$abs_rpkg_src/rust"
 
-dnl Set cargo offline/locked flags based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): no --offline, no --locked (cargo updates lockfile for patches)
-dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
-if test "$NOT_CRAN" = "true"; then
-  CARGO_OFFLINE_FLAG=""
+dnl ---- install-mode detection ----
+dnl Single signal: presence of inst/vendor.tar.xz.
+dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is shipped inside
+dnl     the build artifact by `just vendor` (called from `just r-cmd-build`).
+dnl     configure unpacks it, writes a vendored cargo source replacement, and
+dnl     builds offline.
+dnl   Source install (R CMD INSTALL ., devtools::install, install_github, etc.):
+dnl     no tarball. configure leaves vendoring alone and lets cargo resolve
+dnl     deps over the network (or via monorepo path overrides — see below).
+dnl
+dnl See docs/CRAN_COMPATIBILITY.md for the full decision table.
+if test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then
+  IS_TARBALL_INSTALL=true
+  _install_mode_label="tarball install (offline, vendored)"
 else
+  IS_TARBALL_INSTALL=false
+  _install_mode_label="source install (cargo network)"
+fi
+AC_SUBST([IS_TARBALL_INSTALL])
+AC_MSG_NOTICE([install mode         = $_install_mode_label])
+
+dnl In tarball mode cargo must run --offline so the build cannot accidentally
+dnl reach for crates.io. In source mode we leave cargo's default resolution.
+if test "$IS_TARBALL_INSTALL" = "true"; then
   CARGO_OFFLINE_FLAG="--offline"
+else
+  CARGO_OFFLINE_FLAG=""
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
-AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
 dnl
@@ -83,22 +98,6 @@ else
 fi
 AC_SUBST([CARGO_FEATURES_FLAG])
 
-dnl rust-analyzer configuration: For IDE support, configure rust-analyzer to use
-dnl the standalone workspace, not the vendored rpkg workspace:
-dnl   "rust-analyzer.linkedProjects": ["/path/to/miniextendr/Cargo.toml"]
-dnl This allows rust-analyzer to see the full workspace during development.
-
-
-dnl ---- canonical paths ----
-abs_top_srcdir="$(cd "$srcdir" && pwd)"
-AC_SUBST([ABS_TOP_SRCDIR], ["$abs_top_srcdir"])
-abs_rpkg_src="$abs_top_srcdir/src"
-AC_SUBST([ABS_RPKG_SRCDIR], ["$abs_rpkg_src"])
-RUST_SRC_DIR="$abs_rpkg_src/rust"
-
-dnl Canonical path two levels above src (rpkg/src → miniextendr)
-root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
-
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
 AC_PATH_TOOL([RUSTC],[rustc],[no])
@@ -108,16 +107,15 @@ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
-dnl RUSTC, SED, CYGPATH used only within configure.ac — no AC_SUBST needed
 
 dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
-dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
-dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
 abs_rpkg_src_cargo="$abs_rpkg_src"
+abs_top_srcdir_cargo="$abs_top_srcdir"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
     if test "x$CYGPATH" != "xno"; then
       abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
     fi
     ;;
 esac
@@ -147,25 +145,16 @@ AC_SUBST([RUST_TOOLCHAIN])
 dnl Convenience: cargo command that includes optional toolchain selector
 CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
-dnl ---- Cargo configuration ----
+dnl ---- Cargo target/profile configuration ----
 dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
 dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
-dnl pkgbuild's sources() function recursively finds .rs files in src/, and
-dnl if any generated file has a newer mtime than the DLL, it triggers rebuild.
 AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
 : ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
 AC_SUBST([CARGO_TARGET_DIR])
 
 dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
 dnl These are used in .cargo/config.toml which Cargo reads directly
-CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
-case "$host_os" in
-  *msys*|*cygwin*|*mingw*)
-    if test "x$CYGPATH" != "xno"; then
-      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$abs_top_srcdir")/rust-target"
-    fi
-    ;;
-esac
+CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
@@ -220,7 +209,6 @@ AC_SUBST([CARGO_LIBDIR])
 
 dnl ---- user feedback ----
 AC_MSG_NOTICE([R_HOME                = $R_HOME])
-AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
 AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
 AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
 AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
@@ -270,76 +258,179 @@ AC_CONFIG_SRCDIR([src/rust/lib.rs])  dnl safety check
 dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
 dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
 
-dnl Normalize FORCE_VENDOR (accept 1/true/TRUE/yes)
-case "$FORCE_VENDOR" in
-  1|true|TRUE|yes) FORCE_VENDOR=1 ;;
-  *)               FORCE_VENDOR="" ;;
-esac
-
-dnl ---- vendoring (at package root, outside src/) ----
+dnl ---- vendor directory paths (used in tarball mode only) ----
 dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
 dnl thousands of .rs files in vendor/ during needs_compile() checks (same reasoning
 dnl as CARGO_TARGET_DIR above).
 VENDOR_OUT="$abs_top_srcdir/vendor"
+VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 AC_SUBST([VENDOR_OUT])
-dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
-abs_top_srcdir_cargo="$abs_top_srcdir"
+AC_SUBST([VENDOR_OUT_CARGO])
+
+dnl ---- monorepo detection (for source-mode dev override) ----
+dnl Walk up looking for the miniextendr workspace root.
+dnl When found, configure writes a [patch."<git-url>"] block into
+dnl .cargo/config.toml so cargo resolves the three workspace crates against
+dnl local sources instead of fetching the git URL. Edits to
+dnl miniextendr-{api,lint,macros} propagate immediately on the next build.
+MONOREPO_ROOT=""
+_probe="$abs_top_srcdir"
+for _i in 1 2 3 4 5; do
+  _probe="$(dirname "$_probe")"
+  if test "$_probe" = "/" || test "$_probe" = "."; then break; fi
+  if test -f "$_probe/miniextendr-api/Cargo.toml"; then
+    MONOREPO_ROOT="$_probe"
+    break
+  fi
+done
+
+dnl Cargo path version (Windows-native if MSYS2)
+MONOREPO_ROOT_CARGO="$MONOREPO_ROOT"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
-    if test "x$CYGPATH" != "xno"; then
-      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
+    if test -n "$MONOREPO_ROOT" && test "x$CYGPATH" != "xno"; then
+      MONOREPO_ROOT_CARGO="$($CYGPATH -m "$MONOREPO_ROOT")"
     fi
     ;;
 esac
-VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
-AC_SUBST([VENDOR_OUT_CARGO])
 
-dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
-dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
-dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+if test -n "$MONOREPO_ROOT"; then
+  AC_MSG_NOTICE([monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)])
+fi
 
 dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)
+dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
+dnl written by AC_CONFIG_COMMANDS below because its contents differ across
+dnl the three install modes (tarball / source-monorepo / source-only).
 AS_MKDIR_P([src/rust/.cargo])
 
 AC_CONFIG_FILES([
-  src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
   src/$PACKAGE_NAME-win.def:src/win.def.in
 ])
 
-dnl 1) Remove cargo config in dev mode, or augment for CRAN mode
-dnl    Dev mode: remove cargo config so cargo uses normal git/crates-io resolution
-dnl    CRAN mode: keep cargo config and append source replacements for any git deps
-dnl    found in Cargo.toml, so [patch.crates-io] git entries resolve to vendor/
-AC_CONFIG_COMMANDS([dev-cargo-config],
+dnl ---- 1) Tarball install: unpack inst/vendor.tar.xz ----
+dnl Source mode is a no-op here. We unpack the vendor tarball before
+dnl writing the cargo config so the [source.vendored-sources] directory
+dnl actually exists by the time cargo runs.
+AC_CONFIG_COMMANDS([unpack-vendor-tarball],
 [
-  RPKG_CFG="src/rust/.cargo/config.toml"
-
-  if test "$NOT_CRAN" = "true"; then
-    dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
-    if test -f "$RPKG_CFG"; then
-      rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode - using git deps)"
-    fi
-  elif test -f "$RPKG_CFG"; then
-    dnl CRAN mode: scan Cargo.toml for git URLs and add source replacements
-    dnl so [patch.crates-io] git entries also resolve to vendor/
-    for _url in $("$SED" -n 's/.*git = "\(https:\/\/@<:@^"@:>@*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
-      if ! grep -q "$_url" "$RPKG_CFG" 2>/dev/null; then
-        printf '\n@<:@source."git+%s"@:>@\ngit = "%s"\nreplace-with = "vendored-sources"\n' "$_url" "$_url" >> "$RPKG_CFG"
-        echo "configure: added source replacement for git dep: $_url"
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      echo "configure: tarball install — unpacking inst/vendor.tar.xz"
+      (cd "$abs_top_srcdir" && tar $TAR_FORCE_LOCAL -xJf "$abs_top_srcdir/inst/vendor.tar.xz")
+      if test $? -ne 0; then
+        echo "configure: error: failed to unpack inst/vendor.tar.xz" >&2
+        exit 1
       fi
-    done
+      dnl Vendored crates ship with empty checksums; strip the [checksum]
+      dnl entries from Cargo.lock so cargo accepts the vendored tree.
+      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && \
+          rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+      fi
+    else
+      echo "configure: tarball install — vendor/ already populated"
+    fi
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" SED="$SED"])
+[IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
+ abs_top_srcdir="$abs_top_srcdir"
+ abs_rpkg_src="$abs_rpkg_src"
+ VENDOR_OUT="$VENDOR_OUT"
+ SED="$SED"
+ TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
 
-dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
-dnl Order matters: lockfile-compat, then cargo-vendor, then post-vendor
+dnl ---- 2) Write .cargo/config.toml per install mode ----
+dnl
+dnl Tarball install:
+dnl   [source.crates-io]                      replace-with = "vendored-sources"
+dnl   [source."git+https://github.com/A2-ai/miniextendr"]
+dnl                                           replace-with = "vendored-sources"
+dnl   [source.vendored-sources]               directory = "<vendor>"
+dnl   [build]                                 target-dir = "<rust-target>"
+dnl
+dnl Source install + monorepo:
+dnl   [patch."https://github.com/A2-ai/miniextendr"]
+dnl     miniextendr-api    = { path = "<root>/miniextendr-api" }
+dnl     miniextendr-lint   = { path = "<root>/miniextendr-lint" }
+dnl     miniextendr-macros = { path = "<root>/miniextendr-macros" }
+dnl   [build]                                 target-dir = "<rust-target>"
+dnl
+dnl Source install + no monorepo:
+dnl   [build]                                 target-dir = "<rust-target>"
+dnl   (cargo follows the git URL declared in Cargo.toml)
+AC_CONFIG_COMMANDS([cargo-config],
+[
+  RPKG_CFG="src/rust/.cargo/config.toml"
+  rm -f "$RPKG_CFG"
 
-dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
-dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    {
+      echo "# Autogenerated by configure — DO NOT EDIT"
+      echo "# Tarball install: redirect crates.io and the miniextendr git source"
+      echo "# to the unpacked inst/vendor.tar.xz."
+      echo ""
+      echo "@<:@source.crates-io@:>@"
+      echo 'replace-with = "vendored-sources"'
+      echo ""
+      dnl Scan Cargo.toml for git URLs and emit one [source."git+<url>"] per
+      dnl unique URL. Keeps the config self-consistent if more git deps are
+      dnl added later.
+      for _url in $("$SED" -n 's/.*git = "\(https:\/\/@<:@^"@:>@*\)".*/\1/p' src/rust/Cargo.toml | sort -u); do
+        echo "@<:@source.\"git+$_url\"@:>@"
+        echo "git = \"$_url\""
+        echo 'replace-with = "vendored-sources"'
+        echo ""
+      done
+      echo "@<:@source.vendored-sources@:>@"
+      echo "directory = \"$VENDOR_OUT_CARGO\""
+      echo ""
+      echo "@<:@build@:>@"
+      echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
+    } > "$RPKG_CFG"
+    echo "configure: wrote $RPKG_CFG (tarball mode)"
+
+  elif test -n "$MONOREPO_ROOT"; then
+    {
+      echo "# Autogenerated by configure — DO NOT EDIT"
+      echo "# Source install (monorepo): patch the miniextendr git source to"
+      echo "# resolve against local workspace crates."
+      echo ""
+      echo '@<:@patch."https://github.com/A2-ai/miniextendr"@:>@'
+      echo "miniextendr-api    = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-api\" }"
+      echo "miniextendr-lint   = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-lint\" }"
+      echo "miniextendr-macros = { path = \"$MONOREPO_ROOT_CARGO/miniextendr-macros\" }"
+      echo ""
+      echo "@<:@build@:>@"
+      echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
+    } > "$RPKG_CFG"
+    echo "configure: wrote $RPKG_CFG (source mode, monorepo override)"
+
+  else
+    {
+      echo "# Autogenerated by configure — DO NOT EDIT"
+      echo "# Source install (no monorepo): cargo follows the git URL"
+      echo "# declared in Cargo.toml. First build downloads, subsequent"
+      echo "# builds use cargo's git cache."
+      echo ""
+      echo "@<:@build@:>@"
+      echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
+    } > "$RPKG_CFG"
+    echo "configure: wrote $RPKG_CFG (source mode, no monorepo siblings)"
+  fi
+],
+[IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
+ MONOREPO_ROOT="$MONOREPO_ROOT"
+ MONOREPO_ROOT_CARGO="$MONOREPO_ROOT_CARGO"
+ VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
+ CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO"
+ SED="$SED"])
+
+dnl ---- 3) Cargo.lock compatibility ----
+dnl Older cargo releases (<1.78) cannot read lockfile version 4. Regenerate
+dnl in-place if the toolchain on this machine can't read what's committed.
 AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 [
   LOCKFILE_PATH="src/rust/Cargo.lock"
@@ -356,27 +447,6 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
   if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
     if test "$CARGO_MAJOR" -lt 1 || \
        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
-      dnl In CRAN/offline mode, ensure vendor sources exist before regenerating lockfile.
-      if test "$NOT_CRAN" != "true"; then
-        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
-            if test $? -ne 0; then
-              echo "configure: error: failed to unpack vendor.tar.xz" >&2
-              exit 1
-            fi
-            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-            fi
-          else
-            echo "configure: error: CRAN/offline build requires vendored sources to regenerate Cargo.lock" >&2
-            echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
-            exit 1
-          fi
-        fi
-      fi
       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
       rm -f "$LOCKFILE_PATH"
       $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
@@ -388,124 +458,14 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"])
 
-dnl 3) Ensure vendor/ exists for offline builds
-dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
-dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
-dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
-AC_CONFIG_COMMANDS([cargo-vendor],
-[
-  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-      echo "configure: unpacking inst/vendor.tar.xz"
-      (cd "$abs_rpkg_dir" && tar $TAR_FORCE_LOCAL -xJf "$abs_rpkg_dir/inst/vendor.tar.xz")
-      if test $? -ne 0; then
-        echo "configure: error: failed to unpack vendor.tar.xz" >&2
-        exit 1
-      fi
-      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-      fi
-    fi
-  fi
-
-  if test "$NOT_CRAN" = "true"; then
-    dnl Auto-detect monorepo root (walk up from package directory)
-    _monorepo_root=""
-    _probe="$abs_rpkg_dir"
-    for _i in 1 2 3 4 5; do
-      _probe="$(dirname "$_probe")"
-      if test "$_probe" = "/" || test "$_probe" = "."; then break; fi
-      if test -f "$_probe/miniextendr-api/Cargo.toml"; then
-        _monorepo_root="$_probe"
-        break
-      fi
-    done
-
-    if test "$FORCE_VENDOR" = "1" || test -n "$_monorepo_root"; then
-      if test -n "$_monorepo_root"; then
-        echo "configure: dev mode — syncing vendor/ from monorepo at $_monorepo_root"
-      else
-        echo "configure: FORCE_VENDOR — running cargo revendor"
-      fi
-      if command -v cargo-revendor >/dev/null 2>&1; then
-        _source_root=""
-        if test -n "$_monorepo_root"; then
-          _source_root="--source-root $_monorepo_root"
-        fi
-        cargo revendor \
-          --manifest-path src/rust/Cargo.toml \
-          --output "$VENDOR_OUT" \
-          --strip-all \
-          --source-marker \
-          $_source_root -v || {
-          echo "configure: error: cargo revendor failed" >&2
-          exit 1
-        }
-      else
-        echo "configure: error: cargo-revendor not found" >&2
-        echo "configure:        Install: cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor" >&2
-        exit 1
-      fi
-    else
-      echo "configure: dev mode — using existing vendor/"
-    fi
-  else
-    dnl CRAN/offline mode: vendor/ must exist.
-    dnl
-    dnl Priority 1 (tarball): already attempted at the top of this block —
-    dnl a real CRAN tarball always ships inst/vendor.tar.xz.
-    dnl
-    dnl Priority 2 (downstream first-install): install.packages(),
-    dnl remotes::install_github(), or rv sync cloned from git without a
-    dnl committed vendor tarball. We can't reliably tell this apart from a
-    dnl real CRAN build, so instead of erroring we auto-vendor when
-    dnl cargo-revendor is installed (and the network is available).
-    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      if command -v cargo-revendor >/dev/null 2>&1; then
-        echo "configure: vendor/ not found and inst/vendor.tar.xz not present — auto-vendoring (needs network)"
-        cargo revendor \
-          --manifest-path src/rust/Cargo.toml \
-          --output "$VENDOR_OUT" \
-          --strip-all \
-          --source-marker \
-          -v || {
-          echo "configure: error: cargo revendor failed" >&2
-          echo "configure:        If offline, either commit inst/vendor.tar.xz alongside the" >&2
-          echo "configure:        package, or run 'cargo revendor' manually with network access." >&2
-          exit 1
-        }
-        dnl Strip checksums from Cargo.lock so cargo accepts the vendored
-        dnl copies (same post-step as the tarball-unpack path above).
-        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
-        echo "configure: auto-vendored — vendor ready"
-      else
-        echo "configure: error: vendored sources required but vendor/ and inst/vendor.tar.xz are both missing." >&2
-        echo "configure:        Install cargo-revendor to auto-vendor on first install:" >&2
-        echo "configure:          cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor" >&2
-        echo "configure:        Or commit inst/vendor.tar.xz alongside the package." >&2
-        exit 1
-      fi
-    else
-      echo "configure: CRAN build — vendor ready"
-    fi
-  fi
-],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD" R_HOME="$R_HOME" TAR_FORCE_LOCAL="$TAR_FORCE_LOCAL"])
-
-dnl 4) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
-AC_CONFIG_COMMANDS([post-vendor],
+dnl ---- 4) Ensure Cargo.lock exists; touch Cargo.toml to force rebuild ----
+AC_CONFIG_COMMANDS([post-config],
 [
   dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
   if test ! -f "src/rust/Cargo.lock"; then
-    if test "$NOT_CRAN" = "true"; then
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
-    else
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
-    fi
+    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
   fi
 
   dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
@@ -513,11 +473,8 @@ AC_CONFIG_COMMANDS([post-vendor],
   dnl where the staticlib already exists (e.g., during R CMD check).
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
-
-  dnl Note: Cargo.lock updates for patched sources are handled by cargo build itself.
-  dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
 ],
-[ABS_RPKG_SRC="$abs_rpkg_src" NOT_CRAN="$NOT_CRAN" CARGO_CMD="$CARGO_CMD"])
+[ABS_RPKG_SRC="$abs_rpkg_src" CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
 
 dnl NOTE: vendor.tar.xz is NOT created by configure. It is the canonical
 dnl offline artifact produced by `just vendor` (cargo revendor --compress).

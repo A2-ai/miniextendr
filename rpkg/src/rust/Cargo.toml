@@ -73,11 +73,11 @@ full = [
 ]
 
 [dependencies]
-miniextendr-api = { version = "*", path = "../../vendor/miniextendr-api" }
+miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }
 log = { version = "0.4", optional = true }
 
 [build-dependencies]
-miniextendr-lint = { version = "*", path = "../../vendor/miniextendr-lint" }
+miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }
 
 # codegen-units = 1 ensures the entire user crate compiles into a single .o file
 # inside the staticlib archive. This is required for linkme's distributed_slice:
@@ -90,9 +90,11 @@ codegen-units = 1
 [profile.release]
 codegen-units = 1
 
-[patch]
-
-[patch.crates-io]
-miniextendr-api = { path = "../../vendor/miniextendr-api" }
-miniextendr-lint = { path = "../../vendor/miniextendr-lint" }
-miniextendr-macros = { path = "../../vendor/miniextendr-macros" }
+# No [patch] block. configure writes .cargo/config.toml per mode:
+#   - tarball install (inst/vendor.tar.xz present): [source.crates-io] +
+#     [source."git+..."] redirect to vendored-sources, build is offline.
+#   - source install + monorepo siblings: [patch."https://github.com/A2-ai/miniextendr"]
+#     points the three workspace crates at sibling paths.
+#   - source install + no siblings (downstream install_github / git clone of just rpkg):
+#     no patch, cargo follows the git URL.
+# See docs/CRAN_COMPATIBILITY.md.

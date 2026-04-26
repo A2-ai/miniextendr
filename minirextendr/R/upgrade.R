@@ -51,7 +51,6 @@ upgrade_miniextendr_package <- function(path = ".",
   cli::cli_h2("Updating build system templates")
   use_miniextendr_stub()
   use_miniextendr_makevars()
-  use_miniextendr_cargo_config()
   use_miniextendr_mx_abi()
   use_miniextendr_build_rs()
   use_miniextendr_bootstrap()
@@ -123,7 +122,6 @@ check_scaffolding_clean <- function() {
     "src/stub.c",
     "src/cdylib-exports.def",
     "src/rust/build.rs",
-    "src/rust/cargo-config.toml.in",
     "src/Makevars.in",
     "src/win.def.in",
     "inst/include/mx_abi.h",

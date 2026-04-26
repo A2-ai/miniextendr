@@ -54,11 +54,11 @@ These stay committed because:
 Typical workflows from the repo root:
 
 ```sh
-just configure        # dev configure + sync vendored workspace crates
+just configure        # generate Makevars + .cargo/config.toml (auto-detects mode)
 just devtools-load    # compile Rust, regenerate wrappers, load the package
 just devtools-test    # run the testthat suite
-just vendor           # create inst/vendor.tar.xz for CRAN/offline builds
-just configure-cran   # configure against vendored sources only
+just vendor           # CRAN release prep: create inst/vendor.tar.xz
+just r-cmd-build      # build tarball (depends on `just vendor`)
 just r-cmd-check      # build tarball and run R CMD check
 ```
 
@@ -83,13 +83,19 @@ just devtools-document
 That rebuilds the package, rewrites `R/miniextendr-wrappers.R`, and refreshes
 `NAMESPACE` / roxygen output.
 
-## Development vs CRAN/offline builds
+## Source vs tarball install
 
-- **Development**: run `NOT_CRAN=true bash ./configure`. In the monorepo this
-  is usually driven by `just configure`, which also points configure at the
-  local workspace sources.
-- **CRAN/offline**: run `just vendor` first to create `inst/vendor.tar.xz`,
-  then run `NOT_CRAN=false bash ./configure` (or `just configure-cran`).
+- **Source install** (default for `R CMD INSTALL .`, `devtools::install`,
+  `install_github`): run `bash ./configure` (or `just configure`). Cargo
+  resolves miniextendr deps from monorepo siblings when configure detects
+  them, otherwise from the git URL declared in `Cargo.toml`. No vendoring.
+- **Tarball install** (CRAN, `R CMD INSTALL <built-tarball>`): triggered
+  automatically when `inst/vendor.tar.xz` is present. configure unpacks it
+  and writes a vendored cargo source-replacement, builds offline. The single
+  signal is the file's existence — no env var to set. Maintainers run
+  `just vendor` to produce it, `R CMD build` packages it.
+
+See [docs/CRAN_COMPATIBILITY.md](../docs/CRAN_COMPATIBILITY.md) for the full table.
 
 ## Publishing to CRAN
 

@@ -387,6 +387,12 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
+      - name: Cache vendor tarball
+        uses: actions/cache@v5
+        with:
+          path: rpkg/inst/vendor.tar.xz
+          key: vendor-${{ runner.os }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'rpkg/src/rust/Cargo.lock', 'rpkg/src/rust/Cargo.toml') }}
+
       - name: Install cargo-revendor
         run: cargo install --path cargo-revendor
 
@@ -411,8 +417,6 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"error"'
           check-dir: '"check"'
-        env:
-          NOT_CRAN: false
 
       - name: Print failed tests
         if: always()
@@ -527,8 +531,7 @@ jobs:
   #         args: 'c("--no-manual", "--as-cran")'
   #         error-on: '"error"'
   #         check-dir: '"check"'
-  #       env:
-  #         NOT_CRAN: false
+  #         # No NOT_CRAN — configure.ac detects tarball install from inst/vendor.tar.xz
   #
   #     - name: Print failed tests
   #       if: always()
@@ -684,8 +687,8 @@ jobs:
   #         args: 'c("--no-manual", "--as-cran")'
   #         error-on: '"error"'
   #         check-dir: '"check"'
+  #         # No NOT_CRAN — configure.ac detects tarball install from inst/vendor.tar.xz
   #       env:
-  #         NOT_CRAN: false
   #         # On Windows, DataFusion's Tokio runtime threads keep the test
   #         # Rterm process alive after tests complete, preventing R CMD check
   #         # from detecting test completion via stdout pipe close. This timeout
@@ -739,9 +742,6 @@ jobs:
         with:
           lfs: true
 
-      - name: Install just
-        uses: taiki-e/install-action@just
-
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -755,11 +755,6 @@ jobs:
           extra-packages: any::testthat
           needs: check
 
-      - name: Install autoconf
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -772,18 +767,11 @@ jobs:
           shared-key: r-tests
           cache-on-failure: true
 
-      - name: Install cargo-revendor
-        run: cargo install --path cargo-revendor
-
-      - name: Configure and vendor
-        run: |
-          just configure
-          just vendor
-
-      - name: Install package
-        working-directory: rpkg
-        shell: bash
-        run: R CMD INSTALL .
+      - name: Install package (source mode)
+        # Source-mode smoke test: no vendor tarball, no cargo-revendor needed.
+        # configure.ac detects source install from the absence of inst/vendor.tar.xz
+        # and lets cargo resolve deps normally (network or monorepo path overrides).
+        run: R CMD INSTALL rpkg
 
       - name: Run tests
         working-directory: rpkg
@@ -882,14 +870,6 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
-      - name: Install cargo-revendor
-        run: cargo install --path cargo-revendor
-
-      - name: Configure and vendor
-        run: |
-          just configure
-          just vendor
-
       - name: Build and test cross-package packages
         working-directory: tests/cross-package
         run: |
@@ -972,7 +952,8 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      # NOT_CRAN is NOT set - simulates CRAN environment
+      # Tarball install mode is detected by configure.ac from the presence of
+      # inst/vendor.tar.xz (produced by `just vendor` below). No NOT_CRAN needed.
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
 
@@ -1018,6 +999,12 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
+      - name: Cache vendor tarball
+        uses: actions/cache@v5
+        with:
+          path: rpkg/inst/vendor.tar.xz
+          key: vendor-${{ runner.os }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'rpkg/src/rust/Cargo.lock', 'rpkg/src/rust/Cargo.toml') }}
+
       - name: Install cargo-revendor
         run: cargo install --path cargo-revendor
 
@@ -1035,11 +1022,10 @@ jobs:
 
       - name: R CMD check (CRAN-like, from tarball)
         run: |
-          # Check the tarball without NOT_CRAN (simulates CRAN)
+          # Check the tarball without NOT_CRAN — configure.ac detects tarball
+          # install mode from the presence of inst/vendor.tar.xz (shipped inside
+          # the built tarball by `just vendor` above).
           R CMD check --as-cran --no-manual ${{ env.TARBALL }}
-        env:
-          # Override setup-r's NOT_CRAN=true so configure detects vendored-install
-          NOT_CRAN: false
 
       - name: Copy check results
         if: always()
