@@ -3,8 +3,10 @@
 # before R CMD build creates the source tarball.
 #
 # Install-mode detection is automatic: if inst/vendor.tar.xz exists
-# (put there by `just vendor` before `R CMD build`), configure builds
-# in tarball/offline mode. Otherwise, source/network mode is used.
+# (created by `just vendor` from the workspace root, or
+# `minirextendr::miniextendr_vendor()` from this package, before
+# `R CMD build`), configure builds in tarball/offline mode. Otherwise,
+# source/network mode is used.
 
 if (.Platform$OS.type == "windows") {
   if (file.exists("configure.ucrt")) {
