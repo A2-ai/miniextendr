@@ -22,7 +22,7 @@ with Rust backends powered by the miniextendr framework. It provides:
 
 - Package scaffolding (`create_miniextendr_package()`, `create_miniextendr_monorepo()`)
 - Build workflow helpers (`miniextendr_build()`, `miniextendr_configure()`, etc.)
-- Dependency vendoring (`vendor_miniextendr()`, `upgrade_miniextendr_package()`)
+- Dependency vendoring (`miniextendr_vendor()`, `upgrade_miniextendr_package()`)
 - Project diagnostics (`miniextendr_status()`, `miniextendr_doctor()`)
 
 ## Prerequisites
@@ -184,21 +184,26 @@ greet("World")
 
 ## Managing Dependencies
 
-### Vendoring miniextendr Crates
+### Vendoring for CRAN submission
 
-miniextendr crates are vendored into your package's `vendor/` directory
-for reproducible, offline builds:
+Day-to-day development does **not** need vendoring — `R CMD INSTALL .`
+resolves the miniextendr git URL on first build and reuses the cargo
+registry cache afterwards.
+
+For a CRAN submission, run `miniextendr_vendor()` once before
+`R CMD build`. It bundles every transitive dependency into
+`inst/vendor.tar.xz` so the check machine can install offline:
 
 ```{r}
-# Vendor from latest GitHub release
-vendor_miniextendr()
-
-# Vendor a specific version
-vendor_miniextendr(version = "v0.1.0")
-
-# Vendor from a local checkout (for development)
-vendor_miniextendr(local_path = "~/projects/miniextendr")
+miniextendr_vendor()
+# → Created inst/vendor.tar.xz (~1–2 MB)
 ```
+
+The presence of `inst/vendor.tar.xz` is the single signal that flips
+`./configure` into offline tarball mode. After you've built the
+release tarball, **delete `inst/vendor.tar.xz`** before resuming
+development — otherwise subsequent `R CMD INSTALL` runs stay locked
+to the vendored snapshot and ignore upstream miniextendr updates.
 
 ### Upgrading
 
@@ -208,21 +213,6 @@ upgrade_miniextendr_package()
 
 # Upgrade to specific version
 upgrade_miniextendr_package(version = "v0.2.0")
-```
-
-### Cache Management
-
-Downloaded archives are cached locally to avoid repeated downloads:
-
-```{r}
-# Show cache location and contents
-miniextendr_cache_info()
-
-# Clear all cached downloads
-miniextendr_clear_cache()
-
-# Clear specific version
-miniextendr_clear_cache(version = "main")
 ```
 
 ## Project Diagnostics

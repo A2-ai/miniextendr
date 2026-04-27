@@ -60,7 +60,7 @@ create_miniextendr_package <- function(path, open = interactive(),
 #' @param local_path Optional path to local miniextendr repository. If provided,
 #'   vendors from local path instead of downloading from GitHub.
 #' @param miniextendr_version Version tag to download (default: "main" for latest).
-#'   Passed to [vendor_miniextendr()]. Ignored when `local_path` is provided.
+#'   Passed to [miniextendr_vendor()]. Ignored when `local_path` is provided.
 #' @param open Whether to open the new project in RStudio/IDE
 #' @return Path to the created monorepo (invisibly)
 #' @export
