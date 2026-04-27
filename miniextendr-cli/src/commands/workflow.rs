@@ -190,21 +190,36 @@ fn workflow_doctor(ctx: &ProjectContext, quiet: bool) -> Result<()> {
         }
     }
 
-    // Vendored crates
+    // Workspace crates (informational).
+    // Tarball-mode install unpacks them under vendor/<crate>/ (flat) or
+    // vendor/<crate>-<version>/ (versioned, cargo-revendor default). In
+    // source-mode dev, vendor/ is empty — that's normal, not a failure.
     if !quiet {
-        println!("\n-- Vendored crates --");
+        println!("\n-- Workspace crates --");
     }
+    let vendor_root = root.join("vendor");
     for krate in MINIEXTENDR_CRATES {
-        if root.join("vendor").join(krate).is_dir() {
+        let flat = vendor_root.join(krate).is_dir();
+        let versioned = vendor_root
+            .read_dir()
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .any(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(&format!("{krate}-"))
+                    && entry.path().is_dir()
+            });
+        if flat || versioned {
             pass += 1;
             if !quiet {
-                println!("  [ok] {krate}");
+                println!("  [ok] {krate} unpacked");
             }
-        } else {
-            fail += 1;
-            if !quiet {
-                println!("  [FAIL] {krate} not vendored");
-            }
+        } else if !quiet {
+            println!("  [..] {krate} not unpacked (normal in source mode)");
         }
     }
 

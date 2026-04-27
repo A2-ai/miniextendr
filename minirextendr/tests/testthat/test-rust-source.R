@@ -158,9 +158,12 @@ pub fn add_one(x: i32) -> i32 { x + 1 }
   # Check lib.rs has miniextendr_init! macro
   expect_true(grepl("miniextendr_init!", lib_rs))
 
-  # Check vendor symlink
-  expect_true(fs::link_exists(fs::path(pkg_dir, "vendor")) ||
-              fs::dir_exists(fs::path(pkg_dir, "vendor")))
+  # Check Cargo.toml uses git URL deps (no vendor symlink needed —
+  # cargo's first-build fetch resolves the git URL into ~/.cargo)
+  cargo <- paste(readLines(fs::path(pkg_dir, "src", "rust", "Cargo.toml")),
+                 collapse = "\n")
+  expect_true(grepl('miniextendr-api = \\{ git = ', cargo))
+  expect_true(grepl('miniextendr-lint = \\{ git = ', cargo))
 })
 
 test_that("scaffold_inline_package handles features in Cargo.toml", {

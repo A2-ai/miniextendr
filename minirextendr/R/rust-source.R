@@ -14,9 +14,6 @@
 #'   when the code and features are unchanged.
 #' @param quiet Logical. If `TRUE`, suppresses build output.
 #' @param features Character vector of cargo features to enable.
-#' @param use_local_crates Path to a local miniextendr repository for vendoring.
-#'   If `NULL` (default), auto-detects via installed package location or
-#'   parent directory scan.
 #' @return Invisibly returns a list with components:
 #'   - `functions`: character vector of exported function names
 #'   - `dll`: path to the compiled shared library
@@ -135,8 +132,6 @@ rust_source_clean <- function(hash = NULL) {
 
   if (is.null(hash)) {
     entries <- fs::dir_ls(cache_root, type = "directory")
-    # Don't delete the vendor/ symlink/dir
-    entries <- entries[basename(entries) != "vendor"]
     if (length(entries) == 0) {
       cli::cli_alert_info("Cache is empty")
     } else {
@@ -262,7 +257,6 @@ extract_impl_names <- function(code) {
 scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
                                      cache_root, quiet = FALSE) {
   pkg_dir <- fs::path(cache_root, hash, "pkg")
-  vendor_dir <- fs::path(cache_root, "vendor")
 
   # Clean up any partial previous build
 
@@ -346,10 +340,10 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
     'connections = ["miniextendr-api/connections"]\n',
     '\n',
     '[dependencies]\n',
-    'miniextendr-api = { path = "../../vendor/miniextendr-api" }\n',
+    'miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }\n',
     '\n',
     '[build-dependencies]\n',
-    'miniextendr-lint = { path = "../../vendor/miniextendr-lint" }\n'
+    'miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }\n'
   )
   writeLines(cargo_toml, fs::path(pkg_dir, "src", "rust", "Cargo.toml"))
 
@@ -392,12 +386,6 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   fs::file_copy(config_sub, fs::path(pkg_dir, "tools", "config.sub"))
   fs::file_chmod(fs::path(pkg_dir, "tools", "config.guess"), "755")
   fs::file_chmod(fs::path(pkg_dir, "tools", "config.sub"), "755")
-
-  # Symlink vendor/ into the package
-  pkg_vendor <- fs::path(pkg_dir, "vendor")
-  if (!fs::link_exists(pkg_vendor) && !fs::dir_exists(pkg_vendor)) {
-    fs::link_create(vendor_dir, pkg_vendor)
-  }
 
   invisible(pkg_dir)
 }

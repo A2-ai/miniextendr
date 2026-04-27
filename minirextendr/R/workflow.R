@@ -262,26 +262,6 @@ miniextendr_check <- function(path = ".",
   cli::cli_h2("Step 1: build (autoconf + configure + install + roxygen2)")
   miniextendr_build(install = TRUE)
 
-  # Check for path dependencies that will fail R CMD check without vendor-lib
-  path_deps <- check_path_deps()
-  if (nrow(path_deps) > 0) {
-    missing <- vapply(path_deps$crate, function(crate) {
-      !file.exists(usethis::proj_path("inst", paste0(crate, "-lib.tar.gz")))
-    }, logical(1))
-    if (any(missing)) {
-      missing_crates <- path_deps$crate[missing]
-      cli::cli_alert_danger(
-        "Path dependencies without vendor-lib tarballs will cause R CMD check to fail:"
-      )
-      for (crate in missing_crates) {
-        dev_path <- path_deps$path[path_deps$crate == crate]
-        cli::cli_bullets(c(
-          "x" = '{.val {crate}}: run {.code minirextendr::use_vendor_lib("{crate}", dev_path = "{dev_path}")}'
-        ))
-      }
-    }
-  }
-
   cli::cli_h2("Step 2: R CMD check")
   cli::cli_alert("Running rcmdcheck with args: {.val {args}}")
 
