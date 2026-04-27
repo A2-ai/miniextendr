@@ -236,7 +236,7 @@ being set to its default value.
 
 - [LINKING.md](../linking/): how miniextendr links to libR (engine vs package)
 - [ENTRYPOINT.md](../entrypoint/): the C entry point design
-- [VENDOR.md](../vendor/): dependency vendoring for CRAN
+- [CRAN_COMPATIBILITY.md](../cran-compatibility/): dependency vendoring for CRAN
 - [TEMPLATES.md](../templates/): how configure.ac templates work
 - R sources: `share/make/shlib.mk`, `share/make/winshlib.mk`
 - R sources: `src/library/tools/R/install.R` (the `R CMD INSTALL` implementation)

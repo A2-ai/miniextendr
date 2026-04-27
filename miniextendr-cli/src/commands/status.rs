@@ -90,7 +90,6 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
                 "src/rust/Cargo.toml",
                 "src/rust/lib.rs",
                 "src/rust/build.rs",
-                "src/rust/cargo-config.toml.in",
             ],
         ),
         ("Source Templates", &["src/Makevars.in", "src/stub.c"]),
@@ -172,13 +171,7 @@ fn status_show(ctx: &ProjectContext, json: bool) -> Result<()> {
     }
 
     // Staleness check
-    let template_pairs = [
-        ("src/Makevars.in", "src/Makevars"),
-        (
-            "src/rust/cargo-config.toml.in",
-            "src/rust/.cargo/config.toml",
-        ),
-    ];
+    let template_pairs = [("src/Makevars.in", "src/Makevars")];
 
     let mut stale = Vec::new();
     if !json {
