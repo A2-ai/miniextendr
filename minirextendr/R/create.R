@@ -160,8 +160,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   cli::cli_bullets(c(
     " " = "1. Edit {.path {crate_name}/src/lib.rs} for your main Rust library",
     " " = "2. Edit {.path {rpkg_name}/src/rust/lib.rs} for R-exposed functions",
-    " " = "3. Run {.code just configure} to set up build system",
-    " " = "4. Run {.code just rcmdinstall} to build and install"
+    " " = "3. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} (or {.code just rcmdinstall} from the workspace root) to compile, generate R wrappers + NAMESPACE, and install"
   ))
 
   if (open) {
@@ -371,8 +370,7 @@ use_miniextendr <- function(path = ".",
     cli::cli_alert_info("Next steps:")
     cli::cli_bullets(c(
       " " = "1. Edit {.path {rpkg_name}/src/rust/lib.rs} to add R-exposed functions",
-      " " = "2. Run {.code just configure} to set up build system",
-      " " = "3. Run {.code just rcmdinstall} to build and install"
+      " " = "2. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} (or {.code just rcmdinstall} if you've added a justfile) to compile, generate R wrappers + NAMESPACE, and install"
     ))
 
     return(invisible(TRUE))
@@ -438,14 +436,17 @@ use_miniextendr <- function(path = ".",
   if (has_configure) {
     cli::cli_bullets(c(
       " " = "1. Edit {.path src/rust/lib.rs} to add your Rust functions",
-      " " = "2. Run {.code minirextendr::miniextendr_build()} to compile and install"
+      " " = "2. Run {.code minirextendr::miniextendr_build()} to compile, generate R wrappers + NAMESPACE, and install"
     ))
   } else {
     cli::cli_bullets(c(
       " " = "1. Edit {.path src/rust/lib.rs} to add your Rust functions",
-      " " = "2. Install {.pkg autoconf}, then run {.code minirextendr::miniextendr_build()} to compile and install"
+      " " = "2. Install {.pkg autoconf}, then run {.code minirextendr::miniextendr_build()} to compile, generate R wrappers + NAMESPACE, and install"
     ))
   }
+  cli::cli_alert_info(
+    "Note: plain {.code R CMD INSTALL .} skips wrapper generation; use {.code miniextendr_build()} or {.code devtools::document()} so {.code library(...)} sees your functions."
+  )
 
   invisible(TRUE)
 }
