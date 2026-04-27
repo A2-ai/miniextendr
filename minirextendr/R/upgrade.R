@@ -72,11 +72,6 @@ upgrade_miniextendr_package <- function(path = ".",
     check_configure_ac_drift()
   }
 
-  # --- Vendor crates ---
-  cli::cli_h2("Updating vendored crates")
-  cli::cli_alert_info("Updating miniextendr to version: {version}")
-  vendor_miniextendr(version = version, local_path = local_path)
-
   # --- Autoconf ---
   if (autoconf && nzchar(Sys.which("autoconf"))) {
     cli::cli_h2("Regenerating configure script")

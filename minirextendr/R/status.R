@@ -55,12 +55,6 @@ miniextendr_status <- function(path = ".") {
       "src/stub.c",
       "src/cdylib-exports.def"
     ),
-    "Vendored Crates" = c(
-      "vendor/miniextendr-api",
-      "vendor/miniextendr-macros",
-      "vendor/miniextendr-lint",
-      "vendor/miniextendr-engine"
-    ),
     "Generated Files" = c(
       "src/Makevars",
       wrapper_file
@@ -78,22 +72,6 @@ miniextendr_status <- function(path = ".") {
     for (file in expected[[category]]) {
       file_path <- usethis::proj_path(file)
       exists <- fs::file_exists(file_path) || fs::dir_exists(file_path)
-
-      # For vendored crates, also accept versioned-dirs layout
-      # (vendor/<name>-<version>/ instead of vendor/<name>/)
-      if (!exists && category == "Vendored Crates") {
-        crate_name <- basename(file)
-        vendor_dir <- usethis::proj_path("vendor")
-        versioned_dirs <- list.files(
-          vendor_dir,
-          pattern = paste0("^", crate_name, "-[0-9]"),
-          full.names = FALSE
-        )
-        if (length(versioned_dirs) > 0) {
-          exists <- TRUE
-          file <- paste0(dirname(file), "/", versioned_dirs[[1]])
-        }
-      }
 
       if (exists) {
         cli::cli_alert_success("{.path {file}}")
@@ -227,31 +205,6 @@ miniextendr_validate <- function(path = ".") {
       cli::cli_alert_danger("Rust not found")
     }
   )
-
-  # Check vendored crates
-  cli::cli_h2("Vendored crates")
-  required_crates <- c("miniextendr-api", "miniextendr-macros",
-                        "miniextendr-lint", "miniextendr-engine")
-  missing_crates <- character()
-  vendor_dir <- usethis::proj_path("vendor")
-  for (crate in required_crates) {
-    # Accept both flat (vendor/<name>/) and versioned (vendor/<name>-<version>/) layouts
-    crate_path <- file.path(vendor_dir, crate)
-    if (!fs::dir_exists(crate_path)) {
-      versioned <- list.files(vendor_dir, pattern = paste0("^", crate, "-[0-9]"),
-                              full.names = FALSE)
-      if (length(versioned) == 0) {
-        missing_crates <- c(missing_crates, crate)
-      }
-    }
-  }
-  if (length(missing_crates) > 0) {
-    warnings <- c(warnings, paste("Missing vendored crates:", paste(missing_crates, collapse = ", ")))
-    cli::cli_alert_warning("Missing vendored crates: {paste(missing_crates, collapse = ', ')}")
-    cli::cli_alert_info("Run {.code vendor_miniextendr()} to vendor missing crates")
-  } else {
-    cli::cli_alert_success("All required crates vendored")
-  }
 
   # Summary
   cli::cli_h2("Result")

@@ -4,8 +4,8 @@ exported_funs <- c(
   "cargo_add", "cargo_build", "cargo_check", "cargo_clippy", "cargo_deps",
   "cargo_doc", "cargo_fmt", "cargo_init", "cargo_new", "cargo_rm", "cargo_search",
   "cargo_test", "cargo_update", "create_miniextendr_package", "miniextendr_autoconf",
-  "miniextendr_available_versions", "miniextendr_build", "miniextendr_cache_info",
-  "miniextendr_check", "miniextendr_check_rust", "miniextendr_clear_cache",
+  "miniextendr_build",
+  "miniextendr_check", "miniextendr_check_rust",
   "miniextendr_configure", "miniextendr_dev_link",
   "miniextendr_doctor", "miniextendr_validate",
   "miniextendr_vendor",
@@ -22,7 +22,7 @@ exported_funs <- c(
   "remove_feature_rule", "list_feature_rules", "list_cargo_features",
   "use_vendor_lib",
   "rust_source", "rust_function", "rust_source_clean",
-  "vendor_crates_io", "vendor_miniextendr"
+  "vendor_crates_io"
 )
 
 test_that("exported helper functions exist", {

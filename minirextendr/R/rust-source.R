@@ -37,8 +37,7 @@
 #' #> [1] 42
 #' }
 rust_source <- function(file = NULL, code = NULL, env = parent.frame(),
-                        cache = TRUE, quiet = FALSE, features = character(),
-                        use_local_crates = NULL) {
+                        cache = TRUE, quiet = FALSE, features = character()) {
   code <- validate_rust_input(file, code)
 
   check_rust()
@@ -57,10 +56,11 @@ rust_source <- function(file = NULL, code = NULL, env = parent.frame(),
     cached <- TRUE
     if (!quiet) cli::cli_alert_success("Using cached build for {.val {pkg_name}}")
   } else {
-    # Scaffold + build
+    # Scaffold + build. The scaffolded package's Cargo.toml has git-URL deps
+    # for miniextendr-{api,lint,macros}; cargo's first-build fetch (cached
+    # in the user's cargo registry) brings those in. No manual vendor seed.
     if (!quiet) cli::cli_alert("Compiling inline Rust code...")
 
-    ensure_vendor_cache(use_local_crates, quiet = quiet)
     scaffold_inline_package(code, hash, features, pkg_name, pkg_rs,
                             cache_root, quiet = quiet)
     build_inline_package(pkg_dir, lib_dir, quiet = quiet)
@@ -214,79 +214,6 @@ compute_inline_hash <- function(code, features = character()) {
 inline_cache_dir <- function() {
   fs::path(tools::R_user_dir("minirextendr", "cache"), "rust_source")
 }
-
-#' Ensure shared vendor cache exists
-#'
-#' Creates a shared vendor directory at `{cache_root}/vendor/` by vendoring
-#' miniextendr crates. This is symlinked into each inline package.
-#'
-#' @param use_local_crates Path to local miniextendr repo, or NULL for auto-detect
-#' @param quiet Suppress messages
-#' @noRd
-ensure_vendor_cache <- function(use_local_crates = NULL, quiet = FALSE) {
-  cache_root <- inline_cache_dir()
-  vendor_dir <- fs::path(cache_root, "vendor")
-
-  # Check if vendor already exists and has crates
-  if (fs::dir_exists(vendor_dir)) {
-    api_dir <- fs::path(vendor_dir, "miniextendr-api")
-    if (fs::dir_exists(api_dir)) {
-      return(invisible(vendor_dir))
-    }
-  }
-
-  if (!quiet) cli::cli_alert("Setting up shared vendor cache...")
-  fs::dir_create(cache_root, recurse = TRUE)
-
-  # Auto-detect local crates if not specified
-  if (is.null(use_local_crates)) {
-    use_local_crates <- detect_inline_local_crates()
-  }
-
-  if (!is.null(use_local_crates)) {
-    vendor_miniextendr_local(use_local_crates, vendor_dir)
-  } else {
-    # Download from GitHub
-    vendor_miniextendr(
-      path = cache_root, version = "main",
-      dest = vendor_dir
-    )
-  }
-
-  # External crates.io deps (syn, proc-macro2, etc.) are resolved by cargo
-  # from the network or local cargo cache at build time. No need to vendor
-  # them here — we only need the miniextendr crates as path deps.
-
-  invisible(vendor_dir)
-}
-
-#' Detect local miniextendr crates for inline builds
-#'
-#' Checks installed package location and parent directory scan.
-#'
-#' @return Path to local miniextendr repo, or NULL
-#' @noRd
-detect_inline_local_crates <- function() {
-  # Check if minirextendr is installed from the monorepo
-  pkg_path <- tryCatch(
-    system.file(package = "minirextendr"),
-    error = function(e) ""
-  )
-  if (nzchar(pkg_path)) {
-    # Walk up from installed location to find repo
-    for (i in seq_len(5)) {
-      parent <- dirname(pkg_path)
-      if (parent == pkg_path) break
-      pkg_path <- parent
-      if (file.exists(file.path(pkg_path, "miniextendr-api", "Cargo.toml"))) {
-        return(normalizePath(pkg_path, mustWork = TRUE))
-      }
-    }
-  }
-
-  NULL
-}
-
 
 #' Extract pub fn names from Rust code
 #'

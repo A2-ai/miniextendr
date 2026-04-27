@@ -138,16 +138,16 @@ miniextendr_build <- function(path = ".", install = TRUE) {
 
 #' Prepare vendor tarball for CRAN submission
 #'
-#' High-level workflow that vendors all external crate dependencies and
-#' compresses them into `inst/vendor.tar.xz` for offline CRAN builds.
-#' Calls [vendor_crates_io()] internally, then strips Cargo.lock
-#' checksums and compresses.
-#'
-#' For vendoring the miniextendr workspace crates themselves, see
-#' [vendor_miniextendr()]. For syncing vendor/ from a local checkout,
-#' see [vendor_sync()].
+#' High-level workflow that vendors all crate dependencies and compresses
+#' them into `inst/vendor.tar.xz` for offline CRAN install. Wraps
+#' [vendor_crates_io()] (which delegates to `cargo-revendor`) plus
+#' Cargo.lock checksum stripping and tarball compression.
 #'
 #' Run this before `R CMD build` when preparing a CRAN submission.
+#' Day-to-day development (`R CMD INSTALL .`, `devtools::install/test/load`)
+#' does not need it: install mode is auto-detected from
+#' `inst/vendor.tar.xz` presence, and without the file cargo resolves deps
+#' over the network.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns the path to the created tarball.
@@ -156,24 +156,7 @@ miniextendr_vendor <- function(path = ".") {
   with_project(path)
   cli::cli_h1("miniextendr vendor workflow")
 
-  # Inform the user about path dependencies. cargo revendor extracts these
-  # into vendor/ (unlike plain cargo vendor), but CRAN still requires that
-  # the source tree referenced by `path = ...` is reachable at build time
-  # — `use_vendor_lib()` handles the packaging side.
-  path_deps <- check_path_deps()
-  if (nrow(path_deps) > 0) {
-    cli::cli_alert_info(
-      "Found path dependencies in Cargo.toml (extracted by {.code cargo revendor}):"
-    )
-    for (i in seq_len(nrow(path_deps))) {
-      cli::cli_bullets(c("i" = "{.val {path_deps$crate[i]}} -> {.path {path_deps$path[i]}}"))
-    }
-    cli::cli_alert_info(
-      "If these paths are outside the R package tree, use {.code minirextendr::use_vendor_lib()}"
-    )
-  }
-
-  # Step 1: cargo revendor + strip (delegates to vendor_crates_io)
+  # Step 1: cargo revendor + CRAN-trim (delegates to vendor_crates_io)
   cli::cli_h2("Step 1: vendor all dependencies")
   vendor_crates_io()
 

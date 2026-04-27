@@ -1,546 +1,23 @@
-# Vendor management functions
+# Vendor management.
+#
+# After PR #320 the vendoring story is simple: `cargo revendor` is the only
+# tool that produces `vendor/` and `inst/vendor.tar.xz`, the artifacts the
+# tarball-mode install path consumes. Everything previously here for
+# pre-seeding `vendor/miniextendr-{api,macros,lint,engine}` from a github
+# download or a local checkout is gone — Cargo.toml uses git-URL deps for
+# those crates, so they get vendored alongside every other transitive dep.
 
-# GitHub repo for miniextendr
-MINIEXTENDR_REPO <- "A2-ai/miniextendr"
-
-#' List available miniextendr versions
+#' Run cargo revendor and CRAN-trim the result
 #'
-#' Queries GitHub to find available releases/tags of miniextendr.
-#' Uses `git ls-remote --tags` which respects credential helpers and
-#' environment tokens (`GITHUB_TOKEN`).
+#' Internal helper called by [miniextendr_vendor()]. Handles the cargo
+#' side of vendoring (deferring to `cargo-revendor`) and CRAN-trim of
+#' build artifacts / hidden files.
 #'
-#' @return Character vector of available version tags
-#' @export
-miniextendr_available_versions <- function() {
-  repo_url <- paste0("https://github.com/", MINIEXTENDR_REPO, ".git")
-  output <- tryCatch(
-    {
-      system2("git", c("ls-remote", "--tags", "--refs", repo_url),
-              stdout = TRUE, stderr = FALSE)
-    },
-    error = function(e) {
-      cli::cli_warn(c(
-        "Failed to fetch versions from GitHub",
-        "i" = conditionMessage(e)
-      ))
-      return(NULL)
-    }
-  )
-
-  if (is.null(output) || length(output) == 0) {
-    cli::cli_alert_info("No releases found, using 'main' branch")
-    return("main")
-  }
-
-  # Each line: "<hash>\trefs/tags/<tagname>"
-  tags <- sub(".*refs/tags/", "", output)
-  cli::cli_alert_info("Available versions: {paste(tags, collapse = ', ')}")
-  tags
-}
-
-#' Download miniextendr archive from GitHub
-#'
-#' @param version Version tag to download
-#' @param dest_path Path to save the archive
-#' @return Path to downloaded archive
-#' @noRd
-download_miniextendr_archive <- function(version, dest_path) {
-  # Try heads first (for branch names like "main")
-  archive_url <- paste0(
-    "https://github.com/", MINIEXTENDR_REPO,
-    "/archive/refs/heads/", version, ".tar.gz"
-  )
-
-  download_result <- tryCatch(
-    {
-      utils::download.file(archive_url, dest_path, quiet = TRUE, mode = "wb")
-      TRUE
-    },
-    error = function(e) {
-      # Try as a tag instead
-      tag_url <- paste0(
-        "https://github.com/", MINIEXTENDR_REPO,
-        "/archive/refs/tags/", version, ".tar.gz"
-      )
-      tryCatch(
-        {
-          utils::download.file(tag_url, dest_path, quiet = TRUE, mode = "wb")
-          TRUE
-        },
-        error = function(e2) {
-          FALSE
-        }
-      )
-    }
-  )
-
-  if (!download_result) {
-    cli::cli_abort(c(
-      "Failed to download miniextendr",
-      "i" = "Check that version '{version}' exists at github.com/{MINIEXTENDR_REPO}"
-    ))
-  }
-
-  cli::cli_alert_success("Downloaded and cached miniextendr {version}")
-  dest_path
-}
-
-#' Download and vendor miniextendr crates
-#'
-#' Downloads miniextendr-api, miniextendr-macros,
-#' miniextendr-lint, and miniextendr-engine from GitHub and vendors them
-#' into vendor/. Also
-#' patches Cargo.toml files to remove workspace inheritance.
-#'
-#' Downloaded archives are cached in `tools::R_user_dir("minirextendr", "cache")`
-#' to avoid repeated downloads of the same version.
-#'
-#' For local development (when GitHub repo is not available), set
-#' `local_path` to the path of the miniextendr repository.
+#' Most users want [miniextendr_vendor()] which wraps this with lockfile
+#' shape correction and tarball compression.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
-#' @param version Version tag to download (default: "main" for latest).
-#'   Ignored if `local_path` is provided.
-#' @param dest Destination directory for vendored crates. Defaults to
-#'   `vendor/` inside the project root.
-#' @param refresh Force re-download even if cached (default: FALSE)
-#' @param local_path Path to local miniextendr repository. If provided,
-#'   copies crates from local path instead of downloading from GitHub.
-#' @return Invisibly returns TRUE on success
-#' @export
-vendor_miniextendr <- function(path = ".",
-                               version = "main",
-                               dest = NULL,
-                               refresh = FALSE,
-                               local_path = NULL) {
-  with_project(path)
-  dest <- dest %||% usethis::proj_path("vendor")
-  # If local_path is provided, use local vendoring
-
-  if (!is.null(local_path)) {
-    vendor_miniextendr_local(local_path, dest)
-    return(invisible(TRUE))
-  }
-
-  # Check cache first
-  cache_dir <- tools::R_user_dir("minirextendr", "cache")
-  fs::dir_create(cache_dir, recurse = TRUE)
-  cache_file <- fs::path(cache_dir, paste0("miniextendr-", version, ".tar.gz"))
-
-  if (fs::file_exists(cache_file) && !refresh) {
-    cli::cli_alert_success("Using cached miniextendr {version}")
-    archive_path <- cache_file
-  } else {
-    cli::cli_alert("Downloading miniextendr {version} from GitHub...")
-    archive_path <- download_miniextendr_archive(version, cache_file)
-  }
-
-  # Create temp directory for extraction
-  tmp_dir <- fs::path_temp("miniextendr")
-  on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
-  fs::dir_create(tmp_dir)
-
-  # Extract archive
-  cli::cli_alert("Extracting archive...")
-  utils::untar(archive_path, exdir = tmp_dir)
-
-  # Find extracted directory (GitHub archives always extract to exactly one top-level directory)
-  extracted_dirs <- fs::dir_ls(tmp_dir, type = "directory")
-
-  if (length(extracted_dirs) != 1) {
-    cli::cli_abort(c(
-      "Unexpected archive structure",
-      "i" = "Expected exactly 1 top-level directory, found {length(extracted_dirs)}"
-    ))
-  }
-
-  extracted_dir <- extracted_dirs[[1]]
-
-  # Create vendor directory
-  ensure_dir(dest)
-
-  # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
-  failed_crates <- character()
-
-  for (crate in crates) {
-    src_path <- fs::path(extracted_dir, crate)
-    dest_path <- fs::path(dest, crate)
-
-    if (!fs::dir_exists(src_path)) {
-      cli::cli_warn("Crate {crate} not found in downloaded archive")
-      failed_crates <- c(failed_crates, crate)
-      next
-    }
-
-    # Remove existing if present
-    if (fs::dir_exists(dest_path)) {
-      fs::dir_delete(dest_path)
-    }
-
-    # Copy crate (excluding target, .git)
-    fs::dir_copy(src_path, dest_path)
-
-    # Strip build artifacts, tests, benchmarks, and hidden files
-    strip_vendored_crate(dest_path)
-
-    # Patch Cargo.toml to remove workspace inheritance. Pass the extracted
-    # miniextendr root so `[workspace.package]` values are read from the
-    # actual workspace rather than hardcoded (see #253).
-    cargo_toml <- fs::path(dest_path, "Cargo.toml")
-    if (fs::file_exists(cargo_toml)) {
-      patch_cargo_toml(cargo_toml, crate, workspace_root = extracted_dir)
-    }
-
-    # Create .cargo-checksum.json (required when crate is in a vendor directory
-    # that replaces crates-io via .cargo/config.toml)
-    checksum_file <- fs::path(dest_path, ".cargo-checksum.json")
-    writeLines('{"files": {}, "package": null}', checksum_file)
-
-    cli::cli_alert_success("Vendored {crate}")
-  }
-
-  if (length(failed_crates) > 0) {
-    cli::cli_abort(c(
-      "Failed to vendor {length(failed_crates)} required crate(s)",
-      "x" = "Missing: {paste(failed_crates, collapse = ', ')}",
-      "i" = "The downloaded archive may be from an incompatible version"
-    ))
-  }
-
-  cli::cli_alert_success("miniextendr crates vendored to {.path {dest}}")
-  invisible(TRUE)
-}
-
-#' Read `[workspace.package]` values from the miniextendr workspace root
-#'
-#' Parses a minimal subset of the workspace root's `Cargo.toml` to return
-#' the fields referenced by `patch_cargo_toml`. Not a full TOML parser —
-#' just enough to extract string / array values from the
-#' `[workspace.package]` table. Falls back to hardcoded defaults on parse
-#' failure or when `workspace_root` is NULL.
-#'
-#' Uses regex against the already-authored Cargo.toml shape (quoted string
-#' values, inline arrays), which is sufficient for the miniextendr workspace
-#' manifest. A more robust future implementation would delegate to
-#' `cargo-revendor`'s `cargo package` resolution.
-#'
-#' @param workspace_root Path to the miniextendr workspace root, or NULL to
-#'   skip parsing and use defaults.
-#' @return Named list with fields: edition, version, license, repository,
-#'   homepage, keywords, categories. Array fields are returned as their
-#'   TOML representation (e.g. `["r", "ffi", "bindings"]`).
-#' @noRd
-read_workspace_package_values <- function(workspace_root = NULL) {
-  # Hardcoded defaults preserve pre-#253 behavior when parsing fails.
-  defaults <- list(
-    edition = "2024",
-    version = "0.1.0",
-    license = "MIT",
-    repository = "https://github.com/A2-ai/miniextendr",
-    homepage = "https://github.com/A2-ai/miniextendr",
-    keywords = '["r", "ffi", "bindings"]',
-    categories = '["api-bindings", "external-ffi-bindings"]'
-  )
-
-  if (is.null(workspace_root)) {
-    return(defaults)
-  }
-
-  ws_cargo <- fs::path(workspace_root, "Cargo.toml")
-  if (!fs::file_exists(ws_cargo)) {
-    cli::cli_warn(c(
-      "Workspace Cargo.toml not found at {.path {ws_cargo}}",
-      "i" = "Falling back to hardcoded values — vendored crates may drift from workspace"
-    ))
-    return(defaults)
-  }
-
-  content <- readLines(ws_cargo, warn = FALSE)
-
-  # Find the [workspace.package] section bounds.
-  start <- grep("^\\[workspace\\.package\\]\\s*$", content)
-  if (length(start) == 0) {
-    return(defaults)
-  }
-  start <- start[[1]] + 1L
-
-  # Section ends at next `[...]` header or EOF.
-  next_section <- grep("^\\[", content[seq(start, length(content))])
-  end <- if (length(next_section) > 0) start + next_section[[1]] - 2L else length(content)
-
-  section <- content[seq(start, end)]
-
-  # Extract `key = "value"` for string fields.
-  extract_string <- function(key) {
-    pattern <- sprintf('^%s\\s*=\\s*"([^"]*)"\\s*$', key)
-    m <- regmatches(section, regexec(pattern, section))
-    hit <- Filter(function(x) length(x) == 2L, m)
-    if (length(hit) == 0) NULL else hit[[1L]][[2L]]
-  }
-
-  # Extract `key = [...]` for array fields — return the full `[...]` literal.
-  extract_array <- function(key) {
-    pattern <- sprintf("^%s\\s*=\\s*(\\[.*\\])\\s*$", key)
-    m <- regmatches(section, regexec(pattern, section))
-    hit <- Filter(function(x) length(x) == 2L, m)
-    if (length(hit) == 0) NULL else hit[[1L]][[2L]]
-  }
-
-  list(
-    edition    = extract_string("edition")    %||% defaults$edition,
-    version    = extract_string("version")    %||% defaults$version,
-    license    = extract_string("license")    %||% defaults$license,
-    repository = extract_string("repository") %||% defaults$repository,
-    homepage   = extract_string("homepage")   %||% defaults$homepage,
-    keywords   = extract_array("keywords")    %||% defaults$keywords,
-    categories = extract_array("categories")  %||% defaults$categories
-  )
-}
-
-#' Patch Cargo.toml to remove workspace inheritance
-#'
-#' @param path Path to Cargo.toml
-#' @param crate_name Name of the crate
-#' @param workspace_root Optional path to the miniextendr workspace root.
-#'   When provided, `[workspace.package]` values are read from that root's
-#'   `Cargo.toml` so version bumps / license changes propagate. Without it,
-#'   hardcoded fallbacks are used (with a warning).
-#' @noRd
-patch_cargo_toml <- function(path, crate_name, workspace_root = NULL) {
-  content <- readLines(path, warn = FALSE)
-
-  # Resolve workspace package values from the actual workspace Cargo.toml
-  # when available. Falls back to hardcoded defaults (matching the old
-  # behavior) if the root can't be read — emits a warning so stale values
-  # are visible instead of silent.
-  ws_vals <- read_workspace_package_values(workspace_root)
-
-  # Replace workspace = true with actual values
-  replacements <- list(
-    'edition\\.workspace = true' = sprintf('edition = "%s"', ws_vals$edition),
-    'version\\.workspace = true' = sprintf('version = "%s"', ws_vals$version),
-    'license\\.workspace = true' = sprintf('license = "%s"', ws_vals$license),
-    'repository\\.workspace = true' = sprintf('repository = "%s"', ws_vals$repository),
-    'homepage\\.workspace = true' = sprintf('homepage = "%s"', ws_vals$homepage),
-    'keywords\\.workspace = true' = sprintf('keywords = %s', ws_vals$keywords),
-    'categories\\.workspace = true' = sprintf('categories = %s', ws_vals$categories)
-  )
-
-  for (pattern in names(replacements)) {
-    content <- gsub(pattern, replacements[[pattern]], content)
-  }
-
-  # Replace workspace dependencies with path/version
-  dep_replacements <- list(
-    'miniextendr-macros = \\{ workspace = true \\}' =
-      'miniextendr-macros = { version = "0.1.0", path = "../miniextendr-macros" }',
-    'miniextendr-engine = \\{ workspace = true \\}' =
-      'miniextendr-engine = { version = "0.1.0", path = "../miniextendr-engine" }',
-    'proc-macro2 = \\{ workspace = true \\}' =
-      'proc-macro2 = { version = "1.0", features = ["span-locations"] }',
-    'quote = \\{ workspace = true \\}' =
-      'quote = "1.0"',
-    'syn = \\{ workspace = true \\}' =
-      'syn = { version = "2.0", features = ["full", "extra-traits"] }',
-    'linkme = \\{ workspace = true \\}' =
-      'linkme = "0.3"'
-  )
-
-  for (pattern in names(dep_replacements)) {
-    content <- gsub(pattern, dep_replacements[[pattern]], content)
-  }
-
-  # Remove dev-dependencies that create circular references or dangling paths when vendored
-  # miniextendr-api in miniextendr-macros dev-deps is only for workspace testing
-  content <- content[!grepl("^miniextendr-api = \\{ workspace = true \\}", content)]
-  # miniextendr-engine in miniextendr-api dev-deps is not used by scaffolded packages
-  content <- content[!grepl("^miniextendr-engine = ", content)]
-
-  # Remove [[bench]], [[test]], and [dev-dependencies] sections entirely.
-  # strip_vendored_crate() deletes benches/ and tests/ directories, so these
-
-  # TOML sections become dangling references that cause cargo errors.
-  content <- strip_toml_sections(content,
-    c("[[bench]]", "[[test]]", "[dev-dependencies]"))
-
-  # Validate: warn if any workspace = true entries remain unhandled
-  remaining <- grep("workspace\\s*=\\s*true", content, value = TRUE)
-  if (length(remaining) > 0) {
-    # Escape curly braces so cli doesn't interpret TOML inline tables as glue
-    escaped <- gsub("{", "{{", gsub("}", "}}", trimws(remaining), fixed = TRUE), fixed = TRUE)
-    cli::cli_warn(c(
-      "Unhandled workspace inheritance in {.path {path}}",
-      "i" = "The following lines still reference workspace:",
-      paste("  ", escaped)
-    ))
-  }
-
-  writeLines(content, path)
-}
-
-#' Vendor miniextendr crates from local path
-#'
-#' Copies miniextendr crates from a local repository instead of downloading
-#' from GitHub. Used for development when the GitHub repo is not available.
-#'
-#' @param local_path Path to local miniextendr repository
-#' @param dest Destination directory for vendored crates
-#' @return Invisibly returns TRUE on success
-#' @noRd
-vendor_miniextendr_local <- function(local_path, dest) {
-  local_path <- normalizePath(local_path, mustWork = TRUE)
-
-  cli::cli_alert("Vendoring miniextendr from local path: {.path {local_path}}")
-
-  # Create vendor directory
-  ensure_dir(dest)
-
-  # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
-  failed_crates <- character()
-
-  for (crate in crates) {
-    src_path <- fs::path(local_path, crate)
-    dest_path <- fs::path(dest, crate)
-
-    if (!fs::dir_exists(src_path)) {
-      cli::cli_warn("Crate {crate} not found at {.path {src_path}}")
-      failed_crates <- c(failed_crates, crate)
-      next
-    }
-
-    # Remove existing if present
-    if (fs::dir_exists(dest_path)) {
-      fs::dir_delete(dest_path)
-    }
-
-    # Copy crate (excluding target, .git, etc.)
-    fs::dir_copy(src_path, dest_path)
-
-    # Strip build artifacts, tests, benchmarks, and hidden files
-    strip_vendored_crate(dest_path)
-
-    # Patch Cargo.toml to remove workspace inheritance. Pass the local
-    # miniextendr checkout so `[workspace.package]` values are read from
-    # the actual workspace rather than hardcoded (see #253).
-    cargo_toml <- fs::path(dest_path, "Cargo.toml")
-    if (fs::file_exists(cargo_toml)) {
-      patch_cargo_toml(cargo_toml, crate, workspace_root = local_path)
-    }
-
-    # Create .cargo-checksum.json (required when crate is in a vendor directory
-    # that replaces crates-io via .cargo/config.toml)
-    checksum_file <- fs::path(dest_path, ".cargo-checksum.json")
-    writeLines('{"files": {}, "package": null}', checksum_file)
-
-    cli::cli_alert_success("Vendored {crate}")
-  }
-
-  if (length(failed_crates) > 0) {
-    cli::cli_abort(c(
-      "Failed to vendor {length(failed_crates)} required crate(s)",
-      "x" = "Missing: {paste(failed_crates, collapse = ', ')}",
-      "i" = "Check that {.path {local_path}} is a valid miniextendr repository"
-    ))
-  }
-
-  # Record the source path for future auto-sync
-  writeLines(local_path, fs::path(dest, ".vendor-source"))
-
-  cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")
-
-  invisible(TRUE)
-}
-
-#' Sync vendored miniextendr crates from local source
-#'
-#' Auto-detects whether vendor/ was populated from a local miniextendr
-#' repository and re-syncs crates if the source is available. This ensures
-#' vendor/ stays up-to-date with workspace crate changes during development.
-#'
-#' Detection order:
-#' 1. `.vendor-source` marker file in vendor/ (recorded by previous local vendor)
-#' 2. Auto-scan parent directories for a miniextendr workspace
-#'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @return Invisibly returns TRUE if sync occurred, FALSE if no local source found.
-#' @keywords internal
-#' @export
-vendor_sync <- function(path = ".") {
-  with_project(path)
-  vendor_dir <- usethis::proj_path("vendor")
-
-  if (!fs::dir_exists(vendor_dir)) {
-    cli::cli_alert_info("No vendor/ directory — nothing to sync")
-    return(invisible(FALSE))
-  }
-
-  local_path <- detect_miniextendr_local(vendor_dir)
-
-  if (is.null(local_path)) {
-    cli::cli_alert_info("No local miniextendr source detected — vendor/ unchanged")
-    return(invisible(FALSE))
-  }
-
-  cli::cli_alert("Syncing vendor/ from {.path {local_path}}")
-  vendor_miniextendr_local(local_path, vendor_dir)
-  invisible(TRUE)
-}
-
-#' Detect local miniextendr repository for vendor sync
-#'
-#' Checks multiple sources to find a local miniextendr monorepo:
-#' 1. `.vendor-source` marker file in vendor/
-#' 2. Walk up parent directories looking for miniextendr-api/Cargo.toml
-#'
-#' @param vendor_dir Path to vendor/ directory
-#' @return Normalized path to miniextendr repo root, or NULL if not found
-#' @noRd
-detect_miniextendr_local <- function(vendor_dir) {
-  # 1. Recorded source from previous local vendor
-  source_file <- fs::path(vendor_dir, ".vendor-source")
-  if (fs::file_exists(source_file)) {
-    recorded <- trimws(readLines(source_file, n = 1, warn = FALSE))
-    if (nzchar(recorded) && dir.exists(recorded)) {
-      api_toml <- file.path(recorded, "miniextendr-api", "Cargo.toml")
-      if (file.exists(api_toml)) {
-        return(normalizePath(recorded, mustWork = TRUE))
-      }
-    }
-  }
-
-  # 3. Walk up parent directories looking for miniextendr workspace
-  pkg_root <- dirname(vendor_dir)
-  search_dir <- normalizePath(pkg_root, mustWork = TRUE)
-  for (i in seq_len(10)) {
-    search_dir <- dirname(search_dir)
-    if (search_dir == dirname(search_dir)) break # hit filesystem root
-    candidate <- file.path(search_dir, "miniextendr-api", "Cargo.toml")
-    if (file.exists(candidate)) {
-      return(normalizePath(search_dir, mustWork = TRUE))
-    }
-  }
-
-  NULL
-}
-
-#' Vendor external crates.io dependencies
-#'
-#' Runs `cargo revendor` to download all external crates.io dependencies
-#' (like proc-macro2, syn, quote) for offline/CRAN builds, including any
-#' workspace path deps that plain `cargo vendor` silently skips. This is
-#' separate from [vendor_miniextendr()] which vendors the miniextendr
-#' workspace crates.
-#'
-#' Most users should use [miniextendr_vendor()] instead, which calls this
-#' function as part of the full CRAN vendor workflow.
-#'
-#' `cargo revendor` must be installed; see
-#' <https://github.com/A2-ai/miniextendr/tree/main/cargo-revendor>.
-#'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @return Invisibly returns TRUE on success
+#' @return Invisibly returns TRUE on success.
 #' @keywords internal
 #' @export
 vendor_crates_io <- function(path = ".") {
@@ -573,23 +50,21 @@ vendor_crates_io <- function(path = ".") {
 
   check_result(result, "cargo revendor")
 
-  # Additional CRAN-targeted stripping: docs/, ci/, .circleci/, .github/,
-  # dotfiles that cargo-revendor preserves. (We don't pass --strip-all to
-  # cargo revendor because it strips dev-deps from Cargo.toml manifests
-  # while leaving dangling [features] references that point at them — see
-  # cargo-revendor issue #322.)
+  # Additional CRAN-trim beyond cargo-revendor: docs/, ci/, .circleci/,
+  # .github/, dotfiles. cargo-revendor's --strip-all is too aggressive
+  # (it strips dev-deps but leaves dangling [features] refs; see
+  # cargo-revendor issue #322), so we don't pass it.
   strip_vendored_dir(vendor_dir)
 
-  cli::cli_alert_success("External dependencies vendored")
+  cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
   invisible(TRUE)
 }
 
 #' Verify `cargo revendor` is installed
 #'
 #' Errors with install instructions if the `cargo-revendor` subcommand is
-#' missing. Called by [vendor_crates_io()].
+#' missing. Called by [miniextendr_vendor()].
 #'
-#' @keywords internal
 #' @noRd
 check_cargo_revendor <- function() {
   probe <- suppressWarnings(tryCatch(
@@ -607,273 +82,53 @@ check_cargo_revendor <- function() {
   invisible(TRUE)
 }
 
-#' Strip CRAN-unfriendly content from a single vendored crate
+#' Strip CRAN-unfriendly content from a vendored tree
 #'
-#' Removes build artifacts, tests, benchmarks, examples, hidden files,
-#' and other content that causes CRAN NOTEs (portable filenames,
-#' hidden files, long paths).
+#' Walks every crate directory under `vendor_path` and removes build
+#' artifacts, hidden dotfiles, and other content that would trigger CRAN
+#' NOTEs (portable filenames, hidden files, long paths) on the produced
+#' tarball.
 #'
-#' @param crate_path Path to the vendored crate directory
-#' @noRd
-strip_vendored_crate <- function(crate_path) {
-  # Directories to remove entirely
-  unwanted_dirs <- c("target", ".git", ".github", "tests", "benches",
-                     "examples", "docs", "ci", ".circleci")
-  for (d in unwanted_dirs) {
-    d_path <- fs::path(crate_path, d)
-    if (fs::dir_exists(d_path)) {
-      fs::dir_delete(d_path)
-    }
-  }
-
-  # Remove hidden dotfiles (except .cargo-checksum.json which cargo needs)
-  all_files <- fs::dir_ls(crate_path, all = TRUE, recurse = FALSE)
-  dotfiles <- all_files[grepl("^\\.", basename(all_files))]
-  dotfiles <- dotfiles[basename(dotfiles) != ".cargo-checksum.json"]
-  for (f in dotfiles) {
-    if (fs::is_dir(f)) {
-      fs::dir_delete(f)
-    } else {
-      fs::file_delete(f)
-    }
-  }
-}
-
-#' Remove TOML sections from a character vector of lines
+#' tests/ and benches/ are intentionally NOT stripped: some published
+#' crates reference files inside those directories from regular library
+#' source via `include_str!("../benches/X")` for documentation (zerocopy
+#' is one). Stripping them breaks compilation post-vendor. They cost a
+#' few MB across the dep graph; CRAN tolerates them.
 #'
-#' Removes complete sections (header line through end of section) for the
-#' given TOML headers. A section ends at the next header (`[...]`) or EOF.
-#'
-#' @param lines Character vector of TOML file lines
-#' @param headers Character vector of section headers to remove, e.g.
-#'   `c("[[bench]]", "[dev-dependencies]")`
-#' @return Filtered character vector with those sections removed
-#' @noRd
-strip_toml_sections <- function(lines, headers) {
-  trimmed <- trimws(lines)
-
-  # Check if a line matches any target header (exact match after trim)
-  is_target <- trimmed %in% headers
-  # Also match table subsections: [dev-dependencies.X] for header [dev-dependencies]
-  for (h in headers) {
-    if (!startsWith(h, "[[") && endsWith(h, "]")) {
-      prefix <- paste0(substr(h, 1, nchar(h) - 1), ".")
-      is_target <- is_target | startsWith(trimmed, prefix)
-    }
-  }
-
-  # Check if a line starts any TOML section (single or double bracket)
-  is_any_header <- grepl("^\\[", trimmed)
-
-  keep <- rep(TRUE, length(lines))
-  in_section <- FALSE
-
-  for (i in seq_along(lines)) {
-    if (is_target[i]) {
-      in_section <- TRUE
-      keep[i] <- FALSE
-    } else if (in_section) {
-      if (is_any_header[i]) {
-        # Hit a new section — stop stripping
-        in_section <- FALSE
-      } else {
-        keep[i] <- FALSE
-      }
-    }
-  }
-
-  lines[keep]
-}
-
-#' Strip CRAN-unfriendly content from an entire vendor directory
-#'
-#' Walks all crates in a cargo vendor output directory and strips
-#' tests, benchmarks, examples, hidden files, and other content that
-#' causes CRAN NOTEs.
-#'
-#' @param vendor_path Path to the vendor directory
 #' @noRd
 strip_vendored_dir <- function(vendor_path) {
   if (!fs::dir_exists(vendor_path)) return(invisible())
 
+  unwanted_dirs <- c("target", ".git", ".github",
+                     "examples", "docs", "ci", ".circleci")
+
   crate_dirs <- fs::dir_ls(vendor_path, type = "directory")
   for (crate_dir in crate_dirs) {
-    strip_vendored_crate(crate_dir)
+    for (d in unwanted_dirs) {
+      d_path <- fs::path(crate_dir, d)
+      if (fs::dir_exists(d_path)) {
+        fs::dir_delete(d_path)
+      }
+    }
 
-    # Clear checksums (content was modified by stripping)
+    # Remove hidden dotfiles (except .cargo-checksum.json which cargo needs)
+    all_files <- fs::dir_ls(crate_dir, all = TRUE, recurse = FALSE)
+    dotfiles <- all_files[grepl("^\\.", basename(all_files))]
+    dotfiles <- dotfiles[basename(dotfiles) != ".cargo-checksum.json"]
+    for (f in dotfiles) {
+      if (fs::is_dir(f)) {
+        fs::dir_delete(f)
+      } else {
+        fs::file_delete(f)
+      }
+    }
+
+    # Clear cargo-checksum.json (content was modified by stripping)
     checksum_file <- fs::path(crate_dir, ".cargo-checksum.json")
-    writeLines('{"files":{}}', checksum_file)
+    if (fs::file_exists(checksum_file)) {
+      writeLines('{"files":{}}', checksum_file)
+    }
   }
+
   invisible()
-}
-
-#' Clear miniextendr download cache
-#'
-#' Removes cached miniextendr archives from the user cache directory.
-#'
-#' @param version Optional version to clear. If NULL, clears all cached versions.
-#' @return Invisibly returns TRUE
-#' @export
-miniextendr_clear_cache <- function(version = NULL) {
-  cache_dir <- tools::R_user_dir("minirextendr", "cache")
-
-  if (!fs::dir_exists(cache_dir)) {
-    cli::cli_alert_info("No cache directory found")
-    return(invisible(TRUE))
-  }
-
-  if (is.null(version)) {
-    # Clear all
-    files <- fs::dir_ls(cache_dir, glob = "*.tar.gz")
-    if (length(files) == 0) {
-      cli::cli_alert_info("Cache is empty")
-    } else {
-      fs::file_delete(files)
-      cli::cli_alert_success("Cleared {length(files)} cached archive(s)")
-    }
-  } else {
-    # Clear specific version
-    cache_file <- fs::path(cache_dir, paste0("miniextendr-", version, ".tar.gz"))
-    if (fs::file_exists(cache_file)) {
-      fs::file_delete(cache_file)
-      cli::cli_alert_success("Cleared cached miniextendr {version}")
-    } else {
-      cli::cli_alert_info("No cached archive for version {version}")
-    }
-  }
-
-  invisible(TRUE)
-}
-
-#' Show miniextendr cache info
-#'
-#' Displays information about cached miniextendr archives.
-#'
-#' @return Invisibly returns a data frame with cache info
-#' @export
-miniextendr_cache_info <- function() {
-  cache_dir <- tools::R_user_dir("minirextendr", "cache")
-
-  cli::cli_h2("miniextendr cache")
-  cli::cli_alert_info("Cache directory: {.path {cache_dir}}")
-
-  if (!fs::dir_exists(cache_dir)) {
-    cli::cli_alert_info("Cache directory does not exist")
-    return(invisible(data.frame()))
-  }
-
-  files <- fs::dir_ls(cache_dir, glob = "*.tar.gz")
-
-  if (length(files) == 0) {
-    cli::cli_alert_info("No cached archives")
-    return(invisible(data.frame()))
-  }
-
-  info <- fs::file_info(files)
-  info$version <- gsub("^miniextendr-|\\.tar\\.gz$", "", basename(files))
-
-  cli::cli_alert_success("{length(files)} cached archive(s):")
-  for (i in seq_along(files)) {
-    size_mb <- round(info$size[i] / 1024 / 1024, 2)
-    cli::cli_bullets(c(" " = "{info$version[i]} ({size_mb} MB)"))
-  }
-
-  invisible(info[, c("version", "size", "modification_time")])
-}
-
-#' Check for path dependencies in Cargo.toml
-#'
-#' Scans `[dependencies]` and `[build-dependencies]` sections for path-based
-#' dependencies. `[patch.*]` sections are excluded since those are normal
-#' dev-mode behavior handled by configure.ac.
-#'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @return A data frame with columns `crate` and `path`, or zero-row data frame
-#'   if no path deps found.
-#' @noRd
-check_path_deps <- function(path = ".") {
-  cargo_toml <- file.path(path, "src", "rust", "Cargo.toml")
-  if (!file.exists(cargo_toml)) {
-    return(data.frame(crate = character(), path = character(), stringsAsFactors = FALSE))
-  }
-
-  lines <- readLines(cargo_toml, warn = FALSE)
-  trimmed <- trimws(lines)
-
-  # Track which TOML section we're in
-  # Only flag path deps in [dependencies] and [build-dependencies]
-  crates <- character()
-  paths <- character()
-  in_relevant_section <- FALSE
-
-  for (line in trimmed) {
-    # Detect section headers
-    if (grepl("^\\[", line)) {
-      in_relevant_section <- line %in% c("[dependencies]", "[build-dependencies]")
-      next
-    }
-
-    if (!in_relevant_section) next
-
-    # Match lines like: crate-name = { path = "..." ... }
-    m <- regmatches(line, regexec('^([a-zA-Z0-9_-]+)\\s*=.*path\\s*=\\s*"([^"]+)"', line))[[1]]
-    if (length(m) == 3) {
-      crates <- c(crates, m[2])
-      paths <- c(paths, m[3])
-    }
-  }
-
-  data.frame(crate = crates, path = paths, stringsAsFactors = FALSE)
-}
-
-#' Add `[patch]` entries to Cargo.toml for vendored crates
-#'
-#' After vendoring miniextendr crates to vendor/, adds a
-#' `[patch."https://github.com/A2-ai/miniextendr"]` section to
-#' src/rust/Cargo.toml so cargo resolves dependencies from vendor/ instead of
-#' fetching from git.
-#'
-#' @param vendor_dir Path to the vendor directory (vendor/)
-#' @noRd
-add_vendor_patches <- function(vendor_dir) {
-  # Derive Cargo.toml path: vendor is at package root, Cargo.toml is src/rust/Cargo.toml
-  pkg_root <- dirname(vendor_dir)
-  cargo_toml <- file.path(pkg_root, "src", "rust", "Cargo.toml")
-
-  if (!file.exists(cargo_toml)) return(invisible())
-
-  content <- readLines(cargo_toml, warn = FALSE)
-
-  # Don't add if already has [patch] section
-  if (any(grepl("^\\[patch\\.", content))) return(invisible())
-
-  # Don't add if no git URLs to patch (path deps don't need patching)
-  if (!any(grepl("github\\.com/A2-ai", content))) return(invisible())
-
-  # Only patch crates that are actual dependencies (not miniextendr-engine,
-
-  # which is only a dev-dependency of miniextendr-api)
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint")
-
-  patch_lines <- c(
-    "",
-    '[patch."https://github.com/A2-ai/miniextendr"]'
-  )
-  for (crate in crates) {
-    # Accept both versioned (vendor/<name>-<version>/) and flat (vendor/<name>/) layouts
-    versioned <- list.files(vendor_dir, pattern = paste0("^", crate, "-[0-9]"),
-                            full.names = FALSE)
-    if (length(versioned) > 0) {
-      dir_name <- versioned[[1]]
-    } else if (dir.exists(file.path(vendor_dir, crate))) {
-      dir_name <- crate
-    } else {
-      next
-    }
-    patch_lines <- c(patch_lines,
-      sprintf('%s = { path = "../../vendor/%s" }', crate, dir_name))
-  }
-
-  writeLines(c(content, patch_lines), cargo_toml)
-  cli::cli_alert_success("Added [patch] entries to {.path Cargo.toml} for vendored crates")
 }

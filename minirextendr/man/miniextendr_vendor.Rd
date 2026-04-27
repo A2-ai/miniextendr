@@ -13,15 +13,15 @@ miniextendr_vendor(path = ".")
 Invisibly returns the path to the created tarball.
 }
 \description{
-High-level workflow that vendors all external crate dependencies and
-compresses them into \code{inst/vendor.tar.xz} for offline CRAN builds.
-Calls \code{\link[=vendor_crates_io]{vendor_crates_io()}} internally, then strips Cargo.lock
-checksums and compresses.
+High-level workflow that vendors all crate dependencies and compresses
+them into \code{inst/vendor.tar.xz} for offline CRAN install. Wraps
+\code{\link[=vendor_crates_io]{vendor_crates_io()}} (which delegates to \code{cargo-revendor}) plus
+Cargo.lock checksum stripping and tarball compression.
 }
 \details{
-For vendoring the miniextendr workspace crates themselves, see
-\code{\link[=vendor_miniextendr]{vendor_miniextendr()}}. For syncing vendor/ from a local checkout,
-see \code{\link[=vendor_sync]{vendor_sync()}}.
-
 Run this before \verb{R CMD build} when preparing a CRAN submission.
+Day-to-day development (\verb{R CMD INSTALL .}, \code{devtools::install/test/load})
+does not need it: install mode is auto-detected from
+\code{inst/vendor.tar.xz} presence, and without the file cargo resolves deps
+over the network.
 }

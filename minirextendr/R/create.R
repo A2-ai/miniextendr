@@ -129,14 +129,6 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   cli::cli_h2("Creating R package")
   create_rpkg_subdirectory(data, rpkg_name = rpkg_name)
 
-  # Vendor miniextendr crates into rpkg/vendor/
-  cli::cli_h2("Vendoring miniextendr crates")
-  vendor_miniextendr(
-    version = miniextendr_version,
-    dest = usethis::proj_path(rpkg_name, "vendor"),
-    local_path = local_path
-  )
-
   # Generate configure script from configure.ac
   if (nzchar(Sys.which("autoconf"))) {
     cli::cli_h2("Generating configure script")
@@ -360,14 +352,6 @@ use_miniextendr <- function(path = ".",
     data <- template_data(package = package_name, rpkg_name = rpkg_name)
     create_rpkg_subdirectory(data, rpkg_name = rpkg_name)
 
-    # Vendor miniextendr crates
-    cli::cli_h2("Vendoring miniextendr crates")
-    vendor_miniextendr(
-      version = miniextendr_version,
-      dest = usethis::proj_path(rpkg_name, "vendor"),
-      local_path = local_path
-    )
-
     # Auto-run autoconf if available
     if (nzchar(Sys.which("autoconf"))) {
       cli::cli_h2("Generating configure script")
@@ -419,10 +403,6 @@ use_miniextendr <- function(path = ".",
   use_miniextendr_package_doc()
   use_miniextendr_rbuildignore()
   use_miniextendr_gitignore()
-
-  # Vendor miniextendr crates
-  cli::cli_h2("Vendoring miniextendr crates")
-  vendor_miniextendr(version = miniextendr_version, local_path = local_path)
 
   # Auto-run autoconf if available
   has_configure <- FALSE

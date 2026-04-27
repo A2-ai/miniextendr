@@ -2,7 +2,7 @@
 % Please edit documentation in R/vendor.R
 \name{vendor_crates_io}
 \alias{vendor_crates_io}
-\title{Vendor external crates.io dependencies}
+\title{Run cargo revendor and CRAN-trim the result}
 \usage{
 vendor_crates_io(path = ".")
 }
@@ -10,20 +10,15 @@ vendor_crates_io(path = ".")
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
-Invisibly returns TRUE on success
+Invisibly returns TRUE on success.
 }
 \description{
-Runs \verb{cargo revendor} to download all external crates.io dependencies
-(like proc-macro2, syn, quote) for offline/CRAN builds, including any
-workspace path deps that plain \verb{cargo vendor} silently skips. This is
-separate from \code{\link[=vendor_miniextendr]{vendor_miniextendr()}} which vendors the miniextendr
-workspace crates.
+Internal helper called by \code{\link[=miniextendr_vendor]{miniextendr_vendor()}}. Handles the cargo
+side of vendoring (deferring to \code{cargo-revendor}) and CRAN-trim of
+build artifacts / hidden files.
 }
 \details{
-Most users should use \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} instead, which calls this
-function as part of the full CRAN vendor workflow.
-
-\verb{cargo revendor} must be installed; see
-\url{https://github.com/A2-ai/miniextendr/tree/main/cargo-revendor}.
+Most users want \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} which wraps this with lockfile
+shape correction and tarball compression.
 }
 \keyword{internal}

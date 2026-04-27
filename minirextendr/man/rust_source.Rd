@@ -10,8 +10,7 @@ rust_source(
   env = parent.frame(),
   cache = TRUE,
   quiet = FALSE,
-  features = character(),
-  use_local_crates = NULL
+  features = character()
 )
 }
 \arguments{

@@ -67,26 +67,6 @@ miniextendr_doctor <- function(path = ".") {
     results$fail <- c(results$fail, "R development headers missing")
   }
 
-  # ── Vendored crates ──
-  cli::cli_h2("Vendored crates")
-
-  vendor_dir <- tryCatch(usethis::proj_path("vendor"), error = function(e) NULL)
-  if (is.null(vendor_dir)) {
-    cli::cli_alert_info("Not in a project context, skipping vendor checks")
-  } else {
-    required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
-    for (crate in required_crates) {
-      crate_path <- file.path(vendor_dir, crate)
-      if (dir.exists(crate_path)) {
-        cli::cli_alert_success("{crate} vendored")
-        results$pass <- c(results$pass, paste(crate, "vendored"))
-      } else {
-        cli::cli_alert_danger("{crate} not vendored")
-        results$fail <- c(results$fail, paste(crate, "not vendored - run vendor_miniextendr()"))
-      }
-    }
-  }
-
   # ── Generated file freshness ──
   cli::cli_h2("Generated files")
 
