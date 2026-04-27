@@ -226,6 +226,13 @@ miniextendr_vendor <- function(path = ".") {
   size_mb <- round(as.numeric(fs::file_size(tarball)) / 1024 / 1024, 1)
   cli::cli_alert_success("Created {.path inst/vendor.tar.xz} ({size_mb} MB)")
   cli::cli_alert_info("Include this in your CRAN submission (R CMD build will bundle it)")
+  cli::cli_alert_warning(c(
+    "{.path inst/vendor.tar.xz} flips {.code ./configure} into offline tarball mode."
+  ))
+  cli::cli_bullets(c(
+    "i" = "Run {.code R CMD build .} to produce the release tarball, then delete {.path inst/vendor.tar.xz} to resume source-mode dev:",
+    " " = "{.code unlink(\"inst/vendor.tar.xz\")}"
+  ))
 
   invisible(tarball)
 }
