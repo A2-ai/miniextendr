@@ -55,6 +55,15 @@ miniextendr_status <- function(path = ".") {
       "src/stub.c",
       "src/cdylib-exports.def"
     ),
+    # Tarball-install artifacts: present only after configure unpacks
+    # inst/vendor.tar.xz. Missing in source-mode dev iteration is normal —
+    # these files are listed as informational.
+    "Vendored Crates" = c(
+      "vendor/miniextendr-api",
+      "vendor/miniextendr-macros",
+      "vendor/miniextendr-lint",
+      "vendor/miniextendr-engine"
+    ),
     "Generated Files" = c(
       "src/Makevars",
       wrapper_file
@@ -205,6 +214,23 @@ miniextendr_validate <- function(path = ".") {
       cli::cli_alert_danger("Rust not found")
     }
   )
+
+  # Workspace crates the package depends on (informational).
+  # In source-mode dev these aren't unpacked locally — they're under
+  # inst/vendor.tar.xz only after `just vendor`. Missing entries here are
+  # not failures; this section just documents what the framework expects.
+  cli::cli_h2("Workspace crates")
+  required_crates <- c("miniextendr-api", "miniextendr-macros",
+                        "miniextendr-lint", "miniextendr-engine")
+  vendor_dir <- usethis::proj_path("vendor")
+  for (crate in required_crates) {
+    crate_path <- file.path(vendor_dir, crate)
+    if (fs::dir_exists(crate_path)) {
+      cli::cli_alert_success("{.code {crate}} unpacked at {.path vendor/{crate}}")
+    } else {
+      cli::cli_alert_info("{.code {crate}} not unpacked (normal in source mode)")
+    }
+  }
 
   # Summary
   cli::cli_h2("Result")

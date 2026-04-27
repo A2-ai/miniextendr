@@ -147,7 +147,7 @@ phase_a2_dev_build() {
   log_info "Configuring rpkg (dev mode)..."
   just configure
   log_info "Installing rpkg..."
-  NOT_CRAN=true R CMD INSTALL rpkg
+  R CMD INSTALL rpkg
   log_info "Running baseline tests (basic)..."
   Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "basic")'
   log_info "Running baseline tests (conversions)..."
@@ -252,10 +252,10 @@ RSCRIPT
   if command -v autoconf >/dev/null 2>&1; then
     autoconf
   fi
-  NOT_CRAN=true ./configure
+  ./configure
 
   # Build and install
-  NOT_CRAN=true R CMD INSTALL --no-multiarch -l "$smoke_lib" .
+  R CMD INSTALL --no-multiarch -l "$smoke_lib" .
 
   log_info "Testing hello_world from scaffolded package..."
   local pkg_name
@@ -315,11 +315,11 @@ RSCRIPT
     autoconf 2>/dev/null || true
   fi
   if [ -f "configure" ]; then
-    NOT_CRAN=true ./configure || true
+    ./configure || true
   fi
 
   # Try to build and install
-  NOT_CRAN=true R CMD INSTALL --no-multiarch -l "$mono_lib" . || {
+  R CMD INSTALL --no-multiarch -l "$mono_lib" . || {
     log_info "Direct R CMD INSTALL failed, trying devtools..."
     Rscript -e "devtools::install('.', lib = '${mono_lib}')" || true
   }
@@ -369,8 +369,8 @@ pub fn join_sorted(x: Vec<String>) -> String {
 RUSTEOF
 
   # Re-configure and rebuild
-  NOT_CRAN=true ./configure
-  NOT_CRAN=true R CMD INSTALL --no-multiarch -l "$smoke_lib" .
+  ./configure
+  R CMD INSTALL --no-multiarch -l "$smoke_lib" .
 
   # Test the new function
   local pkg_name

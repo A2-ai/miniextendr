@@ -2541,8 +2541,13 @@ case "$host_os" in
 esac
 
 if test -n "$MONOREPO_ROOT"; then
-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)" >&5
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: monorepo siblings    = $MONOREPO_ROOT (ignored — tarball mode takes precedence)" >&5
+printf '%s\n' "$as_me: monorepo siblings    = $MONOREPO_ROOT (ignored — tarball mode takes precedence)" >&6;}
+  else
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)" >&5
 printf '%s\n' "$as_me: monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)" >&6;}
+  fi
 fi
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p

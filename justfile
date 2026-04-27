@@ -72,7 +72,7 @@ export PATH := if os() == "windows" {
 }
 
 # All optional features for testing (excluding nonapi which causes CRAN warnings).
-# This mirrors the list in rpkg/configure.ac for NOT_CRAN=true mode.
+# This mirrors the default CARGO_FEATURES list in rpkg/configure.ac.
 all_features := "worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,log"
 
 # Directory for devtools::check output (preserved for investigation)
@@ -460,6 +460,7 @@ minirextendr-install-deps:
 # wraps R CMD build, and the resulting tarball is meaningful only with
 # inst/vendor.tar.xz inside.
 devtools-build: configure vendor
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
@@ -491,17 +492,27 @@ r-cmd-install *args: configure
 # triggers tarball-mode install (offline, vendored sources). Without this dep
 # a maintainer can silently produce a tarball that source-mode-installs over
 # the network — defeating the point of `R CMD build` for CRAN submission.
+#
+# Cleanup: rpkg/inst/vendor.tar.xz must be removed after R CMD build copies
+# it into the built tarball. Otherwise the leftover in the source tree makes
+# the next `just rcmdinstall` / `devtools::install("rpkg")` silently switch
+# to tarball mode (configure's only signal is `[ -f inst/vendor.tar.xz ]`),
+# which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
 alias rcmdbuild := r-cmd-build
 r-cmd-build *args: configure vendor
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
 # Depends on vendor to ensure inst/vendor.tar.xz exists in the tarball.
 # R CMD check copies the tarball to a temp dir where monorepo [patch] paths
 # are unavailable — configure detects this and uses vendored sources instead.
+#
+# Cleanup: same reason as r-cmd-build — see comment there.
 alias rcmdcheck := r-cmd-check
 r-cmd-check *args: vendor
-    @ERROR_ON="warning" \
+    @trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
+    ERROR_ON="warning" \
     CHECK_DIR="" \
     && for arg in {{args}}; do \
       case "$arg" in \

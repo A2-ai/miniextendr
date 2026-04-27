@@ -47,6 +47,7 @@ clean:
     cargo clean
     rm -rf {{rpkg}}/src/rust/target
     rm -rf {{rpkg}}/vendor
+    rm -f {{rpkg}}/inst/vendor.tar.xz
 
 # ============================================================================
 # R package development ({{rpkg}}/)
@@ -135,7 +136,14 @@ vendor-lib crate dev_path:
     cd {{rpkg}} && autoconf -vif
 
 # Prepare for CRAN submission: vendor deps, build, check
+#
+# Cleanup: {{rpkg}}/inst/vendor.tar.xz must be removed after the build/check
+# pipeline. Otherwise the leftover in the source tree makes the next
+# `just install` / `devtools::install("{{rpkg}}")` silently switch to tarball
+# mode (configure's only signal is `[ -f inst/vendor.tar.xz ]`), which freezes
+# out monorepo workspace-crate edits via `[patch."git+url"]`.
 cran-prep: vendor rbuild rcheck
+    rm -f {{rpkg}}/inst/vendor.tar.xz
 
 # ============================================================================
 # Version management

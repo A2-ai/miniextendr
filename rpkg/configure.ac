@@ -265,7 +265,11 @@ case "$host_os" in
 esac
 
 if test -n "$MONOREPO_ROOT"; then
-  AC_MSG_NOTICE([monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)])
+  if test "$IS_TARBALL_INSTALL" = "true"; then
+    AC_MSG_NOTICE([monorepo siblings    = $MONOREPO_ROOT (ignored — tarball mode takes precedence)])
+  else
+    AC_MSG_NOTICE([monorepo siblings    = $MONOREPO_ROOT (source-mode patch override active)])
+  fi
 fi
 
 dnl ---- output files ----
