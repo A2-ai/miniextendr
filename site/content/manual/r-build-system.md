@@ -216,21 +216,16 @@ Note: R wrapper generation (`miniextendr-wrappers.R`) happens separately via
 
 ## Build Contexts
 
-The configure script resolves one of four build contexts based on environment
-variables and filesystem detection:
+The configure script resolves one of two install modes from a single signal:
 
-| Context | When | Behavior |
+| Mode | When | Behavior |
 |---|---|---|
-| `dev-monorepo` | Monorepo detected (default for `just configure`) | Uses `[patch]` paths to workspace crates, no vendoring |
-| `dev-detached` | No monorepo, no vendor artifacts | Uses git/network deps directly |
-| `vendored-install` | `NOT_CRAN=false` or vendor artifacts present | Offline build from vendored sources |
-| `prepare-cran` | `PREPARE_CRAN=true` | Explicit CRAN release prep mode |
+| Source | `inst/vendor.tar.xz` absent | Cargo resolves through `[patch."git+url"]` to monorepo siblings if present, otherwise fetches the git URL declared in `Cargo.toml`. |
+| Tarball | `inst/vendor.tar.xz` present | Configure unpacks the tarball into `vendor/`, writes `[source]` replacement to `vendored-sources`, build runs `--offline`. |
 
-**Environment variables:**
-
-- `NOT_CRAN=true`: dev mode (legacy, still supported)
-- `PREPARE_CRAN=true`: explicit CRAN release prep (highest precedence)
-- Neither set: auto-detects from monorepo/vendor presence
+There is no env var for install mode (`NOT_CRAN`, `PREPARE_CRAN`,
+`FORCE_VENDOR` are all gone). See [CRAN Compatibility](../cran-compatibility/)
+for the full table and rationale.
 
 **IFS save/restore:** The configure script saves and restores `IFS` around
 any code that modifies it (`miniextendr_saved_IFS=$IFS` / `IFS=$miniextendr_saved_IFS`).
@@ -241,7 +236,7 @@ being set to its default value.
 
 - [LINKING.md](../linking/): how miniextendr links to libR (engine vs package)
 - [ENTRYPOINT.md](../entrypoint/): the C entry point design
-- [VENDOR.md](../vendor/): dependency vendoring for CRAN
+- [CRAN_COMPATIBILITY.md](../cran-compatibility/): dependency vendoring for CRAN
 - [TEMPLATES.md](../templates/): how configure.ac templates work
 - R sources: `share/make/shlib.mk`, `share/make/winshlib.mk`
 - R sources: `src/library/tools/R/install.R` (the `R CMD INSTALL` implementation)

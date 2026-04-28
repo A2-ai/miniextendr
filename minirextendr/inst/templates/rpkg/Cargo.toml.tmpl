@@ -22,13 +22,6 @@ miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }
 [build-dependencies]
 miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }
 
-# Development: resolve miniextendr crates from git
-# configure's cargo config handles CRAN/offline builds via source replacement
-[patch.crates-io]
-miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }
-miniextendr-macros = { git = "https://github.com/A2-ai/miniextendr" }
-miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }
-
 # codegen-units = 1 ensures the entire user crate compiles into a single .o file
 # inside the staticlib archive. This is required for linkme's distributed_slice:
 # the linker only pulls archive members that resolve undefined symbols, so with

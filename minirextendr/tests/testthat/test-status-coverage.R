@@ -250,24 +250,3 @@ test_that("miniextendr_validate warns on AC_INIT mismatch", {
   expect_type(result, "logical")
 })
 
-test_that("miniextendr_validate warns on missing vendored crates", {
-  tmp <- tempfile("validate-novendor-")
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-  dir.create(tmp)
-
-  writeLines(paste0(
-    "Package: testpkg\nTitle: Test\nVersion: 0.0.1\n",
-    "Config/build/bootstrap: TRUE\n",
-    "SystemRequirements: Rust (>= 1.85)\n"
-  ), file.path(tmp, "DESCRIPTION"))
-
-  writeLines("AC_INIT([testpkg], [0.0.1])\nCARGO_FEATURES=\n",
-    file.path(tmp, "configure.ac"))
-
-  # No vendor/ directory at all
-  expect_message(
-    result <- miniextendr_validate(tmp),
-    "Missing vendored crates"
-  )
-  expect_type(result, "logical")
-})

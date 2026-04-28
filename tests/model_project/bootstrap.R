@@ -1,12 +1,18 @@
 # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
-# Sets NOT_CRAN=true so configure runs in dev mode during devtools workflows.
-# PREPARE_CRAN=false prevents accidental inheritance of release-prep mode.
-
-env <- c(NOT_CRAN = "true", PREPARE_CRAN = "false")
-env_strings <- paste0(names(env), "=", env)
+# Runs ./configure so that Makevars and other generated files exist
+# before R CMD build creates the source tarball.
+#
+# Install-mode detection is automatic: if inst/vendor.tar.xz exists
+# (created by `minirextendr::miniextendr_vendor()` before `R CMD build`
+# when preparing a CRAN submission), configure builds in tarball/offline
+# mode. Otherwise, source/network mode is used.
 
 if (.Platform$OS.type == "windows") {
-  system2("bash", c("-l", "-c", "./configure.win"), env = env_strings)
+  if (file.exists("configure.ucrt")) {
+    system("sh configure.ucrt")
+  } else if (file.exists("configure.win")) {
+    system("sh configure.win")
+  }
 } else {
-  system2("./configure", env = env_strings)
+  system2("bash", "./configure")
 }

@@ -50,7 +50,6 @@
 - [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) -- How R builds packages with compiled code
 - [TEMPLATES.md](TEMPLATES.md) -- Template system (`.in` files and configure)
 - [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) -- All env vars affecting build/configure/lint
-- [VENDOR.md](VENDOR.md) -- Vendoring, PREPARE_CRAN, and CRAN release prep
 - [LINKING.md](LINKING.md) -- Linking strategy for shared libraries
 - [ENTRYPOINT.md](ENTRYPOINT.md) -- R package entry point (`R_init_*`)
 - [ENGINE.md](ENGINE.md) -- miniextendr-engine: code generation engine

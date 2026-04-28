@@ -51,7 +51,6 @@ upgrade_miniextendr_package <- function(path = ".",
   cli::cli_h2("Updating build system templates")
   use_miniextendr_stub()
   use_miniextendr_makevars()
-  use_miniextendr_cargo_config()
   use_miniextendr_mx_abi()
   use_miniextendr_build_rs()
   use_miniextendr_bootstrap()
@@ -72,11 +71,6 @@ upgrade_miniextendr_package <- function(path = ".",
   } else {
     check_configure_ac_drift()
   }
-
-  # --- Vendor crates ---
-  cli::cli_h2("Updating vendored crates")
-  cli::cli_alert_info("Updating miniextendr to version: {version}")
-  vendor_miniextendr(version = version, local_path = local_path)
 
   # --- Autoconf ---
   if (autoconf && nzchar(Sys.which("autoconf"))) {
@@ -123,7 +117,6 @@ check_scaffolding_clean <- function() {
     "src/stub.c",
     "src/cdylib-exports.def",
     "src/rust/build.rs",
-    "src/rust/cargo-config.toml.in",
     "src/Makevars.in",
     "src/win.def.in",
     "inst/include/mx_abi.h",

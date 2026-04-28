@@ -222,8 +222,7 @@ with `--as-cran --no-manual`. It uses the `rcmdcheck` R package.
 Alternatively, for manual control:
 
 ```bash
-NOT_CRAN=true just configure
-rm -rf rpkg/vendor
+just vendor                         # produces inst/vendor.tar.xz (tarball-mode artifact)
 R CMD build rpkg
 TARBALL="$(ls -1 miniextendr_*.tar.gz | tail -n1)"
 R CMD check --as-cran --no-manual "$TARBALL"
@@ -293,7 +292,7 @@ use_miniextendr(template_type = "rpkg", local_path = root)
 # 1. First install: compiles Rust + generates R wrappers via document binary
 system2(r_cmd,
   c("CMD", "INSTALL", "--no-multiarch", "-l", lib, pkg),
-  env = "NOT_CRAN=true")
+  env = character(0))
 
 # 2. Document: populates NAMESPACE with exports from generated wrappers
 devtools::document(pkg)
@@ -301,7 +300,7 @@ devtools::document(pkg)
 # 3. Reinstall with updated NAMESPACE
 system2(r_cmd,
   c("CMD", "INSTALL", "--no-multiarch", "-l", lib, pkg),
-  env = "NOT_CRAN=true")
+  env = character(0))
 
 # 4. Verify
 pkg_name <- desc(file.path(pkg, "DESCRIPTION"))$get_field("Package")
@@ -452,10 +451,12 @@ ls rpkg/tests/testthat/test-*.R
 
 Each platform runs in two modes:
 
-1. **Dev mode:** `NOT_CRAN=true` -- cargo resolves deps via `[patch]`, no
-   vendoring.
-2. **CRAN-like mode:** `NOT_CRAN` unset -- install and check from built tarball
-   using `inst/vendor.tar.xz`.
+1. **Source install:** `R CMD INSTALL .` on the source tree. Cargo resolves
+   workspace crates via `[patch."git+url"]` (monorepo) or git URL (no monorepo).
+   No vendoring.
+2. **Tarball install:** `R CMD build` then `R CMD INSTALL <tarball>` (or
+   `R CMD check`, which builds internally). Configure detects
+   `inst/vendor.tar.xz`, unpacks it, builds offline.
 
 ---
 

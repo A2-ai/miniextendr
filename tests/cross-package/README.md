@@ -46,15 +46,15 @@ If you are not using `just`, the equivalent manual flow is:
 # Build producer.pkg
 cd producer.pkg
 if command -v autoconf >/dev/null 2>&1; then autoconf; fi
-NOT_CRAN=true bash ./configure
-NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
+bash ./configure
+Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
 cd ..
 
 # Build consumer.pkg
 cd consumer.pkg
 if command -v autoconf >/dev/null 2>&1; then autoconf; fi
-NOT_CRAN=true bash ./configure
-NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
+bash ./configure
+Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
 cd ..
 ```
 
