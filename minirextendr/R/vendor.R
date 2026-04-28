@@ -50,10 +50,10 @@ vendor_crates_io <- function(path = ".") {
 
   check_result(result, "cargo revendor")
 
-  # Additional CRAN-trim beyond cargo-revendor: docs/, ci/, .circleci/,
-  # .github/, dotfiles. cargo-revendor's --strip-all is too aggressive
-  # (it strips dev-deps but leaves dangling [features] refs; see
-  # cargo-revendor issue #322), so we don't pass it.
+  # Additional CRAN-trim: remove docs/, ci/, .circleci/, .github/, dotfiles
+  # that cargo-revendor --strip-all doesn't cover. The R-side stripping is
+  # complementary: cargo-revendor handles Cargo.toml surgery (dev-deps,
+  # dangling feature refs); this handles directory-level CRAN hygiene.
   strip_vendored_dir(vendor_dir)
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
