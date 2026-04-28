@@ -398,9 +398,7 @@ fn main() -> Result<()> {
         Mode::ExternalOnly => {
             run_external_only(&cli, &manifest_path, &output, &lockfile, &sync_manifests, v)
         }
-        Mode::LocalOnly => {
-            run_local_only(&cli, &manifest_path, &output, &lockfile, &sync_manifests, v)
-        }
+        Mode::LocalOnly => run_local_only(&cli, &manifest_path, &output, v),
     }
 }
 
@@ -722,18 +720,36 @@ fn run_external_only(
         return Ok(());
     }
 
-    // Step 1b: Load metadata (no bootstrap needed — we don't package local crates)
+    // Step 1a: Bootstrap-seed from source_root so `cargo metadata` can resolve
+    // frozen path deps (`path = "../../vendor/<name>/"`) on a fresh clone.
+    // Same logic as run_full / run_local_only — seeds are stubs to unblock
+    // metadata; remove_flat_dirs cleans them from staging after cargo vendor.
+    let source_root_members = if let Some(ref source_root) = cli.source_root {
+        metadata::discover_workspace_members(source_root)?
+    } else {
+        Vec::new()
+    };
+
+    if !source_root_members.is_empty() {
+        bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
+        vendor::rewrite_local_path_deps(output, &source_root_members, v)?;
+    }
+
+    // Step 1b: Load metadata; derive local and patch package lists.
     let meta = metadata::load_metadata(manifest_path)?;
     metadata::check_duplicate_sources(&meta)?;
     let (local_pkgs, _) = metadata::partition_packages(&meta, manifest_path)?;
 
-    let patch_pkgs = if let Some(first_local) = local_pkgs.first() {
+    let all_workspace_members = if !source_root_members.is_empty() {
+        source_root_members
+    } else if let Some(first_local) = local_pkgs.first() {
         let ws_root = find_workspace_root(&first_local.path)?;
-        let all_ws = metadata::discover_workspace_members(&ws_root)?;
-        merge_packages(&local_pkgs, &all_ws)
+        metadata::discover_workspace_members(&ws_root)?
     } else {
-        local_pkgs.clone()
+        Vec::new()
     };
+
+    let patch_pkgs = merge_packages(&local_pkgs, &all_workspace_members);
 
     if v.info() {
         eprintln!("cargo-revendor: --external-only: skipping {} local crates", local_pkgs.len());
@@ -811,34 +827,36 @@ fn run_local_only(
     cli: &Cli,
     manifest_path: &std::path::Path,
     output: &std::path::Path,
-    lockfile: &std::path::Path,
-    sync_manifests: &[std::path::PathBuf],
     v: Verbosity,
 ) -> Result<()> {
-    // Step 0: Cache check — skip if local crate sources are unchanged
-    let source_root_members_for_cache: Vec<std::path::PathBuf> = if let Some(ref sr) = cli.source_root {
-        metadata::discover_workspace_members(sr)?
-            .into_iter()
-            .map(|p| p.path)
-            .collect()
-    } else {
-        Vec::new()
-    };
-
     // Step 1a: Bootstrap-seed from source_root so metadata can resolve frozen
-    // path deps (same logic as run_full).
+    // path deps (same logic as run_full). Discover source_root_members once and
+    // reuse for bootstrap seeding, all_workspace_members, and the cache key.
     let source_root_members = if let Some(ref source_root) = cli.source_root {
         metadata::discover_workspace_members(source_root)?
     } else {
         Vec::new()
     };
 
+    // Step 0: Cache check using source_root paths — skip bootstrap + metadata
+    // on a hit to avoid unnecessary I/O.
+    if !cli.force && !source_root_members.is_empty() {
+        let source_root_paths: Vec<std::path::PathBuf> =
+            source_root_members.iter().map(|p| p.path.clone()).collect();
+        if cache::is_cached_local(output, &source_root_paths)? {
+            if v.info() {
+                eprintln!("cargo-revendor: local vendor/ is up to date (inputs unchanged)");
+            }
+            return Ok(());
+        }
+    }
+
     if !source_root_members.is_empty() {
         bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
         vendor::rewrite_local_path_deps(output, &source_root_members, v)?;
     }
 
-    // Step 1b: Load metadata + partition with git_overrides = source_root_members
+    // Step 1b: Load metadata + partition.
     let meta = metadata::load_metadata(manifest_path)?;
     metadata::check_duplicate_sources(&meta)?;
     let (mut local_pkgs, _) = metadata::partition_packages(&meta, manifest_path)?;
@@ -874,15 +892,16 @@ fn run_local_only(
 
     let patch_pkgs = merge_packages(&local_pkgs, &all_workspace_members);
 
-    let local_crate_paths: Vec<std::path::PathBuf> = local_pkgs.iter().map(|p| p.path.clone()).collect();
+    let local_crate_paths: Vec<std::path::PathBuf> =
+        local_pkgs.iter().map(|p| p.path.clone()).collect();
 
-    // Cache check now that we have actual local_crate_paths
-    let cache_paths = if source_root_members_for_cache.is_empty() {
-        local_crate_paths.clone()
-    } else {
-        source_root_members_for_cache
-    };
-    if !cli.force && cache::is_cached_local(output, &cache_paths)? {
+    // Step 0 (fallback): when --source-root was not provided, the cache check
+    // can only happen after metadata (we need local_crate_paths). When
+    // --source-root was provided, the early cache check above already handled it.
+    if !cli.force
+        && cli.source_root.is_none()
+        && cache::is_cached_local(output, &local_crate_paths)?
+    {
         if v.info() {
             eprintln!("cargo-revendor: local vendor/ is up to date (inputs unchanged)");
         }
@@ -951,11 +970,12 @@ fn run_local_only(
         eprintln!("{}", config_toml);
     }
 
-    // Step 14: Save local cache. Also refresh the full cache if sync_manifests
-    // are available (so full-mode cache checks still work after local-only runs).
-    cache::save_cache_local(output, &cache_paths)?;
-    // Keep the legacy full cache in sync when we have enough info.
-    cache::save_cache(lockfile, sync_manifests, output, &cache_paths)?;
+    // Step 14: Save local cache.
+    // Do NOT update the legacy full cache (.revendor-cache) here — after a
+    // --local-only run we haven't re-processed external deps, so writing the
+    // full cache with local-only paths would produce a false hit in a subsequent
+    // full-mode run if external deps change before then.
+    cache::save_cache_local(output, &local_crate_paths)?;
 
     if v.info() {
         eprintln!(
