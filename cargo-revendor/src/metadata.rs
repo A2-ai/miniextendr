@@ -70,9 +70,16 @@ pub fn discover_workspace_members(workspace_root: &Path) -> Result<Vec<LocalPack
 /// Local packages are those whose source is a local path and whose
 /// manifest is NOT inside the target package's src/rust directory
 /// (i.e., they're workspace siblings, not the package itself).
+///
+/// `git_overrides` allows callers to reclassify git-sourced deps as local
+/// when the same crate is available in a local source root (e.g., a monorepo
+/// where `--source-root` points at the workspace containing the git dep).
+/// Any git dep whose name matches an entry in `git_overrides` is treated as
+/// local and vendored from the local path rather than fetched from git.
 pub fn partition_packages(
     meta: &Metadata,
     target_manifest: &Path,
+    git_overrides: &[LocalPackage],
 ) -> Result<(Vec<LocalPackage>, Vec<String>)> {
     let target_dir = target_manifest
         .parent()
@@ -133,7 +140,16 @@ pub fn partition_packages(
                 manifest_path: pkg.manifest_path.clone().into(),
             });
         } else if pkg.source.is_some() {
-            external.push(pkg.name.clone());
+            // Reclassify git deps that are available in the local source root.
+            // With git-dep declarations (git = "https://..."), cargo metadata
+            // sets source = "git+...", but --source-root can point at the local
+            // checkout. Without this override, cargo-revendor would fetch from
+            // github instead of using the local edit.
+            if let Some(override_pkg) = git_overrides.iter().find(|o| o.name == pkg.name) {
+                local.push(override_pkg.clone());
+            } else {
+                external.push(pkg.name.clone());
+            }
         }
     }
 
