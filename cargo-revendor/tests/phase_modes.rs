@@ -11,9 +11,7 @@ mod common;
 
 use common::{create_workspace, git_init, revendor_cmd};
 
-// =============================================================================
-// Flag compatibility (offline — no cargo vendor invoked)
-// =============================================================================
+// region: flag compatibility (offline — no cargo vendor invoked)
 
 /// --external-only --freeze must exit non-zero with a clear error.
 #[test]
@@ -157,9 +155,9 @@ path = "lib.rs"
         .failure();
 }
 
-// =============================================================================
-// Phase mode vendoring (network required)
-// =============================================================================
+// endregion
+
+// region: phase mode vendoring (network required)
 
 /// --external-only produces versioned dirs and writes .revendor-cache-external.
 #[test]
@@ -558,3 +556,5 @@ cfg-if = "1"
         ".revendor-cache-external should not be rewritten on a cache hit"
     );
 }
+
+// endregion
