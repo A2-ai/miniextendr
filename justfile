@@ -59,6 +59,7 @@
 #   Vendor sync:
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
+#     just lock-shape-check   - Verify Cargo.lock is in tarball-shape (git sources, no checksums)
 #
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set windows-shell := ["bash", "-euo", "pipefail", "-c"]
@@ -913,6 +914,30 @@ vendor-sync-diff:
         echo ""
       fi
     done
+
+# Check that rpkg/src/rust/Cargo.lock is in tarball-shape (git sources, no checksums)
+[script("bash")]
+lock-shape-check:
+    set -euo pipefail
+    lock=rpkg/src/rust/Cargo.lock
+    if [ ! -f "$lock" ]; then
+        echo "lock-shape-check: $lock not found — skipping"
+        exit 0
+    fi
+    bad=0
+    if grep -q 'checksum = ' "$lock"; then
+        echo "lock-shape-check: $lock has checksum lines (tarball-shape violation)" >&2
+        bad=1
+    fi
+    if grep -q 'source = "path+' "$lock"; then
+        echo "lock-shape-check: $lock has path+... sources (tarball-shape violation)" >&2
+        bad=1
+    fi
+    if [ $bad -eq 1 ]; then
+        echo "  Run: just vendor    # regenerates canonical shape" >&2
+        exit 1
+    fi
+    echo "lock-shape-check: OK"
 
 # ============================================================================
 # mx CLI (miniextendr-cli)
