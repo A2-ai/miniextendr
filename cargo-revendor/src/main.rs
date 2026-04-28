@@ -738,7 +738,8 @@ fn run_external_only(
     // Step 1b: Load metadata; derive local and patch package lists.
     let meta = metadata::load_metadata(manifest_path)?;
     metadata::check_duplicate_sources(&meta)?;
-    let (local_pkgs, _) = metadata::partition_packages(&meta, manifest_path)?;
+    let (local_pkgs, _) =
+        metadata::partition_packages(&meta, manifest_path, &source_root_members)?;
 
     let all_workspace_members = if !source_root_members.is_empty() {
         source_root_members
@@ -859,7 +860,8 @@ fn run_local_only(
     // Step 1b: Load metadata + partition.
     let meta = metadata::load_metadata(manifest_path)?;
     metadata::check_duplicate_sources(&meta)?;
-    let (mut local_pkgs, _) = metadata::partition_packages(&meta, manifest_path)?;
+    let (mut local_pkgs, _) =
+        metadata::partition_packages(&meta, manifest_path, &source_root_members)?;
 
     let all_workspace_members = if !source_root_members.is_empty() {
         source_root_members
