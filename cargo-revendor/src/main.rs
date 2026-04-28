@@ -300,7 +300,8 @@ fn main() -> Result<()> {
     // the vendored contents depend on dep-graph iteration order.
     metadata::check_duplicate_sources(&meta)?;
 
-    let (mut local_pkgs, _external_pkgs) = metadata::partition_packages(&meta, &manifest_path)?;
+    let (mut local_pkgs, _external_pkgs) =
+        metadata::partition_packages(&meta, &manifest_path, &source_root_members)?;
 
     // Fall back to heuristic workspace-root detection only if `--source-root`
     // wasn't explicitly provided.
