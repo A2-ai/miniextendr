@@ -76,6 +76,12 @@ pub fn discover_workspace_members(workspace_root: &Path) -> Result<Vec<LocalPack
 /// where `--source-root` points at the workspace containing the git dep).
 /// Any git dep whose name matches an entry in `git_overrides` is treated as
 /// local and vendored from the local path rather than fetched from git.
+/// Pass `&[]` when `--source-root` is not in use.
+///
+/// Returns an error if a git dep matches a `git_overrides` entry by name but
+/// the resolved git version differs from the local version — a version mismatch
+/// means the local checkout is not the same code the lockfile pinned, and
+/// silently vendoring the wrong source would produce broken builds.
 pub fn partition_packages(
     meta: &Metadata,
     target_manifest: &Path,
@@ -145,15 +151,44 @@ pub fn partition_packages(
             // sets source = "git+...", but --source-root can point at the local
             // checkout. Without this override, cargo-revendor would fetch from
             // github instead of using the local edit.
-            if let Some(override_pkg) = git_overrides.iter().find(|o| o.name == pkg.name) {
-                local.push(override_pkg.clone());
-            } else {
-                external.push(pkg.name.clone());
+            match resolve_git_override(&pkg.name, &pkg.version.to_string(), git_overrides)? {
+                Some(override_pkg) => local.push(override_pkg.clone()),
+                None => external.push(pkg.name.clone()),
             }
         }
     }
 
     Ok((local, external))
+}
+
+/// Look up a git dep in the override list, checking that versions match.
+///
+/// Returns `Ok(Some(pkg))` when the git dep is overridden by a local source-root
+/// member of the same name **and** the same version. Returns `Ok(None)` when no
+/// override exists (dep should be treated as external). Returns `Err` when a
+/// name match is found but the versions differ — this indicates the local
+/// checkout is not the same code the lockfile pinned, which would produce a
+/// broken vendor tree.
+fn resolve_git_override<'a>(
+    name: &str,
+    git_version: &str,
+    overrides: &'a [LocalPackage],
+) -> Result<Option<&'a LocalPackage>> {
+    let Some(candidate) = overrides.iter().find(|o| o.name == name) else {
+        return Ok(None);
+    };
+
+    if candidate.version != git_version {
+        bail!(
+            "git dep `{name}` resolves to v{git_version} in Cargo.lock \
+             but the local source-root has v{local} — versions must match \
+             for `--source-root` override to be safe. \
+             Update the local crate or pin the git dep to a matching revision.",
+            local = candidate.version,
+        );
+    }
+
+    Ok(Some(candidate))
 }
 
 /// Error out when two different sources resolve to the same (name, version).
