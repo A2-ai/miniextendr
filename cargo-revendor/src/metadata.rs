@@ -287,6 +287,17 @@ mod tests {
         (name.to_string(), version.to_string(), source.map(String::from))
     }
 
+    fn local_pkg(name: &str, version: &str) -> LocalPackage {
+        LocalPackage {
+            name: name.to_string(),
+            version: version.to_string(),
+            path: PathBuf::from("/workspace").join(name),
+            manifest_path: PathBuf::from("/workspace").join(name).join("Cargo.toml"),
+        }
+    }
+
+    // region: check_duplicate_sources tests
+
     #[test]
     fn no_duplicates_passes() {
         let pkgs = vec![
@@ -357,4 +368,74 @@ mod tests {
         let err = check_duplicate_sources_impl(&pkgs).unwrap_err();
         assert!(err.to_string().contains("serde v1.0.0"));
     }
+
+    // endregion
+
+    // region: resolve_git_override tests
+
+    #[test]
+    fn git_override_no_match_returns_none() {
+        // Dep is not in overrides — should stay external.
+        let overrides = vec![local_pkg("miniextendr-api", "0.5.0")];
+        let result = resolve_git_override("serde", "1.0.0", &overrides).unwrap();
+        assert!(result.is_none(), "unrelated dep should not match any override");
+    }
+
+    #[test]
+    fn git_override_empty_list_returns_none() {
+        let result = resolve_git_override("miniextendr-api", "0.5.0", &[]).unwrap();
+        assert!(result.is_none(), "empty override list should never match");
+    }
+
+    #[test]
+    fn git_override_name_and_version_match_returns_pkg() {
+        let overrides = vec![
+            local_pkg("miniextendr-api", "0.5.0"),
+            local_pkg("miniextendr-macros", "0.5.0"),
+        ];
+        let result = resolve_git_override("miniextendr-api", "0.5.0", &overrides)
+            .unwrap()
+            .expect("should match");
+        assert_eq!(result.name, "miniextendr-api");
+        assert_eq!(result.version, "0.5.0");
+    }
+
+    #[test]
+    fn git_override_name_match_version_mismatch_errors() {
+        // Git dep is pinned to 0.5.0 but local checkout is on 0.6.0.
+        // Silently vendoring would produce a build that doesn't match
+        // the lockfile — cargo-revendor must refuse.
+        let overrides = vec![local_pkg("miniextendr-api", "0.6.0")];
+        let err = resolve_git_override("miniextendr-api", "0.5.0", &overrides).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("miniextendr-api"), "error should name the crate");
+        assert!(msg.contains("0.5.0"), "error should mention the git version");
+        assert!(msg.contains("0.6.0"), "error should mention the local version");
+    }
+
+    #[test]
+    fn git_override_picks_first_name_match() {
+        // Degenerate case: two entries with the same name but different versions.
+        // Only the first match is considered; version check applies to it.
+        let overrides = vec![
+            local_pkg("miniextendr-api", "0.5.0"),
+            local_pkg("miniextendr-api", "0.6.0"),
+        ];
+        // Matches first entry — version must equal the git dep's version.
+        let result = resolve_git_override("miniextendr-api", "0.5.0", &overrides)
+            .unwrap()
+            .expect("should match first entry");
+        assert_eq!(result.version, "0.5.0");
+    }
+
+    #[test]
+    fn git_override_unrelated_crate_same_version_not_matched() {
+        // A dep named "serde" shouldn't match an override for "miniextendr-api"
+        // even if versions happen to be equal.
+        let overrides = vec![local_pkg("miniextendr-api", "1.0.0")];
+        let result = resolve_git_override("serde", "1.0.0", &overrides).unwrap();
+        assert!(result.is_none());
+    }
+
+    // endregion
 }
