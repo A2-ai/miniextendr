@@ -116,51 +116,152 @@ test_that("add_crate_to_workspace detects duplicate", {
 })
 
 # =============================================================================
-# P2: status/check/doctor required crate lists include miniextendr-engine
+# P2: miniextendr_validate / miniextendr_status / miniextendr_doctor behavior
+# (fixture-based; tests behavior, not function source text)
 # =============================================================================
 
-test_that("miniextendr_status expects all 5 required vendored crates", {
-  skip_if_no_local_repo()
-  tmp <- tempfile("status-engine-")
+test_that("miniextendr_validate returns TRUE for well-formed package (Fixture A)", {
+  # Fixture A: DESCRIPTION + configure.ac + src/rust/Cargo.toml with miniextendr-api
+  tmp <- tempfile("fixture-a-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  writeLines(c(
+    "Package: mypkg", "Version: 0.1.0",
+    "Config/build/bootstrap: TRUE",
+    "SystemRequirements: Rust (>= 1.85)"
+  ), file.path(tmp, "DESCRIPTION"))
+  writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "mypkg"', 'version = "0.1.0"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
 
-  create_miniextendr_monorepo(tmp, package = "testpkg",
-                               crate_name = "testpkg-rs",
-                               local_path = find_miniextendr_repo(), open = FALSE)
-
-  result <- suppressMessages(miniextendr_status(file.path(tmp, "testpkg")))
-
-  # The expected vendored crates list should include miniextendr-engine
-  all_expected <- unlist(result$present, use.names = FALSE)
-  all_missing <- unlist(result$missing, use.names = FALSE)
-  all_files <- c(all_expected, all_missing)
-
-  expect_true(
-    any(grepl("miniextendr-engine", all_files)),
-    label = "miniextendr-engine should be in status expected files"
-  )
+  result <- suppressMessages(miniextendr_validate(tmp))
+  # Rust may or may not be installed in test env, but should return logical
+  expect_type(result, "logical")
 })
 
-test_that("miniextendr_doctor checks all 5 required crates", {
-  # Verify the required_crates vector in doctor.R includes miniextendr-engine
-  # by inspecting the function body
-  body_text <- deparse(body(miniextendr_doctor))
-  expect_true(
-    any(grepl("miniextendr-engine", body_text)),
-    label = "miniextendr_doctor should check for miniextendr-engine"
+test_that("miniextendr_validate warns about missing Config/build/bootstrap (Fixture B)", {
+  # Fixture B: DESCRIPTION without Config/build/bootstrap
+  tmp <- tempfile("fixture-b-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  writeLines(c(
+    "Package: mypkg", "Version: 0.1.0",
+    "SystemRequirements: Rust (>= 1.85)"
+  ), file.path(tmp, "DESCRIPTION"))
+  writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "mypkg"', 'version = "0.1.0"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  expect_message(
+    result <- miniextendr_validate(tmp),
+    "bootstrap",
+    info = "should warn about missing Config/build/bootstrap"
   )
+  expect_type(result, "logical")
 })
 
-test_that("miniextendr_validate checks all required crates", {
-  body_text <- deparse(body(miniextendr_validate))
-  expected_crates <- c("miniextendr-api", "miniextendr-macros",
-                        "miniextendr-lint", "miniextendr-engine")
-  for (crate in expected_crates) {
-    expect_true(
-      any(grepl(crate, body_text, fixed = TRUE)),
-      label = sprintf("miniextendr_validate should check for %s", crate)
-    )
-  }
+test_that("miniextendr_validate reports missing configure.ac as an issue (Fixture D)", {
+  # Fixture D: configure.ac absent
+  tmp <- tempfile("fixture-d-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  writeLines(c(
+    "Package: mypkg", "Version: 0.1.0",
+    "Config/build/bootstrap: TRUE",
+    "SystemRequirements: Rust (>= 1.85)"
+  ), file.path(tmp, "DESCRIPTION"))
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "mypkg"', 'version = "0.1.0"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  expect_message(
+    result <- miniextendr_validate(tmp),
+    "configure.ac",
+    info = "should report configure.ac not found"
+  )
+  expect_false(result)
+})
+
+test_that("miniextendr_validate detects missing miniextendr-api in Cargo.toml", {
+  tmp <- tempfile("fixture-no-api-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  writeLines(c(
+    "Package: mypkg", "Version: 0.1.0",
+    "Config/build/bootstrap: TRUE",
+    "SystemRequirements: Rust (>= 1.85)"
+  ), file.path(tmp, "DESCRIPTION"))
+  writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "mypkg"', 'version = "0.1.0"', '',
+    '[dependencies]', 'serde = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  expect_message(
+    result <- miniextendr_validate(tmp),
+    "miniextendr-api",
+    info = "should report missing miniextendr-api dependency"
+  )
+  expect_false(result)
+})
+
+test_that("miniextendr_status smoke test returns expected structure (Fixture A)", {
+  tmp <- tempfile("fixture-a-status-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  writeLines(c(
+    "Package: mypkg", "Version: 0.1.0",
+    "Config/build/bootstrap: TRUE",
+    "SystemRequirements: Rust (>= 1.85)"
+  ), file.path(tmp, "DESCRIPTION"))
+  writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "mypkg"', 'version = "0.1.0"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  result <- suppressMessages(miniextendr_status(tmp))
+  expect_type(result, "list")
+  expect_named(result, c("present", "missing", "stale"))
+  # Vendored Crates section must no longer appear in status output
+  expect_false("Vendored Crates" %in% names(result$present))
+  expect_false("Vendored Crates" %in% names(result$missing))
+})
+
+test_that("miniextendr_doctor smoke test returns expected structure (Fixture A)", {
+  tmp <- tempfile("fixture-a-doctor-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  writeLines(c(
+    "Package: mypkg", "Version: 0.1.0",
+    "Config/build/bootstrap: TRUE",
+    "SystemRequirements: Rust (>= 1.85)"
+  ), file.path(tmp, "DESCRIPTION"))
+  writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "mypkg"', 'version = "0.1.0"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
+  result <- suppressMessages(miniextendr_doctor(tmp))
+  expect_type(result, "list")
+  expect_named(result, c("pass", "warn", "fail"))
+  # Cargo.toml check should pass for fixture A (miniextendr-api present)
+  expect_true(
+    any(grepl("miniextendr-api", result$pass)),
+    label = "doctor should pass Cargo.toml check for fixture A"
+  )
 })
 
 # =============================================================================

@@ -67,26 +67,20 @@ miniextendr_doctor <- function(path = ".") {
     results$fail <- c(results$fail, "R development headers missing")
   }
 
-  # ── Workspace crates ──
-  # Informational: these are the framework crates the package builds against.
-  # In source mode they're resolved via cargo (git deps or [patch] override);
-  # in tarball mode configure unpacks them under vendor/. Missing under
-  # vendor/ during source-mode dev is normal, not a failure.
-  cli::cli_h2("Workspace crates")
-  required_crates <- c("miniextendr-api", "miniextendr-macros",
-                        "miniextendr-lint", "miniextendr-engine")
-  vendor_dir <- tryCatch(usethis::proj_path("vendor"), error = function(e) NULL)
-  if (is.null(vendor_dir)) {
-    cli::cli_alert_info("Not in a project context, skipping crate checks")
+  # ── Cargo.toml check ──
+  cli::cli_h2("Cargo.toml")
+  cargo_toml_path <- tryCatch(usethis::proj_path("src", "rust", "Cargo.toml"), error = function(e) NULL)
+  if (is.null(cargo_toml_path) || !file.exists(cargo_toml_path)) {
+    cli::cli_alert_danger("{.path src/rust/Cargo.toml} not found")
+    results$fail <- c(results$fail, "src/rust/Cargo.toml not found")
   } else {
-    for (crate in required_crates) {
-      crate_path <- file.path(vendor_dir, crate)
-      if (dir.exists(crate_path)) {
-        cli::cli_alert_success("{crate} unpacked")
-        results$pass <- c(results$pass, paste(crate, "unpacked"))
-      } else {
-        cli::cli_alert_info("{crate} not unpacked (normal in source mode)")
-      }
+    cargo_contents <- readLines(cargo_toml_path, warn = FALSE)
+    if (any(grepl("miniextendr-api", cargo_contents, fixed = TRUE))) {
+      cli::cli_alert_success("{.path src/rust/Cargo.toml} declares {.code miniextendr-api}")
+      results$pass <- c(results$pass, "Cargo.toml declares miniextendr-api")
+    } else {
+      cli::cli_alert_danger("{.path src/rust/Cargo.toml} is missing {.code miniextendr-api} dependency")
+      results$fail <- c(results$fail, "Cargo.toml missing miniextendr-api")
     }
   }
 

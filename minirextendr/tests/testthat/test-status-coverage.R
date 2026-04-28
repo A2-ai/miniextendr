@@ -220,6 +220,12 @@ test_that("miniextendr_validate warns when SystemRequirements lacks Rust", {
   writeLines("AC_INIT([testpkg], [0.0.1])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))
 
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "testpkg"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
+
   expect_message(
     result <- miniextendr_validate(tmp),
     "SystemRequirements"
@@ -242,6 +248,12 @@ test_that("miniextendr_validate warns on AC_INIT mismatch", {
   # AC_INIT with wrong package name
   writeLines("AC_INIT([wrongpkg], [0.0.1])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))
+
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "testpkg"', '',
+    '[dependencies]', 'miniextendr-api = "*"'
+  ), file.path(tmp, "src", "rust", "Cargo.toml"))
 
   expect_message(
     result <- miniextendr_validate(tmp),

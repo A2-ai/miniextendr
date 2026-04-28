@@ -55,15 +55,6 @@ miniextendr_status <- function(path = ".") {
       "src/stub.c",
       "src/cdylib-exports.def"
     ),
-    # Tarball-install artifacts: present only after configure unpacks
-    # inst/vendor.tar.xz. Missing in source-mode dev iteration is normal —
-    # these files are listed as informational.
-    "Vendored Crates" = c(
-      "vendor/miniextendr-api",
-      "vendor/miniextendr-macros",
-      "vendor/miniextendr-lint",
-      "vendor/miniextendr-engine"
-    ),
     "Generated Files" = c(
       "src/Makevars",
       wrapper_file
@@ -215,20 +206,19 @@ miniextendr_validate <- function(path = ".") {
     }
   )
 
-  # Workspace crates the package depends on (informational).
-  # In source-mode dev these aren't unpacked locally — they're under
-  # inst/vendor.tar.xz only after `just vendor`. Missing entries here are
-  # not failures; this section just documents what the framework expects.
-  cli::cli_h2("Workspace crates")
-  required_crates <- c("miniextendr-api", "miniextendr-macros",
-                        "miniextendr-lint", "miniextendr-engine")
-  vendor_dir <- usethis::proj_path("vendor")
-  for (crate in required_crates) {
-    crate_path <- file.path(vendor_dir, crate)
-    if (fs::dir_exists(crate_path)) {
-      cli::cli_alert_success("{.code {crate}} unpacked at {.path vendor/{crate}}")
+  # Check Cargo.toml declares miniextendr-api
+  cli::cli_h2("Cargo.toml")
+  cargo_toml_path <- usethis::proj_path("src", "rust", "Cargo.toml")
+  if (!fs::file_exists(cargo_toml_path)) {
+    issues <- c(issues, "src/rust/Cargo.toml not found")
+    cli::cli_alert_danger("{.path src/rust/Cargo.toml} not found")
+  } else {
+    cargo_contents <- readLines(cargo_toml_path, warn = FALSE)
+    if (any(grepl("miniextendr-api", cargo_contents, fixed = TRUE))) {
+      cli::cli_alert_success("{.path src/rust/Cargo.toml} declares {.code miniextendr-api}")
     } else {
-      cli::cli_alert_info("{.code {crate}} not unpacked (normal in source mode)")
+      issues <- c(issues, "src/rust/Cargo.toml is missing miniextendr-api dependency")
+      cli::cli_alert_danger("{.path src/rust/Cargo.toml} is missing {.code miniextendr-api} dependency")
     }
   }
 
