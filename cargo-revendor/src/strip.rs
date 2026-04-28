@@ -116,16 +116,104 @@ fn strip_crate_dir(crate_dir: &Path, config: &StripConfig, v: Verbosity) -> Resu
         }
     }
 
-    // Clean TOML sections that reference stripped directories
+    // Clean TOML sections that reference stripped directories.
+    // Before stripping, collect the dep names being removed from
+    // [dev-dependencies] so we can prune dangling [features] refs.
     let cargo_toml = crate_dir.join("Cargo.toml");
     if cargo_toml.exists() {
         let sections = config.toml_sections_to_strip();
         if !sections.is_empty() {
+            let removed_deps = if sections.iter().any(|s| s.starts_with("[dev-dependencies")) {
+                collect_dep_names(&cargo_toml, "dev-dependencies")?
+            } else {
+                Vec::new()
+            };
             strip_toml_sections(&cargo_toml, &sections)?;
+            if !removed_deps.is_empty() {
+                prune_dangling_features_inplace(&cargo_toml, &removed_deps)?;
+            }
         }
     }
 
     Ok(stripped)
+}
+
+/// Read dep names from a specific dependency table in a Cargo.toml.
+fn collect_dep_names(cargo_toml: &Path, section: &str) -> Result<Vec<String>> {
+    let content = std::fs::read_to_string(cargo_toml)?;
+    let doc: toml_edit::DocumentMut = content
+        .parse()
+        .with_context(|| format!("failed to parse {}", cargo_toml.display()))?;
+    let names = doc
+        .get(section)
+        .and_then(|v| v.as_table_like())
+        .map(|tbl| tbl.iter().map(|(k, _)| k.to_string()).collect())
+        .unwrap_or_default();
+    Ok(names)
+}
+
+/// Prune [features] entries that reference removed deps, in-place.
+fn prune_dangling_features_inplace(cargo_toml: &Path, removed_deps: &[String]) -> Result<()> {
+    let content = std::fs::read_to_string(cargo_toml)?;
+    let pruned = prune_dangling_feature_refs(&content, removed_deps);
+    if pruned != content {
+        std::fs::write(cargo_toml, &pruned)?;
+    }
+    Ok(())
+}
+
+/// Remove feature array entries that reference removed dependencies.
+///
+/// Cargo validates ALL [features] entries at parse time regardless of which
+/// features are enabled. After dev-dependencies are stripped, any feature
+/// referencing `"<dep>/..."`, `"<dep>?/..."`, or exactly `"<dep>"` for a
+/// removed dep becomes a dangling reference that breaks every consumer.
+///
+/// If a feature's array becomes empty after pruning, it is kept as `[]`
+/// (a valid, harmless feature flag). Non-referencing features are unchanged.
+pub fn prune_dangling_feature_refs(content: &str, removed_deps: &[String]) -> String {
+    if removed_deps.is_empty() {
+        return content.to_string();
+    }
+
+    let mut doc: toml_edit::DocumentMut = match content.parse() {
+        Ok(d) => d,
+        Err(_) => return content.to_string(),
+    };
+
+    let Some(features) = doc.get_mut("features").and_then(|v| v.as_table_mut()) else {
+        return content.to_string();
+    };
+
+    let mut changed = false;
+    for (_feat_name, feat_val) in features.iter_mut() {
+        let Some(arr) = feat_val.as_array_mut() else {
+            continue;
+        };
+        let before = arr.len();
+        arr.retain(|item| {
+            let s = match item.as_str() {
+                Some(s) => s,
+                None => return true, // keep non-string items unchanged
+            };
+            !removed_deps.iter().any(|dep| {
+                // Exact match: "dep"
+                s == dep
+                    // Dep-feature ref: "dep/feature" or "dep?/feature"
+                    || s.starts_with(&format!("{}/", dep))
+                    || s.starts_with(&format!("{}?/", dep))
+            })
+        });
+        if arr.len() != before {
+            changed = true;
+        }
+    }
+
+    if changed {
+        doc.to_string()
+    } else {
+        content.to_string()
+    }
 }
 
 /// Remove specified TOML sections from Cargo.toml
@@ -217,6 +305,8 @@ mod tests {
         assert!(!result.contains("[dev-dependencies]"));
         assert!(!result.contains("criterion"));
         assert!(result.contains("[features]"));
+        // No dangling refs to criterion exist in this fixture, default = [] survives
+        assert!(result.contains("default = []"));
     }
 
     #[test]
@@ -262,6 +352,124 @@ mod tests {
         assert!(!result.contains("[dev-dependencies]"));
         assert!(result.contains("[features]"));
     }
+
+    // region: prune_dangling_feature_refs (#322)
+
+    #[test]
+    fn prune_dangling_feature_refs_removes_dep_slash_feature() {
+        let toml = r#"[package]
+name = "foo"
+version = "0.1.0"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[features]
+real_blackbox = ["criterion/real_blackbox"]
+default = []
+"#;
+        let result = prune_dangling_feature_refs(toml, &["criterion".to_string()]);
+        // criterion/real_blackbox should be gone
+        assert!(
+            !result.contains("criterion/real_blackbox"),
+            "dangling dep-feature ref should be pruned, got:\n{result}"
+        );
+        // default = [] should survive
+        assert!(
+            result.contains("default = []"),
+            "default feature should be preserved, got:\n{result}"
+        );
+        // real_blackbox feature key still exists but as empty array
+        assert!(
+            result.contains("real_blackbox"),
+            "feature key should still be present, got:\n{result}"
+        );
+    }
+
+    #[test]
+    fn prune_dangling_feature_refs_removes_optional_dep_feature() {
+        // dep?/feature syntax (optional dep)
+        let toml = r#"[features]
+foo = ["criterion?/real_blackbox", "serde/derive"]
+"#;
+        let result = prune_dangling_feature_refs(toml, &["criterion".to_string()]);
+        assert!(!result.contains("criterion?/real_blackbox"));
+        // serde/derive is untouched (serde was not removed)
+        assert!(result.contains("serde/derive"));
+    }
+
+    #[test]
+    fn prune_dangling_feature_refs_removes_exact_dep_name() {
+        // Feature enabling a dep by exact name: `feature = ["criterion"]`
+        let toml = r#"[features]
+benchmarks = ["criterion"]
+default = []
+"#;
+        let result = prune_dangling_feature_refs(toml, &["criterion".to_string()]);
+        assert!(!result.contains("\"criterion\""));
+        assert!(result.contains("default = []"));
+    }
+
+    #[test]
+    fn prune_dangling_feature_refs_keeps_non_removed_deps() {
+        let toml = r#"[features]
+full = ["serde/derive", "criterion/real_blackbox"]
+default = []
+"#;
+        // Only criterion removed — serde/derive must survive
+        let result = prune_dangling_feature_refs(toml, &["criterion".to_string()]);
+        assert!(!result.contains("criterion/real_blackbox"));
+        assert!(result.contains("serde/derive"));
+    }
+
+    #[test]
+    fn prune_dangling_feature_refs_empty_removed_deps_is_noop() {
+        let toml = r#"[features]
+full = ["serde/derive"]
+"#;
+        let result = prune_dangling_feature_refs(toml, &[]);
+        assert_eq!(result, toml);
+    }
+
+    #[test]
+    fn strip_crate_dir_prunes_dangling_features_after_dev_dep_strip() {
+        // End-to-end: strip_crate_dir with StripConfig { tests: true, ... }
+        // should remove [dev-dependencies] AND prune features that reference them.
+        let dir = TempDir::new().unwrap();
+        let crate_dir = dir.path().join("mycrate");
+        std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+        std::fs::write(crate_dir.join("src/lib.rs"), "").unwrap();
+        std::fs::write(crate_dir.join(".cargo-checksum.json"), "{\"files\":{}}").unwrap();
+        std::fs::write(
+            crate_dir.join("Cargo.toml"),
+            r#"[package]
+name = "mycrate"
+version = "0.1.0"
+
+[dependencies]
+serde = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[features]
+real_blackbox = ["criterion/real_blackbox"]
+default = []
+"#,
+        )
+        .unwrap();
+
+        strip_crate_dir(&crate_dir, &StripConfig::all(), Verbosity(0)).unwrap();
+
+        let result = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
+        assert!(!result.contains("[dev-dependencies]"), "dev-deps should be removed");
+        assert!(!result.contains("criterion"), "criterion ref should be gone");
+        assert!(result.contains("serde"), "regular dep preserved");
+        assert!(result.contains("default = []"), "default feature preserved");
+        assert!(result.contains("real_blackbox"), "feature key still present but pruned");
+    }
+
+    // endregion
 
     #[test]
     fn strip_crate_dir_removes_directories() {

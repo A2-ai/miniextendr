@@ -464,6 +464,13 @@ fn main() -> Result<()> {
     // Step 10: Strip checksums from Cargo.lock (vendored crates have empty checksums)
     vendor::strip_lock_checksums(&lockfile, &output, v)?;
 
+    // When --compress is given, the canonical Cargo.lock also needs stripped
+    // checksums — cargo --offline refuses to build against vendored sources
+    // if the lockfile still contains registry checksums.
+    if cli.compress.is_some() && !cli.freeze {
+        vendor::strip_lockfile_inplace(&lockfile, v.0)?;
+    }
+
     // Step 11: Write source marker
     if cli.source_marker {
         let source_info = cli
