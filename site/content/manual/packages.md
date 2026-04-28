@@ -188,7 +188,7 @@ Look at:
 - `rpkg/`
 - `minirextendr/`
 - `cargo-revendor`
-- vendoring and configure-related docs such as `VENDOR.md`, `R_BUILD_SYSTEM.md`, and `TEMPLATES.md`
+- vendoring and configure-related docs such as `CRAN_COMPATIBILITY.md`, `R_BUILD_SYSTEM.md`, and `TEMPLATES.md`
 
 ## See also
 

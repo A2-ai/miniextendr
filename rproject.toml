@@ -15,6 +15,8 @@ repositories = [
     # {name = "dplyr", repository = "CRAN"},
     # {name = "dplyr", git = "https://github.com/tidyverse/dplyr.git", tag = "v1.1.4"},
 dependencies = [
+    {name = "minirextendr", dependencies_only = true, path = "minirextendr"},
+    {name = "miniextendr", dependencies_only = true, path = "rpkg"},
     "lifecycle",
     "methods",
     "R6",

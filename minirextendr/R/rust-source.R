@@ -14,9 +14,6 @@
 #'   when the code and features are unchanged.
 #' @param quiet Logical. If `TRUE`, suppresses build output.
 #' @param features Character vector of cargo features to enable.
-#' @param use_local_crates Path to a local miniextendr repository for vendoring.
-#'   If `NULL` (default), auto-detects via installed package location or
-#'   parent directory scan.
 #' @return Invisibly returns a list with components:
 #'   - `functions`: character vector of exported function names
 #'   - `dll`: path to the compiled shared library
@@ -37,8 +34,7 @@
 #' #> [1] 42
 #' }
 rust_source <- function(file = NULL, code = NULL, env = parent.frame(),
-                        cache = TRUE, quiet = FALSE, features = character(),
-                        use_local_crates = NULL) {
+                        cache = TRUE, quiet = FALSE, features = character()) {
   code <- validate_rust_input(file, code)
 
   check_rust()
@@ -57,10 +53,11 @@ rust_source <- function(file = NULL, code = NULL, env = parent.frame(),
     cached <- TRUE
     if (!quiet) cli::cli_alert_success("Using cached build for {.val {pkg_name}}")
   } else {
-    # Scaffold + build
+    # Scaffold + build. The scaffolded package's Cargo.toml has git-URL deps
+    # for miniextendr-{api,lint,macros}; cargo's first-build fetch (cached
+    # in the user's cargo registry) brings those in. No manual vendor seed.
     if (!quiet) cli::cli_alert("Compiling inline Rust code...")
 
-    ensure_vendor_cache(use_local_crates, quiet = quiet)
     scaffold_inline_package(code, hash, features, pkg_name, pkg_rs,
                             cache_root, quiet = quiet)
     build_inline_package(pkg_dir, lib_dir, quiet = quiet)
@@ -135,8 +132,6 @@ rust_source_clean <- function(hash = NULL) {
 
   if (is.null(hash)) {
     entries <- fs::dir_ls(cache_root, type = "directory")
-    # Don't delete the vendor/ symlink/dir
-    entries <- entries[basename(entries) != "vendor"]
     if (length(entries) == 0) {
       cli::cli_alert_info("Cache is empty")
     } else {
@@ -215,79 +210,6 @@ inline_cache_dir <- function() {
   fs::path(tools::R_user_dir("minirextendr", "cache"), "rust_source")
 }
 
-#' Ensure shared vendor cache exists
-#'
-#' Creates a shared vendor directory at `{cache_root}/vendor/` by vendoring
-#' miniextendr crates. This is symlinked into each inline package.
-#'
-#' @param use_local_crates Path to local miniextendr repo, or NULL for auto-detect
-#' @param quiet Suppress messages
-#' @noRd
-ensure_vendor_cache <- function(use_local_crates = NULL, quiet = FALSE) {
-  cache_root <- inline_cache_dir()
-  vendor_dir <- fs::path(cache_root, "vendor")
-
-  # Check if vendor already exists and has crates
-  if (fs::dir_exists(vendor_dir)) {
-    api_dir <- fs::path(vendor_dir, "miniextendr-api")
-    if (fs::dir_exists(api_dir)) {
-      return(invisible(vendor_dir))
-    }
-  }
-
-  if (!quiet) cli::cli_alert("Setting up shared vendor cache...")
-  fs::dir_create(cache_root, recurse = TRUE)
-
-  # Auto-detect local crates if not specified
-  if (is.null(use_local_crates)) {
-    use_local_crates <- detect_inline_local_crates()
-  }
-
-  if (!is.null(use_local_crates)) {
-    vendor_miniextendr_local(use_local_crates, vendor_dir)
-  } else {
-    # Download from GitHub
-    vendor_miniextendr(
-      path = cache_root, version = "main",
-      dest = vendor_dir
-    )
-  }
-
-  # External crates.io deps (syn, proc-macro2, etc.) are resolved by cargo
-  # from the network or local cargo cache at build time. No need to vendor
-  # them here — we only need the miniextendr crates as path deps.
-
-  invisible(vendor_dir)
-}
-
-#' Detect local miniextendr crates for inline builds
-#'
-#' Checks installed package location and parent directory scan.
-#'
-#' @return Path to local miniextendr repo, or NULL
-#' @noRd
-detect_inline_local_crates <- function() {
-  # Check if minirextendr is installed from the monorepo
-  pkg_path <- tryCatch(
-    system.file(package = "minirextendr"),
-    error = function(e) ""
-  )
-  if (nzchar(pkg_path)) {
-    # Walk up from installed location to find repo
-    for (i in seq_len(5)) {
-      parent <- dirname(pkg_path)
-      if (parent == pkg_path) break
-      pkg_path <- parent
-      if (file.exists(file.path(pkg_path, "miniextendr-api", "Cargo.toml"))) {
-        return(normalizePath(pkg_path, mustWork = TRUE))
-      }
-    }
-  }
-
-  NULL
-}
-
-
 #' Extract pub fn names from Rust code
 #'
 #' Simple regex extraction of public function names.
@@ -335,7 +257,6 @@ extract_impl_names <- function(code) {
 scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
                                      cache_root, quiet = FALSE) {
   pkg_dir <- fs::path(cache_root, hash, "pkg")
-  vendor_dir <- fs::path(cache_root, "vendor")
 
   # Clean up any partial previous build
 
@@ -419,10 +340,10 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
     'connections = ["miniextendr-api/connections"]\n',
     '\n',
     '[dependencies]\n',
-    'miniextendr-api = { path = "../../vendor/miniextendr-api" }\n',
+    'miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }\n',
     '\n',
     '[build-dependencies]\n',
-    'miniextendr-lint = { path = "../../vendor/miniextendr-lint" }\n'
+    'miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }\n'
   )
   writeLines(cargo_toml, fs::path(pkg_dir, "src", "rust", "Cargo.toml"))
 
@@ -443,11 +364,6 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   h_content <- readLines(mx_abi_h, warn = FALSE)
   h_content <- gsub("\\{\\{package\\}\\}", pkg_name, h_content)
   writeLines(h_content, fs::path(pkg_dir, "inst", "include", "mx_abi.h"))
-
-  # cargo-config.toml.in
-  cargo_config_in <- template_path("cargo-config.toml.in")
-  fs::file_copy(cargo_config_in,
-                fs::path(pkg_dir, "src", "rust", "cargo-config.toml.in"))
 
   # win.def.in (needed by configure as input for AC_CONFIG_FILES)
   win_def_in <- template_path("win.def.in")
@@ -470,12 +386,6 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   fs::file_copy(config_sub, fs::path(pkg_dir, "tools", "config.sub"))
   fs::file_chmod(fs::path(pkg_dir, "tools", "config.guess"), "755")
   fs::file_chmod(fs::path(pkg_dir, "tools", "config.sub"), "755")
-
-  # Symlink vendor/ into the package
-  pkg_vendor <- fs::path(pkg_dir, "vendor")
-  if (!fs::link_exists(pkg_vendor) && !fs::dir_exists(pkg_vendor)) {
-    fs::link_create(vendor_dir, pkg_vendor)
-  }
 
   invisible(pkg_dir)
 }
@@ -501,13 +411,13 @@ build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
   check_result(result, "autoconf (inline)")
   fs::file_chmod(fs::path(pkg_dir, "configure"), "755")
 
-  # Step 2: configure (dev mode)
+  # Step 2: configure (source mode — no vendor.tar.xz present, so configure
+  # detects source install and lets cargo resolve git deps normally).
   if (!quiet) cli::cli_alert("Running configure...")
   result <- run_with_logging(
     "bash", args = c("./configure"),
     log_prefix = "inline-configure",
-    wd = as.character(pkg_dir),
-    env = c(NOT_CRAN = "true")
+    wd = as.character(pkg_dir)
   )
   check_result(result, "configure (inline)")
 
@@ -521,8 +431,7 @@ build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
              "--no-test-load",
              as.character(pkg_dir)),
     log_prefix = "inline-install",
-    wd = as.character(pkg_dir),
-    env = c(NOT_CRAN = "true")
+    wd = as.character(pkg_dir)
   )
   check_result(result, "R CMD INSTALL (inline)")
 

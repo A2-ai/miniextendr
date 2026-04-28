@@ -10,8 +10,7 @@ rust_source(
   env = parent.frame(),
   cache = TRUE,
   quiet = FALSE,
-  features = character(),
-  use_local_crates = NULL
+  features = character()
 )
 }
 \arguments{
@@ -28,10 +27,6 @@ when the code and features are unchanged.}
 \item{quiet}{Logical. If \code{TRUE}, suppresses build output.}
 
 \item{features}{Character vector of cargo features to enable.}
-
-\item{use_local_crates}{Path to a local miniextendr repository for vendoring.
-If \code{NULL} (default), auto-detects via installed package location or
-parent directory scan.}
 }
 \value{
 Invisibly returns a list with components:

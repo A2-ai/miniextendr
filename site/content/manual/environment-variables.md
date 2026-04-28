@@ -6,21 +6,18 @@ description = "All environment variables that affect miniextendr's build, config
 
 All environment variables that affect miniextendr's build, configure, test, and lint processes.
 
-## Build Context
+## Install mode
 
-| Variable | Purpose | Values | Default |
-|----------|---------|--------|---------|
-| `NOT_CRAN` | Dev vs release mode | `true`/`TRUE`/`1` = dev mode | Auto-detected from monorepo presence |
-| `PREPARE_CRAN` | CRAN release prep (highest precedence) | `true`/`TRUE`/`1` = release mode | Not set |
+There is no env var that controls install mode. configure auto-detects from a
+single signal:
 
-These control which **build context** configure resolves:
+| Mode | When | Behavior |
+|---|---|---|
+| Source | `inst/vendor.tar.xz` absent | Cargo resolves via `[patch."git+url"]` to monorepo siblings, or fetches the git URL when no siblings are detected. |
+| Tarball | `inst/vendor.tar.xz` present | Configure unpacks the tarball, writes `[source]` replacement to `vendored-sources`, build runs `--offline`. |
 
-| Context | Trigger | Behavior |
-|---------|---------|----------|
-| `dev-monorepo` | Monorepo detected (or `NOT_CRAN=true`) | `[patch]` paths, no vendoring |
-| `dev-detached` | No monorepo, no vendor artifacts | Git/network deps directly |
-| `vendored-install` | Vendor artifacts present | Offline build from vendored sources |
-| `prepare-cran` | `PREPARE_CRAN=true` | Explicit CRAN release prep |
+`NOT_CRAN`, `PREPARE_CRAN`, `FORCE_VENDOR`, `BUILD_CONTEXT` are removed. See
+[CRAN Compatibility](../cran-compatibility/) for the full table and rationale.
 
 ## Cargo & Rust
 

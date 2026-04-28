@@ -1,17 +1,12 @@
 # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
 # Runs ./configure so that Makevars and other generated files exist
 # before R CMD build creates the source tarball.
-
-# Default to dev mode if NOT_CRAN is not set.
-# bootstrap.R only runs during R CMD build (Config/build/bootstrap: TRUE),
-# never on CRAN install, so defaulting to true is safe.
-if (!nzchar(Sys.getenv("NOT_CRAN"))) {
-  Sys.setenv(NOT_CRAN = "true")
-}
-# Prevent accidental inheritance of release-prep mode.
-if (!nzchar(Sys.getenv("PREPARE_CRAN"))) {
-  Sys.setenv(PREPARE_CRAN = "false")
-}
+#
+# Install-mode detection is automatic: if inst/vendor.tar.xz exists
+# (created by `just vendor` from the workspace root, or
+# `minirextendr::miniextendr_vendor()` from this package, before
+# `R CMD build`), configure builds in tarball/offline mode. Otherwise,
+# source/network mode is used.
 
 if (.Platform$OS.type == "windows") {
   if (file.exists("configure.ucrt")) {

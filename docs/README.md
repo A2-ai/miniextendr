@@ -104,7 +104,7 @@ framework.
 - **[minirextendr](MINIREXTENDR.md)** -- Scaffolding, vendoring, and R workflow
   helpers
 - **[Entrypoint](ENTRYPOINT.md)** -- R package entry point (`R_init_*`)
-- **[Vendoring](VENDOR.md)** -- Dependency vendoring and CRAN release prep
+- **[CRAN Compatibility](CRAN_COMPATIBILITY.md)** -- Source vs tarball install modes, vendoring, and the maintainer release flow
 - **[Linking](LINKING.md)** -- Shared library linking strategy
 - **[Environment Variables](ENVIRONMENT_VARIABLES.md)** -- Env vars affecting
   build/configure/lint

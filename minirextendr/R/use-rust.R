@@ -31,20 +31,6 @@ use_miniextendr_rust <- function(path = ".") {
  invisible(TRUE)
 }
 
-#' Add cargo-config.toml.in template
-#'
-#' Creates src/rust/cargo-config.toml.in which is processed by configure
-#' to set up Cargo's target directory and source replacement for CRAN.
-#'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @return Invisibly returns TRUE if file was created
-#' @keywords internal
-use_miniextendr_cargo_config <- function(path = ".") {
-  with_project(path)
-  ensure_dir(usethis::proj_path("src", "rust"))
-  use_template("cargo-config.toml.in", save_as = "src/rust/cargo-config.toml.in")
-  invisible(TRUE)
-}
 
 #' Add stub.c file
 #'

@@ -32,12 +32,12 @@ make_test_project <- function() {
     'default = []'
   ), file.path(cargo_dir, "Cargo.toml"))
 
-  # Minimal configure.ac (matching template structure)
+  # Minimal configure.ac (matching Phase 1 template structure)
   writeLines(c(
     'AC_INIT([testpkg], [1.0])',
     'AC_CONFIG_AUX_DIR([tools])',
-    ': ${NOT_CRAN:=false}',
-    'AC_SUBST([NOT_CRAN])',
+    'IS_TARBALL_INSTALL=false',
+    'AC_SUBST([IS_TARBALL_INSTALL])',
     'CARGO_CMD="$CARGO"',
     'AC_SUBST([CARGO_CMD])',
     'abs_top_srcdir="$(cd "$srcdir" && pwd)"',
@@ -49,26 +49,19 @@ make_test_project <- function() {
     '',
     'AC_CONFIG_FILES([src/Makevars:src/Makevars.in])',
     '',
-    'AC_CONFIG_COMMANDS([dev-cargo-config],',
+    'AC_CONFIG_COMMANDS([unpack-vendor-tarball],',
     '[',
-    '  RPKG_CFG="src/rust/.cargo/config.toml"',
-    '',
-    '  if test "$NOT_CRAN" = "true"; then',
-    '    if test -f "$RPKG_CFG"; then',
-    '      rm "$RPKG_CFG"',
-    '      echo "configure: removed cargo config (dev mode - using git deps)"',
-    '    fi',
-    '  fi',
+    '  echo "configure: unpack step"',
     '],',
-    '[NOT_CRAN="$NOT_CRAN"])',
+    '[IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"])',
     '',
-    'AC_CONFIG_COMMANDS([cargo-vendor],',
+    'AC_CONFIG_COMMANDS([cargo-config],',
     '[',
-    '  echo "configure: vendor step"',
+    '  echo "configure: cargo config step"',
     '],',
-    '[NOT_CRAN="$NOT_CRAN"])',
+    '[IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"])',
     '',
-    'AC_CONFIG_COMMANDS([post-vendor],',
+    'AC_CONFIG_COMMANDS([post-config],',
     '[',
     '  touch src/rust/Cargo.toml',
     '],',
@@ -201,7 +194,7 @@ test_that("add_vendor_lib_to_configure_ac inserts vendor-lib block", {
   expect_true(any(grepl('_lib_dev_path="\\.\\./\\.\\./\\.\\./dvs"', conf)))
 })
 
-test_that("add_vendor_lib_to_configure_ac vendor-lib block is before post-vendor", {
+test_that("add_vendor_lib_to_configure_ac vendor-lib block is before post-config", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
@@ -209,24 +202,24 @@ test_that("add_vendor_lib_to_configure_ac vendor-lib block is before post-vendor
 
   conf <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
   vendor_lib_line <- grep("AC_CONFIG_COMMANDS\\(\\[vendor-lib-dvs\\]", conf)
-  post_vendor_line <- grep("AC_CONFIG_COMMANDS\\(\\[post-vendor\\]", conf)
+  post_config_line <- grep("AC_CONFIG_COMMANDS\\(\\[post-config\\]", conf)
 
   expect_true(length(vendor_lib_line) > 0)
-  expect_true(length(post_vendor_line) > 0)
-  expect_true(vendor_lib_line[1] < post_vendor_line[1])
+  expect_true(length(post_config_line) > 0)
+  expect_true(vendor_lib_line[1] < post_config_line[1])
 })
 
-test_that("add_vendor_lib_to_configure_ac updates dev-cargo-config", {
+test_that("add_vendor_lib_to_configure_ac uses IS_TARBALL_INSTALL", {
   tmp <- make_test_project()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   minirextendr:::add_vendor_lib_to_configure_ac("dvs", "../../../dvs")
 
   conf <- readLines(file.path(tmp, "configure.ac"), warn = FALSE)
-  # Should have the vendor-lib-only check
-  expect_true(any(grepl("vendor-lib-only", conf)))
-  # Should pass abs_rpkg_dir to dev-cargo-config
-  expect_true(any(grepl('abs_rpkg_dir="\\$abs_top_srcdir"', conf)))
+  # Should use IS_TARBALL_INSTALL for branching
+  expect_true(any(grepl("IS_TARBALL_INSTALL", conf)))
+  # Should pass abs_top_srcdir to vendor-lib block
+  expect_true(any(grepl('abs_top_srcdir="\\$abs_top_srcdir"', conf)))
 })
 
 test_that("add_vendor_lib_to_configure_ac is idempotent", {

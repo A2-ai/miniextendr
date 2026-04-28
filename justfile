@@ -72,7 +72,7 @@ export PATH := if os() == "windows" {
 }
 
 # All optional features for testing (excluding nonapi which causes CRAN warnings).
-# This mirrors the list in rpkg/configure.ac for NOT_CRAN=true mode.
+# This mirrors the default CARGO_FEATURES list in rpkg/configure.ac.
 all_features := "worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,log"
 
 # Directory for devtools::check output (preserved for investigation)
@@ -85,7 +85,7 @@ default:
 clean:
     just configure
     just cargo-clean
-    cd rpkg && NOT_CRAN=false ./cleanup
+    cd rpkg && ./cleanup
     cd tests/cross-package && just clean
 
 # Clean build artifacts
@@ -327,55 +327,82 @@ expand *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run ./configure for dev mode
+# Run ./configure
 #
-# In dev mode, this:
-# 1. Generates build configuration files (Makevars, cargo config, etc.)
-# 2. Syncs vendor/ from the monorepo
-#    (same path end-user scaffolded packages use)
+# Generates build configuration files (Makevars, cargo config, etc.) using
+# the unified install-mode detection in configure.ac:
+#   - source mode (default): cargo resolves miniextendr deps from monorepo
+#     siblings via [patch] in .cargo/config.toml. No vendor/.
+#   - tarball mode: kicks in automatically when inst/vendor.tar.xz exists
+#     (i.e. inside R CMD INSTALL <built-tarball>). Configure unpacks the
+#     tarball and writes a vendored source-replacement config.
 #
-# For CRAN release prep, use `just vendor` then `just configure-cran`.
+# See docs/CRAN_COMPATIBILITY.md for the full table.
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true bash ./configure
+    bash ./configure
 
-# Configure in CRAN/offline mode
+# Vendor dependencies into inst/vendor.tar.xz for CRAN release preparation.
+# Requires cargo-revendor: `just revendor-install`.
 #
-# Run `just vendor` first to create inst/vendor.tar.xz.
-configure-cran:
-    cd rpkg && \
-    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=false bash ./configure
-
-# Vendor dependencies for CRAN release preparation.
-# Requires cargo-revendor: cargo install --path cargo-revendor (or `just revendor-install`).
+# Only needed when producing a build-tarball intended for offline install
+# (i.e. before `R CMD build .` for a CRAN submission). Day-to-day dev
+# (R CMD INSTALL ., devtools::install/test/load) never calls this recipe.
 #
-# --force bypasses cargo-revendor's cache (#150): source-only edits to workspace
-# crates leave Cargo.lock untouched, so without --force the cache check skips
-# re-vendoring and ships a stale tarball. Once #150's fix lands on main and is
-# installed, --force becomes harmless (re-runs the full vendor when cache is
-# valid but produces identical output).
+# Steps:
+#   1. Regenerate Cargo.lock against the bare git URL (no [patch] override),
+#      so the lockfile entries for miniextendr-{api,lint,macros} carry the
+#      `git+https://...#<commit>` source — required by cargo's source
+#      replacement mechanism when the tarball is later installed offline.
+#   2. Strip the per-crate checksum lines from Cargo.lock. Vendored sources
+#      ship with empty `.cargo-checksum.json` files; cargo refuses to verify
+#      them against the registry checksums otherwise.
+#   3. Run cargo-revendor against the freshly-regenerated lockfile.
+#   4. Compress vendor/ to inst/vendor.tar.xz.
 #
-# --source-root points at the monorepo root so cargo-revendor can pre-seed
-# rpkg/vendor/<crate>-<ver>/ before running `cargo metadata`. Required on a
-# fresh clone: rpkg/src/rust/Cargo.toml ships with frozen `path =
-# "../../vendor/..."` deps, and inst/vendor.tar.xz is no longer tracked, so
-# without the source-root pre-seed the first `cargo metadata` call fails
-# with "failed to read .../vendor/miniextendr-api/Cargo.toml" and the
-# whole vendor step aborts. See #280.
+# --force re-runs the full vendor even when cargo-revendor's cache thinks the
+# output is current. Cheap insurance against a stale committed tarball when
+# the workspace crates have edits that don't bump Cargo.lock.
+[script("bash")]
 vendor:
+    set -euo pipefail
+    rust_dir="{{justfile_directory()}}/rpkg/src/rust"
+    cargo_cfg="$rust_dir/.cargo/config.toml"
+    # Regenerate lockfile in tarball-shape: temporarily move .cargo aside so
+    # cargo doesn't see the [patch] override and resolves git deps as-is.
+    # Entries for miniextendr-{api,lint,macros} get source = "git+url#<commit>",
+    # which is what cargo's source-replacement mechanism needs at offline
+    # install time.
+    if [[ -f "$cargo_cfg" ]]; then
+      mv "$cargo_cfg" "$cargo_cfg.tmp_just_vendor"
+    fi
+    rm -f "$rust_dir/Cargo.lock"
+    cargo generate-lockfile --manifest-path "$rust_dir/Cargo.toml"
+    if [[ -f "$cargo_cfg.tmp_just_vendor" ]]; then
+      mv "$cargo_cfg.tmp_just_vendor" "$cargo_cfg"
+    fi
+    # NOTE: vendor/ content for miniextendr-{api,lint,macros} comes from the
+    # github URL pinned in Cargo.lock, NOT this checkout. A PR that edits a
+    # workspace crate alongside rpkg won't see those edits in the tarball
+    # because cargo-revendor follows the git source. cran-check therefore
+    # validates the published-main state, not the PR's. Tracked: see follow-up
+    # issue. Workaround for release: land workspace changes first, then run
+    # `just vendor` from main with the new commit hash present at github HEAD.
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
       --output rpkg/vendor \
-      --source-root . \
-      --strip-all \
-      --freeze \
       --compress rpkg/inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
       --force \
       -v
+    # Strip per-crate checksums *after* cargo-revendor — cargo vendor
+    # re-resolves the lockfile during vendoring and would re-add checksums
+    # otherwise. The vendored sources have empty `.cargo-checksum.json`
+    # files; cargo refuses to verify them against the registry checksums
+    # during a tarball install if the lockfile carries checksums.
+    sed -i.bak '/^checksum = /d' "$rust_dir/Cargo.lock" && rm -f "$rust_dir/Cargo.lock.bak"
 
 # Verify committed Cargo.lock, vendor/, and vendor.tar.xz agree (#157).
 # Runs in CI/pre-release to guarantee the offline build artifact is fresh.
@@ -429,7 +456,11 @@ minirextendr-install-deps:
     Rscript -e 'install.packages(c("cli","curl","desc","fs","gh","glue","rappdirs","rlang","rprojroot","usethis","withr","devtools","roxygen2","testthat"), repos = "https://cloud.r-project.org")'
 
 # Build rpkg with devtools::build
-devtools-build: configure
+# Depends on `vendor` for the same reason as r-cmd-build — devtools::build
+# wraps R CMD build, and the resulting tarball is meaningful only with
+# inst/vendor.tar.xz inside.
+devtools-build: configure vendor
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
@@ -457,17 +488,31 @@ r-cmd-install *args: configure
     R CMD INSTALL {{args}} rpkg 
 
 # Build R package tarball
+# Depends on `vendor` so the tarball ships inst/vendor.tar.xz, which is what
+# triggers tarball-mode install (offline, vendored sources). Without this dep
+# a maintainer can silently produce a tarball that source-mode-installs over
+# the network — defeating the point of `R CMD build` for CRAN submission.
+#
+# Cleanup: rpkg/inst/vendor.tar.xz must be removed after R CMD build copies
+# it into the built tarball. Otherwise the leftover in the source tree makes
+# the next `just rcmdinstall` / `devtools::install("rpkg")` silently switch
+# to tarball mode (configure's only signal is `[ -f inst/vendor.tar.xz ]`),
+# which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
 alias rcmdbuild := r-cmd-build
-r-cmd-build *args: configure
+r-cmd-build *args: configure vendor
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
 # Depends on vendor to ensure inst/vendor.tar.xz exists in the tarball.
 # R CMD check copies the tarball to a temp dir where monorepo [patch] paths
 # are unavailable — configure detects this and uses vendored sources instead.
+#
+# Cleanup: same reason as r-cmd-build — see comment there.
 alias rcmdcheck := r-cmd-check
 r-cmd-check *args: vendor
-    @ERROR_ON="warning" \
+    @trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
+    ERROR_ON="warning" \
     CHECK_DIR="" \
     && for arg in {{args}}; do \
       case "$arg" in \
@@ -618,7 +663,6 @@ templates-sources:
     # === R Package Template (rpkg/) ===
     rpkg/bootstrap.R	rpkg/bootstrap.R
     rpkg/build.rs	rpkg/src/rust/build.rs
-    rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     rpkg/cleanup	rpkg/cleanup
     rpkg/cleanup.ucrt	rpkg/cleanup.ucrt
@@ -634,7 +678,6 @@ templates-sources:
     # The embedded R package uses same sources as rpkg/ template
     monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
-    monorepo/rpkg/cargo-config.toml.in	rpkg/src/rust/cargo-config.toml.in
     monorepo/rpkg/cdylib-exports.def	rpkg/src/cdylib-exports.def
     monorepo/rpkg/cleanup	rpkg/cleanup
     monorepo/rpkg/cleanup.ucrt	rpkg/cleanup.ucrt

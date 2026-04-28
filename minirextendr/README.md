@@ -97,38 +97,22 @@ miniextendr_check()        # Full R CMD check workflow
 
 ## Vendoring
 
-Vendoring miniextendr crates:
+Day-to-day development does **not** need vendoring — `R CMD INSTALL .`
+resolves the miniextendr git URL and crates.io deps on first build,
+then reuses the cargo registry cache.
 
-```r
-miniextendr_available_versions()
-vendor_miniextendr("main")
-```
-
-Prepare an offline/CRAN tarball of vendored dependencies:
+For a CRAN submission, run `miniextendr_vendor()` once before
+`R CMD build`. It bundles every transitive dep into
+`inst/vendor.tar.xz`:
 
 ```r
 miniextendr_vendor()
 ```
 
-Downloaded archives are cached to avoid repeated downloads:
-
-```r
-miniextendr_cache_info()
-miniextendr_clear_cache()
-vendor_miniextendr("main", refresh = TRUE)
-```
-
-### Vendor tarball and Git LFS
-
-For CRAN submission, vendored crates are compressed into `inst/vendor.tar.xz`.
-Typical tarballs in this repo are small enough to keep in normal git history, so
-Git LFS is optional rather than required.
-
-If your vendored tarball grows large or changes frequently, consider:
-
-1. reducing enabled Cargo features to shrink the dependency set
-2. using Git LFS for `inst/vendor.tar.xz`
-3. moving large external assets out of the package build path
+The presence of `inst/vendor.tar.xz` is the single signal that flips
+`./configure` into offline tarball mode. After producing the release
+tarball, delete `inst/vendor.tar.xz` to return to source-mode dev —
+otherwise subsequent installs stay locked to the vendored snapshot.
 
 ## Cargo helpers
 

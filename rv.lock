@@ -574,6 +574,30 @@ dependencies = [
 ]
 
 [[packages]]
+name = "miniextendr"
+version = "0.1.0"
+source = { path = "rpkg" }
+force_source = true
+dependencies = [
+    "cli",
+    "lifecycle",
+    "R6",
+    "S7",
+    "vctrs",
+]
+
+[[packages]]
+name = "minirextendr"
+version = "0.2.0"
+source = { path = "minirextendr" }
+force_source = true
+dependencies = [
+    "cli",
+    "fs",
+    { name = "usethis", requirement = "(>= 2.0.0)" },
+]
+
+[[packages]]
 name = "openssl"
 version = "2.3.5"
 source = { repository = "https://cloud.r-project.org/" }

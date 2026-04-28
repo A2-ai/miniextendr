@@ -1,0 +1,165 @@
++++
+title = "CRAN compatibility and vendoring"
+weight = 50
+description = "How miniextendr keeps the CRAN install path working without polluting day-to-day development."
++++
+
+How miniextendr keeps the CRAN install path working without polluting day-to-day
+development.
+
+## TL;DR
+
+There are exactly two install modes. Configure auto-detects based on a single
+signal and configures cargo accordingly:
+
+| Mode | Triggered when | Cargo behavior |
+|---|---|---|
+| **Source install** | `inst/vendor.tar.xz` is **absent** in the package being installed | Cargo resolves dependencies normally. In monorepo dev, configure writes a `[patch."git+url"]` block in `.cargo/config.toml` that points the three workspace crates at sibling paths. Otherwise cargo fetches the git URL declared in `Cargo.toml`. |
+| **Tarball install** | `inst/vendor.tar.xz` is **present** | Configure unpacks the tarball into `vendor/`, writes a `.cargo/config.toml` with `[source.crates-io]` and `[source."git+..."]` redirected to `vendored-sources`, and cargo builds offline. |
+
+That's the entire decision tree. There is no `NOT_CRAN` env var, no
+`PREPARE_CRAN`, no `FORCE_VENDOR`, no auto-detected "build context"; just the
+file-existence test.
+
+## Where each install path lands
+
+| You ran | Mode | Vendor used? |
+|---|---|---|
+| `R CMD INSTALL .` (rpkg source dir) | Source | No |
+| `devtools::install("rpkg")` / `load_all` / `install_local` | Source | No |
+| `remotes::install_github("A2-ai/miniextendr", subdir = "rpkg")` | Source | No |
+| `R CMD build rpkg` then `R CMD INSTALL miniextendr_*.tar.gz` | Tarball | Yes |
+| `R CMD check rpkg` (calls R CMD build internally) | Tarball | Yes |
+| CRAN's autobuilder on a submitted tarball | Tarball | Yes |
+
+The second column maps directly to the file-existence test. R CMD build is the
+only operation that produces `inst/vendor.tar.xz` (via `just vendor`); every
+other path leaves the file absent and gets source mode.
+
+## Why
+
+The previous design fired vendoring on every `just configure` so that the
+`path = "../../vendor/..."` deps frozen into `Cargo.toml` would resolve. That
+meant:
+
+- 8–12 minutes of `cargo revendor` on every dev iteration.
+- sccache hit rates collapsed because per-invocation Cargo.lock churn poisoned
+  the cache keys.
+- `remotes::install_github("A2-ai/miniextendr", subdir = "rpkg")` couldn't run
+  without `cargo-revendor` installed and network access to clone the monorepo
+  itself for path-dep bootstrap.
+- Four overlapping flags (`NOT_CRAN`, `FORCE_VENDOR`, `PREPARE_CRAN`, the
+  Rbuild-tempdir heuristic) disagreed about what mode any given invocation was
+  in.
+
+Lifting vendoring to a CRAN-prep-only step deletes all of that. Day-to-day
+development uses cargo's normal resolution and the `[patch.crates-io]`-style
+override that `just check`/`build`/`test` recipes have always done. CRAN
+release prep stays self-contained: maintainer runs `just vendor`, ships the
+resulting tarball.
+
+## Maintainer release workflow
+
+```bash
+just vendor             # 1) Regenerate Cargo.lock in tarball-shape, vendor
+                        #    deps to rpkg/vendor/, compress to inst/vendor.tar.xz.
+                        #    Dirties Cargo.lock + writes inst/vendor.tar.xz.
+just r-cmd-build        # 2) R CMD build rpkg → miniextendr_X.Y.Z.tar.gz.
+                        #    Depends on `just vendor` so the tarball ships
+                        #    inst/vendor.tar.xz.
+just r-cmd-check        # 3) R CMD check the built tarball (--as-cran).
+```
+
+Day-to-day commands (`just rcmdinstall`, `just devtools-install`,
+`just devtools-test`, `just devtools-document`, `just devtools-load`) do **not**
+depend on `just vendor`. They install via source mode, which doesn't need a
+vendor tarball at all. Run `just vendor` only when you're producing a build
+artifact for CRAN.
+
+## What `just vendor` actually does
+
+```text
+1. Move src/rust/.cargo/config.toml aside (so the [patch] override is inactive).
+2. Delete and regenerate src/rust/Cargo.lock with cargo against the bare git
+   URL — entries for miniextendr-{api,lint,macros} get
+   `source = "git+https://github.com/A2-ai/miniextendr#<commit>"`.
+3. Restore .cargo/config.toml.
+4. Run `cargo revendor` against the freshly regenerated lockfile, producing
+   rpkg/vendor/ and rpkg/inst/vendor.tar.xz.
+5. Strip per-crate `checksum = ...` lines from Cargo.lock. Vendored sources
+   ship empty `.cargo-checksum.json` files; cargo refuses to verify them
+   against the registry checksums otherwise.
+```
+
+Steps 1–3 ensure the lockfile carries the git source for the workspace crates,
+which cargo's source replacement needs to redirect to vendor at install time.
+Without that, source replacement reports "the source git+... requires a lock
+file to be present first before it can be used against vendored source code".
+
+## Cargo.lock shape, drift, and why dev iteration may dirty it
+
+The committed `rpkg/src/rust/Cargo.lock` is in tarball-shape: workspace crates
+have `source = "git+https://github.com/A2-ai/miniextendr#<hash>"` and the file
+contains zero `checksum = ...` lines. This is the shape an offline tarball
+install requires.
+
+When you run `cargo build` / `cargo check` in source mode, cargo silently
+rewrites the lockfile in place: it re-resolves the workspace crates through
+the `[patch."git+url"]` override (so they become `path` sources) and re-adds
+checksums for transitive crates.io deps. **This drift is expected and harmless
+for local iteration.** Don't commit it; the canonical shape is regenerated
+from scratch by `just vendor`.
+
+If you ever see CI complain that the committed lockfile is in source-shape
+instead of tarball-shape, run `just vendor` and commit the regenerated
+artifact.
+
+## CI strategy
+
+- **`r-tests`** (Linux): runs `R CMD INSTALL .` on the source dir. Tests source
+  mode end-to-end. Does **not** install `cargo-revendor`. This job is the
+  implicit smoke test for the source-only install path.
+- **`r-check-linux` / `cran-check`**: runs `R CMD check`, which internally
+  builds a tarball and tests offline install. Runs `just vendor` first.
+  `inst/vendor.tar.xz` is cached across runs keyed on `Cargo.lock` and the
+  workspace `Cargo.toml`s, so a no-op re-run skips the vendor step.
+- **`sync-checks`**: runs `just vendor` *without* the cache, plus
+  `just vendor-sync-check`, to guarantee the tarball is reproducible from
+  workspace sources before merge.
+
+## inst/vendor.tar.xz is gitignored
+
+It used to be committed. That caused 22 MB/commit bloat, binary merge
+conflicts on every PR that touched a workspace crate, and stale-after-rebase
+drift. CI regenerates the tarball before every R CMD check; release tooling
+regenerates it at version bump time. Don't try to commit it.
+
+## Constraints, in case you're tempted
+
+- `Cargo.toml` must keep miniextendr-{api,lint,macros} declared as `git = "..."`.
+  Path deps to `../../vendor/...` would require `vendor/` to exist in source
+  mode, which is exactly what we removed. Path deps to monorepo siblings
+  (`../../../miniextendr-api`) would break tarball install (the tarball doesn't
+  carry siblings).
+- Configure must not mutate `Cargo.toml` or `*.rs` (CLAUDE.md project rule).
+  Mutating `Cargo.lock` in tarball mode is acceptable — it's an artifact, not
+  a source — but `just vendor` does that pre-build, not configure at install
+  time.
+- `[ -f inst/vendor.tar.xz ]` is the only source-vs-tarball signal. Don't add
+  a second one. Maintenance load lives in the number of switches.
+
+## Symbols cleanup, for grep-bait
+
+Removed entirely from this codebase:
+
+- `NOT_CRAN`
+- `FORCE_VENDOR`
+- `PREPARE_CRAN`
+- `BUILD_CONTEXT` (the dev-monorepo / dev-detached / vendored-install /
+  prepare-cran enum)
+- `cargo revendor --freeze` invocations from `just vendor`
+- The "auto-vendor on first install" + git-clone-bootstrap fallback in
+  `configure.ac`
+- The unpack-vendor-from-Makevars step in `Makevars.in`
+
+If you find a stray reference, it's vestigial — delete it.

@@ -92,22 +92,19 @@ miniextendr_configure <- function(path = ".") {
 #' @param path Path to the R package root, or `NULL` to use the active project.
 #' @param install Whether to run `R CMD INSTALL` step. If `FALSE`, only
 #'   runs autoconf + configure.
-#' @param not_cran Logical. If `TRUE` (the default), sets `NOT_CRAN=true`
-#'   for configure and install steps.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
+miniextendr_build <- function(path = ".", install = TRUE) {
   with_project(path)
   cli::cli_h1("miniextendr build workflow")
 
-  env_vars <- if (not_cran) c(NOT_CRAN = "true") else character()
   pkg_path <- usethis::proj_get()
 
   cli::cli_h2("Step 1: autoconf")
   miniextendr_autoconf()
 
   cli::cli_h2("Step 2: configure")
-  with_envvars(env_vars, miniextendr_configure())
+  miniextendr_configure()
 
   if (install) {
     cli::cli_h2("Step 3: install (compile Rust + generate R wrappers)")
@@ -115,9 +112,7 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
       cli::cli_warn("devtools not installed, skipping install step")
     } else {
       tryCatch(
-        with_envvars(env_vars, {
-          devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE)
-        }),
+        devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE),
         error = function(e) {
           cli::cli_abort(c(
             "Package installation failed",
@@ -143,16 +138,16 @@ miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
 
 #' Prepare vendor tarball for CRAN submission
 #'
-#' High-level workflow that vendors all external crate dependencies and
-#' compresses them into `inst/vendor.tar.xz` for offline CRAN builds.
-#' Calls [vendor_crates_io()] internally, then strips Cargo.lock
-#' checksums and compresses.
-#'
-#' For vendoring the miniextendr workspace crates themselves, see
-#' [vendor_miniextendr()]. For syncing vendor/ from a local checkout,
-#' see [vendor_sync()].
+#' High-level workflow that vendors all crate dependencies and compresses
+#' them into `inst/vendor.tar.xz` for offline CRAN install. Wraps
+#' [vendor_crates_io()] (which delegates to `cargo-revendor`) plus
+#' Cargo.lock checksum stripping and tarball compression.
 #'
 #' Run this before `R CMD build` when preparing a CRAN submission.
+#' Day-to-day development (`R CMD INSTALL .`, `devtools::install/test/load`)
+#' does not need it: install mode is auto-detected from
+#' `inst/vendor.tar.xz` presence, and without the file cargo resolves deps
+#' over the network.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns the path to the created tarball.
@@ -161,24 +156,7 @@ miniextendr_vendor <- function(path = ".") {
   with_project(path)
   cli::cli_h1("miniextendr vendor workflow")
 
-  # Inform the user about path dependencies. cargo revendor extracts these
-  # into vendor/ (unlike plain cargo vendor), but CRAN still requires that
-  # the source tree referenced by `path = ...` is reachable at build time
-  # — `use_vendor_lib()` handles the packaging side.
-  path_deps <- check_path_deps()
-  if (nrow(path_deps) > 0) {
-    cli::cli_alert_info(
-      "Found path dependencies in Cargo.toml (extracted by {.code cargo revendor}):"
-    )
-    for (i in seq_len(nrow(path_deps))) {
-      cli::cli_bullets(c("i" = "{.val {path_deps$crate[i]}} -> {.path {path_deps$path[i]}}"))
-    }
-    cli::cli_alert_info(
-      "If these paths are outside the R package tree, use {.code minirextendr::use_vendor_lib()}"
-    )
-  }
-
-  # Step 1: cargo revendor + strip (delegates to vendor_crates_io)
+  # Step 1: cargo revendor + CRAN-trim (delegates to vendor_crates_io)
   cli::cli_h2("Step 1: vendor all dependencies")
   vendor_crates_io()
 
@@ -248,6 +226,13 @@ miniextendr_vendor <- function(path = ".") {
   size_mb <- round(as.numeric(fs::file_size(tarball)) / 1024 / 1024, 1)
   cli::cli_alert_success("Created {.path inst/vendor.tar.xz} ({size_mb} MB)")
   cli::cli_alert_info("Include this in your CRAN submission (R CMD build will bundle it)")
+  cli::cli_alert_warning(c(
+    "{.path inst/vendor.tar.xz} flips {.code ./configure} into offline tarball mode."
+  ))
+  cli::cli_bullets(c(
+    "i" = "Run {.code R CMD build .} to produce the release tarball, then delete {.path inst/vendor.tar.xz} to resume source-mode dev:",
+    " " = "{.code unlink(\"inst/vendor.tar.xz\")}"
+  ))
 
   invisible(tarball)
 }
@@ -282,27 +267,7 @@ miniextendr_check <- function(path = ".",
   pkg_path <- usethis::proj_get()
 
   cli::cli_h2("Step 1: build (autoconf + configure + install + roxygen2)")
-  miniextendr_build(install = TRUE, not_cran = TRUE)
-
-  # Check for path dependencies that will fail R CMD check without vendor-lib
-  path_deps <- check_path_deps()
-  if (nrow(path_deps) > 0) {
-    missing <- vapply(path_deps$crate, function(crate) {
-      !file.exists(usethis::proj_path("inst", paste0(crate, "-lib.tar.gz")))
-    }, logical(1))
-    if (any(missing)) {
-      missing_crates <- path_deps$crate[missing]
-      cli::cli_alert_danger(
-        "Path dependencies without vendor-lib tarballs will cause R CMD check to fail:"
-      )
-      for (crate in missing_crates) {
-        dev_path <- path_deps$path[path_deps$crate == crate]
-        cli::cli_bullets(c(
-          "x" = '{.val {crate}}: run {.code minirextendr::use_vendor_lib("{crate}", dev_path = "{dev_path}")}'
-        ))
-      }
-    }
-  }
+  miniextendr_build(install = TRUE)
 
   cli::cli_h2("Step 2: R CMD check")
   cli::cli_alert("Running rcmdcheck with args: {.val {args}}")

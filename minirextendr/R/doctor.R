@@ -67,22 +67,25 @@ miniextendr_doctor <- function(path = ".") {
     results$fail <- c(results$fail, "R development headers missing")
   }
 
-  # ── Vendored crates ──
-  cli::cli_h2("Vendored crates")
-
+  # ── Workspace crates ──
+  # Informational: these are the framework crates the package builds against.
+  # In source mode they're resolved via cargo (git deps or [patch] override);
+  # in tarball mode configure unpacks them under vendor/. Missing under
+  # vendor/ during source-mode dev is normal, not a failure.
+  cli::cli_h2("Workspace crates")
+  required_crates <- c("miniextendr-api", "miniextendr-macros",
+                        "miniextendr-lint", "miniextendr-engine")
   vendor_dir <- tryCatch(usethis::proj_path("vendor"), error = function(e) NULL)
   if (is.null(vendor_dir)) {
-    cli::cli_alert_info("Not in a project context, skipping vendor checks")
+    cli::cli_alert_info("Not in a project context, skipping crate checks")
   } else {
-    required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
     for (crate in required_crates) {
       crate_path <- file.path(vendor_dir, crate)
       if (dir.exists(crate_path)) {
-        cli::cli_alert_success("{crate} vendored")
-        results$pass <- c(results$pass, paste(crate, "vendored"))
+        cli::cli_alert_success("{crate} unpacked")
+        results$pass <- c(results$pass, paste(crate, "unpacked"))
       } else {
-        cli::cli_alert_danger("{crate} not vendored")
-        results$fail <- c(results$fail, paste(crate, "not vendored - run vendor_miniextendr()"))
+        cli::cli_alert_info("{crate} not unpacked (normal in source mode)")
       }
     }
   }
