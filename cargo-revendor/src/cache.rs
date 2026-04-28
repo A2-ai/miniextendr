@@ -7,12 +7,20 @@
 //!
 //! Hashing the lockfile alone misses pure source-file edits to workspace
 //! crates (see issue #150), which leaves a stale `vendor/` copy on disk.
+//!
+//! Phase-mode caches (#290): `.revendor-cache-external` hashes only external
+//! inputs (Cargo.lock + Cargo.toml + sync manifests); written by
+//! `--external-only` and checked to gate `--local-only` flag compatibility.
+//! `.revendor-cache-local` hashes only local crate source trees; written by
+//! `--local-only`. Full mode writes all three cache files.
 
 use anyhow::Result;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-const CACHE_FILE: &str = ".revendor-cache";
+pub const CACHE_FILE: &str = ".revendor-cache";
+pub const CACHE_FILE_EXTERNAL: &str = ".revendor-cache-external";
+pub const CACHE_FILE_LOCAL: &str = ".revendor-cache-local";
 
 /// Check whether `vendor_dir` is up to date relative to `lockfile` plus the
 /// source trees of `local_crate_paths`, plus any additional manifests
@@ -47,6 +55,58 @@ pub fn save_cache(
     std::fs::write(&cache_path, &hash)?;
     Ok(())
 }
+
+// region: phase-mode caches (#290)
+
+/// Check whether the external deps are up to date relative to `lockfile` and
+/// sync manifests. Ignores local crate source trees — pure source edits don't
+/// change external deps.
+pub fn is_cached_external(
+    lockfile: &Path,
+    sync_manifests: &[PathBuf],
+    vendor_dir: &Path,
+) -> Result<bool> {
+    let cache_path = vendor_dir.join(CACHE_FILE_EXTERNAL);
+    if !cache_path.exists() || !vendor_dir.exists() {
+        return Ok(false);
+    }
+    let current = compute_hash_external(lockfile, sync_manifests)?;
+    let cached = std::fs::read_to_string(&cache_path)?;
+    Ok(current.trim() == cached.trim())
+}
+
+/// Check whether the local crates are up to date relative to their source
+/// trees. Ignores Cargo.lock / sync manifests — lockfile changes don't affect
+/// the local crate packaging output.
+pub fn is_cached_local(vendor_dir: &Path, local_crate_paths: &[PathBuf]) -> Result<bool> {
+    let cache_path = vendor_dir.join(CACHE_FILE_LOCAL);
+    if !cache_path.exists() || !vendor_dir.exists() {
+        return Ok(false);
+    }
+    let current = compute_hash_local(local_crate_paths)?;
+    let cached = std::fs::read_to_string(&cache_path)?;
+    Ok(current.trim() == cached.trim())
+}
+
+/// Save the external-only cache file.
+pub fn save_cache_external(
+    lockfile: &Path,
+    sync_manifests: &[PathBuf],
+    vendor_dir: &Path,
+) -> Result<()> {
+    let hash = compute_hash_external(lockfile, sync_manifests)?;
+    std::fs::write(vendor_dir.join(CACHE_FILE_EXTERNAL), &hash)?;
+    Ok(())
+}
+
+/// Save the local-only cache file.
+pub fn save_cache_local(vendor_dir: &Path, local_crate_paths: &[PathBuf]) -> Result<()> {
+    let hash = compute_hash_local(local_crate_paths)?;
+    std::fs::write(vendor_dir.join(CACHE_FILE_LOCAL), &hash)?;
+    Ok(())
+}
+
+// endregion
 
 /// FNV-1a 64-bit streaming hasher.
 ///
@@ -136,6 +196,60 @@ fn compute_hash(
 
     // Hash each local crate's source tree in a deterministic order so the
     // cache key is stable across runs.
+    for crate_path in local_crate_paths {
+        let entries = collect_crate_files(crate_path)?;
+        for (rel, bytes) in entries {
+            hasher.update(rel.as_bytes());
+            hasher.update(b":");
+            hasher.update(&bytes);
+            hasher.update(b"|");
+        }
+    }
+
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+/// Compute a hash covering only the external inputs: `Cargo.lock`, the sibling
+/// `Cargo.toml`, and each `--sync` manifest's Cargo.toml + Cargo.lock pair.
+/// Local crate source trees are excluded — external deps don't change when
+/// workspace crate sources change.
+fn compute_hash_external(lockfile: &Path, sync_manifests: &[PathBuf]) -> Result<String> {
+    let mut hasher = Fnv64::new();
+
+    if lockfile.exists() {
+        hasher.update(&std::fs::read(lockfile)?);
+    }
+    hasher.update(b"|");
+
+    let manifest = lockfile.with_file_name("Cargo.toml");
+    if manifest.exists() {
+        hasher.update(&std::fs::read(&manifest)?);
+    }
+    hasher.update(b"|");
+
+    let mut sorted_sync: Vec<&PathBuf> = sync_manifests.iter().collect();
+    sorted_sync.sort();
+    for sync_manifest in sorted_sync {
+        if sync_manifest.exists() {
+            hasher.update(&std::fs::read(sync_manifest)?);
+        }
+        hasher.update(b"|");
+        let sync_lock = sync_manifest.with_file_name("Cargo.lock");
+        if sync_lock.exists() {
+            hasher.update(&std::fs::read(&sync_lock)?);
+        }
+        hasher.update(b"|");
+    }
+
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+/// Compute a hash covering only the local crate source trees. Cargo.lock and
+/// sync manifests are excluded — they don't influence the packaged output of
+/// local workspace crates.
+fn compute_hash_local(local_crate_paths: &[PathBuf]) -> Result<String> {
+    let mut hasher = Fnv64::new();
+
     for crate_path in local_crate_paths {
         let entries = collect_crate_files(crate_path)?;
         for (rel, bytes) in entries {
@@ -382,4 +496,76 @@ mod tests {
             "swapped --sync order should still hit the cache"
         );
     }
+
+    // region: phase-mode cache tests (#290)
+
+    #[test]
+    fn external_cache_ignores_local_source_edits() {
+        // Editing a local crate's source file must NOT invalidate the external
+        // cache — external deps don't change when workspace source changes.
+        let (tmp, lockfile, vendor) = setup();
+        let crate_path = tmp.path().join("libx");
+
+        save_cache_external(&lockfile, &[], &vendor).unwrap();
+        assert!(is_cached_external(&lockfile, &[], &vendor).unwrap());
+
+        // Edit the local crate source
+        std::fs::write(crate_path.join("src/lib.rs"), "// v2 changed").unwrap();
+
+        assert!(
+            is_cached_external(&lockfile, &[], &vendor).unwrap(),
+            "external cache should remain valid when only local crate source changes"
+        );
+    }
+
+    #[test]
+    fn local_cache_ignores_lockfile_change() {
+        // Changing Cargo.lock must NOT invalidate the local cache — the
+        // packaged output of local workspace crates doesn't depend on the lock.
+        let (tmp, lockfile, vendor) = setup();
+        let crate_path = tmp.path().join("libx");
+        let locals = vec![crate_path];
+
+        save_cache_local(&vendor, &locals).unwrap();
+        assert!(is_cached_local(&vendor, &locals).unwrap());
+
+        // Bump the lockfile
+        std::fs::write(&lockfile, "version = 4").unwrap();
+
+        assert!(
+            is_cached_local(&vendor, &locals).unwrap(),
+            "local cache should remain valid when only Cargo.lock changes"
+        );
+    }
+
+    #[test]
+    fn external_cache_invalidates_on_lockfile_change() {
+        let (_tmp, lockfile, vendor) = setup();
+
+        save_cache_external(&lockfile, &[], &vendor).unwrap();
+        assert!(is_cached_external(&lockfile, &[], &vendor).unwrap());
+
+        std::fs::write(&lockfile, "version = 99").unwrap();
+
+        assert!(
+            !is_cached_external(&lockfile, &[], &vendor).unwrap(),
+            "external cache should invalidate when Cargo.lock changes"
+        );
+    }
+
+    #[test]
+    fn external_cache_miss_when_file_absent() {
+        let (_tmp, lockfile, vendor) = setup();
+        // Never saved — must be a miss.
+        assert!(!is_cached_external(&lockfile, &[], &vendor).unwrap());
+    }
+
+    #[test]
+    fn local_cache_miss_when_file_absent() {
+        let (tmp, _lockfile, vendor) = setup();
+        let locals = vec![tmp.path().join("libx")];
+        assert!(!is_cached_local(&vendor, &locals).unwrap());
+    }
+
+    // endregion
 }

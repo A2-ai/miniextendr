@@ -176,6 +176,32 @@ struct Cli {
     /// flat vendor paths.
     #[arg(long)]
     flat_dirs: bool,
+
+    /// Vendor external (crates.io/git) dependencies only.
+    /// Writes vendor/<name>-<version>/ dirs; never touches local crate dirs.
+    /// Incompatible with --freeze, --compress, --source-marker, --blank-md,
+    /// and --strict-freeze.
+    #[arg(long, conflicts_with = "local_only")]
+    external_only: bool,
+
+    /// Vendor local workspace crates only.
+    /// Writes vendor/<name>/ (flat) dirs; never touches external dirs.
+    /// Requires externals to already be on disk (checked via
+    /// .revendor-cache-external) when --freeze, --compress, --source-marker,
+    /// or --blank-md are also given.
+    #[arg(long, conflicts_with = "external_only")]
+    local_only: bool,
+}
+
+/// Which phase(s) of vendoring to perform.
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    /// Full vendor pass (default): external deps + local crates.
+    Full,
+    /// External deps only (crates.io/git). Skips local crate packaging.
+    ExternalOnly,
+    /// Local workspace crates only. Skips `cargo vendor` for external deps.
+    LocalOnly,
 }
 
 impl Cli {
@@ -197,6 +223,108 @@ impl Cli {
     }
 }
 
+/// Validate that the selected phase mode is compatible with the other flags.
+///
+/// - `ExternalOnly` may not be combined with flags that require local crates to
+///   already be in vendor/ (freeze, compress, source-marker, blank-md,
+///   strict-freeze).
+/// - `LocalOnly` may only be combined with those flags if externals have
+///   already been vendored (`.revendor-cache-external` present in output).
+fn validate_flag_compatibility(cli: &Cli, mode: Mode, output: &std::path::Path) -> Result<()> {
+    match mode {
+        Mode::Full => {}
+        Mode::ExternalOnly => {
+            if cli.freeze {
+                anyhow::bail!(
+                    "--external-only is incompatible with --freeze: \
+                     freeze rewrites the manifest and regenerates Cargo.lock, \
+                     which requires local crates to already be in vendor/"
+                );
+            }
+            if cli.compress.is_some() {
+                anyhow::bail!(
+                    "--external-only is incompatible with --compress: \
+                     the tarball would be missing local crates"
+                );
+            }
+            if cli.source_marker {
+                anyhow::bail!(
+                    "--external-only is incompatible with --source-marker"
+                );
+            }
+            if cli.blank_md {
+                anyhow::bail!(
+                    "--external-only is incompatible with --blank-md"
+                );
+            }
+            if cli.strict_freeze {
+                anyhow::bail!(
+                    "--external-only is incompatible with --strict-freeze"
+                );
+            }
+        }
+        Mode::LocalOnly => {
+            // These flags require a complete vendor/ tree (external + local).
+            // Allow them only when externals were previously vendored.
+            let needs_externals = cli.freeze
+                || cli.compress.is_some()
+                || cli.source_marker
+                || cli.blank_md;
+            if needs_externals {
+                let externals_present = output
+                    .join(cache::CACHE_FILE_EXTERNAL)
+                    .exists();
+                if !externals_present {
+                    anyhow::bail!(
+                        "--local-only with --freeze/--compress/--source-marker/--blank-md \
+                         requires externals to already be vendored \
+                         (run --external-only first; .revendor-cache-external not found in {})",
+                        output.display()
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Merge the contents of `staging` into `output`, replacing only the dirs that
+/// are present in `staging`. Dirs already in `output` but absent from `staging`
+/// are left untouched — this is how phase modes avoid clobbering the other
+/// phase's dirs.
+fn merge_copy_vendor(staging: &std::path::Path, output: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(output)
+        .with_context(|| format!("failed to create {}", output.display()))?;
+    for entry in std::fs::read_dir(staging)
+        .with_context(|| format!("failed to read staging dir {}", staging.display()))?
+    {
+        let entry = entry?;
+        let name = entry.file_name();
+        let dst = output.join(&name);
+        if dst.exists() {
+            if dst.is_dir() {
+                std::fs::remove_dir_all(&dst).with_context(|| {
+                    format!("failed to remove existing {}", dst.display())
+                })?;
+            } else {
+                std::fs::remove_file(&dst).with_context(|| {
+                    format!("failed to remove existing {}", dst.display())
+                })?;
+            }
+        }
+        std::fs::rename(entry.path(), &dst)
+            .or_else(|_| copy_dir_recursive(&entry.path(), &dst))
+            .with_context(|| {
+                format!(
+                    "failed to move {} to {}",
+                    entry.path().display(),
+                    dst.display()
+                )
+            })?;
+    }
+    Ok(())
+}
+
 /// JSON output structure
 #[derive(serde::Serialize)]
 struct JsonOutput {
@@ -211,8 +339,6 @@ struct JsonOutput {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let v = cli.verbosity();
-    // versioned_dirs is default-on; only disable when --flat-dirs is passed
-    let versioned_dirs = !cli.flat_dirs;
 
     let manifest_path = resolve_manifest_path(cli.manifest_path.as_deref())?;
 
@@ -232,8 +358,7 @@ fn main() -> Result<()> {
 
     let lockfile = manifest_path.with_file_name("Cargo.lock");
 
-    // Canonicalize each --sync manifest path once. Used by both the verify
-    // shortcut above and the vendor flow below (plus cache hashing).
+    // Canonicalize each --sync manifest path once.
     let sync_manifests: Vec<std::path::PathBuf> = cli
         .sync
         .iter()
@@ -257,6 +382,39 @@ fn main() -> Result<()> {
             v,
         );
     }
+
+    let mode = if cli.external_only {
+        Mode::ExternalOnly
+    } else if cli.local_only {
+        Mode::LocalOnly
+    } else {
+        Mode::Full
+    };
+
+    validate_flag_compatibility(&cli, mode, &output)?;
+
+    match mode {
+        Mode::Full => run_full(&cli, &manifest_path, &output, &lockfile, &sync_manifests, v),
+        Mode::ExternalOnly => {
+            run_external_only(&cli, &manifest_path, &output, &lockfile, &sync_manifests, v)
+        }
+        Mode::LocalOnly => {
+            run_local_only(&cli, &manifest_path, &output, &lockfile, &sync_manifests, v)
+        }
+    }
+}
+
+/// Full vendor pass: external deps + local workspace crates (existing behavior).
+fn run_full(
+    cli: &Cli,
+    manifest_path: &std::path::Path,
+    output: &std::path::Path,
+    lockfile: &std::path::Path,
+    sync_manifests: &[std::path::PathBuf],
+    v: Verbosity,
+) -> Result<()> {
+    // versioned_dirs is default-on; only disable when --flat-dirs is passed
+    let versioned_dirs = !cli.flat_dirs;
 
     // Step 1a: Pre-seed `vendor/<name>-<version>/` for each workspace member
     // when `--source-root` is set (dev-monorepo configure path).
@@ -282,17 +440,17 @@ fn main() -> Result<()> {
     };
 
     if !source_root_members.is_empty() {
-        bootstrap_vendor_from_source_root(&output, &source_root_members, v)?;
+        bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
         // After seeding, each workspace member's Cargo.toml still has its
         // ORIGINAL inter-workspace `path = "../other-crate"` deps, which
         // resolve relative to the NEW vendor location and go nowhere.
         // Rewrite them to sibling vendor dirs (flat `../<name>`) so
         // cargo metadata can walk the dep graph.
-        vendor::rewrite_local_path_deps(&output, &source_root_members, v)?;
+        vendor::rewrite_local_path_deps(output, &source_root_members, v)?;
     }
 
     // Step 1b: Load cargo metadata to discover dependencies.
-    let meta = metadata::load_metadata(&manifest_path)?;
+    let meta = metadata::load_metadata(manifest_path)?;
 
     // Mirror upstream cargo's duplicate-source check: error out if two
     // different git sources resolve to the same crate name+version. Without
@@ -318,7 +476,7 @@ fn main() -> Result<()> {
     // (e.g., [source.vendored-sources] directory = "vendor"), cargo metadata
     // resolves local workspace crate paths to the vendor directory instead of the
     // real workspace source. Detect this and replace with the real workspace path.
-    let canonical_output = output.canonicalize().unwrap_or_else(|_| output.clone());
+    let canonical_output = output.canonicalize().unwrap_or_else(|_| output.to_path_buf());
     for pkg in &mut local_pkgs {
         let canonical_pkg = pkg.path.canonicalize().unwrap_or_else(|_| pkg.path.clone());
         if canonical_pkg.starts_with(&canonical_output) {
@@ -365,12 +523,12 @@ fn main() -> Result<()> {
         local_pkgs.iter().map(|p| p.path.clone()).collect();
 
     // Step 0: Check cache — skip if all inputs are unchanged
-    if !cli.force && cache::is_cached(&lockfile, &sync_manifests, &output, &local_crate_paths)? {
+    if !cli.force && cache::is_cached(lockfile, sync_manifests, output, &local_crate_paths)? {
         if v.info() {
             eprintln!("cargo-revendor: vendor/ is up to date (inputs unchanged)");
         }
         if cli.json {
-            let count = std::fs::read_dir(&output)
+            let count = std::fs::read_dir(output)
                 .map(|d| {
                     d.filter_map(|e| e.ok())
                         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
@@ -397,7 +555,7 @@ fn main() -> Result<()> {
     let packaged = package::package_local_crates(
         &local_pkgs,
         &patch_pkgs,
-        &manifest_path,
+        manifest_path,
         staging.path(),
         cli.allow_dirty,
         v,
@@ -405,10 +563,10 @@ fn main() -> Result<()> {
 
     // Step 3: Run `cargo vendor` for external deps
     vendor::run_cargo_vendor(
-        &manifest_path,
+        manifest_path,
         &vendor_staging,
         &patch_pkgs,
-        &sync_manifests,
+        sync_manifests,
         versioned_dirs,
         v,
     )?;
@@ -444,17 +602,17 @@ fn main() -> Result<()> {
     // Step 7: Clear checksums
     vendor::clear_checksums(&vendor_staging)?;
 
-    // Step 8: Move to final output directory
+    // Step 8: Move to final output directory (full mode: fast replace)
     if output.exists() {
-        std::fs::remove_dir_all(&output)
+        std::fs::remove_dir_all(output)
             .with_context(|| format!("failed to remove existing {}", output.display()))?;
     }
-    std::fs::rename(&vendor_staging, &output)
-        .or_else(|_| copy_dir_recursive(&vendor_staging, &output))
+    std::fs::rename(&vendor_staging, output)
+        .or_else(|_| copy_dir_recursive(&vendor_staging, output))
         .with_context(|| format!("failed to move vendor to {}", output.display()))?;
 
     // Step 9: Generate .cargo/config.toml for source replacement
-    let config_toml = vendor::generate_cargo_config(&manifest_path, &output, &local_pkgs)?;
+    let config_toml = vendor::generate_cargo_config(manifest_path, output, &local_pkgs)?;
     if v.info() {
         eprintln!("  Generated .cargo/config.toml for source replacement");
     }
@@ -463,13 +621,13 @@ fn main() -> Result<()> {
     }
 
     // Step 10: Strip checksums from Cargo.lock (vendored crates have empty checksums)
-    vendor::strip_lock_checksums(&lockfile, &output, v)?;
+    vendor::strip_lock_checksums(lockfile, output, v)?;
 
     // When --compress is given, the canonical Cargo.lock also needs stripped
     // checksums — cargo --offline refuses to build against vendored sources
     // if the lockfile still contains registry checksums.
     if cli.compress.is_some() && !cli.freeze {
-        vendor::strip_lockfile_inplace(&lockfile, v.0)?;
+        vendor::strip_lockfile_inplace(lockfile, v.0)?;
     }
 
     // Step 11: Write source marker
@@ -488,14 +646,14 @@ fn main() -> Result<()> {
     // Step 12: Freeze — rewrite manifest so all sources resolve from vendor/
     if cli.freeze {
         vendor::freeze_manifest(
-            &manifest_path,
-            &output,
+            manifest_path,
+            output,
             &local_pkgs,
             versioned_dirs,
             cli.strict_freeze,
             v,
         )?;
-        vendor::regenerate_lockfile(&manifest_path, &output, v)?;
+        vendor::regenerate_lockfile(manifest_path, output, v)?;
     }
 
     // Step 13: Compress to tarball (relative paths resolve from CWD)
@@ -505,14 +663,16 @@ fn main() -> Result<()> {
         } else {
             std::env::current_dir()?.join(tarball_path)
         };
-        vendor::compress_vendor(&output, &tarball, cli.blank_md, v)?;
+        vendor::compress_vendor(output, &tarball, cli.blank_md, v)?;
     }
 
-    // Step 14: Save cache
-    cache::save_cache(&lockfile, &sync_manifests, &output, &local_crate_paths)?;
+    // Step 14: Save cache (all three files for full mode)
+    cache::save_cache(lockfile, sync_manifests, output, &local_crate_paths)?;
+    cache::save_cache_external(lockfile, sync_manifests, output)?;
+    cache::save_cache_local(output, &local_crate_paths)?;
 
     // Count total crates
-    let total = std::fs::read_dir(&output)
+    let total = std::fs::read_dir(output)
         .map(|d| {
             d.filter_map(|e| e.ok())
                 .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
@@ -539,6 +699,297 @@ fn main() -> Result<()> {
         );
     }
 
+    Ok(())
+}
+
+/// External-only vendor pass: runs `cargo vendor` for crates.io/git deps,
+/// never touches local workspace crate dirs.
+fn run_external_only(
+    cli: &Cli,
+    manifest_path: &std::path::Path,
+    output: &std::path::Path,
+    lockfile: &std::path::Path,
+    sync_manifests: &[std::path::PathBuf],
+    v: Verbosity,
+) -> Result<()> {
+    let versioned_dirs = !cli.flat_dirs;
+
+    // Step 0: Cache check — skip if external inputs are unchanged
+    if !cli.force && cache::is_cached_external(lockfile, sync_manifests, output)? {
+        if v.info() {
+            eprintln!("cargo-revendor: external vendor/ is up to date (inputs unchanged)");
+        }
+        return Ok(());
+    }
+
+    // Step 1b: Load metadata (no bootstrap needed — we don't package local crates)
+    let meta = metadata::load_metadata(manifest_path)?;
+    metadata::check_duplicate_sources(&meta)?;
+    let (local_pkgs, _) = metadata::partition_packages(&meta, manifest_path)?;
+
+    let patch_pkgs = if let Some(first_local) = local_pkgs.first() {
+        let ws_root = find_workspace_root(&first_local.path)?;
+        let all_ws = metadata::discover_workspace_members(&ws_root)?;
+        merge_packages(&local_pkgs, &all_ws)
+    } else {
+        local_pkgs.clone()
+    };
+
+    if v.info() {
+        eprintln!("cargo-revendor: --external-only: skipping {} local crates", local_pkgs.len());
+    }
+
+    // Step 3: Run `cargo vendor` for external deps only
+    let staging = tempfile::tempdir().context("failed to create staging dir")?;
+    let vendor_staging = staging.path().join("vendor");
+
+    vendor::run_cargo_vendor(
+        manifest_path,
+        &vendor_staging,
+        &patch_pkgs,
+        sync_manifests,
+        versioned_dirs,
+        v,
+    )?;
+
+    // Remove any flat (local-crate-style) dirs that cargo vendor may have
+    // placed in staging for path deps. External-only must not touch flat dirs.
+    remove_flat_dirs(&vendor_staging, &local_pkgs, v)?;
+
+    // Step 5: Strip directories (opt-in)
+    let strip_cfg = cli.strip_config();
+    if strip_cfg.any() {
+        strip::strip_vendor_dir(&vendor_staging, &strip_cfg, v)?;
+    }
+
+    // Step 5.5: Strip relative path deps from all vendored external crates
+    vendor::strip_vendor_path_deps(&vendor_staging, v)?;
+
+    // Step 7: Clear checksums
+    vendor::clear_checksums(&vendor_staging)?;
+
+    // Step 8: Merge into output (only overwrite dirs present in staging)
+    merge_copy_vendor(&vendor_staging, output)?;
+    if v.info() {
+        eprintln!("  Merged external deps into {}", output.display());
+    }
+
+    // Step 9: Generate .cargo/config.toml (rescans all of output, so local
+    // dirs already present are included)
+    let config_toml = vendor::generate_cargo_config(manifest_path, output, &local_pkgs)?;
+    if v.info() {
+        eprintln!("  Generated .cargo/config.toml for source replacement");
+    }
+    if v.debug() {
+        eprintln!("{}", config_toml);
+    }
+
+    // Step 14: Save external cache
+    cache::save_cache_external(lockfile, sync_manifests, output)?;
+
+    if v.info() {
+        let total = std::fs::read_dir(output)
+            .map(|d| {
+                d.filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                    .count()
+            })
+            .unwrap_or(0);
+        eprintln!(
+            "cargo-revendor: --external-only: wrote {} crate dirs to {}",
+            total,
+            output.display()
+        );
+    }
+
+    Ok(())
+}
+
+/// Local-only vendor pass: packages workspace crates and writes them to
+/// vendor/, never touching external crate dirs.
+fn run_local_only(
+    cli: &Cli,
+    manifest_path: &std::path::Path,
+    output: &std::path::Path,
+    lockfile: &std::path::Path,
+    sync_manifests: &[std::path::PathBuf],
+    v: Verbosity,
+) -> Result<()> {
+    // Step 0: Cache check — skip if local crate sources are unchanged
+    let source_root_members_for_cache: Vec<std::path::PathBuf> = if let Some(ref sr) = cli.source_root {
+        metadata::discover_workspace_members(sr)?
+            .into_iter()
+            .map(|p| p.path)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Step 1a: Bootstrap-seed from source_root so metadata can resolve frozen
+    // path deps (same logic as run_full).
+    let source_root_members = if let Some(ref source_root) = cli.source_root {
+        metadata::discover_workspace_members(source_root)?
+    } else {
+        Vec::new()
+    };
+
+    if !source_root_members.is_empty() {
+        bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
+        vendor::rewrite_local_path_deps(output, &source_root_members, v)?;
+    }
+
+    // Step 1b: Load metadata + partition with git_overrides = source_root_members
+    let meta = metadata::load_metadata(manifest_path)?;
+    metadata::check_duplicate_sources(&meta)?;
+    let (mut local_pkgs, _) = metadata::partition_packages(&meta, manifest_path)?;
+
+    let all_workspace_members = if !source_root_members.is_empty() {
+        source_root_members
+    } else if let Some(first_local) = local_pkgs.first() {
+        let ws_root = find_workspace_root(&first_local.path)?;
+        metadata::discover_workspace_members(&ws_root)?
+    } else {
+        Vec::new()
+    };
+
+    // Fix vendor-dir-resolved paths (same logic as run_full)
+    let canonical_output = output.canonicalize().unwrap_or_else(|_| output.to_path_buf());
+    for pkg in &mut local_pkgs {
+        let canonical_pkg = pkg.path.canonicalize().unwrap_or_else(|_| pkg.path.clone());
+        if canonical_pkg.starts_with(&canonical_output)
+            && let Some(ws_pkg) = all_workspace_members.iter().find(|ws| ws.name == pkg.name)
+        {
+            if v.debug() {
+                eprintln!(
+                    "  Fixed {}: {} -> {}",
+                    pkg.name,
+                    pkg.path.display(),
+                    ws_pkg.path.display()
+                );
+            }
+            pkg.path = ws_pkg.path.clone();
+            pkg.manifest_path = ws_pkg.manifest_path.clone();
+        }
+    }
+
+    let patch_pkgs = merge_packages(&local_pkgs, &all_workspace_members);
+
+    let local_crate_paths: Vec<std::path::PathBuf> = local_pkgs.iter().map(|p| p.path.clone()).collect();
+
+    // Cache check now that we have actual local_crate_paths
+    let cache_paths = if source_root_members_for_cache.is_empty() {
+        local_crate_paths.clone()
+    } else {
+        source_root_members_for_cache
+    };
+    if !cli.force && cache::is_cached_local(output, &cache_paths)? {
+        if v.info() {
+            eprintln!("cargo-revendor: local vendor/ is up to date (inputs unchanged)");
+        }
+        return Ok(());
+    }
+
+    if v.info() {
+        eprintln!("  Local packages to vendor: {}", local_pkgs.len());
+        for pkg in &local_pkgs {
+            eprintln!(
+                "    - {} v{} ({})",
+                pkg.name,
+                pkg.version,
+                pkg.path.display()
+            );
+        }
+    }
+
+    // Step 2: Package local crates via `cargo package`
+    let staging = tempfile::tempdir().context("failed to create staging dir")?;
+    let vendor_staging = staging.path().join("vendor");
+
+    let packaged = package::package_local_crates(
+        &local_pkgs,
+        &patch_pkgs,
+        manifest_path,
+        staging.path(),
+        cli.allow_dirty,
+        v,
+    )?;
+
+    // Step 4: Extract packaged local crates into vendor staging
+    for (pkg_name, crate_path) in &packaged {
+        let pkg_version = local_pkgs
+            .iter()
+            .find(|p| &p.name == pkg_name)
+            .map(|p| p.version.as_str());
+        vendor::extract_crate_archive(crate_path, &vendor_staging, pkg_name, pkg_version, v)?;
+    }
+
+    // Step 5: Strip directories (opt-in)
+    let strip_cfg = cli.strip_config();
+    if strip_cfg.any() {
+        strip::strip_vendor_dir(&vendor_staging, &strip_cfg, v)?;
+    }
+
+    // Step 6: Rewrite inter-crate path deps for local crates
+    vendor::rewrite_local_path_deps(&vendor_staging, &local_pkgs, v)?;
+
+    // Step 7: Clear checksums
+    vendor::clear_checksums(&vendor_staging)?;
+
+    // Step 8: Merge into output (only overwrite dirs present in staging)
+    merge_copy_vendor(&vendor_staging, output)?;
+    if v.info() {
+        eprintln!("  Merged {} local crate(s) into {}", packaged.len(), output.display());
+    }
+
+    // Step 9: Generate .cargo/config.toml (rescans all of output, so external
+    // dirs already present are included)
+    let config_toml = vendor::generate_cargo_config(manifest_path, output, &local_pkgs)?;
+    if v.info() {
+        eprintln!("  Generated .cargo/config.toml for source replacement");
+    }
+    if v.debug() {
+        eprintln!("{}", config_toml);
+    }
+
+    // Step 14: Save local cache. Also refresh the full cache if sync_manifests
+    // are available (so full-mode cache checks still work after local-only runs).
+    cache::save_cache_local(output, &cache_paths)?;
+    // Keep the legacy full cache in sync when we have enough info.
+    cache::save_cache(lockfile, sync_manifests, output, &cache_paths)?;
+
+    if v.info() {
+        eprintln!(
+            "cargo-revendor: --local-only: wrote {} local crate(s) to {}",
+            packaged.len(),
+            output.display()
+        );
+    }
+
+    Ok(())
+}
+
+/// Remove flat (no-dash) dirs from `staging` that correspond to local
+/// packages. `cargo vendor` may place path deps directly in staging; those
+/// would clobber real local-crate entries on the next `--local-only` run.
+fn remove_flat_dirs(
+    staging: &std::path::Path,
+    local_pkgs: &[metadata::LocalPackage],
+    v: Verbosity,
+) -> Result<()> {
+    for entry in std::fs::read_dir(staging)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        // Flat dir: doesn't contain a '-' that looks like a version separator,
+        // or matches a known local package name exactly.
+        let is_flat = local_pkgs.iter().any(|p| p.name == name_str.as_ref());
+        if is_flat {
+            if v.debug() {
+                eprintln!("  --external-only: removing local placeholder {name_str} from staging");
+            }
+            std::fs::remove_dir_all(entry.path())?;
+        }
+    }
     Ok(())
 }
 
@@ -778,3 +1229,114 @@ fn bootstrap_vendor_from_source_root(
     }
     Ok(())
 }
+
+// region: unit tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Build a minimal Cli with all flags at their defaults. We parse with a
+    /// dummy manifest path so clap doesn't run auto-discovery.
+    fn base_cli() -> Cli {
+        Cli::parse_from(["cargo-revendor", "revendor", "--manifest-path", "/dev/null"])
+    }
+
+    fn tmp_output() -> (TempDir, std::path::PathBuf) {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("vendor");
+        std::fs::create_dir_all(&p).unwrap();
+        (d, p)
+    }
+
+    // region: validate_flag_compatibility
+
+    #[test]
+    fn validate_external_only_freeze_errors() {
+        let (_d, output) = tmp_output();
+        let mut cli = base_cli();
+        cli.freeze = true;
+        let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
+        assert!(err.to_string().contains("--external-only is incompatible with --freeze"));
+    }
+
+    #[test]
+    fn validate_external_only_compress_errors() {
+        let (_d, output) = tmp_output();
+        let mut cli = base_cli();
+        cli.compress = Some(std::path::PathBuf::from("vendor.tar.xz"));
+        let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
+        assert!(err.to_string().contains("--external-only is incompatible with --compress"));
+    }
+
+    #[test]
+    fn validate_external_only_source_marker_errors() {
+        let (_d, output) = tmp_output();
+        let mut cli = base_cli();
+        cli.source_marker = true;
+        let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
+        assert!(err.to_string().contains("--external-only is incompatible with --source-marker"));
+    }
+
+    #[test]
+    fn validate_external_only_blank_md_errors() {
+        let (_d, output) = tmp_output();
+        let mut cli = base_cli();
+        cli.blank_md = true;
+        let err = validate_flag_compatibility(&cli, Mode::ExternalOnly, &output).unwrap_err();
+        assert!(err.to_string().contains("--external-only is incompatible with --blank-md"));
+    }
+
+    #[test]
+    fn validate_local_only_compress_without_externals_errors() {
+        let (_d, output) = tmp_output();
+        // No .revendor-cache-external present → should fail
+        let mut cli = base_cli();
+        cli.compress = Some(std::path::PathBuf::from("vendor.tar.xz"));
+        let err = validate_flag_compatibility(&cli, Mode::LocalOnly, &output).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--local-only with --freeze/--compress"),
+            "unexpected error: {msg}"
+        );
+        assert!(
+            msg.contains(".revendor-cache-external not found"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_local_only_compress_with_externals_ok() {
+        let (_d, output) = tmp_output();
+        // Write the sentinel file — externals were previously vendored.
+        std::fs::write(output.join(cache::CACHE_FILE_EXTERNAL), "abcd1234").unwrap();
+        let mut cli = base_cli();
+        cli.compress = Some(std::path::PathBuf::from("vendor.tar.xz"));
+        validate_flag_compatibility(&cli, Mode::LocalOnly, &output).unwrap();
+    }
+
+    #[test]
+    fn validate_full_mode_accepts_all_flags() {
+        let (_d, output) = tmp_output();
+        // Full mode should never error in validate_flag_compatibility.
+        let mut cli = base_cli();
+        cli.freeze = true;
+        cli.compress = Some(std::path::PathBuf::from("v.tar.xz"));
+        cli.source_marker = true;
+        cli.blank_md = true;
+        validate_flag_compatibility(&cli, Mode::Full, &output).unwrap();
+    }
+
+    #[test]
+    fn validate_local_only_no_flags_always_ok() {
+        let (_d, output) = tmp_output();
+        // No externals present, but also no flags that require them.
+        let cli = base_cli();
+        validate_flag_compatibility(&cli, Mode::LocalOnly, &output).unwrap();
+    }
+
+    // endregion
+}
+
+// endregion
