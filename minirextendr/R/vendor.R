@@ -50,10 +50,15 @@ vendor_crates_io <- function(path = ".") {
 
   check_result(result, "cargo revendor")
 
-  # Additional CRAN-trim beyond cargo-revendor: docs/, ci/, .circleci/,
-  # .github/, dotfiles. cargo-revendor's --strip-all is too aggressive
-  # (it strips dev-deps but leaves dangling [features] refs; see
-  # cargo-revendor issue #322), so we don't pass it.
+  # CRAN-trim vendor/ before it is packaged into inst/vendor.tar.xz. The
+  # rpkg/.Rbuildignore has matching patterns for .github/, ci/, dotfiles etc.
+  # on the source tree, but .Rbuildignore does not filter inside the tarball —
+  # this stripping is the only mechanism that cleans tarball contents.
+  # Does NOT strip tests/ or benches/ — some crates (e.g. zerocopy) use
+  # include_str!("../benches/...") in library source; deleting those dirs
+  # breaks compilation. Cargo.toml surgery (dev-deps, [[bench]], [[test]])
+  # is skipped for the same reason: cargo-revendor ties TOML surgery to
+  # directory deletion (#330).
   strip_vendored_dir(vendor_dir)
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")

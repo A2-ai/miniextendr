@@ -722,14 +722,18 @@ fn run_external_only(
 
     // Step 1a: Bootstrap-seed from source_root so `cargo metadata` can resolve
     // frozen path deps (`path = "../../vendor/<name>/"`) on a fresh clone.
-    // Same logic as run_full / run_local_only — seeds are stubs to unblock
-    // metadata; remove_flat_dirs cleans them from staging after cargo vendor.
+    // Bootstrap only loads metadata for source-root discovery; the actual
+    // local dep list comes from partition_packages below.
     let source_root_members = if let Some(ref source_root) = cli.source_root {
         metadata::discover_workspace_members(source_root)?
     } else {
         Vec::new()
     };
 
+    // Seed stubs for ALL source-root members first so cargo metadata can
+    // resolve any frozen path = "../../vendor/<name>" entries in Cargo.toml.
+    // After metadata, we know the actual local_pkgs subset; the extra stubs
+    // (workspace members that aren't rpkg deps) are cleaned up below.
     if !source_root_members.is_empty() {
         bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
         vendor::rewrite_local_path_deps(output, &source_root_members, v)?;
@@ -769,9 +773,11 @@ fn run_external_only(
         v,
     )?;
 
-    // Remove any flat (local-crate-style) dirs that cargo vendor may have
-    // placed in staging for path deps. External-only must not touch flat dirs.
-    remove_flat_dirs(&vendor_staging, &local_pkgs, v)?;
+    // Remove any local-workspace dirs (flat OR versioned) that cargo vendor
+    // placed in staging. External-only must not ship local crate dirs.
+    // Pass patch_pkgs (all workspace members) so bench/cli/engine placeholders
+    // are also cleaned up, not just the direct local deps.
+    remove_flat_dirs(&vendor_staging, &patch_pkgs, v)?;
 
     // Step 5: Strip directories (opt-in)
     let strip_cfg = cli.strip_config();
@@ -789,6 +795,33 @@ fn run_external_only(
     merge_copy_vendor(&vendor_staging, output)?;
     if v.info() {
         eprintln!("  Merged external deps into {}", output.display());
+    }
+
+    // Step 8.5: Remove bootstrap stubs for non-dep workspace members.
+    // bootstrap_vendor_from_source_root seeds ALL workspace members so that
+    // cargo metadata can resolve frozen path deps. After metadata resolution
+    // we know which subset are actual deps (local_pkgs). Non-dep members
+    // (e.g. bench/cli/engine siblings) are only ever stubs and must not
+    // appear in the external-only output.
+    let non_dep_members: Vec<_> = patch_pkgs
+        .iter()
+        .filter(|p| !local_pkgs.iter().any(|l| l.name == p.name))
+        .collect();
+    for pkg in &non_dep_members {
+        for dir_name in &[
+            pkg.name.clone(),
+            format!("{}-{}", pkg.name, pkg.version),
+        ] {
+            let p = output.join(dir_name);
+            if p.is_dir() {
+                if v.debug() {
+                    eprintln!("  --external-only: removing non-dep stub {dir_name} from output");
+                }
+                std::fs::remove_dir_all(&p).with_context(|| {
+                    format!("failed to remove non-dep stub {}", p.display())
+                })?;
+            }
+        }
     }
 
     // Step 9: Generate .cargo/config.toml (rescans all of output, so local
@@ -962,6 +995,30 @@ fn run_local_only(
         eprintln!("  Merged {} local crate(s) into {}", packaged.len(), output.display());
     }
 
+    // Step 8.5: Remove bootstrap stubs for non-dep workspace members.
+    // Same rationale as run_external_only: bootstrap seeds all workspace
+    // members but only local_pkgs should appear in the final output.
+    let non_dep_members: Vec<_> = patch_pkgs
+        .iter()
+        .filter(|p| !local_pkgs.iter().any(|l| l.name == p.name))
+        .collect();
+    for pkg in &non_dep_members {
+        for dir_name in &[
+            pkg.name.clone(),
+            format!("{}-{}", pkg.name, pkg.version),
+        ] {
+            let p = output.join(dir_name);
+            if p.is_dir() {
+                if v.debug() {
+                    eprintln!("  --local-only: removing non-dep stub {dir_name} from output");
+                }
+                std::fs::remove_dir_all(&p).with_context(|| {
+                    format!("failed to remove non-dep stub {}", p.display())
+                })?;
+            }
+        }
+    }
+
     // Step 9: Generate .cargo/config.toml (rescans all of output, so external
     // dirs already present are included)
     let config_toml = vendor::generate_cargo_config(manifest_path, output, &local_pkgs)?;
@@ -993,6 +1050,9 @@ fn run_local_only(
 /// Remove flat (no-dash) dirs from `staging` that correspond to local
 /// packages. `cargo vendor` may place path deps directly in staging; those
 /// would clobber real local-crate entries on the next `--local-only` run.
+///
+/// Matches both flat dirs (`<name>/`) and versioned dirs (`<name>-<version>/`)
+/// because `cargo vendor --versioned-dirs` emits the latter for patched crates.
 fn remove_flat_dirs(
     staging: &std::path::Path,
     local_pkgs: &[metadata::LocalPackage],
@@ -1002,10 +1062,11 @@ fn remove_flat_dirs(
         let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        // Flat dir: doesn't contain a '-' that looks like a version separator,
-        // or matches a known local package name exactly.
-        let is_flat = local_pkgs.iter().any(|p| p.name == name_str.as_ref());
-        if is_flat {
+        let is_local = local_pkgs.iter().any(|p| {
+            name_str.as_ref() == p.name
+                || name_str.as_ref() == format!("{}-{}", p.name, p.version)
+        });
+        if is_local {
             if v.debug() {
                 eprintln!("  --external-only: removing local placeholder {name_str} from staging");
             }

@@ -6,6 +6,13 @@
 //!
 //! Run all tests including ignored ones:
 //!   cargo test -p cargo-revendor -- --ignored
+//!
+//! # Safety
+//!
+//! Every test in this file MUST use an isolated fixture workspace created via
+//! `create_workspace` / `create_monorepo`. Never pass `--manifest-path`
+//! pointing at the real `rpkg/src/rust/Cargo.toml` — `cargo vendor` rewrites
+//! `Cargo.lock` in place, which would corrupt the committed canonical lockfile.
 
 mod common;
 
@@ -486,6 +493,99 @@ path = "lib.rs"
     assert!(
         only_in_a.is_empty() && only_in_b.is_empty(),
         "phase-composed vendor/ differs from full vendor/:\n  only in A: {only_in_a:?}\n  only in B: {only_in_b:?}"
+    );
+}
+
+/// --external-only then --local-only --strip-all: external versioned dirs are
+/// untouched and local crates are still successfully packaged.
+#[test]
+#[ignore] // network
+fn phase_modes_with_strip_all_compose() {
+    let proj = create_workspace(
+        r#"[workspace]
+members = ["rpkg", "myhelper"]
+"#,
+        &[
+            (
+                "rpkg",
+                r#"[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+[dependencies]
+myhelper = { path = "../myhelper" }
+cfg-if = "1"
+"#,
+                "pub fn go() {}",
+            ),
+            (
+                "myhelper",
+                r#"[package]
+name = "myhelper"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "lib.rs"
+"#,
+                "pub fn help() {}",
+            ),
+        ],
+    );
+    let vendor = proj.root().join("vendor");
+    git_init(proj.root());
+
+    // Phase 1: vendor externals only.
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+            "--external-only",
+        ])
+        .assert()
+        .success();
+
+    let cfg_if_dir = std::fs::read_dir(&vendor)
+        .unwrap()
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().starts_with("cfg-if-"))
+        .expect("cfg-if should be present after --external-only")
+        .path();
+    let mtime_before = std::fs::metadata(&cfg_if_dir).unwrap().modified().unwrap();
+
+    // Phase 2: vendor locals with --strip-all.
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+            "--local-only",
+            "--strip-all",
+        ])
+        .assert()
+        .success();
+
+    // Local crate must be vendored.
+    assert!(
+        common::vendor_has(&vendor, "myhelper"),
+        "myhelper should be vendored after --local-only --strip-all"
+    );
+
+    // External versioned dir must be untouched by --local-only --strip-all.
+    let mtime_after = std::fs::metadata(&cfg_if_dir).unwrap().modified().unwrap();
+    assert_eq!(
+        mtime_before, mtime_after,
+        "cfg-if-* mtime should not change during --local-only --strip-all"
     );
 }
 
