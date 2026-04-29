@@ -99,6 +99,21 @@ struct Cli {
     #[arg(long)]
     strip_all: bool,
 
+    /// Strip TOML sections (`[[test]]`, `[[bench]]`, `[[example]]`,
+    /// `[[bin]]`, `[dev-dependencies]`) without deleting `tests/`,
+    /// `benches/`, or `examples/` directories.
+    ///
+    /// Some published crates reference files inside those directories
+    /// from regular library source via `include_str!()` (zerocopy is
+    /// one); deleting them breaks `cargo check --offline` post-vendor.
+    /// Use this flag instead of `--strip-all` when CRAN trim is the
+    /// goal but the dep graph contains such crates.
+    ///
+    /// Always-safe base directories (`.github`, `.circleci`, `ci`,
+    /// `target`) are still removed.
+    #[arg(long, conflicts_with_all = ["strip_all", "strip_tests", "strip_benches", "strip_examples", "strip_bins"])]
+    strip_toml_sections: bool,
+
     /// Output results as JSON
     #[arg(long)]
     json: bool,
@@ -210,7 +225,9 @@ impl Cli {
     }
 
     fn strip_config(&self) -> strip::StripConfig {
-        if self.strip_all {
+        if self.strip_toml_sections {
+            strip::StripConfig::toml_only()
+        } else if self.strip_all {
             strip::StripConfig::all()
         } else {
             strip::StripConfig {
@@ -218,6 +235,7 @@ impl Cli {
                 benches: self.strip_benches,
                 examples: self.strip_examples,
                 bins: self.strip_bins,
+                toml_only: false,
             }
         }
     }
@@ -457,7 +475,7 @@ fn run_full(
     metadata::check_duplicate_sources(&meta)?;
 
     let (mut local_pkgs, _external_pkgs) =
-        metadata::partition_packages(&meta, &manifest_path, &source_root_members)?;
+        metadata::partition_packages(&meta, manifest_path, &source_root_members)?;
 
     // Fall back to heuristic workspace-root detection only if `--source-root`
     // wasn't explicitly provided.

@@ -112,7 +112,7 @@ vendor:
     cargo revendor \
       --manifest-path src/rust/Cargo.toml \
       --output vendor \
-      --strip-all \
+      --strip-toml-sections \
       --compress inst/vendor.tar.xz \
       --blank-md \
       --source-marker \
