@@ -79,6 +79,7 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	LINK_ARGS=""; \
 	for obj in $(OBJECTS); do LINK_ARGS="$$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
+	cd "$(ABS_RPKG_SRCDIR)/rust"; \
 	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
 	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 	  --lib --profile $(CARGO_PROFILE) \
@@ -117,6 +118,7 @@ $(CARGO_CDYLIB): FORCE_CARGO $(OBJECTS) | $(CARGO_AR)
 	if [ "$(CDYLIB_EXT)" = "dll" ]; then \
 	  CDYLIB_LINK_ARGS="$$CDYLIB_LINK_ARGS -C link-arg=-static-libgcc -C link-arg=$(ABS_RPKG_SRC_CARGO)/cdylib-exports.def -C link-arg=-Wl,--no-gc-sections"; \
 	fi; \
+	cd "$(ABS_RPKG_SRCDIR)/rust"; \
 	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 	$(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
 	  --lib --profile $(CARGO_PROFILE) \
