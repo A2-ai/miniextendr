@@ -121,7 +121,7 @@ vendor:
     cargo revendor \
       --manifest-path {{{rpkg_name}}}/src/rust/Cargo.toml \
       --output {{{rpkg_name}}}/vendor \
-      --strip-all \
+      --strip-toml-sections \
       --compress {{{rpkg_name}}}/inst/vendor.tar.xz \
       --blank-md \
       --source-marker \

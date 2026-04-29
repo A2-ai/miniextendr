@@ -11,16 +11,36 @@ pub struct StripConfig {
     pub benches: bool,
     pub examples: bool,
     pub bins: bool,
+    /// Strip TOML sections only — leave source-related directories
+    /// (`tests/`, `benches/`, `examples/`) on disk. Crates such as
+    /// `zerocopy` reference files in those directories from regular
+    /// library source via `include_str!()`; deleting them breaks
+    /// `cargo check --offline` post-vendor. Always-safe base dirs
+    /// (`.github`, `.circleci`, `ci`, `target`) are still removed.
+    pub toml_only: bool,
 }
 
 impl StripConfig {
-    /// Strip everything
+    /// Strip everything (directories and TOML sections)
     pub fn all() -> Self {
         Self {
             tests: true,
             benches: true,
             examples: true,
             bins: true,
+            toml_only: false,
+        }
+    }
+
+    /// Strip TOML sections for all source-target categories without
+    /// deleting `tests/` / `benches/` / `examples/` directories. See #330.
+    pub fn toml_only() -> Self {
+        Self {
+            tests: true,
+            benches: true,
+            examples: true,
+            bins: true,
+            toml_only: true,
         }
     }
 
@@ -32,6 +52,9 @@ impl StripConfig {
     /// Get directory names to strip
     fn dirs_to_strip(&self) -> Vec<&'static str> {
         let mut dirs = vec![".github", ".circleci", "ci", "target"];
+        if self.toml_only {
+            return dirs;
+        }
         if self.tests {
             dirs.push("tests");
         }
@@ -467,6 +490,94 @@ default = []
         assert!(result.contains("serde"), "regular dep preserved");
         assert!(result.contains("default = []"), "default feature preserved");
         assert!(result.contains("real_blackbox"), "feature key still present but pruned");
+    }
+
+    // endregion
+
+    // region: --strip-toml-sections (#330)
+
+    #[test]
+    fn toml_only_dirs_to_strip_excludes_source_dirs() {
+        let cfg = StripConfig::toml_only();
+        let dirs = cfg.dirs_to_strip();
+        // Always-safe base dirs survive
+        assert!(dirs.contains(&".github"));
+        assert!(dirs.contains(&".circleci"));
+        assert!(dirs.contains(&"ci"));
+        assert!(dirs.contains(&"target"));
+        // Source-related dirs are NOT stripped (zerocopy include_str! safety)
+        assert!(!dirs.contains(&"tests"));
+        assert!(!dirs.contains(&"benches"));
+        assert!(!dirs.contains(&"examples"));
+    }
+
+    #[test]
+    fn toml_only_still_strips_toml_sections() {
+        let cfg = StripConfig::toml_only();
+        let sections = cfg.toml_sections_to_strip();
+        assert!(sections.contains(&"[[test]]"));
+        assert!(sections.contains(&"[[bench]]"));
+        assert!(sections.contains(&"[[example]]"));
+        assert!(sections.contains(&"[[bin]]"));
+        assert!(sections.contains(&"[dev-dependencies"));
+    }
+
+    #[test]
+    fn strip_crate_dir_toml_only_preserves_source_dirs() {
+        // Mirrors the zerocopy footgun: bench source files referenced by
+        // `include_str!()` from regular lib code must survive stripping.
+        let dir = TempDir::new().unwrap();
+        let crate_dir = dir.path().join("zerocopy_like");
+        std::fs::create_dir_all(crate_dir.join("benches/formats")).unwrap();
+        std::fs::create_dir_all(crate_dir.join("tests")).unwrap();
+        std::fs::create_dir_all(crate_dir.join("examples")).unwrap();
+        std::fs::create_dir_all(crate_dir.join(".github/workflows")).unwrap();
+        std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+        std::fs::write(crate_dir.join("benches/formats/static_size.rs"), "// bench").unwrap();
+        std::fs::write(crate_dir.join("src/lib.rs"), "").unwrap();
+        std::fs::write(crate_dir.join(".cargo-checksum.json"), "{\"files\":{}}").unwrap();
+        std::fs::write(
+            crate_dir.join("Cargo.toml"),
+            r#"[package]
+name = "zerocopy_like"
+version = "0.1.0"
+
+[dependencies]
+serde = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "static_size"
+harness = false
+
+[features]
+real_blackbox = ["criterion/real_blackbox"]
+default = []
+"#,
+        )
+        .unwrap();
+
+        strip_crate_dir(&crate_dir, &StripConfig::toml_only(), Verbosity(0)).unwrap();
+
+        // Source-related dirs preserved (the whole point of --strip-toml-sections)
+        assert!(crate_dir.join("benches/formats/static_size.rs").exists(),
+            "benches/ must survive — referenced by include_str! in some crates");
+        assert!(crate_dir.join("tests").exists(), "tests/ must survive");
+        assert!(crate_dir.join("examples").exists(), "examples/ must survive");
+        // Always-safe base dirs still go
+        assert!(!crate_dir.join(".github").exists(), ".github/ should still be stripped");
+        // TOML surgery still happens
+        let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
+        assert!(!manifest.contains("[dev-dependencies]"));
+        assert!(!manifest.contains("[[bench]]"));
+        assert!(!manifest.contains("criterion"));
+        // Dangling [features] ref pruned
+        assert!(!manifest.contains("criterion/real_blackbox"));
+        // Regular content preserved
+        assert!(manifest.contains("serde"));
+        assert!(manifest.contains("default = []"));
     }
 
     // endregion

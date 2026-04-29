@@ -42,7 +42,13 @@ vendor_crates_io <- function(path = ".") {
     args = c(
       "revendor",
       "--manifest-path", cargo_toml,
-      "--output", vendor_dir
+      "--output", vendor_dir,
+      # --strip-toml-sections strips [[test]] / [[bench]] / [[example]] /
+      # [[bin]] / [dev-dependencies] from each vendored Cargo.toml and
+      # prunes dangling [features] refs (see #330, #322), but leaves
+      # tests/, benches/, examples/ on disk so crates that
+      # include_str!() into those dirs (e.g. zerocopy) keep building.
+      "--strip-toml-sections"
     ),
     log_prefix = "cargo-revendor",
     wd = usethis::proj_get()
@@ -54,11 +60,11 @@ vendor_crates_io <- function(path = ".") {
   # rpkg/.Rbuildignore has matching patterns for .github/, ci/, dotfiles etc.
   # on the source tree, but .Rbuildignore does not filter inside the tarball —
   # this stripping is the only mechanism that cleans tarball contents.
-  # Does NOT strip tests/ or benches/ — some crates (e.g. zerocopy) use
-  # include_str!("../benches/...") in library source; deleting those dirs
-  # breaks compilation. Cargo.toml surgery (dev-deps, [[bench]], [[test]])
-  # is skipped for the same reason: cargo-revendor ties TOML surgery to
-  # directory deletion (#330).
+  # cargo-revendor's --strip-toml-sections (above) handles .github/, .circleci/,
+  # ci/, target/ and TOML surgery; this covers the rest (docs/, examples/,
+  # remaining dotfiles). tests/ and benches/ are intentionally preserved —
+  # some crates (e.g. zerocopy) use include_str!("../benches/...") in library
+  # source; deleting those dirs breaks compilation.
   strip_vendored_dir(vendor_dir)
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
