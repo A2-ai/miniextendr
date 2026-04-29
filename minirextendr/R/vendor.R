@@ -50,12 +50,15 @@ vendor_crates_io <- function(path = ".") {
 
   check_result(result, "cargo revendor")
 
-  # CRAN-trim: remove docs/, ci/, .circleci/, .github/, hidden dotfiles that
-  # would trigger CRAN NOTEs. Does NOT strip tests/ or benches/ — some crates
-  # (e.g. zerocopy) reference bench files via include_str!() in library source;
-  # removing them breaks compilation. Cargo.toml surgery (dev-deps, [[bench]],
-  # [[test]] sections) is intentionally skipped for the same reason: the flags
-  # that enable TOML surgery in cargo-revendor also delete the directories.
+  # CRAN-trim vendor/ before it is packaged into inst/vendor.tar.xz. The
+  # rpkg/.Rbuildignore has matching patterns for .github/, ci/, dotfiles etc.
+  # on the source tree, but .Rbuildignore does not filter inside the tarball —
+  # this stripping is the only mechanism that cleans tarball contents.
+  # Does NOT strip tests/ or benches/ — some crates (e.g. zerocopy) use
+  # include_str!("../benches/...") in library source; deleting those dirs
+  # breaks compilation. Cargo.toml surgery (dev-deps, [[bench]], [[test]])
+  # is skipped for the same reason: cargo-revendor ties TOML surgery to
+  # directory deletion (#330).
   strip_vendored_dir(vendor_dir)
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
