@@ -355,6 +355,7 @@ pub use into_r::{Altrep, IntoR, IntoRAltrep};
 pub use into_r_error::IntoRError;
 pub mod into_r_as;
 pub use into_r_as::{IntoRAs, StorageCoerceError};
+pub mod pump;
 pub mod unwind_protect;
 pub mod worker;
 
