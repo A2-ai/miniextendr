@@ -125,6 +125,7 @@ pub struct S3MatchArgPoint {
 
 #[miniextendr(s3)]
 impl S3MatchArgPoint {
+    /// @param label One of "alpha", "beta", "gamma".
     #[miniextendr(choices(label = "alpha, beta, gamma"))]
     pub fn new(label: String) -> Self {
         Self { label }
@@ -188,6 +189,7 @@ pub struct VctrsMatchArgScale;
 #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "mode"))]
 impl VctrsMatchArgScale {
     // Vctrs ctors return vector payload (not Self) — vctrs::new_vctr wraps it.
+    /// @param mode One of "Fast", "Safe", "Debug".
     #[allow(clippy::new_ret_no_self)]
     #[miniextendr(match_arg(mode))]
     pub fn new(mode: ImplMode) -> Vec<f64> {

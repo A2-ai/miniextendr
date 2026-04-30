@@ -31,6 +31,8 @@ new_s3matchargpoint(label = c("alpha", "beta", "gamma"))
 S3MatchArgPoint
 }
 \arguments{
+\item{label}{One of "alpha", "beta", "gamma".}
+
 \item{x}{An object.}
 
 \item{...}{Additional arguments.}
