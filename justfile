@@ -383,15 +383,14 @@ vendor:
     if [[ -f "$cargo_cfg.tmp_just_vendor" ]]; then
       mv "$cargo_cfg.tmp_just_vendor" "$cargo_cfg"
     fi
-    # NOTE: vendor/ content for miniextendr-{api,lint,macros} comes from the
-    # github URL pinned in Cargo.lock, NOT this checkout. A PR that edits a
-    # workspace crate alongside rpkg won't see those edits in the tarball
-    # because cargo-revendor follows the git source. cran-check therefore
-    # validates the published-main state, not the PR's. Tracked: see follow-up
-    # issue. Workaround for release: land workspace changes first, then run
-    # `just vendor` from main with the new commit hash present at github HEAD.
+    # `--source-root .` makes cargo-revendor copy miniextendr-{api,lint,macros}
+    # from this workspace checkout instead of fetching them from the git URL
+    # pinned in Cargo.lock. PRs that edit a workspace crate alongside rpkg get
+    # their edits reflected in vendor/ and inst/vendor.tar.xz, so
+    # `vendor-sync-check` passes and the offline tarball ships the PR's code.
     cargo revendor \
       --manifest-path rpkg/src/rust/Cargo.toml \
+      --source-root . \
       --output rpkg/vendor \
       --compress rpkg/inst/vendor.tar.xz \
       --blank-md \

@@ -6,6 +6,13 @@
 //! **Important**: R uses `longjmp` for error handling, which normally bypasses Rust destructors.
 //! Use this API to ensure cleanup happens even when R errors occur.
 //!
+//! ## Log drain
+//!
+//! Every call to `with_r_unwind_protect` (and its variants) drains the
+//! cross-thread log queue via [`drain_log_queue_if_available`] before
+//! returning or re-raising an R error. This ensures that records buffered by
+//! worker threads are flushed to R's console on every FFI exit — including
+//! error paths.
 use std::{
     any::Any,
     ffi::c_void,
@@ -84,11 +91,34 @@ pub(crate) unsafe fn panic_payload_to_r_error(
     }
 }
 
+// region: Log drain integration
+
+/// Drain the cross-thread log queue if the `log` feature is enabled.
+///
+/// This is called at every exit point of `run_r_unwind_protect` (normal
+/// return, Rust panic, and immediately before `R_ContinueUnwind`) so that
+/// worker-thread log records always reach R's console before the FFI call
+/// returns or re-raises an R error.
+///
+/// When the `log` feature is disabled this compiles to a no-op; there is
+/// no runtime overhead.
+#[inline]
+fn drain_log_queue_if_available() {
+    #[cfg(feature = "log")]
+    crate::optionals::log_impl::drain_log_queue();
+}
+
+// endregion
+
 /// Core R_UnwindProtect wrapper. Returns `Ok(result)` on success,
 /// `Err(payload)` on Rust panic, or diverges via `R_ContinueUnwind` on R longjmp.
 ///
 /// Handles: CallData boxing, trampoline, cleanup handler, continuation token,
 /// `Box::from_raw` reclamation on all non-diverging paths.
+///
+/// Drains the cross-thread log queue (when the `log` feature is enabled) at
+/// each exit point so worker-thread records reach R's console before the FFI
+/// boundary is crossed.
 fn run_r_unwind_protect<F, R>(f: F) -> Result<R, Box<dyn Any + Send>>
 where
     F: FnOnce() -> R,
@@ -155,13 +185,20 @@ where
                 // Check if trampoline caught a panic
                 if let Some(payload) = data.panic_payload.take() {
                     drop(data);
+                    // Drain worker-thread log records before returning the panic
+                    // payload to the caller (which will convert it to an R error).
+                    drain_log_queue_if_available();
                     Err(payload)
                 } else {
                     // Normal completion - return the result
-                    Ok(data
+                    let result = data
                         .result
                         .take()
-                        .expect("result not set after successful completion"))
+                        .expect("result not set after successful completion");
+                    drop(data);
+                    // Drain worker-thread log records on the normal success path.
+                    drain_log_queue_if_available();
+                    Ok(result)
                 }
             }
             Err(payload) => {
@@ -169,10 +206,14 @@ where
                 drop(data);
                 // Check if this was an R error or a Rust panic
                 if payload.downcast_ref::<RErrorMarker>().is_some() {
-                    // R error - continue R's unwind (diverges, never returns)
+                    // R error - drain log records before re-raising so worker
+                    // thread output is not lost even on error exits.
+                    drain_log_queue_if_available();
+                    // Continue R's unwind (diverges, never returns)
                     R_ContinueUnwind(token);
                 } else {
-                    // Rust panic
+                    // Rust panic — drain before returning the payload.
+                    drain_log_queue_if_available();
                     Err(payload)
                 }
             }
