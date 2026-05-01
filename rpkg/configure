@@ -3675,12 +3675,12 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
         echo "configure: error: failed to unpack inst/vendor.tar.xz" >&2
         exit 1
       fi
-                  if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && \
-          rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-      fi
     else
       echo "configure: tarball install — vendor/ already populated"
+    fi
+                                    if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+      $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && \
+        rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
     fi
   fi
  ;;
