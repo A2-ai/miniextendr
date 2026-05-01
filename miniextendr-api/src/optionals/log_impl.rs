@@ -270,19 +270,21 @@ pub fn drain_log_queue() {
 
 // region: Tests
 
+/// Serialises all tests that touch the shared `QUEUE`/`DROPPED`/`TEST_SINK`
+/// globals.  Exposed as `pub(crate)` so tests in sibling modules (e.g.
+/// `pump`) can acquire the same lock and avoid races.
+#[cfg(test)]
+pub(crate) static LOG_TEST_LOCK: Mutex<()> = Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::thread;
 
-    /// Serializes all tests in this module so they don't clobber the shared
-    /// global QUEUE, DROPPED, and TEST_SINK state.
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
     /// Acquire the test serialization lock, recovering from a previous test
     /// panic that left the lock poisoned.
     fn acquire_test_lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+        LOG_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     // Convenience: install logger if not already installed, set level to Trace.
