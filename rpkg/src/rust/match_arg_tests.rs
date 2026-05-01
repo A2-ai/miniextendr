@@ -282,3 +282,21 @@ pub fn match_arg_multi_mode_array(
         .join(", ")
 }
 // endregion
+
+// region: Foreign-type MatchArg — log::LevelFilter
+
+/// Smoke test: a `#[miniextendr]` fn taking a `log::LevelFilter` via match_arg.
+/// The generated R wrapper should bake in the same lowercase choices that
+/// `<log::LevelFilter as MatchArg>::CHOICES` advertises.
+///
+/// @param level Log level filter. One of `"off"`, `"error"`, `"warn"`,
+///   `"info"`, `"debug"`, `"trace"` (case-insensitive, partial matching).
+/// @export
+#[cfg(feature = "log")]
+#[miniextendr_api::miniextendr(internal)]
+pub fn match_arg_log_level(
+    #[miniextendr(match_arg)] level: log::LevelFilter,
+) -> String {
+    format!("{level:?}").to_lowercase()
+}
+// endregion
