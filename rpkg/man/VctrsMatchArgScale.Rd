@@ -20,6 +20,8 @@ new_vctrsmatchargscale(mode = c("Fast", "Safe", "Debug"))
 \method{vec_cast}{VctrsMatchArgScale.VctrsMatchArgScale}(x, to, ...)
 }
 \arguments{
+\item{mode}{One of "Fast", "Safe", "Debug".}
+
 \item{x}{A VctrsMatchArgScale vector to cast.}
 
 \item{...}{Additional arguments (unused).}

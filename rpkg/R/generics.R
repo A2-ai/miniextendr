@@ -1,0 +1,101 @@
+# Documentation stubs for S3/S4/S7 generics exported by test types.
+# These generics are defined conditionally in miniextendr-wrappers.R (auto-generated)
+# and need an alias here so R CMD check finds their documentation.
+# Exports are already registered by miniextendr-wrappers.R; this file only
+# provides the man-page aliases that R CMD check requires.
+
+#' Convert object to data frame
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name as_data_frame
+NULL
+
+#' Convert object to list
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name as_list
+NULL
+
+#' Convert object to character
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name as_character
+NULL
+
+#' Convert object to numeric
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name as_numeric
+NULL
+
+#' Convert object to integer
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name as_integer
+NULL
+
+#' Get length
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name len
+NULL
+
+#' Get value
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name get_value
+NULL
+
+#' Get label
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name label
+NULL
+
+#' Relabel an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name relabel
+NULL
+
+#' Add via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name s3_add
+NULL
+
+#' Increment via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name s3_inc
+NULL
+
+#' Get S3 value
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name s3_value
+NULL
+
+#' Get current mode (S7)
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name current
+NULL
+
+#' Set mode (S7)
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name set
+NULL
+
+#' Get current mode (S4)
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name s4_mode_current
+NULL
+
+#' Set mode (S4)
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name s4_mode_set
+NULL

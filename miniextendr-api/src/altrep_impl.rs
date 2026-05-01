@@ -278,10 +278,14 @@ macro_rules! __impl_altvec_dataptr {
                 } else {
                     // Read-only: try immutable access first to avoid &mut borrows
                     // and unnecessary copy-on-write for Cow types.
-                    let d = unsafe {
-                        <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+                    // Scoped block: the &T borrow must end before altrep_extract_mut
+                    // to avoid aliasing &T / &mut T (Stacked Borrows UB).
+                    let ro = {
+                        let d = unsafe {
+                            <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
+                        };
+                        <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(d)
                     };
-                    let ro = <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(d);
                     if let Some(p) = ro {
                         return p.cast_mut().cast::<core::ffi::c_void>();
                     }
