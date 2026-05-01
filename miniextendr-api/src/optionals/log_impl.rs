@@ -268,6 +268,88 @@ pub fn drain_log_queue() {
 
 // endregion
 
+// region: MatchArg impl for LevelFilter
+
+/// `MatchArg` implementation for [`log::LevelFilter`].
+///
+/// Allows downstream `#[miniextendr]` functions to accept a `log::LevelFilter`
+/// argument with `#[miniextendr(match_arg)]` and have the generated R wrapper
+/// validate the string via `base::match.arg(level, c("off", "error", "warn",
+/// "info", "debug", "trace"))` — choices sourced from miniextendr, not
+/// hand-typed at the consumer.  The first choice (`"off"`) is intentionally
+/// the `match.arg` default, matching `install_r_logger()`'s default level so
+/// that a caller who does not pass a level silently suppresses output rather
+/// than unexpectedly enabling it.
+impl crate::MatchArg for log::LevelFilter {
+    /// Choices in the order produced by `log::LevelFilter::iter()`:
+    /// `Off, Error, Warn, Info, Debug, Trace`.
+    ///
+    /// The first entry is the `match.arg` default when the R argument is `NULL`.
+    /// `"off"` is intentional: a consumer that doesn't pass a level should get
+    /// the silent default, matching `install_r_logger`'s default level since #339.
+    const CHOICES: &'static [&'static str] = &["off", "error", "warn", "info", "debug", "trace"];
+
+    fn from_choice(choice: &str) -> Option<Self> {
+        // log::LevelFilter has a case-insensitive FromStr; we feed it
+        // exactly the strings in CHOICES, but accept any casing.
+        choice.parse().ok()
+    }
+
+    fn to_choice(self) -> &'static str {
+        // Exhaustive match — if `log` ever adds a variant, this stops
+        // compiling and forces CHOICES above to be updated in lockstep.
+        match self {
+            log::LevelFilter::Off => "off",
+            log::LevelFilter::Error => "error",
+            log::LevelFilter::Warn => "warn",
+            log::LevelFilter::Info => "info",
+            log::LevelFilter::Debug => "debug",
+            log::LevelFilter::Trace => "trace",
+        }
+    }
+}
+
+/// `TryFromSexp` for [`log::LevelFilter`] — wires the `MatchArg` impl into the
+/// FFI conversion layer so `#[miniextendr(match_arg)] level: log::LevelFilter`
+/// compiles without requiring a local `#[derive(MatchArg)]` on the foreign type.
+///
+/// Conversion delegates to [`crate::match_arg_from_sexp`], which handles
+/// `NULL` → first choice (default), exact and partial matching, NA, and wrong
+/// SEXP type.
+impl crate::TryFromSexp for log::LevelFilter {
+    type Error = crate::SexpError;
+
+    fn try_from_sexp(
+        sexp: crate::ffi::SEXP,
+    ) -> Result<Self, <log::LevelFilter as crate::TryFromSexp>::Error> {
+        crate::match_arg_from_sexp(sexp).map_err(Into::into)
+    }
+}
+
+/// `IntoR` for [`log::LevelFilter`] — converts a `LevelFilter` back to an R
+/// character scalar via [`crate::MatchArg::to_choice`].  This is used when a
+/// `#[miniextendr]` function returns a `log::LevelFilter` value.
+impl crate::IntoR for log::LevelFilter {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::ffi::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
+        Ok(self.into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(
+        self,
+    ) -> Result<crate::ffi::SEXP, <log::LevelFilter as crate::IntoR>::Error> {
+        self.try_into_sexp()
+    }
+
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        use crate::MatchArg;
+        self.to_choice().into_sexp()
+    }
+}
+
+// endregion
+
 // region: Tests
 
 /// Serialises all tests that touch the shared `QUEUE`/`DROPPED`/`TEST_SINK`
@@ -521,6 +603,64 @@ mod tests {
             rendered.iter().any(|m| m.contains("from spawned thread")),
             "got: {rendered:?}"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // MatchArg for LevelFilter
+    // -------------------------------------------------------------------------
+
+    /// Every entry in CHOICES round-trips through `from_choice` + `to_choice`,
+    /// and `CHOICES.len()` matches `LevelFilter::iter().count()` — this pins the
+    /// "in-sync with the log crate" invariant at test time.
+    #[test]
+    fn match_arg_choices_match_levelfilter_iter() {
+        use crate::MatchArg;
+        use log::LevelFilter;
+        use std::str::FromStr;
+
+        let choices = <LevelFilter as MatchArg>::CHOICES;
+        assert_eq!(
+            choices.len(),
+            LevelFilter::iter().count(),
+            "CHOICES.len() must equal LevelFilter::iter().count()"
+        );
+        for &c in choices {
+            let filter = LevelFilter::from_str(c)
+                .unwrap_or_else(|_| panic!("from_str failed for choice {:?}", c));
+            assert_eq!(
+                filter.to_choice(),
+                c,
+                "to_choice did not round-trip for {:?}",
+                c
+            );
+        }
+    }
+
+    /// An unrecognised string returns `None`.
+    #[test]
+    fn match_arg_from_choice_unknown_returns_none() {
+        use crate::MatchArg;
+        use log::LevelFilter;
+
+        assert_eq!(<LevelFilter as MatchArg>::from_choice("nope"), None);
+    }
+
+    /// For every variant produced by `LevelFilter::iter()`, converting to a
+    /// choice string and back yields the original variant.
+    #[test]
+    fn match_arg_to_choice_round_trip() {
+        use crate::MatchArg;
+        use log::LevelFilter;
+
+        for v in LevelFilter::iter() {
+            let s = v.to_choice();
+            assert_eq!(
+                <LevelFilter as MatchArg>::from_choice(s),
+                Some(v),
+                "round-trip failed for {:?}",
+                v
+            );
+        }
     }
 }
 
