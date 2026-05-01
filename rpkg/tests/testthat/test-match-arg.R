@@ -241,3 +241,17 @@ test_that("Vec<Mode> single value round-trips to R character vector", {
   expect_type(result, "character")
   expect_equal(result, "Fast")
 })
+
+# ============================================================================
+# Foreign-type MatchArg — log::LevelFilter (feature = "log")
+# ============================================================================
+
+test_that("foreign-type MatchArg: log::LevelFilter choices are baked into wrapper", {
+  skip_if_not(exists("match_arg_log_level"), "match_arg_log_level not available (log feature off)")
+  expect_equal(match_arg_log_level("info"), "info")
+  expect_equal(match_arg_log_level("debug"), "debug")
+  expect_equal(match_arg_log_level("off"), "off")
+  # partial match: "err" → "error" (match.arg semantics)
+  expect_equal(match_arg_log_level("err"), "error")
+  expect_error(match_arg_log_level("loud"), "should be one of")  # match.arg's own error
+})
