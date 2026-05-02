@@ -102,6 +102,58 @@ fn test_dot_call_static_with_args() {
     );
 }
 
+#[test]
+fn test_dot_call_with_args_str_empty_skips_args() {
+    let call = DotCallBuilder::new("C_Counter__new")
+        .with_args_str("")
+        .build();
+    assert_eq!(call, ".Call(C_Counter__new, .call = match.call())");
+}
+
+#[test]
+fn test_dot_call_with_args_str_passes_through() {
+    let call = DotCallBuilder::new("C_Counter__update")
+        .with_self("self")
+        .with_args_str("step, verbose")
+        .build();
+    assert_eq!(
+        call,
+        ".Call(C_Counter__update, .call = match.call(), self, step, verbose)"
+    );
+}
+
+// null_call_attribution tests
+#[test]
+fn test_dot_call_null_call_no_args() {
+    let call = DotCallBuilder::new("C_Type__finalize")
+        .null_call_attribution()
+        .with_self("private$.ptr")
+        .build();
+    assert_eq!(call, ".Call(C_Type__finalize, .call = NULL, private$.ptr)");
+}
+
+#[test]
+fn test_dot_call_null_call_with_args() {
+    let call = DotCallBuilder::new("C_Type__deep_clone")
+        .null_call_attribution()
+        .with_self("private$.ptr")
+        .with_args(&["name", "value"])
+        .build();
+    assert_eq!(
+        call,
+        ".Call(C_Type__deep_clone, .call = NULL, private$.ptr, name, value)"
+    );
+}
+
+#[test]
+fn test_dot_call_null_call_validator() {
+    let call = DotCallBuilder::new("C_Type__validate_prop")
+        .null_call_attribution()
+        .with_args(&["value"])
+        .build();
+    assert_eq!(call, ".Call(C_Type__validate_prop, .call = NULL, value)");
+}
+
 // RoxygenBuilder tests
 #[test]
 fn test_roxygen_basic() {

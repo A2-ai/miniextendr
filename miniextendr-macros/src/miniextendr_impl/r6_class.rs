@@ -180,21 +180,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("        private$.ptr <- .ptr".to_string());
             lines.push("      } else {".to_string());
             lines.push(format!("        .val <- {}", ctx.static_call()));
-            lines.push(
-                "        if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {"
-                    .to_string(),
-            );
-            lines.push("          stop(structure(".to_string());
-            lines.push(
-                "            class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),"
-                    .to_string(),
-            );
-            lines.push(
-                "            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)"
-                    .to_string(),
-            );
-            lines.push("          ))".to_string());
-            lines.push("        }".to_string());
+            // Use shared condition switch (supports error!/warning!/message!/condition!).
+            for check_line in crate::method_return_builder::error_in_r_check_lines("        ") {
+                lines.push(check_line);
+            }
             lines.push("        private$.ptr <- .val".to_string());
             lines.push("      }".to_string());
             lines.push(format!("    }}{}", comma));
@@ -379,11 +368,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Finalizer (if any)
     if let Some(finalizer) = parsed_impl.finalizer() {
-        let c_ident = finalizer.c_wrapper_ident(type_ident, parsed_impl.label());
-        lines.push(format!(
-            "    finalize = function() .Call({}, .call = match.call(), private$.ptr),",
-            c_ident
-        ));
+        let c_ident = finalizer
+            .c_wrapper_ident(type_ident, parsed_impl.label())
+            .to_string();
+        let finalize_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
+            .null_call_attribution()
+            .with_self("private$.ptr")
+            .build();
+        lines.push(format!("    finalize = function() {finalize_call},"));
     }
 
     // deep_clone (if any method marked with #[miniextendr(r6(deep_clone))])
@@ -392,10 +384,16 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .iter()
         .find(|m| m.method_attrs.deep_clone && m.should_include())
     {
-        let c_ident = dc_method.c_wrapper_ident(type_ident, parsed_impl.label());
+        let c_ident = dc_method
+            .c_wrapper_ident(type_ident, parsed_impl.label())
+            .to_string();
+        let deep_clone_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
+            .null_call_attribution()
+            .with_self("private$.ptr")
+            .with_args(&["name", "value"])
+            .build();
         lines.push(format!(
-            "    deep_clone = function(name, value) .Call({}, .call = match.call(), private$.ptr, name, value),",
-            c_ident
+            "    deep_clone = function(name, value) {deep_clone_call},"
         ));
     }
 
@@ -468,12 +466,13 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push("      } else {".to_string());
 
                 // Setter call - construct directly
-                let setter_c_ident =
-                    setter_method.c_wrapper_ident(type_ident, parsed_impl.label.as_deref());
-                let setter_call = format!(
-                    ".Call({}, .call = match.call(), private$.ptr, value)",
-                    setter_c_ident
-                );
+                let setter_c_ident = setter_method
+                    .c_wrapper_ident(type_ident, parsed_impl.label.as_deref())
+                    .to_string();
+                let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(&setter_c_ident)
+                    .with_self("private$.ptr")
+                    .with_args(&["value"])
+                    .build();
                 lines.push(format!("        {}", setter_call));
                 lines.push("        invisible(self)".to_string());
 

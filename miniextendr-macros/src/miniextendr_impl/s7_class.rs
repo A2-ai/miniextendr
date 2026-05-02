@@ -428,12 +428,14 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             && let Some(validator_method) = find_method(validator_ident)
         {
             let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
-            // Validator is called with just the value, not self
-            // Generate: validator = function(value) .Call(C_Type__validate_prop, value)
-            prop_parts.push(format!(
-                "validator = function(value) .Call({}, .call = match.call(), value)",
-                ctx.c_ident
-            ));
+            // Validator is called with just the value, not self.
+            // Use null_call_attribution: this runs inside S7's dispatch lambda, so
+            // match.call() would capture S7 internals, not the user's call site.
+            let validator_call = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
+                .null_call_attribution()
+                .with_args(&["value"])
+                .build();
+            prop_parts.push(format!("validator = function(value) {validator_call}"));
         }
 
         // Generate getter (with optional deprecation warning)
@@ -441,7 +443,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             && let Some(getter_method) = find_method(getter_ident)
         {
             let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
-            let getter_call = ctx.instance_call("self@.ptr");
+            // Use null_call_attribution: runs inside S7's property dispatch lambda.
+            let getter_call = ctx.instance_call_null_attr("self@.ptr");
             if let Some(ref msg) = prop.deprecated {
                 // Deprecated getter: emit warning then return value
                 prop_parts.push(format!(
@@ -458,7 +461,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             && let Some(setter_method) = find_method(setter_ident)
         {
             let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
-            let setter_call = ctx.instance_call("self@.ptr");
+            // Use null_call_attribution: runs inside S7's property dispatch lambda.
+            let setter_call = ctx.instance_call_null_attr("self@.ptr");
 
             if prop.frozen {
                 // Frozen pattern: error if property was already set (non-NULL)
@@ -926,7 +930,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Generate: S7::method(S7::convert, list(FromType, ThisClass)) <- function(from, to) ...
             // The convert_from method takes the source object as its sole parameter
             // We pass from@.ptr to extract the ExternalPtr from the S7 object
-            let call_with_from = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
+            let call_with_from = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
+                .with_self("from@.ptr")
+                .build();
 
             let strategy = crate::ReturnStrategy::for_method(method);
             let return_expr = crate::MethodReturnBuilder::new(call_with_from)
@@ -962,7 +968,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Generate: S7::method(convert, list(ThisClass, ToType)) <- function(from, to) ...
             // The convert_to method is an instance method where self is mapped to from@.ptr
-            let call = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
+            let call = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
+                .with_self("from@.ptr")
+                .build();
 
             // to_type is a cross-reference → placeholder for resolver.
             // We also pass the placeholder to MethodReturnBuilder so the

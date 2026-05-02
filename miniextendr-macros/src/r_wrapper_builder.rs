@@ -396,6 +396,9 @@ pub struct DotCallBuilder {
     self_var: Option<String>,
     /// Additional argument names passed after self (if any) in the `.Call()` invocation.
     args: Vec<String>,
+    /// Expression for the `.call` named argument. `None` means `match.call()` (the default).
+    /// Set via [`DotCallBuilder::null_call_attribution`] to emit `.call = NULL` instead.
+    call_expr: Option<String>,
 }
 
 impl DotCallBuilder {
@@ -405,6 +408,7 @@ impl DotCallBuilder {
             c_ident: c_ident.into(),
             self_var: None,
             args: Vec::new(),
+            call_expr: None,
         }
     }
 
@@ -420,8 +424,33 @@ impl DotCallBuilder {
         self
     }
 
+    /// Add a pre-joined argument string (e.g., `"x, y"`) as a single emit unit.
+    ///
+    /// Empty strings are ignored, so callers can pass the result of
+    /// `build_r_call_args_from_sig` directly without a length check.
+    pub fn with_args_str(mut self, args: &str) -> Self {
+        if !args.is_empty() {
+            self.args.push(args.to_string());
+        }
+        self
+    }
+
+    /// Pass `.call = NULL` instead of `.call = match.call()`.
+    ///
+    /// Use for lambda dispatch sites (R6 finalizer/`deep_clone`, S7 property
+    /// getter/setter/validator) where `match.call()` captures an internal
+    /// dispatch frame instead of the user's call. With `NULL`, the
+    /// `%||% sys.call()` fallback in `error_in_r_check_lines` surfaces the
+    /// nearest meaningful frame instead.
+    pub fn null_call_attribution(mut self) -> Self {
+        self.call_expr = Some("NULL".to_string());
+        self
+    }
+
     /// Build the `.Call()` string.
     pub fn build(&self) -> String {
+        let call_arg = self.call_expr.as_deref().unwrap_or("match.call()");
+
         let mut all_args = Vec::new();
 
         if let Some(ref self_var) = self.self_var {
@@ -430,11 +459,12 @@ impl DotCallBuilder {
         all_args.extend(self.args.clone());
 
         if all_args.is_empty() {
-            format!(".Call({}, .call = match.call())", self.c_ident)
+            format!(".Call({}, .call = {})", self.c_ident, call_arg)
         } else {
             format!(
-                ".Call({}, .call = match.call(), {})",
+                ".Call({}, .call = {}, {})",
                 self.c_ident,
+                call_arg,
                 all_args.join(", ")
             )
         }

@@ -113,6 +113,7 @@ mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
 mod altrep_sexp_tests;
+mod call_attribution_demo;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
 #[cfg(feature = "arrow")]
@@ -135,6 +136,7 @@ mod coerce_tests;
 mod collect_tests;
 #[cfg(feature = "serde")]
 mod columnar_flatten_tests;
+mod condition_demo;
 mod condition_tests;
 #[cfg(feature = "connections")]
 mod connection_tests;

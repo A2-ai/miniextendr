@@ -1217,3 +1217,43 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ClassSystem, generate_r_wrapper_for_slot};
+
+    /// Sidecar accessor C functions take only `x` (getter) or `x, value` (setter) —
+    /// no `__miniextendr_call` parameter. The R wrappers must NOT pass `.call = match.call()`
+    /// because that would be counted as an extra positional argument by `.Call()`, causing
+    /// "Incorrect number of arguments" errors at runtime. Cover every class system variant.
+    #[test]
+    fn sidecar_accessors_do_not_pass_match_call() {
+        let getter_c = "C__mx_rdata_get_T_f";
+        let setter_c = "C__mx_rdata_set_T_f";
+
+        for cs in [
+            ClassSystem::Env,
+            ClassSystem::R6,
+            ClassSystem::S3,
+            ClassSystem::S4,
+            ClassSystem::S7,
+            ClassSystem::Vctrs,
+        ] {
+            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c);
+            // Correct form: no .call argument — the C function only accepts x (getter) or x, value (setter).
+            assert!(
+                out.contains(&format!(".Call({getter_c}, x)")),
+                "{cs:?} getter should call without .call:\n{out}"
+            );
+            assert!(
+                out.contains(&format!(".Call({setter_c}, x, value)")),
+                "{cs:?} setter should call without .call:\n{out}"
+            );
+            // Must NOT include the erroneous .call = match.call() form.
+            assert!(
+                !out.contains(".call = match.call()"),
+                "{cs:?} sidecar wrapper must not pass .call = match.call():\n{out}"
+            );
+        }
+    }
+}

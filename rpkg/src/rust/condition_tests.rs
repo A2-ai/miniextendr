@@ -1,19 +1,21 @@
-//! Test fixtures for RCondition structured error adapter.
+//! Test fixtures for RErrorAdapter structured error adapter.
 
-use miniextendr_api::condition::RCondition;
+use miniextendr_api::condition::RErrorAdapter;
 use miniextendr_api::miniextendr;
 
 // region: Simple errors
 
 /// @export
 #[miniextendr]
-pub fn test_condition_parse_int(s: &str) -> Result<i32, RCondition<std::num::ParseIntError>> {
-    s.parse::<i32>().map_err(RCondition)
+pub fn test_condition_parse_int(
+    s: &str,
+) -> Result<i32, RErrorAdapter<std::num::ParseIntError>> {
+    s.parse::<i32>().map_err(RErrorAdapter)
 }
 
 /// @export
 #[miniextendr]
-pub fn test_condition_ok() -> Result<i32, RCondition<std::num::ParseIntError>> {
+pub fn test_condition_ok() -> Result<i32, RErrorAdapter<std::num::ParseIntError>> {
     Ok(42)
 }
 
@@ -41,9 +43,9 @@ impl std::error::Error for ConfigError {
 
 /// @export
 #[miniextendr]
-pub fn test_condition_chained(s: &str) -> Result<i32, RCondition<ConfigError>> {
+pub fn test_condition_chained(s: &str) -> Result<i32, RErrorAdapter<ConfigError>> {
     let value = s.parse::<i32>().map_err(|e| {
-        RCondition(ConfigError {
+        RErrorAdapter(ConfigError {
             msg: format!("failed to parse '{s}' as max_threads"),
             source: e,
         })

@@ -221,11 +221,23 @@ where
     }
 }
 
-/// Execute a closure with R unwind protection.
+/// Execute a closure with R unwind protection (non-`error_in_r` path).
 ///
-/// If the closure panics, the panic is caught and converted to an R error.
-/// If R raises an error (longjmp), all Rust RAII resources are properly dropped
-/// before R continues unwinding.
+/// If the closure panics, the panic is caught and converted to an R error via
+/// `Rf_errorcall` (longjmp). If R raises an error (longjmp), all Rust RAII
+/// resources are properly dropped before R continues unwinding.
+///
+/// **This is NOT the default path for `#[miniextendr]` functions.** The default
+/// is [`with_r_unwind_protect_error_in_r`], which returns a tagged SEXP instead
+/// of longjmping, preserving `rust_*` class layering.
+///
+/// This function is used by:
+/// - Trait-ABI vtable shims (cross-package C-ABI calls)
+/// - ALTREP `RUnwind` guard callbacks
+/// - Explicit `#[miniextendr(no_error_in_r)]` / `unwrap_in_r` opt-out
+///
+/// In these contexts there is no R wrapper to inspect a tagged SEXP, so panics
+/// must be converted to R errors directly via `Rf_errorcall`.
 ///
 /// # Arguments
 ///
@@ -235,10 +247,12 @@ where
 /// # Example
 ///
 /// ```ignore
-/// let result: i32 = with_r_unwind_protect(|| {
-///     // Code that might call R APIs that can error
-///     42
-/// }, None);
+/// // Typical use: inside a trait-ABI shim where no R wrapper exists.
+/// // For user-facing #[miniextendr] fns, prefer with_r_unwind_protect_error_in_r.
+/// let result: i32 = with_r_unwind_protect_error_in_r(|| {
+///     // Rust code that may panic or raise conditions
+///     SEXP::nil()
+/// }, Some(call));
 /// ```
 pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
 where
@@ -251,6 +265,12 @@ where
 ///
 /// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
 /// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.
+///
+/// Also handles [`crate::condition::RCondition`] payloads in non-error_in_r mode
+/// (Option A from the design): `RCondition::Error` routes to `Rf_errorcall` (call
+/// attribution and `rust_*` class layering are lost — known limitation). The other
+/// three variants (`Warning`, `Message`, `Condition`) panic with a diagnostic message
+/// explaining that `error_in_r` mode is required for those signal kinds.
 pub(crate) fn with_r_unwind_protect_sourced<F, R>(
     f: F,
     call: Option<SEXP>,
@@ -261,16 +281,52 @@ where
 {
     match run_r_unwind_protect(f) {
         Ok(result) => result,
-        Err(payload) => unsafe { panic_payload_to_r_error(payload, call, source) },
+        Err(payload) => {
+            // region: RCondition recognition in non-error_in_r context
+            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+                match cond {
+                    crate::condition::RCondition::Error { message, .. } => {
+                        // Forward as Rf_errorcall. rust_* class layering is lost because
+                        // there is no R wrapper to inspect the tagged SEXP — this is a
+                        // known limitation of the non-error_in_r path (trait shims, ALTREP
+                        // RUnwind guard). Documented in docs/CONDITIONS.md.
+                        let owned = message.clone();
+                        let box_payload: Box<dyn std::any::Any + Send> = Box::new(owned);
+                        unsafe { panic_payload_to_r_error(box_payload, call, source) }
+                    }
+                    crate::condition::RCondition::Warning { .. }
+                    | crate::condition::RCondition::Message { .. }
+                    | crate::condition::RCondition::Condition { .. } => {
+                        // warning!/message!/condition! require error_in_r mode (the
+                        // default). This function is used by trait-ABI shims, ALTREP
+                        // RUnwind guard, and explicit no_error_in_r/unwrap_in_r opt-out.
+                        // Convert to a plain panic so the caller sees a diagnostic.
+                        let msg = "warning!/message!/condition! require error_in_r mode (the \
+                                   default); this function opted out via no_error_in_r/\
+                                   unwrap_in_r or is a trait-ABI shim / ALTREP callback";
+                        let box_payload: Box<dyn std::any::Any + Send> = Box::new(msg);
+                        unsafe { panic_payload_to_r_error(box_payload, call, source) }
+                    }
+                }
+            } else {
+                unsafe { panic_payload_to_r_error(payload, call, source) }
+            }
+            // endregion
+        }
     }
 }
 
 /// Like [`with_r_unwind_protect`], but returns a tagged error SEXP on Rust panics
 /// instead of raising an R error via `Rf_errorcall`.
 ///
-/// Used by `#[miniextendr(error_in_r)]` mode for the main thread strategy.
-/// The error SEXP is inspected by the generated R wrapper which raises a proper
-/// R error condition past the Rust boundary.
+/// This is the **default** transport for all `#[miniextendr]` functions and
+/// methods (both `error_in_r.unwrap_or(true)`). The error/condition SEXP is
+/// inspected by the generated R wrapper which raises a proper R condition past
+/// the Rust boundary, with `rust_*` class layering.
+///
+/// Recognises [`crate::condition::RCondition`] payloads (from `error!()`,
+/// `warning!()`, `message!()`, `condition!()`) before falling through to the
+/// generic panic→string path.
 ///
 /// R-origin errors (longjmp) still pass through via `R_ContinueUnwind`.
 pub fn with_r_unwind_protect_error_in_r<F>(f: F, call: Option<SEXP>) -> SEXP
@@ -280,6 +336,28 @@ where
     match run_r_unwind_protect(f) {
         Ok(result) => result,
         Err(payload) => {
+            // region: RCondition recognition — must come before generic panic path
+            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+                let (kind, msg, class) = match cond {
+                    crate::condition::RCondition::Error { message, class } => {
+                        ("error", message.as_str(), class.as_deref())
+                    }
+                    crate::condition::RCondition::Warning { message, class } => {
+                        ("warning", message.as_str(), class.as_deref())
+                    }
+                    crate::condition::RCondition::Message { message } => {
+                        ("message", message.as_str(), None)
+                    }
+                    crate::condition::RCondition::Condition { message, class } => {
+                        ("condition", message.as_str(), class.as_deref())
+                    }
+                };
+                // No panic telemetry for user-raised conditions — they are intentional.
+                return crate::error_value::make_rust_condition_value(msg, kind, class, call);
+            }
+            // endregion
+
+            // Generic panic path — unchanged
             let msg = panic_payload_to_string(payload.as_ref());
             crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
             crate::error_value::make_rust_error_value(&msg, "panic", call)

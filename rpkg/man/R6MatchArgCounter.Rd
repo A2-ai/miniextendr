@@ -14,56 +14,61 @@ Static method with a choices() param — validates the \code{choices(...)} path 
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-R6MatchArgCounter-new}{\code{R6MatchArgCounter$new()}}
-\item \href{#method-R6MatchArgCounter-mode}{\code{R6MatchArgCounter$mode()}}
-\item \href{#method-R6MatchArgCounter-record}{\code{R6MatchArgCounter$record()}}
-}
+  \itemize{
+    \item \href{#method-R6MatchArgCounter-initialize}{\code{R6MatchArgCounter$new()}}
+    \item \href{#method-R6MatchArgCounter-mode}{\code{R6MatchArgCounter$mode()}}
+    \item \href{#method-R6MatchArgCounter-record}{\code{R6MatchArgCounter$record()}}
+  }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-R6MatchArgCounter-new"></a>}}
-\if{latex}{\out{\hypertarget{method-R6MatchArgCounter-new}{}}}
-\subsection{Method \code{new()}}{
-Create a new \code{R6MatchArgCounter}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6MatchArgCounter$new(mode = c("Fast", "Safe", "Debug"), .ptr = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<a id="method-R6MatchArgCounter-initialize"></a>}}
+\if{latex}{\out{\hypertarget{method-R6MatchArgCounter-initialize}{}}}
+\subsection{\code{R6MatchArgCounter$new()}}{
+  Create a new \code{R6MatchArgCounter}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6MatchArgCounter$new(mode = c("Fast", "Safe", "Debug"), .ptr = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{mode}}{One of "Fast", "Safe", "Debug".}
+      \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{mode}}{One of "Fast", "Safe", "Debug".}
-
-\item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6MatchArgCounter-mode"></a>}}
 \if{latex}{\out{\hypertarget{method-R6MatchArgCounter-mode}{}}}
-\subsection{Method \code{mode()}}{
-Method \code{mode}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6MatchArgCounter$mode()}\if{html}{\out{</div>}}
+\subsection{\code{R6MatchArgCounter$mode()}}{
+  Method \code{mode}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6MatchArgCounter$mode()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-R6MatchArgCounter-record"></a>}}
 \if{latex}{\out{\hypertarget{method-R6MatchArgCounter-record}{}}}
-\subsection{Method \code{record()}}{
-Method \code{record}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{R6MatchArgCounter$record(mode = c("Fast", "Safe", "Debug"))}\if{html}{\out{</div>}}
+\subsection{\code{R6MatchArgCounter$record()}}{
+  Method \code{record}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6MatchArgCounter$record(mode = c("Fast", "Safe", "Debug"))}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{mode}}{One of "Fast", "Safe", "Debug".}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{mode}}{One of "Fast", "Safe", "Debug".}
-}
-\if{html}{\out{</div>}}
-}
-}
 }

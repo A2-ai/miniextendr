@@ -523,6 +523,7 @@ pub use as_coerce::{
 };
 
 pub mod condition;
+pub use condition::{RCondition, RErrorAdapter};
 pub mod convert;
 /// Support for R `...` arguments represented as a validated list.
 pub mod dots;
