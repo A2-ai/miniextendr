@@ -274,6 +274,138 @@ macro_rules! condition {
 
 // endregion
 
+// region: from_tagged_sexp + repanic_if_rust_error — shim re-panic helpers
+
+impl RCondition {
+    /// Reconstruct an [`RCondition::Error`] from a tagged SEXP produced by
+    /// [`crate::error_value::make_rust_condition_value`] or
+    /// [`crate::error_value::make_rust_error_value`].
+    ///
+    /// Returns `Some(RCondition)` when `sexp` has class `"rust_error_value"` AND
+    /// the `"__rust_error__"` attribute is `TRUE`. Returns `None` for all other
+    /// SEXPs (normal return values, `R_NilValue`, etc.).
+    ///
+    /// Only `"error"` and `"panic"` kinds are reconstructed as
+    /// [`RCondition::Error`]. Other kinds (warning, message, condition) are
+    /// reconstructed as `Error` with their kind string appended to the message —
+    /// they cannot suspend execution without an R frame, so degrading to an error
+    /// is the safest course.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread.
+    pub unsafe fn from_tagged_sexp(sexp: crate::ffi::SEXP) -> Option<Self> {
+        use crate::ffi::SexpExt;
+
+        // Use SexpExt::inherits_class — wraps Rf_inherits, already main-thread.
+        if !sexp.inherits_class(c"rust_error_value") {
+            return None;
+        }
+
+        // Belt-and-suspenders PROTECT across the full inspection window. The reads
+        // below are nominally non-allocating, but R-devel's GC is aggressive enough
+        // (see MEMORY.md "Common gotchas") that a defensive guard is cheap and
+        // closes the door on subtle regressions if the read path ever changes.
+        let _guard = unsafe { crate::gc_protect::OwnedProtect::new(sexp) };
+
+        // Verify the __rust_error__ marker attribute is TRUE (a length-1 LGLSXP
+        // with value 1). This guards against coincidental class attribute collisions.
+        let attr_sym = crate::cached_class::rust_error_attr_symbol();
+        let marker = sexp.get_attr(attr_sym);
+        // marker should be a scalar logical TRUE: is_logical() and logical_elt(0) == 1
+        if !marker.is_logical() || marker.logical_elt(0) != 1 {
+            return None;
+        }
+
+        // It's a tagged SEXP. Read the elements.
+        // Both 3-element (legacy) and 4-element (condition) forms have:
+        //   [0] = error message (STRSXP)
+        //   [1] = kind string (STRSXP)
+        //   [2] = class name or NULL (only in 4-element form; absent in legacy)
+
+        let len = sexp.len();
+
+        let msg_sexp = sexp.vector_elt(0);
+        let msg: String = msg_sexp
+            .string_elt_str(0)
+            .unwrap_or("<invalid error message>")
+            .to_string();
+
+        let kind_sexp = sexp.vector_elt(1);
+        let kind: &str = kind_sexp.string_elt_str(0).unwrap_or("panic");
+
+        // Class slot is element [2] in the 4-element form (NULL in legacy form)
+        let class: Option<String> = if len >= 4 {
+            let class_sexp = sexp.vector_elt(2);
+            if class_sexp.is_nil() {
+                None
+            } else {
+                class_sexp.string_elt_str(0).map(|s| s.to_string())
+            }
+        } else {
+            None
+        };
+
+        let cond = match kind {
+            "error" | "panic" | "result_err" | "none_err" | "other_rust_error" => {
+                RCondition::Error {
+                    message: msg,
+                    class,
+                }
+            }
+            "warning" => RCondition::Warning {
+                message: msg,
+                class,
+            },
+            "message" => RCondition::Message { message: msg },
+            "condition" => RCondition::Condition {
+                message: msg,
+                class,
+            },
+            other => {
+                // Unknown kind — degrade to error
+                RCondition::Error {
+                    message: format!("[{other}] {msg}"),
+                    class,
+                }
+            }
+        };
+        Some(cond)
+    }
+}
+
+/// Inspect a SEXP returned by a trait-ABI vtable shim and, if it is a tagged
+/// error value, re-panic with the reconstructed [`RCondition`].
+///
+/// This is the "re-panic at the View boundary" step of Approach 1 from the
+/// issue-345 plan. The caller (a generated View method wrapper) does:
+///
+/// ```ignore
+/// let result = { vtable_call };
+/// ::miniextendr_api::trait_abi::repanic_if_rust_error(result);
+/// // ... convert result normally if we reach here
+/// ```
+///
+/// When `sexp` is a tagged error value:
+/// - `RCondition::Error` / `RCondition::Warning` / etc. → `panic_any!(cond)`.
+///   The outer `with_r_unwind_protect_error_in_r` in the consumer's C entry
+///   point will catch this and produce a tagged SEXP for the consumer's R
+///   wrapper.
+///
+/// When `sexp` is a normal value: this is a no-op.
+///
+/// # Safety
+///
+/// Must be called from R's main thread. `sexp` must be a valid (possibly
+/// tagged) SEXP.
+pub unsafe fn repanic_if_rust_error(sexp: crate::ffi::SEXP) {
+    if let Some(cond) = unsafe { RCondition::from_tagged_sexp(sexp) } {
+        std::panic::panic_any(cond);
+    }
+}
+
+// endregion
+
 // region: RErrorAdapter struct — wraps std::error::Error for Result returns
 
 /// Structured error wrapper that preserves the `std::error::Error` cause chain.

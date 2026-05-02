@@ -22,10 +22,18 @@ DoubleCounter <- new.env(parent = emptyenv())
 DoubleCounter$get_value <- function() {
   .val <- .Call(C_DoubleCounter__get_value, .call = match.call(), self)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+    .msg <- .val$error
+    .call <- .val$call %||% sys.call()
+    .class <- .val$class
+    switch(.val$kind,
+      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+        class = c("rust_error", "simpleError", "error", "condition")))
+    )
   }
   .val
 }
@@ -41,10 +49,18 @@ DoubleCounter$create <- function(initial) {
   )
   .val <- .Call(C_DoubleCounter__create, .call = match.call(), initial)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+    .msg <- .val$error
+    .call <- .val$call %||% sys.call()
+    .class <- .val$class
+    switch(.val$kind,
+      error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+      warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+      condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+      panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+      stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+        class = c("rust_error", "simpleError", "error", "condition")))
+    )
   }
   class(.val) <- "DoubleCounter"
   .val
@@ -113,15 +129,23 @@ has_class <- function(x, class_name) {
   )
   .val <- .Call(C_has_class, .call = match.call(), x, class_name)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `is_counter` (lib.rs:165:8)
+# Generated from Rust fn `is_counter` (lib.rs:177:8)
 #' @title Check if an object implements the Counter trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Counter trait
@@ -130,15 +154,23 @@ has_class <- function(x, class_name) {
 is_counter <- function(sexp) {
   .val <- .Call(C_is_counter, .call = match.call(), sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `peek_value` (lib.rs:155:8)
+# Generated from Rust fn `peek_value` (lib.rs:167:8)
 #' @title Get value without modifying (uses immutable reference)
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's current value
@@ -147,15 +179,23 @@ is_counter <- function(sexp) {
 peek_value <- function(counter_sexp) {
   .val <- .Call(C_peek_value, .call = match.call(), counter_sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `add_and_get` (lib.rs:144:8)
+# Generated from Rust fn `add_and_get` (lib.rs:156:8)
 #' @title Add a value to a counter and return the new value
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @param n Value to add
@@ -169,15 +209,23 @@ add_and_get <- function(counter_sexp, n) {
   )
   .val <- .Call(C_add_and_get, .call = match.call(), counter_sexp, n)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `get_reset_get` (lib.rs:230:8)
+# Generated from Rust fn `get_reset_get` (lib.rs:242:8)
 #' @title Get the value of a Counter, reset it, then get the value again Returns the value after reset
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return The counter value after reset
@@ -186,15 +234,23 @@ add_and_get <- function(counter_sexp, n) {
 get_reset_get <- function(sexp) {
   .val <- .Call(C_get_reset_get, .call = match.call(), sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `is_resettable` (lib.rs:199:8)
+# Generated from Rust fn `is_resettable` (lib.rs:211:8)
 #' @title Check if an object implements the Resettable trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Resettable trait
@@ -203,15 +259,23 @@ get_reset_get <- function(sexp) {
 is_resettable <- function(sexp) {
   .val <- .Call(C_is_resettable, .call = match.call(), sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `consumer_greet` (lib.rs:255:8)
+# Generated from Rust fn `consumer_greet` (lib.rs:296:8)
 #' @title Greet with a message demonstrating consumer package is working
 #' @param name Name to greet
 #' @return A greeting string
@@ -224,15 +288,23 @@ consumer_greet <- function(name) {
   )
   .val <- .Call(C_consumer_greet, .call = match.call(), name)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `increment_twice` (lib.rs:131:8)
+# Generated from Rust fn `increment_twice` (lib.rs:143:8)
 #' @title Increment a counter twice (generic over Counter trait) This function works with Counter objects from ANY package
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's value after incrementing twice
@@ -241,10 +313,18 @@ consumer_greet <- function(name) {
 increment_twice <- function(counter_sexp) {
   .val <- .Call(C_increment_twice, .call = match.call(), counter_sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
@@ -258,10 +338,18 @@ increment_twice <- function(counter_sexp) {
 is_external_ptr <- function(sexp) {
   .val <- .Call(C_is_external_ptr, .call = match.call(), sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
@@ -275,15 +363,23 @@ is_external_ptr <- function(sexp) {
 passthrough_ptr <- function(ptr) {
   .val <- .Call(C_passthrough_ptr, .call = match.call(), ptr)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `reset_and_check` (lib.rs:178:8)
+# Generated from Rust fn `reset_and_check` (lib.rs:190:8)
 #' @title Reset an object and check if it's in default state This function works with Resettable objects from ANY package
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state after reset
@@ -292,15 +388,23 @@ passthrough_ptr <- function(ptr) {
 reset_and_check <- function(sexp) {
   .val <- .Call(C_reset_and_check, .call = match.call(), sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `check_is_default` (lib.rs:189:8)
+# Generated from Rust fn `check_is_default` (lib.rs:201:8)
 #' @title Check if an object is in its default state (without resetting)
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state
@@ -309,10 +413,18 @@ reset_and_check <- function(sexp) {
 check_is_default <- function(sexp) {
   .val <- .Call(C_check_is_default, .call = match.call(), sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
@@ -326,15 +438,23 @@ check_is_default <- function(sexp) {
 consumer_get_class <- function(x) {
   .val <- .Call(C_consumer_get_class, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `new_double_counter` (lib.rs:116:8)
+# Generated from Rust fn `new_double_counter` (lib.rs:128:8)
 #' @title Create a new DoubleCounter (consumer's own Counter implementation) DoubleCounter increments by 2, demonstrating a different implementation
 #' @param initial Initial counter value
 #' @return An external pointer to the wrapped DoubleCounter
@@ -347,15 +467,48 @@ new_double_counter <- function(initial) {
   )
   .val <- .Call(C_new_double_counter, .call = match.call(), initial)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `increment_then_reset` (lib.rs:212:8)
+# Generated from Rust fn `counter_panic_plain` (lib.rs:269:8)
+#' @title Call panic_plain() on any Counter object via trait dispatch
+#' @description Used by spike tests to verify rust_error class layering across the trait-ABI boundary.
+#' @param counter_sexp An ExternalPtr to any type implementing Counter
+#' @export
+#' @source Generated by miniextendr from Rust fn `counter_panic_plain`
+counter_panic_plain <- function(counter_sexp) {
+  .val <- .Call(C_counter_panic_plain, .call = match.call(), counter_sexp)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
+  }
+  invisible(.val)
+}
+
+# Generated from Rust fn `increment_then_reset` (lib.rs:224:8)
 #' @title Increment a Counter twice, then reset it via Resettable, return is_default Tests combined trait usage on the same object across packages
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return TRUE if the object is in default state after increment+reset
@@ -364,15 +517,23 @@ new_double_counter <- function(initial) {
 increment_then_reset <- function(sexp) {
   .val <- .Call(C_increment_then_reset, .call = match.call(), sexp)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `consumer_magic_number` (lib.rs:263:8)
+# Generated from Rust fn `consumer_magic_number` (lib.rs:304:8)
 #' @title Return a constant to verify the package is loaded
 #' @return The number 42
 #' @export
@@ -380,40 +541,94 @@ increment_then_reset <- function(sexp) {
 consumer_magic_number <- function() {
   .val <- .Call(C_consumer_magic_number, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:270:8)
+# Generated from Rust fn `counter_error_with_class` (lib.rs:282:8)
+#' @title Call error_with_class() on any Counter object via trait dispatch
+#' @description Used by spike tests to verify user-class layering across the trait-ABI boundary.
+#' @param counter_sexp An ExternalPtr to any type implementing Counter
+#' @param class_name The class name to use with error!()
+#' @export
+#' @source Generated by miniextendr from Rust fn `counter_error_with_class`
+counter_error_with_class <- function(counter_sexp, class_name) {
+  stopifnot(
+    "'class_name' must be character" = is.character(class_name),
+    "'class_name' must have length 1" = length(class_name) == 1L
+  )
+  .val <- .Call(C_counter_error_with_class, .call = match.call(), counter_sexp, class_name)
+  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
+  }
+  invisible(.val)
+}
+
+# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:311:8)
 #' @title Debug: Get TAG_COUNTER as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_counter`
 debug_consumer_tag_counter <- function() {
   .val <- .Call(C_debug_consumer_tag_counter, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
 
-# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:243:8)
+# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:255:8)
 #' @title Debug: Get TAG_RESETTABLE as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_resettable`
 debug_consumer_tag_resettable <- function() {
   .val <- .Call(C_debug_consumer_tag_resettable, .call = match.call())
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+      .msg <- .val$error
+      .call <- .val$call %||% sys.call()
+      .class <- .val$class
+      switch(.val$kind,
+        error = stop(structure(list(message = .msg, call = .call, kind = "error"),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+        warning = { warning(structure(list(message = .msg, call = .call, kind = "warning"),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+        message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL, kind = "message"),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+        condition = { signalCondition(structure(list(message = .msg, call = .call, kind = "condition"),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+        panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),class = c("rust_error", "simpleError", "error", "condition"))),
+        stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+          class = c("rust_error", "simpleError", "error", "condition")))
+      )
   }
   .val
 }
@@ -446,6 +661,22 @@ DoubleCounter$Counter$add <- function(x, n) {
   invisible(x)
 }
 attr(DoubleCounter$Counter$add, ".__mx_instance__") <- TRUE
+
+#' @name DoubleCounter$Counter$panic_plain
+#' @rdname DoubleCounter
+DoubleCounter$Counter$panic_plain <- function(x) {
+  .Call(C_DoubleCounter__Counter__panic_plain, .call = match.call(), x)
+  invisible(x)
+}
+attr(DoubleCounter$Counter$panic_plain, ".__mx_instance__") <- TRUE
+
+#' @name DoubleCounter$Counter$error_with_class
+#' @rdname DoubleCounter
+DoubleCounter$Counter$error_with_class <- function(x, class_name) {
+  .Call(C_DoubleCounter__Counter__error_with_class, .call = match.call(), x, class_name)
+  invisible(x)
+}
+attr(DoubleCounter$Counter$error_with_class, ".__mx_instance__") <- TRUE
 
 # nocov end
 # nolint end

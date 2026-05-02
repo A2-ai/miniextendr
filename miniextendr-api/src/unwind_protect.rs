@@ -348,8 +348,10 @@ where
 /// - ALTREP `RUnwind` guard callbacks
 /// - Explicit `#[miniextendr(no_error_in_r)]` / `unwrap_in_r` opt-out
 ///
-/// In these contexts there is no R wrapper to inspect a tagged SEXP, so panics
-/// must be converted to R errors directly via `Rf_errorcall`.
+/// In these contexts there is no R wrapper to inspect a tagged SEXP. Panics
+/// are routed through `raise_rust_condition_via_stop` so they still receive
+/// `rust_*` class layering (issue #345). Trait-ABI shims use a separate
+/// SEXP-returning variant that re-panics at the View boundary.
 ///
 /// # Arguments
 ///
@@ -433,6 +435,64 @@ where
                 unsafe { raise_rust_condition_via_stop(&msg, None, call) }
             }
             // endregion
+        }
+    }
+}
+
+/// Like [`with_r_unwind_protect`], but returns a tagged error SEXP on Rust panics
+/// instead of raising an R error via `Rf_errorcall`.
+///
+/// **For trait-ABI vtable shims.** Same behaviour as
+/// [`with_r_unwind_protect_error_in_r`] except it is intended for use in shim
+/// functions that have no R wrapper of their own. The tagged SEXP is returned
+/// to the View method wrapper, which calls
+/// [`crate::condition::repanic_if_rust_error`] to re-panic with the
+/// reconstructed [`crate::condition::RCondition`]. The outer
+/// `with_r_unwind_protect_error_in_r` in the consumer's C entry point then
+/// catches the re-panic and builds the final tagged SEXP for the consumer's R
+/// wrapper.
+///
+/// R-origin errors (longjmp) still pass through via `R_ContinueUnwind` — the
+/// outer `error_in_r` guard will catch them.
+///
+/// # PROTECT note
+///
+/// The returned SEXP is unprotected. The View method wrapper must not call any
+/// R API functions between receiving it and passing it to
+/// `repanic_if_rust_error`. `repanic_if_rust_error` reads the message/kind/class
+/// strings immediately and then panics (or returns), so the SEXP does not need
+/// protection beyond that window.
+pub fn with_r_unwind_protect_shim<F>(f: F) -> SEXP
+where
+    F: FnOnce() -> SEXP,
+{
+    match run_r_unwind_protect(f) {
+        Ok(result) => result,
+        Err(payload) => {
+            // region: RCondition recognition — same as error_in_r path
+            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+                let (kind, msg, class) = match cond {
+                    crate::condition::RCondition::Error { message, class } => {
+                        ("error", message.as_str(), class.as_deref())
+                    }
+                    crate::condition::RCondition::Warning { message, class } => {
+                        ("warning", message.as_str(), class.as_deref())
+                    }
+                    crate::condition::RCondition::Message { message } => {
+                        ("message", message.as_str(), None)
+                    }
+                    crate::condition::RCondition::Condition { message, class } => {
+                        ("condition", message.as_str(), class.as_deref())
+                    }
+                };
+                return crate::error_value::make_rust_condition_value(msg, kind, class, None);
+            }
+            // endregion
+
+            // Generic panic path
+            let msg = panic_payload_to_string(payload.as_ref());
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
+            crate::error_value::make_rust_error_value(&msg, "panic", None)
         }
     }
 }
