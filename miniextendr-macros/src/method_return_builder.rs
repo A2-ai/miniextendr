@@ -33,34 +33,35 @@ fn condition_switch_lines(indent: &str) -> Vec<String> {
         format!("{i}switch(.val$kind,"),
         // error
         format!(
-            "{i2}error = stop(structure(list(message = .msg, call = .call),\
+            "{i2}error = stop(structure(list(message = .msg, call = .call, kind = \"error\"),\
  class = c(.class, \"rust_error\", \"simpleError\", \"error\", \"condition\"))),"
         ),
         // warning — signal then return invisible(NULL) so callers don't see the tagged SEXP
         format!(
-            "{i2}warning = {{ warning(structure(list(message = .msg, call = .call),\
+            "{i2}warning = {{ warning(structure(list(message = .msg, call = .call, kind = \"warning\"),\
  class = c(.class, \"rust_warning\", \"simpleWarning\", \"warning\", \"condition\"))); \
 return(invisible(NULL)) }},"
         ),
         // message — trailing \n matches simpleMessage semantics; return invisible(NULL) after
         format!(
-            "{i2}message = {{ message(structure(list(message = paste0(.msg, \"\\n\"), call = NULL),\
+            "{i2}message = {{ message(structure(list(message = paste0(.msg, \"\\n\"), call = NULL, kind = \"message\"),\
  class = c(.class, \"rust_message\", \"simpleMessage\", \"message\", \"condition\"))); \
 return(invisible(NULL)) }},"
         ),
         // condition — signalCondition is a no-op if there is no handler; return invisible(NULL) after
         format!(
-            "{i2}condition = {{ signalCondition(structure(list(message = .msg, call = .call),\
+            "{i2}condition = {{ signalCondition(structure(list(message = .msg, call = .call, kind = \"condition\"),\
  class = c(.class, \"rust_condition\", \"simpleCondition\", \"condition\"))); \
 return(invisible(NULL)) }},"
         ),
         // panic — same layering as error (legacy panics never have .class)
         format!(
-            "{i2}panic = stop(structure(list(message = .msg, call = .call),\
+            "{i2}panic = stop(structure(list(message = .msg, call = .call, kind = \"panic\"),\
  class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"))),"
         ),
-        // default: legacy result_err / none_err / unrecognised
-        format!("{i2}stop(structure(list(message = .msg, call = .call),"),
+        // default: legacy result_err / none_err / unrecognised — preserve .val$kind for
+        // test_that("err$kind") compatibility (result_err, none_err pass through unchanged)
+        format!("{i2}stop(structure(list(message = .msg, call = .call, kind = .val$kind),"),
         format!("{i3}class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\")))"),
         format!("{i})"),
     ]

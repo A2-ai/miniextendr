@@ -146,9 +146,10 @@ test_that("suppressMessages() muffles message!()", {
 # region: condition!() macro
 
 test_that("condition!() raises rust_condition class", {
-  c_val <- withCallingHandlers(
+  # withCallingHandlers does not unwind; use tryCatch to capture the signalled condition.
+  c_val <- tryCatch(
     demo_condition("signal"),
-    condition = function(c) c
+    rust_condition = function(c) c
   )
   expect_true(inherits(c_val, "rust_condition"))
   expect_true(inherits(c_val, "simpleCondition"))
@@ -156,9 +157,9 @@ test_that("condition!() raises rust_condition class", {
 })
 
 test_that("condition!() class vector is c(rust_condition, simpleCondition, condition)", {
-  c_val <- withCallingHandlers(
+  c_val <- tryCatch(
     demo_condition("x"),
-    condition = function(c) c
+    rust_condition = function(c) c
   )
   expect_equal(class(c_val), c("rust_condition", "simpleCondition", "condition"))
 })

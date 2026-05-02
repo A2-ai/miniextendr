@@ -114,6 +114,11 @@ If you ever see CI complain that the committed lockfile is in source-shape
 instead of tarball-shape, run `just vendor` and commit the regenerated
 artifact.
 
+The pre-commit hook (`.githooks/pre-commit`) blocks commits that would
+introduce checksum lines or `path+` sources into `rpkg/src/rust/Cargo.lock`.
+Run `just lock-shape-check` to verify the committed lockfile is in the correct
+shape at any time.
+
 ## CI strategy
 
 - **`r-tests`** (Linux): runs `R CMD INSTALL .` on the source dir. Tests source

@@ -4,7 +4,11 @@
 //! `condition!()` macros including the optional `class = "..."` form.
 //! Tests live in `rpkg/tests/testthat/test-conditions.R`.
 
-use miniextendr_api::{condition, error, message, miniextendr, warning};
+use miniextendr_api::miniextendr;
+
+// Type alias avoids ambiguous-associated-type errors when using enum variants
+// (RCondition impls TryFrom/IntoR which have `Error`/`Condition` assoc types).
+type RCondition = miniextendr_api::condition::RCondition;
 
 // region: error! fixtures
 
@@ -13,7 +17,7 @@ use miniextendr_api::{condition, error, message, miniextendr, warning};
 /// @export
 #[miniextendr]
 pub fn demo_error(msg: &str) {
-    error!("{msg}");
+    miniextendr_api::error!("{msg}");
 }
 
 /// Raise a rust_error with a custom class prepended.
@@ -23,7 +27,7 @@ pub fn demo_error(msg: &str) {
 pub fn demo_error_custom_class(class: &str, msg: &str) {
     // Can't use a runtime string as the `class =` argument in the macro because
     // the macro takes a literal. Use the enum directly for the variable-class case.
-    std::panic::panic_any(miniextendr_api::condition::RCondition::Error {
+    std::panic::panic_any(RCondition::Error {
         message: msg.to_string(),
         class: Some(class.to_string()),
     });
@@ -38,7 +42,7 @@ pub fn demo_error_custom_class(class: &str, msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_warning(msg: &str) {
-    warning!("{msg}");
+    miniextendr_api::warning!("{msg}");
 }
 
 /// Raise a rust_warning with a custom class prepended.
@@ -46,7 +50,7 @@ pub fn demo_warning(msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_warning_custom_class(class: &str, msg: &str) {
-    std::panic::panic_any(miniextendr_api::condition::RCondition::Warning {
+    std::panic::panic_any(RCondition::Warning {
         message: msg.to_string(),
         class: Some(class.to_string()),
     });
@@ -61,7 +65,7 @@ pub fn demo_warning_custom_class(class: &str, msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_message(msg: &str) {
-    message!("{msg}");
+    miniextendr_api::message!("{msg}");
 }
 
 // endregion
@@ -73,7 +77,7 @@ pub fn demo_message(msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_condition(msg: &str) {
-    condition!("{msg}");
+    miniextendr_api::condition!("{msg}");
 }
 
 /// Signal a rust_condition with a custom class.
@@ -81,7 +85,7 @@ pub fn demo_condition(msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_condition_custom_class(class: &str, msg: &str) {
-    std::panic::panic_any(miniextendr_api::condition::RCondition::Condition {
+    std::panic::panic_any(RCondition::Condition {
         message: msg.to_string(),
         class: Some(class.to_string()),
     });

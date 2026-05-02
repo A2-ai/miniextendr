@@ -557,7 +557,7 @@ fn generate_r_wrapper_for_slot(
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
-{r_getter} <- function(x) .Call({getter_c}, .call = match.call(), x)
+{r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type}
 #' @rdname {type}
@@ -566,7 +566,7 @@ fn generate_r_wrapper_for_slot(
 #' @return The {type} pointer (invisibly)
 #' @export
 {r_setter} <- function(x, value) {{
-  .Call({setter_c}, .call = match.call(), x, value)
+  .Call({setter_c}, x, value)
   invisible(x)
 }}
 "#,
@@ -590,7 +590,7 @@ fn generate_r_wrapper_for_slot(
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
-{r_getter} <- function(x) .Call({getter_c}, .call = match.call(), x)
+{r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type} (for R6)
 #' @rdname {type}
@@ -599,7 +599,7 @@ fn generate_r_wrapper_for_slot(
 #' @return The {type} pointer (invisibly)
 #' @export
 {r_setter} <- function(x, value) {{
-  .Call({setter_c}, .call = match.call(), x, value)
+  .Call({setter_c}, x, value)
   invisible(x)
 }}
 "#,
@@ -624,7 +624,7 @@ fn generate_r_wrapper_for_slot(
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
-{r_getter} <- function(x) .Call({getter_c}, .call = match.call(), x)
+{r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type} (for S3)
 #' @rdname {type}
@@ -633,7 +633,7 @@ fn generate_r_wrapper_for_slot(
 #' @return The {type} pointer (invisibly)
 #' @export
 {r_setter} <- function(x, value) {{
-  .Call({setter_c}, .call = match.call(), x, value)
+  .Call({setter_c}, x, value)
   invisible(x)
 }}
 "#,
@@ -657,7 +657,7 @@ fn generate_r_wrapper_for_slot(
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
-{r_getter} <- function(x) .Call({getter_c}, .call = match.call(), x)
+{r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type} (for S4)
 #' @rdname {type}
@@ -666,7 +666,7 @@ fn generate_r_wrapper_for_slot(
 #' @return The {type} pointer (invisibly)
 #' @export
 {r_setter} <- function(x, value) {{
-  .Call({setter_c}, .call = match.call(), x, value)
+  .Call({setter_c}, x, value)
   invisible(x)
 }}
 "#,
@@ -690,7 +690,7 @@ fn generate_r_wrapper_for_slot(
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
-{r_getter} <- function(x) .Call({getter_c}, .call = match.call(), x)
+{r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type} (for S7)
 #' @rdname {type}
@@ -699,7 +699,7 @@ fn generate_r_wrapper_for_slot(
 #' @return The {type} pointer (invisibly)
 #' @export
 {r_setter} <- function(x, value) {{
-  .Call({setter_c}, .call = match.call(), x, value)
+  .Call({setter_c}, x, value)
   invisible(x)
 }}
 "#,
@@ -724,7 +724,7 @@ fn generate_r_wrapper_for_slot(
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
-{r_getter} <- function(x) .Call({getter_c}, .call = match.call(), x)
+{r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type} (for vctrs)
 #' @rdname {type}
@@ -733,7 +733,7 @@ fn generate_r_wrapper_for_slot(
 #' @return The {type} pointer (invisibly)
 #' @export
 {r_setter} <- function(x, value) {{
-  .Call({setter_c}, .call = match.call(), x, value)
+  .Call({setter_c}, x, value)
   invisible(x)
 }}
 "#,
@@ -1222,12 +1222,12 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
 mod tests {
     use super::{ClassSystem, generate_r_wrapper_for_slot};
 
-    /// Sidecar accessor wrappers must pass `.call = match.call()` to the C entry
-    /// because the generated C wrapper takes `__miniextendr_call` as its first
-    /// SEXP parameter. Omitting it shifts the user's `x` argument into the call
-    /// slot and breaks error attribution. Cover every class system variant.
+    /// Sidecar accessor C functions take only `x` (getter) or `x, value` (setter) —
+    /// no `__miniextendr_call` parameter. The R wrappers must NOT pass `.call = match.call()`
+    /// because that would be counted as an extra positional argument by `.Call()`, causing
+    /// "Incorrect number of arguments" errors at runtime. Cover every class system variant.
     #[test]
-    fn sidecar_accessors_pass_match_call() {
+    fn sidecar_accessors_do_not_pass_match_call() {
         let getter_c = "C__mx_rdata_get_T_f";
         let setter_c = "C__mx_rdata_set_T_f";
 
@@ -1240,15 +1240,19 @@ mod tests {
             ClassSystem::Vctrs,
         ] {
             let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c);
+            // Correct form: no .call argument — the C function only accepts x (getter) or x, value (setter).
             assert!(
-                out.contains(&format!(".Call({getter_c}, .call = match.call(), x)")),
-                "{cs:?} getter missing `.call = match.call()`:\n{out}"
+                out.contains(&format!(".Call({getter_c}, x)")),
+                "{cs:?} getter should call without .call:\n{out}"
             );
             assert!(
-                out.contains(&format!(
-                    ".Call({setter_c}, .call = match.call(), x, value)"
-                )),
-                "{cs:?} setter missing `.call = match.call()`:\n{out}"
+                out.contains(&format!(".Call({setter_c}, x, value)")),
+                "{cs:?} setter should call without .call:\n{out}"
+            );
+            // Must NOT include the erroneous .call = match.call() form.
+            assert!(
+                !out.contains(".call = match.call()"),
+                "{cs:?} sidecar wrapper must not pass .call = match.call():\n{out}"
             );
         }
     }
