@@ -53,32 +53,46 @@ use crate::ffi::{self, SEXP, SexpExt};
 /// * `call` - Optional R call SEXP for error context. When `None`, uses `R_NilValue`.
 pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> SEXP {
     unsafe {
-        // Allocate a list of length 3: (error, kind, call)
+        // PROTECT discipline: every fresh allocation that's live across another
+        // allocation must be protected. SET_VECTOR_ELT and SETATTRIB can both
+        // trigger old-to-new GC barriers; R-devel's GC fires more aggressively
+        // here than R-release/oldrel, so unprotected intermediates corrupt the
+        // heap on R-devel even when R 4.5/4.4 happen to survive (PR #344 fix).
         let list = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, 3);
         ffi::Rf_protect(list);
+        let mut prot = 1;
 
-        // Set list element 0: error message
+        // Element 0: error message (scalar_string allocates a fresh STRSXP)
         let msg_cstr = std::ffi::CString::new(message)
             .unwrap_or_else(|_| std::ffi::CString::new("<invalid error message>").unwrap());
         let msg_charsxp = ffi::Rf_mkCharCE(msg_cstr.as_ptr(), ffi::CE_UTF8);
-        list.set_vector_elt(0, SEXP::scalar_string(msg_charsxp));
+        let msg_sexp = SEXP::scalar_string(msg_charsxp);
+        ffi::Rf_protect(msg_sexp);
+        prot += 1;
+        list.set_vector_elt(0, msg_sexp);
 
-        // Set list element 1: kind string
+        // Element 1: kind string
         let kind_cstr = std::ffi::CString::new(kind)
             .unwrap_or_else(|_| std::ffi::CString::new("other_rust_error").unwrap());
         let kind_charsxp = ffi::Rf_mkCharCE(kind_cstr.as_ptr(), ffi::CE_UTF8);
-        list.set_vector_elt(1, SEXP::scalar_string(kind_charsxp));
+        let kind_sexp = SEXP::scalar_string(kind_charsxp);
+        ffi::Rf_protect(kind_sexp);
+        prot += 1;
+        list.set_vector_elt(1, kind_sexp);
 
-        // Set list element 2: call SEXP
-        let call_sexp = call.unwrap_or(SEXP::nil());
-        list.set_vector_elt(2, call_sexp);
+        // Element 2: caller-owned SEXP — already protected by the caller (or R_NilValue)
+        list.set_vector_elt(2, call.unwrap_or(SEXP::nil()));
 
-        // Names, class, and attribute symbol are all cached — zero allocation
+        // Names / class symbols are cached. The TRUE marker on set_attr is a
+        // fresh LGLSXP — protect across the SETATTRIB call.
         list.set_names(error_names_sexp());
         list.set_class(rust_error_class_sexp());
-        list.set_attr(rust_error_attr_symbol(), SEXP::scalar_logical(true));
+        let true_marker = SEXP::scalar_logical(true);
+        ffi::Rf_protect(true_marker);
+        prot += 1;
+        list.set_attr(rust_error_attr_symbol(), true_marker);
 
-        ffi::Rf_unprotect(1);
+        ffi::Rf_unprotect(prot);
         list
     }
 }
@@ -109,43 +123,55 @@ pub fn make_rust_condition_value(
     call: Option<SEXP>,
 ) -> SEXP {
     unsafe {
-        // Allocate a list of length 4: (error, kind, class, call)
+        // See `make_rust_error_value` for the PROTECT-discipline rationale.
         let list = ffi::Rf_allocVector(ffi::SEXPTYPE::VECSXP, 4);
         ffi::Rf_protect(list);
+        let mut prot = 1;
 
-        // Set list element 0: error message
+        // Element 0: error message
         let msg_cstr = std::ffi::CString::new(message)
             .unwrap_or_else(|_| std::ffi::CString::new("<invalid error message>").unwrap());
         let msg_charsxp = ffi::Rf_mkCharCE(msg_cstr.as_ptr(), ffi::CE_UTF8);
-        list.set_vector_elt(0, SEXP::scalar_string(msg_charsxp));
+        let msg_sexp = SEXP::scalar_string(msg_charsxp);
+        ffi::Rf_protect(msg_sexp);
+        prot += 1;
+        list.set_vector_elt(0, msg_sexp);
 
-        // Set list element 1: kind string
+        // Element 1: kind string
         let kind_cstr = std::ffi::CString::new(kind)
             .unwrap_or_else(|_| std::ffi::CString::new("other_rust_error").unwrap());
         let kind_charsxp = ffi::Rf_mkCharCE(kind_cstr.as_ptr(), ffi::CE_UTF8);
-        list.set_vector_elt(1, SEXP::scalar_string(kind_charsxp));
+        let kind_sexp = SEXP::scalar_string(kind_charsxp);
+        ffi::Rf_protect(kind_sexp);
+        prot += 1;
+        list.set_vector_elt(1, kind_sexp);
 
-        // Set list element 2: optional custom class (NULL when not provided)
+        // Element 2: optional custom class (NULL when not provided).
+        // Only the Some-branch allocates; nil is constant.
         let class_sexp = if let Some(class_name) = class {
             let class_cstr = std::ffi::CString::new(class_name)
                 .unwrap_or_else(|_| std::ffi::CString::new("rust_condition").unwrap());
             let class_charsxp = ffi::Rf_mkCharCE(class_cstr.as_ptr(), ffi::CE_UTF8);
-            SEXP::scalar_string(class_charsxp)
+            let s = SEXP::scalar_string(class_charsxp);
+            ffi::Rf_protect(s);
+            prot += 1;
+            s
         } else {
             SEXP::nil()
         };
         list.set_vector_elt(2, class_sexp);
 
-        // Set list element 3: call SEXP
-        let call_sexp = call.unwrap_or(SEXP::nil());
-        list.set_vector_elt(3, call_sexp);
+        // Element 3: caller-owned SEXP — already protected (or R_NilValue)
+        list.set_vector_elt(3, call.unwrap_or(SEXP::nil()));
 
-        // Names, class, and attribute symbol are all cached — zero allocation
         list.set_names(condition_names_sexp());
         list.set_class(rust_error_class_sexp());
-        list.set_attr(rust_error_attr_symbol(), SEXP::scalar_logical(true));
+        let true_marker = SEXP::scalar_logical(true);
+        ffi::Rf_protect(true_marker);
+        prot += 1;
+        list.set_attr(rust_error_attr_symbol(), true_marker);
 
-        ffi::Rf_unprotect(1);
+        ffi::Rf_unprotect(prot);
         list
     }
 }
