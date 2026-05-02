@@ -221,11 +221,23 @@ where
     }
 }
 
-/// Execute a closure with R unwind protection.
+/// Execute a closure with R unwind protection (non-`error_in_r` path).
 ///
-/// If the closure panics, the panic is caught and converted to an R error.
-/// If R raises an error (longjmp), all Rust RAII resources are properly dropped
-/// before R continues unwinding.
+/// If the closure panics, the panic is caught and converted to an R error via
+/// `Rf_errorcall` (longjmp). If R raises an error (longjmp), all Rust RAII
+/// resources are properly dropped before R continues unwinding.
+///
+/// **This is NOT the default path for `#[miniextendr]` functions.** The default
+/// is [`with_r_unwind_protect_error_in_r`], which returns a tagged SEXP instead
+/// of longjmping, preserving `rust_*` class layering.
+///
+/// This function is used by:
+/// - Trait-ABI vtable shims (cross-package C-ABI calls)
+/// - ALTREP `RUnwind` guard callbacks
+/// - Explicit `#[miniextendr(no_error_in_r)]` / `unwrap_in_r` opt-out
+///
+/// In these contexts there is no R wrapper to inspect a tagged SEXP, so panics
+/// must be converted to R errors directly via `Rf_errorcall`.
 ///
 /// # Arguments
 ///
@@ -235,10 +247,12 @@ where
 /// # Example
 ///
 /// ```ignore
-/// let result: i32 = with_r_unwind_protect(|| {
-///     // Code that might call R APIs that can error
-///     42
-/// }, None);
+/// // Typical use: inside a trait-ABI shim where no R wrapper exists.
+/// // For user-facing #[miniextendr] fns, prefer with_r_unwind_protect_error_in_r.
+/// let result: i32 = with_r_unwind_protect_error_in_r(|| {
+///     // Rust code that may panic or raise conditions
+///     SEXP::nil()
+/// }, Some(call));
 /// ```
 pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
 where

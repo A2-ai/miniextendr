@@ -1,15 +1,34 @@
 //! Error handling helpers for R API calls.
 //!
-//! **In `#[miniextendr]` functions, use `panic!()` instead of `r_stop`.**
-//! Panics are caught by `catch_unwind` and propagated cleanly as R errors.
+//! ## Default path: `error_in_r` (the standard for `#[miniextendr]`)
 //!
-//! `r_stop` calls `Rf_error` (longjmp). It is used internally by:
-//! - The proc-macro generated argument validation / return type unwrapping
-//! - The `CatchUnwind` guard (after catch_unwind has caught a panic)
-//! - Trait ABI shims
+//! Every `#[miniextendr]` function runs inside
+//! [`with_r_unwind_protect_error_in_r`](crate::unwind_protect::with_r_unwind_protect_error_in_r).
+//! Rust panics and user-raised conditions (`error!()`, `warning!()`, `message!()`,
+//! `condition!()`) are caught, packaged as a tagged SEXP, and returned normally.
+//! The generated R wrapper inspects the SEXP and raises the appropriate R condition
+//! with `rust_*` class layering. **No `Rf_error` longjmp happens on this path.**
 //!
-//! These are all inside `R_UnwindProtect` or after `catch_unwind`, where
-//! `Rf_error` longjmp is safe. User code should never call `r_stop` directly.
+//! User code should use:
+//! - `panic!()` — for unrecoverable Rust errors (becomes `rust_error` in R)
+//! - `error!()` / `warning!()` / `message!()` / `condition!()` — for structured R conditions
+//!   (see `crate::condition`)
+//!
+//! ## When `Rf_error` fires
+//!
+//! `Rf_error` / `Rf_errorcall` (longjmp) is only used on three paths where there
+//! is no R wrapper to inspect a tagged SEXP:
+//!
+//! 1. **Trait-ABI vtable shims** — cross-package C-ABI calls go through
+//!    `with_r_unwind_protect` (non-error_in_r).
+//! 2. **ALTREP `RUnwind` guard** — ALTREP callbacks invoked from R's GC / vector
+//!    dispatch use `with_r_unwind_protect_sourced`.
+//! 3. **Explicit opt-out** — `#[miniextendr(no_error_in_r)]` / `unwrap_in_r`.
+//!
+//! `r_stop` (this module) is the internal Rust wrapper around `Rf_error`. It is
+//! used by proc-macro generated argument validation and return-type unwrapping,
+//! which run *before* the closure enters `with_r_unwind_protect`. **User code
+//! should never call `r_stop` directly.**
 //!
 //! # Example
 //!
@@ -23,10 +42,15 @@
 //! }
 //! ```
 
-/// Raise an R error via `Rf_error` (longjmp). **Do not call from user code** —
-/// use `panic!()` instead, which is caught by the framework.
+/// Raise an R error via `Rf_error` (longjmp). **Do not call from user code.**
 ///
-/// This is used internally by generated code and the FFI guard layer.
+/// User code should use `panic!()` (caught by the framework and converted to a
+/// `rust_error` R condition) or the structured condition macros `error!()` /
+/// `warning!()` / `message!()` / `condition!()`.
+///
+/// `r_stop` is for internal use only: generated argument validation, return-type
+/// unwrapping, and the FFI guard layer — all of which run in contexts where
+/// `Rf_error` longjmp is safe (inside `R_UnwindProtect` or after `catch_unwind`).
 ///
 /// # Panics
 ///
