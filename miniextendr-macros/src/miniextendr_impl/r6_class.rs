@@ -180,21 +180,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("        private$.ptr <- .ptr".to_string());
             lines.push("      } else {".to_string());
             lines.push(format!("        .val <- {}", ctx.static_call()));
-            lines.push(
-                "        if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {"
-                    .to_string(),
-            );
-            lines.push("          stop(structure(".to_string());
-            lines.push(
-                "            class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),"
-                    .to_string(),
-            );
-            lines.push(
-                "            list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)"
-                    .to_string(),
-            );
-            lines.push("          ))".to_string());
-            lines.push("        }".to_string());
+            // Use shared condition switch (supports error!/warning!/message!/condition!).
+            for check_line in crate::method_return_builder::error_in_r_check_lines("        ") {
+                lines.push(check_line);
+            }
             lines.push("        private$.ptr <- .val".to_string());
             lines.push("      }".to_string());
             lines.push(format!("    }}{}", comma));

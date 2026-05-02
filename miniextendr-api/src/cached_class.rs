@@ -142,6 +142,14 @@ cached_strsxp!(
     pub(crate) fn error_names_sexp() = [c"error", c"kind", c"call"]
 );
 
+cached_strsxp!(
+    /// Cached `c("error", "kind", "class", "call")` names STRSXP for condition values.
+    ///
+    /// Used by `make_rust_condition_value` which writes a 4-element list including
+    /// the optional user-supplied custom class.
+    pub(crate) fn condition_names_sexp() = [c"error", c"kind", c"class", c"call"]
+);
+
 // endregion
 
 // region: Scalar strings

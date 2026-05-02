@@ -18,10 +18,18 @@ new_rational <- function(n, d) {
   )
   .val <- .Call(C_Rational__new, .call = match.call(), n, d)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+    .msg <- .val$error
+    .call <- .val$call %||% sys.call()
+    .class <- .val$class
+    switch(.val$kind,
+      error = stop(structure(list(message = .msg, call = .call),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+      warning = { warning(structure(list(message = .msg, call = .call),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+      condition = { signalCondition(structure(list(message = .msg, call = .call),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+      panic = stop(structure(list(message = .msg, call = .call),class = c("rust_error", "simpleError", "error", "condition"))),
+      stop(structure(list(message = .msg, call = .call),
+        class = c("rust_error", "simpleError", "error", "condition")))
+    )
   }
   data <- .val
   vctrs::new_rcrd(data, class = "Rational")
@@ -68,10 +76,18 @@ if (!exists("numerator", mode = "function")) {
 numerator.Rational <- function(x, ...) {
   .val <- .Call(C_Rational__numerator, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
-    stop(structure(
-      class = c("rust_error", "simpleError", "error", "condition"),
-      list(message = .val$error, call = .val$call %||% sys.call(), kind = .val$kind)
-    ))
+    .msg <- .val$error
+    .call <- .val$call %||% sys.call()
+    .class <- .val$class
+    switch(.val$kind,
+      error = stop(structure(list(message = .msg, call = .call),class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+      warning = { warning(structure(list(message = .msg, call = .call),class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))); return(invisible(NULL)) },
+      message = { message(structure(list(message = paste0(.msg, "\n"), call = NULL),class = c(.class, "rust_message", "simpleMessage", "message", "condition"))); return(invisible(NULL)) },
+      condition = { signalCondition(structure(list(message = .msg, call = .call),class = c(.class, "rust_condition", "simpleCondition", "condition"))); return(invisible(NULL)) },
+      panic = stop(structure(list(message = .msg, call = .call),class = c("rust_error", "simpleError", "error", "condition"))),
+      stop(structure(list(message = .msg, call = .call),
+        class = c("rust_error", "simpleError", "error", "condition")))
+    )
   }
   .val
 }

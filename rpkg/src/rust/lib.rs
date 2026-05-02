@@ -136,6 +136,7 @@ mod coerce_tests;
 mod collect_tests;
 #[cfg(feature = "serde")]
 mod columnar_flatten_tests;
+mod condition_demo;
 mod condition_tests;
 #[cfg(feature = "connections")]
 mod connection_tests;
