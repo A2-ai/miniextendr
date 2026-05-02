@@ -245,6 +245,18 @@ impl<'a> MethodContext<'a> {
             .build()
     }
 
+    /// Like [`instance_call`](Self::instance_call) but passes `.call = NULL`.
+    ///
+    /// Use for lambda dispatch sites (S7 property getter/setter) where
+    /// `match.call()` captures the S7 dispatch frame, not the user's call.
+    pub fn instance_call_null_attr(&self, self_expr: &str) -> String {
+        crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
+            .null_call_attribution()
+            .with_self(self_expr)
+            .with_args_str(&self.args)
+            .build()
+    }
+
     /// Build full R formals for instance methods (prefixing x/self parameter).
     ///
     /// For S3/S4/S7: `"x, <params>, ..."`

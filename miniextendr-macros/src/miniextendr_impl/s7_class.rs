@@ -428,9 +428,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             && let Some(validator_method) = find_method(validator_ident)
         {
             let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
-            // Validator is called with just the value, not self
-            // Generate: validator = function(value) .Call(C_Type__validate_prop, value)
+            // Validator is called with just the value, not self.
+            // Use null_call_attribution: this runs inside S7's dispatch lambda, so
+            // match.call() would capture S7 internals, not the user's call site.
             let validator_call = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
+                .null_call_attribution()
                 .with_args(&["value"])
                 .build();
             prop_parts.push(format!("validator = function(value) {validator_call}"));
@@ -441,7 +443,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             && let Some(getter_method) = find_method(getter_ident)
         {
             let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
-            let getter_call = ctx.instance_call("self@.ptr");
+            // Use null_call_attribution: runs inside S7's property dispatch lambda.
+            let getter_call = ctx.instance_call_null_attr("self@.ptr");
             if let Some(ref msg) = prop.deprecated {
                 // Deprecated getter: emit warning then return value
                 prop_parts.push(format!(
@@ -458,7 +461,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             && let Some(setter_method) = find_method(setter_ident)
         {
             let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
-            let setter_call = ctx.instance_call("self@.ptr");
+            // Use null_call_attribution: runs inside S7's property dispatch lambda.
+            let setter_call = ctx.instance_call_null_attr("self@.ptr");
 
             if prop.frozen {
                 // Frozen pattern: error if property was already set (non-NULL)

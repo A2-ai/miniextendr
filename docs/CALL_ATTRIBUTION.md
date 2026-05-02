@@ -139,8 +139,21 @@ It applies uniformly to:
 ## Where it is intentionally absent
 
 - **`extern "C-unwind"` functions** registered directly with `#[miniextendr]`. The function *is* the C entry point — there is no generated wrapper and no call slot. This is the demo above. Use only for low-level fixtures and tests where you control the error path manually.
-- **Anonymous lambdas inside R6 `cls$set("active", ...)` and S7 `S7::new_property(getter = ...)`** for sidecar fields. These are invoked by R6's GC / S7's dispatch machinery, not by user code, so `match.call()` would capture an internal call frame rather than the user's `obj$field` expression.
 - **`vctrs_derive` boilerplate** — `format.<class>`, `vec_ptype2.<class>.<class>`, etc. — pure R, no `.Call()`.
+
+## Where `.call = NULL` is used instead of `match.call()`
+
+Five lambda dispatch sites cannot use `match.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `match.call()` inside those lambdas would capture the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `error_in_r_check_lines` then surfaces the nearest meaningful frame.
+
+The five sites are:
+
+1. **R6 finalizer** — `finalize = function() .Call(C_Type__finalize, .call = NULL, private$.ptr)`
+2. **R6 `deep_clone`** — `deep_clone = function(name, value) .Call(C_Type__deep_clone, .call = NULL, private$.ptr, name, value)`
+3. **S7 property validator** — `validator = function(value) .Call(C_Type__validate_prop, .call = NULL, value)`
+4. **S7 property getter** — `getter = function(self) .Call(C_Type__get_prop, .call = NULL, self@.ptr)`
+5. **S7 property setter** — `setter = function(self, value) { .Call(C_Type__set_prop, .call = NULL, self@.ptr, value); self }`
+
+This is implemented via `DotCallBuilder::null_call_attribution()` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_error_value` stores it and the R-side `%||% sys.call()` recovers the user's frame.
 
 ## Reproducing the transcript
 

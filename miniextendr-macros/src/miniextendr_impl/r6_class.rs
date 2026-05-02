@@ -383,6 +383,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .c_wrapper_ident(type_ident, parsed_impl.label())
             .to_string();
         let finalize_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
+            .null_call_attribution()
             .with_self("private$.ptr")
             .build();
         lines.push(format!("    finalize = function() {finalize_call},"));
@@ -398,6 +399,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .c_wrapper_ident(type_ident, parsed_impl.label())
             .to_string();
         let deep_clone_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
+            .null_call_attribution()
             .with_self("private$.ptr")
             .with_args(&["name", "value"])
             .build();

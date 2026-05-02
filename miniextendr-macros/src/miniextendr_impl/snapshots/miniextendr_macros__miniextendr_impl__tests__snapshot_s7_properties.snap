@@ -1,6 +1,5 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 1896
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Range S7 Class
@@ -15,8 +14,8 @@ expression: generate_s7_r_wrapper(&parsed)
 Range <- S7::new_class("Range",
   properties = list(
     .ptr = S7::class_any,
-    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_Range__length, .call = match.call(), self@.ptr)),
-    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
+    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_Range__length, .call = NULL, self@.ptr)),
+    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_Range__get_midpoint, .call = NULL, self@.ptr), setter = function(self, value) { .Call(C_Range__set_midpoint, .call = NULL, self@.ptr, value); self })
   ),
   constructor = function(start, end, .ptr = NULL) {
     if (is.null(.ptr)) {
