@@ -162,8 +162,7 @@ In that context:
   ALTREP callback"*.
 
 This is a known limitation. Routing trait-ABI / ALTREP signals through the
-tagged-SEXP path to recover `rust_*` class layering is tracked as a follow-up
-issue.
+tagged-SEXP path to recover `rust_*` class layering is tracked in #345.
 
 ## `RErrorAdapter` — wrapping `std::error::Error`
 
