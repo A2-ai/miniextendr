@@ -10,15 +10,13 @@ find_miniextendr_repo <- function() {
 
   # Check relative to minirextendr package source (development mode)
   # minirextendr is at miniextendr/minirextendr/, so parent is the repo
-  pkg_path <- tryCatch(
-    rprojroot::find_package_root_file(),
-    error = function(e) NULL
+  pkg_path <- normalizePath(
+    file.path(testthat::test_path(), "..", ".."),
+    mustWork = FALSE
   )
-  if (!is.null(pkg_path)) {
-    parent <- dirname(pkg_path)
-    if (dir.exists(file.path(parent, "miniextendr-api"))) {
-      return(parent)
-    }
+  parent <- dirname(pkg_path)
+  if (dir.exists(file.path(parent, "miniextendr-api"))) {
+    return(parent)
   }
 
   NULL
