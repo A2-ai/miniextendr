@@ -55,29 +55,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, Type};
 
-use crate::naming;
-
-/// Convert a PascalCase string to kebab-case.
-///
-/// First converts to snake_case, then replaces underscores with hyphens.
-/// For example, `"InProgress"` becomes `"in-progress"`.
-fn to_kebab_case(s: &str) -> String {
-    naming::to_snake_case(s).replace('_', "-")
-}
-
-/// Apply a `rename_all` transformation to a variant name.
-///
-/// Supported modes: `"snake_case"`, `"kebab-case"`, `"lower"`, `"upper"`.
-/// If `rename_all` is `None` or unrecognized, the name is returned unchanged.
-fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
-    match rename_all {
-        Some("snake_case") => naming::to_snake_case(name),
-        Some("kebab-case") => to_kebab_case(name),
-        Some("lower") => name.to_lowercase(),
-        Some("upper") => name.to_uppercase(),
-        _ => name.to_string(),
-    }
-}
+use crate::naming::apply_rename_all;
 
 /// Parsed `#[r_factor(...)]` attributes from an enum or variant.
 #[derive(Default)]
@@ -538,35 +516,6 @@ fn derive_interaction_factor(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_snake_case() {
-        assert_eq!(naming::to_snake_case("HelloWorld"), "hello_world");
-        assert_eq!(naming::to_snake_case("InProgress"), "in_progress");
-        assert_eq!(naming::to_snake_case("ABC"), "a_b_c");
-        assert_eq!(naming::to_snake_case("Red"), "red");
-    }
-
-    #[test]
-    fn test_kebab_case() {
-        assert_eq!(to_kebab_case("HelloWorld"), "hello-world");
-        assert_eq!(to_kebab_case("InProgress"), "in-progress");
-    }
-
-    #[test]
-    fn test_apply_rename_all() {
-        assert_eq!(
-            apply_rename_all("HelloWorld", Some("snake_case")),
-            "hello_world"
-        );
-        assert_eq!(
-            apply_rename_all("HelloWorld", Some("kebab-case")),
-            "hello-world"
-        );
-        assert_eq!(apply_rename_all("HelloWorld", Some("lower")), "helloworld");
-        assert_eq!(apply_rename_all("HelloWorld", Some("upper")), "HELLOWORLD");
-        assert_eq!(apply_rename_all("HelloWorld", None), "HelloWorld");
-    }
 
     #[test]
     fn test_interaction_levels_generation() {

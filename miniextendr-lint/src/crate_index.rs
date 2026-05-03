@@ -194,7 +194,8 @@ fn collect_rs_files_from_module_tree(src_dir: &Path, out: &mut Vec<PathBuf>) -> 
     }
 
     let active_features = collect_active_cargo_features();
-    walk_module_file(&lib_rs, &active_features, out);
+    let mut seen = HashSet::new();
+    walk_module_file(&lib_rs, &active_features, out, &mut seen);
     Ok(())
 }
 
@@ -210,18 +211,22 @@ fn collect_active_cargo_features() -> HashSet<String> {
 }
 
 /// Recursively walk a module file, following `mod` declarations.
-fn walk_module_file(file: &Path, active_features: &HashSet<String>, out: &mut Vec<PathBuf>) {
+fn walk_module_file(
+    file: &Path,
+    active_features: &HashSet<String>,
+    out: &mut Vec<PathBuf>,
+    seen: &mut HashSet<PathBuf>,
+) {
     if !file.is_file() {
         return;
     }
 
-    // Avoid duplicates (e.g., mod.rs referenced multiple ways)
     let file_buf = file.to_path_buf();
-    if out.contains(&file_buf) {
+    if !seen.insert(file_buf.clone()) {
         return;
     }
 
-    out.push(file.to_path_buf());
+    out.push(file_buf);
 
     // Parse the file to discover mod declarations
     let Ok(src) = fs::read_to_string(file) else {
@@ -248,7 +253,7 @@ fn walk_module_file(file: &Path, active_features: &HashSet<String>, out: &mut Ve
         }
     };
 
-    discover_mod_declarations(&parsed.items, &child_dir, active_features, out);
+    discover_mod_declarations(&parsed.items, &child_dir, active_features, out, seen);
 }
 
 /// Walk parsed items looking for `mod child;` declarations and recurse.
@@ -257,6 +262,7 @@ fn discover_mod_declarations(
     child_dir: &Path,
     active_features: &HashSet<String>,
     out: &mut Vec<PathBuf>,
+    seen: &mut HashSet<PathBuf>,
 ) {
     for item in items {
         let Item::Mod(item_mod) = item else {
@@ -265,7 +271,7 @@ fn discover_mod_declarations(
 
         if let Some((_, child_items)) = &item_mod.content {
             // Inline module — recurse into its items (same file)
-            discover_mod_declarations(child_items, child_dir, active_features, out);
+            discover_mod_declarations(child_items, child_dir, active_features, out, seen);
         } else {
             // Out-of-line module declaration: `mod child;`
             // Check if cfg-gated and whether the gate is active
@@ -281,15 +287,15 @@ fn discover_mod_declarations(
 
             if let Some(file_path) = path_attr {
                 let target = child_dir.join(&file_path);
-                walk_module_file(&target, active_features, out);
+                walk_module_file(&target, active_features, out, seen);
             } else {
                 // Try child.rs first, then child/mod.rs
                 let sibling = child_dir.join(format!("{mod_name}.rs"));
                 if sibling.is_file() {
-                    walk_module_file(&sibling, active_features, out);
+                    walk_module_file(&sibling, active_features, out, seen);
                 } else {
                     let subdir_mod = child_dir.join(&mod_name).join("mod.rs");
-                    walk_module_file(&subdir_mod, active_features, out);
+                    walk_module_file(&subdir_mod, active_features, out, seen);
                 }
             }
         }
@@ -355,11 +361,10 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     let mut data = FileData::default();
     collect_items_recursive(&parsed.items, &mut data);
 
-    // Scan raw source for direct Rf_error/Rf_errorcall calls (MXL300)
-    scan_rf_error_calls(&src, &mut data);
-
-    // Scan for ffi::*_unchecked() calls (MXL301)
-    scan_ffi_unchecked_calls(&src, &mut data);
+    // Both raw-source scanners need the line-split for is_suppressed look-behind.
+    let lines: Vec<&str> = src.lines().collect();
+    scan_rf_error_calls(&lines, &mut data);
+    scan_ffi_unchecked_calls(&lines, &mut data);
 
     Ok(data)
 }
@@ -541,8 +546,7 @@ fn line_has_allow(line: &str, code: &str) -> bool {
 }
 
 /// Scan raw source text for `ffi::*_unchecked()` calls.
-fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
-    let lines: Vec<&str> = src.lines().collect();
+fn scan_ffi_unchecked_calls(lines: &[&str], data: &mut FileData) {
     for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         if trimmed.starts_with("//") {
@@ -566,7 +570,7 @@ fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
             let ident = &after_ffi[..ident_end];
             if ident.ends_with("_unchecked")
                 && after_ffi[ident_end..].starts_with('(')
-                && !is_suppressed(&lines, line_idx, "MXL301")
+                && !is_suppressed(lines, line_idx, "MXL301")
             {
                 data.ffi_unchecked_calls
                     .push((ident.to_string(), line_idx + 1));
@@ -577,8 +581,7 @@ fn scan_ffi_unchecked_calls(src: &str, data: &mut FileData) {
 }
 
 /// Scan raw source text for direct Rf_error/Rf_errorcall calls.
-fn scan_rf_error_calls(src: &str, data: &mut FileData) {
-    let lines: Vec<&str> = src.lines().collect();
+fn scan_rf_error_calls(lines: &[&str], data: &mut FileData) {
     for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         if trimmed.starts_with("//") {
@@ -590,7 +593,7 @@ fn scan_rf_error_calls(src: &str, data: &mut FileData) {
             None => trimmed,
         };
         for pattern in RF_ERROR_PATTERNS {
-            if code_part.contains(pattern) && !is_suppressed(&lines, line_idx, "MXL300") {
+            if code_part.contains(pattern) && !is_suppressed(lines, line_idx, "MXL300") {
                 let fn_name = &pattern[..pattern.len() - 1];
                 data.rf_error_calls
                     .push((fn_name.to_string(), line_idx + 1));
