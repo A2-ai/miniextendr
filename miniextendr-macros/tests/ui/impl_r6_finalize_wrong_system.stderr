@@ -1,5 +1,5 @@
 error: #[r6(finalize)] is only valid for R6 class systems
-  --> tests/ui/impl_r6_finalize_wrong_system.rs:11:8
+  --> tests/ui/impl_r6_finalize_wrong_system.rs:10:23
    |
-11 |     fn destroy(self) {}
-   |        ^^^^^^^
+10 |     #[miniextendr(env(finalize))]
+   |                       ^^^^^^^^

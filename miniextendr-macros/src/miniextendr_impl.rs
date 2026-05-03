@@ -461,12 +461,19 @@ pub struct R6MethodAttrs {
     /// Mark as private method (`#[miniextendr(r6(private))]`).
     /// Also inferred from non-`pub` Rust visibility.
     pub private: bool,
+    /// Span of the `r6(private)` marker — points the validator's diagnostic
+    /// at the offending marker rather than the method ident.
+    pub private_span: Option<proc_macro2::Span>,
     /// Mark as finalizer (`#[miniextendr(r6(finalize))]`).
     /// Also inferred when the method consumes `self` and does not return `Self`.
     pub finalize: bool,
+    /// Span of the `r6(finalize)` marker — see `private_span`.
+    pub finalize_span: Option<proc_macro2::Span>,
     /// Mark as R6 deep-clone handler (`#[miniextendr(r6(deep_clone))]`).
     /// This method is wired into `private$deep_clone` in the R6Class definition.
     pub deep_clone: bool,
+    /// Span of the `r6(deep_clone)` marker — see `private_span`.
+    pub deep_clone_span: Option<proc_macro2::Span>,
 }
 
 /// S7-specific per-method markers, separated from [`MethodAttrs`] so the S7
@@ -1140,19 +1147,19 @@ impl ParsedMethod {
             }
             if attrs.r6.private {
                 return Err(syn::Error::new(
-                    span,
+                    attrs.r6.private_span.unwrap_or(span),
                     "#[r6(private)] is only valid for R6 class systems",
                 ));
             }
             if attrs.r6.finalize {
                 return Err(syn::Error::new(
-                    span,
+                    attrs.r6.finalize_span.unwrap_or(span),
                     "#[r6(finalize)] is only valid for R6 class systems",
                 ));
             }
             if attrs.r6.deep_clone {
                 return Err(syn::Error::new(
-                    span,
+                    attrs.r6.deep_clone_span.unwrap_or(span),
                     "#[r6(deep_clone)] is only valid for R6 class systems",
                 ));
             }
@@ -1232,9 +1239,13 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("constructor") {
                             method_attrs.constructor = true;
                         } else if inner.path.is_ident("finalize") {
+                            use syn::spanned::Spanned;
                             method_attrs.r6.finalize = true;
+                            method_attrs.r6.finalize_span = Some(inner.path.span());
                         } else if inner.path.is_ident("private") {
+                            use syn::spanned::Spanned;
                             method_attrs.r6.private = true;
+                            method_attrs.r6.private_span = Some(inner.path.span());
                         } else if inner.path.is_ident("active") {
                             use syn::spanned::Spanned;
                             method_attrs.r6.active = true;
@@ -1319,7 +1330,9 @@ impl ParsedMethod {
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7.convert_to = Some(value.value());
                         } else if inner.path.is_ident("deep_clone") {
+                            use syn::spanned::Spanned;
                             method_attrs.r6.deep_clone = true;
+                            method_attrs.r6.deep_clone_span = Some(inner.path.span());
                         } else if inner.path.is_ident("r_name") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
