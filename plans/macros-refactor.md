@@ -35,17 +35,21 @@ Tracks 20 refactor items from the review of `miniextendr-macros` and
 ### Data shapes
 17. [#16] Collapse five per-param fields on `MiniextendrFunctionParsed` into a
     single `HashMap<String, ParamAttrs>`.
-18. [#20] Split `MethodAttrs` per class system — partial:
+18. [#20] Split `MethodAttrs` per class system — complete (closes #244):
     - Per-param fields (`per_param_match_arg`/`_several_ok`/`_choices`)
       collapsed into a single `HashMap<String, ParamAttrs>`.
     - S7-specific fields (13) moved into `S7MethodAttrs` sub-struct
       (`method_attrs.s7.*`).
-    - R6-prefixed fields (`r6_setter`, `r6_prop`, `active_span`) moved into
-      `R6MethodAttrs` sub-struct (`method_attrs.r6.*`).
-    - Remaining R6 booleans (`active`/`private`/`finalize`/`deep_clone`) and
-      S3/S4-related fields stay at the top level because they're read through
-      cross-cutting accessors (`is_active`, `is_private`, `is_finalizer`) or
-      are shared between class systems (`generic`, `class`, `as_coercion`).
+    - All R6-specific fields moved into `R6MethodAttrs` sub-struct
+      (`method_attrs.r6.*`): `setter`, `prop`, `active_span` (existing),
+      plus `active`, `private`, `finalize`, `deep_clone` (from this PR).
+    - `ParsedMethod::is_active`, `is_private`, `is_finalizer` now read
+      from `method_attrs.r6.*`.
+    - Compile-time validation in `validate_method_attrs` rejects
+      `r6(active)`, `r6(private)`, `r6(finalize)`, `r6(deep_clone)` under
+      non-R6 class systems (S3/S4/S7/Env/Vctrs) with a helpful error.
+    - Shared cross-class fields (`generic`, `class`, `as_coercion`) remain
+      at the top level of `MethodAttrs`.
 
 ### Crate structure
 19. [#18] Absorb `miniextendr-macros-core` into `miniextendr-macros`; drop the
