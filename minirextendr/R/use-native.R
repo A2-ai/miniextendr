@@ -272,8 +272,8 @@ detect_header_mode <- function(include_path) {
   if (length(cpp_ext) > 0) return("cpp")
 
   # Check .h files for C++ constructs
-  h_files <- head(list.files(include_path, pattern = "\\.h$",
-                              recursive = TRUE, full.names = TRUE), 20)
+  h_files <- utils::head(list.files(include_path, pattern = "\\.h$",
+                                    recursive = TRUE, full.names = TRUE), 20)
 
   cxx_indicators <- paste(c(
     "#include\\s*<(string|vector|map|set|list|deque|array|tuple)>",
@@ -597,7 +597,7 @@ write_wrapper_header_to <- function(path, args) {
     paste0("#define ", args$wrapper_defines),
     "#include <Rinternals.h>",
     "",
-    vapply(head(args$headers, 20), function(h) {
+    vapply(utils::head(args$headers, 20), function(h) {
       paste0("#include <", h, ">")
     }, character(1))
   )
@@ -717,7 +717,7 @@ invoke_bindgen <- function(wrapper_path, ffi_out, static_out, args) {
     err_lines <- output[grepl("error:|panic", output)]
     err_lines <- err_lines[!grepl("warning:", err_lines)]
     return(list(success = FALSE,
-                error = paste(head(err_lines, 3), collapse = "; ")))
+                error = paste(utils::head(err_lines, 3), collapse = "; ")))
   }
 
   writeLines(output, ffi_out)
