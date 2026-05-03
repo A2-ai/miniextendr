@@ -147,22 +147,48 @@ withCallingHandlers(
 # NULL
 ```
 
-## Limitations in non-error_in_r mode
+## Trait-ABI and ALTREP error class layering
 
-If a function opts out of `error_in_r` (via `#[miniextendr(no_error_in_r)]`,
-`unwrap_in_r`, or is a trait-ABI shim / ALTREP callback), the condition pipeline
-is unavailable because there is no R wrapper to inspect the tagged SEXP.
+Cross-package trait method panics and ALTREP `r_unwind` callback panics
+**do** receive `rust_*` class layering, even though there is no R wrapper
+to inspect a tagged SEXP. Two different mechanisms cover the two contexts:
 
-In that context:
+- **Trait-ABI shims**: the vtable shim returns a tagged SEXP on panic; the
+  generated View method wrapper inspects the result and re-panics with the
+  reconstructed [`RCondition`]. The consumer's outer `error_in_r` guard
+  (every `#[miniextendr]` fn has one) catches the re-panic and produces the
+  tagged SEXP for the consumer's R wrapper. End-to-end behavior is identical
+  to a same-package call: `tryCatch(rust_error = h, ...)` matches; user
+  classes from `error!(class = "...", ...)` match before `rust_error`.
 
-- `error!()` degrades to `Rf_errorcall` (a plain R error, `rust_*` class lost).
-- `warning!()`, `message!()`, `condition!()` produce an R error with the message:
-  *"warning!/message!/condition! require error_in_r mode (the default); this
-  function opted out via no_error_in_r/unwrap_in_r or is a trait-ABI shim /
-  ALTREP callback"*.
+- **ALTREP `r_unwind` callbacks**: the guard raises the R condition by
+  evaluating `stop(structure(list(message, call), class = c(...)))` directly
+  (no R wrapper required). `tryCatch(rust_error = h, ...)` matches; user
+  classes match before `rust_error`.
 
-This is a known limitation. Routing trait-ABI / ALTREP signals through the
-tagged-SEXP path to recover `rust_*` class layering is tracked in #345.
+### Remaining limitations
+
+Two narrow cases still degrade:
+
+- `warning!()` / `message!()` / `condition!()` from an ALTREP `r_unwind`
+  callback. There is no mechanism to suspend execution to deliver a
+  non-fatal signal from inside R's vector-dispatch machinery. These produce
+  an R error with the message: *"warning!/message!/condition! from ALTREP
+  callback context cannot be raised as non-fatal signals; use error!()
+  instead"*.
+
+- A trait View method (`view.method()`) called from Rust code that is not
+  wrapped in `with_r_unwind_protect_error_in_r` (e.g., a manual call from
+  a test harness or init callback). The re-panic from the View has no
+  outer guard to catch it, so the worker thread's `catch_unwind` boundary
+  converts it to an R error without `rust_*` class layering. In practice,
+  every `#[miniextendr]` fn already provides the outer guard, so this only
+  affects unusual call sites.
+
+Functions that explicitly opt out of `error_in_r` via
+`#[miniextendr(no_error_in_r)]` or `unwrap_in_r` continue to use direct
+`Rf_errorcall` — those modes exist precisely to bypass the condition
+pipeline.
 
 ## `RErrorAdapter` — wrapping `std::error::Error`
 
