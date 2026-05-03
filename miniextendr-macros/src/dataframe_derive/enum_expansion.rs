@@ -750,24 +750,21 @@ pub(super) fn derive_enum_dataframe(
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
-                let mut _tag: Vec<String> = Vec::with_capacity(len);
-                unsafe { _tag.set_len(len); }
+                let mut _tag: Vec<String> = vec![String::new(); len];
             });
         }
         for col in &columns {
             let name = &col.col_name;
             let ty = &col.ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<Option<#ty>> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
+                let mut #name: Vec<Option<#ty>> = vec![None; len];
             });
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
             let cty = &ac.container_ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<Option<#cty>> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
+                let mut #name: Vec<Option<#cty>> = vec![None; len];
             });
         }
 
