@@ -5,7 +5,6 @@
 //! `#[r_data]` fields.
 
 use super::{ErasedExternalPtr, ExternalPtr, TypedExternal};
-use crate::altrep_ext::AltrepSexpExt;
 use crate::ffi::SEXP;
 
 /// Extract the ALTREP data1 slot as a typed `ExternalPtr<T>`.
@@ -59,7 +58,7 @@ pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<Ext
 /// - Must be called from the R main thread
 #[inline]
 pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::wrap_sexp(x.altrep_data2()) }
+    unsafe { ExternalPtr::wrap_sexp(x.altrep_data2_raw()) }
 }
 
 /// Extract the ALTREP data2 slot (unchecked version).

@@ -498,17 +498,6 @@ impl SEXP {
         unsafe { R_set_altrep_data2_unchecked(self, v) }
     }
 
-    /// Get the ALTREP class descriptor SEXP.
-    ///
-    /// # Safety
-    ///
-    /// - `self` must be a valid ALTREP SEXP
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn altrep_class(self) -> SEXP {
-        unsafe { ALTREP_CLASS(self) }
-    }
-
     // endregion
 }
 
@@ -2466,7 +2455,8 @@ unsafe extern "C-unwind" {
 
     // region: ALTREP support — encapsulated by AltrepSexpExt trait methods
 
-    fn ALTREP_CLASS(x: SEXP) -> SEXP;
+    // Issue #112 cat. 6: pub(crate) — no AltrepSexpExt method yet; available for future callers
+    pub(crate) fn ALTREP_CLASS(x: SEXP) -> SEXP;
     fn R_altrep_data1(x: SEXP) -> SEXP;
     fn R_altrep_data2(x: SEXP) -> SEXP;
     fn R_set_altrep_data1(x: SEXP, v: SEXP);
