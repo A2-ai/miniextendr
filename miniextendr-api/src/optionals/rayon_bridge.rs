@@ -143,7 +143,7 @@
 //! ```ignore
 //! // UNSAFE: _unchecked variants don't route to main thread
 //! data.par_iter().map(|x| {
-//!     unsafe { ffi::Rf_ScalarReal_unchecked(*x) }  // UB! No routing
+//!     unsafe { ffi::SEXP::scalar_real_unchecked(*x) }  // UB! No routing
 //! }).collect()
 //! ```
 //!
