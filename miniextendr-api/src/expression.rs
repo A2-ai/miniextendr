@@ -231,7 +231,7 @@ impl REnv {
 /// unsafe {
 ///     // seq_len(10)
 ///     let result = RCall::new("seq_len")
-///         .arg(ffi::Rf_ScalarInteger(10))
+///         .arg(ffi::SEXP::scalar_integer(10))
 ///         .eval_base()?;
 ///
 ///     // paste(x, collapse = ", ")

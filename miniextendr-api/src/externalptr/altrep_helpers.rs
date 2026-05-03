@@ -5,6 +5,7 @@
 //! `#[r_data]` fields.
 
 use super::{ErasedExternalPtr, ExternalPtr, TypedExternal};
+use crate::altrep_ext::AltrepSexpExt;
 use crate::ffi::SEXP;
 
 /// Extract the ALTREP data1 slot as a typed `ExternalPtr<T>`.
@@ -32,7 +33,7 @@ use crate::ffi::SEXP;
 /// ```
 #[inline]
 pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data1(x)) }
+    unsafe { ExternalPtr::wrap_sexp(x.altrep_data1_raw()) }
 }
 
 /// Extract the ALTREP data1 slot (unchecked version).
@@ -45,8 +46,7 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
 #[inline]
 pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    use crate::ffi::R_altrep_data1_unchecked;
-    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data1_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(x.altrep_data1_raw_unchecked()) }
 }
 
 /// Extract the ALTREP data2 slot as a typed `ExternalPtr<T>`.
@@ -59,7 +59,7 @@ pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<Ext
 /// - Must be called from the R main thread
 #[inline]
 pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data2(x)) }
+    unsafe { ExternalPtr::wrap_sexp(x.altrep_data2()) }
 }
 
 /// Extract the ALTREP data2 slot (unchecked version).
@@ -72,8 +72,7 @@ pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
 #[inline]
 pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    use crate::ffi::R_altrep_data2_unchecked;
-    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data2_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(x.altrep_data2_raw_unchecked()) }
 }
 
 /// Get a mutable reference to data in ALTREP data1 slot via `ErasedExternalPtr`.
@@ -99,7 +98,7 @@ pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<Ext
 #[inline]
 pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut T> {
     unsafe {
-        let mut erased = ErasedExternalPtr::from_sexp(crate::ffi::R_altrep_data1(x));
+        let mut erased = ErasedExternalPtr::from_sexp(x.altrep_data1_raw());
         // Transmute the lifetime to 'static - this is safe because:
         // 1. The ExternalPtr is protected by R's GC as part of the ALTREP object
         // 2. The ALTREP object `x` is kept alive by R during the callback
@@ -118,9 +117,8 @@ pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut
 /// - The caller must ensure no other references to the data exist
 #[inline]
 pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'static mut T> {
-    use crate::ffi::R_altrep_data1_unchecked;
     unsafe {
-        let mut erased = ErasedExternalPtr::from_sexp(R_altrep_data1_unchecked(x));
+        let mut erased = ErasedExternalPtr::from_sexp(x.altrep_data1_raw_unchecked());
         erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
     }
 }

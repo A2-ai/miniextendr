@@ -164,7 +164,7 @@ macro_rules! impl_logical_into_r {
             }
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-                unsafe { crate::ffi::Rf_ScalarLogical_unchecked($to_i32(self)) }
+                unsafe { crate::ffi::SEXP::scalar_logical_raw_unchecked($to_i32(self)) }
             }
         }
     };
@@ -195,7 +195,7 @@ impl IntoR for Option<i32> {
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::Rf_ScalarInteger_unchecked(NA_INTEGER) },
+            None => unsafe { crate::ffi::SEXP::scalar_integer_unchecked(NA_INTEGER) },
         }
     }
 }
@@ -221,7 +221,7 @@ impl IntoR for Option<f64> {
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::Rf_ScalarReal_unchecked(NA_REAL) },
+            None => unsafe { crate::ffi::SEXP::scalar_real_unchecked(NA_REAL) },
         }
     }
 }
@@ -247,8 +247,8 @@ impl IntoR for Option<crate::ffi::Rboolean> {
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
-            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(v as i32) },
-            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+            Some(v) => unsafe { crate::ffi::SEXP::scalar_logical_raw_unchecked(v as i32) },
+            None => unsafe { crate::ffi::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
         }
     }
 }
@@ -273,8 +273,8 @@ impl IntoR for Option<crate::ffi::RLogical> {
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
-            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(v.to_i32()) },
-            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+            Some(v) => unsafe { crate::ffi::SEXP::scalar_logical_raw_unchecked(v.to_i32()) },
+            None => unsafe { crate::ffi::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
         }
     }
 }
@@ -300,7 +300,7 @@ impl IntoR for Option<bool> {
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+            None => unsafe { crate::ffi::SEXP::scalar_logical_raw_unchecked(NA_LOGICAL) },
         }
     }
 }
@@ -495,7 +495,7 @@ impl IntoR for &str {
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         unsafe {
             let charsxp = str_to_charsxp_unchecked(self);
-            crate::ffi::Rf_ScalarString_unchecked(charsxp)
+            crate::ffi::SEXP::scalar_string_unchecked(charsxp)
         }
     }
 }
@@ -534,7 +534,7 @@ impl IntoR for Option<&str> {
                 Some(s) => str_to_charsxp_unchecked(s),
                 None => crate::ffi::SEXP::na_string(),
             };
-            crate::ffi::Rf_ScalarString_unchecked(charsxp)
+            crate::ffi::SEXP::scalar_string_unchecked(charsxp)
         }
     }
 }
