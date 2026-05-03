@@ -6,7 +6,7 @@
 # nolint start
 # nocov start
 
-# Generated from Rust impl `R6Point` (lib.rs:131:6)
+# Generated from Rust impl `R6Point` (lib.rs:130:6)
 #' @rdname R6Point
 #' @title R6Point (R6-style)
 #' @name R6Point
@@ -17,7 +17,7 @@
 #' @export
 R6Point <- R6::R6Class("R6Point",
   public = list(
-    # R6Point::new (135:12)
+    # R6Point::new (134:12)
     #' @description Create a new point
     #' @param x X coordinate.
     #' @param y Y coordinate.
@@ -51,7 +51,7 @@ R6Point <- R6::R6Class("R6Point",
         private$.ptr <- .val
       }
     },
-    # R6Point::x (140:12)
+    # R6Point::x (139:12)
     #' @description Get x coordinate
     x = function() {
       .val <- .Call(C_R6Point__x, .call = match.call(), private$.ptr)
@@ -71,7 +71,7 @@ R6Point <- R6::R6Class("R6Point",
       }
       .val
     },
-    # R6Point::y (145:12)
+    # R6Point::y (144:12)
     #' @description Get y coordinate
     y = function() {
       .val <- .Call(C_R6Point__y, .call = match.call(), private$.ptr)
@@ -91,7 +91,7 @@ R6Point <- R6::R6Class("R6Point",
       }
       .val
     },
-    # R6Point::distance_from_origin (150:12)
+    # R6Point::distance_from_origin (149:12)
     #' @description Calculate distance from origin
     distance_from_origin = function() {
       .val <- .Call(C_R6Point__distance_from_origin, .call = match.call(), private$.ptr)
@@ -111,7 +111,7 @@ R6Point <- R6::R6Class("R6Point",
       }
       .val
     },
-    # R6Point::add (157:12)
+    # R6Point::add (156:12)
     #' @description Add to coordinates
     #' @param dx Amount to add to x.
     #' @param dy Amount to add to y.
@@ -148,8 +148,8 @@ R6Point <- R6::R6Class("R6Point",
   cloneable = FALSE
 )
 
-# Generated from Rust impl `S3Point` (lib.rs:183:6)
-# S3Point::new (185:12)
+# Generated from Rust impl `S3Point` (lib.rs:182:6)
+# S3Point::new (184:12)
 #' @rdname S3Point
 #' @title S3Point (S3-style)
 #' @name S3Point
@@ -183,7 +183,7 @@ new_s3point <- function(x, y) {
   structure(.val, class = "S3Point")
 }
 
-# S3Point::s3point_x (190:12)
+# S3Point::s3point_x (189:12)
 #' @title S3 generic for `s3point_x`
 #' S3 generic for `s3point_x`
 #' @name s3point_x.S3Point
@@ -223,7 +223,7 @@ s3point_x.S3Point <- function(x, ...) {
   .val
 }
 
-# S3Point::s3point_y (195:12)
+# S3Point::s3point_y (194:12)
 #' @title S3 generic for `s3point_y`
 #' S3 generic for `s3point_y`
 #' @name s3point_y.S3Point
@@ -263,7 +263,7 @@ s3point_y.S3Point <- function(x, ...) {
   .val
 }
 
-# S3Point::s3point_distance (200:12)
+# S3Point::s3point_distance (199:12)
 #' @title S3 generic for `s3point_distance`
 #' S3 generic for `s3point_distance`
 #' @name s3point_distance.S3Point
@@ -303,7 +303,7 @@ s3point_distance.S3Point <- function(x, ...) {
   .val
 }
 
-# S3Point::s3point_add (205:12)
+# S3Point::s3point_add (204:12)
 #' @title S3 generic for `s3point_add`
 #' S3 generic for `s3point_add`
 #' @name s3point_add.S3Point
@@ -357,7 +357,7 @@ S3Point <- new.env(parent = emptyenv())
 
 S3Point$new <- new_s3point
 
-# Generated from Rust impl `S4Point` (lib.rs:231:6)
+# Generated from Rust impl `S4Point` (lib.rs:230:6)
 #' @rdname S4Point
 #' @title S4Point (S4-style)
 #' @name S4Point
@@ -368,7 +368,7 @@ S3Point$new <- new_s3point
 #' @slot ptr External pointer to Rust `S4Point` struct
 methods::setClass("S4Point", slots = c(ptr = "externalptr"))
 
-# S4Point::new (233:12)
+# S4Point::new (232:12)
 #' @description Create a new point
 #' @param x (undocumented)
 #' @param y (undocumented)
@@ -401,7 +401,7 @@ S4Point <- function(x, y) {
   methods::new("S4Point", ptr = .val)
 }
 
-# S4Point::x (238:12)
+# S4Point::x (237:12)
 #' @description Get x coordinate
 #' @name S4Point-s4_x
 #' @rdname S4Point
@@ -428,7 +428,7 @@ methods::setMethod("s4_x", "S4Point", function(x, ...) {
     .val
   })
 
-# S4Point::y (243:12)
+# S4Point::y (242:12)
 #' @description Get y coordinate
 #' @name S4Point-s4_y
 #' @rdname S4Point
@@ -455,7 +455,7 @@ methods::setMethod("s4_y", "S4Point", function(x, ...) {
     .val
   })
 
-# S4Point::distance (248:12)
+# S4Point::distance (247:12)
 #' @description Calculate distance from origin
 #' @name S4Point-s4_distance
 #' @rdname S4Point
@@ -482,7 +482,7 @@ methods::setMethod("s4_distance", "S4Point", function(x, ...) {
     .val
   })
 
-# S4Point::add (253:12)
+# S4Point::add (252:12)
 #' @description Add to coordinates
 #' @name S4Point-s4_add
 #' @rdname S4Point
@@ -517,7 +517,7 @@ methods::setMethod("s4_add", "S4Point", function(x, dx, dy, ...) {
   }
 })
 
-# Generated from Rust impl `S7Point` (lib.rs:279:6)
+# Generated from Rust impl `S7Point` (lib.rs:278:6)
 #' @rdname S7Point
 #' @title S7Point (S7-style)
 #' @name S7Point
@@ -565,7 +565,7 @@ S7Point <- S7::new_class("S7Point",
   }
 )
 
-# S7Point::s7point_x (286:12)
+# S7Point::s7point_x (285:12)
 #' @description Get x coordinate
 #' @name S7Point-s7point_x
 #' @rdname S7Point
@@ -594,7 +594,7 @@ S7::method(s7point_x, S7Point) <- function(x, ...) {
     .val
   }
 
-# S7Point::s7point_y (291:12)
+# S7Point::s7point_y (290:12)
 #' @description Get y coordinate
 #' @name S7Point-s7point_y
 #' @rdname S7Point
@@ -623,7 +623,7 @@ S7::method(s7point_y, S7Point) <- function(x, ...) {
     .val
   }
 
-# S7Point::s7point_distance (296:12)
+# S7Point::s7point_distance (295:12)
 #' @description Calculate distance from origin
 #' @name S7Point-s7point_distance
 #' @rdname S7Point
@@ -652,7 +652,7 @@ S7::method(s7point_distance, S7Point) <- function(x, ...) {
     .val
   }
 
-# S7Point::s7point_add (301:12)
+# S7Point::s7point_add (300:12)
 #' @description Add to coordinates
 #' @name S7Point-s7point_add
 #' @rdname S7Point
@@ -689,7 +689,7 @@ S7::method(s7point_add, S7Point) <- function(x, dx, dy, ...) {
   }
 }
 
-# Generated from Rust impl `EnvPoint` (lib.rs:84:6)
+# Generated from Rust impl `EnvPoint` (lib.rs:83:6)
 #' @rdname EnvPoint
 #' @title EnvPoint (Env-style)
 #' @name EnvPoint
@@ -698,7 +698,7 @@ S7::method(s7point_add, S7Point) <- function(x, dx, dy, ...) {
 #' @export
 EnvPoint <- new.env(parent = emptyenv())
 
-# EnvPoint::new (86:8)
+# EnvPoint::new (85:8)
 #' @description Create a new point
 #' @name EnvPoint$new
 #' @rdname EnvPoint
@@ -730,7 +730,7 @@ EnvPoint$new <- function(x, y) {
   self
 }
 
-# EnvPoint::x (91:8)
+# EnvPoint::x (90:8)
 #' @description Get x coordinate
 #' @name EnvPoint$x
 #' @rdname EnvPoint
@@ -754,7 +754,7 @@ EnvPoint$x <- function() {
   .val
 }
 
-# EnvPoint::y (96:8)
+# EnvPoint::y (95:8)
 #' @description Get y coordinate
 #' @name EnvPoint$y
 #' @rdname EnvPoint
@@ -778,7 +778,7 @@ EnvPoint$y <- function() {
   .val
 }
 
-# EnvPoint::distance_from_origin (101:8)
+# EnvPoint::distance_from_origin (100:8)
 #' @description Calculate distance from origin
 #' @name EnvPoint$distance_from_origin
 #' @rdname EnvPoint
@@ -802,7 +802,7 @@ EnvPoint$distance_from_origin <- function() {
   .val
 }
 
-# EnvPoint::add (106:8)
+# EnvPoint::add (105:8)
 #' @description Add another point's coordinates
 #' @name EnvPoint$add
 #' @rdname EnvPoint
@@ -881,7 +881,7 @@ EnvPoint$add <- function(dx, dy) {
 #' @export
 `[[.EnvPoint` <- `$.EnvPoint`
 
-# Generated from Rust impl `SharedData` (lib.rs:46:6)
+# Generated from Rust impl `SharedData` (lib.rs:45:6)
 #' @rdname SharedData
 #' @title SharedData (Env-style)
 #' @name SharedData
@@ -890,7 +890,7 @@ EnvPoint$add <- function(dx, dy) {
 #' @export
 SharedData <- new.env(parent = emptyenv())
 
-# SharedData::get_x (53:8)
+# SharedData::get_x (52:8)
 #' @description Get the x coordinate
 #' @name SharedData$get_x
 #' @rdname SharedData
@@ -914,7 +914,7 @@ SharedData$get_x <- function() {
   .val
 }
 
-# SharedData::get_y (58:8)
+# SharedData::get_y (57:8)
 #' @description Get the y coordinate
 #' @name SharedData$get_y
 #' @rdname SharedData
@@ -938,7 +938,7 @@ SharedData$get_y <- function() {
   .val
 }
 
-# SharedData::get_label (63:8)
+# SharedData::get_label (62:8)
 #' @description Get the label
 #' @name SharedData$get_label
 #' @rdname SharedData
@@ -962,7 +962,7 @@ SharedData$get_label <- function() {
   .val
 }
 
-# SharedData::create (48:8)
+# SharedData::create (47:8)
 #' @description Create a new SharedData
 #' @name SharedData$create
 #' @rdname SharedData
@@ -1044,7 +1044,7 @@ SharedData$create <- function(x, y, label) {
 #' @export
 `[[.SharedData` <- `$.SharedData`
 
-# Generated from Rust impl `SimpleCounter` (lib.rs:322:6)
+# Generated from Rust impl `SimpleCounter` (lib.rs:321:6)
 #' @title SimpleCounter  Class
 #' @name SimpleCounter
 #' @rdname SimpleCounter
@@ -1052,7 +1052,7 @@ SharedData$create <- function(x, y, label) {
 #' @export
 SimpleCounter <- new.env(parent = emptyenv())
 
-# SimpleCounter::get_value (324:8)
+# SimpleCounter::get_value (323:8)
 #' @description Get current value (inherent method)
 #' @name SimpleCounter$get_value
 #' @rdname SimpleCounter
@@ -1125,7 +1125,7 @@ SimpleCounter$get_value <- function() {
 #' @export
 `[[.SimpleCounter` <- `$.SimpleCounter`
 
-# Generated from Rust impl `StatefulCounter` (lib.rs:388:6)
+# Generated from Rust impl `StatefulCounter` (lib.rs:390:6)
 #' @title StatefulCounter  Class
 #' @name StatefulCounter
 #' @rdname StatefulCounter
@@ -1133,7 +1133,7 @@ SimpleCounter$get_value <- function() {
 #' @export
 StatefulCounter <- new.env(parent = emptyenv())
 
-# StatefulCounter::get_value (390:8)
+# StatefulCounter::get_value (392:8)
 #' @description Get current value (inherent method)
 #' @name StatefulCounter$get_value
 #' @rdname StatefulCounter
@@ -1157,7 +1157,7 @@ StatefulCounter$get_value <- function() {
   .val
 }
 
-# StatefulCounter::history_len (395:8)
+# StatefulCounter::history_len (397:8)
 #' @description Get how many history entries exist
 #' @name StatefulCounter$history_len
 #' @rdname StatefulCounter
@@ -1230,7 +1230,7 @@ StatefulCounter$history_len <- function() {
 #' @export
 `[[.StatefulCounter` <- `$.StatefulCounter`
 
-# Generated from Rust fn `get_r_class` (lib.rs:505:8)
+# Generated from Rust fn `get_r_class` (lib.rs:510:8)
 #' @title Get class of any R object (for cross-package testing)
 #' @param x Any R object
 #' @return Character vector of class names
@@ -1255,7 +1255,7 @@ get_r_class <- function(x) {
   .val
 }
 
-# Generated from Rust fn `new_counter` (lib.rs:458:8)
+# Generated from Rust fn `new_counter` (lib.rs:463:8)
 #' @title Create a new counter with cross-package trait dispatch support
 #' @param initial Initial counter value
 #' @return An external pointer to the wrapped counter
@@ -1284,7 +1284,7 @@ new_counter <- function(initial) {
   .val
 }
 
-# Generated from Rust fn `counter_get_value` (lib.rs:469:8)
+# Generated from Rust fn `counter_get_value` (lib.rs:474:8)
 #' @title Get the value from a trait-wrapped counter
 #' @param counter_sexp An external pointer from new_counter()
 #' @return The counter's current value
@@ -1309,7 +1309,7 @@ counter_get_value <- function(counter_sexp) {
   .val
 }
 
-# Generated from Rust fn `debug_tag_counter` (lib.rs:481:8)
+# Generated from Rust fn `debug_tag_counter` (lib.rs:486:8)
 #' @title Debug: Get TAG_COUNTER as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_tag_counter`
@@ -1332,7 +1332,7 @@ debug_tag_counter <- function() {
   .val
 }
 
-# Generated from Rust fn `debug_tag_resettable` (lib.rs:488:8)
+# Generated from Rust fn `debug_tag_resettable` (lib.rs:493:8)
 #' @title Debug: Get TAG_RESETTABLE as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_tag_resettable`
@@ -1355,7 +1355,7 @@ debug_tag_resettable <- function() {
   .val
 }
 
-# Generated from Rust fn `new_stateful_counter` (lib.rs:447:8)
+# Generated from Rust fn `new_stateful_counter` (lib.rs:452:8)
 #' @title Create a new StatefulCounter with cross-package trait dispatch support
 #' @param initial Initial counter value
 #' @return An external pointer to the wrapped stateful counter
@@ -1384,7 +1384,7 @@ new_stateful_counter <- function(initial) {
   .val
 }
 
-# Generated from Rust fn `debug_shared_data_type_name` (lib.rs:495:8)
+# Generated from Rust fn `debug_shared_data_type_name` (lib.rs:500:8)
 #' @title Debug: Get the ExternalPtr type name for SharedData
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_shared_data_type_name`
@@ -1407,7 +1407,7 @@ debug_shared_data_type_name <- function() {
   .val
 }
 
-# Generated from Rust impl `Counter` for `SimpleCounter` (lib.rs:330:18)
+# Generated from Rust impl `Counter` for `SimpleCounter` (lib.rs:329:18)
 # Trait methods and consts for SimpleCounter implementing Counter
 # Generated by #[miniextendr] impl Counter for SimpleCounter
 
@@ -1452,7 +1452,7 @@ SimpleCounter$Counter$error_with_class <- function(x, class_name) {
 }
 attr(SimpleCounter$Counter$error_with_class, ".__mx_instance__") <- TRUE
 
-# Generated from Rust impl `Counter` for `StatefulCounter` (lib.rs:401:18)
+# Generated from Rust impl `Counter` for `StatefulCounter` (lib.rs:403:18)
 # Trait methods and consts for StatefulCounter implementing Counter
 # Generated by #[miniextendr] impl Counter for StatefulCounter
 
@@ -1497,7 +1497,7 @@ StatefulCounter$Counter$error_with_class <- function(x, class_name) {
 }
 attr(StatefulCounter$Counter$error_with_class, ".__mx_instance__") <- TRUE
 
-# Generated from Rust impl `Resettable` for `SimpleCounter` (lib.rs:359:21)
+# Generated from Rust impl `Resettable` for `SimpleCounter` (lib.rs:361:21)
 # Trait methods and consts for SimpleCounter implementing Resettable
 # Generated by #[miniextendr] impl Resettable for SimpleCounter
 
@@ -1518,7 +1518,7 @@ SimpleCounter$Resettable$is_default <- function(x) {
 }
 attr(SimpleCounter$Resettable$is_default, ".__mx_instance__") <- TRUE
 
-# Generated from Rust impl `Resettable` for `StatefulCounter` (lib.rs:430:21)
+# Generated from Rust impl `Resettable` for `StatefulCounter` (lib.rs:435:21)
 # Trait methods and consts for StatefulCounter implementing Resettable
 # Generated by #[miniextendr] impl Resettable for StatefulCounter
 

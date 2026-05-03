@@ -145,7 +145,7 @@ has_class <- function(x, class_name) {
   .val
 }
 
-# Generated from Rust fn `is_counter` (lib.rs:177:8)
+# Generated from Rust fn `is_counter` (lib.rs:180:8)
 #' @title Check if an object implements the Counter trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Counter trait
@@ -170,7 +170,7 @@ is_counter <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `peek_value` (lib.rs:167:8)
+# Generated from Rust fn `peek_value` (lib.rs:170:8)
 #' @title Get value without modifying (uses immutable reference)
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's current value
@@ -195,7 +195,7 @@ peek_value <- function(counter_sexp) {
   .val
 }
 
-# Generated from Rust fn `add_and_get` (lib.rs:156:8)
+# Generated from Rust fn `add_and_get` (lib.rs:159:8)
 #' @title Add a value to a counter and return the new value
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @param n Value to add
@@ -225,7 +225,7 @@ add_and_get <- function(counter_sexp, n) {
   .val
 }
 
-# Generated from Rust fn `get_reset_get` (lib.rs:242:8)
+# Generated from Rust fn `get_reset_get` (lib.rs:245:8)
 #' @title Get the value of a Counter, reset it, then get the value again Returns the value after reset
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return The counter value after reset
@@ -250,7 +250,7 @@ get_reset_get <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `is_resettable` (lib.rs:211:8)
+# Generated from Rust fn `is_resettable` (lib.rs:214:8)
 #' @title Check if an object implements the Resettable trait
 #' @param sexp Any R object
 #' @return TRUE if the object implements Resettable trait
@@ -275,7 +275,7 @@ is_resettable <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `consumer_greet` (lib.rs:296:8)
+# Generated from Rust fn `consumer_greet` (lib.rs:299:8)
 #' @title Greet with a message demonstrating consumer package is working
 #' @param name Name to greet
 #' @return A greeting string
@@ -304,7 +304,7 @@ consumer_greet <- function(name) {
   .val
 }
 
-# Generated from Rust fn `increment_twice` (lib.rs:143:8)
+# Generated from Rust fn `increment_twice` (lib.rs:146:8)
 #' @title Increment a counter twice (generic over Counter trait) This function works with Counter objects from ANY package
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
 #' @return The counter's value after incrementing twice
@@ -379,7 +379,7 @@ passthrough_ptr <- function(ptr) {
   .val
 }
 
-# Generated from Rust fn `reset_and_check` (lib.rs:190:8)
+# Generated from Rust fn `reset_and_check` (lib.rs:193:8)
 #' @title Reset an object and check if it's in default state This function works with Resettable objects from ANY package
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state after reset
@@ -404,7 +404,7 @@ reset_and_check <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `check_is_default` (lib.rs:201:8)
+# Generated from Rust fn `check_is_default` (lib.rs:204:8)
 #' @title Check if an object is in its default state (without resetting)
 #' @param sexp An ExternalPtr to any type implementing Resettable
 #' @return TRUE if the object is in default state
@@ -454,7 +454,7 @@ consumer_get_class <- function(x) {
   .val
 }
 
-# Generated from Rust fn `new_double_counter` (lib.rs:128:8)
+# Generated from Rust fn `new_double_counter` (lib.rs:131:8)
 #' @title Create a new DoubleCounter (consumer's own Counter implementation) DoubleCounter increments by 2, demonstrating a different implementation
 #' @param initial Initial counter value
 #' @return An external pointer to the wrapped DoubleCounter
@@ -483,7 +483,7 @@ new_double_counter <- function(initial) {
   .val
 }
 
-# Generated from Rust fn `counter_panic_plain` (lib.rs:269:8)
+# Generated from Rust fn `counter_panic_plain` (lib.rs:272:8)
 #' @title Call panic_plain() on any Counter object via trait dispatch
 #' @description Used by spike tests to verify rust_error class layering across the trait-ABI boundary.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -508,7 +508,7 @@ counter_panic_plain <- function(counter_sexp) {
   invisible(.val)
 }
 
-# Generated from Rust fn `increment_then_reset` (lib.rs:224:8)
+# Generated from Rust fn `increment_then_reset` (lib.rs:227:8)
 #' @title Increment a Counter twice, then reset it via Resettable, return is_default Tests combined trait usage on the same object across packages
 #' @param sexp An ExternalPtr to a type implementing BOTH Counter and Resettable
 #' @return TRUE if the object is in default state after increment+reset
@@ -533,7 +533,7 @@ increment_then_reset <- function(sexp) {
   .val
 }
 
-# Generated from Rust fn `consumer_magic_number` (lib.rs:304:8)
+# Generated from Rust fn `consumer_magic_number` (lib.rs:307:8)
 #' @title Return a constant to verify the package is loaded
 #' @return The number 42
 #' @export
@@ -557,7 +557,7 @@ consumer_magic_number <- function() {
   .val
 }
 
-# Generated from Rust fn `counter_error_with_class` (lib.rs:282:8)
+# Generated from Rust fn `counter_error_with_class` (lib.rs:285:8)
 #' @title Call error_with_class() on any Counter object via trait dispatch
 #' @description Used by spike tests to verify user-class layering across the trait-ABI boundary.
 #' @param counter_sexp An ExternalPtr to any type implementing Counter
@@ -587,7 +587,7 @@ counter_error_with_class <- function(counter_sexp, class_name) {
   invisible(.val)
 }
 
-# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:311:8)
+# Generated from Rust fn `debug_consumer_tag_counter` (lib.rs:314:8)
 #' @title Debug: Get TAG_COUNTER as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_counter`
@@ -610,7 +610,7 @@ debug_consumer_tag_counter <- function() {
   .val
 }
 
-# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:255:8)
+# Generated from Rust fn `debug_consumer_tag_resettable` (lib.rs:258:8)
 #' @title Debug: Get TAG_RESETTABLE as hex string
 #' @export
 #' @source Generated by miniextendr from Rust fn `debug_consumer_tag_resettable`
