@@ -67,7 +67,8 @@ pub enum ReturnHandling {
     /// the type has a direct `IntoR` impl for the whole `Option`. The auto-detector
     /// [`detect_return_handling`] conservatively returns [`OptionIntoRUnwrap`] instead
     /// since it cannot resolve trait impls at macro expansion time.
-    #[allow(dead_code)] // Used via explicit return_handling() call; auto-detect uses OptionIntoRUnwrap
+    #[allow(dead_code)]
+    // Used via explicit return_handling() call; auto-detect uses OptionIntoRUnwrap
     OptionIntoR,
     /// Returns `Option<T>` where `T: IntoR` -- unwraps the option first, then converts the
     /// inner value via `IntoR::into_sexp`. Raises an error on `None`. Suitable when `T: IntoR`

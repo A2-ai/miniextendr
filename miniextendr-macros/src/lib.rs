@@ -913,8 +913,7 @@ pub fn miniextendr(
 
     // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
-    let fn_return_handling = if unwrap_in_r
-        && crate::return_type_analysis::output_is_result(output)
+    let fn_return_handling = if unwrap_in_r && crate::return_type_analysis::output_is_result(output)
     {
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
