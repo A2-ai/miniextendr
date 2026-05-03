@@ -444,18 +444,29 @@ pub struct ParsedMethod {
 /// R6-specific per-method markers, separated from [`MethodAttrs`] so the
 /// `r6` parser branch and R6 class generator own a self-contained bag.
 ///
-/// The older `active` / `private` / `finalize` / `deep_clone` bool fields
-/// also drive R6 output but remain on `MethodAttrs` because they're read by
-/// cross-cutting accessor methods (`ParsedMethod::is_active` etc.).
+/// All R6 boolean flags live here.  Using any of these markers under a
+/// non-R6 class system (`#[miniextendr(s3)]`, `s4`, `s7`, `env`) is a
+/// compile-time error caught by [`ParsedMethod::validate_method_attrs`].
 #[derive(Debug, Default)]
 pub struct R6MethodAttrs {
+    /// Mark as active binding getter (`#[miniextendr(r6(active))]`).
+    pub active: bool,
+    /// Span of the `r6(active)` marker — used for error reporting when the
+    /// marker is misused in a non-R6 class generator.
+    pub active_span: Option<proc_macro2::Span>,
     /// R6 active-binding *setter* (paired with an `active` getter by `prop`).
     pub setter: bool,
     /// R6 active-binding property name (defaults to the method name).
     pub prop: Option<String>,
-    /// Span of the `r6(active)` marker — used for error reporting when the
-    /// marker is misused in a non-R6 class generator.
-    pub active_span: Option<proc_macro2::Span>,
+    /// Mark as private method (`#[miniextendr(r6(private))]`).
+    /// Also inferred from non-`pub` Rust visibility.
+    pub private: bool,
+    /// Mark as finalizer (`#[miniextendr(r6(finalize))]`).
+    /// Also inferred when the method consumes `self` and does not return `Self`.
+    pub finalize: bool,
+    /// Mark as R6 deep-clone handler (`#[miniextendr(r6(deep_clone))]`).
+    /// This method is wired into `private$deep_clone` in the R6Class definition.
+    pub deep_clone: bool,
 }
 
 /// S7-specific per-method markers, separated from [`MethodAttrs`] so the S7
@@ -504,16 +515,9 @@ pub struct MethodAttrs {
     pub ignore: bool,
     /// Mark as constructor
     pub constructor: bool,
-    /// Mark as finalizer (R6)
-    pub finalize: bool,
-    /// Mark as private (R6)
-    pub private: bool,
-    /// Mark as active binding getter (R6)
-    pub active: bool,
-    /// R6-specific method markers (active-binding setter / prop / active_span).
-    /// The cross-cutting R6 booleans (`active`, `private`, `finalize`,
-    /// `deep_clone`) stay on `MethodAttrs` because `ParsedMethod`'s accessor
-    /// methods (`is_active`, `is_private`, `is_finalizer`) read them directly.
+    /// R6-specific method markers. All R6 boolean flags live here.
+    /// Only consumed by the R6 class generator and R6-aware accessor methods
+    /// (`ParsedMethod::is_active`, `is_private`, `is_finalizer`).
     pub r6: R6MethodAttrs,
     /// Generate as `as.<class>()` S3 method (e.g., "data.frame", "list", "character").
     ///
@@ -616,11 +620,6 @@ pub struct MethodAttrs {
     /// }
     /// ```
     pub lifecycle: Option<crate::lifecycle::LifecycleSpec>,
-    /// Mark as R6 deep_clone method.
-    ///
-    /// Use `#[miniextendr(r6(deep_clone))]` to mark a method as the R6 deep clone handler.
-    /// This method will be wired into `private$deep_clone` in the R6Class definition.
-    pub deep_clone: bool,
     /// vctrs protocol method override.
     ///
     /// Use `#[miniextendr(vctrs(format))]` to mark a method as implementing a vctrs
@@ -1131,12 +1130,32 @@ impl ParsedMethod {
         class_system: ClassSystem,
         span: proc_macro2::Span,
     ) -> syn::Result<()> {
-        // #[...(active)] is only meaningful for R6
-        if attrs.active && class_system != ClassSystem::R6 {
-            return Err(syn::Error::new(
-                attrs.r6.active_span.unwrap_or(span),
-                "#[r6(active)] is only valid for R6 class systems",
-            ));
+        // R6-only boolean markers must not appear under any other class system.
+        if class_system != ClassSystem::R6 {
+            if attrs.r6.active {
+                return Err(syn::Error::new(
+                    attrs.r6.active_span.unwrap_or(span),
+                    "#[r6(active)] is only valid for R6 class systems",
+                ));
+            }
+            if attrs.r6.private {
+                return Err(syn::Error::new(
+                    span,
+                    "#[r6(private)] is only valid for R6 class systems",
+                ));
+            }
+            if attrs.r6.finalize {
+                return Err(syn::Error::new(
+                    span,
+                    "#[r6(finalize)] is only valid for R6 class systems",
+                ));
+            }
+            if attrs.r6.deep_clone {
+                return Err(syn::Error::new(
+                    span,
+                    "#[r6(deep_clone)] is only valid for R6 class systems",
+                ));
+            }
         }
 
         // convert_from and convert_to are mutually exclusive on the same method
@@ -1213,12 +1232,12 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("constructor") {
                             method_attrs.constructor = true;
                         } else if inner.path.is_ident("finalize") {
-                            method_attrs.finalize = true;
+                            method_attrs.r6.finalize = true;
                         } else if inner.path.is_ident("private") {
-                            method_attrs.private = true;
+                            method_attrs.r6.private = true;
                         } else if inner.path.is_ident("active") {
                             use syn::spanned::Spanned;
-                            method_attrs.active = true;
+                            method_attrs.r6.active = true;
                             method_attrs.r6.active_span = Some(inner.path.span());
                         } else if inner.path.is_ident("setter") {
                             // Active binding setter: works for both R6 and S7
@@ -1300,7 +1319,7 @@ impl ParsedMethod {
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7.convert_to = Some(value.value());
                         } else if inner.path.is_ident("deep_clone") {
-                            method_attrs.deep_clone = true;
+                            method_attrs.r6.deep_clone = true;
                         } else if inner.path.is_ident("r_name") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1924,7 +1943,7 @@ impl ParsedMethod {
                     if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)));
 
             // Allow if: constructor (returns Self) or explicitly marked as finalize
-            let is_allowed = returns_self || method_attrs.constructor || method_attrs.finalize;
+            let is_allowed = returns_self || method_attrs.constructor || method_attrs.r6.finalize;
 
             if !is_allowed {
                 return Err(syn::Error::new(
@@ -1967,7 +1986,7 @@ impl ParsedMethod {
     /// Inferred from Rust visibility: anything not `pub` is private.
     pub fn is_private(&self) -> bool {
         // Explicit attribute takes precedence
-        if self.method_attrs.private {
+        if self.method_attrs.r6.private {
             return true;
         }
         // Infer from visibility: anything not `pub` is private
@@ -1984,13 +2003,13 @@ impl ParsedMethod {
     /// Returns true if this is likely a finalizer.
     /// Inferred from: consumes self (by value) + doesn't return Self.
     pub fn is_finalizer(&self) -> bool {
-        self.method_attrs.finalize || (self.env == ReceiverKind::Value && !self.returns_self())
+        self.method_attrs.r6.finalize || (self.env == ReceiverKind::Value && !self.returns_self())
     }
 
     /// Returns true if this method should be an R6 active binding.
     /// Active bindings provide property-like access (obj$name instead of obj$name()).
     pub fn is_active(&self) -> bool {
-        self.method_attrs.active
+        self.method_attrs.r6.active
     }
 
     /// R-facing method name.

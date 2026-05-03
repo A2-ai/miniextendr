@@ -382,7 +382,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(dc_method) = parsed_impl
         .methods
         .iter()
-        .find(|m| m.method_attrs.deep_clone && m.should_include())
+        .find(|m| m.method_attrs.r6.deep_clone && m.should_include())
     {
         let c_ident = dc_method
             .c_wrapper_ident(type_ident, parsed_impl.label())
