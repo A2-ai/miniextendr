@@ -29,11 +29,12 @@ fn return_handling_detection() {
         ReturnHandling::ExternalPtr
     ));
 
-    // -> Option<i32> -> OptionIntoR
+    // -> Option<i32> -> OptionIntoRUnwrap (default: unwrap + error on None)
+    // Use ReturnHandling::OptionIntoR explicitly when Option<T>: IntoR is known.
     let option_ty: syn::ReturnType = syn::parse_quote!(-> Option<i32>);
     assert!(matches!(
         detect_return_handling(&option_ty),
-        ReturnHandling::OptionIntoR
+        ReturnHandling::OptionIntoRUnwrap
     ));
 
     // -> Option<()> -> OptionUnit
@@ -55,5 +56,19 @@ fn return_handling_detection() {
     assert!(matches!(
         detect_return_handling(&result_unit_ty),
         ReturnHandling::ResultUnit
+    ));
+
+    // -> Result<i32, ()> -> ResultNullOnErr (unit error is a sentinel, always returns NULL)
+    let result_null_on_err_ty: syn::ReturnType = syn::parse_quote!(-> Result<i32, ()>);
+    assert!(matches!(
+        detect_return_handling(&result_null_on_err_ty),
+        ReturnHandling::ResultNullOnErr
+    ));
+
+    // -> Result<(), ()> -> ResultNullOnErr (both unit: returns NULL regardless)
+    let result_unit_unit_ty: syn::ReturnType = syn::parse_quote!(-> Result<(), ()>);
+    assert!(matches!(
+        detect_return_handling(&result_unit_unit_ty),
+        ReturnHandling::ResultNullOnErr
     ));
 }

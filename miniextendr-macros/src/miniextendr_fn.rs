@@ -7,7 +7,7 @@
 //! - [`MiniextendrFnAttrs`]: Parsed `#[miniextendr(...)]` attribute options
 //! - [`CoercionMapping`]: Type coercion analysis for automatic R→Rust conversion
 
-use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
+use crate::r_wrapper_const_ident_for;
 
 // region: Coercion analysis
 
@@ -931,14 +931,6 @@ impl MiniextendrFunctionParsed {
         self.abi().is_none()
     }
 
-    /// Returns the identifier for the generated `const R_CallMethodDef` value.
-    ///
-    /// This constant is automatically registered with R's `.Call` interface
-    /// via linkme distributed slices.
-    pub(crate) fn call_method_def_ident(&self) -> syn::Ident {
-        call_method_def_ident_for(self.ident())
-    }
-
     /// Returns the identifier for the generated `const &str` holding the R wrapper code.
     ///
     /// The R wrapper is a string constant containing the R function definition that
@@ -1086,7 +1078,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     pub(crate) unwrap_in_r: bool,
-    /// Preferred return conversion.
+    /// Preferred return conversion (deferred: not yet forwarded to `CWrapperContext`).
+    #[allow(dead_code)]
     pub(crate) return_pref: ReturnPref,
     /// S3 generic name (if this function is an S3 method).
     ///

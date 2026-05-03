@@ -2,10 +2,7 @@ error[E0277]: the trait bound `impl std::fmt::Display: IntoR` is not satisfied
  --> tests/ui/impl_trait_return_no_into_r.rs:9:1
   |
 9 | #[miniextendr]
-  | ^^^^^^^^^^^^^^
-  | |
-  | the trait `IntoExternalPtr` is not implemented for `impl std::fmt::Display`
-  | required by a bound introduced by this call
+  | ^^^^^^^^^^^^^^ the trait `IntoExternalPtr` is not implemented for `impl std::fmt::Display`
   |
   = help: the following other types implement trait `IntoR`:
             &OsStr

@@ -3,8 +3,6 @@
 //! Determines:
 //! 1. Whether function returns SEXP (affects thread strategy)
 //! 2. Whether result should be invisible in R
-//! 3. How to convert Rust return value to SEXP
-//! 4. What post-call processing is needed (unwrapping Option/Result)
 
 use crate::is_sexp_type;
 use syn::spanned::Spanned;
@@ -26,11 +24,10 @@ struct AnalysisCtx<'a> {
     post_call_statements: &'a mut Vec<proc_macro2::TokenStream>,
 }
 
-/// Complete analysis result for a `#[miniextendr]` function's return type.
+/// Relevant analysis result for a `#[miniextendr]` function's return type.
 ///
-/// Captures everything needed to generate the C wrapper's return handling:
-/// which thread strategy to use, whether the R wrapper returns invisibly,
-/// how to convert the Rust value to SEXP, and any intermediate unwrapping steps.
+/// Captures the properties needed to determine thread strategy and R wrapper invisibility.
+/// Detailed return-value codegen is handled by [`crate::c_wrapper_builder::CWrapperContext`].
 pub(crate) struct ReturnTypeAnalysis {
     /// Whether the return type contains SEXP (affects thread strategy).
     ///
@@ -42,19 +39,25 @@ pub(crate) struct ReturnTypeAnalysis {
     ///
     /// Set to `true` for `()`, `Option<()>`, and `Result<(), E>` return types.
     pub is_invisible: bool,
+}
 
-    /// TokenStream that converts the Rust result variable to a SEXP value.
-    ///
-    /// This expression references `rust_result_ident` and produces the final
-    /// SEXP to return to R, using `IntoR::into_sexp`, strict checked conversion,
-    /// or direct passthrough depending on the type.
-    pub return_expression: proc_macro2::TokenStream,
-
-    /// Statements inserted between the Rust function call and the return expression.
-    ///
-    /// Used for unwrapping `Result::Err` (raises R error) or checking `Option::None`
-    /// before the conversion to SEXP occurs.
-    pub post_call_statements: Vec<proc_macro2::TokenStream>,
+/// Returns `true` if the return type is `Result<T, E>` (shallow name check).
+///
+/// Does not resolve type aliases. Used to decide whether `unwrap_in_r` should
+/// strip the `Result` wrapper before converting to SEXP.
+pub(crate) fn output_is_result(output: &syn::ReturnType) -> bool {
+    match output {
+        syn::ReturnType::Type(_, ty) => matches!(
+            ty.as_ref(),
+            syn::Type::Path(p)
+                if p.path
+                    .segments
+                    .last()
+                    .map(|s| s.ident == "Result")
+                    .unwrap_or(false)
+        ),
+        syn::ReturnType::Default => false,
+    }
 }
 
 /// Analyze a function's return type and generate conversion code.
@@ -66,7 +69,6 @@ pub(crate) struct ReturnTypeAnalysis {
 /// - `output`: The function's return type from `syn::Signature`
 /// - `rust_result_ident`: Identifier for the variable holding the Rust function result
 /// - `rust_ident`: Function name (used in error messages for `Option::None`)
-/// - `return_pref`: How to convert non-primitive return types (Auto, List, ExternalPtr, Native)
 /// - `unwrap_in_r`: When `true`, `Result<T, E>` is passed to R as-is via `IntoR` (list with error field)
 ///   rather than unwrapped in Rust (which raises an R error)
 /// - `strict`: When `true`, lossy integer types (i64, u64, isize, usize) use checked
@@ -77,7 +79,6 @@ pub(crate) fn analyze_return_type(
     output: &syn::ReturnType,
     rust_result_ident: &syn::Ident,
     rust_ident: &syn::Ident,
-    return_pref: crate::miniextendr_fn::ReturnPref,
     unwrap_in_r: bool,
     strict: bool,
     error_in_r: bool,
@@ -89,25 +90,22 @@ pub(crate) fn analyze_return_type(
     let fn_name_str = rust_ident.to_string();
     let option_none_error_msg = format!("miniextendr function `{fn_name_str}` returned None");
 
-    let return_expression = match output {
+    match output {
         // No return type (no arrow)
         syn::ReturnType::Default => {
             is_invisible = true;
-            quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
         }
 
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible = true;
-                quote::quote! { ::miniextendr_api::ffi::SEXP::nil() }
             }
 
             // -> SEXP
             syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
                 is_invisible = false;
                 returns_sexp = true;
-                quote::quote! { #rust_result_ident }
             }
 
             // -> Option<T>
@@ -121,7 +119,7 @@ pub(crate) fn analyze_return_type(
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
-                analyze_option_type(p, &mut ctx, &option_none_error_msg, strict, error_in_r)
+                analyze_option_type(p, &mut ctx, &option_none_error_msg, strict, error_in_r);
             }
 
             // -> Result<T, E>
@@ -135,52 +133,12 @@ pub(crate) fn analyze_return_type(
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
-                analyze_result_type(p, &mut ctx, unwrap_in_r, error_in_r)
+                analyze_result_type(p, &mut ctx, unwrap_in_r, error_in_r);
             }
 
             // -> T (any other type)
             _ => {
                 is_invisible = false;
-                // When strict mode is enabled and return type is lossy, use checked conversion
-                if strict
-                    && let Some(strict_expr) =
-                        strict_conversion_for_type(ty.as_ref(), rust_result_ident)
-                {
-                    return ReturnTypeAnalysis {
-                        returns_sexp,
-                        is_invisible,
-                        return_expression: strict_expr,
-                        post_call_statements,
-                    };
-                }
-                match return_pref {
-                    crate::miniextendr_fn::ReturnPref::List => {
-                        quote::quote! {
-                            ::miniextendr_api::into_r::IntoR::into_sexp(
-                                ::miniextendr_api::convert::AsList(#rust_result_ident)
-                            )
-                        }
-                    }
-                    crate::miniextendr_fn::ReturnPref::ExternalPtr => {
-                        quote::quote! {
-                            ::miniextendr_api::into_r::IntoR::into_sexp(
-                                ::miniextendr_api::convert::AsExternalPtr(#rust_result_ident)
-                            )
-                        }
-                    }
-                    crate::miniextendr_fn::ReturnPref::Native => {
-                        quote::quote! {
-                            ::miniextendr_api::into_r::IntoR::into_sexp(
-                                ::miniextendr_api::convert::AsRNative(#rust_result_ident)
-                            )
-                        }
-                    }
-                    crate::miniextendr_fn::ReturnPref::Auto => {
-                        quote::quote! {
-                            ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident)
-                        }
-                    }
-                }
             }
         },
     };
@@ -188,8 +146,6 @@ pub(crate) fn analyze_return_type(
     ReturnTypeAnalysis {
         returns_sexp,
         is_invisible,
-        return_expression,
-        post_call_statements,
     }
 }
 

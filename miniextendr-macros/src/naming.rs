@@ -4,15 +4,6 @@
 //! consumer (e.g. a registration-chasing linter) can compute the exact same
 //! identifiers from a source `syn::Ident`.
 
-/// Identifier for the generated `const R_CallMethodDef` value.
-///
-/// Must remain consistent between the attribute macro (which defines the
-/// symbol) and any code that later looks it up. Returns
-/// `call_method_def_{rust_ident}`.
-pub(crate) fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    quote::format_ident!("call_method_def_{rust_ident}")
-}
-
 /// Identifier for the generated `const &str` holding the R wrapper source.
 ///
 /// Returns `R_WRAPPER_{RUST_IDENT}` (uppercased).
