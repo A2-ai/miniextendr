@@ -80,6 +80,10 @@ pub enum ReturnHandling {
     ResultSexp,
     /// Returns `Result<T, E>` -- raises an error on `Err`, otherwise converts via `IntoR::into_sexp`.
     ResultIntoR,
+    /// Returns `Result<T, ()>` -- maps `Err(())` to `Err(NullOnErr)` then converts via `IntoR`.
+    /// `None`/`Err` maps to R `NULL` (unit error is a deliberate sentinel, not a Rust failure).
+    /// `error_in_r` does not affect this: unit errors always return NULL regardless.
+    ResultNullOnErr,
 }
 
 /// All information needed to generate a C wrapper function for an R-exported Rust item.
@@ -784,6 +788,19 @@ impl CWrapperContext {
                     }
                 }
             }
+            // Result<T, ()>: unit error is a deliberate sentinel — always return NULL on Err,
+            // regardless of error_in_r. error_in_r does not affect this path.
+            ReturnHandling::ResultNullOnErr => {
+                let result_ident = format_ident!("__result");
+                let conversion = self.sexp_conversion_expr(&result_ident);
+                quote! {
+                    let __result = #call_expr;
+                    match __result {
+                        Ok(#result_ident) => #conversion,
+                        Err(()) => ::miniextendr_api::ffi::SEXP::nil(),
+                    }
+                }
+            }
         }
     }
 
@@ -1050,6 +1067,21 @@ impl CWrapperContext {
                     };
                     (worker, convert)
                 }
+            }
+            // Result<T, ()>: unit error is a deliberate sentinel — always map to NULL,
+            // regardless of error_in_r. Convert via NullOnErr so IntoR returns R NULL on Err.
+            ReturnHandling::ResultNullOnErr => {
+                let result_ident = format_ident!("__miniextendr_result");
+                let unwind_fn = self.worker_conversion_unwind_fn();
+                let worker = quote! { #call_expr };
+                let conversion = self.sexp_conversion_expr(&result_ident);
+                let convert = quote! {
+                    match __miniextendr_result {
+                        Ok(#result_ident) => #unwind_fn(|| #conversion, None),
+                        Err(()) => ::miniextendr_api::ffi::SEXP::nil(),
+                    }
+                };
+                (worker, convert)
             }
         }
     }
@@ -1595,7 +1627,15 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
                 .map(|s| s.ident == "Result")
                 .unwrap_or(false) =>
         {
-            if let Some(ok_ty) = first_type_argument(p.path.segments.last().unwrap()) {
+            let seg = p.path.segments.last().unwrap();
+            // Special case: Result<T, ()> — unit error is a deliberate sentinel that maps to
+            // R NULL, not a failure. error_in_r does not affect this.
+            let err_is_unit = crate::second_type_argument(seg)
+                .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+            if err_is_unit {
+                return ReturnHandling::ResultNullOnErr;
+            }
+            if let Some(ok_ty) = first_type_argument(seg) {
                 match ok_ty {
                     syn::Type::Tuple(t) if t.elems.is_empty() => ReturnHandling::ResultUnit,
                     syn::Type::Path(ip)
