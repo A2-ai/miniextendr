@@ -2,10 +2,7 @@ error[E0277]: the trait bound `NotIntoR: IntoR` is not satisfied
  --> tests/ui/non_into_r_return.rs:7:1
   |
 7 | #[miniextendr]
-  | ^^^^^^^^^^^^^^
-  | |
-  | unsatisfied trait bound
-  | required by a bound introduced by this call
+  | ^^^^^^^^^^^^^^ unsatisfied trait bound
   |
 help: the trait `IntoExternalPtr` is not implemented for `NotIntoR`
  --> tests/ui/non_into_r_return.rs:5:1

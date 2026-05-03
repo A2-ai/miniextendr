@@ -29,11 +29,12 @@ fn return_handling_detection() {
         ReturnHandling::ExternalPtr
     ));
 
-    // -> Option<i32> -> OptionIntoR
+    // -> Option<i32> -> OptionIntoRUnwrap (default: unwrap + error on None)
+    // Use ReturnHandling::OptionIntoR explicitly when Option<T>: IntoR is known.
     let option_ty: syn::ReturnType = syn::parse_quote!(-> Option<i32>);
     assert!(matches!(
         detect_return_handling(&option_ty),
-        ReturnHandling::OptionIntoR
+        ReturnHandling::OptionIntoRUnwrap
     ));
 
     // -> Option<()> -> OptionUnit

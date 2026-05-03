@@ -5,7 +5,7 @@ Branch: `review/macros-refactor`
 Tracks 20 refactor items from the review of `miniextendr-macros` and
 (now-defunct) `miniextendr-macros-core`.
 
-## Done (19 / 20)
+## Done (20 / 20)
 
 ### Quick cleanups
 1. [#1] Delete dead `force_main_thread` field.
@@ -50,30 +50,12 @@ Tracks 20 refactor items from the review of `miniextendr-macros` and
 ### Crate structure
 19. [#18] Absorb `miniextendr-macros-core` into `miniextendr-macros`; drop the
     crate, its vendor copy, workspace member, and every leaf manifest listing.
+20. [#19] Retarget standalone-fn codegen at `CWrapperContext` (PR #243).
+    - Added `preserve_param_names`, `vis`, `generics`, `skip_wrapper` to builder.
+    - Added `OptionIntoRUnwrap` variant + `detect_return_handling_standalone_fn`.
+    - Deleted `FnCWrapperInputs` struct and `build_fn_c_wrapper` fn.
+    - Removed all dead code (conversion_builder, c_wrapper_inputs, etc.).
+    - Known gaps filed: `ReturnPref::List/ExternalPtr/Native` forwarding,
+      `Result<T, ()>` NullOnErr path.
 
-## Deferred (1 / 20)
-
-### [#19] Retarget standalone-fn codegen at `CWrapperContext`
-
-`lib.rs::build_fn_c_wrapper` still hand-rolls three variants of the
-`extern "C-unwind"` wrapper (main-thread × `{rng, no-rng}` × error_in_r
-collapsed into a single-branch shape), mirroring what
-`c_wrapper_builder::CWrapperContext` already does for impl methods.
-
-Routing the fn path through the builder is not purely mechanical:
-
-- `CWrapperContext::build_c_params` mangles parameter names to `arg_0`,
-  `arg_1`, … in the C wrapper signature. The standalone-fn path preserves
-  the user's original identifiers, which are visible in rustdoc. Switching
-  would be a user-observable rename.
-- `CWrapperContext` always emits wrappers with the default visibility;
-  the fn path honors `#vis` from the user's source. Would need a builder
-  hook for visibility.
-- The fn path has dots-specific handling (`Dots` / `SEXP` inputs pin the
-  function to the main thread) that `CWrapperContext` handles via
-  `thread_strategy` set at build time; the routing site would need to
-  reproduce the current auto-detection logic.
-
-None of these are showstoppers, but the change needs a dedicated pass
-with its own trybuild coverage to verify the C-wrapper signature /
-rustdoc diff and any call-site fallout. Left for a follow-up PR.
+## Deferred (0 / 20)
