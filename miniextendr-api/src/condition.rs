@@ -285,11 +285,11 @@ impl RCondition {
     /// the `"__rust_error__"` attribute is `TRUE`. Returns `None` for all other
     /// SEXPs (normal return values, `R_NilValue`, etc.).
     ///
-    /// Only `"error"` and `"panic"` kinds are reconstructed as
-    /// [`RCondition::Error`]. Other kinds (warning, message, condition) are
-    /// reconstructed as `Error` with their kind string appended to the message —
-    /// they cannot suspend execution without an R frame, so degrading to an error
-    /// is the safest course.
+    /// Reconstructs the matching variant for each kind: `"error"`/`"panic"`/
+    /// `"result_err"`/`"none_err"`/`"other_rust_error"` → [`RCondition::Error`];
+    /// `"warning"` → [`RCondition::Warning`]; `"message"` → [`RCondition::Message`];
+    /// `"condition"` → [`RCondition::Condition`]. Unknown kinds degrade to
+    /// [`RCondition::Error`] with the kind string prefixed to the message.
     ///
     /// # Safety
     ///
@@ -324,6 +324,14 @@ impl RCondition {
         //   [2] = class name or NULL (only in 4-element form; absent in legacy)
 
         let len = sexp.len();
+
+        // Defense-in-depth: a tagged SEXP must have at least the message and kind
+        // slots. inherits_class + __rust_error__ marker should already imply this,
+        // but a corrupted/spoofed SEXP that satisfies both checks shouldn't OOB
+        // the vector_elt reads below.
+        if len < 2 {
+            return None;
+        }
 
         let msg_sexp = sexp.vector_elt(0);
         let msg: String = msg_sexp
