@@ -1093,28 +1093,25 @@ fn derive_struct_dataframe(
 
     // region: Generate from_rows_par (parallel scatter-write via ColumnWriter)
     let from_rows_par_method = if !flat_cols.is_empty() || !auto_expand_cols.is_empty() || has_tag {
-        // Column declarations: Vec::with_capacity(len) + set_len(len)
+        // Column declarations: vec![default; len]
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
-                let mut _tag: Vec<String> = Vec::with_capacity(len);
-                unsafe { _tag.set_len(len); }
+                let mut _tag: Vec<String> = vec![String::new(); len];
             });
         }
         for fc in &flat_cols {
             let name = &fc.df_field;
             let ty = &fc.vec_elem_ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<#ty> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
+                let mut #name: Vec<#ty> = vec![<#ty as ::core::default::Default>::default(); len];
             });
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
             let cty = &ac.container_ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<#cty> = Vec::with_capacity(len);
-                unsafe { #name.set_len(len); }
+                let mut #name: Vec<#cty> = vec![<#cty as ::core::default::Default>::default(); len];
             });
         }
 

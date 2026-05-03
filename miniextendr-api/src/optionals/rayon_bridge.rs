@@ -1174,7 +1174,7 @@ pub trait RParallelExtend<T: Send> {
 ///
 /// # Safety contract
 ///
-/// - Backing Vec must have `set_len(n)` called (elements uninitialized).
+/// - Backing Vec must have `len == n` (elements initialized — use `vec![default; n]`).
 /// - Every index in `0..n` must be written exactly once before the Vec is read.
 /// - No two threads may write to the same index.
 #[doc(hidden)]
@@ -1187,7 +1187,7 @@ unsafe impl<T: Send> Send for ColumnWriter<T> {}
 unsafe impl<T: Send> Sync for ColumnWriter<T> {}
 
 impl<T> ColumnWriter<T> {
-    /// Create a new writer for a Vec that has had `set_len(n)` called.
+    /// Create a new writer for a pre-initialized Vec (use `vec![default; n]`).
     ///
     /// # Safety
     /// Vec must have `len` already set. Caller must write all indices before reading.
@@ -1608,13 +1608,9 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::uninit_vec)]
     fn test_column_writer_parallel() {
         let n = 10_000;
-        let mut col: Vec<i32> = Vec::with_capacity(n);
-        unsafe {
-            col.set_len(n);
-        }
+        let mut col: Vec<i32> = vec![0; n];
         {
             let w = unsafe { ColumnWriter::new(&mut col) };
             (0..n)
@@ -1627,13 +1623,9 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::uninit_vec)]
     fn test_column_writer_string() {
         let n = 100;
-        let mut col: Vec<String> = Vec::with_capacity(n);
-        unsafe {
-            col.set_len(n);
-        }
+        let mut col: Vec<String> = vec![String::new(); n];
         {
             let w = unsafe { ColumnWriter::new(&mut col) };
             (0..n)
@@ -1645,13 +1637,9 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::uninit_vec)]
     fn test_column_writer_option() {
         let n = 100;
-        let mut col: Vec<Option<f64>> = Vec::with_capacity(n);
-        unsafe {
-            col.set_len(n);
-        }
+        let mut col: Vec<Option<f64>> = vec![None; n];
         {
             let w = unsafe { ColumnWriter::new(&mut col) };
             (0..n).into_par_iter().for_each(|i| unsafe {
