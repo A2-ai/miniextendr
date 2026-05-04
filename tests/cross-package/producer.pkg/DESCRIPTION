@@ -14,8 +14,6 @@ Description: Demonstrates miniextendr's cross-package trait dispatch capabilitie
 License: MIT + file LICENSE
 Config/build/bootstrap: TRUE
 Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
 Imports:
     methods,
@@ -25,3 +23,5 @@ Suggests:
     testthat (>= 3.0.0)
 Config/build/never-clean: true
 Config/build/extra-sources: src/rust/Cargo.lock
+Config/roxygen2/markdown: TRUE
+Config/roxygen2/version: 8.0.0

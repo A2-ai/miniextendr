@@ -14,7 +14,6 @@ Description: Provides a framework for building R packages with Rust backends.
 License: MIT + file LICENSE
 SystemRequirements: Cargo (Rust package manager), rustc >= 1.85.0
 Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
 LinkingTo:
     cli
 Imports:
@@ -38,5 +37,6 @@ Config/testthat/edition: 3
 Config/build/bootstrap: TRUE
 Config/build/never-clean: true
 Config/build/extra-sources: src/rust/Cargo.lock
+Config/roxygen2/markdown: TRUE
 Config/roxygen2/version: 8.0.0
 RoxygenNote: 7.3.3
