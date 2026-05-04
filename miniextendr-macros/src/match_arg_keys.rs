@@ -46,6 +46,22 @@ pub(crate) fn choices_helper_def_ident(c_ident: &str, r_param: &str) -> syn::Ide
     )
 }
 
+/// Extract the unquoted form of a user-supplied `default = "..."` literal
+/// for a `match_arg` parameter.
+///
+/// The user writes the value as it appears in R source, so a string default
+/// is `default = "\"zstd\""` — the `String` we receive is `"zstd"` (with the
+/// quote chars). Strip the outer quotes if present; otherwise pass the raw
+/// value through unchanged. The write-time pass validates the result against
+/// the enum's `CHOICES` and panics on miss, so a malformed literal (e.g.
+/// `default = "1L"`) still surfaces as a clear runtime error at cdylib load.
+pub(crate) fn extract_match_arg_default(raw: &str) -> String {
+    raw.strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(raw)
+        .to_string()
+}
+
 /// Derive a safe Rust ident from a write-time placeholder string.
 ///
 /// Strips surrounding underscores and turns every `.` into `_`, so a placeholder
@@ -59,11 +75,16 @@ pub(crate) fn placeholder_ident_suffix(placeholder: &str) -> String {
 ///
 /// Factored so lib.rs (standalone fns) and miniextendr_impl.rs (impl methods)
 /// can't drift apart — both previously open-coded the same quote! block.
+///
+/// `preferred_default` is the unquoted form of the user's `default = "..."`
+/// (e.g. `"zstd"`). Pass `""` when the user supplied no default — the write
+/// pass then keeps the natural enum order.
 pub(crate) fn choices_entry_tokens(
     cfg_attrs: &[syn::Attribute],
     entry_ident: &syn::Ident,
     placeholder: &str,
     choices_ty: &syn::Type,
+    preferred_default: &str,
 ) -> proc_macro2::TokenStream {
     quote::quote! {
         #(#cfg_attrs)*
@@ -84,6 +105,7 @@ pub(crate) fn choices_entry_tokens(
                         .collect::<Vec<_>>()
                         .join(", ")
                 },
+                preferred_default: #preferred_default,
             };
     }
 }

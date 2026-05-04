@@ -109,6 +109,11 @@ pub struct MatchArgChoicesEntry {
     /// Function that returns the choices as a comma-separated quoted string,
     /// e.g. `"\"Fast\", \"Safe\", \"Debug\""`.
     pub choices_str: fn() -> String,
+    /// User-supplied `default = "..."` value (unquoted, e.g. `"zstd"`), or `""`
+    /// if the user did not supply one. When non-empty, the write-time pass
+    /// rotates the choice list so this value appears first, so R's
+    /// `match.arg(arg)` (no second arg) picks it as the default.
+    pub preferred_default: &'static str,
 }
 
 // SAFETY: function pointer and &'static str are Send+Sync.
@@ -478,6 +483,34 @@ fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
 }
 // endregion
 
+/// Rotate a comma-separated quoted-choice string so `preferred` is first.
+///
+/// `choices_str` has the shape `"\"a\", \"b\", \"c\""` (already quoted +
+/// joined). `preferred` is the unquoted user-supplied default (e.g. `"b"`).
+/// On miss, panics with the placeholder name — the cdylib write step is the
+/// only caller, so a panic surfaces as a load-time error in the host R session
+/// rather than silently producing a broken wrapper.
+fn rotate_choices_for_default(choices_str: &str, preferred: &str, placeholder: &str) -> String {
+    let parts: Vec<&str> = choices_str.split(", ").collect();
+    let pos = parts
+        .iter()
+        .position(|p| p.strip_prefix('"').and_then(|s| s.strip_suffix('"')) == Some(preferred))
+        .unwrap_or_else(|| {
+            panic!(
+                "miniextendr: preferred default `{preferred}` for placeholder `{placeholder}` \
+                 does not match any choice in [{choices_str}]"
+            )
+        });
+    let mut rotated: Vec<&str> = Vec::with_capacity(parts.len());
+    rotated.push(parts[pos]);
+    for (i, p) in parts.iter().enumerate() {
+        if i != pos {
+            rotated.push(p);
+        }
+    }
+    rotated.join(", ")
+}
+
 // region: R Wrapper File Generation
 
 /// Write all R wrapper entries to a file.
@@ -506,9 +539,22 @@ pub fn write_r_wrappers_to_file(path: &str) {
 
     content.push_str("# nocov end\n# nolint end\n");
 
-    // Replace match_arg choices placeholders with actual enum choices
+    // Replace match_arg choices placeholders with actual enum choices.
+    // If the entry has a `preferred_default`, rotate the list so that value
+    // is first — R's `match.arg(arg)` returns `arg[1]` when arg matches the
+    // formal default, so the position-0 element becomes the effective default.
     for entry in MX_MATCH_ARG_CHOICES.iter() {
-        let replacement = format!("c({})", (entry.choices_str)());
+        let choices_str = (entry.choices_str)();
+        let rotated = if entry.preferred_default.is_empty() {
+            choices_str
+        } else {
+            rotate_choices_for_default(
+                &choices_str,
+                entry.preferred_default,
+                entry.placeholder,
+            )
+        };
+        let replacement = format!("c({rotated})");
         content = content.replace(entry.placeholder, &replacement);
     }
 

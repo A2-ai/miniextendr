@@ -76,17 +76,29 @@ pub(crate) fn match_arg_doc_placeholder_map(
 /// Effective R-formal defaults for a method.
 ///
 /// Layers defaults in priority order:
-/// 1. User-provided `#[miniextendr(defaults(param = "..."))]` (wins over generated defaults).
+/// 1. `#[miniextendr(match_arg)]` → ALWAYS a write-time placeholder that the
+///    cdylib resolves to `c("a", "b", ...)` at package-load time. Any user-
+///    supplied `default = "X"` is consumed elsewhere (rotates X to the front
+///    of the choice list at write time) rather than overriding the formal.
 /// 2. `#[miniextendr(choices("a", "b", ...))]` → `c("a", "b", ...)` formal default.
-/// 3. `#[miniextendr(match_arg)]` → a write-time placeholder that the cdylib
-///    resolves to the enum's `MatchArg::CHOICES` at package-load time.
+/// 3. User-provided `#[miniextendr(defaults(param = "..."))]` for non-match_arg
+///    params.
 fn effective_r_defaults(
     method: &ParsedMethod,
     c_ident: &str,
 ) -> std::collections::HashMap<String, String> {
     let mut defaults = method.param_defaults.clone();
-    // choices(...) → formal default of c("a", "b", ...). Priority: lower than user defaults,
-    // higher than match_arg placeholder (which is the fallback for enum-driven validation).
+    // match_arg → unconditionally splice the placeholder (overriding any user
+    // default, which is captured separately for write-time rotation).
+    for (rust_name, attrs) in &method.method_attrs.per_param {
+        if !attrs.match_arg {
+            continue;
+        }
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        defaults.insert(r_name.clone(), match_arg_placeholder(c_ident, &r_name));
+    }
+    // choices(...) → c("a", "b", ...) formal. Lower priority than user
+    // defaults (kept for back-compat on non-match_arg params).
     for (rust_name, attrs) in &method.method_attrs.per_param {
         if let Some(choices) = attrs.choices.as_ref() {
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
@@ -95,16 +107,6 @@ fn effective_r_defaults(
                 format!("c({})", quoted.join(", "))
             });
         }
-    }
-    // match_arg → placeholder replaced at write time.
-    for (rust_name, attrs) in &method.method_attrs.per_param {
-        if !attrs.match_arg {
-            continue;
-        }
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-        defaults
-            .entry(r_name.clone())
-            .or_insert_with(|| match_arg_placeholder(c_ident, &r_name));
     }
     defaults
 }
@@ -159,14 +161,11 @@ impl<'a> MethodContext<'a> {
     /// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`
     /// parameters via `base::match.arg()` before the `.Call()`.
     ///
-    /// Returns an empty vector when the method declares none. Otherwise returns
-    /// one or more lines per annotated parameter:
-    ///
-    /// - `match_arg`: looks up the choice list via a generated C helper
-    ///   (`C_<Type>__<method>__match_arg_choices__<param>`), normalizes factors to
-    ///   character, then calls `base::match.arg(param, .__mx_choices_param[, several.ok = TRUE])`.
-    /// - `choices(...)`: simpler form — no C helper needed because the formal carries
-    ///   the literal `c("a", "b", ...)` default. Emits `param <- match.arg(param[, several.ok = TRUE])`.
+    /// Returns an empty vector when the method declares none. Both `match_arg`
+    /// and `choices(...)` carry their choice list as the formal default
+    /// (`c("a", "b", ...)`), so `base::match.arg(arg)` finds the list by
+    /// itself — no second arg, no C helper lookup. `match_arg` adds a
+    /// factor → character coercion in front of `match.arg`.
     ///
     /// Callers should include these lines in the R wrapper body after parameter
     /// defaulting but before the `.Call()`.
@@ -178,22 +177,15 @@ impl<'a> MethodContext<'a> {
                 continue;
             }
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-            let choices_c_name =
-                crate::match_arg_keys::choices_helper_c_name(&self.c_ident, &r_name);
-            let choices_call =
-                crate::r_wrapper_builder::DotCallBuilder::new(&choices_c_name).build();
-            lines.push(format!(".__mx_choices_{r_name} <- {choices_call}"));
             lines.push(format!(
                 "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
             ));
             if attrs.several_ok {
                 lines.push(format!(
-                    "{r_name} <- base::match.arg({r_name}, .__mx_choices_{r_name}, several.ok = TRUE)"
+                    "{r_name} <- base::match.arg({r_name}, several.ok = TRUE)"
                 ));
             } else {
-                lines.push(format!(
-                    "{r_name} <- base::match.arg({r_name}, .__mx_choices_{r_name})"
-                ));
+                lines.push(format!("{r_name} <- base::match.arg({r_name})"));
             }
         }
 
@@ -201,8 +193,6 @@ impl<'a> MethodContext<'a> {
             if attrs.choices.is_none() {
                 continue;
             }
-            // choices(...) params: formal carries `c("a", "b", ...)` as the default,
-            // so R's match.arg() finds the choice list on its own. No C helper.
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
             if attrs.several_ok {
                 lines.push(format!(
