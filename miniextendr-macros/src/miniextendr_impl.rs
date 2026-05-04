@@ -2607,11 +2607,17 @@ fn generate_method_match_arg_helpers(
             proc_macro2::Span::call_site(),
         );
 
+        let preferred_default = attrs
+            .default
+            .as_deref()
+            .map(crate::match_arg_keys::extract_match_arg_default)
+            .unwrap_or_default();
         let choices_entry_tokens = crate::match_arg_keys::choices_entry_tokens(
             cfg_attrs,
             &entry_ident,
             &placeholder,
             &choices_ty,
+            &preferred_default,
         );
         let param_doc_entry_tokens = crate::match_arg_keys::param_doc_entry_tokens(
             cfg_attrs,

@@ -979,21 +979,28 @@ pub fn miniextendr(
     }
     // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
     let mut merged_defaults = parsed.param_defaults();
-    // Add default for match_arg params that don't already have an explicit default.
-    // Use a placeholder that gets replaced at write time with the actual choices
-    // from the enum's MatchArg::CHOICES (resolved when the cdylib is loaded).
-    let mut match_arg_placeholders: Vec<(String, String)> = Vec::new(); // (placeholder, rust_param)
+    // For match_arg params, always use the choices placeholder as the formal
+    // default — the write-time pass replaces it with `c("a", "b", ...)`.
+    // If the user supplied `default = "\"X\""`, capture X as `preferred_default`
+    // so the write-time pass rotates X to position 1; the user's literal does
+    // NOT become the formal (otherwise R's `match.arg` would only see one
+    // choice).
+    //
+    // Tuple: (placeholder, rust_param, preferred_default_unquoted_or_empty)
+    let mut match_arg_placeholders: Vec<(String, String, String)> = Vec::new();
     // (r_name, rust_param) pairs — used later to build @param doc placeholders
     let mut match_arg_r_names: Vec<(String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_string(match_arg_param);
         match_arg_r_names.push((r_name.clone(), match_arg_param.clone()));
-        if !merged_defaults.contains_key(&r_name) {
-            let placeholder =
-                crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
-            merged_defaults.insert(r_name.clone(), placeholder.clone());
-            match_arg_placeholders.push((placeholder, match_arg_param.clone()));
-        }
+        let preferred = match merged_defaults.get(&r_name) {
+            Some(raw) => crate::match_arg_keys::extract_match_arg_default(raw),
+            None => String::new(),
+        };
+        let placeholder =
+            crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
+        merged_defaults.insert(r_name.clone(), placeholder.clone());
+        match_arg_placeholders.push((placeholder, match_arg_param.clone(), preferred));
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
     for (param_name, choices) in parsed.choices_params() {
@@ -1196,28 +1203,22 @@ pub fn miniextendr(
     } else {
         let mut lines = Vec::new();
         for (r_param, rust_name, _) in &match_arg_param_info {
-            // choices helper call
-            let choices_c_name =
-                crate::match_arg_keys::choices_helper_c_name(&c_ident.to_string(), r_param);
-            let choices_call = r_wrapper_builder::DotCallBuilder::new(&choices_c_name).build();
-            lines.push(format!(
-                ".__mx_choices_{param} <- {choices_call}",
-                param = r_param,
-            ));
             // factor → character normalization
             lines.push(format!(
                 "{param} <- if (is.factor({param})) as.character({param}) else {param}",
                 param = r_param,
             ));
-            // match.arg validation — with several.ok when requested
+            // match.arg pulls the choice list off the formal default (which the
+            // write-time pass has populated as `c("a", "b", ...)`), so no
+            // explicit second arg is needed.
             if parsed.has_several_ok(rust_name) {
                 lines.push(format!(
-                    "{param} <- base::match.arg({param}, .__mx_choices_{param}, several.ok = TRUE)",
+                    "{param} <- base::match.arg({param}, several.ok = TRUE)",
                     param = r_param,
                 ));
             } else {
                 lines.push(format!(
-                    "{param} <- base::match.arg({param}, .__mx_choices_{param})",
+                    "{param} <- base::match.arg({param})",
                     param = r_param,
                 ));
             }
@@ -1410,7 +1411,7 @@ pub fn miniextendr(
 
     let match_arg_choices_entries: Vec<proc_macro2::TokenStream> = match_arg_placeholders
         .iter()
-        .filter_map(|(placeholder, rust_param)| {
+        .filter_map(|(placeholder, rust_param, preferred_default)| {
             let choices_ty = choices_ty_for(rust_param)?;
             let entry_ident = syn::Ident::new(
                 &format!(
@@ -1424,6 +1425,7 @@ pub fn miniextendr(
                 &entry_ident,
                 placeholder,
                 choices_ty,
+                preferred_default,
             ))
         })
         .collect();
