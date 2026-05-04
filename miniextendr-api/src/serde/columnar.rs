@@ -223,10 +223,8 @@ impl ColumnarDataFrame {
             };
 
             let new_ncol = ncol - 1;
-            let new_list = Rf_allocVector(SEXPTYPE::VECSXP, new_ncol);
-            Rf_protect(new_list);
-            let new_names = Rf_allocVector(SEXPTYPE::STRSXP, new_ncol);
-            Rf_protect(new_names);
+            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(new_ncol));
+            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(new_ncol));
 
             let mut j: isize = 0;
             for i in 0..ncol {
@@ -238,12 +236,10 @@ impl ColumnarDataFrame {
                 j += 1;
             }
 
-            new_list.set_names(new_names);
-            copy_df_attrs(self.sexp, new_list);
+            new_list.set_names(*new_names);
+            copy_df_attrs(self.sexp, *new_list);
 
-            Rf_unprotect(2);
-
-            ColumnarDataFrame { sexp: new_list }
+            ColumnarDataFrame { sexp: *new_list }
         }
     }
 
@@ -262,10 +258,8 @@ impl ColumnarDataFrame {
                 .collect();
 
             let new_ncol: isize = indices.len().try_into().expect("ncol overflow");
-            let new_list = Rf_allocVector(SEXPTYPE::VECSXP, new_ncol);
-            Rf_protect(new_list);
-            let new_names = Rf_allocVector(SEXPTYPE::STRSXP, new_ncol);
-            Rf_protect(new_names);
+            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(new_ncol));
+            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(new_ncol));
 
             for (j, &src_idx) in indices.iter().enumerate() {
                 let j_r: isize = j.try_into().expect("index overflow");
@@ -273,12 +267,10 @@ impl ColumnarDataFrame {
                 new_names.set_string_elt(j_r, names_sexp.string_elt(src_idx));
             }
 
-            new_list.set_names(new_names);
-            copy_df_attrs(self.sexp, new_list);
+            new_list.set_names(*new_names);
+            copy_df_attrs(self.sexp, *new_list);
 
-            Rf_unprotect(2);
-
-            ColumnarDataFrame { sexp: new_list }
+            ColumnarDataFrame { sexp: *new_list }
         }
     }
 
@@ -303,8 +295,8 @@ impl ColumnarDataFrame {
             // Not found — append at the end. Reallocate the list and names,
             // copy over existing entries, add the new column.
             let new_ncol = ncol + 1;
-            let new_list = crate::OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, new_ncol));
-            let new_names = crate::OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, new_ncol));
+            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(new_ncol));
+            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(new_ncol));
 
             for i in 0..ncol {
                 new_list.set_vector_elt(i, self.sexp.vector_elt(i));

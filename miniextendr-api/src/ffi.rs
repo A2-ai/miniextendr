@@ -367,6 +367,38 @@ impl SEXP {
 
     // endregion
 
+    // region: Vector allocation
+
+    /// Allocate an R list (VECSXP) of length `n`. Unprotected.
+    ///
+    /// Equivalent to `Rf_allocVector(VECSXP, n)`. Elements are initialised to `R_NilValue`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. The returned SEXP is unprotected —
+    /// wrap it in [`OwnedProtect`](crate::gc_protect::OwnedProtect) before any
+    /// other allocation that could trigger GC.
+    #[inline]
+    pub unsafe fn alloc_list(n: R_xlen_t) -> SEXP {
+        unsafe { Rf_allocVector(SEXPTYPE::VECSXP, n) }
+    }
+
+    /// Allocate an R character vector (STRSXP) of length `n`. Unprotected.
+    ///
+    /// Equivalent to `Rf_allocVector(STRSXP, n)`. Elements are initialised to `R_BlankString`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. The returned SEXP is unprotected —
+    /// wrap it in [`OwnedProtect`](crate::gc_protect::OwnedProtect) before any
+    /// other allocation that could trigger GC.
+    #[inline]
+    pub unsafe fn alloc_strsxp(n: R_xlen_t) -> SEXP {
+        unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n) }
+    }
+
+    // endregion
+
     // region: R global symbols and singletons
 
     /// R's `names` attribute symbol.
