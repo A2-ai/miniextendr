@@ -26,7 +26,11 @@ test_that("R6SensorReading noexported active binding is still accessible at runt
 test_that("noexported active binding is absent from the rendered Rd", {
   # Read the installed .Rd for R6SensorReading and check that `raw_bytes`
   # does not appear in the Active bindings section.
-  rd_db <- tools::Rd_db("miniextendr")
+  rd_db <- tryCatch(
+    tools::Rd_db("miniextendr"),
+    error = function(e) NULL
+  )
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
   sensor_rd_name <- grep("R6SensorReading", names(rd_db), value = TRUE)[1]
   skip_if(is.na(sensor_rd_name), "R6SensorReading.Rd not found — package not documented")
 
@@ -43,7 +47,11 @@ test_that("noexported active binding is absent from the rendered Rd", {
 })
 
 test_that("exported active binding is present in the rendered Rd", {
-  rd_db <- tools::Rd_db("miniextendr")
+  rd_db <- tryCatch(
+    tools::Rd_db("miniextendr"),
+    error = function(e) NULL
+  )
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
   sensor_rd_name <- grep("R6SensorReading", names(rd_db), value = TRUE)[1]
   skip_if(is.na(sensor_rd_name), "R6SensorReading.Rd not found — package not documented")
 

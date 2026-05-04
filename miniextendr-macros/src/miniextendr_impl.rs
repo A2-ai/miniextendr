@@ -1728,6 +1728,23 @@ impl ParsedMethod {
         }
         method_attrs.error_in_r = resolved_error_in_r;
 
+        // Method-level `internal` / `noexport` are currently only honoured by the R6
+        // active-binding doc path (emits `#' @field <name> NULL`, the roxygen2 8.0.0
+        // opt-out). Accepting them silently elsewhere would be a no-op surface: regular
+        // instance methods, static methods, and trait methods don't currently consume
+        // these flags. Reject them at parse time so the failure is loud rather than silent.
+        // Class-level `#[miniextendr(internal)]` / `noexport` continue to work for whole
+        // impl blocks via `parsed_impl.internal` / `parsed_impl.noexport`.
+        if (method_attrs.internal || method_attrs.noexport) && !method_attrs.r6.active {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "method-level `internal` / `noexport` are currently only supported on R6 \
+                 active bindings (use `#[miniextendr(r6(active), noexport)]`). For other \
+                 method positions, set `internal` / `noexport` at the impl-block level \
+                 (`#[miniextendr(s7, internal)] impl Foo { ... }`) instead.",
+            ));
+        }
+
         Ok(method_attrs)
     }
 
