@@ -175,14 +175,14 @@ impl IntoR for std::convert::Infallible {
     }
 }
 
-/// Macro for scalar IntoR via Rf_Scalar* functions.
+/// Macro for scalar IntoR via SEXP::scalar_* methods.
 macro_rules! impl_scalar_into_r {
     ($ty:ty, $checked:ident, $unchecked:ident) => {
         impl IntoR for $ty {
             type Error = std::convert::Infallible;
             #[inline]
             fn try_into_sexp(self) -> Result<crate::ffi::SEXP, Self::Error> {
-                Ok(unsafe { crate::ffi::$checked(self) })
+                Ok(crate::ffi::SEXP::$checked(self))
             }
             #[inline]
             unsafe fn try_into_sexp_unchecked(self) -> Result<crate::ffi::SEXP, Self::Error> {
@@ -190,23 +190,23 @@ macro_rules! impl_scalar_into_r {
             }
             #[inline]
             fn into_sexp(self) -> crate::ffi::SEXP {
-                unsafe { crate::ffi::$checked(self) }
+                crate::ffi::SEXP::$checked(self)
             }
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-                unsafe { crate::ffi::$unchecked(self) }
+                unsafe { crate::ffi::SEXP::$unchecked(self) }
             }
         }
     };
 }
 
-impl_scalar_into_r!(i32, Rf_ScalarInteger, Rf_ScalarInteger_unchecked);
-impl_scalar_into_r!(f64, Rf_ScalarReal, Rf_ScalarReal_unchecked);
-impl_scalar_into_r!(u8, Rf_ScalarRaw, Rf_ScalarRaw_unchecked);
+impl_scalar_into_r!(i32, scalar_integer, scalar_integer_unchecked);
+impl_scalar_into_r!(f64, scalar_real, scalar_real_unchecked);
+impl_scalar_into_r!(u8, scalar_raw, scalar_raw_unchecked);
 impl_scalar_into_r!(
     crate::ffi::Rcomplex,
-    Rf_ScalarComplex,
-    Rf_ScalarComplex_unchecked
+    scalar_complex,
+    scalar_complex_unchecked
 );
 
 impl IntoR for Option<crate::ffi::Rcomplex> {
@@ -234,7 +234,7 @@ impl IntoR for Option<crate::ffi::Rcomplex> {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
             None => unsafe {
-                crate::ffi::Rf_ScalarComplex_unchecked(crate::ffi::Rcomplex {
+                crate::ffi::SEXP::scalar_complex_unchecked(crate::ffi::Rcomplex {
                     r: NA_REAL,
                     i: NA_REAL,
                 })

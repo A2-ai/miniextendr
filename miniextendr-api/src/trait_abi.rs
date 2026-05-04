@@ -137,6 +137,11 @@ pub mod conv;
 // Re-export commonly used items
 pub use conv::{check_arity, extract_arg, from_sexp, nil, rf_error, to_sexp, try_from_sexp};
 
+// Re-export for use in macro-generated View method wrappers (Approach 1, issue #345).
+// The View method wrapper calls this immediately after the vtable call to re-panic
+// with the reconstructed RCondition if the shim returned a tagged error SEXP.
+pub use crate::condition::repanic_if_rust_error;
+
 use crate::abi::mx_tag;
 use crate::ffi::SEXP;
 use std::os::raw::c_void;

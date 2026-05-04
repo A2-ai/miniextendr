@@ -30,6 +30,12 @@ pub trait Counter {
 
     /// Add a specific value to the counter.
     fn add(&mut self, n: i32);
+
+    /// Panic with a plain message — used by spike tests to verify rust_error class.
+    fn panic_plain(&self);
+
+    /// Panic with a custom class via error!() — used to verify user-class layering.
+    fn error_with_class(&self, class_name: String);
 }
 
 /// A trait for types that can be reset to their default state.

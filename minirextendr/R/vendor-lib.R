@@ -184,7 +184,7 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
       "      fi",
       '      rm -rf "$_tmpdir"',
       "    else",
-      '      echo "configure: source install — $_lib_crate resolved via monorepo path or git URL"',
+      '      echo "configure: source install -- $_lib_crate resolved via monorepo path or git URL"',
       "    fi",
       "  fi",
       "],",

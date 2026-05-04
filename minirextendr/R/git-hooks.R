@@ -59,14 +59,14 @@ use_miniextendr_git_hooks <- function(path = ".", hooks = miniextendr_hook_names
       has_miniextendr <- any(grepl(miniextendr_hook_marker, existing))
 
       if (has_miniextendr && !force) {
-        cli::cli_alert_info("Hook {.val {hook_name}} already has miniextendr section — skipping. Use {.code force = TRUE} to update.")
+        cli::cli_alert_info("Hook {.val {hook_name}} already has miniextendr section -- skipping. Use {.code force = TRUE} to update.")
         next
       }
 
       if (has_miniextendr && force) {
         existing <- strip_miniextendr_section(existing)
         if (length(existing) == 0) {
-          # Standalone install (no banner, entire file was ours) — overwrite
+          # Standalone install (no banner, entire file was ours) -- overwrite
           cli::cli_alert_info("Replacing {.val {hook_name}} hook.")
           writeLines(hook_content, dest)
           Sys.chmod(dest, mode = "0755")
@@ -75,7 +75,7 @@ use_miniextendr_git_hooks <- function(path = ".", hooks = miniextendr_hook_names
         }
         cli::cli_alert_info("Replacing miniextendr section in {.val {hook_name}} hook.")
       } else {
-        cli::cli_alert_info("Existing {.val {hook_name}} hook found — appending miniextendr checks.")
+        cli::cli_alert_info("Existing {.val {hook_name}} hook found -- appending miniextendr checks.")
       }
 
       # Remove shebang from our hook (the existing file already has one)
@@ -84,14 +84,14 @@ use_miniextendr_git_hooks <- function(path = ".", hooks = miniextendr_hook_names
       combined <- c(
         existing,
         "",
-        "# ── miniextendr hooks (added by minirextendr::use_miniextendr_git_hooks) ──",
+        "# -- miniextendr hooks (added by minirextendr::use_miniextendr_git_hooks) --",
         hook_content
       )
       writeLines(combined, dest)
       Sys.chmod(dest, mode = "0755")
       changed <- TRUE
     } else {
-      # No existing hook — install ours directly
+      # No existing hook -- install ours directly
       writeLines(hook_content, dest)
       Sys.chmod(dest, mode = "0755")
       cli::cli_alert_success("Installed {.val {hook_name}} hook.")
@@ -142,7 +142,7 @@ has_miniextendr_git_hooks <- function(path = ".") {
 strip_miniextendr_section <- function(lines) {
   banner_idx <- grep("miniextendr hooks (added by", lines, fixed = TRUE)
   if (length(banner_idx) == 0) {
-    # No banner — this was a standalone install (entire file is ours)
+    # No banner -- this was a standalone install (entire file is ours)
     return(character(0))
   }
   # Keep everything before the banner (drop trailing blank lines)

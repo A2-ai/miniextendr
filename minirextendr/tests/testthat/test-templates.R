@@ -37,7 +37,7 @@ generate_r_wrappers <- function(pkg_path) {
   cdylib_path <- file.path(rust_dir, "target", "debug",
     paste0("lib", crate_name, ".", cdylib_ext))
 
-  pkg_name <- desc::desc(file.path(pkg_path, "DESCRIPTION"))$get_field("Package")
+  pkg_name <- read.dcf(file.path(pkg_path, "DESCRIPTION"))[1, "Package"]
   wrapper_path <- file.path(pkg_path, "R", paste0(pkg_name, "-wrappers.R"))
 
   lib <- dyn.load(cdylib_path)
@@ -82,8 +82,11 @@ skip_e2e <- function() {
 test_that("templates patch is in sync with rpkg sources", {
   skip_if_not(nzchar(Sys.which("just")), "just not available")
 
-  pkg_path <- tryCatch(rprojroot::find_package_root_file(), error = function(e) NULL)
-  skip_if(is.null(pkg_path), "Cannot find package root")
+  pkg_path <- normalizePath(
+    file.path(testthat::test_path(), "..", ".."),
+    mustWork = FALSE
+  )
+  skip_if(!dir.exists(pkg_path), "Cannot find package root")
 
   repo_root <- dirname(pkg_path)
   skip_if(!file.exists(file.path(repo_root, "justfile")), "Not in miniextendr monorepo")
@@ -178,11 +181,11 @@ local({
   test_that("monorepo rpkg DESCRIPTION has correct miniextendr config", {
     tmp <- get_fixture()
 
-    desc <- desc::desc(file.path(tmp, "testpkg", "DESCRIPTION"))
-    expect_equal(desc$get_field("Config/build/bootstrap"), "TRUE")
-    expect_equal(desc$get_field("Config/build/never-clean"), "true")
-    expect_equal(desc$get_field("Config/build/extra-sources"), "src/rust/Cargo.lock")
-    expect_true(grepl("Rust", desc$get_field("SystemRequirements")))
+    dcf <- read.dcf(file.path(tmp, "testpkg", "DESCRIPTION"))
+    expect_equal(unname(dcf[1, "Config/build/bootstrap"]), "TRUE")
+    expect_equal(unname(dcf[1, "Config/build/never-clean"]), "true")
+    expect_equal(unname(dcf[1, "Config/build/extra-sources"]), "src/rust/Cargo.lock")
+    expect_true(grepl("Rust", dcf[1, "SystemRequirements"]))
   })
 
   test_that("monorepo can run autoconf and configure", {
@@ -301,7 +304,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
     devtools::document(pkg = pkg_path)
   })
 
-  pkg_name <- desc::desc(file.path(pkg_path, "DESCRIPTION"))$get_field("Package")
+  pkg_name <- read.dcf(file.path(pkg_path, "DESCRIPTION"))[1, "Package"]
   lib_path <- install_to_templib(pkg_path, tmp)
   generate_r_wrappers(pkg_path)
   lib_path <- install_to_templib(pkg_path, tmp)
@@ -467,7 +470,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     miniextendr_configure(path = rpkg_path)
   })
 
-  pkg_name <- desc::desc(file.path(rpkg_path, "DESCRIPTION"))$get_field("Package")
+  pkg_name <- read.dcf(file.path(rpkg_path, "DESCRIPTION"))[1, "Package"]
   lib_path <- install_to_templib(rpkg_path, tmp)
   generate_r_wrappers(rpkg_path)
   lib_path <- install_to_templib(rpkg_path, tmp)

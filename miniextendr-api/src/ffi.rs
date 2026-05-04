@@ -299,6 +299,72 @@ impl SEXP {
         Self::scalar_string(Self::charsxp(s))
     }
 
+    // Unchecked scalar constructors — skip the `with_r_thread` check.
+    // Use only inside ALTREP callbacks, `with_r_unwind_protect`, or `with_r_thread` blocks
+    // where the R-thread invariant is already established (see `#[r_ffi_checked]` docs).
+
+    /// Create a length-1 integer vector (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_integer_unchecked(x: i32) -> SEXP {
+        unsafe { Rf_ScalarInteger_unchecked(x) }
+    }
+
+    /// Create a length-1 real vector (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_real_unchecked(x: f64) -> SEXP {
+        unsafe { Rf_ScalarReal_unchecked(x) }
+    }
+
+    /// Create a length-1 logical vector from raw i32 (unchecked — no thread routing).
+    ///
+    /// Accepts 0 (FALSE), 1 (TRUE), or `NA_LOGICAL` (`i32::MIN`) for NA.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_logical_raw_unchecked(x: i32) -> SEXP {
+        unsafe { Rf_ScalarLogical_unchecked(x) }
+    }
+
+    /// Create a length-1 raw vector (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_raw_unchecked(x: u8) -> SEXP {
+        unsafe { Rf_ScalarRaw_unchecked(x) }
+    }
+
+    /// Create a length-1 complex vector (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_complex_unchecked(x: Rcomplex) -> SEXP {
+        unsafe { Rf_ScalarComplex_unchecked(x) }
+    }
+
+    /// Create a length-1 character vector from a CHARSXP (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn scalar_string_unchecked(charsxp: SEXP) -> SEXP {
+        unsafe { Rf_ScalarString_unchecked(charsxp) }
+    }
+
     // endregion
 
     // region: Vector allocation
@@ -381,6 +447,87 @@ impl SEXP {
     #[inline]
     pub fn missing_arg() -> SEXP {
         unsafe { R_MissingArg }
+    }
+
+    // endregion
+
+    // region: ALTREP data slot access
+
+    /// Get the raw SEXP in the ALTREP data1 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn altrep_data1_raw(self) -> SEXP {
+        unsafe { R_altrep_data1(self) }
+    }
+
+    /// Get the raw SEXP in the ALTREP data1 slot (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn altrep_data1_raw_unchecked(self) -> SEXP {
+        unsafe { R_altrep_data1_unchecked(self) }
+    }
+
+    /// Set the ALTREP data1 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn set_altrep_data1(self, v: SEXP) {
+        unsafe { R_set_altrep_data1(self, v) }
+    }
+
+    /// Get the raw SEXP in the ALTREP data2 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn altrep_data2_raw(self) -> SEXP {
+        unsafe { R_altrep_data2(self) }
+    }
+
+    /// Get the raw SEXP in the ALTREP data2 slot (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn altrep_data2_raw_unchecked(self) -> SEXP {
+        unsafe { R_altrep_data2_unchecked(self) }
+    }
+
+    /// Set the ALTREP data2 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn set_altrep_data2(self, v: SEXP) {
+        unsafe { R_set_altrep_data2(self, v) }
+    }
+
+    /// Set the ALTREP data2 slot (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn set_altrep_data2_unchecked(self, v: SEXP) {
+        unsafe { R_set_altrep_data2_unchecked(self, v) }
     }
 
     // endregion
@@ -1971,6 +2118,7 @@ unsafe extern "C-unwind" {
     /// Encapsulated by SEXP::missing_arg()
     static R_MissingArg: SEXP;
 
+    // Issue #112 cat. 10: kept pub(crate) — single-caller utilities; wrapping adds no value
     // Rinterface.h
     pub(crate) fn R_FlushConsole();
 
@@ -2000,6 +2148,7 @@ unsafe extern "C-unwind" {
         len: ::std::os::raw::c_int,
         ce: cetype_t,
     ) -> SEXP;
+    // Issue #112 cat. 1: kept pub(crate) — ~60 callers; mechanical migration tracked in follow-up issue
     #[doc(alias = "xlength")]
     #[doc(alias = "XLENGTH")]
     pub(crate) fn Rf_xlength(x: SEXP) -> R_xlen_t;
@@ -2014,6 +2163,7 @@ unsafe extern "C-unwind" {
     #[doc(alias = "charIsLatin1")]
     fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
+    // Issue #112 cat. 3: kept pub(crate) — only called from unwind_protect.rs; users go through with_r_unwind_protect
     pub(crate) fn R_MakeUnwindCont() -> SEXP;
     pub(crate) fn R_ContinueUnwind(cont: SEXP) -> !;
     pub(crate) fn R_UnwindProtect(
@@ -2043,6 +2193,7 @@ unsafe extern "C-unwind" {
     ) -> SEXP;
 
     // Rinternals.h
+    // Issue #112 cat. 2: kept pub(crate) — ExternalPtr<T> encapsulates these for users; raw access needed within externalptr.rs
     #[doc = " External pointer interface"]
     pub(crate) fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
     pub fn R_ExternalPtrAddr(s: SEXP) -> *mut ::std::os::raw::c_void;
@@ -2061,6 +2212,7 @@ unsafe extern "C-unwind" {
     pub(crate) fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
 
     // R_ext/Rdynload.h - C-callable interface
+    // Issue #112 cat. 10: kept pub(crate) — cross-package ABI helpers used from mx_abi.rs; wrapping adds no value
     /// Register a C-callable function for cross-package access.
     pub(crate) fn R_RegisterCCallable(
         package: *const ::std::os::raw::c_char,
@@ -2177,6 +2329,7 @@ unsafe extern "C-unwind" {
     ) -> SEXP;
 
     // Pairlist allocation
+    // Issue #112 cat. 10: kept pub(crate) — 2 callers in expression.rs/dots.rs; wrapping adds no value
     #[doc(alias = "allocList")]
     pub(crate) fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocLang")]
@@ -2194,19 +2347,19 @@ unsafe extern "C-unwind" {
     #[doc(alias = "setAttrib")]
     fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
-    // Rinternals.h
+    // Rinternals.h — scalar constructors; encapsulated by SEXP::scalar_*() / scalar_*_unchecked()
     #[doc(alias = "ScalarComplex")]
-    pub(crate) fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
+    fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
     #[doc(alias = "ScalarInteger")]
-    pub(crate) fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
+    fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "ScalarLogical")]
-    pub(crate) fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
+    fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "ScalarRaw")]
-    pub(crate) fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
+    fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
     #[doc(alias = "ScalarReal")]
-    pub(crate) fn Rf_ScalarReal(x: f64) -> SEXP;
+    fn Rf_ScalarReal(x: f64) -> SEXP;
     #[doc(alias = "ScalarString")]
-    pub(crate) fn Rf_ScalarString(x: SEXP) -> SEXP;
+    fn Rf_ScalarString(x: SEXP) -> SEXP;
 
     // Rinternals.h
     /// Non-API function - use DATAPTR_RO or DATAPTR_OR_NULL instead.
@@ -2332,13 +2485,14 @@ unsafe extern "C-unwind" {
 
     // endregion
 
-    // region: ALTREP support
+    // region: ALTREP support — encapsulated by AltrepSexpExt trait methods
 
+    // Issue #112 cat. 6: pub(crate) — no AltrepSexpExt method yet; available for future callers
     pub(crate) fn ALTREP_CLASS(x: SEXP) -> SEXP;
-    pub(crate) fn R_altrep_data1(x: SEXP) -> SEXP;
-    pub(crate) fn R_altrep_data2(x: SEXP) -> SEXP;
-    pub(crate) fn R_set_altrep_data1(x: SEXP, v: SEXP);
-    pub(crate) fn R_set_altrep_data2(x: SEXP, v: SEXP);
+    fn R_altrep_data1(x: SEXP) -> SEXP;
+    fn R_altrep_data2(x: SEXP) -> SEXP;
+    fn R_set_altrep_data1(x: SEXP, v: SEXP);
+    fn R_set_altrep_data2(x: SEXP, v: SEXP);
 
     /// Check if a SEXP is an ALTREP object (returns non-zero if true).
     ///
@@ -2348,6 +2502,8 @@ unsafe extern "C-unwind" {
     // endregion
 
     // region: Vector data accessors (mutable pointers)
+    // Issue #112 cat. 5: kept pub(crate) — raw pointer access needed in RNativeType impls and scattered callers;
+    //   partial migration to SexpExt::as_mut_slice() tracked in follow-up issue
 
     /// Get mutable pointer to logical vector data.
     ///
@@ -2568,6 +2724,7 @@ unsafe extern "C-unwind" {
     /// Returns the modified vector.
     #[doc(alias = "dimnamesgets")]
     fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
+    // Issue #112 cat. 10: kept pub(crate) — 2 callers each in factor.rs/matrix helpers; wrapping adds no value
     #[doc(alias = "GetRowNames")]
     pub(crate) fn Rf_GetRowNames(dimnames: SEXP) -> SEXP;
     #[doc(alias = "GetColNames")]
@@ -2592,6 +2749,7 @@ unsafe extern "C-unwind" {
     #[doc(alias = "FindNamespace")]
     fn R_FindNamespace(info: SEXP) -> SEXP;
 
+    // Issue #112 cat. 9: kept pub(crate) — R_GetCurrentEnv used from s4_helpers.rs; R_tryEvalSilent from expression.rs
     /// Return the current execution environment (innermost closure on call
     /// stack, or `R_GlobalEnv` if none).
     #[doc(alias = "GetCurrentEnv")]
@@ -2630,6 +2788,7 @@ unsafe extern "C-unwind" {
 //    implementation without a compatibility layer."
 //
 // Use with caution and always check R_CONNECTIONS_VERSION.
+// Issue #112 cat. 8: kept pub(crate) — feature-gated behind `connections`; behind Connection type for users
 #[r_ffi_checked]
 #[cfg(feature = "connections")]
 unsafe extern "C-unwind" {
@@ -2798,6 +2957,7 @@ unsafe impl Send for R_CallMethodDef {}
 pub type R_ExternalMethodDef = R_CallMethodDef;
 
 // Checked routine registration API declarations.
+// Issue #112 cat. 7: kept pub(crate) — only called from init.rs during package init; not worth a wrapper type
 #[allow(missing_docs)]
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
@@ -2892,6 +3052,7 @@ pub mod legacy_c {
 pub mod nonapi_encoding {
     use super::r_ffi_checked;
 
+    // Issue #112 cat. 10: kept pub(crate) — nonapi encoding helpers; single-caller utilities in encoding.rs
     #[r_ffi_checked]
     #[allow(clashing_extern_declarations)]
     unsafe extern "C-unwind" {
@@ -2969,6 +3130,7 @@ pub mod nonapi_stack {
         }
     }
 
+    // Issue #112 cat. 10: kept pub(crate) — nonapi stack helpers; used from thread.rs; wrapping adds no value
     /// Read `R_CStackLimit`.
     #[inline]
     pub(crate) fn get_r_cstack_limit() -> usize {
@@ -3691,6 +3853,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `s`: C string
     /// - `encoding`: Character encoding (CE_UTF8, CE_LATIN1, etc.)
+    // Issue #112 cat. 10: kept pub(crate) — 2 callers in encoding.rs; wrapping adds no value
     #[doc(alias = "mkCharCE")]
     pub(crate) fn Rf_mkCharCE(s: *const ::std::os::raw::c_char, encoding: cetype_t) -> SEXP;
 
@@ -3736,6 +3899,7 @@ unsafe extern "C-unwind" {
     /// - `enclos`: Enclosing environment
     /// - `hash`: Whether to use a hash table
     /// - `size`: Initial hash table size (if hash is TRUE)
+    // Issue #112 cat. 10: kept pub(crate) — 2 callers in environment.rs; wrapping adds no value
     pub(crate) fn R_NewEnv(enclos: SEXP, hash: Rboolean, size: ::std::os::raw::c_int) -> SEXP;
 
     /// Check if a variable exists in an environment frame.

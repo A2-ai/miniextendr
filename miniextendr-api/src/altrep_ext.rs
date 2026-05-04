@@ -31,13 +31,45 @@ pub trait AltrepSexpExt {
     /// - The caller must ensure no other references to the data exist
     unsafe fn altrep_data1_mut_ref<T: TypedExternal>(&self) -> Option<&'static mut T>;
 
-    /// Get the ALTREP data2 slot.
+    /// Get the raw SEXP in the ALTREP data1 slot.
     ///
     /// # Safety
     ///
     /// - `self` must be a valid ALTREP SEXP
     /// - Must be called from the R main thread
-    unsafe fn altrep_data2(&self) -> SEXP;
+    unsafe fn altrep_data1_raw(&self) -> SEXP;
+
+    /// Get the raw SEXP in the ALTREP data1 slot (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    unsafe fn altrep_data1_raw_unchecked(&self) -> SEXP;
+
+    /// Set the ALTREP data1 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    unsafe fn set_altrep_data1(&self, data1: SEXP);
+
+    /// Get the raw SEXP in the ALTREP data2 slot.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    unsafe fn altrep_data2_raw(&self) -> SEXP;
+
+    /// Get the ALTREP data2 slot (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    unsafe fn altrep_data2_raw_unchecked(&self) -> SEXP;
 
     /// Set the ALTREP data2 slot.
     ///
@@ -46,6 +78,14 @@ pub trait AltrepSexpExt {
     /// - `self` must be a valid ALTREP SEXP
     /// - Must be called from the R main thread
     unsafe fn set_altrep_data2(&self, data2: SEXP);
+
+    /// Set the ALTREP data2 slot (unchecked — no thread routing).
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be a valid ALTREP SEXP
+    /// - Must be called from the R main thread
+    unsafe fn set_altrep_data2_unchecked(&self, data2: SEXP);
 }
 
 impl AltrepSexpExt for SEXP {
@@ -60,12 +100,37 @@ impl AltrepSexpExt for SEXP {
     }
 
     #[inline]
-    unsafe fn altrep_data2(&self) -> SEXP {
-        unsafe { crate::ffi::R_altrep_data2(*self) }
+    unsafe fn altrep_data1_raw(&self) -> SEXP {
+        unsafe { SEXP::altrep_data1_raw(*self) }
+    }
+
+    #[inline]
+    unsafe fn altrep_data1_raw_unchecked(&self) -> SEXP {
+        unsafe { SEXP::altrep_data1_raw_unchecked(*self) }
+    }
+
+    #[inline]
+    unsafe fn set_altrep_data1(&self, data1: SEXP) {
+        unsafe { SEXP::set_altrep_data1(*self, data1) }
+    }
+
+    #[inline]
+    unsafe fn altrep_data2_raw(&self) -> SEXP {
+        unsafe { SEXP::altrep_data2_raw(*self) }
+    }
+
+    #[inline]
+    unsafe fn altrep_data2_raw_unchecked(&self) -> SEXP {
+        unsafe { SEXP::altrep_data2_raw_unchecked(*self) }
     }
 
     #[inline]
     unsafe fn set_altrep_data2(&self, data2: SEXP) {
-        unsafe { crate::ffi::R_set_altrep_data2(*self, data2) }
+        unsafe { SEXP::set_altrep_data2(*self, data2) }
+    }
+
+    #[inline]
+    unsafe fn set_altrep_data2_unchecked(&self, data2: SEXP) {
+        unsafe { SEXP::set_altrep_data2_unchecked(*self, data2) }
     }
 }
