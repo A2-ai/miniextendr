@@ -1,0 +1,5 @@
+error: `deep_clone` is only valid for R6 class systems
+  --> tests/ui/impl_r6_deep_clone_wrong_system_s7.rs:11:22
+   |
+11 |     #[miniextendr(s7(deep_clone))]
+   |                      ^^^^^^^^^^

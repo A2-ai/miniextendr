@@ -1142,25 +1142,25 @@ impl ParsedMethod {
             if attrs.r6.active {
                 return Err(syn::Error::new(
                     attrs.r6.active_span.unwrap_or(span),
-                    "#[r6(active)] is only valid for R6 class systems",
+                    "`active` is only valid for R6 class systems",
                 ));
             }
             if attrs.r6.private {
                 return Err(syn::Error::new(
                     attrs.r6.private_span.unwrap_or(span),
-                    "#[r6(private)] is only valid for R6 class systems",
+                    "`private` is only valid for R6 class systems",
                 ));
             }
             if attrs.r6.finalize {
                 return Err(syn::Error::new(
                     attrs.r6.finalize_span.unwrap_or(span),
-                    "#[r6(finalize)] is only valid for R6 class systems",
+                    "`finalize` is only valid for R6 class systems",
                 ));
             }
             if attrs.r6.deep_clone {
                 return Err(syn::Error::new(
                     attrs.r6.deep_clone_span.unwrap_or(span),
-                    "#[r6(deep_clone)] is only valid for R6 class systems",
+                    "`deep_clone` is only valid for R6 class systems",
                 ));
             }
         }
@@ -1209,6 +1209,7 @@ impl ParsedMethod {
     /// - `#[miniextendr(s7(ignore, constructor, generic = "..."))]`
     /// - etc.
     fn parse_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<MethodAttrs> {
+        use syn::spanned::Spanned;
         let mut method_attrs = MethodAttrs::default();
         // Use Option<bool> for fields that support feature defaults.
         let mut worker: Option<bool> = None;
@@ -1239,15 +1240,12 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("constructor") {
                             method_attrs.constructor = true;
                         } else if inner.path.is_ident("finalize") {
-                            use syn::spanned::Spanned;
                             method_attrs.r6.finalize = true;
                             method_attrs.r6.finalize_span = Some(inner.path.span());
                         } else if inner.path.is_ident("private") {
-                            use syn::spanned::Spanned;
                             method_attrs.r6.private = true;
                             method_attrs.r6.private_span = Some(inner.path.span());
                         } else if inner.path.is_ident("active") {
-                            use syn::spanned::Spanned;
                             method_attrs.r6.active = true;
                             method_attrs.r6.active_span = Some(inner.path.span());
                         } else if inner.path.is_ident("setter") {
@@ -1330,7 +1328,6 @@ impl ParsedMethod {
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7.convert_to = Some(value.value());
                         } else if inner.path.is_ident("deep_clone") {
-                            use syn::spanned::Spanned;
                             method_attrs.r6.deep_clone = true;
                             method_attrs.r6.deep_clone_span = Some(inner.path.span());
                         } else if inner.path.is_ident("r_name") {
@@ -1398,7 +1395,6 @@ impl ParsedMethod {
                     })?;
                 } else if meta.path.is_ident("defaults") {
                     // Capture span for error reporting
-                    use syn::spanned::Spanned;
                     method_attrs.defaults_span = Some(meta.path.span());
                     // Parse defaults(param = "value", param2 = "value2", ...)
                     meta.parse_nested_meta(|inner| {
@@ -1416,7 +1412,6 @@ impl ParsedMethod {
                     })?;
                 } else if meta.path.is_ident("match_arg") {
                     // `match_arg(param1, param2, ...)` — scalar match_arg params.
-                    use syn::spanned::Spanned;
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
                         let name = inner
@@ -1434,7 +1429,6 @@ impl ParsedMethod {
                 } else if meta.path.is_ident("match_arg_several_ok") {
                     // `match_arg_several_ok(param1, param2, ...)` — match_arg + several_ok,
                     // for Vec/slice/array/Box<[_]>-typed parameters.
-                    use syn::spanned::Spanned;
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
                         let name = inner
@@ -1449,7 +1443,6 @@ impl ParsedMethod {
                     })?;
                 } else if meta.path.is_ident("choices") {
                     // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
-                    use syn::spanned::Spanned;
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
                         let name = inner
@@ -1465,7 +1458,6 @@ impl ParsedMethod {
                     })?;
                 } else if meta.path.is_ident("choices_several_ok") {
                     // `choices_several_ok(param = "a, b, c")` — choices + several_ok.
-                    use syn::spanned::Spanned;
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
                         let name = inner
@@ -1515,7 +1507,6 @@ impl ParsedMethod {
                     error_in_r = Some(false);
                 } else if meta.path.is_ident("as") {
                     // Parse as = "data.frame", as = "list", etc.
-                    use syn::spanned::Spanned;
                     method_attrs.as_coercion_span = Some(meta.path.span());
                     let _: syn::Token![=] = meta.input.parse()?;
                     let value: syn::LitStr = meta.input.parse()?;

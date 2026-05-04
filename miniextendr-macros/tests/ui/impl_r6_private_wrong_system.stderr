@@ -1,4 +1,4 @@
-error: #[r6(private)] is only valid for R6 class systems
+error: `private` is only valid for R6 class systems
   --> tests/ui/impl_r6_private_wrong_system.rs:10:23
    |
 10 |     #[miniextendr(env(private))]

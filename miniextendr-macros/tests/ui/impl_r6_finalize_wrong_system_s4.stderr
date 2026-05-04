@@ -1,0 +1,5 @@
+error: `finalize` is only valid for R6 class systems
+  --> tests/ui/impl_r6_finalize_wrong_system_s4.rs:11:22
+   |
+11 |     #[miniextendr(s4(finalize))]
+   |                      ^^^^^^^^
