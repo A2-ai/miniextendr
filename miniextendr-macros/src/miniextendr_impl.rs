@@ -651,6 +651,14 @@ pub struct MethodAttrs {
     /// Short form: `#[miniextendr(r_on_exit = "close(con)")]`
     /// Long form: `#[miniextendr(r_on_exit(expr = "close(con)", add = false))]`
     pub r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
+    /// Mark this method as internal: adds `@keywords internal`, suppresses export.
+    ///
+    /// For R6 active bindings this emits `#' @field name NULL` (roxygen2 8.0.0 opt-out).
+    pub internal: bool,
+    /// Suppress export for this method without adding `@keywords internal`.
+    ///
+    /// For R6 active bindings this emits `#' @field name NULL` (roxygen2 8.0.0 opt-out).
+    pub noexport: bool,
 }
 
 /// Fully parsed `#[miniextendr]` impl block, ready for code generation.
@@ -1684,9 +1692,13 @@ impl ParsedMethod {
                         })?;
                         method_attrs.r_on_exit = Some(crate::miniextendr_fn::ROnExit { expr, add, after });
                     }
+                } else if meta.path.is_ident("noexport") {
+                    method_attrs.noexport = true;
+                } else if meta.path.is_ident("internal") {
+                    method_attrs.internal = true;
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit, noexport, internal"
                     ));
                 }
                 Ok(())
