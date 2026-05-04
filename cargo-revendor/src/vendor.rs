@@ -799,23 +799,32 @@ pub fn generate_cargo_config(
     Ok(config)
 }
 
-/// Strip checksums from Cargo.lock and copy to vendor dir.
+/// Filter out `checksum = "..."` lines from a `Cargo.lock`'s contents.
 ///
-/// Vendored crates have empty checksums, so the lockfile's `checksum = "..."`
-/// lines need to be removed for `--locked` builds to work.
+/// Vendored crates carry empty checksums, so the lockfile's checksum lines
+/// need to be removed for `--locked` builds to work. Preserves the trailing
+/// newline if the source had one.
+fn strip_checksum_lines(content: &str) -> String {
+    let mut stripped: String = content
+        .lines()
+        .filter(|line| !line.starts_with("checksum = "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if content.ends_with('\n') && !stripped.ends_with('\n') {
+        stripped.push('\n');
+    }
+    stripped
+}
+
+/// Strip checksums from Cargo.lock and copy to vendor dir.
 pub fn strip_lock_checksums(lockfile: &Path, vendor_dir: &Path, v: crate::Verbosity) -> Result<()> {
     if !lockfile.exists() {
         return Ok(());
     }
 
     let content = std::fs::read_to_string(lockfile)?;
-    let stripped: String = content
-        .lines()
-        .filter(|line| !line.starts_with("checksum = "))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let stripped = strip_checksum_lines(&content);
 
-    // Write stripped lockfile to vendor dir
     let dest = vendor_dir.join("Cargo.lock");
     std::fs::write(&dest, &stripped)?;
 
@@ -1206,17 +1215,7 @@ pub fn regenerate_lockfile(
 pub fn strip_lockfile_inplace(lockfile: &Path, v: u8) -> Result<()> {
     let content = std::fs::read_to_string(lockfile)
         .with_context(|| format!("failed to read {}", lockfile.display()))?;
-    let stripped: String = content
-        .lines()
-        .filter(|line| !line.starts_with("checksum = "))
-        .collect::<Vec<_>>()
-        .join("\n");
-    // Preserve trailing newline if original had one
-    let stripped = if content.ends_with('\n') {
-        format!("{}\n", stripped)
-    } else {
-        stripped
-    };
+    let stripped = strip_checksum_lines(&content);
     std::fs::write(lockfile, &stripped)
         .with_context(|| format!("failed to write {}", lockfile.display()))?;
     if v >= 2 {

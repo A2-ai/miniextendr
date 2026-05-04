@@ -26,7 +26,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields};
 
-use crate::naming;
+use crate::naming::apply_rename_all;
 
 /// Parsed `#[match_arg(...)]` attributes from an enum or variant.
 #[derive(Default)]
@@ -75,25 +75,6 @@ fn parse_match_arg_attrs(attrs: &[syn::Attribute]) -> syn::Result<MatchArgAttrs>
     }
 
     Ok(result)
-}
-
-/// Convert a PascalCase string to kebab-case.
-fn to_kebab_case(s: &str) -> String {
-    naming::to_snake_case(s).replace('_', "-")
-}
-
-/// Apply a `rename_all` transformation to a variant name.
-///
-/// Supports `"snake_case"`, `"kebab-case"`, `"lower"`, `"upper"`.
-/// Returns the name unchanged if `rename_all` is `None`.
-fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
-    match rename_all {
-        Some("snake_case") => naming::to_snake_case(name),
-        Some("kebab-case") => to_kebab_case(name),
-        Some("lower") => name.to_lowercase(),
-        Some("upper") => name.to_uppercase(),
-        _ => name.to_string(),
-    }
 }
 
 /// Main entry point for `#[derive(MatchArg)]`.
