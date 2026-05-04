@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stub configure script — present so R CMD check sees a configure file
+# (as a real miniextendr package would have), but intentionally minimal.
+# miniextendr_check_static() passes --install=fake which sets
+# use_configure=FALSE in R CMD INSTALL, so this script is never executed.
+echo "configure: this should not run under --install=fake"
+exit 0

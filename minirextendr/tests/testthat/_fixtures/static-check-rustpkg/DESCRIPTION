@@ -1,0 +1,10 @@
+Package: staticcheckrustpkg
+Version: 0.1.0
+Title: Static Check Rust Package Fixture
+Description: Minimal miniextendr package fixture used by test-check.R to
+    verify that miniextendr_check_static() works on packages with Rust
+    scaffolding without triggering cargo or configure.
+Authors@R: person('Test', 'User', email = 'test@example.com', role = c('aut', 'cre'))
+License: MIT + file LICENSE
+Encoding: UTF-8
+SystemRequirements: Cargo (Rust's package manager), rustc
