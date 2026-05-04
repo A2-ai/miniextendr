@@ -1,0 +1,5 @@
+error: `active` is only valid for R6 class systems
+  --> tests/ui/impl_r6_active_wrong_system_s3.rs:11:22
+   |
+11 |     #[miniextendr(s3(active))]
+   |                      ^^^^^^
