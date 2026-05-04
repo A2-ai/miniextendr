@@ -20,6 +20,118 @@ use std::{
     sync::OnceLock,
 };
 
+// region: raise_rust_condition_via_stop — Approach 3 for ALTREP RUnwind path
+
+/// Cached `stop` symbol (permanently interned via `Rf_install`).
+fn stop_sym() -> crate::ffi::SEXP {
+    static CACHE: OnceLock<crate::ffi::SEXP> = OnceLock::new();
+    *CACHE.get_or_init(|| unsafe { crate::ffi::Rf_install(c"stop".as_ptr()) })
+}
+
+/// Raise an R condition with `rust_*` class layering by evaluating
+/// `stop(structure(list(message = msg, call = call), class = c(...)))`.
+///
+/// This is **Approach 3** from the issue-345 plan: the `Rf_eval(stop(...))` pattern
+/// that works in any context where there is no outer R wrapper to inspect a tagged SEXP.
+/// It is the only viable option for ALTREP callbacks, which are invoked directly by
+/// R's runtime (no `.Call` frame, no R wrapper).
+///
+/// The `stop()` call longjmps, so this function never returns — declared `-> !`.
+///
+/// ## Class layering
+///
+/// - If `class` is `Some("my_class")`, the resulting R condition has class:
+///   `c("my_class", "rust_error", "simpleError", "error", "condition")`.
+/// - Without a custom class: `c("rust_error", "simpleError", "error", "condition")`.
+///
+/// ## MXL300 compliance
+///
+/// This function raises an R error via `Rf_eval(stop(...))`, not via direct
+/// `Rf_error`/`Rf_errorcall`. MXL300 does not flag `Rf_eval`.
+///
+/// # Safety
+///
+/// Must be called from R's main thread inside an `R_UnwindProtect` cleanup
+/// or equivalent context where R longjmps are safe. In practice, always called
+/// from `with_r_unwind_protect_sourced` on the ALTREP guard path.
+pub(crate) unsafe fn raise_rust_condition_via_stop(
+    message: &str,
+    class: Option<&str>,
+    call: Option<crate::ffi::SEXP>,
+) -> ! {
+    use crate::ffi::{
+        CE_UTF8, R_BaseEnv, Rf_allocVector, Rf_eval, Rf_lang2, Rf_mkCharCE, Rf_protect, SEXP,
+        SEXPTYPE, SexpExt,
+    };
+
+    unsafe {
+        // Build the class vector: c([custom_class,] "rust_error", "simpleError", "error", "condition")
+        let base_classes: &[&std::ffi::CStr] =
+            &[c"rust_error", c"simpleError", c"error", c"condition"];
+        let class_count = if class.is_some() {
+            base_classes.len() + 1
+        } else {
+            base_classes.len()
+        };
+
+        let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, class_count as isize);
+        Rf_protect(class_vec);
+
+        let mut idx = 0isize;
+        if let Some(custom) = class {
+            let custom_cstr = std::ffi::CString::new(custom)
+                .unwrap_or_else(|_| std::ffi::CString::new("rust_error").unwrap());
+            let custom_charsxp = Rf_mkCharCE(custom_cstr.as_ptr(), CE_UTF8);
+            class_vec.set_string_elt(idx, custom_charsxp);
+            idx += 1;
+        }
+        for base in base_classes {
+            let charsxp = crate::cached_class::permanent_charsxp(base);
+            class_vec.set_string_elt(idx, charsxp);
+            idx += 1;
+        }
+
+        // Build the message SEXP
+        let msg_cstr = std::ffi::CString::new(message)
+            .unwrap_or_else(|_| std::ffi::CString::new("<invalid error message>").unwrap());
+        let msg_charsxp = Rf_mkCharCE(msg_cstr.as_ptr(), CE_UTF8);
+        let msg_sexp = SEXP::scalar_string(msg_charsxp);
+        Rf_protect(msg_sexp);
+
+        let call_sexp = call.unwrap_or(SEXP::nil());
+
+        // Build a 2-element named list: list(message = msg, call = call_sexp)
+        let err_list = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        Rf_protect(err_list);
+        err_list.set_vector_elt(0, msg_sexp);
+        err_list.set_vector_elt(1, call_sexp);
+
+        // Set names: c("message", "call")
+        let names_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        Rf_protect(names_vec);
+        names_vec.set_string_elt(0, crate::cached_class::permanent_charsxp(c"message"));
+        names_vec.set_string_elt(1, crate::cached_class::permanent_charsxp(c"call"));
+        err_list.set_names(names_vec);
+
+        // Set the class attribute directly (no structure() call needed)
+        err_list.set_class(class_vec);
+
+        // Build stop(err_list) as a language object: lang2(stop_sym, err_list)
+        // stop() accepts a condition object directly
+        let stop_call = Rf_lang2(stop_sym(), err_list);
+        Rf_protect(stop_call);
+
+        // Rf_eval(stop_call, R_BaseEnv) longjmps — never returns
+        // The protect stack is cleaned up by R's longjmp unwind
+        Rf_eval(stop_call, R_BaseEnv);
+
+        // Never reached — Rf_eval(stop(...), ...) always longjmps
+        std::hint::unreachable_unchecked()
+    }
+}
+
+// endregion
+
 use crate::ffi::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
 
 /// Global continuation token for R_UnwindProtect.
@@ -236,8 +348,10 @@ where
 /// - ALTREP `RUnwind` guard callbacks
 /// - Explicit `#[miniextendr(no_error_in_r)]` / `unwrap_in_r` opt-out
 ///
-/// In these contexts there is no R wrapper to inspect a tagged SEXP, so panics
-/// must be converted to R errors directly via `Rf_errorcall`.
+/// In these contexts there is no R wrapper to inspect a tagged SEXP. Panics
+/// are routed through `raise_rust_condition_via_stop` so they still receive
+/// `rust_*` class layering (issue #345). Trait-ABI shims use a separate
+/// SEXP-returning variant that re-panics at the View boundary.
 ///
 /// # Arguments
 ///
@@ -266,11 +380,17 @@ where
 /// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
 /// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.
 ///
-/// Also handles [`crate::condition::RCondition`] payloads in non-error_in_r mode
-/// (Option A from the design): `RCondition::Error` routes to `Rf_errorcall` (call
-/// attribution and `rust_*` class layering are lost — known limitation). The other
-/// three variants (`Warning`, `Message`, `Condition`) panic with a diagnostic message
-/// explaining that `error_in_r` mode is required for those signal kinds.
+/// Handles [`crate::condition::RCondition`] payloads:
+///
+/// - `RCondition::Error` — routes through [`raise_rust_condition_via_stop`] which
+///   `Rf_eval`s `stop(structure(..., class = c("rust_error", ...)))`. This gives
+///   full `rust_*` class layering even in ALTREP callback context where there is
+///   no R wrapper to inspect a tagged SEXP (Approach 3 from the issue-345 plan).
+///   Custom `class = "..."` from `error!()` is preserved in the class vector.
+///
+/// - `Warning`, `Message`, `Condition` — convert to a plain R error with a
+///   diagnostic message. `warning!()`/`message!()` from ALTREP context cannot
+///   suspend execution for non-fatal signals; documented limitation.
 pub(crate) fn with_r_unwind_protect_sourced<F, R>(
     f: F,
     call: Option<SEXP>,
@@ -285,33 +405,94 @@ where
             // region: RCondition recognition in non-error_in_r context
             if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
                 match cond {
-                    crate::condition::RCondition::Error { message, .. } => {
-                        // Forward as Rf_errorcall. rust_* class layering is lost because
-                        // there is no R wrapper to inspect the tagged SEXP — this is a
-                        // known limitation of the non-error_in_r path (trait shims, ALTREP
-                        // RUnwind guard). Documented in docs/CONDITIONS.md.
-                        let owned = message.clone();
-                        let box_payload: Box<dyn std::any::Any + Send> = Box::new(owned);
-                        unsafe { panic_payload_to_r_error(box_payload, call, source) }
+                    crate::condition::RCondition::Error { message, class } => {
+                        // Approach 3 (issue-345): raise via Rf_eval(stop(structure(...)))
+                        // so tryCatch(rust_error = h, ...) and tryCatch(my_class = h, ...)
+                        // both match. No R wrapper needed.
+                        crate::panic_telemetry::fire(message, source);
+                        unsafe { raise_rust_condition_via_stop(message, class.as_deref(), call) }
                     }
                     crate::condition::RCondition::Warning { .. }
                     | crate::condition::RCondition::Message { .. }
                     | crate::condition::RCondition::Condition { .. } => {
-                        // warning!/message!/condition! require error_in_r mode (the
-                        // default). This function is used by trait-ABI shims, ALTREP
-                        // RUnwind guard, and explicit no_error_in_r/unwrap_in_r opt-out.
-                        // Convert to a plain panic so the caller sees a diagnostic.
-                        let msg = "warning!/message!/condition! require error_in_r mode (the \
-                                   default); this function opted out via no_error_in_r/\
-                                   unwrap_in_r or is a trait-ABI shim / ALTREP callback";
+                        // warning!/message!/condition! cannot be cleanly raised from ALTREP
+                        // context (no mechanism to suspend execution for non-fatal signals).
+                        // Documented degradation: convert to a plain R error with a
+                        // diagnostic. This is not a regression from before #345.
+                        let msg = "warning!/message!/condition! from ALTREP callback context \
+                                   cannot be raised as non-fatal signals; use error!() instead. \
+                                   This context has no R wrapper to handle signal restart.";
                         let box_payload: Box<dyn std::any::Any + Send> = Box::new(msg);
                         unsafe { panic_payload_to_r_error(box_payload, call, source) }
                     }
                 }
             } else {
-                unsafe { panic_payload_to_r_error(payload, call, source) }
+                // Generic panic — no class layering, plain error string.
+                // Fire telemetry and raise via Approach 3 with rust_error class so
+                // tryCatch(rust_error = h, ...) matches even for plain panics.
+                let msg = panic_payload_to_string(payload.as_ref());
+                crate::panic_telemetry::fire(&msg, source);
+                unsafe { raise_rust_condition_via_stop(&msg, None, call) }
             }
             // endregion
+        }
+    }
+}
+
+/// Like [`with_r_unwind_protect`], but returns a tagged error SEXP on Rust panics
+/// instead of raising an R error via `Rf_errorcall`.
+///
+/// **For trait-ABI vtable shims.** Same behaviour as
+/// [`with_r_unwind_protect_error_in_r`] except it is intended for use in shim
+/// functions that have no R wrapper of their own. The tagged SEXP is returned
+/// to the View method wrapper, which calls
+/// [`crate::condition::repanic_if_rust_error`] to re-panic with the
+/// reconstructed [`crate::condition::RCondition`]. The outer
+/// `with_r_unwind_protect_error_in_r` in the consumer's C entry point then
+/// catches the re-panic and builds the final tagged SEXP for the consumer's R
+/// wrapper.
+///
+/// R-origin errors (longjmp) still pass through via `R_ContinueUnwind` — the
+/// outer `error_in_r` guard will catch them.
+///
+/// # PROTECT note
+///
+/// The returned SEXP is unprotected. The View method wrapper must not call any
+/// R API functions between receiving it and passing it to
+/// `repanic_if_rust_error`. `repanic_if_rust_error` reads the message/kind/class
+/// strings immediately and then panics (or returns), so the SEXP does not need
+/// protection beyond that window.
+pub fn with_r_unwind_protect_shim<F>(f: F) -> SEXP
+where
+    F: FnOnce() -> SEXP,
+{
+    match run_r_unwind_protect(f) {
+        Ok(result) => result,
+        Err(payload) => {
+            // region: RCondition recognition — same as error_in_r path
+            if let Some(cond) = payload.downcast_ref::<crate::condition::RCondition>() {
+                let (kind, msg, class) = match cond {
+                    crate::condition::RCondition::Error { message, class } => {
+                        ("error", message.as_str(), class.as_deref())
+                    }
+                    crate::condition::RCondition::Warning { message, class } => {
+                        ("warning", message.as_str(), class.as_deref())
+                    }
+                    crate::condition::RCondition::Message { message } => {
+                        ("message", message.as_str(), None)
+                    }
+                    crate::condition::RCondition::Condition { message, class } => {
+                        ("condition", message.as_str(), class.as_deref())
+                    }
+                };
+                return crate::error_value::make_rust_condition_value(msg, kind, class, None);
+            }
+            // endregion
+
+            // Generic panic path
+            let msg = panic_payload_to_string(payload.as_ref());
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
+            crate::error_value::make_rust_error_value(&msg, "panic", None)
         }
     }
 }

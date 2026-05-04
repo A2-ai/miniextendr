@@ -9,6 +9,8 @@
 // - Trait dispatch: SimpleCounter implements shared Counter trait
 
 use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, trait_abi::ccall};
+// Condition macros — use fully-qualified paths to avoid module/macro name collision
+// (pub mod error and pub mod condition at crate root shadow the macros if imported).
 
 miniextendr_api::miniextendr_init!();
 
@@ -336,6 +338,23 @@ impl Counter for SimpleCounter {
     fn add(&mut self, n: i32) {
         self.value += n;
     }
+
+    /// Panic with a plain message so the consumer can test rust_error class layering.
+    fn panic_plain(&self) {
+        panic!(
+            "SimpleCounter::panic_plain triggered (value={})",
+            self.value
+        );
+    }
+
+    /// Use error!() with a custom class so the consumer can test user-class layering.
+    fn error_with_class(&self, class_name: String) {
+        miniextendr_api::error!(
+            class = class_name,
+            "SimpleCounter::error_with_class triggered (value={})",
+            self.value
+        );
+    }
 }
 
 #[miniextendr]
@@ -394,6 +413,21 @@ impl Counter for StatefulCounter {
     fn add(&mut self, n: i32) {
         self.value += n;
         self.history.push(self.value);
+    }
+
+    fn panic_plain(&self) {
+        panic!(
+            "StatefulCounter::panic_plain triggered (value={})",
+            self.value
+        );
+    }
+
+    fn error_with_class(&self, class_name: String) {
+        miniextendr_api::error!(
+            class = class_name,
+            "StatefulCounter::error_with_class triggered (value={})",
+            self.value
+        );
     }
 }
 

@@ -105,6 +105,21 @@ impl Counter for DoubleCounter {
     fn add(&mut self, n: i32) {
         self.value += n;
     }
+
+    fn panic_plain(&self) {
+        panic!(
+            "DoubleCounter::panic_plain triggered (value={})",
+            self.value
+        );
+    }
+
+    fn error_with_class(&self, class_name: String) {
+        miniextendr_api::error!(
+            class = class_name,
+            "DoubleCounter::error_with_class triggered (value={})",
+            self.value
+        );
+    }
 }
 
 /// Create a new DoubleCounter (consumer's own Counter implementation)
@@ -243,6 +258,35 @@ pub fn get_reset_get(sexp: SEXP) -> i32 {
 pub fn debug_consumer_tag_resettable() -> String {
     format!("{:016x}{:016x}", TAG_RESETTABLE.hi, TAG_RESETTABLE.lo)
 }
+// endregion
+
+// region: Error-class layering test helpers (issue #345 spike)
+
+/// Call panic_plain() on any Counter object via trait dispatch.
+///
+/// Used by spike tests to verify rust_error class layering across the
+/// trait-ABI boundary.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @export
+#[miniextendr]
+pub fn counter_panic_plain(counter_sexp: SEXP) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.panic_plain();
+}
+
+/// Call error_with_class() on any Counter object via trait dispatch.
+///
+/// Used by spike tests to verify user-class layering across the trait-ABI
+/// boundary.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param class_name The class name to use with error!()
+/// @export
+#[miniextendr]
+pub fn counter_error_with_class(counter_sexp: SEXP, class_name: String) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.error_with_class(class_name);
+}
+
 // endregion
 
 // region: Simple utility functions for testing
