@@ -1,4 +1,4 @@
-error: #[r6(active)] is only valid for R6 class systems
+error: `active` is only valid for R6 class systems
   --> tests/ui/impl_r6_active_wrong_system.rs:10:22
    |
 10 |     #[miniextendr(r6(active))]
