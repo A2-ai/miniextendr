@@ -1,14 +1,34 @@
-//! cargo-revendor: Vendor Rust dependencies for R packages
+//! cargo-revendor: vendor Rust dependencies for R packages and monorepos.
 //!
-//! Unlike `cargo vendor`, this handles:
-//! - Path dependencies (workspace members) via `cargo package`
-//! - Workspace inheritance resolution
-//! - Opt-in stripping of test/bench/example/bin directories
-//! - Cleaning TOML sections that reference stripped directories
-//! - Inter-crate path dependency rewriting
-//! - Empty checksum generation for vendored crates
-//! - Caching via Cargo.lock hash (skip re-vendoring when deps unchanged)
-//! - JSON output for machine consumption
+//! `cargo-revendor` is a thin orchestrator over `cargo metadata`, `cargo
+//! package`, and `cargo vendor`. It calls cargo for the parts cargo does
+//! well, and only does the additional work cargo does not.
+//!
+//! Capabilities beyond plain `cargo vendor`:
+//!
+//! - Workspace path dependencies are packaged via `cargo package`, which
+//!   resolves `*.workspace = true` inheritance into a standalone manifest.
+//! - Inter-crate `path = "../sibling"` references are rewritten to the
+//!   sibling's vendor directory.
+//! - Opt-in stripping of `tests/`, `benches/`, `examples/`, and `[[bin]]`
+//!   targets, plus the matching `Cargo.toml` sections.
+//! - `--freeze` rewrites the target manifest to resolve everything from
+//!   `vendor/` and regenerates `Cargo.lock` with `--offline`.
+//! - `--compress` tars and xz-compresses `vendor/` for shipping.
+//! - `--verify` is a CI-only check that asserts agreement between
+//!   `Cargo.lock`, `vendor/`, and any compressed tarball.
+//! - Three-tier cache (`.revendor-cache`, `.revendor-cache-external`,
+//!   `.revendor-cache-local`) gates re-vendoring. Source files of local
+//!   crates participate in the cache key because pure source edits leave
+//!   `Cargo.lock` untouched.
+//! - Phase modes (`--external-only`, `--local-only`) split the pipeline
+//!   for CI cases where the external dep set rebuilds rarely.
+//! - `--sync` mirrors `cargo vendor --sync`, unioning multiple disjoint
+//!   workspaces into a single `vendor/` tree.
+//! - JSON output for machine consumption.
+//!
+//! See `README.md` in this crate for the full pipeline walkthrough and
+//! flag reference.
 
 mod cache;
 mod manifest_guard;
