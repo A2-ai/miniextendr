@@ -117,7 +117,6 @@ mod adapter_traits_tests;
 mod aho_corasick_adapter_tests;
 mod altrep_condition_tests;
 mod altrep_sexp_tests;
-mod call_attribution_demo;
 #[cfg(feature = "arrow")]
 mod arrow_adapter_tests;
 #[cfg(feature = "arrow")]
@@ -135,6 +134,7 @@ mod borsh_adapter_tests;
 mod box_slice_tests;
 #[cfg(feature = "bytes")]
 mod bytes_adapter_tests;
+mod call_attribution_demo;
 mod class_system_matrix;
 mod coerce_tests;
 mod collect_tests;

@@ -7,9 +7,7 @@ use miniextendr_api::miniextendr;
 
 /// @export
 #[miniextendr]
-pub fn test_condition_parse_int(
-    s: &str,
-) -> Result<i32, RErrorAdapter<std::num::ParseIntError>> {
+pub fn test_condition_parse_int(s: &str) -> Result<i32, RErrorAdapter<std::num::ParseIntError>> {
     s.parse::<i32>().map_err(RErrorAdapter)
 }
 
