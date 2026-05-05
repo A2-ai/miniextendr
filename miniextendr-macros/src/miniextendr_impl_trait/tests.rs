@@ -9,6 +9,50 @@ fn test_type_to_uppercase_name() {
     // Path type
     let ty: syn::Type = syn::parse_quote!(path::to::MyType);
     assert_eq!(type_to_uppercase_name(&ty), "MYTYPE");
+
+    // Generic type: base display name still strips generics
+    let ty: syn::Type = syn::parse_quote!(MyType<u32>);
+    assert_eq!(type_to_uppercase_name(&ty), "MYTYPE");
+}
+
+#[test]
+fn test_vtable_type_symbol_name_disambiguates_generic_concrete_types() {
+    let trait_path: syn::Path = syn::parse_quote!(Counter);
+    let concrete_u32: syn::Type = syn::parse_quote!(MyType<u32>);
+    let concrete_f64: syn::Type = syn::parse_quote!(MyType<f64>);
+
+    let u32_name = vtable_type_symbol_name(&trait_path, &concrete_u32);
+    let f64_name = vtable_type_symbol_name(&trait_path, &concrete_f64);
+
+    assert!(u32_name.starts_with("MYTYPE_H"));
+    assert!(f64_name.starts_with("MYTYPE_H"));
+    assert_eq!(u32_name.len(), "MYTYPE_H".len() + 16);
+    assert_ne!(u32_name, f64_name);
+}
+
+#[test]
+fn test_vtable_type_symbol_name_preserves_nongeneric_names() {
+    let trait_path: syn::Path = syn::parse_quote!(Counter);
+    let concrete_type: syn::Type = syn::parse_quote!(path::to::MyType);
+
+    assert_eq!(
+        vtable_type_symbol_name(&trait_path, &concrete_type),
+        "MYTYPE"
+    );
+}
+
+#[test]
+fn test_vtable_type_symbol_name_disambiguates_generic_traits() {
+    let trait_u32: syn::Path = syn::parse_quote!(Counter<u32>);
+    let trait_f64: syn::Path = syn::parse_quote!(Counter<f64>);
+    let concrete_type: syn::Type = syn::parse_quote!(MyType);
+
+    let u32_name = vtable_type_symbol_name(&trait_u32, &concrete_type);
+    let f64_name = vtable_type_symbol_name(&trait_f64, &concrete_type);
+
+    assert!(u32_name.starts_with("MYTYPE_H"));
+    assert!(f64_name.starts_with("MYTYPE_H"));
+    assert_ne!(u32_name, f64_name);
 }
 
 /// Helper to build a simple TraitMethod for testing R wrapper generation.

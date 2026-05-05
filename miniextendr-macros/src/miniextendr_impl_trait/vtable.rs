@@ -9,7 +9,7 @@ use quote::format_ident;
 use syn::ItemImpl;
 
 use super::r_wrappers::{TraitWrapperOpts, generate_trait_r_wrapper};
-use super::{TraitConst, TraitMethod, type_to_uppercase_name};
+use super::{TraitConst, TraitMethod, vtable_type_symbol_name};
 use crate::miniextendr_impl::ClassSystem;
 
 /// Generate the vtable static, C wrappers, R wrappers, and call defs for a trait implementation.
@@ -19,6 +19,7 @@ use crate::miniextendr_impl::ClassSystem;
 ///
 /// - The cleaned original impl block (with `#[miniextendr]` attrs stripped from methods)
 /// - A `static __VTABLE_{TRAIT}_FOR_{TYPE}: {Trait}VTable` constant
+///   (`TYPE` gets a stable hash suffix for generic trait/type impls)
 /// - C wrapper functions and `R_CallMethodDef` entries for each method and const
 /// - R wrapper code string (class-system specific)
 /// - Two `const` items: `{TYPE}_{TRAIT}_CALL_DEFS` and `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
@@ -88,7 +89,7 @@ pub(super) fn generate_vtable_static(
     };
 
     // Extract type name for naming (simplified - handles Path types)
-    let type_name_str = type_to_uppercase_name(concrete_type);
+    let type_name_str = vtable_type_symbol_name(trait_path, concrete_type);
     let trait_name_upper = trait_name.to_string().to_uppercase();
     let trait_name_lower = trait_name.to_string().to_lowercase();
 
