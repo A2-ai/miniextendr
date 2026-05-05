@@ -23,6 +23,8 @@ pub enum LintCode {
     MXL106,
     /// Parameter name is an R reserved word; codegen will produce invalid R syntax.
     MXL110,
+    /// `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends `s4_`.
+    MXL111,
     // endregion
 
     // region: P1: Important
@@ -57,7 +59,9 @@ impl LintCode {
             Self::MXL110 => Severity::Error,
 
             // Everything else is a warning.
-            Self::MXL106 | Self::MXL203 | Self::MXL300 | Self::MXL301 => Severity::Warning,
+            Self::MXL106 | Self::MXL111 | Self::MXL203 | Self::MXL300 | Self::MXL301 => {
+                Severity::Warning
+            }
         }
     }
 }

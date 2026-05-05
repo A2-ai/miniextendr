@@ -315,6 +315,116 @@ fn mxl300_rf_error_usage() {
 }
 
 #[test]
+fn mxl111_s4_prefixed_method_fires() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(s4)]
+        impl Foo {
+            pub fn s4_compute(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL111"),
+        "expected MXL111 warning for s4_-prefixed method on s4 impl, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl111_no_fire_for_non_s4_impl() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(r6)]
+        impl Bar {
+            pub fn s4_compute(&self) -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL111"),
+        "MXL111 must not fire on r6 impl with s4_-prefixed method, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl111_no_fire_for_standalone_fn() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        pub fn s4_helper() -> i32 { 0 }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL111"),
+        "MXL111 must not fire on standalone fn named s4_*, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl111_no_fire_for_s4_constructor() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(s4)]
+        impl Foo {
+            pub fn new() -> Self { Foo {} }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL111"),
+        "MXL111 must not fire on `new` constructor of s4 impl, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
 fn mxl301_ffi_unchecked_usage() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");

@@ -113,6 +113,10 @@ pub struct FileData {
     /// (has_internal, has_noexport, line)
     pub export_control: HashMap<String, (bool, bool, usize)>,
 
+    // Impl method details for per-method lint rules
+    /// Methods per inherent impl type: type_name → Vec<(method_name, line, class_system)>.
+    pub impl_methods: HashMap<String, Vec<(String, usize, String)>>,
+
     // Doc-comment roxygen tags per function/impl name
     /// Known roxygen tags: "@noRd", "@export", "@keywords internal"
     pub fn_doc_tags: HashMap<String, Vec<String>>,
@@ -492,10 +496,10 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                 }
                             } else {
                                 // Inherent impl
-                                data.inherent_impl_class_systems.insert(
-                                    type_name.clone(),
-                                    (impl_attrs.class_system.clone().unwrap_or_default(), line),
-                                );
+                                let class_system =
+                                    impl_attrs.class_system.clone().unwrap_or_default();
+                                data.inherent_impl_class_systems
+                                    .insert(type_name.clone(), (class_system.clone(), line));
                                 data.impl_blocks_per_type
                                     .entry(type_name.clone())
                                     .or_default()
@@ -506,6 +510,21 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                     impl_attrs.label.clone(),
                                     line,
                                 ));
+
+                                // Collect method names for per-method rules (e.g. MXL111)
+                                let methods =
+                                    data.impl_methods.entry(type_name.clone()).or_default();
+                                for impl_item in &item_impl.items {
+                                    if let syn::ImplItem::Fn(method) = impl_item {
+                                        let method_name = method.sig.ident.to_string();
+                                        let method_line = method.sig.ident.span().start().line;
+                                        methods.push((
+                                            method_name,
+                                            method_line,
+                                            class_system.clone(),
+                                        ));
+                                    }
+                                }
 
                                 // Track export control
                                 if impl_attrs.internal || impl_attrs.noexport {

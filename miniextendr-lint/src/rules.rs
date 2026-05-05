@@ -10,6 +10,7 @@ pub mod fn_visibility;
 pub mod impl_validation;
 pub mod r_reserved_params;
 pub mod rf_error;
+pub mod s4_method_prefix;
 
 use crate::crate_index::CrateIndex;
 use crate::diagnostic::Diagnostic;
@@ -35,6 +36,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: ffi::*_unchecked() usage (MXL301)
     ffi_unchecked::check(index, &mut diagnostics);
+
+    // Per-file: s4_* method name on #[miniextendr(s4)] impl (MXL111)
+    s4_method_prefix::check(index, &mut diagnostics);
 
     // Sort by path and line for deterministic output
     diagnostics.sort_by(|a, b| {
