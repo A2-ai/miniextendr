@@ -11,6 +11,7 @@ Description: Demonstrates miniextendr's cross-package trait dispatch capabilitie
     with Counter implementations from any package (like producer.pkg), proving
     ABI compatibility via type tag matching and vtable dispatch.
 License: MIT + file LICENSE
+Depends: R (>= 4.4)
 Config/build/bootstrap: TRUE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

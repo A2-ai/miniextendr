@@ -11,6 +11,7 @@ Description: Demonstrates miniextendr's cross-package trait dispatch capabilitie
     here can be passed to consumer.pkg functions that operate on the Counter trait
     interface, proving ABI compatibility via type tag matching.
 License: MIT + file LICENSE
+Depends: R (>= 4.4)
 Config/build/bootstrap: TRUE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

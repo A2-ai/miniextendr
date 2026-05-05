@@ -182,6 +182,7 @@ local({
     tmp <- get_fixture()
 
     dcf <- read.dcf(file.path(tmp, "testpkg", "DESCRIPTION"))
+    expect_equal(unname(dcf[1, "Depends"]), "R (>= 4.4)")
     expect_equal(unname(dcf[1, "Config/build/bootstrap"]), "TRUE")
     expect_equal(unname(dcf[1, "Config/build/never-clean"]), "true")
     expect_equal(unname(dcf[1, "Config/build/extra-sources"]), "src/rust/Cargo.lock")
@@ -232,7 +233,9 @@ test_that("create_miniextendr_monorepo performs correct template substitution", 
   expect_true(any(grepl("my-pkg", readLines(file.path(tmp, "Cargo.toml")))))
   expect_true(any(grepl('name = "my-pkg"', readLines(file.path(tmp, "my-pkg", "Cargo.toml")))))
   expect_true(any(grepl("#\\[miniextendr\\]", readLines(file.path(tmp, "myPkg", "src", "rust", "lib.rs")))))
-  expect_true(any(grepl("Package: myPkg", readLines(file.path(tmp, "myPkg", "DESCRIPTION")))))
+  dcf <- read.dcf(file.path(tmp, "myPkg", "DESCRIPTION"))
+  expect_equal(unname(dcf[1, "Package"]), "myPkg")
+  expect_equal(unname(dcf[1, "Depends"]), "R (>= 4.4)")
 })
 
 # -----------------------------------------------------------------------------

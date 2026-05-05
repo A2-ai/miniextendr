@@ -184,7 +184,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   # Create DESCRIPTION manually (not from template)
   desc_path <- usethis::proj_path(rpkg_name, "DESCRIPTION")
   desc_content <- sprintf(
-    "Package: %s\nTitle: What the Package Does (One Line, Title Case)\nVersion: 0.0.0.9000\nAuthors@R:\n    person(\"First\", \"Last\", , \"first.last@example.com\", role = c(\"aut\", \"cre\"))\nDescription: What the package does (one paragraph).\nLicense: MIT + file LICENSE\nEncoding: UTF-8\nRoxygen: list(markdown = TRUE)\nRoxygenNote: 7.3.2\nSystemRequirements: Rust (>= 1.85)\nConfig/build/bootstrap: TRUE\nConfig/build/never-clean: true\nConfig/build/extra-sources: src/rust/Cargo.lock\n",
+    "Package: %s\nTitle: What the Package Does (One Line, Title Case)\nVersion: 0.0.0.9000\nAuthors@R:\n    person(\"First\", \"Last\", , \"first.last@example.com\", role = c(\"aut\", \"cre\"))\nDescription: What the package does (one paragraph).\nLicense: MIT + file LICENSE\nDepends: R (>= 4.4)\nEncoding: UTF-8\nRoxygen: list(markdown = TRUE)\nRoxygenNote: 7.3.2\nSystemRequirements: Rust (>= 1.85)\nConfig/build/bootstrap: TRUE\nConfig/build/never-clean: true\nConfig/build/extra-sources: src/rust/Cargo.lock\n",
     data$package
   )
   writeLines(desc_content, desc_path)

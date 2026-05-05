@@ -144,6 +144,8 @@ pub fn add_one(x: i32) -> i32 { x + 1 }
   # Check DESCRIPTION content
   desc <- readLines(fs::path(pkg_dir, "DESCRIPTION"))
   expect_true(any(grepl(paste0("Package: ", pkg_name), desc)))
+  dcf <- read.dcf(fs::path(pkg_dir, "DESCRIPTION"))
+  expect_equal(unname(dcf[1, "Depends"]), "R (>= 4.4)")
 
   # Check NAMESPACE exports
   ns <- readLines(fs::path(pkg_dir, "NAMESPACE"))
