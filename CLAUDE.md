@@ -182,6 +182,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 - **MXL009**: multiple impl blocks missing distinct labels → add `#[miniextendr(label = "...")]`
 - **MXL010**: duplicate labels
 - **MXL106**: non-`pub` function that would get `@export` → make `pub` or add `#[miniextendr(noexport)]`
+- **MXL110**: parameter name is an R reserved word → codegen will break
 - **MXL203**: redundant `internal` + `noexport`
 - **MXL300**: direct `Rf_error`/`Rf_errorcall` → replace with `panic!()` (framework converts to R error)
 - **MXL301**: `_unchecked` FFI outside known-safe contexts

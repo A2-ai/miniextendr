@@ -21,6 +21,8 @@ pub enum LintCode {
     // region: P0: High Impact
     /// Registered top-level function is not `pub`.
     MXL106,
+    /// Parameter name is an R reserved word; codegen will produce invalid R syntax.
+    MXL110,
     // endregion
 
     // region: P1: Important
@@ -50,6 +52,9 @@ impl LintCode {
         match self {
             // Source-side checks are errors (CI-blocking).
             Self::MXL008 | Self::MXL009 | Self::MXL010 => Severity::Error,
+
+            // Codegen-breaking: reserved words produce syntactically invalid R wrappers.
+            Self::MXL110 => Severity::Error,
 
             // Everything else is a warning.
             Self::MXL106 | Self::MXL203 | Self::MXL300 | Self::MXL301 => Severity::Warning,

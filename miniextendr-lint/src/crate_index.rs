@@ -122,6 +122,11 @@ pub struct FileData {
     pub rf_error_calls: Vec<(String, usize)>,
     /// Lines containing `ffi::*_unchecked()` calls: (function_name, line_number).
     pub ffi_unchecked_calls: Vec<(String, usize)>,
+
+    // R reserved-word parameter names
+    /// Maps fn/method name → list of (param_name, line) for params that are R reserved words.
+    /// Key for free functions is the function name; for impl methods it is `"TypeName::method_name"`.
+    pub fn_param_names: HashMap<String, Vec<(String, usize)>>,
 }
 // endregion
 
@@ -369,6 +374,30 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     Ok(data)
 }
 
+/// Extract named parameter names (and their 1-based line numbers) from a function signature.
+///
+/// Skips `self` / `&self` / `&mut self` receiver parameters. Skips unnamed (`_`) parameters.
+fn extract_param_names(sig: &syn::Signature) -> Vec<(String, usize)> {
+    let mut params = Vec::new();
+    for input in &sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = input
+            && let syn::Pat::Ident(pat_ident) = &*pat_type.pat
+        {
+            let name = pat_ident.ident.to_string();
+            // Skip `_` (bare anonymous). Named `_foo` patterns are kept because
+            // the proc-macro forwards the name verbatim (stripping only the leading
+            // underscore in some codegen paths), so they can still collide with R
+            // reserved words.
+            if name == "_" {
+                continue;
+            }
+            let line = pat_ident.ident.span().start().line;
+            params.push((name, line));
+        }
+    }
+    params
+}
+
 /// Recursively collect all lint-relevant information from parsed items.
 fn collect_items_recursive(items: &[Item], data: &mut FileData) {
     for item in items {
@@ -394,7 +423,13 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 // Track doc-comment roxygen tags
                 let doc_tags = extract_roxygen_tags(&item_fn.attrs);
                 if !doc_tags.is_empty() {
-                    data.fn_doc_tags.insert(name, doc_tags);
+                    data.fn_doc_tags.insert(name.clone(), doc_tags);
+                }
+
+                // Track parameter names for R reserved-word check (MXL110)
+                let params = extract_param_names(&item_fn.sig);
+                if !params.is_empty() {
+                    data.fn_param_names.insert(name, params);
                 }
             }
             Item::Struct(item_struct) => {
@@ -475,9 +510,21 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                 // Track export control
                                 if impl_attrs.internal || impl_attrs.noexport {
                                     data.export_control.insert(
-                                        type_name,
+                                        type_name.clone(),
                                         (impl_attrs.internal, impl_attrs.noexport, line),
                                     );
+                                }
+                            }
+
+                            // Track parameter names for all methods in the impl block (MXL110)
+                            for impl_item in &item_impl.items {
+                                if let syn::ImplItem::Fn(method) = impl_item {
+                                    let method_name = method.sig.ident.to_string();
+                                    let key = format!("{}::{}", type_name, method_name);
+                                    let params = extract_param_names(&method.sig);
+                                    if !params.is_empty() {
+                                        data.fn_param_names.insert(key, params);
+                                    }
                                 }
                             }
                         }
