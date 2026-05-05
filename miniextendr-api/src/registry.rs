@@ -529,6 +529,34 @@ pub fn write_r_wrappers_to_file(path: &str) {
 # nolint start
 # nocov start
 
+# Internal helper: re-raise a tagged Rust error/condition value as an R condition.
+# Generated wrappers call this whenever `.Call()` returns a `rust_error_value`.
+# `.call_default` is the wrapper's `sys.call()`, used as the fallback when the
+# Rust panic payload didn't carry a captured call (e.g. lambda contexts that
+# pass `.call = NULL` to `.Call`). For error/panic kinds `stop()` longjmps;
+# for warning/message/condition the helper signals and returns invisible(NULL),
+# which the wrapper's surrounding `return(...)` propagates as its result.
+.miniextendr_raise_condition <- function(.val, .call_default) {
+  .msg <- .val$error
+  .call <- .val$call %||% .call_default
+  .class <- .val$class
+  switch(.val$kind,
+    error = stop(structure(list(message = .msg, call = .call, kind = \"error\"),
+      class = c(.class, \"rust_error\", \"simpleError\", \"error\", \"condition\"))),
+    warning = warning(structure(list(message = .msg, call = .call, kind = \"warning\"),
+      class = c(.class, \"rust_warning\", \"simpleWarning\", \"warning\", \"condition\"))),
+    message = message(structure(list(message = paste0(.msg, \"\\n\"), call = NULL, kind = \"message\"),
+      class = c(.class, \"rust_message\", \"simpleMessage\", \"message\", \"condition\"))),
+    condition = signalCondition(structure(list(message = .msg, call = .call, kind = \"condition\"),
+      class = c(.class, \"rust_condition\", \"simpleCondition\", \"condition\"))),
+    panic = stop(structure(list(message = .msg, call = .call, kind = \"panic\"),
+      class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"))),
+    stop(structure(list(message = .msg, call = .call, kind = .val$kind),
+      class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\")))
+  )
+  invisible(NULL)
+}
+
 ",
     );
 
@@ -548,11 +576,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
         let rotated = if entry.preferred_default.is_empty() {
             choices_str
         } else {
-            rotate_choices_for_default(
-                &choices_str,
-                entry.preferred_default,
-                entry.placeholder,
-            )
+            rotate_choices_for_default(&choices_str, entry.preferred_default, entry.placeholder)
         };
         let replacement = format!("c({rotated})");
         content = content.replace(entry.placeholder, &replacement);

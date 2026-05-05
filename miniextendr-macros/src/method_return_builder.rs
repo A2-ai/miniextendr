@@ -6,100 +6,39 @@
 use crate::miniextendr_impl::ParsedMethod;
 
 // region: Shared R error-check code for error_in_r mode
+//
+// All wrappers route through the internal helper `.miniextendr_raise_condition`
+// emitted once at the top of the generated wrappers file (see
+// `miniextendr-api/src/registry.rs` `write_r_wrappers_to_file`). The helper
+// performs the `.val$kind` dispatch and `rust_*` class layering; each wrapper
+// only needs a one-line guard at the call site.
 
-/// The R-side condition switch block, shared by all three generators.
+/// Generate the R guard that re-raises a tagged Rust error/condition value.
 ///
-/// Expects `.val` to already be assigned (e.g., `.val <- .Call(...)`).
-/// `indent` is prepended to every line.
-///
-/// The switch handles five kind values:
-/// - `"error"` / `"panic"` → `stop()` with `rust_error` class layering (+ optional custom class)
-/// - `"warning"` → `warning()` with `rust_warning` class layering
-/// - `"message"` → `message()` with `rust_message` class layering (trailing `\n` per simpleMessage)
-/// - `"condition"` → `signalCondition()` with `rust_condition` class layering (no-op if unhandled)
-/// - default → legacy `rust_error` (for `"result_err"`, `"none_err"`, unrecognised kinds)
-///
-/// The `.class` slot carries an optional user-supplied custom class (from `error!(class = "...",
-/// ...)`). When non-NULL it is prepended to the standard layered vector.
-fn condition_switch_lines(indent: &str) -> Vec<String> {
-    let i = indent;
-    let i2 = format!("{indent}  ");
-    let i3 = format!("{indent}    ");
-    vec![
-        format!("{i}.msg <- .val$error"),
-        format!("{i}.call <- .val$call %||% sys.call()"),
-        // .class is NULL for legacy 3-element lists (result_err / none_err / panic)
-        format!("{i}.class <- .val$class"),
-        format!("{i}switch(.val$kind,"),
-        // error
-        format!(
-            "{i2}error = stop(structure(list(message = .msg, call = .call, kind = \"error\"),\
- class = c(.class, \"rust_error\", \"simpleError\", \"error\", \"condition\"))),"
-        ),
-        // warning — signal then return invisible(NULL) so callers don't see the tagged SEXP
-        format!(
-            "{i2}warning = {{ warning(structure(list(message = .msg, call = .call, kind = \"warning\"),\
- class = c(.class, \"rust_warning\", \"simpleWarning\", \"warning\", \"condition\"))); \
-return(invisible(NULL)) }},"
-        ),
-        // message — trailing \n matches simpleMessage semantics; return invisible(NULL) after
-        format!(
-            "{i2}message = {{ message(structure(list(message = paste0(.msg, \"\\n\"), call = NULL, kind = \"message\"),\
- class = c(.class, \"rust_message\", \"simpleMessage\", \"message\", \"condition\"))); \
-return(invisible(NULL)) }},"
-        ),
-        // condition — signalCondition is a no-op if there is no handler; return invisible(NULL) after
-        format!(
-            "{i2}condition = {{ signalCondition(structure(list(message = .msg, call = .call, kind = \"condition\"),\
- class = c(.class, \"rust_condition\", \"simpleCondition\", \"condition\"))); \
-return(invisible(NULL)) }},"
-        ),
-        // panic — same layering as error (legacy panics never have .class)
-        format!(
-            "{i2}panic = stop(structure(list(message = .msg, call = .call, kind = \"panic\"),\
- class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"))),"
-        ),
-        // default: legacy result_err / none_err / unrecognised — preserve .val$kind for
-        // test_that("err$kind") compatibility (result_err, none_err pass through unchanged)
-        format!("{i2}stop(structure(list(message = .msg, call = .call, kind = .val$kind),"),
-        format!("{i3}class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\")))"),
-        format!("{i})"),
-    ]
-}
-
-/// Generate the R `if` block that checks for a tagged error/condition value and raises it.
-///
-/// Expects `.val` to already be assigned (e.g., `.val <- .Call(...)`). Each line
-/// is indented by `indent`. The check tests `inherits(.val, "rust_error_value")`
-/// and `isTRUE(attr(.val, "__rust_error__"))`, then dispatches on `.val$kind` to
-/// emit the appropriate R condition with `rust_*` class layering.
+/// Expects `.val` to already be assigned (e.g., `.val <- .Call(...)`). Emits a
+/// single line indented by `indent`: when `.val` is a tagged `rust_error_value`,
+/// hand off to the shared helper and return from the enclosing function. The
+/// helper's `stop()` longjmps for error/panic kinds; for warning/message/
+/// condition it signals and returns `invisible(NULL)`, which the surrounding
+/// `return(...)` propagates as the wrapper's result.
 pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
-    let inner_indent = format!("{indent}  ");
-    let mut lines = vec![format!(
-        "{}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{",
-        indent
-    )];
-    lines.extend(condition_switch_lines(&inner_indent));
-    lines.push(format!("{}}}", indent));
-    lines
+    vec![format!(
+        "{indent}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) return(.miniextendr_raise_condition(.val, sys.call()))"
+    )]
 }
 
 /// Generate an inline R error-check block for single-expression contexts (S7, S4).
 ///
-/// Returns a multi-line block string: `{ .val <- <call_expr>; if (...) <switch>; <inner> }`.
+/// Returns a multi-line block string: `{ .val <- <call_expr>; if (...) return(...); <inner> }`.
 /// Used where the class system requires a single expression rather than separate lines
 /// (e.g., S7 property definitions, S4 method bodies).
 ///
 /// - `call_expr`: The `.Call()` expression to evaluate
 /// - `inner`: The final expression to return after the error check passes
 pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
-    let switch_lines = condition_switch_lines("      ");
-    let switch_body = switch_lines.join("\n    ");
     format!(
         "{{\n    .val <- {call_expr}\n    \
-         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n    \
-         {switch_body}\n    \
-         }}\n    \
+         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n    \
          {inner}\n  \
          }}"
     )
@@ -107,19 +46,15 @@ pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
 
 /// Generate a standalone-function R wrapper body for error_in_r mode.
 ///
-/// Returns the full body string: `.val <- <call_expr>; if (...) <switch>; <final_return>`.
+/// Returns the full body string: `.val <- <call_expr>; if (...) return(...); <final_return>`.
 /// Used for top-level `#[miniextendr]` functions (not class methods).
 ///
 /// - `call_expr`: The `.Call()` expression to evaluate
 /// - `final_return`: The expression to return (typically `".val"` or `"invisible(.val)"`)
 pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String {
-    let switch_lines = condition_switch_lines("    ");
-    let switch_body = switch_lines.join("\n  ");
     format!(
         ".val <- {call_expr}\n  \
-         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n  \
-         {switch_body}\n  \
-         }}\n  \
+         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n  \
          {final_return}"
     )
 }
