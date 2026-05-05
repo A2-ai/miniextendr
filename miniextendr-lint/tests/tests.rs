@@ -341,3 +341,83 @@ fn mxl301_ffi_unchecked_usage() {
         report.diagnostics
     );
 }
+
+#[test]
+fn mxl110_r_reserved_word_as_param() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        pub fn bad(repeat: i32) -> i32 { repeat }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL110"),
+        "expected MXL110 error for R reserved word `repeat` as param, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl110_good_param_name_no_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr]
+        pub fn good(n: i32) -> i32 { n }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        !report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL110"),
+        "expected no MXL110 for ordinary param name, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn mxl110_r_reserved_word_as_method_param() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(r6)]
+        impl Foo {
+            pub fn n(&self, repeat: i32) -> i32 { repeat }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| format!("{}", d.code) == "MXL110"),
+        "expected MXL110 error for R reserved word `repeat` as method param, got: {:?}",
+        report.diagnostics
+    );
+}

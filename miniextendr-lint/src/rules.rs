@@ -8,6 +8,7 @@ pub mod export_attrs;
 pub mod ffi_unchecked;
 pub mod fn_visibility;
 pub mod impl_validation;
+pub mod r_reserved_params;
 pub mod rf_error;
 
 use crate::crate_index::CrateIndex;
@@ -25,6 +26,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: export attr redundancy (MXL203)
     export_attrs::check(index, &mut diagnostics);
+
+    // Per-file: R reserved words as parameter names (MXL110)
+    r_reserved_params::check(index, &mut diagnostics);
 
     // Per-file: direct Rf_error/Rf_errorcall usage (MXL300)
     rf_error::check(index, &mut diagnostics);
