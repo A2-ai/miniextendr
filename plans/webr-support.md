@@ -4,6 +4,25 @@ Goal: build miniextendr-api (and the rpkg `miniextendr` R package) for the
 `wasm32-unknown-emscripten` target, so it can be installed inside webR
 (R compiled to WASM via Emscripten).
 
+## Companion artefacts
+
+This plan covers the source-side port (linkme gating, codegen of a
+`wasm_registry.rs`, `Makevars.in` / `configure.ac` branching). Two related
+documents own the rest:
+
+- **`docs/WEBR.md`** — user-facing summary of the toolchain requirements
+  (target triple, why nightly, why `-Z build-std=std,panic_abort`).
+  Anything that belongs in long-lived contributor docs goes there, not
+  here.
+- **`plans/webr-dockerfile.md`** — the build environment. Plans
+  `Dockerfile.webr` (inheriting `ghcr.io/r-wasm/webr` digest-pinned),
+  the `just docker-webr-*` recipes, and the CI sequencing
+  (cargo check → R CMD INSTALL → `rwasm::build_pkg` → webR Node smoke
+  test). Step 6 below dispatches there.
+
+When information here goes stale, prefer to delete it and link out
+rather than duplicate.
+
 ## How webR builds R packages (investigation summary)
 
 Reference: `.webr/` — a clone of <https://github.com/r-wasm/webr> in this repo.
@@ -15,6 +34,12 @@ Reference: `.webr/` — a clone of <https://github.com/r-wasm/webr> in this repo
   `--component rust-src` (see `.webr/Dockerfile:46-53`). The image installs a
   fake `rustc`/`cargo` Debian package (version 99.0) so apt-installed R
   packages don't pull the distro toolchain over the rustup one.
+  Nightly is **mandatory**, not stylistic — `rust-src` enables
+  `cargo -Z build-std=std,panic_abort`, which we need to (a) rebuild
+  `std` against webR's pinned Emscripten ABI rather than rustup's
+  snapshot, and (b) get `panic = "abort"` applied to `std` itself so the
+  panic strategy is consistent across the call graph. Full rationale in
+  `docs/WEBR.md`.
 - Native R (`rig add 4.5.1`) is installed at `/opt/R/current/bin/R`. webR then
   builds a *separate* R-for-WASM in `host/` and `wasm/` subtrees. Packages are
   installed against the WASM R via the host R binary acting as the loader.
@@ -235,9 +260,13 @@ to follow this convention already (verify).
    attribute on wasm). Re-run step 3 with the rpkg user crate.
 5. **Codegen `wasm_registry.rs`** from the existing `miniextendr_write_wrappers`
    path. Plumb a second output file alongside `R/<pkg>-wrappers.R`.
-6. **Docker**: write a `Dockerfile.webr` (or extend `.webr/Dockerfile`) that
-   installs miniextendr, runs `just wasm-prepare`, and `R CMD INSTALL`s the
-   resulting tarball under WASM R. CI matrix entry to follow.
+6. **Docker + CI**: implement the build environment per
+   `plans/webr-dockerfile.md` — single-stage `Dockerfile.webr` inheriting
+   `ghcr.io/r-wasm/webr` (digest-pinned), layering `just`, `autoconf`,
+   `clang`/`libclang-dev`, `pkg-config`. Add `just docker-webr-build` /
+   `just docker-webr-shell` recipes. The CI job exercises this image
+   through cargo check → R CMD INSTALL → `rwasm::build_pkg` → webR Node
+   smoke test, gated on a `paths:` filter so docs-only PRs don't fire it.
 7. **rpkg `Makevars.in`**: branch on `CARGO_BUILD_TARGET=wasm32-*` to skip
    cdylib + Rscript wrapper-gen and pass the right `RUSTFLAGS`.
 8. **`configure.ac`**: detect `CC=emcc` (or an explicit `--with-wasm`

@@ -80,10 +80,13 @@ These are summarised here; full design discussion lives in
 
 ## See also
 
-- `plans/webr-support.md` — full investigation + implementation plan.
+- `plans/webr-support.md` — source-side port plan (linkme cfg-gating,
+  host-time codegen of `wasm_registry.rs`, `Makevars.in` / `configure.ac`
+  branching).
+- `plans/webr-dockerfile.md` — `Dockerfile.webr` plan (inheriting
+  `ghcr.io/r-wasm/webr`, the layered tools, CI sequencing).
 - `.webr/` — vendored clone of the webR repo for offline reference.
-- `.webr/Dockerfile` — canonical Rust toolchain install for the
-  build environment.
+- `.webr/Dockerfile` — upstream Rust toolchain install we inherit.
 - `.webr/packages/webr-vars.mk` — the Makevars override webR uses for
   every R package install under WASM. Shows the `emcc`/`em++`/side-module
   flag set we need to cooperate with.

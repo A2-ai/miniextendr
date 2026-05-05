@@ -5,9 +5,18 @@ reproducible environment for building & smoke-testing miniextendr against
 webR's WASM toolchain. Inherits the upstream webR image so we don't
 re-stage Emscripten, flang, Rust nightly, or R-for-WASM ourselves.
 
-Companion to `plans/webr-support.md` (the actual port work) and
-`docs/WEBR.md` (the user-facing rationale). This file is just the build
-environment.
+Companion to:
+
+- **`plans/webr-support.md`** — the actual source-side port work (linkme
+  cfg-gating, host-time codegen of `wasm_registry.rs`, `Makevars.in` /
+  `configure.ac` branching). Step 6 of that plan dispatches here for
+  the build environment.
+- **`docs/WEBR.md`** — user-facing summary of toolchain requirements
+  (target triple, why nightly, why `-Z build-std=std,panic_abort`).
+
+When the source-side port progresses, update `plans/webr-support.md`
+first; copy only the bits that materially change the *image* shape
+into this file.
 
 ## Base image choice
 
