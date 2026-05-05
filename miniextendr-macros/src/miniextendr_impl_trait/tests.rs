@@ -11,6 +11,62 @@ fn test_type_to_uppercase_name() {
     assert_eq!(type_to_uppercase_name(&ty), "MYTYPE");
 }
 
+/// Regression test for #394: generic monomorphisations must not produce the same
+/// vtable static name.  Before the fix, both `MyType<u32>` and `MyType<f64>`
+/// resolved to `MYTYPE`, causing a silent collision (wrong vtable wins).
+#[test]
+fn test_type_to_uppercase_name_generic_distinct() {
+    let ty_u32: syn::Type = syn::parse_quote!(MyType<u32>);
+    let ty_f64: syn::Type = syn::parse_quote!(MyType<f64>);
+    let ty_plain: syn::Type = syn::parse_quote!(MyType);
+
+    let name_u32 = type_to_uppercase_name(&ty_u32);
+    let name_f64 = type_to_uppercase_name(&ty_f64);
+    let name_plain = type_to_uppercase_name(&ty_plain);
+
+    // Both generic names must start with the base ident
+    assert!(
+        name_u32.starts_with("MYTYPE_"),
+        "MyType<u32> should have a hash suffix, got: {name_u32}"
+    );
+    assert!(
+        name_f64.starts_with("MYTYPE_"),
+        "MyType<f64> should have a hash suffix, got: {name_f64}"
+    );
+
+    // The two monomorphisations must be distinct
+    assert_ne!(
+        name_u32, name_f64,
+        "MyType<u32> and MyType<f64> must produce distinct vtable names"
+    );
+
+    // Non-generic plain type must NOT get a hash suffix (clean name for simple cases)
+    assert_eq!(
+        name_plain, "MYTYPE",
+        "plain MyType should not have a hash suffix"
+    );
+
+    // Hash suffix must be 16 hex chars (FNV-1a-64 output)
+    let suffix_u32 = name_u32.strip_prefix("MYTYPE_").unwrap();
+    assert_eq!(
+        suffix_u32.len(),
+        16,
+        "hash suffix must be 16 hex chars, got: {suffix_u32}"
+    );
+    assert!(
+        suffix_u32.chars().all(|c| c.is_ascii_hexdigit()),
+        "hash suffix must be lowercase hex, got: {suffix_u32}"
+    );
+
+    // Hashes must be deterministic: calling again must yield the same result
+    let ty_u32_again: syn::Type = syn::parse_quote!(MyType<u32>);
+    assert_eq!(
+        type_to_uppercase_name(&ty_u32_again),
+        name_u32,
+        "type_to_uppercase_name must be deterministic across calls"
+    );
+}
+
 /// Helper to build a simple TraitMethod for testing R wrapper generation.
 fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
     let ident = format_ident!("{}", name);

@@ -29,8 +29,12 @@ pub static MX_R_WRAPPERS: [RWrapperEntry];
 /// ALTREP class registration functions, called once at package init.
 ///
 /// Each ALTREP struct or trait impl emits an entry.
+///
+/// The element type is `unsafe extern "C" fn()` so that each registration
+/// function can be declared `pub extern "C"` with `#[unsafe(no_mangle)]`,
+/// making it externally addressable from a separate compilation unit.
 #[distributed_slice]
-pub static MX_ALTREP_REGISTRATIONS: [fn()];
+pub static MX_ALTREP_REGISTRATIONS: [unsafe extern "C" fn()];
 
 /// Trait dispatch entries for [`universal_query`].
 ///
@@ -221,7 +225,9 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     if !wrapper_gen {
         // User-defined ALTREP classes (from #[miniextendr] structs)
         for reg_fn in MX_ALTREP_REGISTRATIONS.iter() {
-            reg_fn();
+            // SAFETY: registration functions only call well-defined ALTREP C API
+            // functions (R_make_*_class, etc.) which are safe to call at package init.
+            unsafe { reg_fn() };
         }
         // Built-in ALTREP classes (Vec, Box, Range, Arrow) — must be
         // registered eagerly so readRDS can find them in fresh sessions.

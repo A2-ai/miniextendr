@@ -398,20 +398,60 @@ fn trait_method_body_lines(call_expr: &str, error_in_r: bool, indent: &str) -> V
 
 /// Convert a type to an uppercase identifier-safe name.
 ///
-/// Examples:
+/// For non-generic types, the name is simply the last path segment uppercased:
 /// - `MyType` → `MYTYPE`
-/// - `path::to::MyType` → `MYTYPE` (uses last segment)
-/// - `MyType<T>` → `MYTYPE` (strips generics)
+/// - `path::to::MyType` → `MYTYPE`
+///
+/// For generic types, a 16-character lowercase hex suffix derived from a stable
+/// FNV-1a-64 hash of the full canonical token stream is appended:
+/// - `MyType<u32>` → `MYTYPE_a1b2c3d4e5f60718`
+/// - `MyType<f64>` → `MYTYPE_0102030405060708` (different hash → no collision)
+///
+/// This prevents vtable static name collisions when the same base type is
+/// monomorphised with different generic arguments in the same crate.
+///
+/// **Hash stability:** FNV-1a-64 with a fixed seed (offset basis = 0xcbf29ce484222325)
+/// is deterministic across builds, rustc versions, and platforms.  We deliberately
+/// avoid `std::collections::hash_map::DefaultHasher` and `RandomState` because both
+/// are explicitly unspecified and can change across releases.
 fn type_to_uppercase_name(ty: &syn::Type) -> String {
+    /// FNV-1a 64-bit hash of a byte slice.
+    ///
+    /// Chosen for simplicity (≈10 lines, no new deps) and cross-build stability.
+    /// The FNV offset basis and prime are fixed constants defined in the FNV spec.
+    fn fnv1a_64(data: &[u8]) -> u64 {
+        const OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+        const PRIME: u64 = 0x00000100000001b3;
+        let mut h = OFFSET_BASIS;
+        for &b in data {
+            h ^= b as u64;
+            h = h.wrapping_mul(PRIME);
+        }
+        h
+    }
+
     match ty {
         syn::Type::Path(type_path) => {
-            // Use last segment, strip generics
-            type_path
-                .path
-                .segments
-                .last()
+            let last = type_path.path.segments.last();
+            let base = last
                 .map(|s| s.ident.to_string().to_uppercase())
-                .unwrap_or_else(|| "UNKNOWN".to_string())
+                .unwrap_or_else(|| "UNKNOWN".to_string());
+
+            // Only append a hash suffix when the type actually carries generic arguments
+            // (e.g. `MyType<u32>`). Plain `MyType` keeps the clean `MYTYPE` form.
+            let has_generics = last
+                .map(|s| !matches!(s.arguments, syn::PathArguments::None))
+                .unwrap_or(false);
+
+            if has_generics {
+                // Canonical token string of the *full* type (including all generic args)
+                // so that `MyType<u32>` and `MyType<f64>` produce distinct hashes.
+                let token_str = quote::quote!(#ty).to_string();
+                let hash = fnv1a_64(token_str.as_bytes());
+                format!("{}_{:016x}", base, hash)
+            } else {
+                base
+            }
         }
         _ => "UNKNOWN".to_string(),
     }
@@ -921,7 +961,8 @@ fn generate_tpie_invocation(
     quote::quote! {
         #[doc(hidden)]
         #[doc = #source_loc_doc]
-        static #vtable_static_name: #vtable_type_path =
+        #[unsafe(no_mangle)]
+        pub static #vtable_static_name: #vtable_type_path =
             #builder_path::<#concrete_type>();
 
         #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident);

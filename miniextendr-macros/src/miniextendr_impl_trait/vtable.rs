@@ -223,10 +223,14 @@ pub(super) fn generate_vtable_static(
 
     // For generic traits (with type args like <i32>), generate concrete vtable shims
     // and inline vtable construction. For non-generic traits, use the builder function.
+    //
+    // Both paths emit the static as `pub` with `#[unsafe(no_mangle)]` so that a separate
+    // compilation unit (e.g. a WASM codegen path) can reference it by name.
     let vtable_static_tokens = if trait_type_args.is_empty() {
         // Non-generic: use the builder function generated at the trait definition site
         quote::quote! {
-            static #vtable_static_name: #vtable_type_path =
+            #[unsafe(no_mangle)]
+            pub static #vtable_static_name: #vtable_type_path =
                 #builder_path::<#concrete_type>();
         }
     } else {
@@ -252,7 +256,8 @@ pub(super) fn generate_vtable_static(
             .collect();
         quote::quote! {
             #concrete_shims
-            static #vtable_static_name: #vtable_type_path = #vtable_type_path {
+            #[unsafe(no_mangle)]
+            pub static #vtable_static_name: #vtable_type_path = #vtable_type_path {
                 #(#vtable_inits),*
             };
         }

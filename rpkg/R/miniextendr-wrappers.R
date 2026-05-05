@@ -15350,7 +15350,7 @@ box_slice_option_string_roundtrip <- function(x) {
   .val
 }
 
-# Generated from Rust fn `test_condition_ok` (condition_tests.rs:18:8)
+# Generated from Rust fn `test_condition_ok` (condition_tests.rs:16:8)
 #' @title test condition ok
 #' @rdname condition_tests
 #' @export
@@ -15361,7 +15361,7 @@ test_condition_ok <- function() {
   .val
 }
 
-# Generated from Rust fn `test_condition_chained` (condition_tests.rs:46:8)
+# Generated from Rust fn `test_condition_chained` (condition_tests.rs:44:8)
 #' @title test condition chained
 #' @rdname condition_tests
 #' @export

@@ -60,15 +60,22 @@ pub(crate) fn generate_direct_altrep_registration(
         ident
     );
 
-    // For non-generic types, emit a distributed_slice ALTREP registration entry
+    // For non-generic types, emit a distributed_slice ALTREP registration entry.
+    //
+    // The function is `pub extern "C"` with `#[unsafe(no_mangle)]` so that a separate
+    // compilation unit (e.g. a WASM codegen path) can reference it by name via an
+    // `extern { fn __mx_altrep_reg_<Ident>(); }` declaration.
+    //
+    // The ident is used verbatim (no `.to_lowercase()`) to avoid case-collision footguns:
+    // `MyType` vs `MYType` would both produce the same symbol name if lowercased.
     let altrep_reg_entry = if generics.params.is_empty() {
-        let reg_fn_name =
-            quote::format_ident!("__mx_altrep_reg_{}", ident.to_string().to_lowercase());
+        let reg_fn_name = quote::format_ident!("__mx_altrep_reg_{}", ident);
         quote::quote! {
             #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALTREP_REGISTRATIONS)]
             #[linkme(crate = ::miniextendr_api::linkme)]
             #[doc(hidden)]
-            fn #reg_fn_name() {
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn #reg_fn_name() {
                 <#ident as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
             }
         }
