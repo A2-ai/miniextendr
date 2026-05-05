@@ -133,8 +133,10 @@ cached_strsxp!(
 );
 
 cached_strsxp!(
-    /// Cached `"rust_error_value"` class STRSXP.
-    pub(crate) fn rust_error_class_sexp() = [c"rust_error_value"]
+    /// Cached `"rust_condition_value"` class STRSXP — applied to every tagged
+    /// SEXP produced by `make_rust_error_value` / `make_rust_condition_value`
+    /// to identify panic-transport values to the generated R wrappers.
+    pub(crate) fn rust_condition_class_sexp() = [c"rust_condition_value"]
 );
 
 cached_strsxp!(
@@ -171,8 +173,10 @@ cached_symbol!(
 );
 
 cached_symbol!(
-    /// Cached `__rust_error__` symbol.
-    pub(crate) fn rust_error_attr_symbol() = c"__rust_error__"
+    /// Cached `__rust_condition__` symbol — the marker attribute on tagged
+    /// panic-transport SEXPs. Wrapper code asserts this is `TRUE` in addition
+    /// to the class check before re-raising via `.miniextendr_raise_condition`.
+    pub(crate) fn rust_condition_attr_symbol() = c"__rust_condition__"
 );
 
 cached_symbol!(

@@ -29,7 +29,7 @@ pub enum PanicSource {
     Worker,
     /// Panic inside an ALTREP trampoline (caught by `catch_altrep_panic`).
     Altrep,
-    /// Panic inside `with_r_unwind_protect` (caught by `panic_payload_to_r_error`).
+    /// Panic inside `with_r_unwind_protect` (caught by `with_r_unwind_protect_sourced`).
     UnwindProtect,
     /// Panic inside a connection callback trampoline.
     Connection,

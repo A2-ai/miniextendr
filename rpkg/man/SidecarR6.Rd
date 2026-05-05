@@ -39,39 +39,39 @@ The SidecarR6 pointer (invisibly)
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarR6}.
 }
 \section{Active bindings}{
-  \if{html}{\out{<div class="r6-active-bindings">}}
-  \describe{
-    \item{\code{value}}{Integer sidecar field (active binding).}
+\if{html}{\out{<div class="r6-active-bindings">}}
+\describe{
+\item{\code{value}}{Integer sidecar field (active binding).}
 
-    \item{\code{label}}{Character sidecar field (active binding).}
-  }
-  \if{html}{\out{</div>}}
+\item{\code{label}}{Character sidecar field (active binding).}
+}
+\if{html}{\out{</div>}}
 }
 \section{Methods}{
 \subsection{Public methods}{
-  \itemize{
-    \item \href{#method-SidecarR6-initialize}{\code{SidecarR6$new()}}
-  }
+\itemize{
+\item \href{#method-SidecarR6-new}{\code{SidecarR6$new()}}
+}
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-SidecarR6-initialize"></a>}}
-\if{latex}{\out{\hypertarget{method-SidecarR6-initialize}{}}}
-\subsection{\code{SidecarR6$new()}}{
-  Create a new SidecarR6 with initial values
-  \subsection{Usage}{
-    \if{html}{\out{<div class="r">}}
-    \preformatted{SidecarR6$new(value, label, .ptr = NULL)}
-    \if{html}{\out{</div>}}
-  }
-  \subsection{Arguments}{
-    \if{html}{\out{<div class="arguments">}}
-    \describe{
-      \item{\code{value}}{Integer sidecar field.}
-      \item{\code{label}}{Character sidecar field.}
-      \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
-    }
-    \if{html}{\out{</div>}}
-  }
+\if{html}{\out{<a id="method-SidecarR6-new"></a>}}
+\if{latex}{\out{\hypertarget{method-SidecarR6-new}{}}}
+\subsection{Method \code{new()}}{
+Create a new SidecarR6 with initial values
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{SidecarR6$new(value, label, .ptr = NULL)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{value}}{Integer sidecar field.}
+
+\item{\code{label}}{Character sidecar field.}
+
+\item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
+}
+\if{html}{\out{</div>}}
+}
+}
 }

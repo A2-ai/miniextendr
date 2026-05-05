@@ -177,32 +177,6 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> String {
     }
 }
 
-/// Convert a Rust panic payload into an R error and continue unwinding on the R side.
-pub(crate) unsafe fn panic_payload_to_r_error(
-    payload: Box<dyn Any + Send>,
-    call: Option<SEXP>,
-    source: crate::panic_telemetry::PanicSource,
-) -> ! {
-    let error_message = panic_payload_to_string(payload.as_ref());
-
-    crate::panic_telemetry::fire(&error_message, source);
-
-    let c_error_message = std::ffi::CString::new(error_message)
-        .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
-
-    unsafe {
-        if let Some(call) = call {
-            ::miniextendr_api::ffi::Rf_errorcall_unchecked(
-                call,
-                c"%s".as_ptr(),
-                c_error_message.as_ptr(),
-            );
-        } else {
-            ::miniextendr_api::ffi::Rf_error_unchecked(c"%s".as_ptr(), c_error_message.as_ptr());
-        }
-    }
-}
-
 // region: Log drain integration
 
 /// Drain the cross-thread log queue if the `log` feature is enabled.
@@ -417,13 +391,15 @@ where
                     | crate::condition::RCondition::Condition { .. } => {
                         // warning!/message!/condition! cannot be cleanly raised from ALTREP
                         // context (no mechanism to suspend execution for non-fatal signals).
-                        // Documented degradation: convert to a plain R error with a
-                        // diagnostic. This is not a regression from before #345.
+                        // Documented degradation: convert to a plain R error with a fixed
+                        // diagnostic, but route through `raise_rust_condition_via_stop` so
+                        // the resulting error gets `rust_error` class layering — consistent
+                        // with the generic-panic branch a few lines below (issue #366).
                         let msg = "warning!/message!/condition! from ALTREP callback context \
                                    cannot be raised as non-fatal signals; use error!() instead. \
                                    This context has no R wrapper to handle signal restart.";
-                        let box_payload: Box<dyn std::any::Any + Send> = Box::new(msg);
-                        unsafe { panic_payload_to_r_error(box_payload, call, source) }
+                        crate::panic_telemetry::fire(msg, source);
+                        unsafe { raise_rust_condition_via_stop(msg, None, call) }
                     }
                 }
             } else {

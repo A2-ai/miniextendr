@@ -384,7 +384,7 @@ fn trait_method_preamble_lines(method: &TraitMethod, indent: &str) -> Vec<String
 /// Generate R function body lines with optional error_in_r checking.
 ///
 /// Without error_in_r: returns `["{indent}{call_expr}"]`
-/// With error_in_r: captures result in `.val`, checks for `rust_error_value`, returns `.val`
+/// With error_in_r: captures result in `.val`, checks for `rust_condition_value`, returns `.val`
 fn trait_method_body_lines(call_expr: &str, error_in_r: bool, indent: &str) -> Vec<String> {
     if error_in_r {
         let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];

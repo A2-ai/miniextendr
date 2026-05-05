@@ -18,7 +18,7 @@ Secure <- R6::R6Class("Secure",
         private$.ptr <- .ptr
       } else {
         .val <- .Call(C_Secure__new, .call = match.call())
-        if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
     },
@@ -26,7 +26,7 @@ Secure <- R6::R6Class("Secure",
     #' @description Method `public_api`.
     public_api = function() {
       .val <- .Call(C_Secure__public_api, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     }
   ),
@@ -34,7 +34,7 @@ Secure <- R6::R6Class("Secure",
     # Secure::internal_compute (1:1)
     internal_compute = function() {
       .val <- .Call(C_Secure__internal_compute, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
     .ptr = NULL

@@ -17,7 +17,7 @@ new_rational <- function(n, d) {
     "'d' must have length 1" = length(d) == 1L
   )
   .val <- .Call(C_Rational__new, .call = match.call(), n, d)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   data <- .val
   vctrs::new_rcrd(data, class = "Rational")
 }
@@ -62,6 +62,6 @@ if (!exists("numerator", mode = "function")) {
 #' @method numerator Rational
 numerator.Rational <- function(x, ...) {
   .val <- .Call(C_Rational__numerator, .call = match.call(), x)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

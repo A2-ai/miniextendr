@@ -15,7 +15,7 @@ new_percent <- function(x) {
     "'x' must have length 1" = length(x) == 1L
   )
   .val <- .Call(C_Percent__new, .call = match.call(), x)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   data <- .val
   vctrs::new_vctr(data, class = "Percent", inherit_base_type = FALSE)
 }
@@ -60,7 +60,7 @@ if (!exists("value", mode = "function")) {
 #' @method value Percent
 value.Percent <- function(x, ...) {
   .val <- .Call(C_Percent__value, .call = match.call(), x)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
@@ -88,6 +88,6 @@ scale.Percent <- function(x, factor, ...) {
     "'factor' must have length 1" = length(factor) == 1L
   )
   .val <- .Call(C_Percent__scale, .call = match.call(), x, factor)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   x
 }

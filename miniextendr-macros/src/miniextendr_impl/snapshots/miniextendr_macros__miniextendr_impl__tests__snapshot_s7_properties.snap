@@ -30,7 +30,7 @@ Range <- S7::new_class("Range",
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
       .val <- .Call(C_Range__new, .call = match.call(), start, end)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       S7::new_object(S7::S7_object(), .ptr = .val)
     }
   }

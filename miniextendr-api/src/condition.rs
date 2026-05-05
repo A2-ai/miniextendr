@@ -281,8 +281,8 @@ impl RCondition {
     /// [`crate::error_value::make_rust_condition_value`] or
     /// [`crate::error_value::make_rust_error_value`].
     ///
-    /// Returns `Some(RCondition)` when `sexp` has class `"rust_error_value"` AND
-    /// the `"__rust_error__"` attribute is `TRUE`. Returns `None` for all other
+    /// Returns `Some(RCondition)` when `sexp` has class `"rust_condition_value"` AND
+    /// the `"__rust_condition__"` attribute is `TRUE`. Returns `None` for all other
     /// SEXPs (normal return values, `R_NilValue`, etc.).
     ///
     /// Reconstructs the matching variant for each kind: `"error"`/`"panic"`/
@@ -298,7 +298,7 @@ impl RCondition {
         use crate::ffi::SexpExt;
 
         // Use SexpExt::inherits_class — wraps Rf_inherits, already main-thread.
-        if !sexp.inherits_class(c"rust_error_value") {
+        if !sexp.inherits_class(c"rust_condition_value") {
             return None;
         }
 
@@ -308,9 +308,9 @@ impl RCondition {
         // closes the door on subtle regressions if the read path ever changes.
         let _guard = unsafe { crate::gc_protect::OwnedProtect::new(sexp) };
 
-        // Verify the __rust_error__ marker attribute is TRUE (a length-1 LGLSXP
+        // Verify the __rust_condition__ marker attribute is TRUE (a length-1 LGLSXP
         // with value 1). This guards against coincidental class attribute collisions.
-        let attr_sym = crate::cached_class::rust_error_attr_symbol();
+        let attr_sym = crate::cached_class::rust_condition_attr_symbol();
         let marker = sexp.get_attr(attr_sym);
         // marker should be a scalar logical TRUE: is_logical() and logical_elt(0) == 1
         if !marker.is_logical() || marker.logical_elt(0) != 1 {
@@ -326,7 +326,7 @@ impl RCondition {
         let len = sexp.len();
 
         // Defense-in-depth: a tagged SEXP must have at least the message and kind
-        // slots. inherits_class + __rust_error__ marker should already imply this,
+        // slots. inherits_class + __rust_condition__ marker should already imply this,
         // but a corrupted/spoofed SEXP that satisfies both checks shouldn't OOB
         // the vector_elt reads below.
         if len < 2 {
