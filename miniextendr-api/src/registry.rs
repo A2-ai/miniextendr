@@ -29,8 +29,15 @@ pub static MX_R_WRAPPERS: [RWrapperEntry];
 /// ALTREP class registration functions, called once at package init.
 ///
 /// Each ALTREP struct or trait impl emits an entry.
+///
+/// The element type is `extern "C" fn()` so that each registration function
+/// can be declared `pub extern "C"` with `#[unsafe(no_mangle)]`, making it
+/// externally addressable from a separate compilation unit (e.g. a WASM
+/// codegen path). The functions are not `unsafe` — R-thread invariants are a
+/// module-level contract, not encoded in the type (same convention as the
+/// `extern "C-unwind" fn` entries in `MX_CALL_DEFS`).
 #[distributed_slice]
-pub static MX_ALTREP_REGISTRATIONS: [fn()];
+pub static MX_ALTREP_REGISTRATIONS: [extern "C" fn()];
 
 /// Trait dispatch entries for [`universal_query`].
 ///
