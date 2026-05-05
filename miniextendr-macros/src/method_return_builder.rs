@@ -16,14 +16,14 @@ use crate::miniextendr_impl::ParsedMethod;
 /// Generate the R guard that re-raises a tagged Rust error/condition value.
 ///
 /// Expects `.val` to already be assigned (e.g., `.val <- .Call(...)`). Emits a
-/// single line indented by `indent`: when `.val` is a tagged `rust_error_value`,
+/// single line indented by `indent`: when `.val` is a tagged `rust_condition_value`,
 /// hand off to the shared helper and return from the enclosing function. The
 /// helper's `stop()` longjmps for error/panic kinds; for warning/message/
 /// condition it signals and returns `invisible(NULL)`, which the surrounding
 /// `return(...)` propagates as the wrapper's result.
 pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
     vec![format!(
-        "{indent}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) return(.miniextendr_raise_condition(.val, sys.call()))"
+        "{indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, sys.call()))"
     )]
 }
 
@@ -38,7 +38,7 @@ pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
 pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
     format!(
         "{{\n    .val <- {call_expr}\n    \
-         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n    \
+         if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n    \
          {inner}\n  \
          }}"
     )
@@ -54,7 +54,7 @@ pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
 pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String {
     format!(
         ".val <- {call_expr}\n  \
-         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n  \
+         if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n  \
          {final_return}"
     )
 }
@@ -117,7 +117,7 @@ pub struct MethodReturnBuilder {
     /// Number of leading spaces for each generated line.
     indent: usize,
     /// When `true`, generates error_in_r checking: captures the `.Call()` result in `.val`,
-    /// checks for `rust_error_value` class, and raises an R condition on error.
+    /// checks for `rust_condition_value` class, and raises an R condition on error.
     error_in_r: bool,
 }
 
@@ -158,14 +158,14 @@ impl MethodReturnBuilder {
         self
     }
 
-    /// Enable error_in_r mode: capture .Call result, check for rust_error_value,
+    /// Enable error_in_r mode: capture .Call result, check for rust_condition_value,
     /// raise R condition on error.
     pub fn with_error_in_r(mut self, error_in_r: bool) -> Self {
         self.error_in_r = error_in_r;
         self
     }
 
-    /// Generate the `if (inherits(.val, "rust_error_value") ...)` check lines.
+    /// Generate the `if (inherits(.val, "rust_condition_value") ...)` check lines.
     ///
     /// Emits an R `inherits` guard that extracts and re-raises Rust errors
     /// transported as tagged SEXP values, using the current indentation.

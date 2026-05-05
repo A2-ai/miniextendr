@@ -13,8 +13,8 @@
 //! - `error`: error message (character scalar)
 //! - `kind`: error kind string (`"panic"`, `"result_err"`, `"none_err"`)
 //! - `call`: the R call SEXP (or `NULL` if not available)
-//! - class attribute: `"rust_error_value"`
-//! - `__rust_error__` attribute: `TRUE`
+//! - class attribute: `"rust_condition_value"`
+//! - `__rust_condition__` attribute: `TRUE`
 //!
 //! # Condition value structure (`make_rust_condition_value`)
 //!
@@ -23,14 +23,14 @@
 //! - `kind`: condition kind string (`"error"`, `"warning"`, `"message"`, `"condition"`)
 //! - `class`: optional user-supplied custom class (character scalar or `NULL`)
 //! - `call`: the R call SEXP (or `NULL` if not available)
-//! - class attribute: `"rust_error_value"`
-//! - `__rust_error__` attribute: `TRUE`
+//! - class attribute: `"rust_condition_value"`
+//! - `__rust_condition__` attribute: `TRUE`
 //!
 //! The 3-element legacy form produces `NULL` when accessed as `$class`, so the
 //! R-side switch is compatible with both forms.
 
 use crate::cached_class::{
-    condition_names_sexp, error_names_sexp, rust_error_attr_symbol, rust_error_class_sexp,
+    condition_names_sexp, error_names_sexp, rust_condition_attr_symbol, rust_condition_class_sexp,
 };
 use crate::ffi::{self, SEXP, SexpExt};
 
@@ -86,11 +86,11 @@ pub fn make_rust_error_value(message: &str, kind: &str, call: Option<SEXP>) -> S
         // Names / class symbols are cached. The TRUE marker on set_attr is a
         // fresh LGLSXP — protect across the SETATTRIB call.
         list.set_names(error_names_sexp());
-        list.set_class(rust_error_class_sexp());
+        list.set_class(rust_condition_class_sexp());
         let true_marker = SEXP::scalar_logical(true);
         ffi::Rf_protect(true_marker);
         prot += 1;
-        list.set_attr(rust_error_attr_symbol(), true_marker);
+        list.set_attr(rust_condition_attr_symbol(), true_marker);
 
         ffi::Rf_unprotect(prot);
         list
@@ -165,11 +165,11 @@ pub fn make_rust_condition_value(
         list.set_vector_elt(3, call.unwrap_or(SEXP::nil()));
 
         list.set_names(condition_names_sexp());
-        list.set_class(rust_error_class_sexp());
+        list.set_class(rust_condition_class_sexp());
         let true_marker = SEXP::scalar_logical(true);
         ffi::Rf_protect(true_marker);
         prot += 1;
-        list.set_attr(rust_error_attr_symbol(), true_marker);
+        list.set_attr(rust_condition_attr_symbol(), true_marker);
 
         ffi::Rf_unprotect(prot);
         list

@@ -25,7 +25,7 @@ Counter <- R6::R6Class("Counter",
         private$.ptr <- .ptr
       } else {
         .val <- .Call(C_Counter__new, .call = match.call(), value)
-        if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
     },
@@ -33,14 +33,14 @@ Counter <- R6::R6Class("Counter",
     #' @description Get the current value
     get = function() {
       .val <- .Call(C_Counter__get, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       .val
     },
     # Counter::increment (1:1)
     #' @description Increment by one
     increment = function() {
       .val <- .Call(C_Counter__increment, .call = match.call(), private$.ptr)
-      if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       invisible(self)
     }
   ),
@@ -63,6 +63,6 @@ Counter$from_value <- function(v) {
     "'v' must have length 1" = length(v) == 1L
   )
   .val <- .Call(C_Counter__from_value, .call = match.call(), v)
-  if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   Counter$new(.ptr = .val)
 }

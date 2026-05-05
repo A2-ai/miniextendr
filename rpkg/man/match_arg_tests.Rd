@@ -103,7 +103,7 @@ match_arg_return_modes(modes = c("Fast", "Safe", "Debug"))
 
 match_arg_set_priority(priority = c("lo", "med", "hi"))
 
-match_arg_with_default(mode = "Safe")
+match_arg_with_default(mode = c("Safe", "Fast", "Debug"))
 
 match_arg_auto_doc_mode(mode = c("Fast", "Safe", "Debug"))
 

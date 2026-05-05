@@ -530,7 +530,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
 # nocov start
 
 # Internal helper: re-raise a tagged Rust error/condition value as an R condition.
-# Generated wrappers call this whenever `.Call()` returns a `rust_error_value`.
+# Generated wrappers call this whenever `.Call()` returns a `rust_condition_value`.
 # `.call_default` is the wrapper's `sys.call()`, used as the fallback when the
 # Rust panic payload didn't carry a captured call (e.g. lambda contexts that
 # pass `.call = NULL` to `.Call`). For error/panic kinds `stop()` longjmps;

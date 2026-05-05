@@ -158,3 +158,122 @@ pub fn altrep_panic_at_index(n: i32, panic_at: i32) -> SEXP {
 }
 
 // endregion
+
+// region: Non-error degradation — warning!/message!/condition! from elt() (issue #366)
+//
+// These three kinds cannot suspend execution from inside an ALTREP callback —
+// no R wrapper can catch and resume. The unwind path documents this and
+// degrades them to a plain R error with a diagnostic message. After the #366
+// fix the degraded error inherits `rust_error` class layering; before the fix
+// it produces a plain `simpleError`.
+
+#[derive(AltrepInteger)]
+#[altrep(class = "WarnAltrep", manual)]
+pub struct WarnAltrepData {
+    pub len: usize,
+    pub message: String,
+}
+
+impl AltrepLen for WarnAltrepData {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl AltIntegerData for WarnAltrepData {
+    fn elt(&self, _i: usize) -> i32 {
+        miniextendr_api::warning!("{}", self.message);
+    }
+}
+
+/// Create an ALTREP integer that calls `warning!()` on element access.
+///
+/// In ALTREP RUnwind context the warning cannot suspend — it is degraded to
+/// a `rust_error` with a fixed diagnostic message.
+///
+/// @param n Length of the vector.
+/// @param message Warning message.
+/// @return An ALTREP integer vector.
+/// @export
+#[miniextendr]
+pub fn altrep_warn_on_elt(n: i32, message: &str) -> SEXP {
+    let data = WarnAltrepData {
+        len: n.max(0) as usize,
+        message: message.to_string(),
+    };
+    data.into_sexp()
+}
+
+#[derive(AltrepInteger)]
+#[altrep(class = "MessageAltrep", manual)]
+pub struct MessageAltrepData {
+    pub len: usize,
+    pub message: String,
+}
+
+impl AltrepLen for MessageAltrepData {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl AltIntegerData for MessageAltrepData {
+    fn elt(&self, _i: usize) -> i32 {
+        miniextendr_api::message!("{}", self.message);
+    }
+}
+
+/// Create an ALTREP integer that calls `message!()` on element access.
+///
+/// Same degradation as `altrep_warn_on_elt`.
+///
+/// @param n Length of the vector.
+/// @param message Message body.
+/// @return An ALTREP integer vector.
+/// @export
+#[miniextendr]
+pub fn altrep_message_on_elt(n: i32, message: &str) -> SEXP {
+    let data = MessageAltrepData {
+        len: n.max(0) as usize,
+        message: message.to_string(),
+    };
+    data.into_sexp()
+}
+
+#[derive(AltrepInteger)]
+#[altrep(class = "ConditionAltrep", manual)]
+pub struct ConditionAltrepData {
+    pub len: usize,
+    pub message: String,
+}
+
+impl AltrepLen for ConditionAltrepData {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl AltIntegerData for ConditionAltrepData {
+    fn elt(&self, _i: usize) -> i32 {
+        miniextendr_api::condition!("{}", self.message);
+    }
+}
+
+/// Create an ALTREP integer that calls `condition!()` on element access.
+///
+/// Same degradation as `altrep_warn_on_elt`.
+///
+/// @param n Length of the vector.
+/// @param message Condition message body.
+/// @return An ALTREP integer vector.
+/// @export
+#[miniextendr]
+pub fn altrep_condition_on_elt(n: i32, message: &str) -> SEXP {
+    let data = ConditionAltrepData {
+        len: n.max(0) as usize,
+        message: message.to_string(),
+    };
+    data.into_sexp()
+}
+
+// endregion
