@@ -7,10 +7,12 @@ re-stage Emscripten, flang, Rust nightly, or R-for-WASM ourselves.
 
 Companion to:
 
-- **`plans/webr-support.md`** — the actual source-side port work (linkme
-  cfg-gating, host-time codegen of `wasm_registry.rs`, `Makevars.in` /
-  `configure.ac` branching). Step 6 of that plan dispatches here for
-  the build environment.
+- **`plans/webr-support.md`** — the index plan; lists the source-side
+  steps (linkme cfg-gating, host snapshot codegen, `Makevars.in` /
+  `configure.ac` branching). Step 6 of that plan dispatches here.
+- **`plans/wasm-registry-codegen.md`** — the linkme-replacement design
+  (host snapshot of runtime registrations, `wasm_registry.json` →
+  `wasm_registry.rs` via `build.rs`).
 - **`docs/WEBR.md`** — user-facing summary of toolchain requirements
   (target triple, why nightly, why `-Z build-std=std,panic_abort`).
 

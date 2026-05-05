@@ -80,9 +80,10 @@ These are summarised here; full design discussion lives in
 
 ## See also
 
-- `plans/webr-support.md` — source-side port plan (linkme cfg-gating,
-  host-time codegen of `wasm_registry.rs`, `Makevars.in` / `configure.ac`
-  branching).
+- `plans/webr-support.md` — index plan for the WebR port; cross-links
+  to the detailed pieces.
+- `plans/wasm-registry-codegen.md` — design for replacing linkme on
+  WASM with a host-time JSON snapshot + `build.rs` codegen.
 - `plans/webr-dockerfile.md` — `Dockerfile.webr` plan (inheriting
   `ghcr.io/r-wasm/webr`, the layered tools, CI sequencing).
 - `.webr/` — vendored clone of the webR repo for offline reference.
