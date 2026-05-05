@@ -294,9 +294,7 @@ pub fn match_arg_multi_mode_array(
 /// @export
 #[cfg(feature = "log")]
 #[miniextendr_api::miniextendr(internal)]
-pub fn match_arg_log_level(
-    #[miniextendr(match_arg)] level: log::LevelFilter,
-) -> String {
+pub fn match_arg_log_level(#[miniextendr(match_arg)] level: log::LevelFilter) -> String {
     format!("{level:?}").to_lowercase()
 }
 // endregion

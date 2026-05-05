@@ -548,11 +548,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
         let rotated = if entry.preferred_default.is_empty() {
             choices_str
         } else {
-            rotate_choices_for_default(
-                &choices_str,
-                entry.preferred_default,
-                entry.placeholder,
-            )
+            rotate_choices_for_default(&choices_str, entry.preferred_default, entry.placeholder)
         };
         let replacement = format!("c({rotated})");
         content = content.replace(entry.placeholder, &replacement);

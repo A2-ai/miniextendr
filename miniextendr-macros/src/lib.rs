@@ -997,8 +997,7 @@ pub fn miniextendr(
             Some(raw) => crate::match_arg_keys::extract_match_arg_default(raw),
             None => String::new(),
         };
-        let placeholder =
-            crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
+        let placeholder = crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
         merged_defaults.insert(r_name.clone(), placeholder.clone());
         match_arg_placeholders.push((placeholder, match_arg_param.clone(), preferred));
     }
