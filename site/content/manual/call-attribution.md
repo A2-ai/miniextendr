@@ -157,7 +157,7 @@ The five sites are:
 4. **S7 property getter** — `getter = function(self) .Call(C_Type__get_prop, .call = NULL, self@.ptr)`
 5. **S7 property setter** — `setter = function(self, value) { .Call(C_Type__set_prop, .call = NULL, self@.ptr, value); self }`
 
-This is implemented via `DotCallBuilder::null_call_attribution()` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_error_value` stores it and the R-side `%||% sys.call()` recovers the user's frame.
+This is implemented via `DotCallBuilder::null_call_attribution()` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_condition_value` stores it and the R-side `%||% sys.call()` recovers the user's frame.
 
 ## Reproducing the transcript
 

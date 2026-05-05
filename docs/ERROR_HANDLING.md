@@ -348,13 +348,15 @@ of `error_in_r`, since a unit error is a deliberate sentinel, not a failure.
 
 ### The Error Value (Rust Side)
 
-When a failure occurs, the generated C wrapper calls `make_rust_error_value(message, kind)` from
+When a failure occurs, the generated C wrapper calls `make_rust_condition_value(message, kind, None, call)` from
 `miniextendr_api::error_value`. This builds a tagged SEXP -- a named list with:
 
 - `$error`: the error message (character scalar)
-- `$kind`: machine-readable kind (`"panic"`, `"result_err"`, `"none_err"`)
-- class attribute: `"rust_error_value"`
-- `__rust_error__` attribute: `TRUE`
+- `$kind`: machine-readable kind (`"panic"`, `"result_err"`, `"none_err"`, `"conversion"`)
+- `$class`: optional user-supplied class name (or `NULL`)
+- `$call`: the R call SEXP (or `NULL`)
+- class attribute: `"rust_condition_value"`
+- `__rust_condition__` attribute: `TRUE`
 
 This value is returned as a normal SEXP from the `.Call()` interface. No R error is raised
 at this point -- all Rust stack frames have already unwound.

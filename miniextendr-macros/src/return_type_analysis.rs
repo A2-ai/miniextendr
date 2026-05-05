@@ -179,8 +179,8 @@ fn analyze_option_type(
             quote::quote! {
                 match #rust_result_ident {
                     Some(()) => ::miniextendr_api::ffi::SEXP::nil(),
-                    None => ::miniextendr_api::error_value::make_rust_error_value(
-                        #option_none_error_msg, "none_err", Some(__miniextendr_call),
+                    None => ::miniextendr_api::error_value::make_rust_condition_value(
+                        #option_none_error_msg, "none_err", ::core::option::Option::None, Some(__miniextendr_call),
                     ),
                 }
             }
@@ -269,8 +269,8 @@ fn analyze_result_type(
             quote::quote! {
                 match #rust_result_ident {
                     Ok(()) => ::miniextendr_api::ffi::SEXP::nil(),
-                    Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                        &format!("{:?}", e), "result_err", Some(__miniextendr_call),
+                    Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                        &format!("{:?}", e), "result_err", ::core::option::Option::None, Some(__miniextendr_call),
                     ),
                 }
             }
@@ -281,8 +281,8 @@ fn analyze_result_type(
             quote::quote! {
                 match #rust_result_ident {
                     Ok(v) => v,
-                    Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                        &format!("{:?}", e), "result_err", Some(__miniextendr_call),
+                    Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                        &format!("{:?}", e), "result_err", ::core::option::Option::None, Some(__miniextendr_call),
                     ),
                 }
             }
@@ -292,8 +292,8 @@ fn analyze_result_type(
             quote::quote! {
                 match #rust_result_ident {
                     Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
-                    Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
-                        &format!("{:?}", e), "result_err", Some(__miniextendr_call),
+                    Err(e) => ::miniextendr_api::error_value::make_rust_condition_value(
+                        &format!("{:?}", e), "result_err", ::core::option::Option::None, Some(__miniextendr_call),
                     ),
                 }
             }

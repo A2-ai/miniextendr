@@ -278,8 +278,7 @@ macro_rules! condition {
 
 impl RCondition {
     /// Reconstruct an [`RCondition::Error`] from a tagged SEXP produced by
-    /// [`crate::error_value::make_rust_condition_value`] or
-    /// [`crate::error_value::make_rust_error_value`].
+    /// [`crate::error_value::make_rust_condition_value`].
     ///
     /// Returns `Some(RCondition)` when `sexp` has class `"rust_condition_value"` AND
     /// the `"__rust_condition__"` attribute is `TRUE`. Returns `None` for all other
