@@ -130,6 +130,26 @@ miniextendr_doctor <- function(path = ".") {
     }
   }
 
+  # ── Vendor tarball leak ──
+  cli::cli_h2("Vendor tarball")
+
+  tarball_path <- tryCatch(usethis::proj_path("inst", "vendor.tar.xz"), error = function(e) NULL)
+  if (!is.null(tarball_path) && fs::file_exists(tarball_path)) {
+    cli::cli_alert_warning("{.path inst/vendor.tar.xz} is present.")
+    cli::cli_bullets(c(
+      "i" = paste0(
+        "If you are in dev iteration this flips {.code ./configure} into offline ",
+        "tarball mode and hides workspace edits."
+      ),
+      "i" = "Run {.code miniextendr_clean_vendor_leak()} (or {.code just clean-vendor-leak} in the monorepo) to remove it.",
+      "i" = "If you are mid CRAN-prep and have not run {.code R CMD build} yet, this is intentional — ignore."
+    ))
+    results$warn <- c(results$warn, "inst/vendor.tar.xz present (may flip tarball mode)")
+  } else {
+    cli::cli_alert_success("No {.path inst/vendor.tar.xz} leak detected")
+    results$pass <- c(results$pass, "No vendor tarball leak")
+  }
+
   # ── Git Hooks ──
   cli::cli_h2("Git Hooks")
 

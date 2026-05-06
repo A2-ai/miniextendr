@@ -60,6 +60,7 @@
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
 #     just lock-shape-check   - Verify Cargo.lock is in tarball-shape (git sources, no checksums)
+#     just clean-vendor-leak  - Remove a leaked inst/vendor.tar.xz that would flip configure into tarball mode
 #
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set windows-shell := ["bash", "-euo", "pipefail", "-c"]
@@ -427,6 +428,25 @@ vendor:
     # files; cargo refuses to verify them against the registry checksums
     # during a tarball install if the lockfile carries checksums.
     sed -i.bak '/^checksum = /d' "$rust_dir/Cargo.lock" && rm -f "$rust_dir/Cargo.lock.bak"
+    echo ""
+    echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
+    echo "(run 'just clean-vendor-leak' or 'unlink(\"rpkg/inst/vendor.tar.xz\")' in R)"
+
+# Remove a leaked rpkg/inst/vendor.tar.xz.
+# inst/vendor.tar.xz is the single signal that flips configure into tarball mode.
+# A leftover tarball makes subsequent dev installs silently use stale vendored
+# sources instead of workspace edits. Run this if you're seeing
+# "tarball install — vendor/ already populated" during dev iteration and you
+# didn't intend to stay in tarball mode.
+[script("bash")]
+clean-vendor-leak:
+    set -euo pipefail
+    if [ -f rpkg/inst/vendor.tar.xz ]; then
+        rm -f rpkg/inst/vendor.tar.xz
+        echo "Removed rpkg/inst/vendor.tar.xz (tarball-mode leak)."
+    else
+        echo "No tarball leak to clean."
+    fi
 
 # Verify committed Cargo.lock, vendor/, and vendor.tar.xz agree (#157).
 # Runs in CI/pre-release to guarantee the offline build artifact is fresh.
@@ -483,8 +503,12 @@ minirextendr-install-deps:
 # Depends on `vendor` for the same reason as r-cmd-build — devtools::build
 # wraps R CMD build, and the resulting tarball is meaningful only with
 # inst/vendor.tar.xz inside.
+# Cleanup: inst/vendor.tar.xz is removed on exit so the source tree is never
+# left in tarball mode after this recipe finishes.
+[script("bash")]
 devtools-build: configure vendor
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
+    set -euo pipefail
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
@@ -523,8 +547,10 @@ r-cmd-install *args: configure
 # to tarball mode (configure's only signal is `[ -f inst/vendor.tar.xz ]`),
 # which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
 alias rcmdbuild := r-cmd-build
+[script("bash")]
 r-cmd-build *args: configure vendor
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
+    set -euo pipefail
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
@@ -534,25 +560,27 @@ r-cmd-build *args: configure vendor
 #
 # Cleanup: same reason as r-cmd-build — see comment there.
 alias rcmdcheck := r-cmd-check
+[script("bash")]
 r-cmd-check *args: vendor
-    @trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT; \
-    ERROR_ON="warning" \
-    CHECK_DIR="" \
-    && for arg in {{args}}; do \
-      case "$arg" in \
-        ERROR_ON=*) ERROR_ON="${arg#ERROR_ON=}" ;; \
-        CHECK_DIR=*) CHECK_DIR="${arg#CHECK_DIR=}" ;; \
-        *) echo "Ignoring unknown arg '$arg'" ;; \
-      esac; \
-    done \
-    && CHECK_DIR_ARG="NULL" \
-    && if [ -n "$CHECK_DIR" ]; then \
-      case "$CHECK_DIR" in \
-        /*) CHECK_DIR_ARG="'$CHECK_DIR'" ;; \
-        *)  CHECK_DIR_ARG="'$(pwd)/$CHECK_DIR'" ;; \
-      esac; \
-    fi \
-    && Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
+    set -euo pipefail
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
+    ERROR_ON="warning"
+    CHECK_DIR=""
+    for arg in {{args}}; do
+      case "$arg" in
+        ERROR_ON=*) ERROR_ON="${arg#ERROR_ON=}" ;;
+        CHECK_DIR=*) CHECK_DIR="${arg#CHECK_DIR=}" ;;
+        *) echo "Ignoring unknown arg '$arg'" ;;
+      esac
+    done
+    CHECK_DIR_ARG="NULL"
+    if [ -n "$CHECK_DIR" ]; then
+      case "$CHECK_DIR" in
+        /*) CHECK_DIR_ARG="'$CHECK_DIR'" ;;
+        *)  CHECK_DIR_ARG="'$(pwd)/$CHECK_DIR'" ;;
+      esac
+    fi
+    Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
 
 # Extract and inspect R package tarball contents (for debugging build artifacts)
 #
