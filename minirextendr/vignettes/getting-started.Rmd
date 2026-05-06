@@ -205,6 +205,41 @@ release tarball, **delete `inst/vendor.tar.xz`** before resuming
 development — otherwise subsequent `R CMD INSTALL` runs stay locked
 to the vendored snapshot and ignore upstream miniextendr updates.
 
+### About `src/rust/Cargo.lock` — it's not a vanilla lockfile
+
+The committed `src/rust/Cargo.lock` is in **tarball-shape**, not
+the lockfile cargo produces during day-to-day `cargo build`. Two
+invariants:
+
+1. **No `checksum = "..."` lines.** Vendored crates ship with empty
+   `.cargo-checksum.json` files; if the lock carries the registry
+   checksums, cargo at offline install time refuses to verify them
+   against the empty vendored ones and aborts with
+   `the listed checksum of '<crate>' has changed`.
+2. **No `path+...` entries** for `miniextendr-{api,lint,macros}` —
+   these crates must record `source = "git+https://github.com/A2-ai/miniextendr#<commit>"`
+   so cargo's source-replacement mechanism can match the lock entry
+   against the vendored copy at install time. A `path+file:///...`
+   entry baked from a local checkout doesn't survive shipping.
+
+`miniextendr_vendor()` produces the right shape: it strips the
+checksums, regenerates the lock against the bare miniextendr git URL
+(without your local `[patch."git+url"]` override), and packs
+`vendor/` into `inst/vendor.tar.xz`.
+
+**Drift is expected during dev.** Any `cargo build` / `R CMD INSTALL` /
+`devtools::document()` against the patched config silently rewrites
+the lock in source-shape (path-deps for the framework crates,
+checksums for transitive deps). Don't commit that drift — re-run
+`miniextendr_vendor()` (or just strip checksums + restore git
+sources) before `R CMD build` for a release.
+
+For the full reasoning, troubleshooting, and the manual steps
+the function automates, see
+[Cargo.lock shape][cargo-lock-shape] in the framework docs.
+
+[cargo-lock-shape]: https://a2-ai.github.io/miniextendr/manual/cargo-lock-shape/
+
 ### Upgrading
 
 ```{r}

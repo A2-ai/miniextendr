@@ -94,6 +94,10 @@ file to be present first before it can be used against vendored source code".
 
 ## Cargo.lock shape, drift, and why dev iteration may dirty it
 
+> **See [Cargo.lock shape](./CARGO_LOCK_SHAPE.md)** for a dedicated walkthrough
+> of the invariants, the failure modes when they're violated, and the manual
+> steps `just vendor` / `miniextendr_vendor()` automate. Summary below.
+
 The committed `rpkg/src/rust/Cargo.lock` is in tarball-shape: workspace crates
 have `source = "git+https://github.com/A2-ai/miniextendr#<hash>"` and the file
 contains zero `checksum = ...` lines. This is the shape an offline tarball
