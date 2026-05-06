@@ -1,6 +1,7 @@
 Package: miniextendr
 Title: Rust-R Interoperability Framework
 Version: 0.1.0
+Depends: R (>= 4.4)
 Authors@R:
     c(
         person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = c("aut", "cre")),
