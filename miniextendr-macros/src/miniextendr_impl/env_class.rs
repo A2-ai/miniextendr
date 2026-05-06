@@ -215,17 +215,24 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         || parsed_impl.internal;
     let should_export = !class_has_no_rd && !has_internal && !parsed_impl.noexport;
 
-    // Generate roxygen tags for dispatch methods
+    // Generate roxygen tags for dispatch methods.
+    // roxygen2 8.0.0+ enforces that any `generic.class`-named function carry
+    // @export or @exportS3Method (@noRd alone doesn't satisfy the check). We
+    // always emit @export so roxygen2 emits a properly-quoted
+    // `S3method("$", Class)` / `S3method("[[", Class)` (bare @exportS3Method
+    // skips the operator-name quoting and produces invalid NAMESPACE entries).
+    // For internal/noexport classes the @rdname target is dropped so the
+    // helpers don't bleed into the user-visible Rd page.
     if class_has_no_rd {
-        // For internal classes, add @noRd to suppress roxygen2 S3 method detection
         lines.push("#' @noRd".to_string());
+        lines.push("#' @export".to_string());
+    } else if !should_export {
+        lines.push("#' @export".to_string());
     } else {
         lines.push(format!("#' @rdname {}", class_name));
         lines.push("#' @param self The object instance.".to_string());
         lines.push("#' @param name Method name for dispatch.".to_string());
-        if should_export {
-            lines.push("#' @export".to_string());
-        }
+        lines.push("#' @export".to_string());
     }
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
     lines.push(format!("  obj <- {}[[name]]", class_name));
@@ -275,11 +282,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("}".to_string());
     if class_has_no_rd {
         lines.push("#' @noRd".to_string());
+        lines.push("#' @export".to_string());
+    } else if !should_export {
+        lines.push("#' @export".to_string());
     } else {
         lines.push(format!("#' @rdname {}", class_name));
-        if should_export {
-            lines.push("#' @export".to_string());
-        }
+        lines.push("#' @export".to_string());
     }
     lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
 

@@ -255,6 +255,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             "#' @method {} {}",
             generic_name, method_class_suffix
         ));
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params
