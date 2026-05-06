@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use super::error::RSerdeError;
-use crate::altrep_traits::NA_REAL;
+use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
 use crate::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
@@ -124,6 +124,7 @@ impl ColumnarDataFrame {
     /// | `i64/u64/f32/f64` | `numeric` |
     /// | `String/&str` | `character` |
     /// | `Option<T>` | Same type with NA for `None` |
+    /// | `Option<T>` (every row `None`) | `logical` NA column — R coerces to the surrounding type on first use (`c(NA, 1L)` → integer, `c(NA, "x")` → character) |
     /// | Nested struct | Recursively flattened with `parent_child` naming |
     /// | Other | Falls back to per-element list column |
     pub fn from_rows<T: Serialize>(rows: &[T]) -> Result<ColumnarDataFrame, RSerdeError> {
@@ -1400,6 +1401,28 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
             }
             ColumnBuffer::Generic(v) => {
                 let nrow_r: isize = nrow.try_into().expect("nrow exceeds isize::MAX");
+                // If every entry is None or Some(NULL) — meaning all rows had
+                // `Option<T> = None` (which serializes as NULL) or the column
+                // was always NA-padded — emit a logical NA vector instead of
+                // list(NULL, …).  R coerces logical NA to the surrounding type
+                // on first use, so this is invisible downstream:
+                //   c(NA, 1L) → integer,  c(NA, "x") → character, etc.
+                //
+                // `push_na` (pad for missing rows) stores `None`.
+                // `push_value(&None::<T>)` stores `Some(SEXP::nil())` via
+                // RSerializer::serialize_none.
+                // Both are "NA-like" in the generic-list context.
+                let all_null = v.iter().all(|e| match e {
+                    None => true,
+                    Some(s) => s.is_nil(),
+                });
+                if all_null {
+                    let (sexp, dst) = alloc_r_vector::<crate::ffi::RLogical>(nrow);
+                    let dst_i32: &mut [i32] =
+                        std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), nrow);
+                    dst_i32.fill(NA_LOGICAL);
+                    return sexp;
+                }
                 let sexp = Rf_allocVector(SEXPTYPE::VECSXP, nrow_r);
                 for (i, val) in v.iter().enumerate() {
                     let idx: isize = i.try_into().expect("index exceeds isize::MAX");

@@ -140,6 +140,8 @@ mod coerce_tests;
 mod collect_tests;
 #[cfg(feature = "serde")]
 mod columnar_flatten_tests;
+#[cfg(feature = "serde")]
+mod columnar_option_none_tests;
 mod condition_class_system_tests;
 mod condition_demo;
 mod condition_tests;
